@@ -114,39 +114,13 @@ impl<D> LMDBDatabase<D>
 where D: Digest + Send + Sync
 {
     pub fn new(store: LMDBStore, mmr_cache_config: MmrCacheConfig) -> Result<Self, ChainStorageError> {
-        let utxo_checkpoints = LMDBVec::new(
-            store.env(),
-            store
-                .get_handle(LMDB_DB_UTXO_MMR_CP_BACKEND)
-                .ok_or_else(|| ChainStorageError::CriticalError("Could not create UTXO MMR backend".to_string()))?
-                .db()
-                .clone(),
-        );
-        let kernel_checkpoints = LMDBVec::new(
-            store.env(),
-            store
-                .get_handle(LMDB_DB_KERNEL_MMR_CP_BACKEND)
-                .ok_or_else(|| ChainStorageError::CriticalError("Could not create kernel MMR backend".to_string()))?
-                .db()
-                .clone(),
-        );
-        let range_proof_checkpoints = LMDBVec::new(
-            store.env(),
-            store
-                .get_handle(LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND)
-                .ok_or_else(|| {
-                    ChainStorageError::CriticalError("Could not create range proof MMR backend".to_string())
-                })?
-                .db()
-                .clone(),
-        );
+        let utxo_checkpoints = LMDBVec::new(store.env(), get_database(&store, LMDB_DB_UTXO_MMR_CP_BACKEND)?);
+        let kernel_checkpoints = LMDBVec::new(store.env(), get_database(&store, LMDB_DB_KERNEL_MMR_CP_BACKEND)?);
+        let range_proof_checkpoints =
+            LMDBVec::new(store.env(), get_database(&store, LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND)?);
         // Restore memory metadata
         let env = store.env();
-        let metadata_db = store
-            .get_handle(LMDB_DB_METADATA)
-            .ok_or_else(|| ChainStorageError::CriticalError("Could not create metadata backend".to_string()))?
-            .db()
-            .clone();
+        let metadata_db = get_database(&store, LMDB_DB_METADATA)?;
         let metadata = ChainMetadata {
             height_of_longest_chain: fetch_chain_height(&env, &metadata_db)?,
             best_block: fetch_best_block(&env, &metadata_db)?,
@@ -157,43 +131,13 @@ where D: Digest + Send + Sync
         Ok(Self {
             metadata_db,
             mem_metadata: metadata,
-            headers_db: store
-                .get_handle(LMDB_DB_HEADERS)
-                .ok_or_else(|| ChainStorageError::CriticalError("Could not get handle to headers DB".to_string()))?
-                .db()
-                .clone(),
-            block_hashes_db: store
-                .get_handle(LMDB_DB_BLOCK_HASHES)
-                .ok_or_else(|| {
-                    ChainStorageError::CriticalError("Could not create handle to block hashes DB".to_string())
-                })?
-                .db()
-                .clone(),
-            utxos_db: store
-                .get_handle(LMDB_DB_UTXOS)
-                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to UTXOs DB".to_string()))?
-                .db()
-                .clone(),
-            stxos_db: store
-                .get_handle(LMDB_DB_STXOS)
-                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to STXOs DB".to_string()))?
-                .db()
-                .clone(),
-            txos_hash_to_index_db: store
-                .get_handle(LMDB_DB_TXOS_HASH_TO_INDEX)
-                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to TXOs DB".to_string()))?
-                .db()
-                .clone(),
-            kernels_db: store
-                .get_handle(LMDB_DB_KERNELS)
-                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to kernels DB".to_string()))?
-                .db()
-                .clone(),
-            orphans_db: store
-                .get_handle(LMDB_DB_ORPHANS)
-                .ok_or_else(|| ChainStorageError::CriticalError("Could not create handle to orphans DB".to_string()))?
-                .db()
-                .clone(),
+            headers_db: get_database(&store, LMDB_DB_HEADERS)?,
+            block_hashes_db: get_database(&store, LMDB_DB_BLOCK_HASHES)?,
+            utxos_db: get_database(&store, LMDB_DB_UTXOS)?,
+            stxos_db: get_database(&store, LMDB_DB_STXOS)?,
+            txos_hash_to_index_db: get_database(&store, LMDB_DB_TXOS_HASH_TO_INDEX)?,
+            kernels_db: get_database(&store, LMDB_DB_KERNELS)?,
+            orphans_db: get_database(&store, LMDB_DB_ORPHANS)?,
             utxo_mmr: MmrCache::new(MemDbVec::new(), utxo_checkpoints.clone(), mmr_cache_config)?,
             curr_utxo_checkpoint: {
                 let acc_count = fetch_last_mmr_node_added_count(&utxo_checkpoints)?;
@@ -1038,4 +982,11 @@ fn merge_checkpoints(
         }
     }
     Ok((0, stxo_leaf_indices))
+}
+
+fn get_database(store: &LMDBStore, name: &str) -> Result<DatabaseRef, ChainStorageError> {
+    let handle = store
+        .get_handle(name)
+        .ok_or_else(|| ChainStorageError::CriticalError(format!("Could not get `{}` database", name)))?;
+    Ok(handle.db())
 }
