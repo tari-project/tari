@@ -29,6 +29,10 @@ use chrono::{DateTime, Duration, Utc};
 use std::ops::Add;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
+pub const WEIGHT_PER_INPUT: u64 = 1;
+pub const WEIGHT_PER_OUTPUT: u64 = 13;
+pub const KERNEL_WEIGHT: u64 = 3; // Constant weight per transaction; covers kernel and part of header.
+
 /// This is the inner struct used to control all consensus values.
 #[derive(Clone)]
 pub struct ConsensusConstants {
@@ -107,6 +111,11 @@ impl ConsensusConstants {
     /// Maximum transaction weight used for the construction of new blocks.
     pub fn get_max_block_transaction_weight(&self) -> u64 {
         self.max_block_transaction_weight
+    }
+
+    /// Maximum transaction weight used for the construction of new blocks. It leaves place for 1 kernel and 1 output
+    pub fn get_max_block_weight_excluding_coinbase(&self) -> u64 {
+        self.max_block_transaction_weight - WEIGHT_PER_OUTPUT - KERNEL_WEIGHT
     }
 
     /// The amount of PoW algorithms used by the Tari chain.

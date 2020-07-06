@@ -269,7 +269,7 @@ where T: BlockchainBackend + 'static
                     self.mempool.clone(),
                     self.consensus_manager
                         .consensus_constants()
-                        .get_max_block_transaction_weight(),
+                        .get_max_block_weight_excluding_coinbase(),
                 )
                 .await
                 .map_err(|e| CommsInterfaceError::MempoolError(e.to_string()))?

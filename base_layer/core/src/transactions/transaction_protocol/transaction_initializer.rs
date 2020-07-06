@@ -313,17 +313,20 @@ impl SenderTransactionInitializer {
 
 #[cfg(test)]
 mod test {
-    use crate::transactions::{
-        fee::{Fee, KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
-        helpers::{make_input, TestParams},
-        tari_amount::*,
-        transaction::{UnblindedOutput, MAX_TRANSACTION_INPUTS},
-        transaction_protocol::{
-            sender::SenderState,
-            transaction_initializer::SenderTransactionInitializer,
-            TransactionProtocolError,
+    use crate::{
+        consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
+        transactions::{
+            fee::Fee,
+            helpers::{make_input, TestParams},
+            tari_amount::*,
+            transaction::{UnblindedOutput, MAX_TRANSACTION_INPUTS},
+            transaction_protocol::{
+                sender::SenderState,
+                transaction_initializer::SenderTransactionInitializer,
+                TransactionProtocolError,
+            },
+            types::CryptoFactories,
         },
-        types::CryptoFactories,
     };
     use rand::rngs::OsRng;
     use tari_crypto::common::Blake256;

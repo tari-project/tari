@@ -20,13 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transactions::{tari_amount::*, transaction::MINIMUM_TRANSACTION_FEE};
+use crate::{
+    consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
+    transactions::{tari_amount::*, transaction::MINIMUM_TRANSACTION_FEE},
+};
 
 pub struct Fee {}
-
-pub const WEIGHT_PER_INPUT: u64 = 1;
-pub const WEIGHT_PER_OUTPUT: u64 = 13;
-pub const KERNEL_WEIGHT: u64 = 3; // Constant weight per transaction; covers kernel and part of header.
 
 impl Fee {
     /// Computes the absolute transaction fee given the fee-per-gram, and the size of the transaction
