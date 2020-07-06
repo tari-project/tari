@@ -17,7 +17,7 @@ tari_core = {path = "../../base_layer/core", version= "^0.1"}
 tari_p2p = {path = "../../base_layer/p2p", version= "^0.1"}
 tari_service_framework = { version = "^0.0", path = "../../base_layer/service_framework"}
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0" }
-tari_mmr = { path = "../../base_layer/mmr", version = "^0.1" }
+tari_mmr = { path = "../../base_layer/mmr", version = "^0.2" }
 tari_wallet = { path = "../../base_layer/wallet", version = "^0.1" }
 tari_broadcast_channel = "^0.2"
 tari_crypto = { version = "^0.4" }
