@@ -72,7 +72,7 @@ mod pingpong {
     };
     use tari_service_framework::StackBuilder;
     use tari_shutdown::ShutdownSignal;
-    use tempdir::TempDir;
+    use tempfile::tempdir;
     use tokio::runtime::Runtime;
 
     fn load_file<T: MessageFormat>(path: &str) -> T {
@@ -141,7 +141,7 @@ mod pingpong {
             None
         };
 
-        let datastore_path = TempDir::new(random_string(8).as_str()).unwrap();
+        let datastore_path = tempdir().unwrap();
 
         let (publisher, subscription_factory) = pubsub_connector(rt.handle().clone(), 100);
         let subscription_factory = Arc::new(subscription_factory);

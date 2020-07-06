@@ -71,11 +71,11 @@ mod test {
     use crate::dir_utils;
     use std::path::PathBuf;
     use tari_test_utils::random::string;
-    use tempdir::TempDir;
+    use tempfile::tempdir;
 
     #[test]
     fn test_multiple_levels_create_data_directory() {
-        let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+        let temp_dir = tempdir().unwrap();
         let dir = &PathBuf::from(
             temp_dir.path().to_path_buf().display().to_string().to_owned() +
                 "/" +

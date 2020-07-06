@@ -42,7 +42,7 @@ use tari_wallet::{
     },
     storage::connection_manager::run_migration_and_create_sqlite_connection,
 };
-use tempdir::TempDir;
+use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
 pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
@@ -342,7 +342,7 @@ pub fn test_output_manager_memory_db() {
 #[test]
 pub fn test_output_manager_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
 
@@ -393,7 +393,7 @@ pub fn test_key_manager_crud_memory_db() {
 #[test]
 pub fn test_key_manager_crud_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
 
@@ -486,7 +486,7 @@ pub async fn test_short_term_encumberance_memory_db() {
 #[tokio_macros::test]
 pub async fn test_short_term_encumberance_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
 

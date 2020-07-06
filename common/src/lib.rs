@@ -55,10 +55,10 @@
 //! ```edition2018
 //! # use tari_common::*;
 //! # use tari_test_utils::random::string;
-//! # use tempdir::TempDir;
+//! # use tempfile::tempdir;
 //! # use structopt::StructOpt;
 //! let mut args = ConfigBootstrap::from_args();
-//! # let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+//! # let temp_dir = tempdir().unwrap();
 //! # args.base_path = temp_dir.path().to_path_buf();
 //! # args.init = true;
 //! args.init_dirs();

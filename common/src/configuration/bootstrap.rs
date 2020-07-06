@@ -218,7 +218,7 @@ mod test {
     use std::path::PathBuf;
     use structopt::StructOpt;
     use tari_test_utils::random::string;
-    use tempdir::TempDir;
+    use tempfile::tempdir;
 
     #[test]
     fn test_bootstrap_and_load_configuration() {
@@ -274,7 +274,7 @@ mod test {
         );
 
         // Command line test data for config init test
-        let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+        let temp_dir = tempdir().unwrap();
         let dir = &PathBuf::from(temp_dir.path().to_path_buf().display().to_string().to_owned() + "/01/02/");
         let data_path = default_subdir("", Some(dir));
         let mut bootstrap =

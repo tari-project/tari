@@ -64,7 +64,7 @@ use tari_wallet::{
     wallet::WalletConfig,
     Wallet,
 };
-use tempdir::TempDir;
+use tempfile::tempdir;
 use tokio::{
     runtime::{Builder, Runtime},
     time::delay_for,
@@ -101,7 +101,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
 
 #[test]
 fn wallet_base_node_integration_test() {
-    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let factories = CryptoFactories::default();
 
     let alice_node_identity = random_node_identity();

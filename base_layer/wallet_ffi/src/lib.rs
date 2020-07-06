@@ -4509,7 +4509,7 @@ mod test {
         transaction_service::storage::database::TransactionStatus,
         util::emoji,
     };
-    use tempdir::TempDir;
+    use tempfile::tempdir;
 
     fn type_of<T>(_: T) -> String {
         std::any::type_name::<T>().to_string()
@@ -4991,7 +4991,7 @@ mod test {
             let public_key_alice = public_key_from_private_key(secret_key_alice.clone(), error_ptr);
             let db_name_alice = CString::new(random_string(8).as_str()).unwrap();
             let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice.clone()) as *const c_char;
-            let alice_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+            let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
             let transport_type_alice = transport_memory_create();
@@ -5026,7 +5026,7 @@ mod test {
             let public_key_bob = public_key_from_private_key(secret_key_bob.clone(), error_ptr);
             let db_name_bob = CString::new(random_string(8).as_str()).unwrap();
             let db_name_bob_str: *const c_char = CString::into_raw(db_name_bob.clone()) as *const c_char;
-            let bob_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+            let bob_temp_dir = tempdir().unwrap();
             let db_path_bob = CString::new(bob_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_bob_str: *const c_char = CString::into_raw(db_path_bob.clone()) as *const c_char;
             let transport_type_bob = transport_memory_create();
@@ -5438,7 +5438,7 @@ mod test {
             let db_name = random_string(8);
             let db_name_alice = CString::new(db_name.as_str()).unwrap();
             let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice.clone()) as *const c_char;
-            let alice_temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+            let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
             let transport_type_alice = transport_memory_create();

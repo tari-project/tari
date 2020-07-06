@@ -242,7 +242,7 @@ mod test {
     use tari_core::transactions::types::PublicKey;
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
     use tari_test_utils::random::string;
-    use tempdir::TempDir;
+    use tempfile::tempdir;
     use tokio::runtime::Runtime;
 
     pub fn test_database_crud<T: WalletBackend + 'static>(backend: T) {
@@ -315,12 +315,7 @@ mod test {
     #[test]
     fn test_database_crud_sqlite_db() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
-        let db_folder = TempDir::new(string(8).as_str())
-            .unwrap()
-            .path()
-            .to_str()
-            .unwrap()
-            .to_string();
+        let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();
         let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
 
         test_database_crud(WalletSqliteDatabase::new(connection));

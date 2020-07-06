@@ -116,7 +116,7 @@ use tari_wallet::{
     },
     types::HashDigest,
 };
-use tempdir::TempDir;
+use tempfile::tempdir;
 use tokio::{
     runtime,
     runtime::{Builder, Runtime},
@@ -426,7 +426,7 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
 
 #[test]
 fn manage_single_transaction_memory_db() {
-    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     manage_single_transaction(
         TransactionMemoryDatabase::new(),
         TransactionMemoryDatabase::new(),
@@ -436,7 +436,7 @@ fn manage_single_transaction_memory_db() {
 
 #[test]
 fn manage_single_transaction_sqlite_db() {
-    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
     let alice_db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), alice_db_name);
     let bob_db_name = format!("{}.sqlite3", random_string(8).as_str());
@@ -693,7 +693,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
 
 #[test]
 fn manage_multiple_transactions_memory_db() {
-    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
 
     manage_multiple_transactions(
         TransactionMemoryDatabase::new(),
@@ -705,7 +705,7 @@ fn manage_multiple_transactions_memory_db() {
 
 #[test]
 fn manage_multiple_transactions_sqlite_db() {
-    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
 
     let path_string = temp_dir.path().to_str().unwrap().to_string();
     let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
@@ -1062,7 +1062,7 @@ fn finalize_tx_with_missing_output_sqlite_db() {
 
 #[test]
 fn discovery_async_return_test() {
-    let db_tempdir = TempDir::new(random_string(8).as_str()).unwrap();
+    let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path();
 
     let mut runtime = runtime::Builder::new()
@@ -2691,7 +2691,7 @@ fn test_transaction_cancellation_memory_db() {
 #[test]
 fn test_transaction_cancellation_sqlite_db() {
     let db_name = format!("{}.sqlite3", random_string(8).as_str());
-    let temp_dir = TempDir::new(random_string(8).as_str()).unwrap();
+    let temp_dir = tempdir().unwrap();
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
 

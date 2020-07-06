@@ -1043,13 +1043,13 @@ mod test {
     };
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
     use tari_test_utils::random::string;
-    use tempdir::TempDir;
+    use tempfile::tempdir;
 
     #[test]
     fn test_crud() {
         let factories = CryptoFactories::default();
         let db_name = format!("{}.sqlite3", string(8).as_str());
-        let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+        let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
 
@@ -1316,7 +1316,7 @@ mod test {
     #[test]
     pub fn test_migration() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
-        let temp_dir = TempDir::new(string(8).as_str()).unwrap();
+        let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
         let db_path = format!("{}{}", db_folder, db_name);
 
