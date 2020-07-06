@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::transactions::tari_amount::MicroTari;
+use num::pow;
 
 /// The Tari emission schedule. The emission schedule determines how much Tari is mined as a block reward at every
 /// block.
@@ -54,7 +55,7 @@ impl EmissionSchedule {
     /// Calculate the block reward for the given block height, in µTari
     pub fn block_reward(&self, block: u64) -> MicroTari {
         let base = if block < std::i32::MAX as u64 {
-            let base_f = (f64::from(self.initial) * self.decay.powi(block as i32)).trunc();
+            let base_f = (f64::from(self.initial) * pow(self.decay, block as usize)).trunc();
             MicroTari::from(base_f as u64)
         } else {
             MicroTari::from(0)
@@ -124,7 +125,38 @@ impl<'a> Iterator for EmissionValues<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::{consensus::emission::EmissionSchedule, transactions::tari_amount::MicroTari};
+    use crate::{
+        consensus::emission::EmissionSchedule,
+        transactions::tari_amount::{uT, MicroTari, T},
+    };
+    use num::pow;
+
+    /// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in certain
+    /// blocks failing validation tests. The cause was traced to an erroneous implementation of the std::f64::powi
+    /// function in Rust toolchain nightly-2020-06-10, where Windows would give a slightly different floating point
+    /// result than Linux. This affected the EmissionSchedule::block_reward calculation.
+    #[test]
+    fn block_reward_edge_cases() {
+        const EMISSION_INITIAL: u64 = 5_538_846_115;
+        const EMISSION_DECAY: f64 = 0.999_999_560_409_038_5;
+        const EMISSION_TAIL: u64 = 1;
+
+        let schedule = EmissionSchedule::new(
+            MicroTari::from(EMISSION_INITIAL * uT),
+            EMISSION_DECAY,
+            MicroTari::from(EMISSION_TAIL * T),
+        );
+
+        // Block numbers in these tests represent the edge cases of the pow function.
+        assert_eq!(schedule.block_reward(9182), MicroTari::from(5517534590));
+        assert_eq!(schedule.block_reward(9430), MicroTari::from(5516933218));
+        assert_eq!(schedule.block_reward(10856), MicroTari::from(5513476601));
+        assert_eq!(schedule.block_reward(11708), MicroTari::from(5511412391));
+        assert_eq!(schedule.block_reward(30335), MicroTari::from(5466475914));
+        assert_eq!(schedule.block_reward(33923), MicroTari::from(5457862272));
+        assert_eq!(schedule.block_reward(34947), MicroTari::from(5455406466));
+    }
+
     #[test]
     fn schedule() {
         let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));

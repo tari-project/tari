@@ -4,11 +4,11 @@ authors = ["The Tari Development Community"]
 description = "A Merkle Mountain Range implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2018"
 
 [dependencies]
-tari_utilities = "^0.1"
+tari_utilities = "^0.2"
 derive-error = "0.0.4"
 digest = "0.8.0"
 log = "0.4"

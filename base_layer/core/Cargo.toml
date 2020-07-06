@@ -29,7 +29,7 @@ tari_p2p = { version = "^0.1", path = "../../base_layer/p2p" }
 tari_comms_dht = { version = "^0.1", path = "../../comms/dht"}
 tari_broadcast_channel = "^0.2"
 tari_shutdown = { version = "^0.0", path = "../../infrastructure/shutdown" }
-tari_mmr = { version = "^0.1", path = "../../base_layer/mmr", optional = true }
+tari_mmr = { version = "^0.2", path = "../../base_layer/mmr", optional = true }
 randomx-rs = { version = "0.2.1", optional = true }
 monero = { version = "0.5", features= ["serde_support"], optional = true }
 bitflags = "1.0.4"
@@ -63,6 +63,7 @@ croaring = { version = "=0.4.5", optional = true }
 config = { version = "0.9.3" }
 strum = "0.17.1"
 strum_macros = "0.17.1"
+num = "0.3"
 
 [dev-dependencies]
 tari_p2p = {path = "../../base_layer/p2p", version = "^0.1", features=["test-mocks"]}

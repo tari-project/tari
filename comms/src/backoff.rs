@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{cmp::min, time::Duration};
 
 pub type BoxedBackoff = Box<dyn Backoff + Send + Sync>;
 
@@ -56,7 +56,7 @@ impl Backoff for ExponentialBackoff {
         if attempts <= 1 {
             return Duration::from_secs(0);
         }
-        let secs = (self.factor as f64) * (f64::powf(2.0, attempts as f64) - 1.0);
+        let secs = (self.factor as f64) * ((1usize << min(attempts, 63)) as f64 - 1.0);
         Duration::from_secs(secs.ceil() as u64)
     }
 }
@@ -97,6 +97,9 @@ mod test {
         assert_eq!(backoff.calculate_backoff(8).as_secs(), 383);
         assert_eq!(backoff.calculate_backoff(9).as_secs(), 767);
         assert_eq!(backoff.calculate_backoff(10).as_secs(), 1535);
+        assert_eq!(backoff.calculate_backoff(63).as_secs(), 13835058055282163712);
+        assert_eq!(backoff.calculate_backoff(64).as_secs(), 13835058055282163712);
+        assert_eq!(backoff.calculate_backoff(200).as_secs(), 13835058055282163712);
     }
 
     #[test]

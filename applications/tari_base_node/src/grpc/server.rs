@@ -32,9 +32,15 @@ use tari_core::{
     base_node::LocalNodeCommsInterface,
     blocks::{Block, BlockHeader},
     chain_storage::HistoricalBlock,
-    consensus::{emission::EmissionSchedule, ConsensusConstants, Network},
+    consensus::{
+        emission::EmissionSchedule,
+        ConsensusConstants,
+        Network,
+        KERNEL_WEIGHT,
+        WEIGHT_PER_INPUT,
+        WEIGHT_PER_OUTPUT,
+    },
     proof_of_work::PowAlgorithm,
-    transactions::fee::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray, Hashable};
 use tokio::{runtime, sync::mpsc};
