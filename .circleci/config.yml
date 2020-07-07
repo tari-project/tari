@@ -32,6 +32,15 @@ commands:
       - run:
           name: Run tests
           command: cargo test --workspace --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+      - run:
+          # The FFI lib uses different features, so this tests that it still compiles with the feature subset
+          name: Build FFI lib
+          command: cargo build <<#parameters.release>>--release<</parameters.release>>
+          working_directory: base_layer/wallet_ffi
+      - run:
+          name: Test FFI lib
+          command: cargo test <<#parameters.release>>--release<</parameters.release>>
+          working_directory: base_layer/wallet_ffi
       - save_cache:
           paths:
             - /usr/local/cargo/registry
