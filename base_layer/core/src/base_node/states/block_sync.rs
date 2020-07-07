@@ -26,7 +26,7 @@ use crate::{
         states::{
             helpers::{ban_all_sync_peers, ban_sync_peer, request_headers, select_sync_peer},
             ForwardBlockSyncInfo,
-            ListeningData,
+            Listening,
             StateEvent,
             StatusInfo,
         },
@@ -157,9 +157,9 @@ impl BlockSyncStrategy {
 }
 
 /// State management for BlockSync -> Listening.
-impl From<BlockSyncStrategy> for ListeningData {
+impl From<BlockSyncStrategy> for Listening {
     fn from(_old_state: BlockSyncStrategy) -> Self {
-        ListeningData {}
+        Listening {}
     }
 }
 

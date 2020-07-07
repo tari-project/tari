@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{header_iter::HeaderIter, ChainBalanceValidator, HorizonHeaderValidator};
+use super::{header_iter::HeaderIter, ChainBalanceValidator, HeaderValidator};
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
     chain_storage::{ChainStorageError, DbTransaction},
@@ -86,7 +86,7 @@ fn header_iter_fetch_in_chunks() {
 fn headers_validation() {
     let rules = ConsensusManagerBuilder::new(Network::LocalNet).build();
     let db = create_mem_db(&rules);
-    let validator = HorizonHeaderValidator::new(db.clone(), rules.clone());
+    let validator = HeaderValidator::new(db.clone(), rules.clone());
 
     let genesis = rules.get_genesis_block();
     validator.validate(&genesis.header).unwrap();

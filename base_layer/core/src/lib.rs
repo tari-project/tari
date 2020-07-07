@@ -40,6 +40,8 @@ pub mod consensus;
 #[cfg(feature = "base_node")]
 pub mod helpers;
 #[cfg(feature = "base_node")]
+pub mod iterators;
+#[cfg(feature = "base_node")]
 pub mod mining;
 #[cfg(feature = "base_node")]
 pub mod proof_of_work;

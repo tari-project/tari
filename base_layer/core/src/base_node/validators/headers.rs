@@ -32,18 +32,18 @@ use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "c::bn::states::horizon_state_sync::headers";
 
-pub struct HorizonHeaderValidator<B> {
+pub struct HeaderValidator<B> {
     rules: ConsensusManager,
     db: BlockchainDatabase<B>,
 }
 
-impl<B: BlockchainBackend> HorizonHeaderValidator<B> {
+impl<B: BlockchainBackend> HeaderValidator<B> {
     pub fn new(db: BlockchainDatabase<B>, rules: ConsensusManager) -> Self {
         Self { db, rules }
     }
 }
 
-impl<B: BlockchainBackend> StatelessValidation<BlockHeader> for HorizonHeaderValidator<B> {
+impl<B: BlockchainBackend> StatelessValidation<BlockHeader> for HeaderValidator<B> {
     fn validate(&self, header: &BlockHeader) -> Result<(), ValidationError> {
         let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
         self.check_median_timestamp(header)?;
@@ -67,7 +67,7 @@ impl<B: BlockchainBackend> StatelessValidation<BlockHeader> for HorizonHeaderVal
     }
 }
 
-impl<B: BlockchainBackend> HorizonHeaderValidator<B> {
+impl<B: BlockchainBackend> HeaderValidator<B> {
     pub fn is_genesis(&self, block_header: &BlockHeader) -> bool {
         block_header.height == 0 && self.rules.get_genesis_block_hash() == block_header.hash()
     }

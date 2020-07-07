@@ -54,11 +54,12 @@ use tari_core::{
     base_node::{
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
-        states::{HorizonSyncValidators, StatusInfo},
+        states::StatusInfo,
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
         LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
+        SyncValidators,
     },
     chain_storage::{
         create_lmdb_database,
@@ -622,7 +623,7 @@ where
     let node_local_interface = base_node_handles
         .get_handle::<LocalNodeCommsInterface>()
         .expect("Problem getting node local interface handle.");
-    let horizon_sync_validators = HorizonSyncValidators::full_consensus(db.clone(), rules.clone(), factories.clone());
+    let sync_validators = SyncValidators::full_consensus(db.clone(), rules.clone(), factories.clone());
     let node = BaseNodeStateMachine::new(
         &db,
         &node_local_interface,
@@ -631,7 +632,7 @@ where
         base_node_comms.connectivity(),
         chain_metadata_service.get_event_stream(),
         state_machine_config,
-        horizon_sync_validators,
+        sync_validators,
         interrupt_signal,
     );
 

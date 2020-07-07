@@ -23,7 +23,7 @@
 use crate::{
     base_node::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
-        states::{StateEvent, StateEvent::FatalError, StatusInfo, SyncStatus},
+        states::{StateEvent, StateEvent::FatalError, StatusInfo, SyncStatus, Waiting},
         BaseNodeStateMachine,
     },
     chain_storage::{async_db, BlockchainBackend, ChainMetadata},
@@ -38,7 +38,7 @@ const LOG_TARGET: &str = "c::bn::states::listening";
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 /// This struct contains info that is use full for external viewing of state info
-pub struct ListeningInfo {}
+pub struct ListeningInfo;
 
 impl Display for ListeningInfo {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -49,8 +49,7 @@ impl Display for ListeningInfo {
 impl ListeningInfo {
     /// Creates a new ListeningData
     pub fn new() -> ListeningInfo {
-        // todo fill in with good info
-        ListeningInfo {}
+        ListeningInfo
     }
 }
 
@@ -58,9 +57,9 @@ impl ListeningInfo {
 /// received metadata, if it detects that the current node is lagging behind the network it will switch to block sync
 /// state.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ListeningData;
+pub struct Listening;
 
-impl ListeningData {
+impl Listening {
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
@@ -100,6 +99,12 @@ impl ListeningData {
             "Event listener is complete because liveness metadata and timeout streams were closed"
         );
         StateEvent::UserQuit
+    }
+}
+
+impl From<Waiting> for Listening {
+    fn from(_: Waiting) -> Self {
+        Listening
     }
 }
 
