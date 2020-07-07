@@ -74,38 +74,32 @@ pub struct BlockSyncConfig {
     pub block_request_size: usize,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 /// This struct contains info that is use full for external viewing of state info
 pub struct BlockSyncInfo {
-    pub tip_height: Option<u64>,
-    pub local_height: Option<u64>,
+    pub tip_height: u64,
+    pub local_height: u64,
     pub sync_peers: Vec<NodeId>,
 }
 
 impl BlockSyncInfo {
     /// Creates a new blockSyncInfo
-    pub fn new(tip_height: Option<u64>, local_height: Option<u64>, sync_peers: Option<&Vec<NodeId>>) -> BlockSyncInfo {
-        let peers = match sync_peers {
-            Some(v) => v.clone(),
-            None => Vec::new(),
-        };
+    pub fn new(tip_height: u64, local_height: u64, sync_peers: Vec<NodeId>) -> BlockSyncInfo {
         BlockSyncInfo {
             tip_height,
             local_height,
-            sync_peers: peers,
+            sync_peers,
         }
     }
 }
 
 impl Display for BlockSyncInfo {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        let local_height = self.local_height.unwrap_or(0);
-        let tip_height = self.tip_height.unwrap_or(0);
         fmt.write_str("Syncing from the following peers: \n")?;
         for peer in &self.sync_peers {
             fmt.write_str(&format!("{}\n", peer))?;
         }
-        fmt.write_str(&format!("Syncing {}/{}\n", local_height, tip_height))
+        fmt.write_str(&format!("Syncing {}/{}\n", self.local_height, self.tip_height))
     }
 }
 
@@ -151,10 +145,9 @@ impl BlockSyncStrategy {
         sync_peers: &mut Vec<NodeId>,
     ) -> StateEvent
     {
-        shared.info = StatusInfo::BlockSync(BlockSyncInfo::new(None, None, None));
+        shared.info = StatusInfo::BlockSync(BlockSyncInfo::default());
         if let StatusInfo::BlockSync(ref mut info) = shared.info {
-            info.sync_peers.clear();
-            info.sync_peers.append(&mut sync_peers.clone());
+            info.sync_peers = Clone::clone(&*sync_peers);
         }
         shared.publish_event_info().await;
         match self {
@@ -325,11 +318,11 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             }
 
             if let StatusInfo::BlockSync(ref mut info) = shared.info {
-                info.tip_height = Some(network_tip_height);
+                info.tip_height = network_tip_height;
             }
             while sync_height <= network_tip_height {
                 if let StatusInfo::BlockSync(ref mut info) = shared.info {
-                    info.local_height = Some(sync_height);
+                    info.local_height = sync_height;
                 }
 
                 shared.publish_event_info().await;
@@ -439,18 +432,21 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
     mut block_nums: Vec<u64>,
 ) -> Result<(), BlockSyncError>
 {
+    if block_nums.is_empty() {
+        return Ok(());
+    }
     let config = shared.config.block_sync_config;
     for attempt in 0..config.max_add_block_retry_attempts {
         let (blocks, sync_peer) = request_blocks(shared, sync_peers, block_nums.clone()).await?;
         if let StatusInfo::BlockSync(ref mut info) = shared.info {
-            // assuming the numbers are ordred
-            info.tip_height = Some(block_nums[block_nums.len() - 1]);
+            // assuming the numbers are ordered
+            info.tip_height = block_nums[block_nums.len() - 1];
         }
         shared.publish_event_info().await;
         for block in blocks {
             let block_hash = block.hash();
             if let StatusInfo::BlockSync(ref mut info) = shared.info {
-                info.local_height = Some(block.header.height);
+                info.local_height = block.header.height;
             }
 
             shared.publish_event_info().await;
@@ -530,13 +526,16 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
     let config = shared.config.sync_peer_config;
     for attempt in 1..=shared.config.block_sync_config.max_block_request_retry_attempts {
         let sync_peer = select_sync_peer(&config, sync_peers)?;
+        if block_nums.is_empty() {
+            return Ok((Vec::new(), sync_peer));
+        }
         debug!(
             target: LOG_TARGET,
             "Requesting blocks {:?} from {}.", block_nums, sync_peer
         );
         if let StatusInfo::BlockSync(ref mut info) = shared.info {
-            info.local_height = Some(block_nums[0]);
-            info.tip_height = Some(block_nums[block_nums.len() - 1]);
+            info.local_height = block_nums[0];
+            info.tip_height = block_nums[block_nums.len() - 1];
         }
         shared.publish_event_info().await;
         match shared
