@@ -157,22 +157,30 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, '_, B> {
 
     async fn synchronize_headers(&mut self, tip_header: &BlockHeader) -> Result<(), HeaderSyncError> {
         let tip_height = tip_header.height;
-        let config = self.shared.config.horizon_sync_config;
+        let config = self.shared.config.block_sync_config;
 
         let chunks = VecChunkIter::new(tip_height + 1, self.sync_height + 1, config.header_request_size);
         for block_nums in chunks {
-            for attempt in 1..=config.max_sync_request_retry_attempts {
+            let num_sync_peers = self.sync_peers.len();
+            for attempt in 1..=num_sync_peers {
                 let (headers, sync_peer) = helpers::request_headers(
                     LOG_TARGET,
                     self.shared,
                     self.sync_peers,
                     &block_nums,
-                    self.shared.config.horizon_sync_config.max_header_request_retry_attempts,
+                    config.max_header_request_retry_attempts,
                 )
                 .await?;
 
                 match self.validate_and_insert_headers(&block_nums, headers).await {
                     Ok(_) => {
+                        self.shared
+                            .set_status_info(StatusInfo::HeaderSync(BlockSyncInfo::new(
+                                self.sync_height,
+                                *block_nums.last().unwrap(),
+                                Clone::clone(&*self.sync_peers),
+                            )))
+                            .await;
                         debug!(
                             target: LOG_TARGET,
                             "Successfully added headers {} to {} to the database",
@@ -195,13 +203,13 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, '_, B> {
                     Err(e) => return Err(e),
                 }
 
-                if attempt == config.max_sync_request_retry_attempts {
+                if attempt == num_sync_peers {
                     debug!(target: LOG_TARGET, "Reached maximum ({}) attempts", attempt);
                     return Err(HeaderSyncError::MaxSyncAttemptsReached);
                 }
                 debug!(
                     target: LOG_TARGET,
-                    "Retrying header sync. Attempt {} of {}", attempt, config.max_sync_request_retry_attempts
+                    "Retrying header sync. Attempt {} of {}", attempt, num_sync_peers
                 );
             }
         }

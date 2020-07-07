@@ -224,27 +224,26 @@ pub struct ConsensusConstantsBuilder {
 }
 
 impl ConsensusConstantsBuilder {
-    pub fn new(network: Network) -> ConsensusConstantsBuilder {
-        ConsensusConstantsBuilder {
+    pub fn new(network: Network) -> Self {
+        Self {
             consensus: network.create_consensus_constants(),
         }
     }
 
-    pub fn with_coinbase_lockheight(mut self, height: u64) -> ConsensusConstantsBuilder {
+    pub fn with_coinbase_lockheight(mut self, height: u64) -> Self {
         self.consensus.coinbase_lock_height = height;
         self
     }
 
-    pub fn with_emission_amounts(
-        mut self,
-        intial_amount: MicroTari,
-        decay: f64,
-        tail_amount: MicroTari,
-    ) -> ConsensusConstantsBuilder
-    {
+    pub fn with_emission_amounts(mut self, intial_amount: MicroTari, decay: f64, tail_amount: MicroTari) -> Self {
         self.consensus.emission_initial = intial_amount;
         self.consensus.emission_decay = decay;
         self.consensus.emission_tail = tail_amount;
+        self
+    }
+
+    pub fn with_genesis_coinbase_value_offset(mut self, value: MicroTari) -> Self {
+        self.consensus.genesis_coinbase_value_offset = value;
         self
     }
 

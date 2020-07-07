@@ -312,8 +312,9 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                     network_tip_height,
                 );
                 let block_nums: Vec<u64> = (sync_height..=max_height).collect();
-                request_and_add_blocks(shared, sync_peers, block_nums.clone()).await?;
-                sync_height += block_nums.len() as u64;
+                let block_nums_count = block_nums.len() as u64;
+                request_and_add_blocks(shared, sync_peers, block_nums).await?;
+                sync_height += block_nums_count;
             }
             return Ok(());
         }

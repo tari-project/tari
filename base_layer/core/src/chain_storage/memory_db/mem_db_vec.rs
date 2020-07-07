@@ -150,7 +150,7 @@ where T: PartialEq + Eq + Hash + Clone
 
     #[cfg(test)]
     pub fn check_state(&self) {
-        self.storage.read().expect("Storage lock issue").check_state();
+        self.storage.read().expect("Storage lock poisoned").check_state();
     }
 }
 

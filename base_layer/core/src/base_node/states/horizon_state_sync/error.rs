@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::{comms_interface::CommsInterfaceError, states::block_sync::BlockSyncError},
-    chain_storage::ChainStorageError,
+    chain_storage::{ChainStorageError, MmrTree},
     transactions::transaction::TransactionError,
     validation::ValidationError,
 };
@@ -49,4 +49,6 @@ pub enum HorizonSyncError {
     JoinError(#[from] task::JoinError),
     #[error("Transaction error: {0:?}")]
     TransactionError(#[from] TransactionError),
+    #[error("Validation failed for {0} MMR")]
+    InvalidMmrRoot(MmrTree),
 }

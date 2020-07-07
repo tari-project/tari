@@ -23,6 +23,6 @@
 use std::time::Duration;
 
 /// The allocated waiting time for a request waiting for service responses from remote base nodes.
-pub const BASE_NODE_SERVICE_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+pub const BASE_NODE_SERVICE_REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
 /// The fraction of responses that need to be received for a corresponding service request to be finalize.
 pub const BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION: f32 = 0.6;

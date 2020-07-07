@@ -137,11 +137,14 @@ impl DbTransaction {
     /// Adds a marker operation that allows the database to perform any additional work after adding a new block to
     /// the database.
     pub fn commit_block(&mut self) {
-        self.operations
-            .push(WriteOperation::CreateMmrCheckpoint(MmrTree::Kernel));
-        self.operations.push(WriteOperation::CreateMmrCheckpoint(MmrTree::Utxo));
-        self.operations
-            .push(WriteOperation::CreateMmrCheckpoint(MmrTree::RangeProof));
+        self.create_mmr_checkpoint(MmrTree::Kernel);
+        self.create_mmr_checkpoint(MmrTree::Utxo);
+        self.create_mmr_checkpoint(MmrTree::RangeProof);
+    }
+
+    /// Create an MMR checkpoint for the given Mmrtree
+    pub fn create_mmr_checkpoint(&mut self, tree: MmrTree) {
+        self.operations.push(WriteOperation::CreateMmrCheckpoint(tree));
     }
 
     /// Set the horizon beyond which we cannot be guaranteed provide detailed blockchain information anymore.
@@ -206,7 +209,7 @@ pub enum DbKeyValuePair {
     OrphanBlock(HashOutput, Box<Block>),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy)]
 pub enum MmrTree {
     Utxo,
     Kernel,

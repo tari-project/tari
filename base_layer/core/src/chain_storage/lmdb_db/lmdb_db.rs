@@ -69,7 +69,7 @@ use log::*;
 use std::{collections::VecDeque, fmt::Display, path::Path, sync::Arc};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 use tari_mmr::{
-    functions::{prune_mutable_mmr, PrunedMutableMmr},
+    functions::{calculate_pruned_mmr_root, prune_mutable_mmr, PrunedMutableMmr},
     ArrayLike,
     ArrayLikeExt,
     Hash as MmrHash,
@@ -78,6 +78,7 @@ use tari_mmr::{
     MerkleProof,
     MmrCache,
     MmrCacheConfig,
+    MutableMmr,
 };
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBStore};
 
@@ -121,12 +122,7 @@ where D: Digest + Send + Sync
         // Restore memory metadata
         let env = store.env();
         let metadata_db = get_database(&store, LMDB_DB_METADATA)?;
-        let metadata = ChainMetadata {
-            height_of_longest_chain: fetch_chain_height(&env, &metadata_db)?,
-            best_block: fetch_best_block(&env, &metadata_db)?,
-            pruning_horizon: fetch_pruning_horizon(&env, &metadata_db)?,
-            accumulated_difficulty: fetch_accumulated_work(&env, &metadata_db)?,
-        };
+        let metadata = fetch_metadata(&env, &metadata_db)?;
 
         Ok(Self {
             metadata_db,
@@ -254,7 +250,7 @@ where D: Digest + Send + Sync
                         trace!(target: LOG_TARGET, "Merged {} range proof checkpoints", num_cps_merged);
                     },
                 },
-                _ => {},
+                _ => { /* ignore operations which do not apply */ },
             }
         }
         Ok(())
@@ -605,7 +601,7 @@ where D: Digest + Send + Sync
     // Retrieves the checkpoint corresponding to the provided height, if the checkpoint is part of the horizon state
     // then a BeyondPruningHorizon error will be produced.
     fn fetch_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
-        let tip_height = lmdb_len(&self.env, &self.headers_db)?.saturating_sub(1) as u64;
+        let tip_height = lmdb_len(&self.env, &self.headers_db)? as u64;
         let pruned_mode = self.mem_metadata.is_pruned_node();
         match tree {
             MmrTree::Kernel => fetch_checkpoint(&self.kernel_checkpoints, pruned_mode, tip_height, height),
@@ -653,9 +649,11 @@ where D: Digest + Send + Sync
             },
             MmrTree::RangeProof => self.range_proof_mmr.fetch_mmr_node(pos)?,
         };
+
         let hash = hash.ok_or_else(|| {
             ChainStorageError::UnexpectedResult(format!("A leaf node hash in the {} MMR tree was not found", tree))
         })?;
+
         Ok((hash, deleted))
     }
 
@@ -669,7 +667,7 @@ where D: Digest + Send + Sync
     {
         let mut leaf_nodes = Vec::<(Vec<u8>, bool)>::with_capacity(count as usize);
         for pos in pos..pos + count {
-            leaf_nodes.push(self.fetch_mmr_node(tree.clone(), pos, hist_height)?);
+            leaf_nodes.push(self.fetch_mmr_node(tree, pos, hist_height)?);
         }
         Ok(leaf_nodes)
     }
@@ -745,8 +743,8 @@ where D: Digest + Send + Sync
     fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError> {
         let header_count = lmdb_len(&self.env, &self.headers_db)?;
         if header_count >= 1 {
-            let k = header_count - 1;
-            lmdb_get(&self.env, &self.headers_db, &k)
+            let index = header_count as usize - 1;
+            lmdb_get(&self.env, &self.headers_db, &index)
         } else {
             Ok(None)
         }
@@ -793,62 +791,94 @@ where D: Digest + Send + Sync
     fn count_kernels(&self) -> Result<usize, ChainStorageError> {
         lmdb_len(&self.env, &self.kernels_db)
     }
+
+    /// Validate the MMR root for the given `MmrTree` matches the header at the given height
+    fn validate_merkle_root(&self, tree: MmrTree, height: u64) -> Result<bool, ChainStorageError> {
+        let header: BlockHeader = lmdb_get(&self.env, &self.headers_db, &height)?.ok_or_else(|| {
+            ChainStorageError::InvalidQuery(format!(
+                "Header at height {} was not found when validating {} merkle root",
+                height, tree
+            ))
+        })?;
+
+        match tree {
+            MmrTree::Utxo => validate_merkle_root(&self.utxo_mmr, &self.curr_utxo_checkpoint, &header.output_mr),
+            MmrTree::Kernel => validate_merkle_root(&self.kernel_mmr, &self.curr_kernel_checkpoint, &header.kernel_mr),
+            MmrTree::RangeProof => validate_merkle_root(
+                &self.range_proof_mmr,
+                &self.curr_range_proof_checkpoint,
+                &header.range_proof_mr,
+            ),
+        }
+    }
+}
+
+fn validate_merkle_root<D, B>(
+    mmr: &MutableMmr<D, B>,
+    current_cp: &MerkleCheckPoint,
+    expected_mr: &BlockHash,
+) -> Result<bool, ChainStorageError>
+where
+    D: Digest,
+    B: ArrayLike<Value = Hash>,
+{
+    let mmr = prune_mutable_mmr(&mmr)?;
+    let root = calculate_pruned_mmr_root(
+        &mmr,
+        current_cp.nodes_added().clone(),
+        current_cp.nodes_deleted().to_vec(),
+    )?;
+    Ok(expected_mr == &root)
+}
+
+// Fetch the chain metadata
+fn fetch_metadata(env: &Environment, db: &Database) -> Result<ChainMetadata, ChainStorageError> {
+    Ok(ChainMetadata {
+        height_of_longest_chain: fetch_chain_height(&env, &db)?,
+        best_block: fetch_best_block(&env, &db)?,
+        pruning_horizon: fetch_pruning_horizon(&env, &db)?,
+        accumulated_difficulty: fetch_accumulated_work(&env, &db)?,
+    })
 }
 
 // Fetches the chain height from the provided metadata db.
 fn fetch_chain_height(env: &Environment, db: &Database) -> Result<Option<u64>, ChainStorageError> {
     let k = MetadataKey::ChainHeight;
     let val: Option<MetadataValue> = lmdb_get(&env, &db, &(k as u32))?;
-    let val: Option<DbValue> = val.map(DbValue::Metadata);
-    Ok(
-        if let Some(DbValue::Metadata(MetadataValue::ChainHeight(height))) = val {
-            height
-        } else {
-            None
-        },
-    )
+    match val {
+        Some(MetadataValue::ChainHeight(height)) => Ok(height),
+        _ => Ok(None),
+    }
 }
 
 // Fetches the best block hash from the provided metadata db.
 fn fetch_best_block(env: &Environment, db: &Database) -> Result<Option<BlockHash>, ChainStorageError> {
     let k = MetadataKey::BestBlock;
     let val: Option<MetadataValue> = lmdb_get(&env, &db, &(k as u32))?;
-    let val: Option<DbValue> = val.map(DbValue::Metadata);
-    Ok(
-        if let Some(DbValue::Metadata(MetadataValue::BestBlock(best_block))) = val {
-            best_block
-        } else {
-            None
-        },
-    )
+    match val {
+        Some(MetadataValue::BestBlock(best_block)) => Ok(best_block),
+        _ => Ok(None),
+    }
 }
 
 // Fetches the accumulated work from the provided metadata db.
 fn fetch_accumulated_work(env: &Environment, db: &Database) -> Result<Option<Difficulty>, ChainStorageError> {
     let k = MetadataKey::AccumulatedWork;
     let val: Option<MetadataValue> = lmdb_get(&env, &db, &(k as u32))?;
-    let val: Option<DbValue> = val.map(DbValue::Metadata);
-    Ok(
-        if let Some(DbValue::Metadata(MetadataValue::AccumulatedWork(accumulated_work))) = val {
-            accumulated_work
-        } else {
-            None
-        },
-    )
+    match val {
+        Some(MetadataValue::AccumulatedWork(accumulated_difficulty)) => Ok(accumulated_difficulty),
+        _ => Ok(None),
+    }
 }
 
 // Fetches the pruning horizon from the provided metadata db.
 fn fetch_pruning_horizon(env: &Environment, db: &Database) -> Result<u64, ChainStorageError> {
     let k = MetadataKey::PruningHorizon;
     let val: Option<MetadataValue> = lmdb_get(&env, &db, &(k as u32))?;
-    let val: Option<DbValue> = val.map(DbValue::Metadata);
-    Ok(
-        if let Some(DbValue::Metadata(MetadataValue::PruningHorizon(pruning_horizon))) = val {
-            pruning_horizon
-        } else {
-            0
-        },
-    )
+    match val {
+        Some(MetadataValue::PruningHorizon(pruning_horizon)) => Ok(pruning_horizon),
+        _ => Ok(0),
+    }
 }
 
 // Retrieves the checkpoint corresponding to the provided height, if the checkpoint is part of the horizon state then a
@@ -863,13 +893,15 @@ where
     T: ArrayLike<Value = MerkleCheckPoint>,
     T::Error: Display,
 {
+    let tip_index = tip_height.saturating_sub(1);
+    let offset = tip_index
+        .checked_sub(height)
+        .ok_or_else(|| ChainStorageError::OutOfRange)?;
+
     let last_cp_index = checkpoints
         .len()
         .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
         .saturating_sub(1);
-    let offset = tip_height
-        .checked_sub(height)
-        .ok_or_else(|| ChainStorageError::OutOfRange)?;
     let index = last_cp_index
         .checked_sub(offset as usize)
         .ok_or_else(|| ChainStorageError::BeyondPruningHorizon)?;
@@ -989,6 +1021,7 @@ fn merge_checkpoints(
             return Ok((num_cps_merged, stxo_leaf_indices));
         }
     }
+
     Ok((0, stxo_leaf_indices))
 }
 

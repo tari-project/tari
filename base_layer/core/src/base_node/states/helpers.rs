@@ -78,13 +78,13 @@ pub fn select_sync_peer(config: &SyncPeerConfig, sync_peers: &[NodeId]) -> Resul
 }
 
 /// Excluded the provided peer from the sync peers.
-pub async fn exclude_sync_peer(
+pub fn exclude_sync_peer(
     log_target: &str,
     sync_peers: &mut Vec<NodeId>,
     sync_peer: NodeId,
 ) -> Result<(), BlockSyncError>
 {
-    trace!(target: log_target, "Excluding peer ({}) from sync peers.", sync_peer,);
+    trace!(target: log_target, "Excluding peer ({}) from sync peers.", sync_peer);
     sync_peers.retain(|p| *p != sync_peer);
     if sync_peers.is_empty() {
         return Err(BlockSyncError::NoSyncPeers);
@@ -122,7 +122,7 @@ pub async fn ban_sync_peer(
 {
     info!(target: log_target, "Banning peer {} from local node.", sync_peer);
     connectivity.ban_peer(sync_peer.clone(), ban_duration).await?;
-    exclude_sync_peer(log_target, sync_peers, sync_peer).await
+    exclude_sync_peer(log_target, sync_peers, sync_peer)
 }
 
 /// Ban and disconnect entire set of sync peers.
@@ -268,7 +268,7 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
         );
         match shared
             .comms
-            .fetch_mmr_node_count(tree.clone(), height, Some(sync_peer.clone()))
+            .fetch_mmr_node_count(tree, height, Some(sync_peer.clone()))
             .await
         {
             Ok(num_nodes) => {
@@ -340,7 +340,7 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
         );
         match shared
             .comms
-            .fetch_mmr_nodes(tree.clone(), pos, count, height, Some(sync_peer.clone()))
+            .fetch_mmr_nodes(tree, pos, count, height, Some(sync_peer.clone()))
             .await
         {
             Ok((added, deleted)) => {

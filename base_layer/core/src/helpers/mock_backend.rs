@@ -173,4 +173,8 @@ impl BlockchainBackend for MockBackend {
     fn count_kernels(&self) -> Result<usize, ChainStorageError> {
         unimplemented!()
     }
+
+    fn validate_merkle_root(&self, _tree: MmrTree, _height: u64) -> Result<bool, ChainStorageError> {
+        unimplemented!()
+    }
 }

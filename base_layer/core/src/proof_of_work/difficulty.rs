@@ -21,10 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::proof_of_work::error::DifficultyAdjustmentError;
-use bitflags::_core::ops::Div;
 use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, ops::Div};
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// Minimum difficulty, enforced in diff retargetting

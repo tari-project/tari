@@ -235,11 +235,11 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
     txns: Vec<Transaction>,
     consensus_manager: &ConsensusManager,
     achieved_difficulty: Difficulty,
-) -> Result<Block, ChainStorageError>
+) -> Result<(Block, UnblindedOutput), ChainStorageError>
 {
     let height = prev_block.header.height + 1;
     let coinbase_value = consensus_manager.emission_schedule().block_reward(height);
-    let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
+    let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
         &factories,
         coinbase_value,
         height + consensus_manager.consensus_constants().coinbase_lock_height(),
@@ -255,7 +255,7 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
     block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
     db.add_block(block.clone())?;
-    Ok(block)
+    Ok((block, coinbase_output))
 }
 
 /// Generate a new block using the given transaction schema and add it to the provided database.
@@ -340,7 +340,7 @@ pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_d
 /// Generate a block and add it to the database using the transactions provided. The header will be updated with the
 /// correct MMR roots.
 /// This function is not able to determine the unblinded outputs of a transaction, so if you are mixing using this
-/// with [generate_new_block], you must update the unblinded UTXO vector  yourself.
+/// with [generate_new_block], you must update the unblinded UTXO vector yourself.
 pub fn generate_block<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     blocks: &mut Vec<Block>,
