@@ -135,6 +135,18 @@ where TBackend: OutputManagerBackend + Clone + 'static
                 target: LOG_TARGET,
                 "UTXO validation protocol (Id: {}) has no outputs to validate", self.id,
             );
+            let _ = self
+                .resources
+                .event_publisher
+                .send(OutputManagerEvent::UtxoValidationSuccess(self.id))
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event {:?}, because there are no subscribers.",
+                        e.0
+                    );
+                    e
+                });
             return Ok(self.id);
         }
 
