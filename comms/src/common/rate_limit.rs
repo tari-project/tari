@@ -129,7 +129,7 @@ impl<T: Stream> Stream for RateLimiter<T> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use futures::stream;
+    use futures::{future::Either, stream};
 
     #[tokio_macros::test_basic]
     async fn rate_limit() {
@@ -140,11 +140,13 @@ mod test {
         let mut timeout = time::delay_for(Duration::from_millis(50)).fuse();
         let mut count = 0usize;
         loop {
-            futures::select! {
-                _ = timeout => break,
-                _ = rate_limited.select_next_some() => {
+            let either = futures::future::select(rate_limited.select_next_some(), timeout).await;
+            match either {
+                Either::Left((_, to)) => {
                     count += 1;
-                }
+                    timeout = to;
+                },
+                Either::Right(_) => break,
             }
         }
         assert_eq!(count, 10);
@@ -159,15 +161,16 @@ mod test {
         let mut timeout = time::delay_for(Duration::from_millis(50)).fuse();
         let mut count = 0usize;
         loop {
-            futures::select! {
-                _ = timeout => break,
-                _ = rate_limited.select_next_some() => {
+            let either = futures::future::select(rate_limited.select_next_some(), timeout).await;
+            match either {
+                Either::Left((_, to)) => {
                     count += 1;
-                }
+                    timeout = to;
+                },
+                Either::Right(_) => break,
             }
         }
-        // Could allow a few more than 50 and asserting an upper bound can cause this test to sporadically fail. This is
-        // fine because all we're testing that the restock happens.
-        assert!(count >= 50);
+        // Test that at least 1 restock happens.
+        assert!(count > 10);
     }
 }
