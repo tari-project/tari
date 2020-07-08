@@ -20,18 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "base_node")]
 mod consensus_constants;
+#[cfg(feature = "base_node")]
 mod consensus_manager;
+#[cfg(feature = "base_node")]
+pub mod emission;
+#[cfg(feature = "base_node")]
 mod network;
 
-pub mod emission;
+#[cfg(any(feature = "base_node", feature = "transactions"))]
+pub const WEIGHT_PER_INPUT: u64 = 1;
+#[cfg(any(feature = "base_node", feature = "transactions"))]
+pub const WEIGHT_PER_OUTPUT: u64 = 13;
+#[cfg(any(feature = "base_node", feature = "transactions"))]
+pub const KERNEL_WEIGHT: u64 = 3; // Constant weight per transaction; covers kernel and part of header.
 
-pub use consensus_constants::{
-    ConsensusConstants,
-    ConsensusConstantsBuilder,
-    KERNEL_WEIGHT,
-    WEIGHT_PER_INPUT,
-    WEIGHT_PER_OUTPUT,
-};
+#[cfg(feature = "base_node")]
+pub use consensus_constants::{ConsensusConstants, ConsensusConstantsBuilder};
+#[cfg(feature = "base_node")]
 pub use consensus_manager::{ConsensusManager, ConsensusManagerBuilder, ConsensusManagerError};
+#[cfg(feature = "base_node")]
 pub use network::Network;
