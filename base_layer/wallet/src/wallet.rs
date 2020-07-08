@@ -124,7 +124,6 @@ where
             .join(config.comms_config.peer_database_name.clone())
             .with_extension("sqlite3");
         let db = WalletDatabase::new(wallet_backend, Some(database_path));
-        let base_node_peers = runtime.block_on(db.get_peers())?;
 
         #[cfg(feature = "test_harness")]
         let transaction_backend_handle = transaction_backend.clone();
@@ -133,12 +132,16 @@ where
         let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 1500);
         let subscription_factory = Arc::new(subscription_factory);
 
+        debug!(target: LOG_TARGET, "Initializing Wallet Comms");
+
         let (comms, dht) = runtime.block_on(initialize_comms(
             config.comms_config.clone(),
             publisher,
             vec![],
             Default::default(),
         ))?;
+
+        debug!(target: LOG_TARGET, "Wallet Comms Initialized");
 
         let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
             .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
@@ -158,7 +161,13 @@ where
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .finish();
 
-        let handles = runtime.block_on(fut).expect("Service initialization failed");
+        let handles = runtime
+            .block_on(fut)
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Error creating Wallet stack: {:?}", e);
+                e
+            })
+            .expect("Service initialization failed");
 
         let mut output_manager_handle = handles
             .get_handle::<OutputManagerHandle>()
@@ -169,11 +178,6 @@ where
         let contacts_handle = handles
             .get_handle::<ContactsServiceHandle>()
             .expect("Could not get Contacts Service Handle");
-
-        for p in base_node_peers {
-            runtime.block_on(transaction_service_handle.set_base_node_public_key(p.public_key.clone()))?;
-            runtime.block_on(output_manager_handle.set_base_node_public_key(p.public_key.clone()))?;
-        }
 
         let store_and_forward_requester = dht.store_and_forward_requester();
 
@@ -213,13 +217,6 @@ where
             PeerFeatures::COMMUNICATION_NODE,
             &[],
         );
-
-        let existing_peers = self.runtime.block_on(self.db.get_peers())?;
-        // Remove any peers in db to only persist a single peer at a time.
-        for p in existing_peers {
-            let _ = self.runtime.block_on(self.db.remove_peer(p.public_key.clone()))?;
-        }
-        self.runtime.block_on(self.db.save_peer(peer.clone()))?;
 
         self.runtime
             .block_on(self.comms.peer_manager().add_peer(peer.clone()))?;

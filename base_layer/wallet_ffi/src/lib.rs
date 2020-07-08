@@ -509,6 +509,7 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
     match public_key {
         Ok(public_key) => Box::into_raw(Box::new(public_key)),
         Err(e) => {
+            error!(target: LOG_TARGET, "Error creating a Public Key from Hex: {:?}", e);
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
@@ -713,6 +714,8 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
     match secret_key {
         Ok(secret_key) => Box::into_raw(Box::new(secret_key)),
         Err(e) => {
+            error!(target: LOG_TARGET, "Error creating a Public Key from Hex: {:?}", e);
+
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
@@ -2567,6 +2570,7 @@ pub unsafe extern "C" fn wallet_create(
                 .datastore_path
                 .join((*config).peer_database_name.clone())
                 .with_extension("sqlite3");
+            debug!(target: LOG_TARGET, "Running Wallet database migrations");
             let connection = run_migration_and_create_sqlite_connection(&sql_database_path)
                 .map_err(|e| {
                     error!(
