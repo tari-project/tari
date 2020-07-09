@@ -193,7 +193,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
                 }
             }
 
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "UTXO Validation protocol (Id: {}) attempt {} out of {} timed out.",
                 self.id,
@@ -432,8 +432,8 @@ where TBackend: OutputManagerBackend + Clone + 'static
                     } else {
                         info!(
                             target: LOG_TARGET,
-                            "Invalidated Output does not have an associated TxId so it is likely a Coinbase output \
-                             lost to a Re-Org"
+                            "Invalidated Output does not have an associated TxId, it is likely a Coinbase output lost \
+                             to a Re-Org"
                         );
                     }
                 }

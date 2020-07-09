@@ -304,10 +304,10 @@ where TBackend: TransactionBackend + Clone + 'static
         // Handle a receive Mempool Response
         match response.response {
             MempoolResponse::Stats(_) => {
-                error!(target: LOG_TARGET, "Invalid Mempool response variant");
+                warn!(target: LOG_TARGET, "Invalid Mempool response variant");
             },
             MempoolResponse::State(_) => {
-                error!(target: LOG_TARGET, "Invalid Mempool response variant");
+                warn!(target: LOG_TARGET, "Invalid Mempool response variant");
             },
             MempoolResponse::TxStorage(ts) => {
                 let completed_tx = match self.resources.db.get_completed_transaction(tx_id).await {
@@ -335,7 +335,7 @@ where TBackend: TransactionBackend + Clone + 'static
                         TxStorageResponse::NotStored => {
                             error!(
                                 target: LOG_TARGET,
-                                "Mempool response received for TxId: {:?}. Transaction was REJECTED. Cancelling \
+                                "Mempool response received for TxId: {:?}. Transaction was Rejected. Cancelling \
                                  transaction.",
                                 tx_id
                             );
@@ -345,7 +345,7 @@ where TBackend: TransactionBackend + Clone + 'static
                                 .cancel_transaction(completed_tx.tx_id)
                                 .await
                             {
-                                error!(
+                                warn!(
                                     target: LOG_TARGET,
                                     "Failed to Cancel outputs for TX_ID: {} after failed sending attempt with error \
                                      {:?}",
@@ -354,7 +354,7 @@ where TBackend: TransactionBackend + Clone + 'static
                                 );
                             }
                             if let Err(e) = self.resources.db.cancel_completed_transaction(completed_tx.tx_id).await {
-                                error!(
+                                warn!(
                                     target: LOG_TARGET,
                                     "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}",
                                     completed_tx.tx_id,

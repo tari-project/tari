@@ -267,7 +267,7 @@ where
                         error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
                         Err(resp)
                     })).or_else(|resp| {
-                        error!(target: LOG_TARGET, "Failed to send reply");
+                        warn!(target: LOG_TARGET, "Failed to send reply");
                         Err(resp)
                     });
                 },
@@ -285,7 +285,7 @@ where
                             msg.dht_header.message_tag);
                         }
                         Err(e) => {
-                            error!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {:?} for NodeID: {}, Trace: {}",
+                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {:?} for NodeID: {}, Trace: {}",
                                 e, self.node_identity.node_id().short_str(), msg.dht_header.message_tag);
                             let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!("Error handling \
                                 Transaction Sender message: {:?}", e).to_string())));
@@ -301,13 +301,13 @@ where
 
                     match result {
                         Err(TransactionServiceError::TransactionDoesNotExistError) => {
-                            debug!(target: LOG_TARGET, "Unable to handle incoming Transaction Reply message from NodeId: \
+                            trace!(target: LOG_TARGET, "Unable to handle incoming Transaction Reply message from NodeId: \
                             {} due to Transaction not existing. This usually means the message was a repeated message \
                             from Store and Forward, Trace: {}", self.node_identity.node_id().short_str(),
                             msg.dht_header.message_tag);
                         },
                         Err(e) => {
-                            error!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {:?} \
+                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {:?} \
                             for NodeId: {}, Trace: {}", e, self.node_identity.node_id().short_str(),
                             msg.dht_header.message_tag);
                             let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling \
@@ -325,13 +325,13 @@ where
 
                     match result {
                         Err(TransactionServiceError::TransactionDoesNotExistError) => {
-                            debug!(target: LOG_TARGET, "Unable to handle incoming Finalized Transaction message from NodeId: \
+                            trace!(target: LOG_TARGET, "Unable to handle incoming Finalized Transaction message from NodeId: \
                             {} due to Transaction not existing. This usually means the message was a repeated message \
                             from Store and Forward, Trace: {}", self.node_identity.node_id().short_str(),
                             msg.dht_header.message_tag);
                         },
                        Err(e) => {
-                            error!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {:?} \
+                            warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {:?} \
                             for NodeID: {}, Trace: {}", e , self.node_identity.node_id().short_str(),
                             msg.dht_header.message_tag.as_value());
                             let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction \
@@ -345,7 +345,7 @@ where
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Mempool Response, Trace: {}", msg.dht_header.message_tag);
                     let _ = self.handle_mempool_response(inner_msg).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling mempool service response: {:?}, Trace: {}", resp,
+                        warn!(target: LOG_TARGET, "Error handling mempool service response: {:?}, Trace: {}", resp,
                         msg.dht_header.message_tag.as_value());
                         Err(resp)
                     });
@@ -355,7 +355,7 @@ where
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
                     let _ = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling base node service response from {}: {:?} for \
+                        warn!(target: LOG_TARGET, "Error handling base node service response from {}: {:?} for \
                         NodeID: {}, Trace: {}", origin_public_key, resp, self.node_identity.node_id().short_str(),
                         msg.dht_header.message_tag.as_value());
                         Err(resp)
@@ -625,7 +625,7 @@ where
             Err(TransactionServiceProtocolError { id, error }) => {
                 let _ = self.pending_transaction_reply_senders.remove(&id);
                 let _ = self.send_transaction_cancellation_senders.remove(&id);
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "Error completing Send Transaction Protocol (Id: {}): {:?}", id, error
                 );
@@ -639,7 +639,7 @@ where
     /// Cancel a pending transaction
     async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
         self.db.cancel_pending_transaction(tx_id).await.map_err(|e| {
-            error!(
+            warn!(
                 target: LOG_TARGET,
                 "Pending Transaction does not exist and could not be cancelled: {:?}", e
             );
@@ -847,7 +847,7 @@ where
             Err(TransactionServiceProtocolError { id, error }) => {
                 let _ = self.finalized_transaction_senders.remove(&id);
                 let _ = self.receiver_transaction_cancellation_senders.remove(&id);
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "Error completing Receive Transaction Protocol (Id: {}): {:?}", id, error
                 );
@@ -1094,7 +1094,7 @@ where
                 let _ = self.mempool_response_senders.remove(&id);
                 let _ = self.base_node_response_senders.remove(&id);
 
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "Error completing Transaction Broadcast Protocol (Id: {}): {:?}", id, error
                 );
@@ -1172,7 +1172,7 @@ where
                 let _ = self.mempool_response_senders.remove(&id);
                 let _ = self.base_node_response_senders.remove(&id);
 
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "Error completing Transaction chain monitoring Protocol (Id: {}): {:?}", id, error
                 );

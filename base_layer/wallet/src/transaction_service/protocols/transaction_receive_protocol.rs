@@ -197,7 +197,7 @@ where TBackend: TransactionBackend + Clone + 'static
                         }
                     },
                     SendMessageResponse::Failed(err) => {
-                        error!(
+                        warn!(
                             target: LOG_TARGET,
                             "Transaction Reply Send Direct for TxID {} failed: {}", self.id, err
                         );
@@ -223,12 +223,15 @@ where TBackend: TransactionBackend + Clone + 'static
                         match rx.await {
                             Ok(send_msg_response) => {
                                 if let SendMessageResponse::Queued(send_states) = send_msg_response {
-                                    debug!("Discovery of {} completed for TxID: {}", self.source_pubkey, self.id);
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "Discovery of {} completed for TxID: {}", self.source_pubkey, self.id
+                                    );
                                     direct_send_result = self.wait_on_dial(send_states).await;
                                 }
                             },
                             Err(e) => {
-                                error!(
+                                debug!(
                                     target: LOG_TARGET,
                                     "Error waiting for Discovery while sending message to TxId: {} {:?}", self.id, e
                                 );
@@ -237,7 +240,7 @@ where TBackend: TransactionBackend + Clone + 'static
                     },
                 },
                 Err(e) => {
-                    error!(target: LOG_TARGET, "Direct Transaction Reply Send failed: {:?}", e);
+                    warn!(target: LOG_TARGET, "Direct Transaction Reply Send failed: {:?}", e);
                 },
             }
 
@@ -258,7 +261,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             if !direct_send_result && !store_and_forward_send_result {
-                warn!(
+                error!(
                     target: LOG_TARGET,
                     "Transaction with TX_ID = {} received from {}. Reply could not be sent!", tx_id, self.source_pubkey,
                 );
@@ -269,9 +272,12 @@ where TBackend: TransactionBackend + Clone + 'static
                 );
             }
 
-            info!(
+            trace!(
                 target: LOG_TARGET,
-                "Transaction (TX_ID: {}) - Amount: {} - Message: {}", tx_id, amount, data.message,
+                "Transaction (TX_ID: {}) - Amount: {} - Message: {}",
+                tx_id,
+                amount,
+                data.message,
             );
 
             let _ = self
@@ -319,7 +325,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 );
             },
             Err(e) => {
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "Sending Transaction Reply (TxId: {}) to neighbours for Store and Forward failed: {:?}", tx_id, e,
                 );
@@ -352,12 +358,12 @@ where TBackend: TransactionBackend + Clone + 'static
                 true
             } else {
                 if failed.is_empty() {
-                    error!(
+                    warn!(
                         target: LOG_TARGET,
                         "Direct Send process for Transaction Reply TX_ID: {} timed out", self.id
                     );
                 } else {
-                    error!(
+                    warn!(
                         target: LOG_TARGET,
                         "Direct Send process for Transaction Reply TX_ID: {} and Message {} was unsuccessful and no \
                          message was sent",
@@ -368,7 +374,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 false
             }
         } else {
-            error!(
+            warn!(
                 target: LOG_TARGET,
                 "Transaction Reply Send Direct for TxID: {} failed", self.id
             );
@@ -391,7 +397,7 @@ where TBackend: TransactionBackend + Clone + 'static
         let inbound_tx = match self.resources.db.get_pending_inbound_transaction(self.id).await {
             Ok(tx) => tx,
             Err(_e) => {
-                warn!(
+                debug!(
                     target: LOG_TARGET,
                     "TxId for received Finalized Transaction does not exist in Pending Inbound Transactions, could be \
                      a repeat Store and Forward message"
