@@ -25,18 +25,16 @@ use crate::{
     storage::database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
 };
 use std::sync::{Arc, RwLock};
-use tari_comms::{peer_manager::Peer, types::CommsSecretKey};
+use tari_comms::types::CommsSecretKey;
 
 #[derive(Default)]
 pub struct InnerDatabase {
-    peers: Vec<Peer>,
     comms_private_key: Option<CommsSecretKey>,
 }
 
 impl InnerDatabase {
     pub fn new() -> Self {
         Self {
-            peers: Vec::new(),
             comms_private_key: None,
         }
     }
@@ -64,12 +62,6 @@ impl WalletBackend for WalletMemoryDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError> {
         let db = acquire_read_lock!(self.db);
         let result = match key {
-            DbKey::Peer(pk) => db
-                .peers
-                .iter()
-                .find(|v| &v.public_key == pk)
-                .map(|p| DbValue::Peer(Box::new(p.clone()))),
-            DbKey::Peers => Some(DbValue::Peers(db.peers.clone())),
             DbKey::CommsSecretKey => db.comms_private_key.clone().map(DbValue::CommsSecretKey),
         };
 
@@ -80,24 +72,11 @@ impl WalletBackend for WalletMemoryDatabase {
         let mut db = acquire_write_lock!(self.db);
         match op {
             WriteOperation::Insert(kvp) => match kvp {
-                DbKeyValuePair::Peer(pk, p) => {
-                    if db.peers.iter().any(|p| p.public_key == pk) {
-                        return Err(WalletStorageError::DuplicateContact);
-                    }
-                    db.peers.push(p)
-                },
                 DbKeyValuePair::CommsSecretKey(secret) => {
                     db.comms_private_key = Some(secret);
                 },
             },
             WriteOperation::Remove(k) => match k {
-                DbKey::Peer(pk) => match db.peers.iter().position(|p| p.public_key == pk) {
-                    None => return Err(WalletStorageError::ValueNotFound(DbKey::Peer(pk))),
-                    Some(pos) => return Ok(Some(DbValue::Peer(Box::new(db.peers.remove(pos))))),
-                },
-                DbKey::Peers => {
-                    return Err(WalletStorageError::OperationNotSupported);
-                },
                 DbKey::CommsSecretKey => {
                     db.comms_private_key = None;
                 },

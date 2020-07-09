@@ -71,13 +71,6 @@ table! {
 }
 
 table! {
-    peers (public_key) {
-        public_key -> Binary,
-        peer -> Text,
-    }
-}
-
-table! {
     pending_transaction_outputs (tx_id) {
         tx_id -> BigInt,
         short_term -> Integer,
@@ -99,7 +92,6 @@ allow_tables_to_appear_in_same_query!(
     key_manager_states,
     outbound_transactions,
     outputs,
-    peers,
     pending_transaction_outputs,
     wallet_settings,
 );
