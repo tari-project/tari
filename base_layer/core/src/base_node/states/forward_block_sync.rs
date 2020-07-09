@@ -77,7 +77,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     let mut sync_nodes = Vec::from(sync_nodes);
     let tip = shared.db.fetch_tip_header().map_err(|e| e.to_string())?;
     if let StatusInfo::BlockSync(ref mut info) = shared.info {
-        info.tip_height = Some(tip.height);
+        info.tip_height = tip.height;
     }
 
     shared.publish_event_info().await;
@@ -85,33 +85,38 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     let mut sync_node = next_sync_node(&mut sync_nodes);
 
     loop {
-        if sync_node == None {
+        if sync_node.is_none() {
             return Err("No more valid nodes to sync to".to_string());
         }
-        let sync_node_string = sync_node.clone().unwrap();
+        let current_sync_node = sync_node
+            .as_ref()
+            .expect("[synchronize_blocks] sync_node cannot be None");
         info!(
             target: LOG_TARGET,
             "Attempting to sync with node:{} asking for headers between heights {} and {}",
-            sync_node_string,
+            current_sync_node,
             from_headers.last().map(|h| h.height).unwrap(),
             from_headers.first().map(|h| h.height).unwrap(),
         );
         if let StatusInfo::BlockSync(ref mut info) = shared.info {
-            info.sync_peers.clear();
-            info.sync_peers.push(sync_node_string.clone());
-            info.tip_height = Some(from_headers.last().map(|h| h.height).unwrap());
-            info.local_height = Some(from_headers.first().map(|h| h.height).unwrap());
+            info.sync_peers = vec![current_sync_node.clone()];
+            info.tip_height = from_headers.last().map(|h| h.height).unwrap();
+            info.local_height = from_headers.first().map(|h| h.height).unwrap();
         }
         shared.publish_event_info().await;
         match shared
             .comms
-            .fetch_headers_between(from_headers.iter().map(|h| h.hash()).collect(), None, sync_node.clone())
+            .fetch_headers_between(
+                from_headers.iter().map(|h| h.hash()).collect(),
+                None,
+                Some(current_sync_node.clone()),
+            )
             .await
         {
             Err(e) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Could not sync with node '{}':{}", sync_node_string, e
+                    "Could not sync with node '{}':{}", current_sync_node, e
                 );
                 sync_node = next_sync_node(&mut sync_nodes);
                 continue;
@@ -128,7 +133,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                                     target: LOG_TARGET,
                                     "No headers from peer {} matched with the headers we sent. Retrying with older \
                                      headers",
-                                    sync_node_string
+                                    current_sync_node
                                 );
                                 from_headers = fetch_headers_to_send::<B>(oldest_header_sent, &shared.db);
                                 continue;
@@ -137,13 +142,13 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                                     target: LOG_TARGET,
                                     "Chain split at height:{} according to sync peer:{}",
                                     block.height,
-                                    sync_node_string
+                                    current_sync_node
                                 );
                             }
                         } else {
                             debug!(
                                 target: LOG_TARGET,
-                                "Still on the best chain according to sync peer:{}", sync_node_string
+                                "Still on the best chain according to sync peer:{}", current_sync_node
                             );
                         }
                     } else {
@@ -151,7 +156,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                             target: LOG_TARGET,
                             "Could not sync with node '{}': Block hash {} was not found in our chain. Potentially bad \
                              node or node is on a different network/genesis block",
-                            sync_node_string,
+                            current_sync_node,
                             first_header.prev_hash.to_hex()
                         );
                         sync_node = next_sync_node(&mut sync_nodes);
@@ -160,7 +165,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                 } else {
                     warn!(
                         target: LOG_TARGET,
-                        "Could not sync with node '{}': Node did not return headers", sync_node_string
+                        "Could not sync with node '{}': Node did not return headers", current_sync_node
                     );
                     sync_node = sync_nodes.pop().map(|n| n);
                     continue;
@@ -239,8 +244,8 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
             info!(target: LOG_TARGET, "Received {} blocks from peer", blocks.len());
             if !blocks.is_empty() {
                 if let StatusInfo::BlockSync(ref mut info) = shared.info {
-                    info.tip_height = Some(blocks[blocks.len() - 1].block().header.height);
-                    info.local_height = Some(blocks[0].block().header.height);
+                    info.tip_height = blocks[blocks.len() - 1].block().header.height;
+                    info.local_height = blocks[0].block().header.height;
                 }
                 shared.publish_event_info().await;
             }
