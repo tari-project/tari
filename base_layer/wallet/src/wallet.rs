@@ -75,6 +75,27 @@ pub struct WalletConfig {
     pub comms_config: CommsConfig,
     pub factories: CryptoFactories,
     pub transaction_service_config: Option<TransactionServiceConfig>,
+    pub buffer_size: usize,
+    pub rate_limit: usize,
+}
+
+impl WalletConfig {
+    pub fn new(
+        comms_config: CommsConfig,
+        factories: CryptoFactories,
+        transaction_service_config: Option<TransactionServiceConfig>,
+    ) -> Self
+    {
+        Self {
+            comms_config,
+            factories,
+            transaction_service_config,
+            // This is the default buffer size for the pubsub_connector for the mobile wallet
+            buffer_size: 100,
+            // This is the default rate limit fot the pubsub_connector for the mobile wallet
+            rate_limit: 5,
+        }
+    }
 }
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
@@ -129,7 +150,8 @@ where
         let transaction_backend_handle = transaction_backend.clone();
 
         let factories = config.factories;
-        let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 1500);
+        let (publisher, subscription_factory) =
+            pubsub_connector(runtime.handle().clone(), config.buffer_size, config.rate_limit);
         let subscription_factory = Arc::new(subscription_factory);
 
         debug!(target: LOG_TARGET, "Initializing Wallet Comms");

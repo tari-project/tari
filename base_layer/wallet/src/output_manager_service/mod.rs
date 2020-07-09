@@ -90,6 +90,12 @@ where T: OutputManagerBackend + Clone + 'static
     }
 
     fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>> {
+        trace!(
+            target: LOG_TARGET,
+            "Subscription '{}' for topic '{:?}' created.",
+            SUBSCRIPTION_LABEL,
+            TariMessageType::BaseNodeResponse
+        );
         self.subscription_factory
             .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<BaseNodeProto::BaseNodeServiceResponse>)

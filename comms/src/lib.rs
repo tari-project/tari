@@ -29,6 +29,7 @@ pub use peer_manager::{NodeIdentity, PeerManager};
 pub mod framing;
 
 mod common;
+pub use common::rate_limit;
 mod consts;
 
 mod multiplexing;

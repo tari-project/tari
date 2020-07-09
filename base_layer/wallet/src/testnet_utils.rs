@@ -142,11 +142,7 @@ pub fn create_wallet(
         listener_liveness_max_sessions: 0,
     };
 
-    let config = WalletConfig {
-        comms_config,
-        factories,
-        transaction_service_config: None,
-    };
+    let config = WalletConfig::new(comms_config, factories, None);
 
     Wallet::new(
         config,

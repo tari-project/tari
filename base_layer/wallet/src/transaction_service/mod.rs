@@ -96,6 +96,12 @@ where T: TransactionBackend
 
     /// Get a stream of inbound Text messages
     fn transaction_stream(&self) -> impl Stream<Item = DomainMessage<proto::TransactionSenderMessage>> {
+        trace!(
+            target: LOG_TARGET,
+            "Subscription '{}' for topic '{:?}' created.",
+            SUBSCRIPTION_LABEL,
+            TariMessageType::SenderPartialTransaction
+        );
         self.subscription_factory
             .get_subscription(TariMessageType::SenderPartialTransaction, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::TransactionSenderMessage>)
@@ -103,6 +109,12 @@ where T: TransactionBackend
     }
 
     fn transaction_reply_stream(&self) -> impl Stream<Item = DomainMessage<proto::RecipientSignedMessage>> {
+        trace!(
+            target: LOG_TARGET,
+            "Subscription '{}' for topic '{:?}' created.",
+            SUBSCRIPTION_LABEL,
+            TariMessageType::ReceiverPartialTransactionReply
+        );
         self.subscription_factory
             .get_subscription(TariMessageType::ReceiverPartialTransactionReply, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::RecipientSignedMessage>)
@@ -110,6 +122,12 @@ where T: TransactionBackend
     }
 
     fn transaction_finalized_stream(&self) -> impl Stream<Item = DomainMessage<proto::TransactionFinalizedMessage>> {
+        trace!(
+            target: LOG_TARGET,
+            "Subscription '{}' for topic '{:?}' created.",
+            SUBSCRIPTION_LABEL,
+            TariMessageType::TransactionFinalized
+        );
         self.subscription_factory
             .get_subscription(TariMessageType::TransactionFinalized, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::TransactionFinalizedMessage>)
@@ -117,6 +135,12 @@ where T: TransactionBackend
     }
 
     fn mempool_response_stream(&self) -> impl Stream<Item = DomainMessage<MempoolProto::MempoolServiceResponse>> {
+        trace!(
+            target: LOG_TARGET,
+            "Subscription '{}' for topic '{:?}' created.",
+            SUBSCRIPTION_LABEL,
+            TariMessageType::MempoolResponse
+        );
         self.subscription_factory
             .get_subscription(TariMessageType::MempoolResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<MempoolProto::MempoolServiceResponse>)
@@ -124,6 +148,12 @@ where T: TransactionBackend
     }
 
     fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>> {
+        trace!(
+            target: LOG_TARGET,
+            "Subscription '{}' for topic '{:?}' created.",
+            SUBSCRIPTION_LABEL,
+            TariMessageType::BaseNodeResponse
+        );
         self.subscription_factory
             .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<BaseNodeProto::BaseNodeServiceResponse>)

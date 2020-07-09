@@ -116,11 +116,7 @@ fn create_wallet(
     let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone());
     let contacts_backend = ContactsServiceSqliteDatabase::new(connection);
 
-    let config = WalletConfig {
-        comms_config,
-        factories,
-        transaction_service_config: None,
-    };
+    let config = WalletConfig::new(comms_config, factories, None);
 
     let runtime_node = Runtime::new().unwrap();
     let wallet = Wallet::new(
@@ -414,11 +410,7 @@ fn test_import_utxo() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
     };
-    let config = WalletConfig {
-        comms_config,
-        factories: factories.clone(),
-        transaction_service_config: None,
-    };
+    let config = WalletConfig::new(comms_config, factories.clone(), None);
     let runtime_node = Runtime::new().unwrap();
     let mut alice_wallet = Wallet::new(
         config,
@@ -485,11 +477,7 @@ fn test_data_generation() {
         listener_liveness_max_sessions: 0,
     };
 
-    let config = WalletConfig {
-        comms_config,
-        factories,
-        transaction_service_config: None,
-    };
+    let config = WalletConfig::new(comms_config, factories, None);
 
     let transaction_backend = TransactionMemoryDatabase::new();
 

@@ -32,6 +32,7 @@ use std::{
     num::{NonZeroU16, TryFromIntError},
     path::PathBuf,
     str::FromStr,
+    time::Duration,
 };
 
 //-------------------------------------        Main Configuration Struct      --------------------------------------//
@@ -63,6 +64,13 @@ pub struct GlobalConfig {
     pub wallet_identity_file: PathBuf,
     pub wallet_tor_identity_file: PathBuf,
     pub wallet_peer_db_path: PathBuf,
+    pub buffer_size_base_node: usize,
+    pub buffer_size_base_node_wallet: usize,
+    pub buffer_rate_limit_base_node: usize,
+    pub buffer_rate_limit_base_node_wallet: usize,
+    pub transaction_base_node_monitoring_timeout: Duration,
+    pub transaction_direct_send_timeout: Duration,
+    pub transaction_broadcast_send_timeout: Duration,
 }
 
 impl GlobalConfig {
@@ -219,6 +227,24 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
         .into();
 
+    let key = "wallet.transaction_base_node_monitoring_timeout";
+    let transaction_base_node_monitoring_timeout = Duration::from_secs(
+        cfg.get_int(&key)
+            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
+    );
+
+    let key = "wallet.transaction_direct_send_timeout";
+    let transaction_direct_send_timeout = Duration::from_secs(
+        cfg.get_int(&key)
+            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
+    );
+
+    let key = "wallet.transaction_broadcast_send_timeout";
+    let transaction_broadcast_send_timeout = Duration::from_secs(
+        cfg.get_int(&key)
+            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
+    );
+
     let key = "common.liveness_max_sessions";
     let liveness_max_sessions = cfg
         .get_int(key)
@@ -231,6 +257,26 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_array(key)
         .map(|values| values.iter().map(ToString::to_string).collect())
         .unwrap_or_else(|_| vec!["127.0.0.1/32".to_string()]);
+
+    let key = "common.buffer_size_base_node";
+    let buffer_size_base_node = cfg
+        .get_int(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+
+    let key = "common.buffer_size_base_node_wallet";
+    let buffer_size_base_node_wallet = cfg
+        .get_int(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+
+    let key = "common.buffer_rate_limit_base_node";
+    let buffer_rate_limit_base_node = cfg
+        .get_int(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+
+    let key = "common.buffer_rate_limit_base_node_wallet";
+    let buffer_rate_limit_base_node_wallet =
+        cfg.get_int(&key)
+            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
     Ok(GlobalConfig {
         network,
@@ -258,6 +304,13 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         wallet_db_file,
         wallet_tor_identity_file,
         wallet_peer_db_path,
+        buffer_size_base_node,
+        buffer_size_base_node_wallet,
+        buffer_rate_limit_base_node,
+        buffer_rate_limit_base_node_wallet,
+        transaction_base_node_monitoring_timeout,
+        transaction_direct_send_timeout,
+        transaction_broadcast_send_timeout,
     })
 }
 

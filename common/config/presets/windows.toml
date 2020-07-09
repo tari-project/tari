@@ -37,8 +37,20 @@
 # The number of liveness sessions to allow. Liveness sessions can be established by liveness monitors over TCP by
 # sending a 0x50 (P) as the first byte. Any messages sent must be followed by newline message no longer than
 # 50 characters. That message will be echoed back.
-# liveness_max_sessions = 0
-# liveness_allowlist_cidrs = ["127.0.0.1/32"]
+#liveness_max_sessions = 0
+#liveness_allowlist_cidrs = ["127.0.0.1/32"]
+
+# The buffer size constants for the publish/subscribe connector channel, connecting comms messages to the domain layer:
+# - Buffer size for the base node (min value = 30, default value = 100).
+#buffer_size_base_node = 100
+# - Buffer size for the base node wallet (min value = 300, default value = 1000).
+#buffer_size_base_node_wallet = 1000
+# The rate limit constants for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
+# accept - any rate attemting to exceed this limit will be throttled.
+# - Rate limit for the base node (min value = 5, default value = 20).
+#buffer_rate_limit_base_node = 20
+# - Rate limit for the base node wallet (min value = 5, default value = 20).
+#buffer_rate_limit_base_node_wallet = 20
 
 ########################################################################################################################
 #                                                                                                                      #
@@ -61,6 +73,13 @@
 #  a) have backed up your seed phrase and
 #  b) know what you are doing!
 wallet_file = "wallet\\wallet.dat"
+
+# This is the timeout period that will be used for base node monitoring tasks (default = 30)
+#transaction_base_node_monitoring_timeout = 30
+# This is the timeout period that will be used for sending transactions directly (default = 20)
+#transaction_direct_send_timeout = 20
+# This is the timeout period that will be used for sending transactions via broadcast mode (default = 30)
+#transaction_broadcast_send_timeout = 30
 
 #[base_node.transport.tor]
 #control_address = "/ip4/127.0.0.1/tcp/9051"
@@ -99,8 +118,8 @@ db_type = "lmdb"
 #pruning_horizon = 0
 
 # Enable if this node must be a mining node
-enable_mining = true
-num_mining_threads = 1
+#enable_mining = true
+#num_mining_threads = 1
 
 # The relative path to store persistent data
 data_dir="rincewind"
@@ -219,6 +238,16 @@ wallet_tor_identity_file = ".\\config\\wallet-tor.json"
 # The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
 # almost all use cases.
 #db_type = "lmdb"
+
+# The maximum number of orphans that can be stored in the Orphan block pool. Default value is "720".
+#orphan_storage_capacity = 720
+# The pruning horizon that indicates how many full blocks without pruning must be kept by the base node. Default value
+# is "0", which indicates an archival node without any pruning.
+#pruning_horizon = 0
+
+# Enable if this node must be a mining node
+#enable_mining = true
+#num_mining_threads = 1
 
 # The relative path to store persistent data
 #data_dir = "mainnet"

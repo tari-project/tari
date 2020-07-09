@@ -57,7 +57,12 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         default_subdir("peers", Some(&bootstrap.base_path)),
     )
     .unwrap();
-    cfg.set_default("common.denylist_ban_period ", 1440).unwrap();
+    cfg.set_default("common.denylist_ban_period", 1440).unwrap();
+    cfg.set_default("common.buffer_size_base_node", 100).unwrap();
+    cfg.set_default("common.buffer_size_base_node_wallet", 1000).unwrap();
+    cfg.set_default("common.buffer_rate_limit_base_node", 20).unwrap();
+    cfg.set_default("common.buffer_rate_limit_base_node_wallet", 20)
+        .unwrap();
 
     // Wallet settings
     cfg.set_default("wallet.grpc_enabled", false).unwrap();
@@ -67,6 +72,11 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         default_subdir("wallet/wallet.dat", Some(&bootstrap.base_path)),
     )
     .unwrap();
+    cfg.set_default("wallet.transaction_base_node_monitoring_timeout", 30)
+        .unwrap();
+    cfg.set_default("wallet.transaction_direct_send_timeout", 20).unwrap();
+    cfg.set_default("wallet.transaction_broadcast_send_timeout", 30)
+        .unwrap();
 
     //---------------------------------- Mainnet Defaults --------------------------------------------//
 
