@@ -29,7 +29,7 @@ use crate::{
 };
 use futures::{channel::mpsc, SinkExt};
 use log::*;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::{stream::StreamExt, time};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
@@ -130,12 +130,21 @@ impl OutboundMessaging {
                 Ok(Some(mut out_msg)) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Sending message ({} bytes) ({}) on outbound messaging substream",
+                        "Sending message ({} bytes) ({}) to peer `{}` on outbound messaging substream",
                         out_msg.body.len(),
                         out_msg.tag,
+                        self.peer_node_id.short_str()
                     );
+                    let start = Instant::now();
                     match framed.send(out_msg.body.clone()).await {
                         Ok(_) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Message ({}) sent to peer `{}` in {}ms",
+                                out_msg.tag,
+                                self.peer_node_id.short_str(),
+                                start.elapsed().as_millis()
+                            );
                             out_msg.reply_success();
                             let _ = self
                                 .messaging_events_tx
@@ -145,9 +154,10 @@ impl OutboundMessaging {
                         Err(err) => {
                             debug!(
                                 target: LOG_TARGET,
-                                "OutboundMessaging failed to send message ({}) to peer '{}' because '{}'",
+                                "OutboundMessaging failed to send message ({}) to peer `{}` after {}ms because '{}'",
                                 out_msg.tag,
                                 self.peer_node_id.short_str(),
+                                start.elapsed().as_millis(),
                                 err
                             );
                             out_msg.reply_fail();
