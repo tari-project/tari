@@ -21,17 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    consensus::network::Network,
+    consensus::{network::Network, KERNEL_WEIGHT, WEIGHT_PER_OUTPUT},
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::tari_amount::{uT, MicroTari, T},
 };
 use chrono::{DateTime, Duration, Utc};
 use std::ops::Add;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
-
-pub const WEIGHT_PER_INPUT: u64 = 1;
-pub const WEIGHT_PER_OUTPUT: u64 = 13;
-pub const KERNEL_WEIGHT: u64 = 3; // Constant weight per transaction; covers kernel and part of header.
 
 /// This is the inner struct used to control all consensus values.
 #[derive(Clone)]

@@ -35,7 +35,7 @@ extern crate bitflags;
 pub mod blocks;
 #[cfg(feature = "base_node")]
 pub mod chain_storage;
-#[cfg(feature = "base_node")]
+#[cfg(any(feature = "base_node", feature = "transactions"))]
 pub mod consensus;
 #[cfg(feature = "base_node")]
 pub mod helpers;
