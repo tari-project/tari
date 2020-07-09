@@ -232,12 +232,12 @@ where TBackend: TransactionBackend + Clone + 'static
                     reply = Some(rr);
 
                     if outbound_tx.destination_public_key != spk {
-                        error!(
+                        warn!(
                             target: LOG_TARGET,
                             "Transaction Reply did not come from the expected Public Key"
                         );
                     } else if !outbound_tx.sender_protocol.check_tx_id(rr_tx_id) {
-                        error!(target: LOG_TARGET, "Transaction Reply does not have the correct TxId");
+                        warn!(target: LOG_TARGET, "Transaction Reply does not have the correct TxId");
                     } else {
                         break;
                     }
@@ -267,6 +267,12 @@ where TBackend: TransactionBackend + Clone + 'static
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
         if !finalize_result {
+            error!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}",
+                self.id,
+                self.sender_protocol.failure_reason()
+            );
             return Err(TransactionServiceProtocolError::new(
                 self.id,
                 TransactionServiceError::TransactionError(TransactionError::ValidationError(
@@ -357,7 +363,7 @@ where TBackend: TransactionBackend + Clone + 'static
                     }
                 },
                 SendMessageResponse::Failed(err) => {
-                    error!(
+                    warn!(
                         target: LOG_TARGET,
                         "Transaction Send Direct for TxID {} failed: {}", self.id, err
                     );
@@ -369,12 +375,15 @@ where TBackend: TransactionBackend + Clone + 'static
                     match rx.await {
                         Ok(send_msg_response) => {
                             if let SendMessageResponse::Queued(send_states) = send_msg_response {
-                                debug!("Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id);
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id
+                                );
                                 direct_send_result = self.wait_on_dial(send_states, "Transaction").await;
                             }
                         },
                         Err(e) => {
-                            error!(
+                            warn!(
                                 target: LOG_TARGET,
                                 "Error waiting for Discovery while sending message to TxId: {} {:?}", self.id, e
                             );
@@ -383,7 +392,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 },
             },
             Err(e) => {
-                error!(target: LOG_TARGET, "Direct Transaction Send failed: {:?}", e);
+                warn!(target: LOG_TARGET, "Direct Transaction Send failed: {:?}", e);
             },
         }
 
@@ -410,7 +419,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 self.id
             );
             if let Err(e) = self.resources.output_manager_service.cancel_transaction(self.id).await {
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}", self.id, e
                 );
@@ -445,12 +454,12 @@ where TBackend: TransactionBackend + Clone + 'static
                 true
             } else {
                 if failed.is_empty() {
-                    error!(
+                    warn!(
                         target: LOG_TARGET,
                         "Direct Send process for {} TX_ID: {} timed out", message, self.id
                     );
                 } else {
-                    error!(
+                    warn!(
                         target: LOG_TARGET,
                         "Direct Send process for {} TX_ID: {} and Message {} was unsuccessful and no message was sent",
                         message,
@@ -461,7 +470,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 false
             }
         } else {
-            error!(
+            warn!(
                 target: LOG_TARGET,
                 "{} Send Direct for TxID: {} failed", message, self.id
             );
@@ -506,7 +515,7 @@ where TBackend: TransactionBackend + Clone + 'static
                     );
                     Ok(true)
                 } else if !failed_sends.is_empty() {
-                    error!(
+                    warn!(
                         target: LOG_TARGET,
                         "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
                          messages were sent",
@@ -514,7 +523,7 @@ where TBackend: TransactionBackend + Clone + 'static
                     );
                     Ok(false)
                 } else {
-                    error!(
+                    warn!(
                         target: LOG_TARGET,
                         "Transaction Send to Neighbours for Store and Forward for TX_ID: {} timed out and was \
                          unsuccessful. Some message might still be sent.",
@@ -524,7 +533,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 }
             },
             Ok(_) => {
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "Transaction Send to Neighbours for Store and Forward for TX_ID: {} was unsuccessful and no \
                      messages were sent",
@@ -533,7 +542,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 Ok(false)
             },
             Err(e) => {
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "Transaction Send (TxId: {}) to neighbours for Store and Forward failed: {:?}", self.id, e
                 );
@@ -576,7 +585,7 @@ where TBackend: TransactionBackend + Clone + 'static
                     }
                 },
                 SendMessageResponse::Failed(err) => {
-                    error!(
+                    warn!(
                         target: LOG_TARGET,
                         "Finalized Transaction Send Direct for TxID {} failed: {}", self.id, err
                     );
@@ -592,12 +601,15 @@ where TBackend: TransactionBackend + Clone + 'static
                     match rx.await {
                         Ok(send_msg_response) => {
                             if let SendMessageResponse::Queued(send_states) = send_msg_response {
-                                debug!("Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id);
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id
+                                );
                                 direct_send_result = self.wait_on_dial(send_states, "Finalized Transaction").await;
                             }
                         },
                         Err(e) => {
-                            error!(
+                            warn!(
                                 target: LOG_TARGET,
                                 "Error waiting for Discovery while sending message to TxId: {} {:?}", self.id, e
                             );
@@ -649,7 +661,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 );
             },
             Err(e) => {
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed: {:?}",
                     self.id,

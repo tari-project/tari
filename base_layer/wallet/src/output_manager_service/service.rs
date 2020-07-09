@@ -175,10 +175,10 @@ where
                 trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
                     let _ = reply_tx.send(self.handle_request(request, &mut utxo_validation_handles).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
+                        warn!(target: LOG_TARGET, "Error handling request: {:?}", resp);
                         Err(resp)
                     })).or_else(|resp| {
-                        error!(target: LOG_TARGET, "Failed to send reply");
+                        warn!(target: LOG_TARGET, "Failed to send reply");
                         Err(resp)
                     });
                 },
@@ -187,7 +187,7 @@ where
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
                     let result = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling base node service response from {}: {:?}, Trace: {}", origin_public_key, resp, msg.dht_header.message_tag);
+                        warn!(target: LOG_TARGET, "Error handling base node service response from {}: {:?}, Trace: {}", origin_public_key, resp, msg.dht_header.message_tag);
                         Err(resp)
                     });
 
@@ -357,7 +357,7 @@ where
                 );
             },
             Err(OutputManagerProtocolError { id, error }) => {
-                error!(
+                warn!(
                     target: LOG_TARGET,
                     "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
                 );
