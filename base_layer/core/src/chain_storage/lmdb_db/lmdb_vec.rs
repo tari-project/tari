@@ -295,7 +295,7 @@ mod test {
             .add_database("db", db::CREATE)
             .build()
             .unwrap();
-        let mut lmdb_vec = LMDBVec::<i32>::new(lmdb_store.env(), lmdb_store.get_handle("db").unwrap().db().clone());
+        let mut lmdb_vec = LMDBVec::<i32>::new(lmdb_store.env(), lmdb_store.get_handle("db").unwrap().db());
         let mut mem_vec = vec![100, 200, 300, 400, 500, 600];
         assert_eq!(lmdb_vec.len().unwrap(), 0);
 

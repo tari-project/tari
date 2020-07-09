@@ -535,8 +535,9 @@ impl LMDBDatabase {
         txn.commit().map_err(|e| LMDBError::CommitError(e.to_string()))
     }
 
-    pub fn db(&self) -> &DatabaseRef {
-        &self.db
+    /// Returns an owned atomic reference to the database
+    pub fn db(&self) -> DatabaseRef {
+        self.db.clone()
     }
 }
 
