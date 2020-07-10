@@ -7,13 +7,11 @@ license = "BSD-3-Clause"
 version = "0.4.2"
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 tari_common = { version= "^0.2", path = "../../common" }
 tari_comms = { version = "^0.2", path = "../../comms"}
 tari_comms_dht = { version = "^0.2", path = "../../comms/dht"}
-tari_core = { version= "^0.2", path = "../../base_layer/core" }
+tari_core = { version= "^0.2", path = "../../base_layer/core", default-features = false, features = ["transactions", "monero_merge_mining"]}
 tari_p2p = { version= "^0.2", path = "../../base_layer/p2p" }
 tari_service_framework = { version = "^0.0", path = "../../base_layer/service_framework"}
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0" }

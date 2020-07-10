@@ -1,0 +1,34 @@
+[package]
+name = "tari_conduit"
+authors = ["The Tari Development Community"]
+description = "The tari miner conduit for xmrig"
+repository = "https://github.com/tari-project/tari"
+license = "BSD-3-Clause"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+jsonrpc = "0.11.0"
+tari_utilities = "^0.1"
+curl = "0.4.30"
+regex = "1.3.9"
+json = "0.12.4"
+chrono = "0.4.13"
+hex = "0.4.2"
+monero = {version = "0.8.1", features = ["serde_support"]}
+arrayref = "0.3.6"
+tonic = "0.2"
+prost = "0.6"
+prost-types = "0.6.1"
+tokio = "0.2.10"
+log = { version = "0.4.8", features = ["std"] }
+tokio-macros = "0.2.5"
+serde = { version="1.0.106", features = ["derive"] }
+bincode = "1.3.1"
+tari_crypto = { version = "^0.5" }
+tari_core = { version= "^0.2", path = "../../base_layer/core", default-features = false, features = ["transactions", "monero_merge_mining"]}
+rand = "0.7.2"
+derive-error = "0.0.4"
+
+[build-dependencies]
+tonic-build = "0.2"

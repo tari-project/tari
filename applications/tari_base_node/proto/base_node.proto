@@ -377,13 +377,13 @@ message MetaData {
         uint64 accumulated_difficulty = 5;
 }
 
-// This is the message that is returned for a miner after it asks for a new block. 
+// This is the message that is returned for a miner after it asks for a new block.
 message GetNewBlockResult{
     // This is the header hash of the complated block
     bytes block_hash = 1;
     // This is the completed block
     Block block = 2;
-    // This is the merge_mining hash of the completed block. 
+    // This is the merge_mining hash of the completed block.
     MinerData mining_data = 3;
 }
 
