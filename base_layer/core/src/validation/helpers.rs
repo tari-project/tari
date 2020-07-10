@@ -24,7 +24,7 @@ use crate::{
     blocks::blockheader::{BlockHeader, BlockHeaderValidationError},
     chain_storage::{fetch_headers, BlockchainBackend},
     consensus::ConsensusManager,
-    proof_of_work::{get_target_difficulty, PowError},
+    proof_of_work::{get_target_difficulty, monero_rx::MoneroData, PowAlgorithm, PowError},
     validation::ValidationError,
 };
 use log::*;
@@ -78,8 +78,23 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
     rules: ConsensusManager,
 ) -> Result<(), ValidationError>
 {
-    let achieved = block_header.achieved_difficulty();
     let pow_algo = block_header.pow.pow_algo;
+    // Monero has extra data to check.
+    if pow_algo == PowAlgorithm::Monero {
+        let monero_data = MoneroData::new(&block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
+        // TODO: We need some way of getting the seed height and or count.
+        // Current proposals are to either store the height of first seed use, or count the seed use.
+        let seed_height = 0;
+        if (seed_height != 0) &&
+            (block_header.height - seed_height > rules.consensus_constants().max_randomx_seed_height())
+        {
+            return Err(ValidationError::BlockHeaderError(
+                BlockHeaderValidationError::OldSeedHash,
+            ));
+        }
+    }
+    let achieved = block_header.achieved_difficulty();
+    // This tests the target diff.
     let target = if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
         let constants = rules.consensus_constants();
         let target_difficulties =
@@ -113,6 +128,7 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
             BlockHeaderValidationError::ProofOfWorkError(PowError::InvalidTargetDifficulty),
         ));
     }
+    // Now lets compare the achieved and target.
     if achieved < target {
         warn!(
             target: LOG_TARGET,

@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,25 +20,5 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod blake_pow;
-mod difficulty;
-mod error;
-mod median_timestamp;
-#[allow(clippy::enum_variant_names)]
-pub mod monero_rx;
-#[allow(clippy::module_inception)]
-mod proof_of_work;
-mod target_difficulty;
-
-#[cfg(test)]
-pub use blake_pow::test as blake_test;
-
-pub mod lwma_diff;
-
-pub use blake_pow::{blake_difficulty, blake_difficulty_with_hash};
-pub use difficulty::{Difficulty, DifficultyAdjustment};
-pub use error::{DifficultyAdjustmentError, PowError};
-pub use median_timestamp::get_median_timestamp;
-pub use monero_rx::monero_difficulty;
-pub use proof_of_work::{PowAlgorithm, ProofOfWork};
-pub use target_difficulty::get_target_difficulty;
+pub mod blocks;
+pub mod transactions;
