@@ -153,7 +153,7 @@ use tari_p2p::transport::{TorConfig, TransportType};
 use tari_utilities::{hex, hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
-    error::{WalletError, WalletStorageError},
+    error::WalletError,
     output_manager_service::{
         protocols::utxo_validation_protocol::UtxoValidationRetry,
         storage::sqlite_db::OutputManagerSqliteDatabase,
@@ -2343,7 +2343,7 @@ pub unsafe extern "C" fn comms_config_create(
             e
         })
         .expect("Could not open Sqlite db");
-    let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection), Some(sql_database_path));
+    let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection));
 
     let comms_secret_key = match Runtime::new() {
         Ok(mut rt) => {
@@ -2628,7 +2628,7 @@ pub unsafe extern "C" fn wallet_create(
                     w.runtime.spawn(callback_handler.start());
 
                     // Persist the Comms Private Key provided to this function
-                    let wallet_db = WalletDatabase::new(wallet_backend, None);
+                    let wallet_db = WalletDatabase::new(wallet_backend);
                     if let Err(e) = w
                         .runtime
                         .block_on(wallet_db.set_comms_secret_key((*config).node_identity.secret_key().clone()))
@@ -4301,34 +4301,40 @@ pub unsafe extern "C" fn wallet_set_normal_power_mode(wallet: *mut TariWallet, e
     }
 }
 
-/// This function will produce a partial backup of the wallet that is provided. This backup will be written to the
-/// provided file (full path include the filename and extension) and will include the full wallet db but will clear the
-/// sensitive Comms Private Key
+/// This function will produce a partial backup of the specified wallet database file. This backup will be written to
+/// the provided file (full path must include the filename and extension) and will include the full wallet db but will
+/// clear the sensitive Comms Private Key
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `backup_file_path` - The full path, including the file name and extension, of where the backup db will be written
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
+/// `original_file_path` - The full path of the original database file to be backed up, including the file name and
+/// extension `backup_file_path` - The full path, including the file name and extension, of where the backup db will be
+/// written `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
+/// Functions as an out parameter.
 ///
 /// ## Returns
 ///
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn wallet_partial_backup(
-    wallet: *mut TariWallet,
+pub unsafe extern "C" fn file_partial_backup(
+    original_file_path: *const c_char,
     backup_file_path: *const c_char,
     error_out: *mut c_int,
 )
 {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-    if wallet.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+
+    let original_path_string;
+    if !original_file_path.is_null() {
+        original_path_string = CStr::from_ptr(original_file_path).to_str().unwrap().to_owned();
+    } else {
+        error = LibWalletError::from(InterfaceError::NullError("original_file_path".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return;
     }
+    let original_path = PathBuf::from(original_path_string);
+
     let backup_path_string;
     if !backup_file_path.is_null() {
         backup_path_string = CStr::from_ptr(backup_file_path).to_str().unwrap().to_owned();
@@ -4338,22 +4344,20 @@ pub unsafe extern "C" fn wallet_partial_backup(
         return;
     }
     let backup_path = PathBuf::from(backup_path_string);
-    let current_db_path = if let Some(path) = (*wallet).db.path.clone() {
-        path
-    } else {
-        error = LibWalletError::from(WalletError::WalletStorageError(WalletStorageError::DbPathDoesNotExist)).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return;
-    };
 
-    match (*wallet)
-        .runtime
-        .block_on(partial_wallet_backup(current_db_path, backup_path))
-    {
-        Ok(_) => (),
+    let runtime = Runtime::new();
+    match runtime {
+        Ok(mut runtime) => match runtime.block_on(partial_wallet_backup(original_path, backup_path)) {
+            Ok(_) => (),
+            Err(e) => {
+                error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+            },
+        },
         Err(e) => {
-            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+            error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
+            return;
         },
     }
 }
@@ -5456,10 +5460,7 @@ mod test {
 
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
-            let wallet_backend = WalletDatabase::new(
-                WalletSqliteDatabase::new(connection.clone()),
-                Some(sql_database_path.clone().into()),
-            );
+            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone()));
 
             let alice_config = comms_config_create(
                 address_alice_str,
@@ -5514,16 +5515,17 @@ mod test {
             let public_stored_key = CommsPublicKey::from_secret_key(&stored_key);
             assert_eq!(public_stored_key, (*public_key_alice));
 
+            // Test the file path based version
             let backup_path_alice =
                 CString::new(alice_temp_dir.path().join("backup.sqlite3").to_str().unwrap()).unwrap();
             let backup_path_alice_str: *const c_char = CString::into_raw(backup_path_alice.clone()) as *const c_char;
-
-            wallet_partial_backup(alice_wallet, backup_path_alice_str, error_ptr);
-            let sql_database_path = alice_temp_dir.path().join("backup2").with_extension("sqlite3");
+            let original_path_cstring = CString::new(sql_database_path.to_str().unwrap()).unwrap();
+            let original_path_str: *const c_char = CString::into_raw(original_path_cstring.clone()) as *const c_char;
+            file_partial_backup(original_path_str, backup_path_alice_str, error_ptr);
+            let sql_database_path = alice_temp_dir.path().join("backup").with_extension("sqlite3");
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
-            let wallet_backend =
-                WalletDatabase::new(WalletSqliteDatabase::new(connection.clone()), Some(sql_database_path));
+            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone()));
 
             let stored_key = runtime.block_on(wallet_backend.get_comms_secret_key()).unwrap();
 
@@ -5545,6 +5547,7 @@ mod test {
             string_destroy(db_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);
             string_destroy(backup_path_alice_str as *mut c_char);
+            string_destroy(original_path_str as *mut c_char);
             private_key_destroy(secret_key_alice);
             public_key_destroy(public_key_alice);
             transport_type_destroy(transport_type_alice);

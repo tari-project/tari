@@ -464,11 +464,13 @@ unsigned long long wallet_coin_split(struct TariWallet *wallet, unsigned long lo
 /// Get the seed words representing the seed private key of the provided TariWallet
 struct TariSeedWords *wallet_get_seed_words(struct TariWallet *wallet, int* error_out);
 
-// This function will produce a partial backup of the wallet at the location specified but with the sensitive data cleared.
-void wallet_partial_backup(struct TariWallet *wallet, const char *backup_file_path, int* error_out);
-
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
+
+// This function will produce a partial backup of the specified wallet database file (full file path must be provided.
+// This backup will be written to the provided file (full path must include the filename and extension) and will include
+// the full wallet db but will clear the sensitive Comms Private Key
+void file_partial_backup(const char *original_file_path, const char *backup_file_path, int* error_out);
 
 /// This function will log the provided string at debug level. To be used to have a client log messages to the LibWallet
 void log_debug_message(const char* msg);

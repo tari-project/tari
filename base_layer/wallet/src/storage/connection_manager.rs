@@ -66,7 +66,7 @@ pub async fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P
 
     // open a connection and clear the Comms Private Key
     let connection = run_migration_and_create_sqlite_connection(backup_path)?;
-    let db = WalletDatabase::new(WalletSqliteDatabase::new(connection), None);
+    let db = WalletDatabase::new(WalletSqliteDatabase::new(connection));
     db.clear_comms_secret_key().await?;
 
     Ok(())

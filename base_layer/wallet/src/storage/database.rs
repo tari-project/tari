@@ -24,7 +24,6 @@ use crate::error::WalletStorageError;
 use log::*;
 use std::{
     fmt::{Display, Error, Formatter},
-    path::PathBuf,
     sync::Arc,
 };
 use tari_comms::types::CommsSecretKey;
@@ -62,14 +61,13 @@ pub struct WalletDatabase<T>
 where T: WalletBackend + 'static
 {
     db: Arc<T>,
-    pub path: Option<PathBuf>,
 }
 
 impl<T> WalletDatabase<T>
 where T: WalletBackend + 'static
 {
-    pub fn new(db: T, path: Option<PathBuf>) -> Self {
-        Self { db: Arc::new(db), path }
+    pub fn new(db: T) -> Self {
+        Self { db: Arc::new(db) }
     }
 
     pub async fn get_comms_secret_key(&self) -> Result<Option<CommsSecretKey>, WalletStorageError> {
@@ -78,7 +76,6 @@ where T: WalletBackend + 'static
         let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::CommsSecretKey) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::CommsSecretKey(k))) => Ok(Some(k)),
-            Ok(Some(other)) => unexpected_result(DbKey::CommsSecretKey, other),
             Err(e) => log_error(DbKey::CommsSecretKey, e),
         })
         .await
@@ -104,12 +101,6 @@ where T: WalletBackend + 'static
             .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
-}
-
-fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, WalletStorageError> {
-    let msg = format!("Unexpected result for database query {}. Response: {}", req, res);
-    error!(target: LOG_TARGET, "{}", msg);
-    Err(WalletStorageError::UnexpectedResult(msg))
 }
 
 impl Display for DbKey {
@@ -156,7 +147,7 @@ mod test {
     pub fn test_database_crud<T: WalletBackend + 'static>(backend: T) {
         let mut runtime = Runtime::new().unwrap();
 
-        let db = WalletDatabase::new(backend, None);
+        let db = WalletDatabase::new(backend);
 
         // Test wallet settings
         assert!(runtime.block_on(db.get_comms_secret_key()).unwrap().is_none());

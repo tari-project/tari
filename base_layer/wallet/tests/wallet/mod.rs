@@ -253,12 +253,12 @@ fn test_wallet() {
 
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
-    let wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone()), None);
+    let wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone()));
     let comms_private_key = runtime.block_on(wallet_db.get_comms_secret_key()).unwrap();
     assert!(comms_private_key.is_some());
     // Checking that the backup has had its Comms Private Key is cleared.
     let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path).expect("Could not open Sqlite db");
-    let backup_wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone()), None);
+    let backup_wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone()));
     let comms_private_key = runtime.block_on(backup_wallet_db.get_comms_secret_key()).unwrap();
     assert!(comms_private_key.is_none());
 }
