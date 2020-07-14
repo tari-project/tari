@@ -27,7 +27,7 @@ mod error;
 pub use error::HorizonSyncError;
 
 mod validators;
-pub use validators::{HorizonHeadersValidator, HorizonSyncValidators};
+pub use validators::{ChainBalanceValidator, HorizonHeaderValidator, HorizonSyncValidators};
 
 mod state_sync;
 pub use state_sync::HorizonStateSync;

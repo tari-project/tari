@@ -59,7 +59,10 @@ pub struct ConsensusConstants {
     pub(in crate::consensus) emission_tail: MicroTari,
     /// This is the initial min difficulty for the difficulty adjustment
     min_pow_difficulty: (Difficulty, Difficulty),
+    /// The offset relative to the expected genesis coinbase value
+    genesis_coinbase_value_offset: MicroTari,
 }
+
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
 impl ConsensusConstants {
@@ -136,7 +139,12 @@ impl ConsensusConstants {
         self.median_timestamp_count
     }
 
-    // This is the min initial difficulty that can be requested for the pow
+    /// The offset relative to apply to the expected genesis block coinbase emission
+    pub fn get_genesis_coinbase_value_offset(&self) -> MicroTari {
+        self.genesis_coinbase_value_offset
+    }
+
+    /// This is the min initial difficulty that can be requested for the pow
     pub fn min_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
         match pow_algo {
             PowAlgorithm::Monero => self.min_pow_difficulty.0,
@@ -162,6 +170,7 @@ impl ConsensusConstants {
             emission_decay: 0.999_999_560_409_038_5,
             emission_tail: 1 * T,
             min_pow_difficulty: (1.into(), 60_000_000.into()),
+            genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
         }
     }
 
@@ -182,6 +191,7 @@ impl ConsensusConstants {
             emission_decay: 0.999,
             emission_tail: 100.into(),
             min_pow_difficulty: (1.into(), 1.into()),
+            genesis_coinbase_value_offset: 0.into(),
         }
     }
 
@@ -203,6 +213,7 @@ impl ConsensusConstants {
             emission_decay: 0.999,
             emission_tail: 100.into(),
             min_pow_difficulty: (1.into(), 500_000_000.into()),
+            genesis_coinbase_value_offset: 0.into(),
         }
     }
 }

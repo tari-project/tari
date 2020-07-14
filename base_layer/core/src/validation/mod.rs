@@ -27,13 +27,17 @@
 //! This module also defines a mock [MockValidator] that is useful for testing components that require validation
 //! without having to bring in all sorts of blockchain and communications paraphernalia.
 
-mod error;
-mod helpers;
-mod traits;
+mod and_then;
 
+mod error;
+pub use error::ValidationError;
+
+mod helpers;
+
+mod traits;
+pub use traits::{StatelessValidation, StatelessValidationExt, StatelessValidator, Validation, Validator};
+
+pub mod accum_difficulty_validators;
 pub mod block_validators;
 pub mod mocks;
-pub use error::ValidationError;
-pub use traits::{StatelessValidation, StatelessValidator, Validation, Validator};
-pub mod accum_difficulty_validators;
 pub mod transaction_validators;

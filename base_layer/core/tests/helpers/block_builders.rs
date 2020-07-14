@@ -29,13 +29,7 @@ use tari_core::{
     consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
     proof_of_work::Difficulty,
     transactions::{
-        helpers::{
-            create_random_signature,
-            create_random_signature_from_s_key,
-            create_utxo,
-            spend_utxos,
-            TransactionSchema,
-        },
+        helpers::{create_random_signature_from_s_key, create_signature, create_utxo, spend_utxos, TransactionSchema},
         tari_amount::MicroTari,
         transaction::{
             KernelBuilder,
@@ -67,7 +61,7 @@ pub fn create_coinbase(
     let (mut utxo, key) = create_utxo(value, &factories, None);
     utxo.features = features.clone();
     let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
-    let (_pk, sig) = create_random_signature(0.into(), 0);
+    let sig = create_signature(key.clone(), 0.into(), 0);
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
         .with_excess(&excess)
@@ -96,7 +90,7 @@ pub fn create_act_gen_block() {
     let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants().blockchain_version());
-    let value = consensus_manager.emission_schedule().supply_at_block(0);
+    let value = consensus_manager.emission_schedule().block_reward(0);
     let (mut utxo, key) = create_utxo(value, &factories, None);
     utxo.features = OutputFeatures::create_coinbase(1);
     let (pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);

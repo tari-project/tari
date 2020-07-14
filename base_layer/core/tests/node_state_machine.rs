@@ -53,6 +53,7 @@ use tari_core::{
         states::{
             BestChainMetadataBlockSyncInfo,
             BlockSyncConfig,
+            ChainBalanceValidator,
             HorizonStateSync,
             HorizonSyncConfig,
             HorizonSyncValidators,
@@ -120,7 +121,7 @@ fn test_listening_lagging() {
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         BaseNodeStateMachineConfig::default(),
-        HorizonSyncValidators::new(MockValidator::new(true)),
+        HorizonSyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
     );
     wait_until_online(&mut runtime, &[&alice_node, &bob_node]);
@@ -187,7 +188,7 @@ fn test_event_channel() {
         node.comms.connectivity(),
         mock.subscriber(),
         BaseNodeStateMachineConfig::default(),
-        HorizonSyncValidators::new(MockValidator::new(true)),
+        HorizonSyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
     );
     let rx = state_machine.get_state_change_event_stream();
@@ -266,7 +267,7 @@ fn test_block_sync() {
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
-        HorizonSyncValidators::new(MockValidator::new(true)),
+        HorizonSyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
     );
 
@@ -348,7 +349,7 @@ fn test_lagging_block_sync() {
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
-        HorizonSyncValidators::new(MockValidator::new(true)),
+        HorizonSyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
     );
 
@@ -447,7 +448,7 @@ fn test_block_sync_recovery() {
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
-        HorizonSyncValidators::new(MockValidator::new(true)),
+        HorizonSyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
     );
 
@@ -546,7 +547,7 @@ fn test_forked_block_sync() {
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
-        HorizonSyncValidators::new(MockValidator::new(true)),
+        HorizonSyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
     );
 
@@ -686,7 +687,7 @@ fn test_sync_peer_banning() {
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
-        HorizonSyncValidators::new(MockValidator::new(true)),
+        HorizonSyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
     );
 
@@ -810,7 +811,7 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         temp_dir.path().to_str().unwrap(),
     );
     let mut horizon_sync_config = HorizonSyncConfig::default();
-    horizon_sync_config.horizon_sync_height_offset = 2;
+    horizon_sync_config.horizon_sync_height_offset = 0;
     let state_machine_config = BaseNodeStateMachineConfig {
         block_sync_config: BlockSyncConfig::default(),
         horizon_sync_config,
@@ -825,7 +826,7 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
-        HorizonSyncValidators::new(MockValidator::new(true)),
+        HorizonSyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
     );
 
@@ -849,8 +850,8 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         assert_eq!(state_event, StateEvent::HorizonStateSynchronized);
         let alice_metadata = alice_db.get_metadata().unwrap();
         // Local height should now be at the offset horizon block
-        // network tip - pruning horizon + offset
-        assert_eq!(alice_metadata.height_of_longest_chain.unwrap(), 9 - 4 + 2);
+        // network tip - pruning horizon - offset
+        assert_eq!(alice_metadata.height_of_longest_chain.unwrap(), 9 - 4 - 0);
         let state_event = BestChainMetadataBlockSyncInfo
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
@@ -978,7 +979,14 @@ fn test_pruned_mode_sync_with_spent_utxos() {
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
-        HorizonSyncValidators::new(MockValidator::new(true)),
+        HorizonSyncValidators::new(
+            MockValidator::new(true),
+            ChainBalanceValidator::new(
+                alice_node.blockchain_db.clone(),
+                consensus_manager.clone(),
+                factories.clone(),
+            ),
+        ),
         shutdown.to_signal(),
     );
 
@@ -1029,13 +1037,21 @@ fn test_pruned_mode_sync_with_spent_utxos() {
         )
         .is_ok());
 
-        // Both nodes are running in pruned mode and can not use block sync to synchronize state. Sync horizon state
-        // from genesis block to horizon_sync_height and then block sync to the tip.
         let alice_db = &alice_node.blockchain_db;
         let bob_db = &bob_node.blockchain_db;
+        // Both nodes are running in pruned mode and can not use block sync to synchronize state. Sync horizon state
+        // from genesis block to horizon_sync_height and then block sync to the tip.
         let network_tip = bob_db.get_metadata().unwrap();
         let mut sync_peers = vec![bob_node.node_identity.node_id().clone()];
-        let state_event = BestChainMetadataBlockSyncInfo {}
+        let state_event = HorizonStateSync::new(network_tip.clone(), sync_peers.clone())
+            .next_event(&mut alice_state_machine)
+            .await;
+        assert_eq!(state_event, StateEvent::HorizonStateSynchronized);
+        let alice_metadata = alice_db.get_metadata().unwrap();
+        // Local height should now be at the offset horizon block
+        // network tip - pruning horizon - offset
+        assert_eq!(alice_metadata.height_of_longest_chain.unwrap(), 4 - 4 - 0);
+        let state_event = BestChainMetadataBlockSyncInfo
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);

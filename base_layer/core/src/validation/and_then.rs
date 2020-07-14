@@ -20,37 +20,49 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node::{comms_interface::CommsInterfaceError, states::block_sync::BlockSyncError},
-    chain_storage::ChainStorageError,
-    transactions::transaction::TransactionError,
-    validation::ValidationError,
-};
-use thiserror::Error;
-use tokio::task;
+use crate::validation::{StatelessValidation, ValidationError};
 
-#[derive(Debug, Error)]
-pub enum HorizonSyncError {
-    #[error("Peer sent an empty response")]
-    EmptyResponse,
-    #[error("Peer sent an invalid response")]
-    IncorrectResponse,
-    #[error("Received invalid headers from peer: {0}")]
-    InvalidHeader(String),
-    #[error("Exceeded maximum sync attempts")]
-    MaxSyncAttemptsReached,
-    #[error("Chain storage error: {0:?}")]
-    ChainStorageError(#[from] ChainStorageError),
-    #[error("Comms interface error: {0:?}")]
-    CommsInterfaceError(#[from] CommsInterfaceError),
-    #[error("Block sync error: {0:?}")]
-    BlockSyncError(#[from] BlockSyncError),
-    #[error("Header validation failed: {0:?}")]
-    HeaderValidationFailed(ValidationError),
-    #[error("Final state validation failed: {0:?}")]
-    FinalStateValidationFailed(ValidationError),
-    #[error("Join error: {0}")]
-    JoinError(#[from] task::JoinError),
-    #[error("Transaction error: {0:?}")]
-    TransactionError(#[from] TransactionError),
+pub struct AndThenValidator<T, U> {
+    first: T,
+    second: U,
+}
+
+impl<T, U> AndThenValidator<T, U> {
+    pub fn new(first: T, second: U) -> Self {
+        Self { first, second }
+    }
+}
+
+impl<T, U, I> StatelessValidation<I> for AndThenValidator<T, U>
+where
+    T: StatelessValidation<I>,
+    U: StatelessValidation<I>,
+{
+    fn validate(&self, item: &I) -> Result<(), ValidationError> {
+        self.first.validate(item)?;
+        self.second.validate(item)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::validation::mocks::MockValidator;
+
+    #[test]
+    fn validation_succeeds() {
+        let validator = AndThenValidator::new(MockValidator::new(true), MockValidator::new(true));
+        validator.validate(&1).unwrap();
+    }
+
+    #[test]
+    fn validation_fails() {
+        let validator = AndThenValidator::new(MockValidator::new(false), MockValidator::new(true));
+        validator.validate(&1).unwrap_err();
+        let validator = AndThenValidator::new(MockValidator::new(true), MockValidator::new(false));
+        validator.validate(&1).unwrap_err();
+        let validator = AndThenValidator::new(MockValidator::new(false), MockValidator::new(false));
+        validator.validate(&1).unwrap_err();
+    }
 }

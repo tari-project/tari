@@ -165,4 +165,12 @@ impl BlockchainBackend for MockBackend {
     {
         unimplemented!()
     }
+
+    fn count_utxos(&self) -> Result<usize, ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn count_kernels(&self) -> Result<usize, ChainStorageError> {
+        unimplemented!()
+    }
 }

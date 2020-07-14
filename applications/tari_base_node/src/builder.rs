@@ -54,7 +54,7 @@ use tari_core::{
     base_node::{
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
-        states::{HorizonHeadersValidator, HorizonSyncValidators, StatusInfo},
+        states::{HorizonSyncValidators, StatusInfo},
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
         LocalNodeCommsInterface,
@@ -575,7 +575,7 @@ where
         &wallet_dht,
         &wallet_conn,
         wallet_subscriptions,
-        factories,
+        factories.clone(),
         config.transaction_base_node_monitoring_timeout,
         config.transaction_direct_send_timeout,
         config.transaction_broadcast_send_timeout,
@@ -618,11 +618,11 @@ where
         .expect("Problem reading block sync strategy from config");
 
     state_machine_config.horizon_sync_config.horizon_sync_height_offset =
-        rules.consensus_constants().coinbase_lock_height() + 20;
+        rules.consensus_constants().coinbase_lock_height() + 50;
     let node_local_interface = base_node_handles
         .get_handle::<LocalNodeCommsInterface>()
         .expect("Problem getting node local interface handle.");
-    let horizon_sync_validators = HorizonSyncValidators::new(HorizonHeadersValidator::new(db.clone(), rules.clone()));
+    let horizon_sync_validators = HorizonSyncValidators::full_consensus(db.clone(), rules.clone(), factories.clone());
     let node = BaseNodeStateMachine::new(
         &db,
         &node_local_interface,

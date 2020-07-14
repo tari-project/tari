@@ -785,6 +785,14 @@ where D: Digest + Send + Sync
             .into_iter()
             .collect::<Vec<(EpochTime, Difficulty)>>())
     }
+
+    fn count_utxos(&self) -> Result<usize, ChainStorageError> {
+        lmdb_len(&self.env, &self.utxos_db)
+    }
+
+    fn count_kernels(&self) -> Result<usize, ChainStorageError> {
+        lmdb_len(&self.env, &self.kernels_db)
+    }
 }
 
 // Fetches the chain height from the provided metadata db.

@@ -52,6 +52,12 @@
 /// ```
 #[macro_export]
 macro_rules! unpack_enum {
+    ($($enum_key:ident)::+ { .. } = $enum:expr) => {
+        match $enum {
+            $($enum_key)::+{..} => (),
+            v => panic!("Unexpected enum variant '{:?}' given to unpack_enum", v),
+        }
+    };
     ($($enum_key:ident)::+ { $($idents:tt),* } = $enum:expr) => {
         let ($(mut $idents),+) =  match $enum {
             $($enum_key)::+{$($idents),+} => ($($idents),+),

@@ -262,7 +262,10 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
         let sync_peer = select_sync_peer(&config, sync_peers)?;
-        debug!(target: log_target, "Requesting mmr node count from {}.", sync_peer);
+        debug!(
+            target: log_target,
+            "Requesting mmr node count to height {} from {}.", height, sync_peer
+        );
         match shared
             .comms
             .fetch_mmr_node_count(tree.clone(), height, Some(sync_peer.clone()))
@@ -327,7 +330,14 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
         let sync_peer = select_sync_peer(&config, sync_peers)?;
-        debug!(target: log_target, "Requesting {} mmr nodes from {}.", count, sync_peer);
+        debug!(
+            target: log_target,
+            "Requesting {} mmr nodes ({}-{}) from {}.",
+            tree,
+            pos,
+            pos + count,
+            sync_peer
+        );
         match shared
             .comms
             .fetch_mmr_nodes(tree.clone(), pos, count, height, Some(sync_peer.clone()))
@@ -450,7 +460,16 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
         let sync_peer = select_sync_peer(&config, sync_peers)?;
-        debug!(target: log_target, "Requesting kernels from {}.", sync_peer);
+        // If no hashes are requested, return an empty response without performing the request.
+        if hashes.is_empty() {
+            return Ok((Vec::new(), sync_peer));
+        }
+        debug!(
+            target: log_target,
+            "Requesting {} transaction outputs from {}.",
+            hashes.len(),
+            sync_peer
+        );
         match shared
             .comms
             .request_txos_from_peer(hashes.to_vec(), Some(sync_peer.clone()))

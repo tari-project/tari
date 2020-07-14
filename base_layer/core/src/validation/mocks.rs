@@ -25,18 +25,18 @@ use crate::{chain_storage::BlockchainBackend, validation::error::ValidationError
 
 #[derive(Clone)]
 pub struct MockValidator {
-    result: bool,
+    is_valid: bool,
 }
 
 impl MockValidator {
     pub fn new(is_valid: bool) -> MockValidator {
-        MockValidator { result: is_valid }
+        MockValidator { is_valid }
     }
 }
 
 impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
     fn validate(&self, _item: &T, _db: &B) -> Result<(), ValidationError> {
-        if self.result {
+        if self.is_valid {
             Ok(())
         } else {
             Err(ValidationError::CustomError(
@@ -48,7 +48,7 @@ impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
 
 impl<T> StatelessValidation<T> for MockValidator {
     fn validate(&self, _item: &T) -> Result<(), ValidationError> {
-        if self.result {
+        if self.is_valid {
             Ok(())
         } else {
             Err(ValidationError::CustomError(

@@ -45,7 +45,6 @@ use tari_crypto::tari_utilities::{
     byte_array::ByteArray,
     hex::{from_hex, Hex},
 };
-use rand::rngs::OsRng;
 
 /// This function generates a unique ID hash for a Text Message from the message components and an index integer
 ///

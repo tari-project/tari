@@ -660,6 +660,16 @@ where D: Digest + Send + Sync
             .into_iter()
             .collect::<Vec<(EpochTime, Difficulty)>>())
     }
+
+    fn count_utxos(&self) -> Result<usize, ChainStorageError> {
+        let db = self.db_access()?;
+        Ok(db.utxos.len())
+    }
+
+    fn count_kernels(&self) -> Result<usize, ChainStorageError> {
+        let db = self.db_access()?;
+        Ok(db.kernels.len())
+    }
 }
 
 impl<D> Clone for MemoryDatabase<D>

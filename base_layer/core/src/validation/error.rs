@@ -30,24 +30,30 @@ use derive_error::Error;
 pub enum ValidationError {
     BlockHeaderError(BlockHeaderValidationError),
     BlockError(BlockValidationError),
-    // Contains kernels or inputs that are not yet spendable
+    /// Contains kernels or inputs that are not yet spendable
     MaturityError,
-    // Contains unknown inputs
+    /// Contains unknown inputs
     UnknownInputs,
-    // The transaction has some transaction error
+    /// The transaction has some transaction error
     TransactionError(TransactionError),
     /// Custom error with string message
     #[error(no_from, non_std, msg_embedded)]
     CustomError(String),
     /// A database instance must be set for this validator
     NoDatabaseConfigured,
-    // The total expected supply plus the total accumulated (offset) excess does not equal the sum of all UTXO
-    // commitments.
+    /// The total expected supply plus the total accumulated (offset) excess does not equal the sum of all UTXO
+    /// commitments.
     InvalidAccountingBalance,
-    // Transaction contains already spent inputs
+    /// Transaction contains already spent inputs
     ContainsSTxO,
-    // The recorded chain accumulated difficulty was stronger
+    /// The recorded chain accumulated difficulty was stronger
     WeakerAccumulatedDifficulty,
+    /// Invalid output merkle root
+    InvalidOutputMr,
+    /// Invalid kernel merkle root
+    InvalidKernelMr,
+    /// Invalid range proof merkle root
+    InvalidRangeProofMr,
 }
 
 impl ValidationError {

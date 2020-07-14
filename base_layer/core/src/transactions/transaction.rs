@@ -352,6 +352,11 @@ impl TransactionOutput {
     pub fn is_equal_to(&self, output: &TransactionInput) -> bool {
         self.commitment == output.commitment && self.features == output.features
     }
+
+    /// Returns true if the output is a coinbase, otherwise false
+    pub fn is_coinbase(&self) -> bool {
+        self.features.flags.contains(OutputFlags::COINBASE_OUTPUT)
+    }
 }
 
 /// Implement the canonical hashing function for TransactionOutput for use in ordering.

@@ -54,7 +54,7 @@ impl Waiting {
 impl From<BlockSyncStrategy> for Waiting {
     fn from(_: BlockSyncStrategy) -> Self {
         Waiting {
-            timeout: Duration::from_secs(1 * 60),
+            timeout: Duration::from_secs(60),
         }
     }
 }
@@ -63,7 +63,7 @@ impl From<BlockSyncStrategy> for Waiting {
 impl From<HorizonStateSync> for Waiting {
     fn from(_: HorizonStateSync) -> Self {
         Waiting {
-            timeout: Duration::from_secs(1 * 60),
+            timeout: Duration::from_secs(60),
         }
     }
 }

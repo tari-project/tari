@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    blocks::BlockHeader,
-    proof_of_work::{monero_rx::MergeMineError::HashingError, Difficulty},
-    U256,
-};
+use crate::{blocks::BlockHeader, proof_of_work::Difficulty, U256};
 use derive_error::Error;
 use monero::blockdata::{block::BlockHeader as MoneroBlockHeader, Transaction as MoneroTransaction};
 #[cfg(feature = "monero_merge_mining")]

@@ -69,7 +69,13 @@ mod helpers;
 pub use helpers::SyncPeerConfig;
 
 mod horizon_state_sync;
-pub use horizon_state_sync::{HorizonHeadersValidator, HorizonStateSync, HorizonSyncConfig, HorizonSyncValidators};
+pub use horizon_state_sync::{
+    ChainBalanceValidator,
+    HorizonHeaderValidator,
+    HorizonStateSync,
+    HorizonSyncConfig,
+    HorizonSyncValidators,
+};
 
 mod listening;
 pub use listening::{ListeningData, ListeningInfo};
