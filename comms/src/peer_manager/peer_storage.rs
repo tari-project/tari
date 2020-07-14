@@ -638,6 +638,7 @@ mod test {
             PeerFlags::default(),
             PeerFeatures::empty(),
             &[],
+            Default::default(),
         );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -651,6 +652,7 @@ mod test {
             PeerFlags::default(),
             PeerFeatures::empty(),
             &[],
+            Default::default(),
         );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -666,6 +668,7 @@ mod test {
             PeerFlags::default(),
             PeerFeatures::empty(),
             &[],
+            Default::default(),
         );
 
         // Create new datastore with a peer database
@@ -714,6 +717,7 @@ mod test {
             PeerFlags::default(),
             PeerFeatures::empty(),
             &[],
+            Default::default(),
         );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -727,6 +731,7 @@ mod test {
             PeerFlags::default(),
             PeerFeatures::empty(),
             &[],
+            Default::default(),
         );
 
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -742,6 +747,7 @@ mod test {
             PeerFlags::default(),
             PeerFeatures::empty(),
             &[],
+            Default::default(),
         );
         // Test adding and searching for peers
         assert!(peer_storage.add_peer(peer1.clone()).is_ok());
@@ -846,7 +852,15 @@ mod test {
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_address = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_addresses = MultiaddressesWithStats::from(net_address);
-        let mut peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), features, &[]);
+        let mut peer = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            features,
+            &[],
+            Default::default(),
+        );
         if ban {
             peer.ban_for(Duration::from_secs(600));
         }

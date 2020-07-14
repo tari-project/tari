@@ -138,6 +138,12 @@ where
         self
     }
 
+    /// Set the user agent string for this comms node. This string is sent once when establishing a connection.
+    pub fn with_user_agent<T: ToString>(mut self, user_agent: T) -> Self {
+        self.connection_manager_config.user_agent = user_agent.to_string();
+        self
+    }
+
     /// Allow test addresses (memory addresses, local loopback etc). This should only be activated for tests.
     pub fn allow_test_addresses(mut self) -> Self {
         #[cfg(not(debug_assertions))]
@@ -258,6 +264,10 @@ where
     fn make_peer_manager(&mut self) -> Result<Arc<PeerManager>, CommsBuilderError> {
         match self.peer_storage.take() {
             Some(storage) => {
+                // TODO: Peer manager should be refactored to be backend agnostic
+                #[cfg(not(test))]
+                PeerManager::migrate_lmdb(&storage.inner())?;
+
                 let peer_manager = PeerManager::new(storage).map_err(CommsBuilderError::PeerManagerError)?;
                 Ok(Arc::new(peer_manager))
             },

@@ -26,7 +26,7 @@ use std::{sync::Arc, time::Duration};
 use tari_comms::{
     backoff::ConstantBackoff,
     message::MessageExt,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerStorage},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures},
     pipeline,
     pipeline::SinkService,
     protocol::messaging::MessagingEvent,
@@ -81,10 +81,10 @@ fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     Arc::new(NodeIdentity::random(&mut OsRng, format!("/memory/{}", port).parse().unwrap(), features).unwrap())
 }
 
-fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
+fn create_peer_storage() -> CommsDatabase {
     let database_name = random::string(8);
     let datastore = LMDBBuilder::new()
-        .set_path(create_temporary_data_path().to_str().unwrap())
+        .set_path(create_temporary_data_path())
         .set_environment_size(50)
         .set_max_number_of_databases(1)
         .add_database(&database_name, lmdb_zero::db::CREATE)
@@ -92,13 +92,7 @@ fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
         .unwrap();
 
     let peer_database = datastore.get_handle(&database_name).unwrap();
-    let peer_database = LMDBWrapper::new(Arc::new(peer_database));
-    let mut storage = PeerStorage::new_indexed(peer_database).unwrap();
-    for peer in peers {
-        storage.add_peer(peer).unwrap();
-    }
-
-    storage.into()
+    LMDBWrapper::new(Arc::new(peer_database))
 }
 
 async fn make_node(features: PeerFeatures, seed_peer: Option<Peer>) -> TestNode {
@@ -108,7 +102,13 @@ async fn make_node(features: PeerFeatures, seed_peer: Option<Peer>) -> TestNode 
 
 async fn make_node_with_node_identity(node_identity: Arc<NodeIdentity>, seed_peer: Option<Peer>) -> TestNode {
     let (tx, ims_rx) = mpsc::channel(10);
-    let (comms, dht) = setup_comms_dht(node_identity, create_peer_storage(seed_peer.into_iter().collect()), tx).await;
+    let (comms, dht) = setup_comms_dht(
+        node_identity,
+        create_peer_storage(),
+        tx,
+        seed_peer.into_iter().collect(),
+    )
+    .await;
 
     TestNode { comms, dht, ims_rx }
 }
@@ -117,6 +117,7 @@ async fn setup_comms_dht(
     node_identity: Arc<NodeIdentity>,
     storage: CommsDatabase,
     inbound_tx: mpsc::Sender<DecryptedDhtMessage>,
+    peers: Vec<Peer>,
 ) -> (CommsNode, Dht)
 {
     // Create inbound and outbound channels
@@ -148,6 +149,10 @@ async fn setup_comms_dht(
     .finish()
     .await
     .unwrap();
+
+    for peer in peers {
+        comms.peer_manager().add_peer(peer).await.unwrap();
+    }
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
 

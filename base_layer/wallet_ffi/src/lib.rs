@@ -2405,6 +2405,7 @@ pub unsafe extern "C" fn comms_config_create(
                         allow_test_addresses: true,
                         listener_liveness_allowlist_cidrs: Vec::new(),
                         listener_liveness_max_sessions: 0,
+                        user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
                     };
 
                     Box::into_raw(Box::new(config))

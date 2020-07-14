@@ -3657,7 +3657,6 @@ dependencies = [
  "serde_json",
  "tari_crypto",
  "tari_infra_derive",
- "tari_storage",
  "tari_utilities",
 ]
 

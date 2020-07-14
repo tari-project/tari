@@ -101,9 +101,13 @@ async fn dial_success() {
     let mut protocols = Protocols::new();
     protocols.add([TEST_PROTO], proto_tx1);
     let mut conn_man1 = build_connection_manager(
-        TestNodeConfig {
-            node_identity: node_identity1.clone(),
-            ..Default::default()
+        {
+            let mut config = TestNodeConfig {
+                node_identity: node_identity1.clone(),
+                ..Default::default()
+            };
+            config.connection_manager_config.user_agent = "node1".to_string();
+            config
         },
         peer_manager1.clone(),
         protocols,
@@ -116,9 +120,13 @@ async fn dial_success() {
     let mut protocols = Protocols::new();
     protocols.add([TEST_PROTO], proto_tx2);
     let mut conn_man2 = build_connection_manager(
-        TestNodeConfig {
-            node_identity: node_identity2.clone(),
-            ..Default::default()
+        {
+            let mut config = TestNodeConfig {
+                node_identity: node_identity2.clone(),
+                ..Default::default()
+            };
+            config.connection_manager_config.user_agent = "node2".to_string();
+            config
         },
         peer_manager2.clone(),
         protocols,
@@ -135,6 +143,7 @@ async fn dial_success() {
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
             &[],
+            Default::default(),
         ))
         .await
         .unwrap();
@@ -144,6 +153,7 @@ async fn dial_success() {
     assert_eq!(conn_out.peer_node_id(), node_identity2.node_id());
     let peer2 = peer_manager1.find_by_node_id(conn_out.peer_node_id()).await.unwrap();
     assert_eq!(peer2.supported_protocols, [&IDENTITY_PROTOCOL, &TEST_PROTO]);
+    assert_eq!(peer2.user_agent, "node2");
 
     let event = subscription2.next().await.unwrap().unwrap();
     unpack_enum!(ConnectionManagerEvent::Listening(_addr) = &*event);
@@ -154,6 +164,7 @@ async fn dial_success() {
 
     let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).await.unwrap();
     assert_eq!(peer1.supported_protocols(), [&IDENTITY_PROTOCOL, &TEST_PROTO]);
+    assert_eq!(peer1.user_agent, "node1");
 
     let err = conn_out
         .open_substream(&ProtocolId::from_static(b"/tari/invalid"))
@@ -219,6 +230,7 @@ async fn simultaneous_dial_events() {
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
             &[],
+            Default::default(),
         ))
         .await
         .unwrap();
@@ -231,6 +243,7 @@ async fn simultaneous_dial_events() {
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
             &[],
+            Default::default(),
         ))
         .await
         .unwrap();

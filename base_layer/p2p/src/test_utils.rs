@@ -85,6 +85,7 @@ pub fn make_dht_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>) 
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             &[],
+            Default::default(),
         )),
         message,
     )

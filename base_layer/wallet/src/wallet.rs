@@ -240,6 +240,7 @@ where
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             &[],
+            String::new(),
         );
 
         self.runtime

@@ -174,6 +174,7 @@ mod pingpong {
             allow_test_addresses: true,
             listener_liveness_allowlist_cidrs: Vec::new(),
             listener_liveness_max_sessions: 0,
+            user_agent: "tari/pingpong/1.0.0".to_string(),
         };
 
         let (comms, dht) = rt

@@ -64,7 +64,7 @@ use tari_core::{
 };
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
-use tari_test_utils::{async_assert_eventually, random::string};
+use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
 use tokio::runtime::Runtime;
 

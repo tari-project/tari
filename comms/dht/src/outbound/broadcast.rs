@@ -544,6 +544,7 @@ mod test {
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             &[],
+            Default::default(),
         );
 
         let other_peer = {

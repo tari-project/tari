@@ -38,11 +38,15 @@ use tari_crypto::tari_utilities::ByteArray;
 
 const LOG_TARGET: &str = "comms::connection_manager::common";
 
+/// The maximum size of the peer's user agent string. If the peer sends a longer string it is truncated.
+const MAX_USER_AGENT_LEN: usize = 100;
+
 pub async fn perform_identity_exchange<'p, P: IntoIterator<Item = &'p ProtocolId>>(
     muxer: &mut Yamux,
     node_identity: &NodeIdentity,
     direction: ConnectionDirection,
     our_supported_protocols: P,
+    user_agent: String,
 ) -> Result<PeerIdentityMsg, ConnectionManagerError>
 {
     let mut control = muxer.get_yamux_control();
@@ -60,7 +64,8 @@ pub async fn perform_identity_exchange<'p, P: IntoIterator<Item = &'p ProtocolId
         "{} substream opened to peer. Performing identity exchange.", direction
     );
 
-    let peer_identity = protocol::identity_exchange(node_identity, direction, our_supported_protocols, stream).await?;
+    let peer_identity =
+        protocol::identity_exchange(node_identity, direction, our_supported_protocols, user_agent, stream).await?;
 
     Ok(peer_identity)
 }
@@ -88,7 +93,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
     peer_manager: &PeerManager,
     known_peer: Option<Peer>,
     authenticated_public_key: CommsPublicKey,
-    peer_identity: PeerIdentityMsg,
+    mut peer_identity: PeerIdentityMsg,
     allow_test_addrs: bool,
 ) -> Result<NodeId, ConnectionManagerError>
 {
@@ -120,6 +125,8 @@ pub async fn validate_and_add_peer_from_peer_identity(
         .map(bytes::Bytes::from)
         .collect::<Vec<_>>();
 
+    peer_identity.user_agent.truncate(MAX_USER_AGENT_LEN);
+
     // Add or update the peer
     let peer = match known_peer {
         Some(mut peer) => {
@@ -133,6 +140,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
             peer.set_offline(false);
             peer.features = PeerFeatures::from_bits_truncate(peer_identity.features);
             peer.supported_protocols = supported_protocols;
+            peer.user_agent = peer_identity.user_agent;
             peer
         },
         None => {
@@ -148,6 +156,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
                 PeerFlags::empty(),
                 PeerFeatures::from_bits_truncate(peer_identity.features),
                 &supported_protocols,
+                peer_identity.user_agent,
             );
             new_peer.connection_stats.set_connection_success();
             new_peer

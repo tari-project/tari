@@ -22,10 +22,12 @@
 
 use crate::{
     peer_manager::{
+        migrations,
         node_id::{NodeDistance, NodeId},
         peer::{Peer, PeerFlags},
         peer_id::PeerId,
         peer_storage::PeerStorage,
+        wrapper::KeyValueWrapper,
         PeerFeatures,
         PeerManagerError,
         PeerQuery,
@@ -34,22 +36,27 @@ use crate::{
 };
 use multiaddr::Multiaddr;
 use std::time::Duration;
-use tari_storage::IterationResult;
+use tari_storage::{lmdb_store::LMDBDatabase, IterationResult};
 use tokio::sync::RwLock;
 
 /// The PeerManager consist of a routing table of previously discovered peers.
-/// It also provides functionality to add, find and delete peers. A subset of peers can also be requested from the
-/// routing table based on the selected Broadcast strategy.
+/// It also provides functionality to add, find and delete peers.
 pub struct PeerManager {
-    peer_storage: RwLock<PeerStorage<CommsDatabase>>,
+    peer_storage: RwLock<PeerStorage<KeyValueWrapper<CommsDatabase>>>,
 }
 
 impl PeerManager {
     /// Constructs a new empty PeerManager
     pub fn new(database: CommsDatabase) -> Result<PeerManager, PeerManagerError> {
+        let storage = PeerStorage::new_indexed(KeyValueWrapper::new(database))?;
         Ok(Self {
-            peer_storage: RwLock::new(PeerStorage::new_indexed(database)?),
+            peer_storage: RwLock::new(storage),
         })
+    }
+
+    /// Migrate the peer database, this only applies to the LMDB database
+    pub fn migrate_lmdb(database: &LMDBDatabase) -> Result<(), PeerManagerError> {
+        migrations::migrate(database).map_err(|err| PeerManagerError::MigrationError(err.to_string()))
     }
 
     pub async fn count(&self) -> usize {
@@ -126,6 +133,7 @@ impl PeerManager {
                     PeerFlags::default(),
                     peer_features,
                     &[],
+                    Default::default(),
                 ))
                 .await?;
 
@@ -286,7 +294,15 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let net_addresses = MultiaddressesWithStats::from("/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap());
-        let mut peer = Peer::new(pk, node_id, net_addresses, PeerFlags::default(), features, &[]);
+        let mut peer = Peer::new(
+            pk,
+            node_id,
+            net_addresses,
+            PeerFlags::default(),
+            features,
+            &[],
+            Default::default(),
+        );
         if ban_flag {
             peer.ban_for(Duration::from_secs(1000));
         }

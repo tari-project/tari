@@ -72,6 +72,7 @@ pub fn make_comms_inbound_message(node_identity: &NodeIdentity, message: Bytes) 
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             &[],
+            Default::default(),
         )),
         message,
     )
@@ -145,6 +146,7 @@ pub fn make_dht_inbound_message(
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             &[],
+            Default::default(),
         )),
         envelope.body,
     )

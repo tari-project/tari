@@ -26,5 +26,5 @@ use rand::{rngs::OsRng, RngCore};
 pub type PeerId = u64;
 
 pub fn generate_peer_key() -> PeerId {
-    OsRng.next_u64()
+    OsRng.next_u64().saturating_sub(1)
 }

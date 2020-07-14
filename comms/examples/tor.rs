@@ -110,6 +110,7 @@ async fn run() -> Result<(), Error> {
             Default::default(),
             PeerFeatures::COMMUNICATION_CLIENT,
             &[],
+            Default::default(),
         ))
         .await?;
 

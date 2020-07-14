@@ -59,7 +59,7 @@ pub struct PeerIdentity {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Peer {
     /// The local id of the peer. If this is None, the peer has never been persisted
-    id: Option<PeerId>,
+    pub(super) id: Option<PeerId>,
     /// Public key of the peer
     pub public_key: CommsPublicKey,
     /// NodeId of the peer
@@ -81,6 +81,8 @@ pub struct Peer {
     pub supported_protocols: Vec<ProtocolId>,
     /// Timestamp of when the peer was added to this nodes peer list
     pub added_at: NaiveDateTime,
+    /// User agent advertised by the peer
+    pub user_agent: String,
 }
 
 impl Peer {
@@ -92,6 +94,7 @@ impl Peer {
         flags: PeerFlags,
         features: PeerFeatures,
         supported_protocols: P,
+        user_agent: String,
     ) -> Peer
     {
         Peer {
@@ -106,6 +109,7 @@ impl Peer {
             connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
             supported_protocols: supported_protocols.into_iter().cloned().collect(),
+            user_agent,
         }
     }
 
@@ -296,7 +300,15 @@ mod test {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk).unwrap();
         let addresses = MultiaddressesWithStats::from("/ip4/123.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap());
-        let mut peer: Peer = Peer::new(pk, node_id, addresses, PeerFlags::default(), PeerFeatures::empty(), &[]);
+        let mut peer: Peer = Peer::new(
+            pk,
+            node_id,
+            addresses,
+            PeerFlags::default(),
+            PeerFeatures::empty(),
+            &[],
+            Default::default(),
+        );
         assert_eq!(peer.is_banned(), false);
         peer.ban_for(Duration::from_millis(std::u64::MAX));
         assert_eq!(peer.is_banned(), true);
@@ -317,6 +329,7 @@ mod test {
             PeerFlags::default(),
             PeerFeatures::empty(),
             &[],
+            Default::default(),
         );
 
         let net_address2 = "/ip4/125.0.0.125/tcp/8000".parse::<Multiaddr>().unwrap();
@@ -366,6 +379,7 @@ mod test {
             PeerFlags::empty(),
             PeerFeatures::empty(),
             &[],
+            Default::default(),
         );
 
         let json = peer.to_json().unwrap();

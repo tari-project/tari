@@ -233,6 +233,7 @@ mod test {
             PeerFlags::default(),
             PeerFeatures::MESSAGE_PROPAGATION,
             &[],
+            Default::default(),
         );
         if ban_flag {
             peer.ban_for(Duration::from_secs(1000));

@@ -202,6 +202,7 @@ where
         let our_supported_protocols = self.our_supported_protocols.clone();
         let allow_test_addresses = self.config.allow_test_addresses;
         let liveness_session_count = self.liveness_session_count.clone();
+        let user_agent = self.config.user_agent.clone();
         let shutdown_signal = self.shutdown_signal.clone();
 
         let inbound_fut = async move {
@@ -216,6 +217,7 @@ where
                         socket,
                         peer_addr,
                         our_supported_protocols,
+                        user_agent,
                         allow_test_addresses,
                     )
                     .await;
@@ -296,6 +298,7 @@ where
         socket: TTransport::Output,
         peer_addr: Multiaddr,
         our_supported_protocols: Vec<ProtocolId>,
+        user_agent: String,
         allow_test_addresses: bool,
     ) -> Result<PeerConnection, ConnectionManagerError>
     {
@@ -329,6 +332,7 @@ where
             &node_identity,
             CONNECTION_DIRECTION,
             &our_supported_protocols,
+            user_agent,
         )
         .await?;
 

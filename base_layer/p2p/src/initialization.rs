@@ -106,6 +106,8 @@ pub struct CommsConfig {
     pub listener_liveness_max_sessions: usize,
     /// CIDR for addresses allowed to enter into liveness check mode on the listener.
     pub listener_liveness_allowlist_cidrs: Vec<String>,
+    /// User agent string for this node
+    pub user_agent: String,
 }
 
 /// Initialize Tari Comms configured for tests
@@ -146,6 +148,7 @@ where
         .with_listener_address(node_identity.public_address())
         .with_listener_liveness_max_sessions(1)
         .with_node_identity(node_identity)
+        .with_user_agent("/test/1.0")
         .with_peer_storage(peer_database)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .with_min_connectivity(1.0)
@@ -204,7 +207,8 @@ where
 {
     let mut builder = CommsBuilder::new()
         .with_protocols(protocols)
-        .with_node_identity(config.node_identity.clone());
+        .with_node_identity(config.node_identity.clone())
+        .with_user_agent(&config.user_agent);
     if config.allow_test_addresses {
         builder = builder.allow_test_addresses();
     }

@@ -80,7 +80,7 @@ use tari_core::{
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_shutdown::Shutdown;
-use tari_test_utils::{collect_stream, random::string};
+use tari_test_utils::collect_stream;
 use tempfile::tempdir;
 use tokio::{runtime::Runtime, time};
 
