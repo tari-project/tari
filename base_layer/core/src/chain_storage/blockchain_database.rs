@@ -376,8 +376,9 @@ where T: BlockchainBackend
         fetch_header(&*db, block_num)
     }
 
-    /// Store the provided set of headers.
-    pub fn insert_headers(&self, headers: Vec<BlockHeader>) -> Result<(), ChainStorageError> {
+    /// Store the provided headers. This function does no validation and assumes the inserted header has been already
+    /// been validated.
+    pub fn insert_valid_headers(&self, headers: Vec<BlockHeader>) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
         insert_headers(&mut db, headers)
     }
@@ -505,7 +506,7 @@ where T: BlockchainBackend
         pos: u32,
         count: u32,
         hist_height: Option<u64>,
-    ) -> Result<Vec<(Vec<u8>, bool)>, ChainStorageError>
+    ) -> Result<Vec<(Hash, bool)>, ChainStorageError>
     {
         let db = self.db_read_access()?;
         db.fetch_mmr_nodes(tree, pos, count, hist_height)
@@ -706,7 +707,9 @@ fn insert_headers<T: BlockchainBackend>(
 ) -> Result<(), ChainStorageError>
 {
     let mut txn = DbTransaction::new();
-    headers.into_iter().for_each(|header| txn.insert_header(header));
+    headers.into_iter().for_each(|header| {
+        txn.insert_header(header);
+    });
     commit(db, txn)
 }
 
@@ -1544,27 +1547,31 @@ fn cleanup_pruned_mode<T: BlockchainBackend>(
 }
 
 fn commit_horizon_state<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>) -> Result<(), ChainStorageError> {
+    let mut txn = DbTransaction::new();
+
+    // Update metadata
     let tip_header = db
         .fetch_last_header()?
         .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve header. Blockchain DB is empty".into()))?;
-    let best_block = tip_header.hash();
-    let accumulated_difficulty =
-        ProofOfWork::new_from_difficulty(&tip_header.pow, ProofOfWork::achieved_difficulty(&tip_header))
-            .total_accumulated_difficulty();
-    let mut txn = DbTransaction::new();
-    // Update metadata
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::ChainHeight,
         MetadataValue::ChainHeight(Some(tip_header.height)),
     ));
+
+    let best_block = tip_header.hash();
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::BestBlock,
         MetadataValue::BestBlock(Some(best_block)),
     ));
+
+    let accumulated_difficulty =
+        ProofOfWork::new_from_difficulty(&tip_header.pow, ProofOfWork::achieved_difficulty(&tip_header))
+            .total_accumulated_difficulty();
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::AccumulatedWork,
         MetadataValue::AccumulatedWork(Some(accumulated_difficulty)),
     ));
+
     // Create horizon state checkpoint
     txn.commit_block();
     commit(db, txn)
