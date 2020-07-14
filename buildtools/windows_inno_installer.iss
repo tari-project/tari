@@ -60,6 +60,8 @@ VersionInfoProductName=tari_base_node
 InfoAfterFile="..\applications\tari_base_node\windows\README.md"
 SignTool=SignTool
 
+PrivilegesRequired=none
+
 [CustomMessages]
 TariGit=Tari on GitHub
 TariWeb=Tari on the web
@@ -96,12 +98,12 @@ Name: "{group}\{#ReadmeName}"; Filename: "{app}\{#ReadmeName}"; WorkingDir: "{ap
 Name: "{group}\{cm:ProgramOnTheWeb,{#MyAppName}}"; Filename: "{#MyAppURL}"
 Name: "{group}\{cm:TariWeb,{#MyAppSupp}}"; Filename: "{#MyAppSuppURL}"
 Name: "{group}\{cm:UninstallProgram,{#MyOrgName} {#MyAppName} - Testnet}"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\{#MyOrgName} {#MyAppName}"; Filename: "{app}\runtime\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
-Name: "{commondesktop}\{#MyOrgName} - {#TorServicesName}"; Filename: "{app}\runtime\{#TorServicesExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userdesktop}\{#MyOrgName} {#MyAppName}"; Filename: "{app}\runtime\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userdesktop}\{#MyOrgName} - {#TorServicesName}"; Filename: "{app}\runtime\{#TorServicesExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: quicklaunchicon
 
-[Setup]
-PrivilegesRequired=admin
+;[Setup]
+;PrivilegesRequired=admin
 
 [Run]
 Filename: "{app}\runtime\install_sqlite.bat"; Description: "Install SQLite"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall 
