@@ -139,12 +139,7 @@ where
         contacts_backend: W,
     ) -> Result<Wallet<T, U, V, W>, WalletError>
     {
-        let database_path = config
-            .comms_config
-            .datastore_path
-            .join(config.comms_config.peer_database_name.clone())
-            .with_extension("sqlite3");
-        let db = WalletDatabase::new(wallet_backend, Some(database_path));
+        let db = WalletDatabase::new(wallet_backend);
 
         #[cfg(feature = "test_harness")]
         let transaction_backend_handle = transaction_backend.clone();
@@ -191,10 +186,10 @@ where
             })
             .expect("Service initialization failed");
 
-        let mut output_manager_handle = handles
+        let output_manager_handle = handles
             .get_handle::<OutputManagerHandle>()
             .expect("Could not get Output Manager Service Handle");
-        let mut transaction_service_handle = handles
+        let transaction_service_handle = handles
             .get_handle::<TransactionServiceHandle>()
             .expect("Could not get Transaction Service Handle");
         let contacts_handle = handles
