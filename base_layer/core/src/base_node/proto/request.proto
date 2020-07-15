@@ -2,6 +2,7 @@ syntax = "proto3";
 
 import "block.proto";
 import "mmr_tree.proto";
+import "types.proto"; 
 
 package tari.base_node;
 
@@ -37,6 +38,12 @@ message BaseNodeServiceRequest {
         FetchMmrNodes fetch_mmr_nodes = 14;
         // Indicates a FetchTxos request.
         HashOutputs fetch_txos = 15;
+        // Indicates a Fetch block with kernels request
+        Signatures fetch_blocks_with_kernels = 16;
+        // Indicates a Fetch block with kernels request
+        Commitments fetch_blocks_with_stxos = 17;
+        // Indicates a Fetch block with kernels request
+        Commitments fetch_blocks_with_utxos = 18;
     }
 }
 
@@ -46,6 +53,14 @@ message BlockHeights {
 
 message HashOutputs {
     repeated bytes outputs = 1;
+}
+
+message Signatures {
+    repeated tari.types.Signature sigs = 1;
+}
+
+message Commitments{
+    repeated tari.types.Commitment commitments = 1;
 }
 
 message FetchHeadersAfter {

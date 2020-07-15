@@ -19,9 +19,9 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader},
+    chain_storage::error::ChainStorageError,
     proof_of_work::Difficulty,
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
@@ -34,7 +34,10 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 use strum_macros::Display;
-use tari_crypto::tari_utilities::{hex::to_hex, Hashable};
+use tari_crypto::tari_utilities::{
+    hex::{to_hex, Hex},
+    Hashable,
+};
 
 #[derive(Debug)]
 pub struct DbTransaction {
@@ -235,6 +238,32 @@ pub enum DbKey {
     SpentOutput(HashOutput),
     TransactionKernel(HashOutput),
     OrphanBlock(HashOutput),
+}
+
+impl DbKey {
+    pub fn to_value_not_found_error(self) -> ChainStorageError {
+        let (entity, field, value) = match self {
+            DbKey::Metadata(MetadataKey::ChainHeight) => {
+                ("MetaData".to_string(), "ChainHeight".to_string(), "".to_string())
+            },
+            DbKey::Metadata(MetadataKey::AccumulatedWork) => {
+                ("MetaData".to_string(), "Accumulated work".to_string(), "".to_string())
+            },
+            DbKey::Metadata(MetadataKey::PruningHorizon) => {
+                ("MetaData".to_string(), "Pruning horizon".to_string(), "".to_string())
+            },
+            DbKey::Metadata(MetadataKey::BestBlock) => {
+                ("MetaData".to_string(), "Best block".to_string(), "".to_string())
+            },
+            DbKey::BlockHeader(v) => ("BlockHeader".to_string(), "Height".to_string(), v.to_string()),
+            DbKey::BlockHash(v) => ("Block".to_string(), "Hash".to_string(), v.to_hex()),
+            DbKey::UnspentOutput(v) => ("Utxo".to_string(), "Hash".to_string(), v.to_hex()),
+            DbKey::SpentOutput(v) => ("Stxo".to_string(), "Hash".to_string(), v.to_hex()),
+            DbKey::TransactionKernel(v) => ("Kernel".to_string(), "Hash".to_string(), v.to_hex()),
+            DbKey::OrphanBlock(v) => ("Orphan".to_string(), "Hash".to_string(), v.to_hex()),
+        };
+        ChainStorageError::ValueNotFound { entity, field, value }
+    }
 }
 
 #[derive(Debug)]
