@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    chain_storage::{db_transaction::DbKey, MmrTree},
-    validation::ValidationError,
-};
+use crate::{chain_storage::MmrTree, validation::ValidationError};
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 use thiserror::Error;
 
@@ -53,8 +50,12 @@ pub enum ChainStorageError {
     BeyondPruningHorizon,
     #[error("A parameter to the request was invalid")]
     InvalidQuery(String),
-    #[error("The requested value '{0}' was not found in the database")]
-    ValueNotFound(DbKey),
+    #[error("The requested {entity} was not found via {field}:{value} in the database")]
+    ValueNotFound {
+        entity: String,
+        field: String,
+        value: String,
+    },
     #[error("MMR error: {source}")]
     MerkleMountainRangeError {
         #[from]

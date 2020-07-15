@@ -71,6 +71,7 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroTari},
         transaction::OutputFeatures,
+        types::{Commitment, PrivateKey, PublicKey, Signature},
     },
 };
 use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
@@ -105,6 +106,9 @@ pub enum BaseNodeCommand {
     CalcTiming,
     DiscoverPeer,
     GetBlock,
+    SearchUtxo,
+    SearchKernel,
+    SearchStxo,
     GetMempoolStats,
     GetMempoolState,
     Whoami,
@@ -312,6 +316,15 @@ impl Parser {
             GetBlock => {
                 self.process_get_block(args);
             },
+            SearchUtxo => {
+                self.process_search_utxo(args);
+            },
+            SearchKernel => {
+                self.process_search_kernel(args);
+            },
+            SearchStxo => {
+                self.process_search_stxo(args);
+            },
             GetMempoolStats => {
                 self.process_get_mempool_stats();
             },
@@ -424,6 +437,27 @@ impl Parser {
                 println!(
                     "[format] Optional. Supported options are 'json' and 'text'. 'text' is the default if omitted."
                 );
+            },
+            SearchUtxo => {
+                println!(
+                    "This will search the main chain for the utxo. If the utxo is found, it will print out the block \
+                     it was found in."
+                );
+                println!("search-utxo [hex of utxo]");
+            },
+            SearchKernel => {
+                println!(
+                    "This will search the main chain for the kernel. If the kernel is found, it will print out the \
+                     block it was found in."
+                );
+                println!("search-kernel [hex of kernel]");
+            },
+            SearchStxo => {
+                println!(
+                    "This will search the main chain for the stxo. If the stxo is found, it will print out the block \
+                     it was found in."
+                );
+                println!("search-stxo [hex of stxo]");
             },
             GetMempoolStats => {
                 println!("Retrieves your mempools stats");
@@ -766,6 +800,135 @@ impl Parser {
                             .unwrap_or("Error deserializing block".into())
                     ),
                     (None, _) => println!("Block not found at height {}", height),
+                },
+            };
+        });
+    }
+
+    /// Function to process the search utxo command
+    fn process_search_utxo<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        // let command_arg = args.take(4).collect::<Vec<&str>>();
+        let hex = args.next();
+        if hex.is_none() {
+            self.print_help("search-utxo".split(" "));
+            return;
+        }
+        let commitment = match Commitment::from_hex(&hex.unwrap().to_string()) {
+            Ok(v) => v,
+            _ => {
+                println!("Invalid commitment provided.");
+                self.print_help("search-utxo".split(" "));
+                return;
+            },
+        };
+        let mut handler = self.node_service.clone();
+        self.executor.spawn(async move {
+            match handler.get_blocks_with_utxos(vec![commitment.clone()]).await {
+                Err(err) => {
+                    println!("Failed to retrieve blocks: {:?}", err);
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error communicating with local base node: {:?}", err,
+                    );
+                    return;
+                },
+                Ok(mut data) => match data.pop() {
+                    Some(v) => println!("{}", v.block),
+                    _ => println!(
+                        "Pruned node: utxo found, but lock not found for utxo commitment {}",
+                        commitment.to_hex()
+                    ),
+                },
+            };
+        });
+    }
+
+    /// Function to process the search stxo command
+    fn process_search_stxo<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        // let command_arg = args.take(4).collect::<Vec<&str>>();
+        let hex = args.next();
+        if hex.is_none() {
+            self.print_help("search-stxo".split(" "));
+            return;
+        }
+        let commitment = match Commitment::from_hex(&hex.unwrap().to_string()) {
+            Ok(v) => v,
+            _ => {
+                println!("Invalid commitment provided.");
+                self.print_help("search-stxo".split(" "));
+                return;
+            },
+        };
+        let mut handler = self.node_service.clone();
+        self.executor.spawn(async move {
+            match handler.get_blocks_with_stxos(vec![commitment.clone()]).await {
+                Err(err) => {
+                    println!("Failed to retrieve blocks: {:?}", err);
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error communicating with local base node: {:?}", err,
+                    );
+                    return;
+                },
+                Ok(mut data) => match data.pop() {
+                    Some(v) => println!("{}", v.block),
+                    _ => println!(
+                        "Pruned node: stxo found, but block not found for stxo commitment {}",
+                        commitment.to_hex()
+                    ),
+                },
+            };
+        });
+    }
+
+    /// Function to process the search kernel command
+    fn process_search_kernel<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        // let command_arg = args.take(4).collect::<Vec<&str>>();
+        let hex = args.next();
+        if hex.is_none() {
+            self.print_help("search-kernel".split(" "));
+            return;
+        }
+        let public_nonce = match PublicKey::from_hex(&hex.unwrap().to_string()) {
+            Ok(v) => v,
+            _ => {
+                println!("Invalid public nonce provided.");
+                self.print_help("search-kernel".split(" "));
+                return;
+            },
+        };
+
+        let hex = args.next();
+        if hex.is_none() {
+            self.print_help("search-kernel".split(" "));
+            return;
+        }
+        let signature = match PrivateKey::from_hex(&hex.unwrap().to_string()) {
+            Ok(v) => v,
+            _ => {
+                println!("Invalid signature provided.");
+                self.print_help("search-kernel".split(" "));
+                return;
+            },
+        };
+        let kernel = Signature::new(public_nonce, signature);
+        let mut handler = self.node_service.clone();
+        self.executor.spawn(async move {
+            match handler.get_blocks_with_kernels(vec![kernel.clone()]).await {
+                Err(err) => {
+                    println!("Failed to retrieve blocks: {:?}", err);
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error communicating with local base node: {:?}", err,
+                    );
+                    return;
+                },
+                Ok(mut data) => match data.pop() {
+                    Some(v) => println!("{}", v.block),
+                    _ => println!(
+                        "Pruned node: kernel found, but block not found for kernel signature {}",
+                        kernel.get_signature().to_hex()
+                    ),
                 },
             };
         });

@@ -33,7 +33,7 @@ use crate::{
     },
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
-        types::HashOutput,
+        types::{Commitment, HashOutput, Signature},
     },
 };
 use log::*;
@@ -116,6 +116,9 @@ make_async!(add_block(block: Block) -> BlockAddResult, "add_block");
 make_async!(calculate_mmr_roots(template: NewBlockTemplate) -> Block, "calculate_mmr_roots");
 make_async!(fetch_block(height: u64) -> HistoricalBlock, "fetch_block");
 make_async!(fetch_block_with_hash(hash: HashOutput) -> Option<HistoricalBlock>, "fetch_block_with_hash");
+make_async!(fetch_block_with_kernel(excess_sig: Signature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
+make_async!(fetch_block_with_stxo(commitment: Commitment) -> Option<HistoricalBlock>, "fetch_block_with_stxo");
+make_async!(fetch_block_with_utxo(commitment: Commitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
 make_async!(block_exists(block_hash: BlockHash) -> bool, "block_exists");
 make_async!(rewind_to_height(height: u64) -> Vec<Block>, "rewind_to_height");
 make_async!(fetch_mmr_proof(tree: MmrTree, pos: usize) -> MerkleProof, "fetch_mmr_proof");

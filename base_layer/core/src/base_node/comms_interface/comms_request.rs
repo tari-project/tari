@@ -24,7 +24,7 @@ use crate::{
     blocks::NewBlockTemplate,
     chain_storage::MmrTree,
     proof_of_work::PowAlgorithm,
-    transactions::types::HashOutput,
+    transactions::types::{Commitment, HashOutput, Signature},
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
@@ -49,6 +49,9 @@ pub enum NodeCommsRequest {
     FetchTxos(Vec<HashOutput>),
     FetchBlocks(Vec<u64>),
     FetchBlocksWithHashes(Vec<HashOutput>),
+    FetchBlocksWithKernels(Vec<Signature>),
+    FetchBlocksWithStxos(Vec<Commitment>),
+    FetchBlocksWithUtxos(Vec<Commitment>),
     GetNewBlockTemplate(PowAlgorithm),
     GetNewBlock(NewBlockTemplate),
     GetTargetDifficulty(PowAlgorithm),
@@ -68,6 +71,11 @@ impl Display for NodeCommsRequest {
             NodeCommsRequest::FetchTxos(v) => f.write_str(&format!("FetchTxos (n={})", v.len())),
             NodeCommsRequest::FetchBlocks(v) => f.write_str(&format!("FetchBlocks (n={})", v.len())),
             NodeCommsRequest::FetchBlocksWithHashes(v) => f.write_str(&format!("FetchBlocks (n={})", v.len())),
+            NodeCommsRequest::FetchBlocksWithKernels(v) => {
+                f.write_str(&format!("FetchBlocksWithKernels (n={})", v.len()))
+            },
+            NodeCommsRequest::FetchBlocksWithStxos(v) => f.write_str(&format!("FetchBlocksWithStxos (n={})", v.len())),
+            NodeCommsRequest::FetchBlocksWithUtxos(v) => f.write_str(&format!("FetchBlocksWithUtxos (n={})", v.len())),
             NodeCommsRequest::GetNewBlockTemplate(algo) => f.write_str(&format!("GetNewBlockTemplate ({})", algo)),
             NodeCommsRequest::GetNewBlock(b) => f.write_str(&format!("GetNewBlock (Block Height={})", b.header.height)),
             NodeCommsRequest::GetTargetDifficulty(algo) => f.write_str(&format!("GetTargetDifficulty ({})", algo)),

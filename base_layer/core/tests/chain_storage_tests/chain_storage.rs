@@ -107,7 +107,7 @@ fn fetch_nonexistent_kernel() {
     let h = vec![0u8; 32];
     assert_eq!(
         store.fetch_kernel(h.clone()),
-        Err(ChainStorageError::ValueNotFound(DbKey::TransactionKernel(h)))
+        Err(DbKey::TransactionKernel(h).to_value_not_found_error())
     );
 }
 
@@ -133,7 +133,7 @@ fn fetch_nonexistent_header() {
     let store = create_mem_db(&consensus_manager);
     assert_eq!(
         store.fetch_header(1),
-        Err(ChainStorageError::ValueNotFound(DbKey::BlockHeader(1)))
+        Err(DbKey::BlockHeader(1).to_value_not_found_error())
     );
 }
 
@@ -152,7 +152,7 @@ fn insert_and_fetch_header() {
     store.fetch_header(0).unwrap();
     assert_eq!(
         store.fetch_header(1),
-        Err(ChainStorageError::ValueNotFound(DbKey::BlockHeader(1)))
+        Err(DbKey::BlockHeader(1).to_value_not_found_error())
     );
     assert_eq!(store.fetch_header(42), Ok(header1));
     assert_eq!(store.fetch_header(43), Ok(header2));
@@ -868,6 +868,52 @@ fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
     assert_eq!(*store.fetch_block_with_hash(hash0).unwrap().unwrap().block(), block0);
     assert_eq!(*store.fetch_block_with_hash(hash1).unwrap().unwrap().block(), block1);
     assert_eq!(*store.fetch_block_with_hash(hash2).unwrap().unwrap().block(), orphan);
+}
+
+#[test]
+fn store_and_retrieve_blocks_from_contents() {
+    let network = Network::LocalNet;
+    let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+
+    // Block 1
+    let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![6 * T, 3 * T])];
+    assert_eq!(
+        generate_new_block(
+            &mut db,
+            &mut blocks,
+            &mut outputs,
+            schema,
+            &consensus_manager.consensus_constants(),
+        ),
+        Ok(BlockAddResult::Ok)
+    );
+    // Block 2
+    let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
+    assert_eq!(
+        generate_new_block(
+            &mut db,
+            &mut blocks,
+            &mut outputs,
+            schema,
+            &consensus_manager.consensus_constants(),
+        ),
+        Ok(BlockAddResult::Ok)
+    );
+    let kernel_sig = blocks[1].body.kernels()[0].clone().excess_sig;
+    let stxo_commit = blocks[1].body.inputs()[0].clone().commitment;
+    let utxo_commit = blocks[1].body.outputs()[0].clone().commitment;
+    assert_eq!(
+        *db.fetch_block_with_kernel(kernel_sig).unwrap().unwrap().block(),
+        blocks[1]
+    );
+    assert_eq!(
+        *db.fetch_block_with_stxo(stxo_commit).unwrap().unwrap().block(),
+        blocks[1]
+    );
+    assert_eq!(
+        *db.fetch_block_with_utxo(utxo_commit).unwrap().unwrap().block(),
+        blocks[1]
+    );
 }
 
 #[test]

@@ -31,7 +31,7 @@ use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainMetadata, HistoricalBlock, MmrTree},
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::types::HashOutput,
+    transactions::types::{Commitment, HashOutput, Signature},
 };
 use futures::{stream::Fuse, StreamExt};
 use std::sync::Arc;
@@ -171,6 +171,54 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::MmrNodes(added, deleted) => Ok((added, deleted)),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Fetches the blocks with the specified utxo commitments
+    pub async fn get_blocks_with_utxos(
+        &mut self,
+        commitments: Vec<Commitment>,
+    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>
+    {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchBlocksWithUtxos(commitments))
+            .await??
+        {
+            NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Fetches the blocks with the specified stxo commitments
+    pub async fn get_blocks_with_stxos(
+        &mut self,
+        commitments: Vec<Commitment>,
+    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>
+    {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchBlocksWithStxos(commitments))
+            .await??
+        {
+            NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Fetches the blocks with the specified kernel signatures commitments
+    pub async fn get_blocks_with_kernels(
+        &mut self,
+        kernels: Vec<Signature>,
+    ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>
+    {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchBlocksWithKernels(kernels))
+            .await??
+        {
+            NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
