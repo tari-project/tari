@@ -7,13 +7,13 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_utilities = "^0.1"
+tari_utilities = "^0.2"
 serde = { version = "1.0.97", features = ["derive"] }
 serde_json = "1.0"
 rand = "0.7.2"
 
 [dependencies.tari_core]
-version = "^0.1"
+version = "^0.2"
 path = "../../base_layer/core/"
 default-features = false
 features = ["transactions", "avx2"]
