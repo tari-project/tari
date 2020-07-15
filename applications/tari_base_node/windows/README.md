@@ -90,7 +90,7 @@ Notes:
     setx /m USERNAME %USERNAME%
     ```
   
-    in an Administrator command console.
+    in a command console.
     
     or
     
@@ -107,7 +107,7 @@ Notes:
     setx /m USERNAME %USERNAME%
     ```
   
-    in an Administrator command console.
+    in a command console.
     
     or
     

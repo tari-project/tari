@@ -1,7 +1,6 @@
 @rem Control variables
 @rem - Tor Services {Note: `powershell` cannot `expand-archive` to `C:\Program Files (x86)`}
 @rem   - Download 'Windows Expert Bundle' at https://www.torproject.org/download/tor/
-https://www.torproject.org/dist/torbrowser/9.5/tor-win32-0.4.3.5.zip
 @set tor_version=9.5
 @set tor_zip=tor-win32-0.4.3.5.zip
 @set tor_folder=%USERPROFILE%\.tor_services
@@ -9,10 +8,6 @@ https://www.torproject.org/dist/torbrowser/9.5/tor-win32-0.4.3.5.zip
 
 @echo Downloading and installing Tor Services...
 @echo.
-
-@rem Determine if running as administrator
-@call :TEST_ADMINISTRATOR
-@if [%errorlevel%]==[10101] goto :END
 
 @rem Install dependencies
 @call :INSTALL_TOR_SERVICES
@@ -41,26 +36,11 @@ https://www.torproject.org/dist/torbrowser/9.5/tor-win32-0.4.3.5.zip
 )
 @goto :eof
 
-:TEST_ADMINISTRATOR
-@echo.
-@set guid=%random%%random%-%random%-%random%-%random%-%random%%random%%random%
-@mkdir %WINDIR%\%guid%>nul 2>&1
-@rmdir %WINDIR%\%guid%>nul 2>&1
-@if %ERRORLEVEL% equ 0 (
-    @echo Administrator OK
-    @echo.
-) else (
-    @echo Please run as administrator {hint: Right click, then "Run as administrator"}
-    @echo.
-    @exit /b 10101
-)
-@goto :eof
-
 :END
 @echo.
 @if not [%1]==[NO_PAUSE] (
     @pause
 ) else (
-    @ping -n 3 localhost>nul
+    @ping -n 5 localhost>nul
 )
 @@if [%errorlevel%]==[10101] exit
