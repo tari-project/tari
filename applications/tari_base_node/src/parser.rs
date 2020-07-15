@@ -443,21 +443,22 @@ impl Parser {
                     "This will search the main chain for the utxo. If the utxo is found, it will print out the block \
                      it was found in."
                 );
-                println!("search-utxo [hex of utxo]");
+                println!("search-utxo [hex of commitment of the utxo]");
             },
             SearchKernel => {
                 println!(
                     "This will search the main chain for the kernel. If the kernel is found, it will print out the \
                      block it was found in."
                 );
-                println!("search-kernel [hex of kernel]");
+                println!("This searches for the kernel via the excess signature");
+                println!("search-kernel [hex of nonce] [Hex of signature]");
             },
             SearchStxo => {
                 println!(
                     "This will search the main chain for the stxo. If the stxo is found, it will print out the block \
                      it was found in."
                 );
-                println!("search-stxo [hex of stxo]");
+                println!("search-stxo [hex of commitment of the stxo]");
             },
             GetMempoolStats => {
                 println!("Retrieves your mempools stats");
