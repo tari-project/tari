@@ -3577,11 +3577,10 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
                 // classified as Pending Transactions. In order to support this logic without impacting the practical
                 // definitions and storage of a MimbleWimble CompletedTransaction we will add those transaction to the
                 // list here in the FFI interface
-                let my_public_key = (*wallet).comms.node_identity().public_key().clone();
                 for ct in completed_txs
                     .values()
                     .filter(|ct| ct.status == TransactionStatus::Completed || ct.status == TransactionStatus::Broadcast)
-                    .filter(|ct| ct.source_public_key == my_public_key)
+                    .filter(|ct| ct.direction == TransactionDirection::Outbound)
                 {
                     pending.push(OutboundTransaction::from(ct.clone()));
                 }
