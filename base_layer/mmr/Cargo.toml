@@ -14,14 +14,14 @@ digest = "0.8.0"
 log = "0.4"
 serde = { version = "1.0.97", features = ["derive"] }
 croaring =  "=0.4.5"
-tari_storage = { path = "../../infrastructure/storage", version = "^0.1" }
+tari_storage = { version = "^0.2", path = "../../infrastructure/storage" }
 
 [dev-dependencies]
 criterion = "0.2"
 rand="0.7.0"
 blake2 = "0.8.0"
 tari_infra_derive= { path = "../../infrastructure/derive", version = "^0.0" }
-tari_crypto = { version = "^0.4" }
+tari_crypto = { version = "^0.5" }
 serde_json = "1.0"
 bincode = "1.1"
 [lib]
