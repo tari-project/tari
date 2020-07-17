@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod blocks;
-pub mod grpc_conversions;
-pub mod helpers;
-pub mod server;
+mod blocks;
+mod requests;
+mod transactions;
+
+pub use blocks::*;
+pub use requests::*;
+pub use transactions::*;
