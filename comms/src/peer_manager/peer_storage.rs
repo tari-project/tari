@@ -415,17 +415,16 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 
     /// Unban the peer
-    pub fn unban_peer(&mut self, public_key: &CommsPublicKey) -> Result<NodeId, PeerManagerError> {
+    pub fn unban_peer(&mut self, node_id: &NodeId) -> Result<(), PeerManagerError> {
         let peer_key = *self
-            .public_key_index
-            .get(&public_key)
+            .node_id_index
+            .get(&node_id)
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
         let mut peer = self
             .peer_db
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .expect("public_key_index is out of sync with peer db");
-        let node_id = peer.node_id.clone();
 
         if peer.banned_until.is_some() {
             peer.unban();
@@ -433,7 +432,7 @@ where DS: KeyValueStore<PeerId, Peer>
                 .insert(peer_key, peer)
                 .map_err(PeerManagerError::DatabaseError)?;
         }
-        Ok(node_id)
+        Ok(())
     }
 
     /// Ban the peer for the given duration

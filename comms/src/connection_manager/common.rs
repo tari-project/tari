@@ -55,7 +55,10 @@ pub async fn perform_identity_exchange<'p, P: IntoIterator<Item = &'p ProtocolId
         ConnectionDirection::Outbound => control.open_stream().await?,
     };
 
-    debug!(target: LOG_TARGET, "{} substream opened to peer", direction);
+    debug!(
+        target: LOG_TARGET,
+        "{} substream opened to peer. Performing identity exchange.", direction
+    );
 
     let peer_identity = protocol::identity_exchange(node_identity, direction, our_supported_protocols, stream).await?;
 

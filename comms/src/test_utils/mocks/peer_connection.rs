@@ -145,8 +145,8 @@ impl PeerConnectionMockState {
         self.mux_incoming.lock().await.next().await
     }
 
-    pub async fn disconnect(&self) {
-        self.mux_control.lock().await.close().await.unwrap();
+    pub async fn disconnect(&self) -> Result<(), PeerConnectionError> {
+        self.mux_control.lock().await.close().await.map_err(Into::into)
     }
 }
 
@@ -187,8 +187,7 @@ impl PeerConnectionMock {
                 },
             },
             Disconnect(_, reply_tx) => {
-                self.state.disconnect().await;
-                reply_tx.send(()).unwrap();
+                reply_tx.send(self.state.disconnect().await).unwrap();
             },
         }
     }

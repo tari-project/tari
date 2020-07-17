@@ -24,10 +24,11 @@ use crate::{
     connection_manager::{ConnectionManagerError, PeerConnection},
     connectivity::{ConnectivityEvent, ConnectivityRequest, ConnectivityRequester},
     peer_manager::NodeId,
+    runtime::task,
 };
 use futures::{channel::mpsc, lock::Mutex, stream::Fuse, StreamExt};
 use std::{collections::HashMap, sync::Arc};
-use tokio::{sync::broadcast, task};
+use tokio::sync::broadcast;
 
 pub fn create_connectivity_mock() -> (ConnectivityRequester, ConnectivityManagerMock) {
     let (tx, rx) = mpsc::channel(10);
@@ -141,7 +142,7 @@ impl ConnectivityManagerMock {
                         .ok_or_else(|| ConnectionManagerError::DialConnectFailedAllAddresses),
                 );
             },
-            GetConnectivityStatus(_) => {},
+            GetConnectivityStatus(_) => unimplemented!(),
             AddManagedPeers(peers) => {
                 // TODO: we should not have to implement behaviour of the actor in the mock
                 //       but should rather have a _good_ way to check the call to the mock
@@ -160,11 +161,15 @@ impl ConnectivityManagerMock {
                 }
             },
             SelectConnections(_, reply_tx) => {
-                let _ = reply_tx.send(Ok(self.state.get_selected_connections().await));
+                reply_tx.send(Ok(self.state.get_selected_connections().await)).unwrap();
             },
-            GetConnection(_, _) => {},
-            GetAllConnectionStates(_) => {},
-            BanPeer(_, _) => {},
+            GetConnection(node_id, reply_tx) => {
+                reply_tx
+                    .send(self.state.active_conns.lock().await.get(&node_id).cloned())
+                    .unwrap();
+            },
+            GetAllConnectionStates(_) => unimplemented!(),
+            BanPeer(_, _) => unimplemented!(),
         }
     }
 }

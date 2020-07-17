@@ -95,17 +95,6 @@ pub enum ConnectivityRequest {
     BanPeer(NodeId, Duration),
 }
 
-impl ConnectivitySelection {
-    pub fn random_nodes(n: usize, exclude: Vec<NodeId>) -> Self {
-        ConnectivitySelection::RandomNodes(n, exclude)
-    }
-
-    /// Select `n` peer connections ordered by closeness to `node_id`
-    pub fn closest_to(node_id: NodeId, n: usize, exclude: Vec<NodeId>) -> Self {
-        ConnectivitySelection::ClosestTo(Box::new(node_id), n, exclude)
-    }
-}
-
 #[derive(Clone)]
 pub struct ConnectivityRequester {
     sender: mpsc::Sender<ConnectivityRequest>,

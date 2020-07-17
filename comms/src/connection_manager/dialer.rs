@@ -41,7 +41,7 @@ use crate::{
 use futures::{
     channel::{mpsc, oneshot},
     future,
-    future::{BoxFuture, Either},
+    future::{BoxFuture, Either, FusedFuture},
     pin_mut,
     stream::{Fuse, FuturesUnordered},
     AsyncRead,
@@ -299,7 +299,7 @@ where
                             },
                         };
 
-                    let upgrade_fut = Self::perform_socket_upgrade_procedure(
+                    let result = Self::perform_socket_upgrade_procedure(
                         peer_manager,
                         node_identity,
                         socket,
@@ -308,19 +308,11 @@ where
                         conn_man_notifier,
                         supported_protocols,
                         allow_test_addresses,
-                    );
+                        cancel_signal,
+                    )
+                    .await;
 
-                    futures::pin_mut!(upgrade_fut);
-                    let either = future::select(upgrade_fut, cancel_signal).await;
-
-                    match either {
-                        Either::Left((result, _)) => (dial_state, result),
-                        //     Dial cancel was triggered
-                        Either::Right(_) => {
-                            debug!(target: LOG_TARGET, "Dial was cancelled");
-                            (dial_state, Err(ConnectionManagerError::DialCancelled))
-                        },
-                    }
+                    (dial_state, result)
                 },
                 Err(err) => (dial_state, Err(err)),
             }
@@ -355,6 +347,7 @@ where
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
         our_supported_protocols: Vec<ProtocolId>,
         allow_test_addresses: bool,
+        cancel_signal: ShutdownSignal,
     ) -> Result<PeerConnection, ConnectionManagerError>
     {
         static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Outbound;
@@ -367,6 +360,9 @@ where
             target: LOG_TARGET,
             "Starting peer identity exchange for peer with public key '{}'", authenticated_public_key
         );
+        if cancel_signal.is_terminated() {
+            return Err(ConnectionManagerError::DialCancelled);
+        }
 
         let peer_identity = common::perform_identity_exchange(
             &mut muxer,
@@ -375,6 +371,10 @@ where
             &our_supported_protocols,
         )
         .await?;
+        if cancel_signal.is_terminated() {
+            muxer.get_yamux_control().close().await?;
+            return Err(ConnectionManagerError::DialCancelled);
+        }
 
         let features = PeerFeatures::from_bits_truncate(peer_identity.features);
         trace!(
@@ -396,6 +396,11 @@ where
             allow_test_addresses,
         )
         .await?;
+
+        if cancel_signal.is_terminated() {
+            muxer.get_yamux_control().close().await?;
+            return Err(ConnectionManagerError::DialCancelled);
+        }
 
         debug!(
             target: LOG_TARGET,

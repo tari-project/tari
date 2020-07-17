@@ -22,6 +22,7 @@
 
 use crate::{
     multiaddr::Multiaddr,
+    runtime::task,
     socks,
     tor::{
         control_client::{
@@ -43,7 +44,7 @@ use log::*;
 use std::{net::SocketAddr, time::Duration};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use thiserror::Error;
-use tokio::{sync::broadcast, task, time};
+use tokio::{sync::broadcast, time};
 
 const LOG_TARGET: &str = "comms::tor::hidden_service_controller";
 

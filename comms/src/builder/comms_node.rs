@@ -297,6 +297,11 @@ impl CommsNode {
         Arc::clone(&self.node_identity)
     }
 
+    /// Return a reference to the NodeIdentity
+    pub fn node_identity_ref(&self) -> &NodeIdentity {
+        &self.node_identity
+    }
+
     /// Return the Ip/Tcp address that this node is listening on
     pub fn listening_address(&self) -> &Multiaddr {
         &self.listening_addr
@@ -348,6 +353,7 @@ fn initialize_messaging(
     let (inbound_message_tx, inbound_message_rx) = mpsc::channel(consts::INBOUND_MESSAGE_BUFFER_SIZE);
     let (event_tx, _) = broadcast::channel(consts::MESSAGING_EVENTS_BUFFER_SIZE);
     let messaging = MessagingProtocol::new(
+        Default::default(),
         connection_manager_requester,
         peer_manager,
         node_identity,

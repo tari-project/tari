@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::{event::TorControlEvent, parsers, response::ResponseLine, LOG_TARGET};
-use crate::compat::IoCompat;
+use crate::{compat::IoCompat, runtime::task};
 use futures::{channel::mpsc, future, future::Either, AsyncRead, AsyncWrite, SinkExt, Stream, StreamExt};
 use log::*;
 use std::fmt;
-use tokio::{sync::broadcast, task};
+use tokio::sync::broadcast;
 use tokio_util::codec::{Framed, LinesCodec};
 
 pub fn spawn_monitor<TSocket>(

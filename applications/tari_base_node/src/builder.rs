@@ -263,7 +263,6 @@ pub struct BaseNodeContext<B: BlockchainBackend> {
     base_node_comms: CommsNode,
     base_node_dht: Dht,
     wallet_comms: CommsNode,
-    wallet_dht: Dht,
     base_node_handles: Arc<ServiceHandles>,
     wallet_handles: Arc<ServiceHandles>,
     node: BaseNodeStateMachine<B>,
@@ -514,6 +513,11 @@ where
     let (base_node_comms, base_node_dht) =
         setup_base_node_comms(base_node_identity, config, publisher, protocols).await?;
     base_node_comms
+        .peer_manager()
+        .add_peer(wallet_node_identity.to_peer())
+        .await
+        .map_err(|err| err.to_string())?;
+    base_node_comms
         .connectivity()
         .add_managed_peers(vec![wallet_node_identity.node_id().clone()])
         .await
@@ -545,6 +549,11 @@ where
         base_node_comms.node_identity().to_peer(),
     )
     .await?;
+    wallet_comms
+        .connectivity()
+        .add_managed_peers(vec![base_node_comms.node_identity().node_id().clone()])
+        .await
+        .map_err(|err| err.to_string())?;
 
     task::spawn(sync_peers(
         base_node_comms.subscribe_connection_manager_events(),
@@ -657,7 +666,6 @@ where
         base_node_comms,
         base_node_dht,
         wallet_comms,
-        wallet_dht,
         base_node_handles,
         wallet_handles,
         node,

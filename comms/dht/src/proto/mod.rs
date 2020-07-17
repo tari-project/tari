@@ -63,14 +63,6 @@ impl envelope::Network {
     }
 }
 
-//---------------------------------- RejectMessage --------------------------------------------//
-
-impl fmt::Display for dht::RejectMessage {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "RejectMessage(Reason = {})", self.reason)
-    }
-}
-
 //---------------------------------- JoinMessage --------------------------------------------//
 
 impl<T: AsRef<NodeIdentity>> From<T> for JoinMessage {

@@ -301,7 +301,7 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
     let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
         &mut runtime,
         alice_node_identity.clone(),
-        vec![bob_node_identity.clone()],
+        vec![],
         factories.clone(),
         alice_backend,
         database_path.clone(),

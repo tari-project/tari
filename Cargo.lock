@@ -3679,7 +3679,6 @@ dependencies = [
  "lmdb-zero",
  "log",
  "log4rs",
- "parity-multiaddr",
  "prost",
  "rand 0.7.3",
  "serde 1.0.114",

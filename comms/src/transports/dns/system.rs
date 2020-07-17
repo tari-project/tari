@@ -23,6 +23,7 @@
 use super::{DnsResolver, DnsResolverError};
 use crate::{
     multiaddr::{Multiaddr, Protocol},
+    runtime::task::spawn_blocking,
     transports::dns::common,
 };
 use futures::{future, future::BoxFuture, FutureExt};
@@ -31,7 +32,6 @@ use std::{
     fmt::Display,
     net::{SocketAddr, ToSocketAddrs},
 };
-use tokio::task::spawn_blocking;
 
 const LOG_TARGET: &str = "comms::dns::system_resolver";
 

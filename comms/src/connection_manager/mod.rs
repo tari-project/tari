@@ -40,7 +40,7 @@ mod error;
 pub use error::{ConnectionManagerError, PeerConnectionError};
 
 mod peer_connection;
-pub use peer_connection::{NegotiatedSubstream, PeerConnection, PeerConnectionRequest};
+pub use peer_connection::{ConnectionId, NegotiatedSubstream, PeerConnection, PeerConnectionRequest};
 
 mod liveness;
 mod wire_mode;
