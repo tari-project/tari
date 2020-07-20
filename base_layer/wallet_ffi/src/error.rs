@@ -31,7 +31,7 @@ use tari_crypto::{
 };
 use tari_wallet::{
     contacts_service::error::{ContactsServiceError, ContactsServiceStorageError},
-    error::WalletError,
+    error::{WalletError, WalletStorageError},
     output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
 };
@@ -55,6 +55,8 @@ pub enum InterfaceError {
     DeserializationError(String),
     /// Emoji ID is invalid
     InvalidEmojiId,
+    /// Comms Private Key is not present while Db appears to be encrypted which should not happen
+    MissingCommsPrivateKey,
 }
 
 /// This struct is meant to hold an error for use by FFI client applications. The error has an integer code and string
@@ -91,6 +93,10 @@ impl From<InterfaceError> for LibWalletError {
             },
             InterfaceError::InvalidEmojiId => Self {
                 code: 6,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::MissingCommsPrivateKey => Self {
+                code: 7,
                 message: format!("{:?}", v),
             },
         }
@@ -226,6 +232,23 @@ impl From<WalletError> for LibWalletError {
                 ContactsServiceStorageError::ConversionError,
             )) => Self {
                 code: 404,
+                message: format!("{:?}", w),
+            },
+            // Wallet Encryption Errors
+            WalletError::WalletStorageError(WalletStorageError::InvalidEncryptionCipher) => Self {
+                code: 420,
+                message: format!("{:?}", w),
+            },
+            WalletError::WalletStorageError(WalletStorageError::MissingNonce) => Self {
+                code: 421,
+                message: format!("{:?}", w),
+            },
+            WalletError::WalletStorageError(WalletStorageError::AlreadyEncrypted) => Self {
+                code: 422,
+                message: format!("{:?}", w),
+            },
+            WalletError::WalletStorageError(WalletStorageError::AeadError(_)) => Self {
+                code: 423,
                 message: format!("{:?}", w),
             },
             // This is the catch all error code. Any error that is not explicitly mapped above will be given this code

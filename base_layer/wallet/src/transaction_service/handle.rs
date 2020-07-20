@@ -27,6 +27,7 @@ use crate::{
         storage::database::{CompletedTransaction, InboundTransaction, OutboundTransaction},
     },
 };
+use aes_gcm::Aes256Gcm;
 use futures::{stream::Fuse, StreamExt};
 use std::{collections::HashMap, fmt, sync::Arc};
 use tari_comms::types::CommsPublicKey;
@@ -34,8 +35,8 @@ use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
+
 /// API Request enum
-#[derive(Debug)]
 pub enum TransactionServiceRequest {
     GetPendingInboundTransactions,
     GetPendingOutboundTransactions,
@@ -51,6 +52,8 @@ pub enum TransactionServiceRequest {
     SubmitTransaction((TxId, Transaction, MicroTari, MicroTari, String)),
     SetLowPowerMode,
     SetNormalPowerMode,
+    ApplyEncryption(Box<Aes256Gcm>),
+    RemoveEncryption,
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
     #[cfg(feature = "test_harness")]
@@ -82,6 +85,8 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SubmitTransaction((id, _, _, _, _)) => f.write_str(&format!("SubmitTransaction ({})", id)),
             Self::SetLowPowerMode => f.write_str("SetLowPowerMode "),
             Self::SetNormalPowerMode => f.write_str("SetNormalPowerMode"),
+            TransactionServiceRequest::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
+            TransactionServiceRequest::RemoveEncryption => f.write_str("RemoveEncryption"),
             #[cfg(feature = "test_harness")]
             Self::CompletePendingOutboundTransaction(tx) => {
                 f.write_str(&format!("CompletePendingOutboundTransaction ({})", tx.tx_id))
@@ -114,6 +119,8 @@ pub enum TransactionServiceResponse {
     TransactionSubmitted,
     LowPowerModeSet,
     NormalPowerModeSet,
+    EncryptionApplied,
+    EncryptionRemoved,
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -366,6 +373,24 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::NormalPowerModeSet => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn apply_encryption(&mut self, cipher: Aes256Gcm) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ApplyEncryption(Box::new(cipher)))
+            .await??
+        {
+            TransactionServiceResponse::EncryptionApplied => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn remove_encryption(&mut self) -> Result<(), TransactionServiceError> {
+        match self.handle.call(TransactionServiceRequest::RemoveEncryption).await?? {
+            TransactionServiceResponse::EncryptionRemoved => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

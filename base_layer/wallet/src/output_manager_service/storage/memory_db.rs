@@ -36,13 +36,14 @@ use crate::output_manager_service::{
     },
     TxId,
 };
+use aes_gcm::Aes256Gcm;
 use chrono::{Duration as ChronoDuration, Utc};
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
     time::Duration,
 };
-use tari_core::transactions::types::BlindingFactor;
+use tari_core::transactions::types::Commitment;
 
 /// This structure is an In-Memory database backend that implements the `OutputManagerBackend` trait and provides all
 /// the functionality required by the trait.
@@ -374,12 +375,12 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         }
     }
 
-    fn revalidate_unspent_output(&self, spending_key: &BlindingFactor) -> Result<(), OutputManagerStorageError> {
+    fn revalidate_unspent_output(&self, commitment: &Commitment) -> Result<(), OutputManagerStorageError> {
         let mut db = acquire_write_lock!(self.db);
         match db
             .invalid_outputs
             .iter()
-            .position(|v| v.output.unblinded_output.spending_key == *spending_key)
+            .position(|v| v.output.commitment == *commitment)
         {
             Some(pos) => {
                 let output = db.invalid_outputs.remove(pos);
@@ -388,6 +389,14 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             },
             None => Err(OutputManagerStorageError::ValuesNotFound),
         }
+    }
+
+    fn apply_encryption(&self, _: Aes256Gcm) -> Result<(), OutputManagerStorageError> {
+        Ok(())
+    }
+
+    fn remove_encryption(&self) -> Result<(), OutputManagerStorageError> {
+        Ok(())
     }
 }
 

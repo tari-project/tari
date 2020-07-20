@@ -21,6 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::utils::random_string;
+use aes_gcm::{
+    aead::{generic_array::GenericArray, NewAead},
+    Aes256Gcm,
+};
 use chrono::Utc;
 use rand::rngs::OsRng;
 use tari_core::transactions::{
@@ -33,7 +37,7 @@ use tari_core::transactions::{
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
 use tari_wallet::{
-    storage::connection_manager::run_migration_and_create_sqlite_connection,
+    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::storage::{
         database::{
             CompletedTransaction,
@@ -440,4 +444,18 @@ pub fn test_transaction_service_sqlite_db() {
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
     test_db_backend(TransactionServiceSqliteDatabase::new(connection, None));
+}
+
+#[test]
+pub fn test_transaction_service_sqlite_db_encrypted() {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    let key = GenericArray::from_slice(b"an example very very secret key.");
+    let cipher = Aes256Gcm::new(key);
+
+    test_db_backend(TransactionServiceSqliteDatabase::new(connection, Some(cipher)));
 }

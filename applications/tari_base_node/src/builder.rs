@@ -111,7 +111,7 @@ use tari_wallet::{
         storage::sqlite_db::OutputManagerSqliteDatabase,
         OutputManagerServiceInitializer,
     },
-    storage::connection_manager::{run_migration_and_create_sqlite_connection, WalletDbConnection},
+    storage::sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection},
     transaction_service::{
         config::TransactionServiceConfig,
         handle::TransactionServiceHandle,
@@ -1185,6 +1185,9 @@ async fn register_wallet_services(
     broadcast_send_timeout: Duration,
 ) -> Arc<ServiceHandles>
 {
+    let mut transaction_db = TransactionServiceSqliteDatabase::new(wallet_db_conn.clone(), None);
+    transaction_db.migrate(wallet_comms.node_identity().public_key().clone());
+
     StackBuilder::new(runtime::Handle::current(), wallet_comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(wallet_dht.outbound_requester()))
         .add_initializer(LivenessInitializer::new(
@@ -1200,7 +1203,7 @@ async fn register_wallet_services(
         .add_initializer(OutputManagerServiceInitializer::new(
             OutputManagerServiceConfig{ base_node_query_timeout: Duration::from_secs(120), ..Default::default() },
             subscription_factory.clone(),
-            OutputManagerSqliteDatabase::new(wallet_db_conn.clone()),
+            OutputManagerSqliteDatabase::new(wallet_db_conn.clone(),None),
             factories.clone(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
@@ -1208,7 +1211,7 @@ async fn register_wallet_services(
                                           direct_send_timeout,
                                           broadcast_send_timeout,),
             subscription_factory,
-            TransactionServiceSqliteDatabase::new(wallet_db_conn.clone(), Some(wallet_comms.node_identity().public_key().clone())),
+            transaction_db,
             wallet_comms.node_identity(),
             factories,
         ))

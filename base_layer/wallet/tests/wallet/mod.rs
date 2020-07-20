@@ -34,9 +34,15 @@ use tari_crypto::keys::PublicKey;
 use tari_p2p::initialization::CommsConfig;
 
 use crate::support::comms_and_services::get_next_memory_address;
+use aes_gcm::{
+    aead::{generic_array::GenericArray, NewAead},
+    Aes256Gcm,
+};
+use digest::Digest;
 use futures::{FutureExt, StreamExt};
 use std::path::Path;
 use tari_core::transactions::{tari_amount::uT, transaction::UnblindedOutput, types::PrivateKey};
+use tari_crypto::common::Blake256;
 use tari_p2p::transport::TransportType;
 use tari_wallet::{
     contacts_service::storage::{
@@ -44,12 +50,13 @@ use tari_wallet::{
         memory_db::ContactsServiceMemoryDatabase,
         sqlite_db::ContactsServiceSqliteDatabase,
     },
+    error::{WalletError, WalletStorageError},
     output_manager_service::storage::{memory_db::OutputManagerMemoryDatabase, sqlite_db::OutputManagerSqliteDatabase},
     storage::{
-        connection_manager::{partial_wallet_backup, run_migration_and_create_sqlite_connection},
         database::WalletDatabase,
         memory_db::WalletMemoryDatabase,
         sqlite_db::WalletSqliteDatabase,
+        sqlite_utilities::{partial_wallet_backup, run_migration_and_create_sqlite_connection},
     },
     transaction_service::{
         handle::TransactionEvent,
@@ -111,9 +118,9 @@ fn create_wallet(
         .with_extension("sqlite3");
     let connection = run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
 
-    let wallet_backend = WalletSqliteDatabase::new(connection.clone());
+    let wallet_backend = WalletSqliteDatabase::new(connection.clone(), None).unwrap();
     let transaction_backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
-    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let contacts_backend = ContactsServiceSqliteDatabase::new(connection);
 
     let config = WalletConfig::new(comms_config, factories, None);
@@ -232,8 +239,61 @@ fn test_wallet() {
     let got_contacts = runtime.block_on(alice_wallet.contacts_service.get_contacts()).unwrap();
     assert_eq!(contacts, got_contacts);
 
-    // Test the partial db backup in this test so that we can work with the data generated during the test
+    // Test applying and removing encryption
     let current_wallet_path = db_tempdir.path().join("alice_db").with_extension("sqlite3");
+
+    alice_wallet
+        .apply_encryption("It's turtles all the way down".to_string())
+        .unwrap();
+
+    // Second encryption should fail
+    match alice_wallet.apply_encryption("It's turtles all the way down".to_string()) {
+        Ok(_) => assert!(false, "Should not be able to encrypt twice"),
+        Err(WalletError::WalletStorageError(WalletStorageError::AlreadyEncrypted)) => assert!(true),
+        Err(_) => assert!(false, "Should be the Already Encrypted error"),
+    }
+
+    let connection =
+        run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
+    if let Err(WalletStorageError::InvalidEncryptionCipher) = WalletSqliteDatabase::new(connection.clone(), None) {
+        assert!(true);
+    } else {
+        assert!(
+            false,
+            "Should not be able to instantiate encrypted wallet without cipher"
+        );
+    }
+    let passphrase_hash = Blake256::new()
+        .chain("wrong passphrase".to_string().as_bytes())
+        .result()
+        .to_vec();
+    let key = GenericArray::from_slice(passphrase_hash.as_slice());
+    let cipher = Aes256Gcm::new(key);
+    let result = WalletSqliteDatabase::new(connection.clone(), Some(cipher));
+
+    if let Err(WalletStorageError::AeadError(s)) = result {
+        assert_eq!(s, "Decryption Error".to_string());
+    } else {
+        assert!(
+            false,
+            "Should not be able to instantiate encrypted wallet without cipher"
+        );
+    }
+
+    let passphrase_hash = Blake256::new()
+        .chain("It's turtles all the way down".to_string().as_bytes())
+        .result()
+        .to_vec();
+    let key = GenericArray::from_slice(passphrase_hash.as_slice());
+    let cipher = Aes256Gcm::new(key);
+    let _ = WalletSqliteDatabase::new(connection.clone(), Some(cipher))
+        .expect("Should be able to instantiate db with cipher");
+
+    alice_wallet.remove_encryption().unwrap();
+
+    let _ = WalletSqliteDatabase::new(connection.clone(), None).expect("Should be able to instantiate db with cipher");
+
+    // Test the partial db backup in this test so that we can work with the data generated during the test
     let backup_wallet_path = db_tempdir.path().join("alice_db_backup").with_extension("sqlite3");
 
     runtime
@@ -253,12 +313,12 @@ fn test_wallet() {
 
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
-    let wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone()));
+    let wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
     let comms_private_key = runtime.block_on(wallet_db.get_comms_secret_key()).unwrap();
     assert!(comms_private_key.is_some());
     // Checking that the backup has had its Comms Private Key is cleared.
     let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path).expect("Could not open Sqlite db");
-    let backup_wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone()));
+    let backup_wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
     let comms_private_key = runtime.block_on(backup_wallet_db.get_comms_secret_key()).unwrap();
     assert!(comms_private_key.is_none());
 }

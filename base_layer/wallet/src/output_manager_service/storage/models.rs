@@ -26,12 +26,14 @@ use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{
         transaction::UnblindedOutput,
-        types::{CryptoFactories, HashOutput},
+        types::{Commitment, CryptoFactories, HashOutput},
     },
 };
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
+    pub commitment: Commitment,
     pub unblinded_output: UnblindedOutput,
     pub hash: HashOutput,
 }
@@ -44,6 +46,7 @@ impl DbUnblindedOutput {
     {
         let hash = output.as_transaction_output(factory)?.hash();
         Ok(DbUnblindedOutput {
+            commitment: factory.commitment.commit(&output.spending_key, &output.value.into()),
             unblinded_output: output,
             hash,
         })

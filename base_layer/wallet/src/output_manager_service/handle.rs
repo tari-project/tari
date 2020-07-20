@@ -26,6 +26,7 @@ use crate::output_manager_service::{
     service::Balance,
     storage::database::PendingTransactionOutputs,
 };
+use aes_gcm::Aes256Gcm;
 use futures::{stream::Fuse, StreamExt};
 use std::{collections::HashMap, fmt, time::Duration};
 use tari_comms::types::CommsPublicKey;
@@ -40,7 +41,6 @@ use tokio::sync::broadcast;
 use tower::Service;
 
 /// API Request enum
-#[derive(Debug)]
 pub enum OutputManagerRequest {
     GetBalance,
     AddOutput(UnblindedOutput),
@@ -58,6 +58,8 @@ pub enum OutputManagerRequest {
     SetBaseNodePublicKey(CommsPublicKey),
     ValidateUtxos(UtxoValidationRetry),
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
+    ApplyEncryption(Box<Aes256Gcm>),
+    RemoveEncryption,
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -81,6 +83,8 @@ impl fmt::Display for OutputManagerRequest {
             Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
             Self::ValidateUtxos(retry) => f.write_str(&format!("ValidateUtxos ({:?})", retry)),
             Self::CreateCoinSplit(v) => f.write_str(&format!("CreateCoinSplit ({})", v.0)),
+            OutputManagerRequest::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
+            OutputManagerRequest::RemoveEncryption => f.write_str("RemoveEncryption"),
         }
     }
 }
@@ -104,6 +108,8 @@ pub enum OutputManagerResponse {
     BaseNodePublicKeySet,
     UtxoValidationStarted(u64),
     Transaction((u64, Transaction, MicroTari, MicroTari)),
+    EncryptionApplied,
+    EncryptionRemoved,
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<OutputManagerEvent>;
@@ -321,6 +327,24 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::Transaction(ct) => Ok(ct),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn apply_encryption(&mut self, cipher: Aes256Gcm) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::ApplyEncryption(Box::new(cipher)))
+            .await??
+        {
+            OutputManagerResponse::EncryptionApplied => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn remove_encryption(&mut self) -> Result<(), OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::RemoveEncryption).await?? {
+            OutputManagerResponse::EncryptionRemoved => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
