@@ -129,6 +129,10 @@ pub enum TransactionStorageError {
     DatabaseMigrationError(String),
     #[error(msg_embedded, non_std, no_from)]
     BlockingTaskSpawnError(String),
+    /// Wallet db is already encrypted and cannot be encrypted until the previous encryption is removed
+    AlreadyEncrypted,
+    #[error(msg_embedded, non_std, no_from)]
+    AeadError(String),
 }
 
 /// This error type is used to return TransactionServiceErrors from inside a Transaction Service protocol but also

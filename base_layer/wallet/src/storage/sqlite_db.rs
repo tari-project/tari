@@ -24,32 +24,193 @@ use crate::{
     error::WalletStorageError,
     schema::wallet_settings,
     storage::database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
+    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, AES_NONCE_BYTES},
+};
+use aes_gcm::{
+    aead::{generic_array::GenericArray, Aead},
+    Aes256Gcm,
 };
 use diesel::{prelude::*, SqliteConnection};
+use log::*;
+use std::sync::{Arc, Mutex, RwLock};
+use tari_comms::types::{CommsPublicKey, CommsSecretKey};
+use tari_crypto::{
+    keys::PublicKey,
+    tari_utilities::{
+        hex::{from_hex, Hex},
+        ByteArray,
+    },
+};
 
-use std::sync::{Arc, Mutex};
-use tari_comms::types::CommsSecretKey;
-use tari_crypto::tari_utilities::hex::Hex;
+const LOG_TARGET: &str = "wallet::storage::sqlite_db";
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
 pub struct WalletSqliteDatabase {
     database_connection: Arc<Mutex<SqliteConnection>>,
+    cipher: Arc<RwLock<Option<Aes256Gcm>>>,
 }
 impl WalletSqliteDatabase {
-    pub fn new(database_connection: Arc<Mutex<SqliteConnection>>) -> Self {
-        Self { database_connection }
+    pub fn new(
+        database_connection: Arc<Mutex<SqliteConnection>>,
+        cipher: Option<Aes256Gcm>,
+    ) -> Result<Self, WalletStorageError>
+    {
+        // Here we validate if the database is encrypted or not and if a cipher is provided that it is the correct one.
+        // Unencrypted the database should contain a CommsPrivateKey and associated CommsPublicKey
+        // Encrypted the data should contain a CommsPublicKey in the clear and an encrypted CommsPrivateKey
+        // To confirm if the provided Cipher is correct we decrypt the CommsPrivateKey and see if it produces the same
+        // CommsPublicKey that is stored in the db
+        {
+            let conn = acquire_lock!(database_connection);
+            let secret_key = WalletSettingSql::get(format!("{}", DbKey::CommsSecretKey), &conn)?;
+            let db_public_key = WalletSettingSql::get(format!("{}", DbKey::CommsPublicKey), &conn)?;
+
+            if cipher.is_some() && secret_key.is_none() {
+                error!(
+                    target: LOG_TARGET,
+                    "Cipher is provided but there is no Comms Secret Key in DB to decrypt"
+                );
+                return Err(WalletStorageError::InvalidEncryptionCipher);
+            }
+
+            if let Some(sk) = secret_key {
+                let comms_secret_key = match CommsSecretKey::from_hex(sk.as_str()) {
+                    Ok(sk) => {
+                        // This means the key was unencrypted
+                        if cipher.is_some() {
+                            error!(
+                                target: LOG_TARGET,
+                                "Cipher is provided but Comms Secret Key is not encrypted"
+                            );
+                            return Err(WalletStorageError::InvalidEncryptionCipher);
+                        }
+                        sk
+                    },
+                    Err(_) => {
+                        // This means the secret key was encrypted. Try decrypt
+                        if let Some(cipher_inner) = cipher.clone() {
+                            let mut sk_bytes: Vec<u8> = from_hex(sk.as_str())?;
+                            if sk_bytes.len() < AES_NONCE_BYTES {
+                                return Err(WalletStorageError::MissingNonce);
+                            }
+                            // This leaves the nonce in sk_bytes
+                            let data = sk_bytes.split_off(AES_NONCE_BYTES);
+                            let nonce = GenericArray::from_slice(sk_bytes.as_slice());
+
+                            let decrypted_key = cipher_inner
+                                .decrypt(nonce, data.as_ref())
+                                .map_err(|_| WalletStorageError::AeadError("Decryption Error".to_string()))?;
+                            CommsSecretKey::from_bytes(decrypted_key.as_slice()).map_err(|_| {
+                                error!(
+                                    target: LOG_TARGET,
+                                    "Decrypted Comms Secret Key cannot be parsed into a RistrettoSecretKey"
+                                );
+                                WalletStorageError::InvalidEncryptionCipher
+                            })?
+                        } else {
+                            error!(
+                                target: LOG_TARGET,
+                                "Cipher was not provided but Comms Private Key is encrypted"
+                            );
+                            return Err(WalletStorageError::InvalidEncryptionCipher);
+                        }
+                    },
+                };
+
+                if let Some(pk_hex) = db_public_key {
+                    let db_comms_public_key = CommsPublicKey::from_hex(pk_hex.as_str())?;
+                    let public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
+                    if public_key != db_comms_public_key {
+                        if cipher.is_some() {
+                            error!(
+                                target: LOG_TARGET,
+                                "Cipher is provided does not decrypt stored Comms Private Key that produces stored \
+                                 Comms Public Key"
+                            );
+                            return Err(WalletStorageError::InvalidEncryptionCipher);
+                        } else {
+                            // If the db is not encypted then update the stored public key to keep it in sync.
+                            WalletSettingSql::new(format!("{}", DbKey::CommsPublicKey), public_key.to_hex())
+                                .set(&conn)?;
+                        }
+                    }
+                } else {
+                    if cipher.is_some() {
+                        // This means the database was not in the correct state for a Cipher to be provided.
+                        error!(
+                            target: LOG_TARGET,
+                            "Cipher is provided but Comms Public Key is not present in the database"
+                        );
+                        return Err(WalletStorageError::InvalidEncryptionCipher);
+                    }
+                    // Due to migration the associated public key is not stored and should be
+                    let public_key_hex = CommsPublicKey::from_secret_key(&comms_secret_key).to_hex();
+                    WalletSettingSql::new(format!("{}", DbKey::CommsPublicKey), public_key_hex).set(&conn)?;
+                }
+            }
+        }
+
+        Ok(Self {
+            database_connection,
+            cipher: Arc::new(RwLock::new(cipher)),
+        })
+    }
+
+    fn set_comms_private_key(
+        &self,
+        secret_key: &CommsSecretKey,
+        conn: &SqliteConnection,
+    ) -> Result<(), WalletStorageError>
+    {
+        let cipher = acquire_read_lock!(self.cipher);
+
+        match cipher.as_ref() {
+            None => {
+                WalletSettingSql::new(DbKey::CommsSecretKey.to_string(), secret_key.to_hex()).set(&conn)?;
+                let public_key = CommsPublicKey::from_secret_key(&secret_key);
+                WalletSettingSql::new(DbKey::CommsPublicKey.to_string(), public_key.to_hex()).set(&conn)?;
+            },
+            Some(cipher) => {
+                let public_key = CommsPublicKey::from_secret_key(&secret_key);
+                WalletSettingSql::new(DbKey::CommsPublicKey.to_string(), public_key.to_hex()).set(&conn)?;
+                let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(&cipher, secret_key.to_vec())
+                    .map_err(|_| WalletStorageError::AeadError("Encryption Error".to_string()))?;
+                WalletSettingSql::new(DbKey::CommsSecretKey.to_string(), ciphertext_integral_nonce.to_hex())
+                    .set(&conn)?;
+            },
+        }
+
+        Ok(())
     }
 }
 
 impl WalletBackend for WalletSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError> {
         let conn = acquire_lock!(self.database_connection);
+        let cipher = acquire_read_lock!(self.cipher);
 
         let result = match key {
             DbKey::CommsSecretKey => {
                 if let Some(key_str) = WalletSettingSql::get(format!("{}", key), &conn)? {
-                    Some(DbValue::CommsSecretKey(CommsSecretKey::from_hex(key_str.as_str())?))
+                    let secret_key = match cipher.as_ref() {
+                        None => CommsSecretKey::from_hex(key_str.as_str())?,
+                        Some(cipher) => {
+                            let decrypted_key_bytes =
+                                decrypt_bytes_integral_nonce(&cipher, from_hex(key_str.as_str())?)
+                                    .map_err(|_| WalletStorageError::AeadError("Decryption Error".to_string()))?;
+                            CommsSecretKey::from_bytes(decrypted_key_bytes.as_slice())?
+                        },
+                    };
+
+                    Some(DbValue::CommsSecretKey(secret_key))
+                } else {
+                    None
+                }
+            },
+            DbKey::CommsPublicKey => {
+                if let Some(key_str) = WalletSettingSql::get(format!("{}", key), &conn)? {
+                    Some(DbValue::CommsPublicKey(CommsPublicKey::from_hex(key_str.as_str())?))
                 } else {
                     None
                 }
@@ -61,21 +222,65 @@ impl WalletBackend for WalletSqliteDatabase {
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError> {
         let conn = acquire_lock!(self.database_connection);
-
         match op {
             WriteOperation::Insert(kvp) => match kvp {
                 DbKeyValuePair::CommsSecretKey(sk) => {
-                    WalletSettingSql::new(format!("{}", DbKey::CommsSecretKey), sk.to_hex()).set(&conn)?;
+                    self.set_comms_private_key(&sk, &(*conn))?;
                 },
             },
             WriteOperation::Remove(k) => match k {
                 DbKey::CommsSecretKey => {
                     let _ = WalletSettingSql::clear(format!("{}", DbKey::CommsSecretKey), &conn)?;
                 },
+                DbKey::CommsPublicKey => return Err(WalletStorageError::OperationNotSupported),
             },
         }
 
         Ok(None)
+    }
+
+    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), WalletStorageError> {
+        let mut current_cipher = acquire_write_lock!(self.cipher);
+        if current_cipher.is_some() {
+            return Err(WalletStorageError::AlreadyEncrypted);
+        }
+
+        let conn = acquire_lock!(self.database_connection);
+        let secret_key_str = match WalletSettingSql::get(format!("{}", DbKey::CommsSecretKey), &conn)? {
+            None => return Err(WalletStorageError::ValueNotFound(DbKey::CommsSecretKey)),
+            Some(sk) => sk,
+        };
+        // If this fails then the database is already encrypted.
+        let secret_key = CommsSecretKey::from_hex(&secret_key_str).map_err(|_| WalletStorageError::AlreadyEncrypted)?;
+        let ciphertext_integral_nonce = encrypt_bytes_integral_nonce(&cipher, secret_key.to_vec())
+            .map_err(|_| WalletStorageError::AeadError("Encryption Error".to_string()))?;
+        WalletSettingSql::new(format!("{}", DbKey::CommsSecretKey), ciphertext_integral_nonce.to_hex()).set(&conn)?;
+        (*current_cipher) = Some(cipher);
+
+        Ok(())
+    }
+
+    fn remove_encryption(&self) -> Result<(), WalletStorageError> {
+        let mut current_cipher = acquire_write_lock!(self.cipher);
+        let cipher = if let Some(cipher) = (*current_cipher).clone().take() {
+            cipher
+        } else {
+            return Ok(());
+        };
+        let conn = acquire_lock!(self.database_connection);
+        let secret_key_str = match WalletSettingSql::get(format!("{}", DbKey::CommsSecretKey), &conn)? {
+            None => return Err(WalletStorageError::ValueNotFound(DbKey::CommsSecretKey)),
+            Some(sk) => sk,
+        };
+
+        let secret_key_bytes = decrypt_bytes_integral_nonce(&cipher, from_hex(secret_key_str.as_str())?)
+            .map_err(|_| WalletStorageError::AeadError("Decryption Error".to_string()))?;
+        let decrypted_key = CommsSecretKey::from_bytes(secret_key_bytes.as_slice())?;
+        WalletSettingSql::new(format!("{}", DbKey::CommsSecretKey), decrypted_key.to_hex()).set(&conn)?;
+        // Now that all the decryption has been completed we can safely remove the cipher fully
+        let _ = (*current_cipher).take();
+
+        Ok(())
     }
 }
 
@@ -113,6 +318,197 @@ impl WalletSettingSql {
 
     pub fn clear(key: String, conn: &SqliteConnection) -> Result<bool, WalletStorageError> {
         let num_deleted = diesel::delete(wallet_settings::table.filter(wallet_settings::key.eq(key))).execute(conn)?;
+
         Ok(num_deleted > 0)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::storage::{
+        database::{DbKey, DbValue, WalletBackend},
+        sqlite_db::{WalletSettingSql, WalletSqliteDatabase},
+        sqlite_utilities::run_migration_and_create_sqlite_connection,
+    };
+    use aes_gcm::{
+        aead::{generic_array::GenericArray, Aead, NewAead},
+        Aes256Gcm,
+    };
+    use rand::{rngs::OsRng, RngCore};
+    use tari_comms::types::{CommsPublicKey, CommsSecretKey};
+    use tari_crypto::{
+        keys::{PublicKey, SecretKey},
+        tari_utilities::{hex::Hex, ByteArray},
+    };
+    use tari_test_utils::random::string;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_unencrypted_secret_public_key_setting() {
+        let db_name = format!("{}.sqlite3", string(8).as_str());
+        let tempdir = tempdir().unwrap();
+        let db_folder = tempdir.path().to_str().unwrap().to_string();
+        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
+        let secret_key1 = CommsSecretKey::random(&mut OsRng);
+        let public_key1 = CommsPublicKey::from_secret_key(&secret_key1);
+        {
+            let conn = acquire_lock!(connection);
+            WalletSettingSql::new(format!("{}", DbKey::CommsSecretKey), secret_key1.to_hex())
+                .set(&conn)
+                .unwrap();
+        }
+
+        let db = WalletSqliteDatabase::new(connection.clone(), None).unwrap();
+
+        if let DbValue::CommsSecretKey(sk) = db.fetch(&DbKey::CommsSecretKey).unwrap().unwrap() {
+            assert_eq!(sk, secret_key1);
+        } else {
+            assert!(false, "Should be a Comms Secret Key");
+        };
+        if let DbValue::CommsPublicKey(pk) = db.fetch(&DbKey::CommsPublicKey).unwrap().unwrap() {
+            assert_eq!(pk, public_key1);
+        } else {
+            assert!(false, "Should be a Comms Public Key");
+        };
+
+        let secret_key2 = CommsSecretKey::random(&mut OsRng);
+        let public_key2 = CommsPublicKey::from_secret_key(&secret_key2);
+        {
+            let conn = acquire_lock!(connection);
+            db.set_comms_private_key(&secret_key2, &conn).unwrap();
+        }
+        if let DbValue::CommsPublicKey(pk) = db.fetch(&DbKey::CommsPublicKey).unwrap().unwrap() {
+            assert_eq!(pk, public_key2);
+        } else {
+            assert!(false, "Should be a Comms Public Key");
+        };
+    }
+
+    #[test]
+    pub fn test_encrypted_secret_public_key_validation_during_startup() {
+        let db_name = format!("{}.sqlite3", string(8).as_str());
+        let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();
+        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
+
+        let key = GenericArray::from_slice(b"an example very very secret key.");
+        let cipher = Aes256Gcm::new(key);
+
+        assert!(WalletSqliteDatabase::new(connection.clone(), Some(cipher.clone())).is_err());
+
+        let secret_key = CommsSecretKey::random(&mut OsRng);
+        {
+            let conn = acquire_lock!(connection);
+            WalletSettingSql::new(format!("{}", DbKey::CommsSecretKey), secret_key.to_hex())
+                .set(&conn)
+                .unwrap();
+        }
+        assert!(WalletSqliteDatabase::new(connection.clone(), Some(cipher.clone())).is_err());
+
+        // encrypt the private key
+        let secret_key_bytes = secret_key.to_vec();
+        let mut nonce = [0u8; 12];
+        OsRng.fill_bytes(&mut nonce);
+        let nonce_ga = GenericArray::from_slice(&nonce);
+        let mut ciphertext = cipher
+            .encrypt(nonce_ga, secret_key_bytes.as_ref())
+            .expect("encryption failure!");
+
+        let mut ciphertext_integral_nonce = nonce.to_vec();
+
+        ciphertext_integral_nonce.append(&mut ciphertext);
+
+        {
+            let conn = acquire_lock!(connection);
+            WalletSettingSql::new(format!("{}", DbKey::CommsSecretKey), ciphertext_integral_nonce.to_hex())
+                .set(&conn)
+                .unwrap();
+        }
+
+        assert!(WalletSqliteDatabase::new(connection.clone(), None).is_err());
+        // No public key to compare against
+        assert!(WalletSqliteDatabase::new(connection.clone(), Some(cipher.clone())).is_err());
+
+        // insert incorrect public key
+        let incorrect_public_key = CommsPublicKey::from_secret_key(&CommsSecretKey::random(&mut OsRng));
+        {
+            let conn = acquire_lock!(connection);
+            WalletSettingSql::new(format!("{}", DbKey::CommsPublicKey), incorrect_public_key.to_hex())
+                .set(&conn)
+                .unwrap();
+        }
+        assert!(WalletSqliteDatabase::new(connection.clone(), Some(cipher.clone())).is_err());
+
+        // insert correct public key
+        let public_key = CommsPublicKey::from_secret_key(&secret_key);
+        {
+            let conn = acquire_lock!(connection);
+            WalletSettingSql::new(format!("{}", DbKey::CommsPublicKey), public_key.to_hex())
+                .set(&conn)
+                .unwrap();
+        }
+        assert!(WalletSqliteDatabase::new(connection.clone(), Some(cipher.clone())).is_ok());
+    }
+
+    #[test]
+    fn test_apply_and_remove_encryption() {
+        let db_name = format!("{}.sqlite3", string(8).as_str());
+        let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();
+        let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
+
+        let secret_key = CommsSecretKey::random(&mut OsRng);
+
+        let db = WalletSqliteDatabase::new(connection.clone(), None).unwrap();
+        {
+            let conn = acquire_lock!(connection);
+            db.set_comms_private_key(&secret_key, &conn).unwrap();
+        }
+
+        let read_secret_key1 = match db.fetch(&DbKey::CommsSecretKey).unwrap().unwrap() {
+            DbValue::CommsSecretKey(sk) => sk,
+            _ => {
+                panic!("Should be able to read Key");
+            },
+        };
+        assert_eq!(secret_key, read_secret_key1);
+
+        let key = GenericArray::from_slice(b"an example very very secret key.");
+        let cipher = Aes256Gcm::new(key);
+        db.apply_encryption(cipher).unwrap();
+        let read_secret_key2 = match db.fetch(&DbKey::CommsSecretKey).unwrap().unwrap() {
+            DbValue::CommsSecretKey(sk) => sk,
+            _ => {
+                panic!("Should be able to read Key");
+            },
+        };
+        assert_eq!(secret_key, read_secret_key2);
+        {
+            let conn = acquire_lock!(connection);
+            let secret_key_str = WalletSettingSql::get(format!("{}", DbKey::CommsSecretKey), &conn)
+                .unwrap()
+                .unwrap();
+            assert!(secret_key_str.len() > 64);
+            db.set_comms_private_key(&secret_key, &conn).unwrap();
+            let secret_key_str = WalletSettingSql::get(format!("{}", DbKey::CommsSecretKey), &conn)
+                .unwrap()
+                .unwrap();
+            assert!(secret_key_str.len() > 64);
+        }
+
+        db.remove_encryption().unwrap();
+        let read_secret_key3 = match db.fetch(&DbKey::CommsSecretKey).unwrap().unwrap() {
+            DbValue::CommsSecretKey(sk) => sk,
+            _ => {
+                panic!("Should be able to read Key");
+            },
+        };
+        assert_eq!(secret_key, read_secret_key3);
+
+        {
+            let conn = acquire_lock!(connection);
+            let secret_key_str = WalletSettingSql::get(format!("{}", DbKey::CommsSecretKey), &conn)
+                .unwrap()
+                .unwrap();
+            assert_eq!(secret_key_str.len(), 64);
+        }
     }
 }

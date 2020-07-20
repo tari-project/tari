@@ -92,7 +92,7 @@ use tari_wallet::{
         storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
         OutputManagerServiceInitializer,
     },
-    storage::connection_manager::run_migration_and_create_sqlite_connection,
+    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::{
         config::TransactionServiceConfig,
         handle::{TransactionEvent, TransactionServiceHandle},

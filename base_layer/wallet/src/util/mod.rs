@@ -21,5 +21,5 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod emoji;
-pub mod futures;
+pub mod encryption;
 pub mod luhn;

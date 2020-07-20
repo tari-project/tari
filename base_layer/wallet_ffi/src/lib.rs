@@ -159,9 +159,13 @@ use tari_wallet::{
         storage::sqlite_db::OutputManagerSqliteDatabase,
     },
     storage::{
-        connection_manager::{partial_wallet_backup, run_migration_and_create_sqlite_connection},
         database::WalletDatabase,
         sqlite_db::WalletSqliteDatabase,
+        sqlite_utilities::{
+            initialize_sqlite_database_backends,
+            partial_wallet_backup,
+            run_migration_and_create_sqlite_connection,
+        },
     },
     testnet_utils::{
         broadcast_transaction,
@@ -190,6 +194,7 @@ use tari_wallet::{
     util::emoji::{emoji_set, EmojiId},
     wallet::WalletConfig,
 };
+
 use tokio::runtime::Runtime;
 
 const LOG_TARGET: &str = "wallet_ffi";
@@ -2343,28 +2348,36 @@ pub unsafe extern "C" fn comms_config_create(
             e
         })
         .expect("Could not open Sqlite db");
-    let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection));
 
-    let comms_secret_key = match Runtime::new() {
-        Ok(mut rt) => {
-            let secret_key = match rt.block_on(wallet_backend.get_comms_secret_key()) {
-                Ok(sk) => sk,
+    // Try create a Wallet Sqlite backend without a Cipher, if it fails then the DB is encrypted and we will have to
+    // extract the Comms Secret Key in wallet_create(...) with the supplied passphrase
+    let comms_secret_key = match WalletSqliteDatabase::new(connection, None) {
+        Ok(wallet_sqlite_db) => {
+            let wallet_backend = WalletDatabase::new(wallet_sqlite_db);
+
+            match Runtime::new() {
+                Ok(mut rt) => {
+                    let secret_key = match rt.block_on(wallet_backend.get_comms_secret_key()) {
+                        Ok(sk) => sk,
+                        Err(e) => {
+                            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+                            ptr::swap(error_out, &mut error as *mut c_int);
+                            return ptr::null_mut();
+                        },
+                    };
+                    match secret_key {
+                        None => CommsSecretKey::random(&mut OsRng),
+                        Some(sk) => sk,
+                    }
+                },
                 Err(e) => {
-                    error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+                    error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
                     ptr::swap(error_out, &mut error as *mut c_int);
                     return ptr::null_mut();
                 },
-            };
-            match secret_key {
-                None => CommsSecretKey::random(&mut OsRng),
-                Some(sk) => sk,
             }
         },
-        Err(e) => {
-            error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
-        },
+        Err(_) => CommsSecretKey::default(),
     };
 
     let public_address = public_address_str.parse::<Multiaddr>();
@@ -2490,8 +2503,11 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 /// `config` - The TariCommsConfig pointer
 /// `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
 /// pointer.
-/// `callback_received_transaction` - The callback function pointer matching the function signature. This will be called
-/// when an inbound transaction is received.
+/// `passphrase` - An optional string that represents the passphrase used to encrypt/decrypt the databases for this
+/// wallet. If it is left Null no encryption is used. If the databases have been encrypted then the correct passphrase
+/// is required or this function will fail.
+/// `callback_received_transaction` - The callback function pointer matching the
+/// function signature. This will be called when an inbound transaction is received.
 /// `callback_received_transaction_reply` - The callback function pointer matching the function signature. This will be
 /// called when a reply is received for a pending outbound transaction
 /// `callback_received_finalized_transaction` - The callback function pointer matching the function signature. This will
@@ -2519,6 +2535,7 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 pub unsafe extern "C" fn wallet_create(
     config: *mut TariCommsConfig,
     log_path: *const c_char,
+    passphrase: *const c_char,
     callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),
@@ -2560,34 +2577,74 @@ pub unsafe extern "C" fn wallet_create(
         }
     }
 
+    let passphrase_option = if !passphrase.is_null() {
+        let pf = CStr::from_ptr(passphrase)
+            .to_str()
+            .expect("A non-null passphrase should be able to be converted to string")
+            .to_owned();
+        Some(pf)
+    } else {
+        None
+    };
+
     let runtime = Runtime::new();
     let factories = CryptoFactories::default();
     let w;
 
     match runtime {
-        Ok(runtime) => {
+        Ok(mut runtime) => {
             let sql_database_path = (*config)
                 .datastore_path
                 .join((*config).peer_database_name.clone())
                 .with_extension("sqlite3");
+
             debug!(target: LOG_TARGET, "Running Wallet database migrations");
-            let connection = run_migration_and_create_sqlite_connection(&sql_database_path)
-                .map_err(|e| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Error creating Sqlite Connection in Wallet: {:?}", e
-                    );
-                    e
-                })
-                .expect("Could not open Sqlite db");
-            let wallet_backend = WalletSqliteDatabase::new(connection.clone());
-            let transaction_backend = TransactionServiceSqliteDatabase::new(
-                connection.clone(),
-                Some((*config).node_identity.public_key().clone()),
-            );
-            let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone());
-            let contacts_backend = ContactsServiceSqliteDatabase::new(connection);
+            let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) =
+                match initialize_sqlite_database_backends(sql_database_path, passphrase_option) {
+                    Ok((w, t, o, c)) => (w, t, o, c),
+                    Err(e) => {
+                        error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+                        ptr::swap(error_out, &mut error as *mut c_int);
+                        return ptr::null_mut();
+                    },
+                };
             debug!(target: LOG_TARGET, "Databases Initialized");
+
+            // Check to see if the comms private key needs to be read from the encrypted DB
+            if (*config).node_identity.secret_key() == &CommsSecretKey::default() {
+                let wallet_db = WalletDatabase::new(wallet_backend.clone());
+                let secret_key = match runtime.block_on(wallet_db.get_comms_secret_key()) {
+                    Ok(sk_option) => match sk_option {
+                        None => {
+                            error = LibWalletError::from(InterfaceError::MissingCommsPrivateKey).code;
+                            ptr::swap(error_out, &mut error as *mut c_int);
+                            return ptr::null_mut();
+                        },
+                        Some(sk) => sk,
+                    },
+                    Err(e) => {
+                        error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+                        ptr::swap(error_out, &mut error as *mut c_int);
+                        return ptr::null_mut();
+                    },
+                };
+                let ni = match NodeIdentity::new(
+                    secret_key,
+                    (*config).node_identity.public_address(),
+                    PeerFeatures::COMMUNICATION_CLIENT,
+                ) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        error = LibWalletError::from(e).code;
+                        ptr::swap(error_out, &mut error as *mut c_int);
+                        return ptr::null_mut();
+                    },
+                };
+                (*config).node_identity = Arc::new(ni);
+            }
+
+            // TODO remove after next TestNet
+            transaction_backend.migrate((*config).node_identity.public_key().clone());
 
             w = TariWallet::new(
                 WalletConfig::new(
@@ -2599,14 +2656,14 @@ pub unsafe extern "C" fn wallet_create(
                     }),
                 ),
                 runtime,
-                wallet_backend.clone(),
+                wallet_backend,
                 transaction_backend.clone(),
                 output_manager_backend,
                 contacts_backend,
             );
 
             match w {
-                Ok(mut w) => {
+                Ok(w) => {
                     // Start Callback Handler
                     let callback_handler = CallbackHandler::new(
                         TransactionDatabase::new(transaction_backend),
@@ -2626,18 +2683,6 @@ pub unsafe extern "C" fn wallet_create(
                     );
 
                     w.runtime.spawn(callback_handler.start());
-
-                    // Persist the Comms Private Key provided to this function
-                    let wallet_db = WalletDatabase::new(wallet_backend);
-                    if let Err(e) = w
-                        .runtime
-                        .block_on(wallet_db.set_comms_secret_key((*config).node_identity.secret_key().clone()))
-                    {
-                        error!(
-                            target: LOG_TARGET,
-                            "Unable to store Comms Secret Key in Wallet Backend DB: {:?}", e
-                        );
-                    }
 
                     Box::into_raw(Box::new(w))
                 },
@@ -4300,6 +4345,74 @@ pub unsafe extern "C" fn wallet_set_normal_power_mode(wallet: *mut TariWallet, e
     }
 }
 
+/// Apply encryption to the databases used in this wallet using the provided passphrase. If the databases are already
+/// encrypted this function will fail.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `passphrase` - A string that represents the passphrase will be used to encrypt the databases for this
+/// wallet. Once encrypted the passphrase will be required to start a wallet using these databases
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_apply_encryption(
+    wallet: *mut TariWallet,
+    passphrase: *const c_char,
+    error_out: *mut c_int,
+)
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+
+    if passphrase.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("passphrase".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+
+    let pf = CStr::from_ptr(passphrase)
+        .to_str()
+        .expect("A non-null passphrase should be able to be converted to string")
+        .to_owned();
+
+    if let Err(e) = (*wallet).apply_encryption(pf) {
+        error = LibWalletError::from(e).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+}
+
+/// Remove encryption to the databases used in this wallet. If this wallet is currently encrypted this encryption will
+/// be removed. If it is not encrypted then this function will still succeed to make the operation idempotent
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_remove_encryption(wallet: *mut TariWallet, error_out: *mut c_int) {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+
+    if let Err(e) = (*wallet).remove_encryption() {
+        error = LibWalletError::from(e).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+}
+
 /// This function will produce a partial backup of the specified wallet database file. This backup will be written to
 /// the provided file (full path must include the filename and extension) and will include the full wallet db but will
 /// clear the sensitive Comms Private Key
@@ -5018,6 +5131,7 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -5051,6 +5165,7 @@ mod test {
             comms_config_set_secret_key(bob_config, secret_key_bob, error_ptr);
             let bob_wallet = wallet_create(
                 bob_config,
+                ptr::null(),
                 ptr::null(),
                 received_tx_callback_bob,
                 received_tx_reply_callback_bob,
@@ -5459,7 +5574,7 @@ mod test {
 
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
-            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone()));
+            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
 
             let alice_config = comms_config_create(
                 address_alice_str,
@@ -5494,6 +5609,7 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -5524,7 +5640,7 @@ mod test {
             let sql_database_path = alice_temp_dir.path().join("backup").with_extension("sqlite3");
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
-            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone()));
+            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
 
             let stored_key = runtime.block_on(wallet_backend.get_comms_secret_key()).unwrap();
 
@@ -5553,6 +5669,180 @@ mod test {
             comms_config_destroy(alice_config);
             comms_config_destroy(alice_config2);
             comms_config_destroy(alice_config3);
+        }
+    }
+
+    #[test]
+    fn test_wallet_encryption() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let secret_key_alice = private_key_generate();
+            let public_key_alice = public_key_from_private_key(secret_key_alice.clone(), error_ptr);
+            let db_name_alice = CString::new(random_string(8).as_str()).unwrap();
+            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice.clone()) as *const c_char;
+            let alice_temp_dir = tempdir().unwrap();
+            let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
+            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
+            let transport_type_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
+            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
+            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+
+            let alice_config = comms_config_create(
+                address_alice_str,
+                transport_type_alice,
+                db_name_alice_str,
+                db_path_alice_str,
+                20,
+                error_ptr,
+            );
+            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
+            let alice_wallet = wallet_create(
+                alice_config,
+                ptr::null(),
+                ptr::null(),
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                direct_send_callback,
+                store_and_forward_send_callback,
+                tx_cancellation_callback,
+                base_node_sync_process_complete_callback,
+                error_ptr,
+            );
+
+            let generated = wallet_test_generate_data(alice_wallet, db_path_alice_str, error_ptr);
+            assert!(generated);
+
+            let passphrase =
+                "A pretty long passphrase that should test the hashing to a 32-bit key quite well".to_string();
+            let passphrase_str = CString::new(passphrase).unwrap();
+            let passphrase_const_str: *const c_char = CString::into_raw(passphrase_str) as *const c_char;
+
+            wallet_apply_encryption(alice_wallet, passphrase_const_str, error_ptr);
+            assert_eq!(error, 0);
+
+            comms_config_destroy(alice_config);
+            wallet_destroy(alice_wallet);
+
+            let alice_config = comms_config_create(
+                address_alice_str,
+                transport_type_alice,
+                db_name_alice_str,
+                db_path_alice_str,
+                20,
+                error_ptr,
+            );
+            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
+            let _alice_wallet = wallet_create(
+                alice_config,
+                ptr::null(),
+                ptr::null(),
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                direct_send_callback,
+                store_and_forward_send_callback,
+                tx_cancellation_callback,
+                base_node_sync_process_complete_callback,
+                error_ptr,
+            );
+
+            assert_eq!(error, 420);
+
+            let wrong_passphrase = "wrong pf".to_string();
+            let wrong_passphrase_str = CString::new(wrong_passphrase).unwrap();
+            let wrong_passphrase_const_str: *const c_char = CString::into_raw(wrong_passphrase_str) as *const c_char;
+
+            let _alice_wallet = wallet_create(
+                alice_config,
+                ptr::null(),
+                wrong_passphrase_const_str,
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                direct_send_callback,
+                store_and_forward_send_callback,
+                tx_cancellation_callback,
+                base_node_sync_process_complete_callback,
+                error_ptr,
+            );
+            assert_eq!(error, 423);
+
+            let alice_wallet = wallet_create(
+                alice_config,
+                ptr::null(),
+                passphrase_const_str,
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                direct_send_callback,
+                store_and_forward_send_callback,
+                tx_cancellation_callback,
+                base_node_sync_process_complete_callback,
+                error_ptr,
+            );
+
+            assert_eq!(error, 0);
+            // Try a read of an encrypted value to check the wallet is using the ciphers
+            let seed_words = wallet_get_seed_words(alice_wallet, error_ptr);
+            assert_eq!(error, 0);
+
+            wallet_remove_encryption(alice_wallet, error_ptr);
+            assert_eq!(error, 0);
+
+            comms_config_destroy(alice_config);
+            wallet_destroy(alice_wallet);
+
+            let alice_config = comms_config_create(
+                address_alice_str,
+                transport_type_alice,
+                db_name_alice_str,
+                db_path_alice_str,
+                20,
+                error_ptr,
+            );
+            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
+            let alice_wallet = wallet_create(
+                alice_config,
+                ptr::null(),
+                ptr::null(),
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                direct_send_callback,
+                store_and_forward_send_callback,
+                tx_cancellation_callback,
+                base_node_sync_process_complete_callback,
+                error_ptr,
+            );
+
+            assert_eq!(error, 0);
+
+            string_destroy(db_name_alice_str as *mut c_char);
+            string_destroy(db_path_alice_str as *mut c_char);
+            string_destroy(address_alice_str as *mut c_char);
+            string_destroy(passphrase_const_str as *mut c_char);
+            string_destroy(wrong_passphrase_const_str as *mut c_char);
+            private_key_destroy(secret_key_alice);
+            public_key_destroy(public_key_alice);
+            transport_type_destroy(transport_type_alice);
+
+            comms_config_destroy(alice_config);
+            seed_words_destroy(seed_words);
+            wallet_destroy(alice_wallet);
         }
     }
 }

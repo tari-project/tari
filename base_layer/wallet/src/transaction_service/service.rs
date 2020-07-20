@@ -517,6 +517,18 @@ where
                 self.set_power_mode(PowerMode::Normal).await?;
                 Ok(TransactionServiceResponse::NormalPowerModeSet)
             },
+            TransactionServiceRequest::ApplyEncryption(cipher) => self
+                .db
+                .apply_encryption(*cipher)
+                .await
+                .map(|_| TransactionServiceResponse::EncryptionApplied)
+                .map_err(TransactionServiceError::TransactionStorageError),
+            TransactionServiceRequest::RemoveEncryption => self
+                .db
+                .remove_encryption()
+                .await
+                .map(|_| TransactionServiceResponse::EncryptionRemoved)
+                .map_err(TransactionServiceError::TransactionStorageError),
         }
     }
 

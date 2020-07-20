@@ -21,12 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::error::WalletStorageError;
+use aes_gcm::Aes256Gcm;
 use log::*;
 use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_comms::types::CommsSecretKey;
+use tari_comms::types::{CommsPublicKey, CommsSecretKey};
 
 const LOG_TARGET: &str = "wallet::database";
 
@@ -36,15 +37,21 @@ pub trait WalletBackend: Send + Sync {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError>;
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError>;
+    /// Apply encryption to the backend.
+    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), WalletStorageError>;
+    /// Remove encryption from the backend.
+    fn remove_encryption(&self) -> Result<(), WalletStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DbKey {
     CommsSecretKey,
+    CommsPublicKey,
 }
 
 pub enum DbValue {
     CommsSecretKey(CommsSecretKey),
+    CommsPublicKey(CommsPublicKey),
 }
 
 #[derive(Clone)]
@@ -76,6 +83,7 @@ where T: WalletBackend + 'static
         let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::CommsSecretKey) {
             Ok(None) => Ok(None),
             Ok(Some(DbValue::CommsSecretKey(k))) => Ok(Some(k)),
+            Ok(Some(other)) => unexpected_result(DbKey::CommsSecretKey, other),
             Err(e) => log_error(DbKey::CommsSecretKey, e),
         })
         .await
@@ -101,12 +109,29 @@ where T: WalletBackend + 'static
             .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
+
+    pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), WalletStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.apply_encryption(cipher))
+            .await
+            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn remove_encryption(&self) -> Result<(), WalletStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.remove_encryption())
+            .await
+            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
 }
 
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             DbKey::CommsSecretKey => f.write_str(&"CommsSecretKey".to_string()),
+            DbKey::CommsPublicKey => f.write_str(&"CommsPublicKey".to_string()),
         }
     }
 }
@@ -115,6 +140,7 @@ impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             DbValue::CommsSecretKey(k) => f.write_str(&format!("CommsSecretKey: {:?}", k)),
+            DbValue::CommsPublicKey(k) => f.write_str(&format!("CommsPublicKey: {:?}", k)),
         }
     }
 }
@@ -129,13 +155,19 @@ fn log_error<T>(req: DbKey, err: WalletStorageError) -> Result<T, WalletStorageE
     Err(err)
 }
 
+fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, WalletStorageError> {
+    let msg = format!("Unexpected result for database query {}. Response: {}", req, res);
+    error!(target: LOG_TARGET, "{}", msg);
+    Err(WalletStorageError::UnexpectedResult(msg))
+}
+
 #[cfg(test)]
 mod test {
     use crate::storage::{
-        connection_manager::run_migration_and_create_sqlite_connection,
         database::{WalletBackend, WalletDatabase},
         memory_db::WalletMemoryDatabase,
         sqlite_db::WalletSqliteDatabase,
+        sqlite_utilities::run_migration_and_create_sqlite_connection,
     };
     use rand::rngs::OsRng;
     use tari_comms::types::CommsSecretKey;
@@ -170,6 +202,6 @@ mod test {
         let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();
         let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
 
-        test_database_crud(WalletSqliteDatabase::new(connection));
+        test_database_crud(WalletSqliteDatabase::new(connection, None).unwrap());
     }
 }

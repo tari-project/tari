@@ -36,6 +36,7 @@ tokio = { version = "0.2.10", features = ["blocking", "sync"]}
 tower = "0.3.0-alpha.2"
 tempfile = "3.1.0"
 tari_test_utils = { version = "^0.2", path = "../../infrastructure/test_utils", optional = true}
+aes-gcm = "0.6.0"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"

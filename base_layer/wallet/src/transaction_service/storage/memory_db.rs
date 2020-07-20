@@ -37,6 +37,7 @@ use crate::{
         },
     },
 };
+use aes_gcm::Aes256Gcm;
 #[cfg(feature = "test_harness")]
 use chrono::NaiveDateTime;
 use std::{
@@ -449,6 +450,14 @@ impl TransactionBackend for TransactionMemoryDatabase {
             tx.timestamp = timestamp;
         }
 
+        Ok(())
+    }
+
+    fn apply_encryption(&self, _: Aes256Gcm) -> Result<(), TransactionStorageError> {
+        Ok(())
+    }
+
+    fn remove_encryption(&self) -> Result<(), TransactionStorageError> {
         Ok(())
     }
 }

@@ -21,6 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::support::utils::{make_input, random_string};
+use aes_gcm::{
+    aead::{generic_array::GenericArray, NewAead},
+    Aes256Gcm,
+};
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::{rngs::OsRng, RngCore};
 use std::time::Duration;
@@ -29,7 +33,7 @@ use tari_core::transactions::{
     transaction::OutputFeatures,
     types::{CryptoFactories, PrivateKey},
 };
-use tari_crypto::keys::SecretKey;
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
 use tari_wallet::{
     output_manager_service::{
         service::Balance,
@@ -40,7 +44,7 @@ use tari_wallet::{
             sqlite_db::OutputManagerSqliteDatabase,
         },
     },
-    storage::connection_manager::run_migration_and_create_sqlite_connection,
+    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
 };
 use tempfile::tempdir;
 use tokio::runtime::Runtime;
@@ -310,17 +314,16 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
     );
 
     assert!(runtime
-        .block_on(
-            db.revalidate_output(
-                pending_txs[2].outputs_to_be_spent[0]
-                    .unblinded_output
-                    .spending_key
-                    .clone()
-            )
-        )
+        .block_on(db.revalidate_output(factories.commitment.commit(
+            &pending_txs[2].outputs_to_be_spent[0].unblinded_output.spending_key,
+            &pending_txs[2].outputs_to_be_spent[0].unblinded_output.value.into()
+        )))
         .is_err());
     runtime
-        .block_on(db.revalidate_output(invalid_outputs[0].unblinded_output.spending_key.clone()))
+        .block_on(db.revalidate_output(factories.commitment.commit(
+            &invalid_outputs[0].unblinded_output.spending_key,
+            &invalid_outputs[0].unblinded_output.value.into(),
+        )))
         .unwrap();
     let new_invalid_outputs = runtime.block_on(db.get_invalid_outputs()).unwrap();
     assert_eq!(new_invalid_outputs.len(), 1);
@@ -346,7 +349,20 @@ pub fn test_output_manager_sqlite_db() {
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
 
-    test_db_backend(OutputManagerSqliteDatabase::new(connection));
+    test_db_backend(OutputManagerSqliteDatabase::new(connection, None));
+}
+
+#[test]
+pub fn test_output_manager_sqlite_db_encrypted() {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let temp_dir = tempdir().unwrap();
+    let db_folder = temp_dir.path().to_str().unwrap().to_string();
+    let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
+
+    let key = GenericArray::from_slice(b"an example very very secret key.");
+    let cipher = Aes256Gcm::new(key);
+
+    test_db_backend(OutputManagerSqliteDatabase::new(connection, Some(cipher)));
 }
 
 pub fn test_key_manager_crud<T: OutputManagerBackend + Clone + 'static>(backend: T) {
@@ -397,7 +413,7 @@ pub fn test_key_manager_crud_sqlite_db() {
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
 
-    test_key_manager_crud(OutputManagerSqliteDatabase::new(connection));
+    test_key_manager_crud(OutputManagerSqliteDatabase::new(connection, None));
 }
 
 pub async fn test_short_term_encumberance<T: OutputManagerBackend + Clone + 'static>(backend: T) {
@@ -490,5 +506,5 @@ pub async fn test_short_term_encumberance_sqlite_db() {
     let db_folder = temp_dir.path().to_str().unwrap().to_string();
     let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
 
-    test_short_term_encumberance(OutputManagerSqliteDatabase::new(connection)).await;
+    test_short_term_encumberance(OutputManagerSqliteDatabase::new(connection, None)).await;
 }

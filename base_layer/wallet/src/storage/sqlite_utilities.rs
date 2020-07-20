@@ -21,15 +21,27 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
     error::WalletStorageError,
+    output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{database::WalletDatabase, sqlite_db::WalletSqliteDatabase},
+    transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
+};
+use aes_gcm::{
+    aead::{generic_array::GenericArray, NewAead},
+    Aes256Gcm,
 };
 use diesel::{Connection, SqliteConnection};
+use digest::Digest;
+use log::*;
 use std::{
     io,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+use tari_crypto::common::Blake256;
+
+const LOG_TARGET: &str = "wallet::storage:sqlite_utilities";
 
 pub type WalletDbConnection = Arc<Mutex<SqliteConnection>>;
 
@@ -66,8 +78,51 @@ pub async fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P
 
     // open a connection and clear the Comms Private Key
     let connection = run_migration_and_create_sqlite_connection(backup_path)?;
-    let db = WalletDatabase::new(WalletSqliteDatabase::new(connection));
+    let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, None)?);
     db.clear_comms_secret_key().await?;
 
     Ok(())
+}
+
+pub fn initialize_sqlite_database_backends(
+    db_path: PathBuf,
+    passphrase: Option<String>,
+) -> Result<
+    (
+        WalletSqliteDatabase,
+        TransactionServiceSqliteDatabase,
+        OutputManagerSqliteDatabase,
+        ContactsServiceSqliteDatabase,
+    ),
+    WalletStorageError,
+>
+{
+    let cipher = match passphrase {
+        None => None,
+        Some(passphrase_str) => {
+            let passphrase_hash = Blake256::new().chain(passphrase_str.as_bytes()).result().to_vec();
+            let key = GenericArray::from_slice(passphrase_hash.as_slice());
+            Some(Aes256Gcm::new(key))
+        },
+    };
+
+    let connection = run_migration_and_create_sqlite_connection(&db_path).map_err(|e| {
+        error!(
+            target: LOG_TARGET,
+            "Error creating Sqlite Connection in Wallet: {:?}", e
+        );
+        e
+    })?;
+
+    let wallet_backend = WalletSqliteDatabase::new(connection.clone(), cipher.clone())?;
+    let transaction_backend = TransactionServiceSqliteDatabase::new(connection.clone(), cipher.clone());
+    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher);
+    let contacts_backend = ContactsServiceSqliteDatabase::new(connection);
+
+    Ok((
+        wallet_backend,
+        transaction_backend,
+        output_manager_backend,
+        contacts_backend,
+    ))
 }

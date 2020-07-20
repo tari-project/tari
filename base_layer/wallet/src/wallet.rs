@@ -39,7 +39,11 @@ use crate::{
         TransactionServiceInitializer,
     },
 };
-use blake2::Digest;
+use aes_gcm::{
+    aead::{generic_array::GenericArray, NewAead},
+    Aes256Gcm,
+};
+use digest::Digest;
 use log::*;
 use std::{marker::PhantomData, sync::Arc};
 use tari_comms::{
@@ -140,6 +144,9 @@ where
     ) -> Result<Wallet<T, U, V, W>, WalletError>
     {
         let db = WalletDatabase::new(wallet_backend);
+
+        // Persist the Comms Private Key provided to this function
+        runtime.block_on(db.set_comms_secret_key(config.comms_config.node_identity.secret_key().clone()))?;
 
         #[cfg(feature = "test_harness")]
         let transaction_backend_handle = transaction_backend.clone();
@@ -349,5 +356,29 @@ where
             },
             Err(e) => Err(WalletError::OutputManagerError(e)),
         }
+    }
+
+    /// Apply encryption to all the Wallet db backends. The Wallet backend will test if the db's are already encrypted
+    /// in which case this will fail.
+    pub fn apply_encryption(&mut self, passphrase: String) -> Result<(), WalletError> {
+        let passphrase_hash = Blake256::new().chain(passphrase.as_bytes()).result().to_vec();
+        let key = GenericArray::from_slice(passphrase_hash.as_slice());
+        let cipher = Aes256Gcm::new(key);
+
+        self.runtime.block_on(self.db.apply_encryption(cipher.clone()))?;
+        self.runtime
+            .block_on(self.output_manager_service.apply_encryption(cipher.clone()))?;
+        self.runtime
+            .block_on(self.transaction_service.apply_encryption(cipher))?;
+        Ok(())
+    }
+
+    /// Remove encryption from all the Wallet db backends. If any backends do not have encryption applied then this will
+    /// fail
+    pub fn remove_encryption(&mut self) -> Result<(), WalletError> {
+        self.runtime.block_on(self.db.remove_encryption())?;
+        self.runtime.block_on(self.output_manager_service.remove_encryption())?;
+        self.runtime.block_on(self.transaction_service.remove_encryption())?;
+        Ok(())
     }
 }
