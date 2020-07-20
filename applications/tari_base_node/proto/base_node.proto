@@ -47,6 +47,14 @@ service BaseNode {
     rpc GetTokensInCirculation(GetBlocksRequest) returns (stream ValueAtHeightResponse);
     // Get network difficulties
     rpc GetNetworkDifficulty(HeightRequest) returns (stream NetworkDifficultyResponse);
+    // Get the block template
+    rpc GetNewBlockTemplate(PowAlgo) returns (NewBlockTemplate);
+    // Construct a new block from a provided template
+    rpc GetNewBlock(NewBlockTemplate) returns (Block);
+    // Submit a new block for propogation
+    rpc SubmitBlock(Block) returns (Empty);
+    // Get the base node tip information
+    rpc GetTipInfo(Empty) returns (MetaData);
 }
 
 /// An Empty placeholder for endpoints without request parameters
@@ -223,6 +231,14 @@ message ProofOfWork {
     uint64 accumulated_monero_difficulty = 2;
     uint64 accumulated_blake_difficulty = 3;
     bytes pow_data = 4;
+    uint64 target_difficulty = 5;
+}
+
+//This is used to request the which pow algo should be used with the block template
+message PowAlgo{
+    // 0 = Monero
+    // 1 = Blake
+    uint32 pow_algo = 1;
 }
 
 enum Sorting {
@@ -325,4 +341,38 @@ message AggregateBody {
 message Signature {
     bytes public_nonce = 1;
     bytes signature = 2;
+}
+
+
+// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for the block that the Base Node is able to complete on behalf of a Miner.
+message NewBlockHeaderTemplate {
+    // Version of the block
+    uint32 version = 1;
+    // Height of this block since the genesis block (height 0)
+    uint64 height = 2;
+    // Hash of the block previous to this in the chain.
+    bytes prev_hash = 3;
+    // Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
+    // block from the total kernel offset of the previous block header.
+    bytes total_kernel_offset = 4;
+    // Proof of work metadata
+    ProofOfWork pow = 5;
+}
+
+// The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as a final step the Base node to add the MMR roots to the header.
+message NewBlockTemplate {
+    NewBlockHeaderTemplate header = 1;
+    AggregateBody body = 2;
+}
+
+message MetaData {
+        // The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
+        uint64 height_of_longest_chain = 1;
+        // The block hash of the current tip of the longest valid chain, or `None` for an empty chain
+        bytes best_block = 2;
+        // The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
+        // tracked (i.e. the database is in full archival mode).
+        uint64 pruning_horizon = 4;
+        // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
+        uint64 accumulated_difficulty = 5;
 }
