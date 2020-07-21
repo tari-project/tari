@@ -20,49 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::grpc::{
-    blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
-    helpers::{mean, median},
-    server::base_node_grpc::*,
-};
+use crate::grpc::server::base_node_grpc as grpc;
 use prost_types::Timestamp;
 use std::convert::{TryFrom, TryInto};
 use tari_core::{
-    base_node::{comms_interface::Broadcast, LocalNodeCommsInterface},
     blocks::{Block, BlockHeader, NewBlockHeaderTemplate, NewBlockTemplate},
-    chain_storage::{ChainMetadata, HistoricalBlock},
-    consensus::{
-        emission::EmissionSchedule,
-        ConsensusConstants,
-        Network,
-        KERNEL_WEIGHT,
-        WEIGHT_PER_INPUT,
-        WEIGHT_PER_OUTPUT,
-    },
+    chain_storage::HistoricalBlock,
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
-    proto::utils::try_convert_all,
-    transactions::{
-        aggregated_body::AggregateBody,
-        bullet_rangeproofs::BulletRangeProof,
-        tari_amount::MicroTari,
-        transaction::{
-            KernelFeatures,
-            OutputFeatures,
-            OutputFlags,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
-        types::{BlindingFactor, Commitment, PrivateKey, PublicKey, Signature},
-    },
+    transactions::types::BlindingFactor,
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray, Hashable};
-use tonic::Status;
-
-use crate::grpc::server::base_node_grpc as grpc;
 
 /// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`
-fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {
+pub fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {
     Timestamp {
         seconds: datetime.as_u64() as i64,
         nanos: 0,

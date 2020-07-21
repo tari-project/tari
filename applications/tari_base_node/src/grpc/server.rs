@@ -20,48 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::grpc::{
-    blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
+    blocks::{block_fees, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
     helpers::{mean, median},
     server::base_node_grpc::*,
 };
 use log::*;
-use prost_types::Timestamp;
-use std::{
-    cmp,
-    convert::{TryFrom, TryInto},
-};
+use std::{cmp, convert::TryInto};
 use tari_common::GlobalConfig;
 use tari_core::{
     base_node::{comms_interface::Broadcast, LocalNodeCommsInterface},
-    blocks::{Block, BlockHeader, NewBlockHeaderTemplate, NewBlockTemplate},
-    chain_storage::{ChainMetadata, HistoricalBlock},
-    consensus::{
-        emission::EmissionSchedule,
-        ConsensusConstants,
-        Network,
-        KERNEL_WEIGHT,
-        WEIGHT_PER_INPUT,
-        WEIGHT_PER_OUTPUT,
-    },
-    proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
-    proto::utils::try_convert_all,
-    transactions::{
-        aggregated_body::AggregateBody,
-        bullet_rangeproofs::BulletRangeProof,
-        tari_amount::MicroTari,
-        transaction::{
-            KernelFeatures,
-            OutputFeatures,
-            OutputFlags,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
-        types::{BlindingFactor, Commitment, PrivateKey, PublicKey, Signature},
-    },
+    blocks::{Block, BlockHeader, NewBlockTemplate},
+    consensus::{emission::EmissionSchedule, ConsensusManagerBuilder, Network},
+    proof_of_work::PowAlgorithm,
 };
 
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray, Hashable};
+use tari_crypto::tari_utilities::Hashable;
 use tokio::{runtime, sync::mpsc};
 use tonic::{Request, Response, Status};
 
@@ -341,7 +314,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_new_block(
         &self,
         request: Request<base_node_grpc::NewBlockTemplate>,
-    ) -> Result<Response<base_node_grpc::Block>, Status>
+    ) -> Result<Response<base_node_grpc::GetNewBlockResult>, Status>
     {
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block");
@@ -355,9 +328,28 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .get_new_block(block_template)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-
-        let response: base_node_grpc::Block = new_block.into();
-
+        // construct response
+        let cm = ConsensusManagerBuilder::new(self.node_config.network.into()).build();
+        let block_hash = new_block.hash();
+        let mining_hash = new_block.header.merged_mining_hash();
+        let pow = match new_block.header.pow.pow_algo {
+            PowAlgorithm::Monero => 0,
+            PowAlgorithm::Blake => 1,
+        };
+        let target_difficulty = new_block.header.pow.target_difficulty;
+        let reward = cm.calculate_coinbase_and_fees(&new_block);
+        let block: Option<base_node_grpc::Block> = Some(new_block.into());
+        let mining_data = Some(base_node_grpc::MinerData {
+            algo: Some(base_node_grpc::PowAlgo { pow_algo: pow }),
+            target_difficulty: target_difficulty.as_u64(),
+            reward: reward.0,
+            mergemining_hash: mining_hash,
+        });
+        let response = base_node_grpc::GetNewBlockResult {
+            block_hash,
+            block,
+            mining_data,
+        };
         debug!(target: LOG_TARGET, "Sending GetNewBlock response to client");
         Ok(Response::new(response))
     }
@@ -439,7 +431,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn get_tip_info(
         &self,
-        request: Request<base_node_grpc::Empty>,
+        _request: Request<base_node_grpc::Empty>,
     ) -> Result<Response<base_node_grpc::MetaData>, Status>
     {
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
