@@ -505,9 +505,6 @@ void wallet_apply_encryption(struct TariWallet *wallet, const char *passphrase, 
 // be removed. If it is not encrypted then this function will still succeed to make the operation idempotent
 void wallet_remove_encryption(struct TariWallet *wallet, int* error_out);
 
-// This function will produce a partial backup of the wallet at the location specified but with the sensitive data cleared.
-void wallet_partial_backup(struct TariWallet *wallet, const char *backup_file_path, int* error_out);
-
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
 
