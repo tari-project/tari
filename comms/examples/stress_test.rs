@@ -30,7 +30,7 @@ use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tempfile::Builder;
 use tokio::time;
 
-#[tokio_macros::main]
+#[tokio_macros::main_basic(max_threads = 1)]
 async fn main() {
     env_logger::init();
     match run().await {

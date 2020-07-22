@@ -77,7 +77,7 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
                 network,
                 dht_flags,
                 origin_mac,
-                reply_tx,
+                reply,
                 ..
             } = message;
 
@@ -99,7 +99,7 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
                 .oneshot(OutboundMessage {
                     tag,
                     peer_node_id: destination_node_id,
-                    reply_tx: reply_tx.into_inner(),
+                    reply,
                     body,
                 })
                 .await

@@ -244,8 +244,9 @@ async fn send_message_substream_bulk_failure() {
     expected_out_msg_tags.push(send_msg(&mut request_tx, peer_node_id.clone()).await);
 
     let _ = peer_conn_mock2.next_incoming_substream().await.unwrap();
-    // Close destination peer's channel before receiving the message
+    // Close destination peer's channel before queuing the message to send
     peer_conn_mock2.disconnect().await.unwrap();
+    drop(peer_conn_mock2);
 
     for _ in 0..NUM_MSGS - 1 {
         expected_out_msg_tags.push(send_msg(&mut request_tx, peer_node_id.clone()).await);
@@ -259,7 +260,8 @@ async fn send_message_substream_bulk_failure() {
         let event = event_tx.next().await.unwrap().unwrap();
         unpack_enum!(MessagingEvent::SendMessageFailed(out_msg, reason) = &*event);
         unpack_enum!(SendFailReason::SubstreamOpenFailed = reason);
-        assert_eq!(out_msg.tag, expected_out_msg_tags.remove(0));
+        let pos = expected_out_msg_tags.iter().position(|i| i == &out_msg.tag).unwrap();
+        expected_out_msg_tags.remove(pos);
     }
 }
 
@@ -285,7 +287,7 @@ async fn many_concurrent_send_message_requests() {
         let (reply_tx, reply_rx) = oneshot::channel();
         let out_msg = OutboundMessage {
             tag: MessageTag::new(),
-            reply_tx: Some(reply_tx),
+            reply: reply_tx.into(),
             peer_node_id: node_id2.clone(),
             body: TEST_MSG1,
         };
@@ -311,10 +313,12 @@ async fn many_concurrent_send_message_requests() {
         msg_tags.remove(index);
     }
 
-    let unordered = FuturesUnordered::new();
-    reply_rxs.into_iter().for_each(|rx| unordered.push(rx));
+    let unordered = reply_rxs.into_iter().collect::<FuturesUnordered<_>>();
     let results = unordered.collect::<Vec<_>>().await;
-    assert_eq!(results.into_iter().map(|r| r.unwrap()).all(|r| r.is_ok()), true);
+    assert_eq!(
+        results.into_iter().map(Result::unwrap).filter(Result::is_err).count(),
+        0
+    );
 
     // Got a single call to create a substream
     assert_eq!(peer_conn_mock1.call_count(), 1);
@@ -334,7 +338,7 @@ async fn many_concurrent_send_message_requests_that_fail() {
         let (reply_tx, reply_rx) = oneshot::channel();
         let out_msg = OutboundMessage {
             tag: MessageTag::new(),
-            reply_tx: Some(reply_tx),
+            reply: reply_tx.into(),
             peer_node_id: node_id2.clone(),
             body: TEST_MSG1,
         };

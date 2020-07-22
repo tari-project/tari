@@ -151,37 +151,6 @@ impl fmt::Display for DhtOutboundRequest {
     }
 }
 
-/// Wrapper struct for a oneshot reply sender. When this struct is dropped, an automatic fail is sent on the oneshot if
-/// a response has not already been sent.
-#[derive(Debug)]
-pub struct WrappedReplyTx(Option<MessagingReplyTx>);
-
-impl WrappedReplyTx {
-    pub fn into_inner(mut self) -> Option<MessagingReplyTx> {
-        self.0.take()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn none() -> Self {
-        Self(None)
-    }
-}
-
-impl From<MessagingReplyTx> for WrappedReplyTx {
-    fn from(inner: MessagingReplyTx) -> Self {
-        Self(Some(inner))
-    }
-}
-
-impl Drop for WrappedReplyTx {
-    fn drop(&mut self) {
-        // If this is dropped and the reply tx has not been used already, send an error reply
-        if let Some(reply_tx) = self.0.take() {
-            let _ = reply_tx.send(Err(()));
-        }
-    }
-}
-
 /// DhtOutboundMessage consists of the DHT and comms information required to
 /// send a message
 #[derive(Debug)]
@@ -194,7 +163,7 @@ pub struct DhtOutboundMessage {
     pub origin_mac: Option<Bytes>,
     pub destination: NodeDestination,
     pub dht_message_type: DhtMessageType,
-    pub reply_tx: WrappedReplyTx,
+    pub reply: MessagingReplyTx,
     pub network: Network,
     pub dht_flags: DhtMessageFlags,
     pub is_broadcast: bool,
