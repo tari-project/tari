@@ -764,7 +764,6 @@ fn local_get_new_block_template_and_get_new_block() {
     let (txs, _) = schema_to_transaction(&schema);
     assert!(node.mempool.insert(txs[0].clone()).is_ok());
     assert!(node.mempool.insert(txs[1].clone()).is_ok());
-
     runtime.block_on(async {
         let block_template = node
             .local_nci

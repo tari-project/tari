@@ -24,6 +24,7 @@ mod blake_pow;
 mod difficulty;
 mod error;
 mod median_timestamp;
+pub mod monero_merkle_tree;
 #[allow(clippy::enum_variant_names)]
 mod monero_rx;
 #[allow(clippy::module_inception)]
@@ -39,6 +40,6 @@ pub use blake_pow::{blake_difficulty, blake_difficulty_with_hash};
 pub use difficulty::{Difficulty, DifficultyAdjustment};
 pub use error::{DifficultyAdjustmentError, PowError};
 pub use median_timestamp::get_median_timestamp;
-pub use monero_rx::monero_difficulty;
+pub use monero_rx::{monero_difficulty};
 pub use proof_of_work::{PowAlgorithm, ProofOfWork};
 pub use target_difficulty::get_target_difficulty;

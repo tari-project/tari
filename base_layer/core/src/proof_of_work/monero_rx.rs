@@ -88,10 +88,10 @@ fn monero_difficulty_calculation(header: &BlockHeader) -> Result<Difficulty, Mer
         let flags = RandomXFlag::get_recommended_flags();
         let key = monero.key.clone();
         let input = create_input_blob(&monero)?;
-        let cache = RandomXCache::new(flags, &key)?;
+        let cache = RandomXCache::new(flags, &key.as_bytes())?;
         let dataset = RandomXDataset::new(flags, &cache, 0)?;
         let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset))?;
-        let hash = vm.calculate_hash(&input)?;
+        let hash = vm.calculate_hash(&input.as_bytes())?;
         let scalar = U256::from_big_endian(&hash); // Big endian so the hash has leading zeroes
         let result = MAX_TARGET / scalar;
         let difficulty = result.low_u64().into();
