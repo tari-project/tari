@@ -3559,7 +3559,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
                 for ct in completed_txs
                     .values()
                     .filter(|ct| ct.status == TransactionStatus::Completed || ct.status == TransactionStatus::Broadcast)
-                    .filter(|ct| ct.destination_public_key == my_public_key)
+                    .filter(|ct| ct.direction == TransactionDirection::Inbound)
                 {
                     pending.push(InboundTransaction::from(ct.clone()));
                 }
