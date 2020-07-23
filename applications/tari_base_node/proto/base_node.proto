@@ -50,7 +50,7 @@ service BaseNode {
     // Get the block template
     rpc GetNewBlockTemplate(PowAlgo) returns (NewBlockTemplate);
     // Construct a new block from a provided template
-    rpc GetNewBlock(NewBlockTemplate) returns (Block);
+    rpc GetNewBlock(NewBlockTemplate) returns (GetNewBlockResult);
     // Submit a new block for propogation
     rpc SubmitBlock(Block) returns (Empty);
     // Get the base node tip information
@@ -375,4 +375,22 @@ message MetaData {
         uint64 pruning_horizon = 4;
         // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
         uint64 accumulated_difficulty = 5;
+}
+
+// This is the message that is returned for a miner after it asks for a new block. 
+message GetNewBlockResult{
+    // This is the header hash of the complated block
+    bytes block_hash = 1;
+    // This is the completed block
+    Block block = 2;
+    // This is the merge_mining hash of the completed block. 
+    MinerData mining_data = 3;
+}
+
+// This is mining data for the miner asking for a new block
+message MinerData{
+    PowAlgo algo = 1;
+    uint64 target_difficulty = 2;
+    uint64 reward = 3;
+    bytes mergemining_hash =4;
 }

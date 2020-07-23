@@ -1185,7 +1185,7 @@ async fn register_wallet_services(
     broadcast_send_timeout: Duration,
 ) -> Arc<ServiceHandles>
 {
-    let mut transaction_db = TransactionServiceSqliteDatabase::new(wallet_db_conn.clone(), None);
+    let transaction_db = TransactionServiceSqliteDatabase::new(wallet_db_conn.clone(), None);
     transaction_db.migrate(wallet_comms.node_identity().public_key().clone());
 
     StackBuilder::new(runtime::Handle::current(), wallet_comms.shutdown_signal())

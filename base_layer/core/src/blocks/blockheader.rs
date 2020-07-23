@@ -208,6 +208,22 @@ impl BlockHeader {
         };
         (max, min, avg)
     }
+
+    /// Provides a hash of the header, used for the merge mining.
+    /// This differs from the normal hash by not hashing the nonce and kernel pow.
+    pub fn merged_mining_hash(&self) -> Vec<u8> {
+        HashDigest::new()
+            .chain(self.version.to_le_bytes())
+            .chain(self.height.to_le_bytes())
+            .chain(self.prev_hash.as_bytes())
+            .chain(self.timestamp.as_u64().to_le_bytes())
+            .chain(self.output_mr.as_bytes())
+            .chain(self.range_proof_mr.as_bytes())
+            .chain(self.kernel_mr.as_bytes())
+            .chain(self.total_kernel_offset.as_bytes())
+            .result()
+            .to_vec()
+    }
 }
 
 impl From<NewBlockHeaderTemplate> for BlockHeader {
