@@ -137,18 +137,13 @@ pub type HashSlice = [u8];
 
 mod backend;
 mod mem_backend_vec;
-mod merkle_checkpoint;
 mod merkle_mountain_range;
 mod merkle_proof;
-mod mmr_cache;
-mod mutable_mmr;
-mod mutable_mmr_leaf_nodes;
 mod serde_support;
 
 // Less commonly used exports
 pub mod common;
 pub mod error;
-pub mod functions;
 /// A function for snapshotting and pruning a Merkle Mountain Range
 pub mod pruned_hashset;
 
@@ -157,16 +152,34 @@ pub mod pruned_hashset;
 pub use backend::{ArrayLike, ArrayLikeExt};
 /// MemBackendVec is a shareable, memory only, vector that can be be used with MmrCache to store checkpoints.
 pub use mem_backend_vec::MemBackendVec;
-/// A Merkle checkpoint contains the set of hash additions and deletion indices.
-pub use merkle_checkpoint::MerkleCheckPoint;
 /// An immutable, append-only Merkle Mountain range (MMR) data structure
 pub use merkle_mountain_range::MerkleMountainRange;
 /// A data structure for proving a hash inclusion in an MMR
 pub use merkle_proof::{MerkleProof, MerkleProofError};
-/// The MMR cache is used to calculate Merkle and Merklish roots based on the state of the set of shared
-/// checkpoints.
-pub use mmr_cache::{MmrCache, MmrCacheConfig};
-/// An append-only Merkle Mountain range (MMR) data structure that allows deletion of existing leaf nodes.
-pub use mutable_mmr::MutableMmr;
-/// A data structure for storing all the data required to restore the state of an MMR.
-pub use mutable_mmr_leaf_nodes::MutableMmrLeafNodes;
+
+macro_rules! if_native_bitmap {
+    ($($item:item)*) => {
+        $(
+            #[cfg(feature = "native_bitmap")]
+            $item
+        )*
+    }
+}
+
+if_native_bitmap! {
+    mod merkle_checkpoint;
+    mod mmr_cache;
+    mod mutable_mmr;
+    mod mutable_mmr_leaf_nodes;
+    pub mod functions;
+
+    /// A Merkle checkpoint contains the set of hash additions and deletion indices.
+    pub use merkle_checkpoint::MerkleCheckPoint;
+    /// The MMR cache is used to calculate Merkle and Merklish roots based on the state of the set of shared
+    /// checkpoints.
+    pub use mmr_cache::{MmrCache, MmrCacheConfig};
+    /// An append-only Merkle Mountain range (MMR) data structure that allows deletion of existing leaf nodes.
+    pub use mutable_mmr::MutableMmr;
+    /// A data structure for storing all the data required to restore the state of an MMR.
+    pub use mutable_mmr_leaf_nodes::MutableMmrLeafNodes;
+}

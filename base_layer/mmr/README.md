@@ -11,3 +11,8 @@ at the bottom of the MMR is the hashes of the data. The MMR allows easy to add a
 tree. MMR always tries to have the largest possible single binary tree, so in effect it is possible to have more than
 one binary tree. Every time you have to get the merkle root (the single merkle proof of the whole MMR) you have the bag
 the peaks of the individual trees, or mountain peaks.
+
+### Features
+
+* `native_bitmap` - default feature, provides implementation for `MerkleCheckPoint`, `MmrCache`, `MutableMmr` via
+using linked C library `croaring` (make sure to disable this feature when compiling to WASM).
