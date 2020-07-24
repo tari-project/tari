@@ -33,11 +33,15 @@ use futures::{
     StreamExt,
 };
 use rand::{rngs::OsRng, RngCore};
-use std::{iter::repeat_with, time::Instant};
+use std::{
+    iter::repeat_with,
+    time::{Duration, Instant},
+};
 use tari_comms::{
     framing,
     peer_manager::{NodeId, Peer},
     protocol::{ProtocolEvent, ProtocolNotification},
+    rate_limit::RateLimit,
     CommsNode,
     PeerConnection,
     Substream,
@@ -45,9 +49,14 @@ use tari_comms::{
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::{task, task::JoinHandle};
 
+/// The minimum amount of inbound messages to accept within the `RATE_LIMIT_RESTOCK_INTERVAL` window
+const RATE_LIMIT_MIN_CAPACITY: usize = 1;
+const RATE_LIMIT_RESTOCK_INTERVAL: Duration = Duration::from_millis(1000);
+
 pub fn start_service(
     comms_node: CommsNode,
     protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
+    rate_limit: usize,
 ) -> (JoinHandle<Result<(), Error>>, mpsc::Sender<StressTestServiceRequest>)
 {
     let node_identity = comms_node.node_identity();
@@ -60,7 +69,7 @@ pub fn start_service(
         comms_node.listening_address(),
     );
 
-    let service = StressTestService::new(request_rx, comms_node, protocol_notif);
+    let service = StressTestService::new(request_rx, comms_node, protocol_notif, rate_limit);
     (task::spawn(service.start()), request_tx)
 }
 
@@ -128,6 +137,7 @@ struct StressTestService {
     comms_node: CommsNode,
     protocol_notif: Fuse<mpsc::Receiver<ProtocolNotification<Substream>>>,
     shutdown: bool,
+    rate_limit: usize,
 }
 
 impl StressTestService {
@@ -135,6 +145,7 @@ impl StressTestService {
         request_rx: mpsc::Receiver<StressTestServiceRequest>,
         comms_node: CommsNode,
         protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
+        rate_limit: usize,
     ) -> Self
     {
         Self {
@@ -142,6 +153,7 @@ impl StressTestService {
             comms_node,
             protocol_notif: protocol_notif.fuse(),
             shutdown: false,
+            rate_limit,
         }
     }
 
@@ -218,7 +230,7 @@ impl StressTestService {
                     String::from_utf8_lossy(&notification.protocol)
                 );
 
-                task::spawn(start_responder_protocol(*node_id, substream));
+                task::spawn(start_responder_protocol(*node_id, substream, self.rate_limit));
             },
         }
     }
@@ -295,23 +307,33 @@ async fn start_initiator_protocol(mut conn: PeerConnection, protocol: StressProt
     Ok(())
 }
 
-async fn start_responder_protocol(peer: NodeId, mut substream: Substream) -> Result<(), Error> {
+async fn start_responder_protocol(peer: NodeId, mut substream: Substream, rate_limit: usize) -> Result<(), Error> {
     let mut buf = [0u8; 9];
     substream.read_exact(&mut buf).await?;
     let protocol = StressProtocol::decode(&buf).ok_or_else(|| Error::InvalidProtocolFrame)?;
 
-    let mut framed = framing::canonical(substream, MAX_FRAME_SIZE);
+    let framed = framing::canonical(substream, MAX_FRAME_SIZE);
+    let (mut sink, stream) = framed.split();
+    let mut stream = stream.rate_limit(
+        std::cmp::max(rate_limit, RATE_LIMIT_MIN_CAPACITY),
+        RATE_LIMIT_RESTOCK_INTERVAL,
+    );
 
     println!();
     println!("-------------------------------------------------");
-    println!("Peer `{}` chose {:?}", peer.short_str(), protocol);
+    println!(
+        "Peer `{}` chose {:?}.\n    [Receiver rate limited to {} messages/s]",
+        peer.short_str(),
+        protocol,
+        rate_limit
+    );
     println!("-------------------------------------------------");
     match protocol.kind {
         StressProtocolKind::ContinuousSend => {
             let mut received = vec![];
             let start = Instant::now();
 
-            while let Some(Ok(msg)) = framed.next().await {
+            while let Some(Ok(msg)) = stream.next().await {
                 received.push(decode_msg(msg));
             }
 
@@ -363,7 +385,7 @@ async fn start_responder_protocol(peer: NodeId, mut substream: Substream) -> Res
                 // Read 100
                 for _ in 0..100usize {
                     counter += 1;
-                    let msg = framed.next().await.ok_or_else(|| Error::UnexpectedEof)??;
+                    let msg = stream.next().await.ok_or_else(|| Error::UnexpectedEof)??;
                     received.push(decode_msg(msg));
                 }
 
@@ -376,11 +398,11 @@ async fn start_responder_protocol(peer: NodeId, mut substream: Substream) -> Res
                     .take(100)
                     .map(Ok),
                 );
-                framed.send_all(&mut iter).await?;
+                sink.send_all(&mut iter).await?;
             }
 
             // Wait for the stream to close
-            let _ = framed.next().await;
+            let _ = stream.next().await;
 
             println!(
                 "Protocol complete in {:.2?}. {} messages received, {} sent",

@@ -56,6 +56,12 @@ async fn run() -> Result<(), Error> {
 
     let is_tcp = remove_arg(&mut args, "--tcp").is_some();
 
+    let mut rate_limit = 100_000;
+    if let Some(pos) = remove_arg(&mut args, "--rate-limit") {
+        rate_limit = args.remove(pos).parse().expect("Unable to parse rate limit");
+    }
+    println!("Rate limit set to: {}/s", rate_limit);
+
     let mut public_ip = None;
     if let Some(pos) = remove_arg(&mut args, "--public-ip") {
         public_ip = Some(args.remove(pos).parse::<Ipv4Addr>().unwrap());
@@ -99,7 +105,7 @@ async fn run() -> Result<(), Error> {
     }
 
     println!("Stress test service started!");
-    let (handle, mut requester) = service::start_service(comms_node, protocol_notif);
+    let (handle, mut requester) = service::start_service(comms_node, protocol_notif, rate_limit);
 
     let mut last_peer = peer.as_ref().and_then(parse_from_short_str);
 
