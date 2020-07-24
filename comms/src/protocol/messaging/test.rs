@@ -88,6 +88,7 @@ async fn spawn_messaging_protocol() -> (
     let (events_tx, events_rx) = broadcast::channel(100);
 
     let msg_proto = MessagingProtocol::new(
+        Default::default(),
         requester,
         peer_manager.clone(),
         node_identity.clone(),
@@ -244,7 +245,7 @@ async fn send_message_substream_bulk_failure() {
 
     let _ = peer_conn_mock2.next_incoming_substream().await.unwrap();
     // Close destination peer's channel before receiving the message
-    peer_conn_mock2.disconnect().await;
+    peer_conn_mock2.disconnect().await.unwrap();
 
     for _ in 0..NUM_MSGS - 1 {
         expected_out_msg_tags.push(send_msg(&mut request_tx, peer_node_id.clone()).await);
@@ -354,8 +355,7 @@ async fn many_concurrent_send_message_requests_that_fail() {
         msg_tags.remove(index);
     }
 
-    let unordered = FuturesUnordered::new();
-    reply_rxs.into_iter().for_each(|rx| unordered.push(rx));
+    let unordered = reply_rxs.into_iter().collect::<FuturesUnordered<_>>();
     let results = unordered.collect::<Vec<_>>().await;
     assert_eq!(results.into_iter().map(|r| r.unwrap()).all(|r| r.is_err()), true);
 
@@ -377,7 +377,7 @@ async fn inactivity_timeout() {
             events_tx,
             10,
             Duration::from_millis(100),
-            Duration::from_millis(5),
+            Some(Duration::from_millis(5)),
         )
         .run(socket_in),
     );

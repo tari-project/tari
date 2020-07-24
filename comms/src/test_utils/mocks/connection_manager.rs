@@ -29,6 +29,7 @@ use crate::{
         PeerConnection,
     },
     peer_manager::NodeId,
+    runtime::task,
 };
 use futures::{channel::mpsc, lock::Mutex, stream::Fuse, StreamExt};
 use std::{
@@ -38,7 +39,7 @@ use std::{
         Arc,
     },
 };
-use tokio::{sync::broadcast, task};
+use tokio::sync::broadcast;
 
 pub fn create_connection_manager_mock() -> (ConnectionManagerRequester, ConnectionManagerMock) {
     let (tx, rx) = mpsc::channel(10);

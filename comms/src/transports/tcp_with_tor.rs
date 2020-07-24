@@ -45,6 +45,13 @@ impl TcpWithTorTransport {
         self
     }
 
+    /// Create a new TcpTransport with the Tor socks proxy enabled
+    pub fn with_tor_socks_proxy(socks_config: SocksConfig) -> Self {
+        let mut transport = Self::default();
+        transport.set_tor_socks_proxy(socks_config);
+        transport
+    }
+
     /// Create a new TcpTransport
     pub fn new() -> Self {
         Default::default()

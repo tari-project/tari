@@ -29,7 +29,7 @@ use crate::{
     multiplexing::Substream,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerManagerError},
     protocol::{
-        messaging::{inbound::InboundMessaging, outbound::OutboundMessaging},
+        messaging::{inbound::InboundMessaging, outbound::OutboundMessaging, MessagingConfig},
         ProtocolEvent,
         ProtocolNotification,
     },
@@ -53,9 +53,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 const LOG_TARGET: &str = "comms::protocol::messaging";
 pub static MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"/tari/messaging/0.1.0");
 const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 50;
-/// The length of time that inactivity is allowed before closing the inbound/outbound substreams.
-/// Inbound/outbound substreams are closed independently, and they may be reopened in the future once closed.
-const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+
 /// The number of times to retry sending a failed message before publishing a SendMessageFailed event.
 /// This can be low because dialing a peer is already attempted a number of times.
 const MAX_SEND_RETRIES: usize = 1;
@@ -106,6 +104,7 @@ impl fmt::Display for MessagingEvent {
 }
 
 pub struct MessagingProtocol {
+    config: MessagingConfig,
     connection_manager_requester: ConnectionManagerRequester,
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
@@ -126,6 +125,7 @@ pub struct MessagingProtocol {
 impl MessagingProtocol {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        config: MessagingConfig,
         connection_manager_requester: ConnectionManagerRequester,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
@@ -140,6 +140,7 @@ impl MessagingProtocol {
             mpsc::channel(INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE);
         let (retry_queue_tx, retry_queue_rx) = mpsc::unbounded();
         Self {
+            config,
             connection_manager_requester,
             peer_manager,
             node_identity,
@@ -267,7 +268,8 @@ impl MessagingProtocol {
         use ConnectionManagerEvent::*;
         match &*event {
             PeerDisconnected(node_id) => {
-                if self.active_queues.remove(node_id).is_some() {
+                if let Some(sender) = self.active_queues.remove(node_id) {
+                    sender.close_channel();
                     debug!(
                         target: LOG_TARGET,
                         "Removing active queue because peer '{}' disconnected",
@@ -323,6 +325,7 @@ impl MessagingProtocol {
                         self.connection_manager_requester.clone(),
                         self.internal_messaging_event_tx.clone(),
                         peer_node_id.clone(),
+                        self.config.inactivity_timeout,
                     )
                     .await?;
                     break entry.insert(sender);
@@ -350,11 +353,12 @@ impl MessagingProtocol {
         conn_man_requester: ConnectionManagerRequester,
         events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
+        inactivity_timeout: Option<Duration>,
     ) -> Result<mpsc::UnboundedSender<OutboundMessage>, MessagingProtocolError>
     {
         let (msg_tx, msg_rx) = mpsc::unbounded();
         let outbound_messaging =
-            OutboundMessaging::new(conn_man_requester, events_tx, msg_rx, peer_node_id, INACTIVITY_TIMEOUT);
+            OutboundMessaging::new(conn_man_requester, events_tx, msg_rx, peer_node_id, inactivity_timeout);
         task::spawn(outbound_messaging.run());
         Ok(msg_tx)
     }
@@ -368,7 +372,7 @@ impl MessagingProtocol {
             messaging_events_tx,
             RATE_LIMIT_CAPACITY,
             RATE_LIMIT_RESTOCK_INTERVAL,
-            INACTIVITY_TIMEOUT,
+            self.config.inactivity_timeout,
         );
         task::spawn(inbound_messaging.run(substream));
     }

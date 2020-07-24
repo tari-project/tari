@@ -26,8 +26,38 @@ use rand::{rngs::OsRng, seq::SliceRandom};
 
 #[derive(Debug, Clone)]
 pub enum ConnectivitySelection {
+    AllNodes(Vec<NodeId>),
     RandomNodes(usize, Vec<NodeId>),
     ClosestTo(Box<NodeId>, usize, Vec<NodeId>),
+}
+
+impl ConnectivitySelection {
+    pub fn all_nodes(exclude: Vec<NodeId>) -> Self {
+        ConnectivitySelection::AllNodes(exclude)
+    }
+
+    pub fn random_nodes(n: usize, exclude: Vec<NodeId>) -> Self {
+        ConnectivitySelection::RandomNodes(n, exclude)
+    }
+
+    /// Select `n` peer connections ordered by closeness to `node_id`
+    pub fn closest_to(node_id: NodeId, n: usize, exclude: Vec<NodeId>) -> Self {
+        ConnectivitySelection::ClosestTo(Box::new(node_id), n, exclude)
+    }
+
+    /// Select peers from the pool according to the ConnectivitySelection
+    pub fn select<'a>(&self, pool: &'a ConnectionPool) -> Vec<&'a PeerConnection> {
+        use ConnectivitySelection::*;
+        match self {
+            AllNodes(exclude) => select_connected_nodes(pool, exclude),
+            RandomNodes(n, exclude) => select_random_nodes(pool, *n, exclude),
+            ClosestTo(dest_node_id, n, exclude) => {
+                let mut connections = select_closest(pool, dest_node_id, exclude);
+                connections.truncate(*n);
+                connections.to_vec()
+            },
+        }
+    }
 }
 
 pub fn select_connected_nodes<'a>(pool: &'a ConnectionPool, exclude: &[NodeId]) -> Vec<&'a PeerConnection> {

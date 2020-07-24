@@ -25,12 +25,12 @@ use super::{
     connection_stats::PeerConnectionStats,
     error::ConnectivityError,
     requester::{ConnectivityEvent, ConnectivityRequest},
-    selection,
     selection::ConnectivitySelection,
 };
 use crate::{
     connection_manager::{ConnectionManagerError, ConnectionManagerRequester},
     peer_manager::NodeId,
+    runtime::task,
     utils::datetime::format_duration,
     ConnectionManagerEvent,
     PeerConnection,
@@ -47,7 +47,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::{sync::broadcast, task, task::JoinHandle, time};
+use tokio::{sync::broadcast, task::JoinHandle, time};
 
 const LOG_TARGET: &str = "comms::connectivity::manager";
 
@@ -258,7 +258,9 @@ impl ConnectivityManagerActor {
             self.pool.count_disconnected(),
             self.pool.count_connected_clients()
         );
-        self.disconnect_inactive_connections().await;
+        if self.config.is_connection_reaping_enabled {
+            self.reap_inactive_connections().await;
+        }
         // Attempt to connect all managed peers: Failed, Disconnected or NotConnection will be dialed
         self.try_connect_managed_peers().await?;
         // Remove disconnected/failed peers from the connection pool
@@ -302,7 +304,7 @@ impl ConnectivityManagerActor {
         Ok(())
     }
 
-    async fn disconnect_inactive_connections(&mut self) {
+    async fn reap_inactive_connections(&mut self) {
         let connections = self
             .pool
             .get_inactive_connections_mut(self.config.reaper_min_inactive_age);
@@ -357,21 +359,14 @@ impl ConnectivityManagerActor {
         selection: ConnectivitySelection,
     ) -> Result<Vec<PeerConnection>, ConnectivityError>
     {
-        use ConnectivitySelection::*;
         trace!(target: LOG_TARGET, "Selection query: {:?}", selection);
         debug!(
             target: LOG_TARGET,
             "Selecting from {} connected node peers",
             self.pool.count_connected_nodes()
         );
-        let conns = match selection {
-            RandomNodes(n, exclude) => selection::select_random_nodes(&self.pool, n, &exclude),
-            ClosestTo(dest_node_id, n, exclude) => {
-                let mut connections = selection::select_closest(&self.pool, &dest_node_id, &exclude);
-                connections.truncate(n);
-                connections.to_vec()
-            },
-        };
+
+        let conns = selection.select(&self.pool);
         debug!(target: LOG_TARGET, "Selected {} connections(s)", conns.len());
 
         Ok(conns.into_iter().cloned().collect())
@@ -574,16 +569,18 @@ impl ConnectivityManagerActor {
             (self.managed_peers.len() as f32 * self.config.min_connectivity).ceil() as usize,
             1,
         );
-        let num_connected = self.pool.count_connected_nodes();
+        let num_connected_nodes = self.pool.count_connected_nodes();
+        let num_connected_clients = self.pool.count_connected_clients();
         debug!(
             target: LOG_TARGET,
-            "#managed peers = {}, min_peers = {}, num_connected = {}",
+            "#managed peers = {}, min_peers = {}, #nodes = {}, #clients = {}",
             self.managed_peers.len(),
             min_peers,
-            num_connected
+            num_connected_nodes,
+            num_connected_clients
         );
 
-        match num_connected {
+        match num_connected_nodes {
             n if n >= min_peers => {
                 self.transition(ConnectivityStatus::Online, n, min_peers);
             },

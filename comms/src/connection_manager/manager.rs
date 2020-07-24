@@ -24,7 +24,7 @@ use super::{
     dialer::{Dialer, DialerRequest},
     error::ConnectionManagerError,
     listener::PeerListener,
-    peer_connection::{ConnId, PeerConnection},
+    peer_connection::{ConnectionId, PeerConnection},
     requester::ConnectionManagerRequest,
     types::ConnectionDirection,
 };
@@ -52,7 +52,7 @@ use multiaddr::Multiaddr;
 use std::{collections::HashMap, fmt, sync::Arc};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use time::Duration;
-use tokio::{sync::broadcast, task, time};
+use tokio::{sync::broadcast, time};
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
@@ -65,7 +65,7 @@ pub enum ConnectionManagerEvent {
     PeerConnected(PeerConnection),
     PeerDisconnected(Box<NodeId>),
     PeerConnectFailed(Box<NodeId>, ConnectionManagerError),
-    PeerConnectWillClose(ConnId, Box<NodeId>, ConnectionDirection),
+    PeerConnectWillClose(ConnectionId, Box<NodeId>, ConnectionDirection),
     PeerInboundConnectFailed(ConnectionManagerError),
 
     // Listener
@@ -113,8 +113,6 @@ pub struct ConnectionManagerConfig {
     /// The maximum number of connection tasks that will be spawned at the same time. Once this limit is reached, peers
     /// attempting to connect will have to wait for another connection attempt to complete. Default: 20
     pub max_simultaneous_inbound_connects: usize,
-    /// The period of time to keep the peer connection around before disconnecting. Default: 3s
-    pub disconnect_linger: Duration,
     /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
     /// peer-to-peer comms. Default: false
     pub allow_test_addresses: bool,
@@ -134,7 +132,6 @@ impl Default for ConnectionManagerConfig {
                 .expect("DEFAULT_LISTENER_ADDRESS is malformed"),
             max_dial_attempts: 3,
             max_simultaneous_inbound_connects: 20,
-            disconnect_linger: Duration::from_secs(3),
             #[cfg(not(test))]
             allow_test_addresses: false,
             // This must always be true for internal crate tests
@@ -148,7 +145,6 @@ impl Default for ConnectionManagerConfig {
 }
 
 pub struct ConnectionManager<TTransport, TBackoff> {
-    config: ConnectionManagerConfig,
     request_rx: Fuse<mpsc::Receiver<ConnectionManagerRequest>>,
     internal_event_rx: Fuse<mpsc::Receiver<ConnectionManagerEvent>>,
     dialer_tx: mpsc::Sender<DialerRequest>,
@@ -199,7 +195,7 @@ where
         );
 
         let dialer = Dialer::new(
-            config.clone(),
+            config,
             Arc::clone(&node_identity),
             peer_manager.clone(),
             transport,
@@ -211,7 +207,6 @@ where
         );
 
         Self {
-            config,
             shutdown_signal: Some(shutdown_signal),
             request_rx: request_rx.fuse(),
             node_identity,
@@ -422,24 +417,40 @@ where
                     );
                 }
             },
-            PeerConnected(new_conn) => {
+            PeerConnected(mut new_conn) => {
                 let node_id = new_conn.peer_node_id().clone();
+                let _ = self
+                    .dialer_tx
+                    .send(DialerRequest::CancelPendingDial(node_id.clone()))
+                    .await;
 
                 match self.active_connections.get(&node_id) {
                     Some(existing_conn) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Existing {} peer connection found for peer '{}'",
-                            existing_conn.direction(),
-                            existing_conn.peer_node_id()
-                        );
+                        if !existing_conn.is_connected() {
+                            // This is a "weird" situation, but let's handle it appropriately
+                            debug!(
+                                target: LOG_TARGET,
+                                "Tie break: Existing connection was not connected, resolving tie break by using the \
+                                 new connection. (New={}, Existing={})",
+                                new_conn,
+                                existing_conn,
+                            );
+                            // Replace existing connection with new one
+                            self.active_connections
+                                .insert(node_id, new_conn.clone())
+                                .expect("Already checked");
+
+                            self.publish_event(PeerConnected(new_conn));
+                            return;
+                        }
 
                         if self.tie_break_existing_connection(existing_conn, &new_conn) {
                             debug!(
                                 target: LOG_TARGET,
-                                "Disconnecting existing {} connection to peer '{}' because of simultaneous dial",
-                                existing_conn.direction(),
-                                existing_conn.peer_node_id().short_str()
+                                "Tie break: (Peer = {}) Keep new {} connection, Disconnect existing {} connection",
+                                new_conn.peer_node_id().short_str(),
+                                new_conn.direction(),
+                                existing_conn.direction()
                             );
 
                             self.publish_event(PeerConnectWillClose(
@@ -449,23 +460,28 @@ where
                             ));
 
                             // Replace existing connection with new one
-                            let existing_conn = self
+                            let mut existing_conn = self
                                 .active_connections
                                 .insert(node_id, new_conn.clone())
                                 .expect("Already checked");
 
-                            self.delayed_disconnect(existing_conn);
+                            // self.delayed_disconnect(existing_conn);
+                            // Can ignore the error here, the error is already logged by peer connection
+                            let _ = existing_conn.disconnect_silent().await;
                             self.publish_event(PeerConnected(new_conn));
                         } else {
                             debug!(
                                 target: LOG_TARGET,
-                                "Disconnecting new {} connection to peer '{}' because of
-                         simultaneous dial",
+                                "Tie break: (Peer = {}) Keeping existing {} connection, Disconnecting new {} \
+                                 connection",
+                                existing_conn.peer_node_id().short_str(),
+                                existing_conn.direction(),
                                 new_conn.direction(),
-                                new_conn.peer_node_id().short_str()
                             );
 
-                            self.delayed_disconnect(new_conn);
+                            // Can ignore the error here, the error is already logged by peer connection
+                            let _ = new_conn.disconnect_silent().await;
+                            // self.delayed_disconnect(new_conn);
                         }
                     },
                     None => {
@@ -481,12 +497,9 @@ where
                 }
             },
             PeerDisconnected(node_id) => {
-                if self.active_connections.remove(&node_id).is_some() {
-                    self.publish_event(PeerDisconnected(node_id));
-                }
-            },
-            PeerConnectFailed(node_id, err) => {
-                self.publish_event(PeerConnectFailed(node_id, err));
+                debug!(target: LOG_TARGET, "Peer `{}` disconnected", node_id.short_str());
+                self.active_connections.remove(&node_id);
+                self.publish_event(PeerDisconnected(node_id));
             },
             event => {
                 self.publish_event(event);
@@ -520,7 +533,7 @@ where
 
         use ConnectionDirection::*;
         match (existing_conn.direction(), new_conn.direction()) {
-            // They connected to us twice for some reason. Drop the existing (older) connection
+            // They connected to us twice for some reason. Drop the older connection
             (Inbound, Inbound) => true,
             // They connected to us at the same time we connected to them
             (Inbound, Outbound) => peer_node_id > our_node_id,
@@ -529,37 +542,6 @@ where
             // We connected to them twice for some reason. Drop the newer connection.
             (Outbound, Outbound) => false,
         }
-    }
-
-    /// A 'gentle' disconnect starts by firing a `PeerConnectWillClose` event, waiting (lingering) for a period of time
-    /// and then disconnecting. This gives other components time to conclude their work before the connection is
-    /// closed.
-    fn delayed_disconnect(&mut self, mut conn: PeerConnection) -> task::JoinHandle<()> {
-        let linger = self.config.disconnect_linger;
-        debug!(
-            target: LOG_TARGET,
-            "{} connection for peer '{}' will close after {}ms",
-            conn.direction(),
-            conn.peer_node_id(),
-            linger.as_millis()
-        );
-
-        runtime::current().spawn(async move {
-            debug!(
-                target: LOG_TARGET,
-                "Waiting for linger period ({}ms) to expire...",
-                linger.as_millis()
-            );
-            time::delay_for(linger).await;
-            if conn.is_connected() {
-                match conn.disconnect_silent().await {
-                    Ok(_) => {},
-                    Err(err) => {
-                        warn!(target: LOG_TARGET, "Failed to disconnect because '{:?}'", err);
-                    },
-                }
-            }
-        })
     }
 
     fn publish_event(&self, event: ConnectionManagerEvent) {

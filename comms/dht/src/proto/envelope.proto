@@ -11,8 +11,6 @@ enum DhtMessageType {
     DhtMessageTypeDiscovery = 2;
     // Response to a discovery request
     DhtMessageTypeDiscoveryResponse = 3;
-    // Message was rejected
-    DhtMessageTypeRejectMsg = 4;
     // Request stored messages from a node
     DhtMessageTypeSafRequestMessages = 20;
     // Stored messages response

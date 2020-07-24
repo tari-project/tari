@@ -20,35 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+pub const MAX_FRAME_SIZE: usize = 8 * 1024 * 1024;
+pub const TOR_CONTROL_PORT_ADDR: &str = "/ip4/127.0.0.1/tcp/9051";
+pub const TOR_SOCKS_ADDR: &str = "/ip4/127.0.0.1/tcp/9050";
+pub static STRESS_PROTOCOL_NAME: bytes::Bytes = bytes::Bytes::from_static(b"stress-test/1.0");
 
-#[derive(Debug, Clone, Copy)]
-pub struct ConnectivityConfig {
-    /// This factor is used to calculate the threshold to transition connectivity to an online state.
-    /// To change the status to ONLINE, this must be true: `num_connected >= num_peers * min_connectivity`
-    /// Default: 30%
-    pub min_connectivity: f32,
-    /// Interval to check the connection pool, including reaping inactive connections and retrying failed managed peer
-    /// connections. Default: 30s
-    pub connection_pool_refresh_interval: Duration,
-    /// True if connection reaping is enabled, otherwise false (default: true)
-    pub is_connection_reaping_enabled: bool,
-    /// The minimum age of the connection before it can be reaped. This prevents a connection that has just been
-    /// established from being reaped due to inactivity.
-    pub reaper_min_inactive_age: Duration,
-    /// The number of connection failures before a peer is considered offline
-    /// Default: 2
-    pub max_failures_mark_offline: usize,
-}
-
-impl Default for ConnectivityConfig {
-    fn default() -> Self {
-        Self {
-            min_connectivity: 0.3,
-            connection_pool_refresh_interval: Duration::from_secs(30),
-            reaper_min_inactive_age: Duration::from_secs(60),
-            is_connection_reaping_enabled: true,
-            max_failures_mark_offline: 2,
-        }
-    }
-}
+pub mod error;
+pub mod node;
+pub mod prompt;
+pub mod service;

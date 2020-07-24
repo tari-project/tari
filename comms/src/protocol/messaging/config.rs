@@ -22,33 +22,20 @@
 
 use std::time::Duration;
 
-#[derive(Debug, Clone, Copy)]
-pub struct ConnectivityConfig {
-    /// This factor is used to calculate the threshold to transition connectivity to an online state.
-    /// To change the status to ONLINE, this must be true: `num_connected >= num_peers * min_connectivity`
-    /// Default: 30%
-    pub min_connectivity: f32,
-    /// Interval to check the connection pool, including reaping inactive connections and retrying failed managed peer
-    /// connections. Default: 30s
-    pub connection_pool_refresh_interval: Duration,
-    /// True if connection reaping is enabled, otherwise false (default: true)
-    pub is_connection_reaping_enabled: bool,
-    /// The minimum age of the connection before it can be reaped. This prevents a connection that has just been
-    /// established from being reaped due to inactivity.
-    pub reaper_min_inactive_age: Duration,
-    /// The number of connection failures before a peer is considered offline
-    /// Default: 2
-    pub max_failures_mark_offline: usize,
+#[derive(Debug, Clone)]
+pub struct MessagingConfig {
+    /// The length of time that inactivity is allowed before closing the inbound/outbound substreams, or None for no
+    /// timeout
+    ///
+    /// Inbound/outbound substreams are closed independently, and they may be reopened in the future once closed.
+    /// (default: 5 mins)
+    pub inactivity_timeout: Option<Duration>,
 }
 
-impl Default for ConnectivityConfig {
+impl Default for MessagingConfig {
     fn default() -> Self {
         Self {
-            min_connectivity: 0.3,
-            connection_pool_refresh_interval: Duration::from_secs(30),
-            reaper_min_inactive_age: Duration::from_secs(60),
-            is_connection_reaping_enabled: true,
-            max_failures_mark_offline: 2,
+            inactivity_timeout: Some(Duration::from_secs(5 * 60)),
         }
     }
 }

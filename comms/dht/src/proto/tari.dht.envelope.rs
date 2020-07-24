@@ -66,8 +66,6 @@ pub enum DhtMessageType {
     Discovery = 2,
     /// Response to a discovery request
     DiscoveryResponse = 3,
-    /// Message was rejected
-    RejectMsg = 4,
     /// Request stored messages from a node
     SafRequestMessages = 20,
     /// Stored messages response

@@ -27,7 +27,7 @@ use crate::{
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{
-        dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage, RejectMessage},
+        dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage},
         envelope::DhtMessageType,
     },
 };
@@ -105,10 +105,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             DhtMessageType::Discovery => self.handle_discover(message).await.map_err(PipelineError::from_debug)?,
             DhtMessageType::DiscoveryResponse => self
                 .handle_discover_response(message)
-                .await
-                .map_err(PipelineError::from_debug)?,
-            DhtMessageType::RejectMsg => self
-                .handle_message_reject(message)
                 .await
                 .map_err(PipelineError::from_debug)?,
             // Not a DHT message, call downstream middleware
@@ -249,7 +245,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             self.outbound_service
                 .send_raw(
                     SendMessageParams::new()
-                        .propagate(origin_node_id.clone().into(), vec![
+                        .closest_connected(origin_node_id.clone().into(), self.config.num_neighbouring_nodes, vec![
                             origin_node_id,
                             source_peer.node_id.clone(),
                         ])
@@ -259,27 +255,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 )
                 .await?;
         }
-
-        Ok(())
-    }
-
-    async fn handle_message_reject(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
-        let body = message
-            .decryption_result
-            .expect("already checked that this message decrypted successfully");
-
-        let reject_msg = body
-            .decode_part::<RejectMessage>(0)?
-            .ok_or_else(|| DhtInboundError::InvalidMessageBody)?;
-
-        trace!(
-            target: LOG_TARGET,
-            "Received {} from '{}'",
-            message.source_peer.node_id.short_str(),
-            reject_msg,
-        );
-
-        // TODO: Perhaps we'll need some way to let the larger system know that the message was explicitly rejected
 
         Ok(())
     }

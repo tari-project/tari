@@ -103,15 +103,15 @@ pub enum PeerConnectionRequest {
         oneshot::Sender<Result<NegotiatedSubstream<Substream>, PeerConnectionError>>,
     ),
     /// Disconnect all substreams and close the transport connection
-    Disconnect(bool, oneshot::Sender<()>),
+    Disconnect(bool, oneshot::Sender<Result<(), PeerConnectionError>>),
 }
 
-pub type ConnId = usize;
+pub type ConnectionId = usize;
 
 /// Request handle for an active peer connection
 #[derive(Clone, Debug)]
 pub struct PeerConnection {
-    id: ConnId,
+    id: ConnectionId,
     peer_node_id: NodeId,
     peer_features: PeerFeatures,
     request_tx: mpsc::Sender<PeerConnectionRequest>,
@@ -123,7 +123,7 @@ pub struct PeerConnection {
 
 impl PeerConnection {
     pub(crate) fn new(
-        id: ConnId,
+        id: ConnectionId,
         request_tx: mpsc::Sender<PeerConnectionRequest>,
         peer_node_id: NodeId,
         peer_features: PeerFeatures,
@@ -160,7 +160,7 @@ impl PeerConnection {
         &self.address
     }
 
-    pub fn id(&self) -> ConnId {
+    pub fn id(&self) -> ConnectionId {
         self.id
     }
 
@@ -207,9 +207,9 @@ impl PeerConnection {
         self.request_tx
             .send(PeerConnectionRequest::Disconnect(false, reply_tx))
             .await?;
-        Ok(reply_rx
+        reply_rx
             .await
-            .map_err(|_| PeerConnectionError::InternalReplyCancelled)?)
+            .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
     }
 
     pub(crate) async fn disconnect_silent(&mut self) -> Result<(), PeerConnectionError> {
@@ -217,9 +217,9 @@ impl PeerConnection {
         self.request_tx
             .send(PeerConnectionRequest::Disconnect(true, reply_tx))
             .await?;
-        Ok(reply_rx
+        reply_rx
             .await
-            .map_err(|_| PeerConnectionError::InternalReplyCancelled)?)
+            .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
     }
 }
 
@@ -239,7 +239,7 @@ impl fmt::Display for PeerConnection {
 
 /// Actor for an active connection to a peer.
 pub struct PeerConnectionActor {
-    id: ConnId,
+    id: ConnectionId,
     peer_node_id: NodeId,
     request_rx: Fuse<mpsc::Receiver<PeerConnectionRequest>>,
     direction: ConnectionDirection,
@@ -253,7 +253,7 @@ pub struct PeerConnectionActor {
 
 impl PeerConnectionActor {
     fn new(
-        id: ConnId,
+        id: ConnectionId,
         peer_node_id: NodeId,
         direction: ConnectionDirection,
         connection: Yamux,
@@ -296,7 +296,7 @@ impl PeerConnectionActor {
                         },
                         None => {
                             debug!(target: LOG_TARGET, "[{}] Peer '{}' closed the connection", self, self.peer_node_id.short_str());
-                            self.disconnect(false).await;
+                            let _ = self.disconnect(false).await;
                         },
                     }
                 }
@@ -328,8 +328,7 @@ impl PeerConnectionActor {
                     self.direction,
                     self.peer_node_id.short_str()
                 );
-                self.disconnect(silent).await;
-                let _ = reply_tx.send(());
+                let _ = reply_tx.send(self.disconnect(silent).await);
             },
         }
     }
@@ -387,7 +386,8 @@ impl PeerConnectionActor {
     /// # Arguments
     ///
     /// silent - true to suppress the PeerDisconnected event, false to publish the event
-    async fn disconnect(&mut self, silent: bool) {
+    async fn disconnect(&mut self, silent: bool) -> Result<(), PeerConnectionError> {
+        let mut error = None;
         if let Err(err) = self.control.close().await {
             warn!(
                 target: LOG_TARGET,
@@ -396,8 +396,13 @@ impl PeerConnectionActor {
                 self.peer_node_id.short_str(),
                 err
             );
+            error = Some(err);
         }
-        debug!(target: LOG_TARGET, "Connection closed");
+        debug!(
+            target: LOG_TARGET,
+            "(Peer = {}) Connection closed",
+            self.peer_node_id.short_str()
+        );
 
         self.shutdown = true;
         // Shut down the incoming substream task
@@ -412,6 +417,8 @@ impl PeerConnectionActor {
             )))
             .await;
         }
+
+        error.map(Into::into).map(Err).unwrap_or(Ok(()))
     }
 }
 
