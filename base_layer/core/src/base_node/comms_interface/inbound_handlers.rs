@@ -339,6 +339,7 @@ where T: BlockchainBackend + 'static
                 let mut header = BlockHeader::from_previous(&best_block_header);
                 header.version = constants.blockchain_version();
                 header.pow.target_difficulty = self.get_target_difficulty(*pow_algo).await?;
+                header.pow.pow_algo = *pow_algo;
 
                 let transactions = async_mempool::retrieve(
                     self.mempool.clone(),
