@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::proof_of_work::{
+use crate::proof_of_work::monero_merkle_tree::{
     monero_merkle_element::MoneroMerkleElement,
     monero_merkle_hash_util::{create_leaf_hash, create_node_hash},
     monero_merkle_proof::MoneroMerkleProof,

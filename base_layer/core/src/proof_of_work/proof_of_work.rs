@@ -277,16 +277,23 @@ mod test {
     }
 
     #[test]
-    fn add_difficulty() {
+    fn add_difficulty_blake() {
         let mut pow: ProofOfWork;
-        #[cfg(not(feature = "monero_merge_mining"))]
-        {
-            pow = ProofOfWork::new(PowAlgorithm::Blake);
-        }
-        #[cfg(feature = "monero_merge_mining")]
-        {
-            pow = ProofOfWork::new(PowAlgorithm::Monero);
-        }
+        pow = ProofOfWork::new(PowAlgorithm::Blake);
+        pow.accumulated_blake_difficulty = Difficulty::from(42);
+        pow.accumulated_monero_difficulty = Difficulty::from(420);
+        let mut pow2 = ProofOfWork::default();
+        pow2.add_difficulty(&pow, Difficulty::from(80));
+        assert_eq!(pow2.accumulated_blake_difficulty, Difficulty::from(122));
+        assert_eq!(pow2.accumulated_monero_difficulty, Difficulty::from(420));
+    }
+
+    #[test]
+    #[cfg(feature = "monero_merge_mining")]
+    fn add_difficulty_monero() {
+        let mut pow: ProofOfWork;
+
+        pow = ProofOfWork::new(PowAlgorithm::Monero);
         pow.accumulated_blake_difficulty = Difficulty::from(42);
         pow.accumulated_monero_difficulty = Difficulty::from(420);
         let mut pow2 = ProofOfWork::default();

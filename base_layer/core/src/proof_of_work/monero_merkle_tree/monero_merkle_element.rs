@@ -20,41 +20,56 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::proof_of_work::{
-    monero_merkle_hash_util::{create_leaf_hash, create_node_hash},
-    monero_merkle_tree::MoneroMerkleProofNode,
+use crate::proof_of_work::monero_merkle_tree::monero_merkle_hash_util::{
+    create_leaf_hash,
+    create_node_hash,
+    empty_hash,
 };
-use serde::{Deserialize, Serialize};
+use std::rc::Rc;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MoneroMerkleProof {
-    root_hash: Vec<u8>,
-    value: Vec<u8>,
-    path: Vec<MoneroMerkleProofNode>,
+#[derive(Clone, Debug)]
+pub enum MoneroMerkleElement {
+    Node {
+        left_node: Box<MoneroMerkleElement>,
+        right_node: Box<MoneroMerkleElement>,
+        hash: Vec<u8>,
+    },
+    Leaf {
+        data: Rc<Vec<u8>>,
+        hash: Vec<u8>,
+    },
+    Empty {
+        hash: Vec<u8>,
+    },
 }
 
-impl MoneroMerkleProof {
-    pub fn new(root_hash: Vec<u8>, value: Vec<u8>, path: Vec<MoneroMerkleProofNode>) -> Self {
-        MoneroMerkleProof { root_hash, value, path }
+impl MoneroMerkleElement {
+    pub fn empty() -> Self {
+        MoneroMerkleElement::Empty { hash: empty_hash() }
     }
 
-    pub fn validate(&self, root_hash: &Vec<u8>) -> bool {
-        let mut hash = create_leaf_hash(&self.value);
-
-        for node in &self.path {
-            hash = match node {
-                &MoneroMerkleProofNode::Left(ref proof_hash) => create_node_hash(proof_hash, &hash),
-                &MoneroMerkleProofNode::Right(ref proof_hash) => create_node_hash(&hash, proof_hash),
-            };
+    pub fn hash(&self) -> Option<&Vec<u8>> {
+        match *self {
+            MoneroMerkleElement::Node { ref hash, .. } |
+            MoneroMerkleElement::Leaf { ref hash, .. } |
+            MoneroMerkleElement::Empty { ref hash } => Some(hash),
         }
-
-        &hash == root_hash
     }
 
-    pub fn validate_value(&self, tx_hash: &Vec<u8>) -> bool {
-        if &self.value == tx_hash {
-            return true;
+    pub fn create_leaf(value: Rc<Vec<u8>>) -> MoneroMerkleElement {
+        let leaf_hash = create_leaf_hash(value.as_ref());
+        MoneroMerkleElement::Leaf {
+            data: value,
+            hash: leaf_hash,
         }
-        false
+    }
+
+    pub fn create_node(left: MoneroMerkleElement, right: MoneroMerkleElement) -> MoneroMerkleElement {
+        let combined_hash = create_node_hash(left.hash().unwrap(), right.hash().unwrap());
+        MoneroMerkleElement::Node {
+            hash: combined_hash,
+            left_node: Box::new(left),
+            right_node: Box::new(right),
+        }
     }
 }

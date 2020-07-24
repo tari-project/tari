@@ -20,29 +20,41 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod blake_pow;
-mod difficulty;
-mod error;
-mod median_timestamp;
-pub mod monero_merkle_tree;
-#[allow(clippy::enum_variant_names)]
-mod monero_rx;
-#[allow(clippy::module_inception)]
-mod proof_of_work;
-mod target_difficulty;
+use crate::proof_of_work::monero_merkle_tree::{
+    monero_merkle_hash_util::{create_leaf_hash, create_node_hash},
+    monero_merkle_tree::MoneroMerkleProofNode,
+};
+use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
-pub use blake_pow::test as blake_test;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MoneroMerkleProof {
+    root_hash: Vec<u8>,
+    value: Vec<u8>,
+    path: Vec<MoneroMerkleProofNode>,
+}
 
-#[cfg(test)]
-pub use monero_rx::test as monero_test;
+impl MoneroMerkleProof {
+    pub fn new(root_hash: Vec<u8>, value: Vec<u8>, path: Vec<MoneroMerkleProofNode>) -> Self {
+        MoneroMerkleProof { root_hash, value, path }
+    }
 
-pub mod lwma_diff;
+    pub fn validate(&self, root_hash: &Vec<u8>) -> bool {
+        let mut hash = create_leaf_hash(&self.value);
 
-pub use blake_pow::{blake_difficulty, blake_difficulty_with_hash};
-pub use difficulty::{Difficulty, DifficultyAdjustment};
-pub use error::{DifficultyAdjustmentError, PowError};
-pub use median_timestamp::get_median_timestamp;
-pub use monero_rx::{monero_difficulty, monero_difficulty_with_hash, MoneroData};
-pub use proof_of_work::{PowAlgorithm, ProofOfWork};
-pub use target_difficulty::get_target_difficulty;
+        for node in &self.path {
+            hash = match node {
+                &MoneroMerkleProofNode::Left(ref proof_hash) => create_node_hash(proof_hash, &hash),
+                &MoneroMerkleProofNode::Right(ref proof_hash) => create_node_hash(&hash, proof_hash),
+            };
+        }
+
+        &hash == root_hash
+    }
+
+    pub fn validate_value(&self, tx_hash: &Vec<u8>) -> bool {
+        if &self.value == tx_hash {
+            return true;
+        }
+        false
+    }
+}

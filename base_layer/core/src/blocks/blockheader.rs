@@ -342,50 +342,50 @@ mod test {
     #[test]
     fn from_previous() {
         let mut h1: BlockHeader;
-        #[cfg(not(feature = "monero_merge_mining"))]
-        {
-            h1 = crate::proof_of_work::blake_test::get_header();
-        }
-        #[cfg(feature = "monero_merge_mining")]
-        {
-            h1 = crate::proof_of_work::monero_test::get_header();
-        }
+        h1 = crate::proof_of_work::blake_test::get_header();
         h1.nonce = 7600; // Achieved difficulty is 18,138;
         assert_eq!(h1.height, 0, "Default block height");
         let hash1 = h1.hash();
         let diff1 = h1.achieved_difficulty();
-        #[cfg(not(feature = "monero_merge_mining"))]
-        {
-            assert_eq!(diff1, 18138.into());
-        }
+        assert_eq!(diff1, 18138.into());
         let h2 = BlockHeader::from_previous(&h1);
         assert_eq!(h2.height, h1.height + 1, "Incrementing block height");
         assert!(h2.timestamp > h1.timestamp, "Timestamp");
         assert_eq!(h2.prev_hash, hash1, "Previous hash");
-        #[cfg(not(feature = "monero_merge_mining"))]
-        {
-            assert_eq!(
-                h2.pow.accumulated_monero_difficulty, h1.pow.accumulated_monero_difficulty,
-                "Monero difficulty"
-            );
-            assert_eq!(
-                h2.pow.accumulated_blake_difficulty,
-                h1.pow.accumulated_blake_difficulty + diff1,
-                "Blake difficulty"
-            );
-        }
-        #[cfg(feature = "monero_merge_mining")]
-        {
-            assert_eq!(
-                h2.pow.accumulated_monero_difficulty,
-                h1.pow.accumulated_monero_difficulty + diff1,
-                "Monero difficulty"
-            );
-            assert_eq!(
-                h2.pow.accumulated_blake_difficulty, h1.pow.accumulated_blake_difficulty,
-                "Monero difficulty"
-            );
-        }
+        assert_eq!(
+            h2.pow.accumulated_monero_difficulty, h1.pow.accumulated_monero_difficulty,
+            "Monero difficulty"
+        );
+        assert_eq!(
+            h2.pow.accumulated_blake_difficulty,
+            h1.pow.accumulated_blake_difficulty + diff1,
+            "Blake difficulty"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "monero_merge_mining")]
+    fn from_previous_with_monero_mm() {
+        let mut h1: BlockHeader;
+
+        h1 = crate::proof_of_work::monero_test::get_header();
+        h1.nonce = 7600; // Achieved difficulty is 18,138;
+        assert_eq!(h1.height, 0, "Default block height");
+        let hash1 = h1.hash();
+        let diff1 = h1.achieved_difficulty();
+        let h2 = BlockHeader::from_previous(&h1);
+        assert_eq!(h2.height, h1.height + 1, "Incrementing block height");
+        assert!(h2.timestamp > h1.timestamp, "Timestamp");
+        assert_eq!(h2.prev_hash, hash1, "Previous hash");
+        assert_eq!(
+            h2.pow.accumulated_monero_difficulty,
+            h1.pow.accumulated_monero_difficulty + diff1,
+            "Monero difficulty"
+        );
+        assert_eq!(
+            h2.pow.accumulated_blake_difficulty, h1.pow.accumulated_blake_difficulty,
+            "Monero difficulty"
+        );
     }
 
     #[test]
