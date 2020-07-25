@@ -22,7 +22,7 @@
 
 use super::error::Error;
 use crate::stress::service::{StressProtocol, StressProtocolKind};
-use std::{io::stdin, str::FromStr};
+use std::{cmp::min, io::stdin, str::FromStr};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer},
@@ -71,8 +71,9 @@ pub fn user_prompt(default_peer: Option<Peer>) -> Result<(Peer, StressProtocol),
     loop {
         let peer_str = current_peer.as_ref().map(to_short_str);
         println!("Select a stress test to perform:");
-        println!("1) Continuous Send (Server sends messages to client)");
+        println!("1) Continuous Send (Server sends 'n' messages to client)");
         println!("2) Alternating Send (Server and client alternate send and receiving)");
+        println!("3) Burst Send (Server sends 'n' messages in bursts of 'm' to client)");
         println!();
         println!(
             "p) Set peer (current: {})",
@@ -88,14 +89,23 @@ pub fn user_prompt(default_peer: Option<Peer>) -> Result<(Peer, StressProtocol),
                 let n = or_continue!(read_line::<u32>(1_000_000));
                 prompt!("Enter the message size (default: 256 bytes)");
                 let msg_size = or_continue!(read_line::<u32>(256));
-                StressProtocol::new(StressProtocolKind::ContinuousSend, n, msg_size)
+                StressProtocol::new(StressProtocolKind::ContinuousSend, n, n, msg_size)
             },
             '2' => {
                 prompt!("Enter the number of messages to send (default: 1,000,000)");
                 let n = or_continue!(read_line::<u32>(1_000_000));
                 prompt!("Enter the message size (default: 256 bytes)");
                 let msg_size = or_continue!(read_line::<u32>(256));
-                StressProtocol::new(StressProtocolKind::AlternatingSend, n, msg_size)
+                StressProtocol::new(StressProtocolKind::AlternatingSend, n, n, msg_size)
+            },
+            '3' => {
+                prompt!("Enter the number of messages to send (default: 10,000)");
+                let n = or_continue!(read_line::<u32>(10_000));
+                prompt!("Enter the number of messages to include in a burst (default: 50)");
+                let b = min(or_continue!(read_line::<u32>(50)), n);
+                prompt!("Enter the message size (default: 256 bytes)");
+                let msg_size = or_continue!(read_line::<u32>(256));
+                StressProtocol::new(StressProtocolKind::BurstSend, n, b, msg_size)
             },
             'p' => {
                 prompt!(

@@ -82,6 +82,7 @@ pub enum StressTestServiceRequest {
 pub struct StressProtocol {
     pub kind: StressProtocolKind,
     pub num_messages: u32,
+    pub burst_size: u32,
     pub message_size: u32,
 }
 
@@ -89,13 +90,17 @@ pub struct StressProtocol {
 pub enum StressProtocolKind {
     ContinuousSend,
     AlternatingSend,
+    BurstSend,
 }
 
 impl StressProtocol {
-    pub fn new(kind: StressProtocolKind, num_messages: u32, message_size: u32) -> Self {
+    const PROTOCOL_BYTES_SIZE: usize = 13;
+
+    pub fn new(kind: StressProtocolKind, num_messages: u32, burst_size: u32, message_size: u32) -> Self {
         Self {
             kind,
             num_messages,
+            burst_size,
             message_size,
         }
     }
@@ -109,26 +114,32 @@ impl StressProtocol {
             StressProtocolKind::AlternatingSend => {
                 data.push(0x02);
             },
+            StressProtocolKind::BurstSend => {
+                data.push(0x03);
+            },
         }
 
         data.extend_from_slice(&self.num_messages.to_be_bytes());
+        data.extend_from_slice(&self.burst_size.to_be_bytes());
         data.extend_from_slice(&self.message_size.to_be_bytes());
         data
     }
 
     pub fn decode(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() != 9 {
+        if bytes.len() != StressProtocol::PROTOCOL_BYTES_SIZE {
             return None;
         }
         let n = u32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
-        let s = u32::from_be_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
+        let b = u32::from_be_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]);
+        let s = u32::from_be_bytes([bytes[9], bytes[10], bytes[11], bytes[12]]);
         let kind = match bytes[0] {
             0x01 => StressProtocolKind::ContinuousSend,
             0x02 => StressProtocolKind::AlternatingSend,
+            0x03 => StressProtocolKind::BurstSend,
             _ => return None,
         };
 
-        Some(Self::new(kind, n, s))
+        Some(Self::new(kind, n, b, s))
     }
 }
 
@@ -302,13 +313,48 @@ async fn start_initiator_protocol(mut conn: PeerConnection, protocol: StressProt
             framed.close().await?;
             println!("Done in {:.2?}. Closing substream.", start.elapsed());
         },
+        StressProtocolKind::BurstSend => {
+            let mut counter = 0u32;
+
+            println!(
+                "Sending {} messages in bursts of {} and finally {} messages ({} MiB)",
+                protocol.num_messages,
+                protocol.burst_size,
+                protocol.num_messages % protocol.burst_size,
+                protocol.num_messages * protocol.message_size / 1024 / 1024,
+            );
+            for _i in 0..(protocol.num_messages / protocol.burst_size) {
+                let mut iter = stream::iter(
+                    repeat_with(|| {
+                        counter += 1;
+                        generate_message(counter, protocol.message_size as usize)
+                    })
+                    .take(protocol.burst_size as usize)
+                    .map(Ok),
+                );
+                framed.send_all(&mut iter).await?;
+            }
+            if protocol.num_messages % protocol.burst_size > 0 {
+                let mut iter = stream::iter(
+                    repeat_with(|| {
+                        counter += 1;
+                        generate_message(counter, protocol.message_size as usize)
+                    })
+                    .take((protocol.num_messages % protocol.burst_size) as usize)
+                    .map(Ok),
+                );
+                framed.send_all(&mut iter).await?;
+            }
+            framed.close().await?;
+            println!("Done in {:.2?}. Closing substream.", start.elapsed());
+        },
     }
 
     Ok(())
 }
 
 async fn start_responder_protocol(peer: NodeId, mut substream: Substream, rate_limit: usize) -> Result<(), Error> {
-    let mut buf = [0u8; 9];
+    let mut buf = [0u8; StressProtocol::PROTOCOL_BYTES_SIZE];
     substream.read_exact(&mut buf).await?;
     let protocol = StressProtocol::decode(&buf).ok_or_else(|| Error::InvalidProtocolFrame)?;
 
@@ -410,6 +456,33 @@ async fn start_responder_protocol(peer: NodeId, mut substream: Substream, rate_l
                 received.len(),
                 num_loops * 100
             );
+        },
+        StressProtocolKind::BurstSend => {
+            let mut received = vec![];
+            let start = Instant::now();
+
+            while let Some(Ok(msg)) = stream.next().await {
+                received.push(decode_msg(msg));
+            }
+
+            println!(
+                "[peer: {}] Protocol complete in {:.2?}. {} messages received",
+                peer.short_str(),
+                start.elapsed(),
+                received.len()
+            );
+
+            match received.len() {
+                v if v == protocol.num_messages as usize => {
+                    println!("All messages received");
+                },
+                v => {
+                    println!(
+                        "Invalid number of messages received (expected {}, got {})",
+                        protocol.num_messages, v
+                    );
+                },
+            }
         },
     }
 
