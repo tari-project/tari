@@ -41,7 +41,10 @@ use std::{
     sync::{Arc, Condvar, Mutex, RwLock},
     time::Duration,
 };
-use tari_comms::message::MessageTag;
+use tari_comms::{
+    message::{MessageTag, MessagingReplyTx},
+    protocol::messaging::SendFailReason,
+};
 use tokio::time::delay_for;
 
 const LOG_TARGET: &str = "mock::outbound_requester";
@@ -177,20 +180,20 @@ impl OutboundServiceMock {
                         BroadcastStrategy::DirectPublicKey(_) => {
                             match behaviour.direct {
                                 ResponseType::Queued => {
-                                    let (response, inner_reply_tx) = self.add_call((*params).clone(), body);
+                                    let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body);
                                     reply_tx.send(response).expect("Reply channel cancelled");
-                                    let _ = inner_reply_tx.send(Ok(()));
+                                    inner_reply_tx.reply_success();
                                 },
                                 ResponseType::QueuedFail => {
-                                    let (response, inner_reply_tx) = self.add_call((*params).clone(), body);
+                                    let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body);
                                     reply_tx.send(response).expect("Reply channel cancelled");
-                                    let _ = inner_reply_tx.send(Err(()));
+                                    inner_reply_tx.reply_fail(SendFailReason::PeerDialFailed);
                                 },
                                 ResponseType::QueuedSuccessDelay(delay) => {
-                                    let (response, inner_reply_tx) = self.add_call((*params).clone(), body);
+                                    let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body);
                                     reply_tx.send(response).expect("Reply channel cancelled");
                                     delay_for(delay).await;
-                                    let _ = inner_reply_tx.send(Ok(()));
+                                    inner_reply_tx.reply_success();
                                 },
                                 resp => {
                                     reply_tx
@@ -204,9 +207,9 @@ impl OutboundServiceMock {
                         },
                         BroadcastStrategy::Broadcast(_) => {
                             if behaviour.broadcast == ResponseType::Queued {
-                                let (response, inner_reply_tx) = self.add_call((*params).clone(), body);
+                                let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body);
                                 reply_tx.send(response).expect("Reply channel cancelled");
-                                let _ = inner_reply_tx.send(Ok(()));
+                                inner_reply_tx.reply_success();
                             } else {
                                 reply_tx
                                     .send(SendMessageResponse::Failed(SendFailure::General(
@@ -216,9 +219,9 @@ impl OutboundServiceMock {
                             }
                         },
                         _ => {
-                            let (response, inner_reply_tx) = self.add_call((*params).clone(), body);
+                            let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body);
                             reply_tx.send(response).expect("Reply channel cancelled");
-                            let _ = inner_reply_tx.send(Ok(()));
+                            inner_reply_tx.reply_success();
                         },
                     }
                 },
@@ -226,12 +229,7 @@ impl OutboundServiceMock {
         }
     }
 
-    fn add_call(
-        &mut self,
-        params: FinalSendMessageParams,
-        body: Bytes,
-    ) -> (SendMessageResponse, oneshot::Sender<Result<(), ()>>)
-    {
+    fn add_call(&mut self, params: FinalSendMessageParams, body: Bytes) -> (SendMessageResponse, MessagingReplyTx) {
         self.mock_state.add_call((params, body));
         let (inner_reply_tx, inner_reply_rx) = oneshot::channel();
         let response = self
@@ -243,7 +241,7 @@ impl OutboundServiceMock {
                 ))
             })
             .expect("never none");
-        (response, inner_reply_tx)
+        (response, inner_reply_tx.into())
     }
 }
 

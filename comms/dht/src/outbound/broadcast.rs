@@ -438,7 +438,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         dht_flags,
                         custom_header: custom_header.clone(),
                         body: body.clone(),
-                        reply_tx: reply_tx.into(),
+                        reply: reply_tx.into(),
                         ephemeral_public_key: ephemeral_public_key.clone(),
                         origin_mac: origin_mac.clone(),
                         is_broadcast,

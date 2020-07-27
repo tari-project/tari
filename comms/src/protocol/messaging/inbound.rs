@@ -82,20 +82,20 @@ impl InboundMessaging {
             match result {
                 Ok(Ok(raw_msg)) => {
                     let inbound_msg = InboundMessage::new(Arc::clone(&peer), raw_msg.clone().freeze());
-                    trace!(
+                    debug!(
                         target: LOG_TARGET,
                         "Received message {} from peer '{}' ({} bytes)",
-                        inbound_msg.clone().tag,
+                        inbound_msg.tag,
                         peer.node_id.short_str(),
                         raw_msg.len()
                     );
 
                     let event = MessagingEvent::MessageReceived(
                         Box::new(inbound_msg.source_peer.node_id.clone()),
-                        inbound_msg.clone().tag,
+                        inbound_msg.tag,
                     );
 
-                    if let Err(err) = self.inbound_message_tx.send(inbound_msg.clone()).await {
+                    if let Err(err) = self.inbound_message_tx.send(inbound_msg).await {
                         warn!(
                             target: LOG_TARGET,
                             "Failed to send InboundMessage for peer '{}' because '{}'",
@@ -108,7 +108,6 @@ impl InboundMessaging {
                         }
                     }
 
-                    debug!(target: LOG_TARGET, "Inbound handler sending event '{}'", event);
                     let _ = self.messaging_events_tx.send(Arc::new(event));
                 },
                 Ok(Err(err)) => {

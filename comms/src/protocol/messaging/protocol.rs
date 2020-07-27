@@ -52,7 +52,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
 pub static MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"/tari/messaging/0.1.0");
-const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 50;
+const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 150;
 
 /// The number of times to retry sending a failed message before publishing a SendMessageFailed event.
 /// This can be low because dialing a peer is already attempted a number of times.
@@ -81,6 +81,10 @@ pub enum SendFailReason {
     SubstreamOpenFailed,
     #[error("Failed to send on substream channel")]
     SubstreamSendFailed,
+    #[error("Message was dropped before sending")]
+    Dropped,
+    #[error("Message could not send after {0} attempt(s)")]
+    MaxRetriesReached(usize),
 }
 
 #[derive(Debug)]
@@ -215,7 +219,7 @@ impl MessagingProtocol {
         use MessagingEvent::*;
         trace!(target: LOG_TARGET, "Internal messaging event '{}'", event);
         match event {
-            SendMessageFailed(out_msg, reason) => match self.attempts.entry(out_msg.tag) {
+            SendMessageFailed(mut out_msg, reason) => match self.attempts.entry(out_msg.tag) {
                 Entry::Occupied(mut entry) => match *entry.get() {
                     n if n >= MAX_SEND_RETRIES => {
                         debug!(
@@ -225,6 +229,7 @@ impl MessagingProtocol {
                             out_msg.peer_node_id.short_str(),
                             reason
                         );
+                        out_msg.reply_fail(SendFailReason::MaxRetriesReached(n));
                         let _ = self
                             .messaging_events_tx
                             .send(Arc::new(SendMessageFailed(out_msg, reason)));
@@ -247,7 +252,7 @@ impl MessagingProtocol {
                             "retry_queue send cannot fail because the channel sender and receiver are contained in \
                              and dropped with MessagingProtocol",
                         );
-                        // 2 = 1 first attempt + 1 attempt added to the queue
+                        // 2 = first attempt + 1
                         entry.insert(2);
                     }
                 },

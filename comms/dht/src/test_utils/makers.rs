@@ -23,7 +23,7 @@ use crate::{
     crypt,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::DhtInboundMessage,
-    outbound::message::{DhtOutboundMessage, WrappedReplyTx},
+    outbound::message::DhtOutboundMessage,
     proto::envelope::{DhtEnvelope, DhtMessageType, Network, OriginMac},
 };
 use rand::rngs::OsRng;
@@ -201,7 +201,7 @@ pub fn create_outbound_message(body: &[u8]) -> DhtOutboundMessage {
         custom_header: None,
         body: body.to_vec().into(),
         ephemeral_public_key: None,
-        reply_tx: WrappedReplyTx::none(),
+        reply: None.into(),
         origin_mac: None,
         is_broadcast: false,
     }

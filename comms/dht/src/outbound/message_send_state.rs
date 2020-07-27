@@ -25,7 +25,10 @@ use std::{
     ops::Index,
     time::{Duration, Instant},
 };
-use tari_comms::message::{MessageTag, MessagingReplyRx};
+use tari_comms::{
+    message::{MessageTag, MessagingReplyRx},
+    protocol::messaging::SendFailReason,
+};
 use tokio::time;
 
 pub enum TimeoutResult<T> {
@@ -203,7 +206,9 @@ impl MessageSendStates {
             .is_ok()
     }
 
-    pub fn into_futures_unordered(self) -> FuturesUnordered<impl Future<Output = (MessageTag, Result<(), ()>)>> {
+    pub fn into_futures_unordered(
+        self,
+    ) -> FuturesUnordered<impl Future<Output = (MessageTag, Result<(), SendFailReason>)>> {
         let unordered = FuturesUnordered::new();
         self.inner.into_iter().for_each(|state| {
             unordered.push(async move {
@@ -252,7 +257,7 @@ mod test {
     fn create_send_state() -> (MessageSendState, MessagingReplyTx) {
         let (reply_tx, reply_rx) = oneshot::channel();
         let state = MessageSendState::new(MessageTag::new(), reply_rx);
-        (state, reply_tx)
+        (state, reply_tx.into())
     }
 
     #[test]
@@ -266,15 +271,15 @@ mod test {
 
     #[tokio_macros::test_basic]
     async fn wait_single() {
-        let (state, reply_tx) = create_send_state();
+        let (state, mut reply_tx) = create_send_state();
         let states = MessageSendStates::from(vec![state]);
-        reply_tx.send(Ok(())).unwrap();
+        reply_tx.reply_success();
         assert_eq!(states.len(), 1);
         assert_eq!(states.wait_single().await, true);
 
-        let (state, reply_tx) = create_send_state();
+        let (state, mut reply_tx) = create_send_state();
         let states = MessageSendStates::from(vec![state]);
-        reply_tx.send(Err(())).unwrap();
+        reply_tx.reply_fail(SendFailReason::Dropped);
         assert_eq!(states.len(), 1);
         assert_eq!(states.wait_single().await, false);
     }
@@ -284,8 +289,10 @@ mod test {
         let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();
         let (states, mut reply_txs) = states.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
         let states = MessageSendStates::from(states);
-        reply_txs.drain(..4).for_each(|tx| tx.send(Err(())).unwrap());
-        reply_txs.drain(..).for_each(|tx| tx.send(Ok(())).unwrap());
+        reply_txs
+            .drain(..4)
+            .for_each(|mut tx| tx.reply_fail(SendFailReason::Dropped));
+        reply_txs.drain(..).for_each(|mut tx| tx.reply_success());
 
         let (success, failed) = states.wait_percentage_success(0.3).await;
         assert_eq!(success.len(), 3);
@@ -297,8 +304,10 @@ mod test {
         let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();
         let (states, mut reply_txs) = states.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
         let states = MessageSendStates::from(states);
-        reply_txs.drain(..4).for_each(|tx| tx.send(Err(())).unwrap());
-        reply_txs.drain(..).for_each(|tx| tx.send(Ok(())).unwrap());
+        reply_txs
+            .drain(..4)
+            .for_each(|mut tx| tx.reply_fail(SendFailReason::Dropped));
+        reply_txs.drain(..).for_each(|mut tx| tx.reply_success());
 
         let (success, failed) = states.wait_n_timeout(Duration::from_millis(1000), 4).await;
         assert_eq!(success.len(), 4);
@@ -308,8 +317,10 @@ mod test {
         let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();
         let (states, mut reply_txs) = states.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
         let states = MessageSendStates::from(states);
-        reply_txs.drain(..4).for_each(|tx| tx.send(Ok(())).unwrap());
-        reply_txs.drain(..).for_each(|tx| tx.send(Err(())).unwrap());
+        reply_txs.drain(..4).for_each(|mut tx| tx.reply_success());
+        reply_txs
+            .drain(..)
+            .for_each(|mut tx| tx.reply_fail(SendFailReason::Dropped));
 
         let (success, failed) = states.wait_n_timeout(Duration::from_millis(1000), 5).await;
         assert_eq!(success.len(), 4);
@@ -321,8 +332,10 @@ mod test {
         let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();
         let (states, mut reply_txs) = states.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
         let states = MessageSendStates::from(states);
-        reply_txs.drain(..4).for_each(|tx| tx.send(Err(())).unwrap());
-        reply_txs.drain(..).for_each(|tx| tx.send(Ok(())).unwrap());
+        reply_txs
+            .drain(..4)
+            .for_each(|mut tx| tx.reply_fail(SendFailReason::Dropped));
+        reply_txs.drain(..).for_each(|mut tx| tx.reply_success());
 
         let (success, failed) = states.wait_all().await;
         assert_eq!(success.len(), 6);

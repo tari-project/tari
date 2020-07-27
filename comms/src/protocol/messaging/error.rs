@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{connection_manager::PeerConnectionError, peer_manager::PeerManagerError, protocol::ProtocolError};
+use futures::channel::mpsc;
 use std::io;
 use thiserror::Error;
 
@@ -31,6 +32,7 @@ pub enum InboundMessagingError {
     #[error("Failed to decode message: {0}")]
     MessageDecodeError(#[from] prost::DecodeError),
 }
+
 #[derive(Debug, Error)]
 pub enum MessagingProtocolError {
     #[error("Failed to send message")]
@@ -41,8 +43,10 @@ pub enum MessagingProtocolError {
     PeerConnectionError(#[from] PeerConnectionError),
     #[error("Failed to dial peer")]
     PeerDialFailed,
-    #[error("Failure when sending on an outbound substream")]
-    OutboundSubstreamFailure,
     #[error("IO Error: {0}")]
     Io(#[from] io::Error),
+    #[error("Sender error: {0}")]
+    SenderError(#[from] mpsc::SendError),
+    #[error("Stream closed due to inactivity")]
+    Inactivity,
 }
