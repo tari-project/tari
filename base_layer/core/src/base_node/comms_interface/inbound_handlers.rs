@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     base_node::{
         comms_interface::{
@@ -252,6 +251,82 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
+            NodeCommsRequest::FetchBlocksWithKernels(excess_sigs) => {
+                let mut blocks = Vec::<HistoricalBlock>::with_capacity(excess_sigs.len());
+                for sig in excess_sigs {
+                    debug!(
+                        target: LOG_TARGET,
+                        "A peer has requested a block with kernel with sig {}",
+                        sig.get_signature().to_hex(),
+                    );
+                    match async_db::fetch_block_with_kernel(self.blockchain_db.clone(), sig.clone()).await {
+                        Ok(Some(block)) => blocks.push(block),
+                        Ok(None) => warn!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block containing kernel with sig {} to peer because not \
+                             stored",
+                            sig.get_signature().to_hex(),
+                        ),
+                        Err(e) => warn!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block containing kernel with sig {} to peer because: {}",
+                            sig.get_signature().to_hex(),
+                            e.to_string()
+                        ),
+                    }
+                }
+                Ok(NodeCommsResponse::HistoricalBlocks(blocks))
+            },
+            NodeCommsRequest::FetchBlocksWithStxos(hashes) => {
+                let mut blocks = Vec::<HistoricalBlock>::with_capacity(hashes.len());
+                for hash in hashes {
+                    debug!(
+                        target: LOG_TARGET,
+                        "A peer has requested a block with hash {}",
+                        hash.to_hex()
+                    );
+                    match async_db::fetch_block_with_stxo(self.blockchain_db.clone(), hash.clone()).await {
+                        Ok(Some(block)) => blocks.push(block),
+                        Ok(None) => warn!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block {} to peer because not stored",
+                            hash.to_hex(),
+                        ),
+                        Err(e) => warn!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block {} to peer because: {}",
+                            hash.to_hex(),
+                            e.to_string()
+                        ),
+                    }
+                }
+                Ok(NodeCommsResponse::HistoricalBlocks(blocks))
+            },
+            NodeCommsRequest::FetchBlocksWithUtxos(hashes) => {
+                let mut blocks = Vec::<HistoricalBlock>::with_capacity(hashes.len());
+                for hash in hashes {
+                    debug!(
+                        target: LOG_TARGET,
+                        "A peer has requested a block with hash {}",
+                        hash.to_hex()
+                    );
+                    match async_db::fetch_block_with_utxo(self.blockchain_db.clone(), hash.clone()).await {
+                        Ok(Some(block)) => blocks.push(block),
+                        Ok(None) => warn!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block {} to peer because not stored",
+                            hash.to_hex(),
+                        ),
+                        Err(e) => warn!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block {} to peer because: {}",
+                            hash.to_hex(),
+                            e.to_string()
+                        ),
+                    }
+                }
+                Ok(NodeCommsResponse::HistoricalBlocks(blocks))
+            },
             NodeCommsRequest::GetNewBlockTemplate(pow_algo) => {
                 let metadata = async_db::get_metadata(self.blockchain_db.clone()).await?;
                 let best_block_hash = metadata
@@ -264,6 +339,7 @@ where T: BlockchainBackend + 'static
                 let mut header = BlockHeader::from_previous(&best_block_header);
                 header.version = constants.blockchain_version();
                 header.pow.target_difficulty = self.get_target_difficulty(*pow_algo).await?;
+                header.pow.pow_algo = *pow_algo;
 
                 let transactions = async_mempool::retrieve(
                     self.mempool.clone(),

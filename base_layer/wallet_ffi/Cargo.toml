@@ -3,17 +3,17 @@ name = "tari_wallet_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2018"
 
 [dependencies]
-tari_comms = { path = "../../comms", version = "^0.1"}
-tari_comms_dht = { path = "../../comms/dht", version = "^0.1"}
-tari_crypto = { version = "^0.4" }
-tari_p2p = {path = "../p2p", version = "^0.1"}
-tari_wallet = { path = "../wallet", version = "^0.1", features = ["test_harness", "c_integration"]}
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0"}
-tari_utilities = "^0.1"
+tari_comms = { version = "^0.2", path = "../../comms" }
+tari_comms_dht = { version = "^0.2", path = "../../comms/dht" }
+tari_crypto = { version = "^0.5" }
+tari_p2p = { version = "^0.2", path = "../p2p" }
+tari_wallet = { version = "^0.2", path = "../wallet", features = ["test_harness", "c_integration"]}
+tari_shutdown = { version = "^0.0", path = "../../infrastructure/shutdown" }
+tari_utilities = "^0.2"
 
 futures =  { version = "^0.3.1", features =["compat", "std"]}
 tokio = "0.2.10"
@@ -26,7 +26,7 @@ log4rs = {version = "0.8.3", features = ["console_appender", "file_appender", "f
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
-version = "^0.1"
+version = "^0.2"
 default-features = false
 features = ["transactions"]
 
@@ -37,4 +37,4 @@ crate-type = ["staticlib","cdylib"]
 tempfile = "3.1.0"
 lazy_static = "1.3.0"
 env_logger = "0.7.1"
-tari_key_manager = {path = "../key_manager", version = "^0.0"}
+tari_key_manager = { version = "^0.2", path = "../key_manager" }

@@ -37,7 +37,7 @@ use tari_p2p::{
     },
 };
 use tari_service_framework::StackBuilder;
-use tari_test_utils::{collect_stream, random::string};
+use tari_test_utils::collect_stream;
 use tempfile::tempdir;
 use tokio::runtime;
 

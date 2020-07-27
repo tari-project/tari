@@ -183,6 +183,13 @@ where
         self
     }
 
+    /// Call to disable connection reaping. Usually you would want to have this enabled, however there are some test
+    /// cases where disabling this is desirable.
+    pub fn disable_connection_reaping(mut self) -> Self {
+        self.connectivity_config.is_connection_reaping_enabled = false;
+        self
+    }
+
     /// Set the peer storage database to use.
     pub fn with_peer_storage(mut self, peer_storage: CommsDatabase) -> Self {
         self.peer_storage = Some(peer_storage);

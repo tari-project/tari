@@ -42,19 +42,3 @@ pub struct DiscoveryResponseMessage {
     #[prost(uint64, tag = "4")]
     pub nonce: u64,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct RejectMessage {
-    /// The signature of the rejected message
-    #[prost(bytes, tag = "1")]
-    pub signature: std::vec::Vec<u8>,
-    /// The reason for rejection
-    #[prost(enumeration = "RejectMessageReason", tag = "2")]
-    pub reason: i32,
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum RejectMessageReason {
-    Unknown = 0,
-    /// The destination node does not support the specified network
-    UnsupportedNetwork = 1,
-}

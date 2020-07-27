@@ -30,9 +30,10 @@ use crate::{
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use prost::Message;
-use std::io;
+use std::{io, time::Duration};
 use tari_crypto::tari_utilities::ByteArray;
 use thiserror::Error;
+use tokio::time;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 pub static IDENTITY_PROTOCOL: ProtocolId = ProtocolId::from_static(b"/tari/identity/1.0.0");
@@ -94,9 +95,8 @@ where
     sink.close().await?;
 
     // Receive the connecting nodes identity
-    let msg_bytes = stream
-        .next()
-        .await
+    let msg_bytes = time::timeout(Duration::from_secs(10), stream.next())
+        .await?
         .ok_or_else(|| IdentityProtocolError::PeerUnexpectedCloseConnection)??;
     let identity_msg = PeerIdentityMsg::decode(msg_bytes)?;
 
@@ -115,6 +115,14 @@ pub enum IdentityProtocolError {
     ProtobufEncodingError,
     #[error("Peer unexpectedly closed the connection")]
     PeerUnexpectedCloseConnection,
+    #[error("Timeout waiting for peer to send identity information")]
+    Timeout,
+}
+
+impl From<time::Elapsed> for IdentityProtocolError {
+    fn from(_: time::Elapsed) -> Self {
+        IdentityProtocolError::Timeout
+    }
 }
 
 impl From<ProtocolError> for IdentityProtocolError {

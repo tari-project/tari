@@ -38,15 +38,17 @@ use crate::{
         TxId,
     },
     schema::{key_manager_states, outputs, pending_transaction_outputs},
+    util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
+use aes_gcm::{aead::Error as AeadError, Aes256Gcm, Error};
 use chrono::{Duration as ChronoDuration, NaiveDateTime, Utc};
-#[cfg(test)]
-use diesel::expression::dsl::not;
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use log::*;
 use std::{
     collections::HashMap,
     convert::TryFrom,
-    sync::{Arc, Mutex},
+    str::from_utf8,
+    sync::{Arc, Mutex, RwLock},
     time::Duration,
 };
 use tari_core::{
@@ -54,24 +56,55 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
-        types::{BlindingFactor, CryptoFactories, PrivateKey},
+        types::{Commitment, CryptoFactories, PrivateKey},
     },
 };
-use tari_crypto::tari_utilities::ByteArray;
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    tari_utilities::{
+        hex::{from_hex, Hex},
+        ByteArray,
+    },
+};
+
+const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
 pub struct OutputManagerSqliteDatabase {
     database_connection: Arc<Mutex<SqliteConnection>>,
+    cipher: Arc<RwLock<Option<Aes256Gcm>>>,
 }
+
 impl OutputManagerSqliteDatabase {
-    pub fn new(database_connection: Arc<Mutex<SqliteConnection>>) -> Self {
+    pub fn new(database_connection: Arc<Mutex<SqliteConnection>>, cipher: Option<Aes256Gcm>) -> Self {
         {
             // let check if we have to do migration
             let conn = acquire_lock!(database_connection);
-            let _ = OutputSql::migrate(&(*conn));
+            let _ = OutputSql::migrate(&(*conn), cipher.clone());
         }
-        Self { database_connection }
+        Self {
+            database_connection,
+            cipher: Arc::new(RwLock::new(cipher)),
+        }
+    }
+
+    fn decrypt_if_necessary<T: Encryptable<Aes256Gcm>>(&self, o: &mut T) -> Result<(), OutputManagerStorageError> {
+        let cipher = acquire_read_lock!(self.cipher);
+        if let Some(cipher) = cipher.as_ref() {
+            o.decrypt(cipher)
+                .map_err(|_| OutputManagerStorageError::AeadError("Decryption Error".to_string()))?;
+        }
+        Ok(())
+    }
+
+    fn encrypt_if_necessary<T: Encryptable<Aes256Gcm>>(&self, o: &mut T) -> Result<(), OutputManagerStorageError> {
+        let cipher = acquire_read_lock!(self.cipher);
+        if let Some(cipher) = cipher.as_ref() {
+            o.encrypt(cipher)
+                .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+        }
+        Ok(())
     }
 }
 impl OutputManagerBackend for OutputManagerSqliteDatabase {
@@ -80,7 +113,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         let result = match key {
             DbKey::SpentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Spent, &(*conn)) {
-                Ok(o) => Some(DbValue::SpentOutput(Box::new(DbUnblindedOutput::try_from(o)?))),
+                Ok(mut o) => {
+                    self.decrypt_if_necessary(&mut o)?;
+                    Some(DbValue::SpentOutput(Box::new(DbUnblindedOutput::try_from(o)?)))
+                },
                 Err(e) => {
                     match e {
                         OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -90,7 +126,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 },
             },
             DbKey::UnspentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Unspent, &(*conn)) {
-                Ok(o) => Some(DbValue::UnspentOutput(Box::new(DbUnblindedOutput::try_from(o)?))),
+                Ok(mut o) => {
+                    self.decrypt_if_necessary(&mut o)?;
+                    Some(DbValue::UnspentOutput(Box::new(DbUnblindedOutput::try_from(o)?)))
+                },
                 Err(e) => {
                     match e {
                         OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -101,7 +140,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(*tx_id, &(*conn)) {
                 Ok(p) => {
-                    let outputs = OutputSql::find_by_tx_id_and_encumbered(*tx_id, &(*conn))?;
+                    let mut outputs = OutputSql::find_by_tx_id_and_encumbered(*tx_id, &(*conn))?;
+                    for o in outputs.iter_mut() {
+                        self.decrypt_if_necessary(o)?;
+                    }
                     Some(DbValue::PendingTransactionOutputs(Box::new(
                         pending_transaction_outputs_from_sql_outputs(p.tx_id as u64, &p.timestamp, outputs)?,
                     )))
@@ -114,23 +156,42 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     None
                 },
             },
-            DbKey::UnspentOutputs => Some(DbValue::UnspentOutputs(
-                OutputSql::index_status(OutputStatus::Unspent, &(*conn))?
-                    .iter()
-                    .map(|o| DbUnblindedOutput::try_from(o.clone()))
-                    .collect::<Result<Vec<_>, _>>()?,
-            )),
-            DbKey::SpentOutputs => Some(DbValue::SpentOutputs(
-                OutputSql::index_status(OutputStatus::Spent, &(*conn))?
-                    .iter()
-                    .map(|o| DbUnblindedOutput::try_from(o.clone()))
-                    .collect::<Result<Vec<_>, _>>()?,
-            )),
+            DbKey::UnspentOutputs => {
+                let mut outputs = OutputSql::index_status(OutputStatus::Unspent, &(*conn))?;
+                for o in outputs.iter_mut() {
+                    self.decrypt_if_necessary(o)?;
+                }
+
+                Some(DbValue::UnspentOutputs(
+                    outputs
+                        .iter()
+                        .map(|o| DbUnblindedOutput::try_from(o.clone()))
+                        .collect::<Result<Vec<_>, _>>()?,
+                ))
+            },
+            DbKey::SpentOutputs => {
+                let mut outputs = OutputSql::index_status(OutputStatus::Spent, &(*conn))?;
+                for o in outputs.iter_mut() {
+                    self.decrypt_if_necessary(o)?;
+                }
+
+                Some(DbValue::SpentOutputs(
+                    outputs
+                        .iter()
+                        .map(|o| DbUnblindedOutput::try_from(o.clone()))
+                        .collect::<Result<Vec<_>, _>>()?,
+                ))
+            },
             DbKey::AllPendingTransactionOutputs => {
                 let pending_sql_txs = PendingTransactionOutputSql::index(&(*conn))?;
                 let mut pending_txs = HashMap::new();
                 for p_tx in pending_sql_txs {
-                    let outputs = OutputSql::find_by_tx_id_and_encumbered(p_tx.tx_id as u64, &(*conn))?;
+                    let mut outputs = OutputSql::find_by_tx_id_and_encumbered(p_tx.tx_id as u64, &(*conn))?;
+
+                    for o in outputs.iter_mut() {
+                        self.decrypt_if_necessary(o)?;
+                    }
+
                     pending_txs.insert(
                         p_tx.tx_id as u64,
                         pending_transaction_outputs_from_sql_outputs(p_tx.tx_id as u64, &p_tx.timestamp, outputs)?,
@@ -140,14 +201,25 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::KeyManagerState => match KeyManagerStateSql::get_state(&(*conn)).ok() {
                 None => None,
-                Some(km) => Some(DbValue::KeyManagerState(KeyManagerState::try_from(km)?)),
+                Some(mut km) => {
+                    self.decrypt_if_necessary(&mut km)?;
+
+                    Some(DbValue::KeyManagerState(KeyManagerState::try_from(km)?))
+                },
             },
-            DbKey::InvalidOutputs => Some(DbValue::InvalidOutputs(
-                OutputSql::index_status(OutputStatus::Invalid, &(*conn))?
-                    .iter()
-                    .map(|o| DbUnblindedOutput::try_from(o.clone()))
-                    .collect::<Result<Vec<_>, _>>()?,
-            )),
+            DbKey::InvalidOutputs => {
+                let mut outputs = OutputSql::index_status(OutputStatus::Invalid, &(*conn))?;
+                for o in outputs.iter_mut() {
+                    self.decrypt_if_necessary(o)?;
+                }
+
+                Some(DbValue::InvalidOutputs(
+                    outputs
+                        .iter()
+                        .map(|o| DbUnblindedOutput::try_from(o.clone()))
+                        .collect::<Result<Vec<_>, _>>()?,
+                ))
+            },
         };
 
         Ok(result)
@@ -162,13 +234,19 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     if OutputSql::find(&k.to_vec(), &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    OutputSql::new(*o, OutputStatus::Spent, None).commit(&(*conn))?
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Spent, None);
+
+                    self.encrypt_if_necessary(&mut new_output)?;
+
+                    new_output.commit(&(*conn))?
                 },
                 DbKeyValuePair::UnspentOutput(k, o) => {
                     if OutputSql::find(&k.to_vec(), &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    OutputSql::new(*o, OutputStatus::Unspent, None).commit(&(*conn))?
+                    let mut new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None);
+                    self.encrypt_if_necessary(&mut new_output)?;
+                    new_output.commit(&(*conn))?
                 },
                 DbKeyValuePair::PendingTransactionOutputs(tx_id, p) => {
                     if PendingTransactionOutputSql::find(tx_id, &(*conn)).is_ok() {
@@ -176,14 +254,21 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     }
                     PendingTransactionOutputSql::new(p.tx_id, true, p.timestamp).commit(&(*conn))?;
                     for o in p.outputs_to_be_spent {
-                        OutputSql::new(o.clone(), OutputStatus::EncumberedToBeSpent, Some(p.tx_id)).commit(&(*conn))?;
+                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeSpent, Some(p.tx_id));
+                        self.encrypt_if_necessary(&mut new_output)?;
+                        new_output.commit(&(*conn))?;
                     }
                     for o in p.outputs_to_be_received {
-                        OutputSql::new(o.clone(), OutputStatus::EncumberedToBeReceived, Some(p.tx_id))
-                            .commit(&(*conn))?;
+                        let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeReceived, Some(p.tx_id));
+                        self.encrypt_if_necessary(&mut new_output)?;
+                        new_output.commit(&(*conn))?;
                     }
                 },
-                DbKeyValuePair::KeyManagerState(km) => KeyManagerStateSql::set_state(km, &(*conn))?,
+                DbKeyValuePair::KeyManagerState(km) => {
+                    let mut km_sql = KeyManagerStateSql::from(km);
+                    self.encrypt_if_necessary(&mut km_sql)?;
+                    km_sql.set_state(&(*conn))?
+                },
             },
             WriteOperation::Remove(k) => match k {
                 DbKey::SpentOutput(s) => match OutputSql::find_status(&s.to_vec(), OutputStatus::Spent, &(*conn)) {
@@ -212,7 +297,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 },
                 DbKey::PendingTransactionOutputs(tx_id) => match PendingTransactionOutputSql::find(tx_id, &(*conn)) {
                     Ok(p) => {
-                        let outputs = OutputSql::find_by_tx_id_and_encumbered(p.tx_id as u64, &(*conn))?;
+                        let mut outputs = OutputSql::find_by_tx_id_and_encumbered(p.tx_id as u64, &(*conn))?;
+
+                        for o in outputs.iter_mut() {
+                            self.decrypt_if_necessary(o)?;
+                        }
+
                         p.delete(&(*conn))?;
                         return Ok(Some(DbValue::PendingTransactionOutputs(Box::new(
                             pending_transaction_outputs_from_sql_outputs(p.tx_id as u64, &p.timestamp, outputs)?,
@@ -249,6 +339,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                             UpdateOutput {
                                 status: Some(OutputStatus::Unspent),
                                 tx_id: None,
+                                spending_key: None,
                             },
                             &(*conn),
                         )?;
@@ -257,6 +348,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                             UpdateOutput {
                                 status: Some(OutputStatus::Spent),
                                 tx_id: None,
+                                spending_key: None,
                             },
                             &(*conn),
                         )?;
@@ -287,7 +379,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         let mut outputs_to_be_spent = Vec::new();
         for i in outputs_to_send {
-            let output = OutputSql::find(&i.unblinded_output.spending_key.to_vec(), &(*conn))?;
+            let output = OutputSql::find_by_commitment(&i.commitment.to_vec(), &(*conn))?;
             if output.status == (OutputStatus::Spent as i32) {
                 return Err(OutputManagerStorageError::OutputAlreadySpent);
             }
@@ -301,13 +393,16 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 UpdateOutput {
                     status: Some(OutputStatus::EncumberedToBeSpent),
                     tx_id: Some(tx_id),
+                    spending_key: None,
                 },
                 &(*conn),
             )?;
         }
 
         for co in outputs_to_receive {
-            OutputSql::new(co.clone(), OutputStatus::EncumberedToBeReceived, Some(tx_id)).commit(&(*conn))?;
+            let mut new_output = NewOutputSql::new(co.clone(), OutputStatus::EncumberedToBeReceived, Some(tx_id));
+            self.encrypt_if_necessary(&mut new_output)?;
+            new_output.commit(&(*conn))?;
         }
 
         Ok(())
@@ -361,6 +456,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                             UpdateOutput {
                                 status: Some(OutputStatus::CancelledInbound),
                                 tx_id: None,
+                                spending_key: None,
                             },
                             &(*conn),
                         )?;
@@ -369,6 +465,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                             UpdateOutput {
                                 status: Some(OutputStatus::Unspent),
                                 tx_id: None,
+                                spending_key: None,
                             },
                             &(*conn),
                         )?;
@@ -417,12 +514,13 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
     fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError> {
         let conn = acquire_lock!(self.database_connection);
-        let output = OutputSql::find(&output.unblinded_output.spending_key.to_vec(), &conn)?;
+        let output = OutputSql::find_by_commitment(&output.commitment.to_vec(), &conn)?;
         let tx_id = output.tx_id.clone().map(|id| id as u64);
         let _ = output.update(
             UpdateOutput {
                 status: Some(OutputStatus::Invalid),
                 tx_id: None,
+                spending_key: None,
             },
             &(*conn),
         )?;
@@ -430,9 +528,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(tx_id)
     }
 
-    fn revalidate_unspent_output(&self, spending_key: &BlindingFactor) -> Result<(), OutputManagerStorageError> {
+    fn revalidate_unspent_output(&self, commitment: &Commitment) -> Result<(), OutputManagerStorageError> {
         let conn = acquire_lock!(self.database_connection);
-        let output = OutputSql::find(&spending_key.to_vec(), &conn)?;
+        let output = OutputSql::find_by_commitment(&commitment.to_vec(), &conn)?;
 
         if OutputStatus::try_from(output.status)? != OutputStatus::Invalid {
             return Err(OutputManagerStorageError::ValuesNotFound);
@@ -441,9 +539,82 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             UpdateOutput {
                 status: Some(OutputStatus::Unspent),
                 tx_id: None,
+                spending_key: None,
             },
             &(*conn),
         )?;
+        Ok(())
+    }
+
+    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError> {
+        let mut current_cipher = acquire_write_lock!(self.cipher);
+
+        if (*current_cipher).is_some() {
+            return Err(OutputManagerStorageError::AlreadyEncrypted);
+        }
+
+        let conn = acquire_lock!(self.database_connection);
+        let mut outputs = OutputSql::index(&conn)?;
+
+        // If the db is already encrypted then the very first output we try to encrypt will fail.
+        for o in outputs.iter_mut() {
+            // Test if this output is encrypted or not to avoid a double encryption.
+            let _ = PrivateKey::from_vec(&o.spending_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PrivateKey from stored bytes, They might already be encrypted"
+                );
+                OutputManagerStorageError::AlreadyEncrypted
+            })?;
+            o.encrypt(&cipher)
+                .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+            o.update_encryption(&conn)?;
+        }
+
+        let mut key_manager_state = KeyManagerStateSql::get_state(&conn)?;
+
+        let _ = PrivateKey::from_vec(&key_manager_state.master_seed).map_err(|_| {
+            error!(
+                target: LOG_TARGET,
+                "Could not create PrivateKey from stored bytes, They might already be encrypted"
+            );
+            OutputManagerStorageError::AlreadyEncrypted
+        })?;
+
+        key_manager_state
+            .encrypt(&cipher)
+            .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+        key_manager_state.set_state(&conn)?;
+
+        (*current_cipher) = Some(cipher);
+
+        Ok(())
+    }
+
+    fn remove_encryption(&self) -> Result<(), OutputManagerStorageError> {
+        let mut current_cipher = acquire_write_lock!(self.cipher);
+        let cipher = if let Some(cipher) = (*current_cipher).clone().take() {
+            cipher
+        } else {
+            return Ok(());
+        };
+        let conn = acquire_lock!(self.database_connection);
+        let mut outputs = OutputSql::index(&conn)?;
+
+        for o in outputs.iter_mut() {
+            o.decrypt(&cipher)
+                .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+            o.update_encryption(&conn)?;
+        }
+
+        let mut key_manager_state = KeyManagerStateSql::get_state(&conn)?;
+        key_manager_state
+            .decrypt(&cipher)
+            .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
+        key_manager_state.set_state(&conn)?;
+
+        // Now that all the decryption has been completed we can safely remove the cipher fully
+        let _ = (*current_cipher).take();
         Ok(())
     }
 }
@@ -502,9 +673,10 @@ impl TryFrom<i32> for OutputStatus {
 
 /// This struct represents an Output in the Sql database. A distinct struct is required to define the Sql friendly
 /// equivalent datatypes for the members.
-#[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
+#[derive(Clone, Debug, Insertable, PartialEq)]
 #[table_name = "outputs"]
-struct OutputSql {
+struct NewOutputSql {
+    commitment: Option<Vec<u8>>,
     spending_key: Vec<u8>,
     value: i64,
     flags: i32,
@@ -514,24 +686,10 @@ struct OutputSql {
     hash: Option<Vec<u8>>,
 }
 
-impl OutputSql {
-    // This function is to update the values of hte hash field if its missing, It will check if the hash is missing, add
-    // this and update the field. ToDo remove this post testnet 1
-    fn migrate(conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
-        let ou_array: Vec<OutputSql> = outputs::table.filter(outputs::hash.is_null()).load(conn)?;
-        for output in ou_array {
-            // This should only happen on database migration as the hash will then be empty
-            // ToDo remove this as this is temp migration code
-            let ou = DbUnblindedOutput::try_from(output.clone())?;
-            diesel::update(outputs::table.filter(outputs::spending_key.eq(&output.spending_key)))
-                .set(outputs::hash.eq(Some(ou.hash.clone())))
-                .execute(conn)?;
-        }
-        Ok(())
-    }
-
+impl NewOutputSql {
     pub fn new(output: DbUnblindedOutput, status: OutputStatus, tx_id: Option<TxId>) -> Self {
         Self {
+            commitment: Some(output.commitment.to_vec()),
             spending_key: output.unblinded_output.spending_key.to_vec(),
             value: (u64::from(output.unblinded_output.value)) as i64,
             flags: output.unblinded_output.features.flags.bits() as i32,
@@ -547,14 +705,79 @@ impl OutputSql {
         diesel::insert_into(outputs::table).values(self.clone()).execute(conn)?;
         Ok(())
     }
+}
 
-    /// Return all unencumbered outputs
-    #[cfg(test)]
+impl Encryptable<Aes256Gcm> for NewOutputSql {
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+        self.spending_key = encrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
+        Ok(())
+    }
+
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+        self.spending_key = decrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Queryable, Identifiable, PartialEq)]
+#[table_name = "outputs"]
+struct OutputSql {
+    id: i32,
+    commitment: Option<Vec<u8>>,
+    spending_key: Vec<u8>,
+    value: i64,
+    flags: i32,
+    maturity: i64,
+    status: i32,
+    tx_id: Option<i64>,
+    hash: Option<Vec<u8>>,
+}
+
+impl OutputSql {
+    // This function is to update the values of hte hash field if its missing, It will check if the hash is missing, add
+    // this and update the field. ToDo remove this post testnet 1
+    fn migrate(conn: &SqliteConnection, cipher: Option<Aes256Gcm>) -> Result<(), OutputManagerStorageError> {
+        // Update Hashes
+        let mut ou_array: Vec<OutputSql> = outputs::table.filter(outputs::hash.is_null()).load(conn)?;
+        if let Some(cipher_inner) = cipher.clone() {
+            for o in ou_array.iter_mut() {
+                o.decrypt(&cipher_inner)
+                    .map_err(|_| OutputManagerStorageError::AeadError("Decryption Error".to_string()))?;
+            }
+        }
+        for output in ou_array {
+            // This should only happen on database migration as the hash will then be empty
+            // TODO remove this as this is temp migration code
+            let ou = DbUnblindedOutput::try_from(output.clone())?;
+            diesel::update(outputs::table.filter(outputs::id.eq(&output.id)))
+                .set(outputs::hash.eq(Some(ou.hash.clone())))
+                .execute(conn)?;
+        }
+
+        // Update public spending keys. Need to do this again in case the node has run the previous migration but not
+        // this one
+        let mut ou_array: Vec<OutputSql> = outputs::table.filter(outputs::commitment.is_null()).load(conn)?;
+        if let Some(cipher_inner) = cipher {
+            for o in ou_array.iter_mut() {
+                o.decrypt(&cipher_inner)
+                    .map_err(|_| OutputManagerStorageError::AeadError("Decryption Error".to_string()))?;
+            }
+        }
+        for output in ou_array {
+            // This should only happen once on database migration.
+            // TODO remove this as this is temp migration code
+            let ou = DbUnblindedOutput::try_from(output.clone())?;
+            diesel::update(outputs::table.filter(outputs::id.eq(&output.id)))
+                .set(outputs::commitment.eq(Some(ou.commitment.clone().to_vec())))
+                .execute(conn)?;
+        }
+
+        Ok(())
+    }
+
+    /// Return all outputs
     pub fn index(conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
-        Ok(outputs::table
-            .filter(not(outputs::status.eq(OutputStatus::EncumberedToBeReceived as i32)))
-            .filter(not(outputs::status.eq(OutputStatus::EncumberedToBeSpent as i32)))
-            .load::<OutputSql>(conn)?)
+        Ok(outputs::table.load::<OutputSql>(conn)?)
     }
 
     /// Return all outputs with a given status
@@ -570,6 +793,17 @@ impl OutputSql {
     pub fn find(spending_key: &[u8], conn: &SqliteConnection) -> Result<OutputSql, OutputManagerStorageError> {
         Ok(outputs::table
             .filter(outputs::spending_key.eq(spending_key))
+            .first::<OutputSql>(conn)?)
+    }
+
+    /// Find a particular Output by its public_spending_key
+    pub fn find_by_commitment(
+        commitment: &[u8],
+        conn: &SqliteConnection,
+    ) -> Result<OutputSql, OutputManagerStorageError>
+    {
+        Ok(outputs::table
+            .filter(outputs::commitment.eq(commitment))
             .first::<OutputSql>(conn)?)
     }
 
@@ -619,7 +853,7 @@ impl OutputSql {
         conn: &SqliteConnection,
     ) -> Result<OutputSql, OutputManagerStorageError>
     {
-        let num_updated = diesel::update(outputs::table.filter(outputs::spending_key.eq(&self.spending_key)))
+        let num_updated = diesel::update(outputs::table.filter(outputs::id.eq(&self.id)))
             .set(UpdateOutputSql::from(updated_output))
             .execute(conn)?;
 
@@ -651,6 +885,19 @@ impl OutputSql {
 
         Ok(OutputSql::find(&self.spending_key, conn)?)
     }
+
+    /// Update the changed fields of this record after encryption/decryption is performed
+    pub fn update_encryption(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
+        let _ = self.update(
+            UpdateOutput {
+                status: None,
+                tx_id: None,
+                spending_key: Some(self.spending_key.clone()),
+            },
+            conn,
+        )?;
+        Ok(())
+    }
 }
 
 /// Conversion from an DbUnblindedOutput to the Sql datatype form
@@ -660,8 +907,13 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
         let unblinded_output = UnblindedOutput {
             value: MicroTari::from(o.value as u64),
-            spending_key: PrivateKey::from_vec(&o.spending_key)
-                .map_err(|_| OutputManagerStorageError::ConversionError)?,
+            spending_key: PrivateKey::from_vec(&o.spending_key).map_err(|_| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create PrivateKey from stored bytes, They might be encrypted"
+                );
+                OutputManagerStorageError::ConversionError
+            })?,
             features: OutputFeatures {
                 flags: OutputFlags::from_bits(o.flags as u8)
                     .ok_or_else(|| OutputManagerStorageError::ConversionError)?,
@@ -670,14 +922,65 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
         };
         let hash = match o.hash {
             None => {
-                // This should only happen on database migration as the hash will then be empty
-                // ToDo remove this as this is temp migration code
+                // This should only happen if the database didn't migrate yet.
+                // TODO remove this as this is temp migration code
                 let factories = CryptoFactories::default();
                 unblinded_output.as_transaction_output(&factories)?.hash()
             },
             Some(v) => v,
         };
-        Ok(Self { unblinded_output, hash })
+        let commitment = match o.commitment {
+            None => {
+                // This should only happen if the database didn't migrate yet. This feels like a repetition of the
+                // instantiation above but these represent two different migrations and by putting this here it will
+                // only occur if the migration has not been performed which should never happen
+                // TODO remove this as this is temp migration code
+                let factories = CryptoFactories::default();
+                factories
+                    .commitment
+                    .commit(&unblinded_output.spending_key, &unblinded_output.value.into())
+            },
+            Some(c) => Commitment::from_vec(&c)?,
+        };
+
+        Ok(Self {
+            commitment,
+            unblinded_output,
+            hash,
+        })
+    }
+}
+
+impl Encryptable<Aes256Gcm> for OutputSql {
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+        self.spending_key = encrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
+        Ok(())
+    }
+
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), AeadError> {
+        self.spending_key = decrypt_bytes_integral_nonce(&cipher, self.spending_key.clone())?;
+        Ok(())
+    }
+}
+
+impl From<OutputSql> for NewOutputSql {
+    fn from(o: OutputSql) -> Self {
+        Self {
+            commitment: o.commitment,
+            spending_key: o.spending_key,
+            value: o.value,
+            flags: o.flags,
+            maturity: o.maturity,
+            status: o.status,
+            tx_id: o.tx_id,
+            hash: o.hash,
+        }
+    }
+}
+
+impl PartialEq<NewOutputSql> for OutputSql {
+    fn eq(&self, other: &NewOutputSql) -> bool {
+        &NewOutputSql::from(self.clone()) == other
     }
 }
 
@@ -685,6 +988,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
 pub struct UpdateOutput {
     status: Option<OutputStatus>,
     tx_id: Option<TxId>,
+    spending_key: Option<Vec<u8>>,
 }
 
 #[derive(AsChangeset)]
@@ -692,6 +996,7 @@ pub struct UpdateOutput {
 pub struct UpdateOutputSql {
     status: Option<i32>,
     tx_id: Option<i64>,
+    spending_key: Option<Vec<u8>>,
 }
 
 #[derive(AsChangeset)]
@@ -708,6 +1013,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
         Self {
             status: u.status.map(|t| t as i32),
             tx_id: u.tx_id.map(|t| t as i64),
+            spending_key: u.spending_key,
         }
     }
 }
@@ -864,21 +1170,17 @@ impl KeyManagerStateSql {
             .map_err(|_| OutputManagerStorageError::KeyManagerNotInitialized)?)
     }
 
-    pub fn set_state(
-        key_manager_state: KeyManagerState,
-        conn: &SqliteConnection,
-    ) -> Result<(), OutputManagerStorageError>
-    {
+    pub fn set_state(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
         match KeyManagerStateSql::get_state(conn) {
             Ok(km) => {
-                let update = KeyManagerStateUpdate {
-                    master_seed: Some(key_manager_state.master_seed),
-                    branch_seed: Some(key_manager_state.branch_seed),
-                    primary_key_index: Some(key_manager_state.primary_key_index),
+                let update = KeyManagerStateUpdateSql {
+                    master_seed: Some(self.master_seed.clone()),
+                    branch_seed: Some(self.branch_seed.clone()),
+                    primary_key_index: Some(self.primary_key_index),
                 };
 
                 let num_updated = diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&km.id)))
-                    .set(KeyManagerStateUpdateSql::from(update))
+                    .set(update)
                     .execute(conn)?;
                 if num_updated == 0 {
                     return Err(OutputManagerStorageError::UnexpectedResult(
@@ -886,22 +1188,22 @@ impl KeyManagerStateSql {
                     ));
                 }
             },
-            Err(_) => KeyManagerStateSql::from(key_manager_state).commit(conn)?,
+            Err(_) => self.commit(conn)?,
         }
         Ok(())
     }
 
-    pub fn increment_index(conn: &SqliteConnection) -> Result<usize, OutputManagerStorageError> {
+    pub fn increment_index(conn: &SqliteConnection) -> Result<i64, OutputManagerStorageError> {
         Ok(match KeyManagerStateSql::get_state(conn) {
             Ok(km) => {
-                let current_index = (km.primary_key_index + 1) as usize;
-                let update = KeyManagerStateUpdate {
+                let current_index = km.primary_key_index + 1;
+                let update = KeyManagerStateUpdateSql {
                     master_seed: None,
                     branch_seed: None,
                     primary_key_index: Some(current_index),
                 };
                 let num_updated = diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&km.id)))
-                    .set(KeyManagerStateUpdateSql::from(update))
+                    .set(update)
                     .execute(conn)?;
                 if num_updated == 0 {
                     return Err(OutputManagerStorageError::UnexpectedResult(
@@ -915,12 +1217,6 @@ impl KeyManagerStateSql {
     }
 }
 
-struct KeyManagerStateUpdate {
-    master_seed: Option<PrivateKey>,
-    branch_seed: Option<String>,
-    primary_key_index: Option<usize>,
-}
-
 #[derive(AsChangeset)]
 #[table_name = "key_manager_states"]
 struct KeyManagerStateUpdateSql {
@@ -929,27 +1225,59 @@ struct KeyManagerStateUpdateSql {
     primary_key_index: Option<i64>,
 }
 
-impl From<KeyManagerStateUpdate> for KeyManagerStateUpdateSql {
-    fn from(km: KeyManagerStateUpdate) -> Self {
-        Self {
-            master_seed: km.master_seed.map(|ms| ms.to_vec()),
-            branch_seed: km.branch_seed,
-            primary_key_index: km.primary_key_index.map(|i| i as i64),
-        }
+impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
+    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), Error> {
+        let encrypted_master_seed = encrypt_bytes_integral_nonce(&cipher, self.master_seed.clone())?;
+        let encrypted_branch_seed =
+            encrypt_bytes_integral_nonce(&cipher, self.branch_seed.clone().as_bytes().to_vec())?;
+        self.master_seed = encrypted_master_seed;
+        self.branch_seed = encrypted_branch_seed.to_hex();
+        Ok(())
+    }
+
+    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), Error> {
+        let decrypted_master_seed = decrypt_bytes_integral_nonce(&cipher, self.master_seed.clone())?;
+        let decrypted_branch_seed =
+            decrypt_bytes_integral_nonce(&cipher, from_hex(self.branch_seed.as_str()).map_err(|_| Error)?)?;
+        self.master_seed = decrypted_master_seed;
+        self.branch_seed = from_utf8(decrypted_branch_seed.as_slice())
+            .map_err(|_| Error)?
+            .to_string();
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::output_manager_service::storage::{
-        database::KeyManagerState,
-        models::DbUnblindedOutput,
-        sqlite_db::{KeyManagerStateSql, OutputSql, OutputStatus, PendingTransactionOutputSql, UpdateOutput},
+    use crate::{
+        output_manager_service::storage::{
+            database::{DbKey, KeyManagerState, OutputManagerBackend},
+            models::DbUnblindedOutput,
+            sqlite_db::{
+                KeyManagerStateSql,
+                NewOutputSql,
+                OutputManagerSqliteDatabase,
+                OutputSql,
+                OutputStatus,
+                PendingTransactionOutputSql,
+                UpdateOutput,
+            },
+        },
+        util::encryption::Encryptable,
+    };
+    use aes_gcm::{
+        aead::{generic_array::GenericArray, NewAead},
+        Aes256Gcm,
     };
     use chrono::{Duration as ChronoDuration, Utc};
     use diesel::{Connection, SqliteConnection};
     use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
-    use std::{convert::TryFrom, iter, time::Duration};
+    use std::{
+        convert::TryFrom,
+        iter,
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
     use tari_core::transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
@@ -994,7 +1322,7 @@ mod test {
         for _i in 0..2 {
             let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-            let o = OutputSql::new(uo, OutputStatus::Unspent, None);
+            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None);
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
             o.commit(&conn).unwrap();
@@ -1003,7 +1331,7 @@ mod test {
         for _i in 0..3 {
             let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-            let o = OutputSql::new(uo, OutputStatus::Spent, None);
+            let o = NewOutputSql::new(uo, OutputStatus::Spent, None);
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
             o.commit(&conn).unwrap();
@@ -1061,6 +1389,7 @@ mod test {
                 UpdateOutput {
                     status: Some(OutputStatus::Unspent),
                     tx_id: Some(44u64),
+                    spending_key: None,
                 },
                 &conn,
             )
@@ -1072,6 +1401,7 @@ mod test {
                 UpdateOutput {
                     status: Some(OutputStatus::EncumberedToBeReceived),
                     tx_id: Some(44u64),
+                    spending_key: None,
                 },
                 &conn,
             )
@@ -1122,8 +1452,7 @@ mod test {
             primary_key_index: 0,
         };
 
-        KeyManagerStateSql::set_state(state1.clone(), &conn).unwrap();
-
+        KeyManagerStateSql::from(state1.clone()).set_state(&conn).unwrap();
         let state1_read = KeyManagerStateSql::get_state(&conn).unwrap();
 
         assert_eq!(state1, KeyManagerState::try_from(state1_read).unwrap());
@@ -1134,7 +1463,7 @@ mod test {
             primary_key_index: 0,
         };
 
-        KeyManagerStateSql::set_state(state2.clone(), &conn).unwrap();
+        KeyManagerStateSql::from(state2.clone()).set_state(&conn).unwrap();
 
         let state2_read = KeyManagerStateSql::get_state(&conn).unwrap();
 
@@ -1146,5 +1475,158 @@ mod test {
         let state3_read = KeyManagerStateSql::get_state(&conn).unwrap();
 
         assert_eq!(state3_read.primary_key_index, 2);
+    }
+
+    #[test]
+    fn test_output_encryption() {
+        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let tempdir = tempdir().unwrap();
+        let db_folder = tempdir.path().to_str().unwrap().to_string();
+        let db_path = format!("{}{}", db_folder, db_name);
+
+        embed_migrations!("./migrations");
+        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+
+        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+
+        conn.execute("PRAGMA foreign_keys = ON").unwrap();
+        let factories = CryptoFactories::default();
+
+        let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+
+        let key = GenericArray::from_slice(b"an example very very secret key.");
+        let cipher = Aes256Gcm::new(key);
+
+        output.commit(&conn).unwrap();
+        let unencrypted_output = OutputSql::find(output.spending_key.as_slice(), &conn).unwrap();
+
+        assert!(unencrypted_output.clone().decrypt(&cipher).is_err());
+        unencrypted_output.delete(&conn).unwrap();
+
+        let mut encrypted_output = output.clone();
+        encrypted_output.encrypt(&cipher).unwrap();
+        encrypted_output.commit(&conn).unwrap();
+
+        let outputs = OutputSql::index(&conn).unwrap();
+        let mut decrypted_output = outputs[0].clone();
+        decrypted_output.decrypt(&cipher).unwrap();
+        assert_eq!(decrypted_output.spending_key, output.spending_key);
+
+        let wrong_key = GenericArray::from_slice(b"an example very very wrong key!!");
+        let wrong_cipher = Aes256Gcm::new(wrong_key);
+        assert!(outputs[0].clone().decrypt(&wrong_cipher).is_err());
+
+        decrypted_output.update_encryption(&conn).unwrap();
+
+        assert_eq!(
+            OutputSql::find(output.spending_key.as_slice(), &conn)
+                .unwrap()
+                .spending_key,
+            output.spending_key
+        );
+
+        decrypted_output.encrypt(&cipher).unwrap();
+        decrypted_output.update_encryption(&conn).unwrap();
+
+        let outputs = OutputSql::index(&conn).unwrap();
+        let mut decrypted_output2 = outputs[0].clone();
+        decrypted_output2.decrypt(&cipher).unwrap();
+        assert_eq!(decrypted_output2.spending_key, output.spending_key);
+    }
+
+    #[test]
+    fn test_key_manager_encryption() {
+        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let temp_dir = tempdir().unwrap();
+        let db_folder = temp_dir.path().to_str().unwrap().to_string();
+        let db_path = format!("{}{}", db_folder, db_name);
+
+        embed_migrations!("./migrations");
+        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+
+        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+
+        let key = GenericArray::from_slice(b"an example very very secret key.");
+        let cipher = Aes256Gcm::new(key);
+
+        let starting_state = KeyManagerState {
+            master_seed: PrivateKey::random(&mut OsRng),
+            branch_seed: "boop boop".to_string(),
+            primary_key_index: 1,
+        };
+
+        let state_sql = KeyManagerStateSql::from(starting_state.clone());
+        state_sql.set_state(&conn).unwrap();
+
+        let mut encrypted_state = state_sql.clone();
+        encrypted_state.encrypt(&cipher).unwrap();
+
+        encrypted_state.set_state(&conn).unwrap();
+        KeyManagerStateSql::increment_index(&conn).unwrap();
+        let mut db_state = KeyManagerStateSql::get_state(&conn).unwrap();
+
+        assert!(KeyManagerState::try_from(db_state.clone()).is_err());
+        assert_eq!(db_state.primary_key_index, 2);
+
+        db_state.decrypt(&cipher).unwrap();
+        let decrypted_data = KeyManagerState::try_from(db_state).unwrap();
+
+        assert_eq!(decrypted_data.master_seed, starting_state.master_seed);
+        assert_eq!(decrypted_data.branch_seed, starting_state.branch_seed);
+        assert_eq!(decrypted_data.primary_key_index, 2);
+    }
+
+    #[test]
+    fn test_apply_remove_encryption() {
+        let db_name = format!("{}.sqlite3", random_string(8).as_str());
+        let temp_dir = tempdir().unwrap();
+        let db_folder = temp_dir.path().to_str().unwrap().to_string();
+        let db_path = format!("{}{}", db_folder, db_name);
+
+        embed_migrations!("./migrations");
+        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
+
+        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
+        let factories = CryptoFactories::default();
+
+        let starting_state = KeyManagerState {
+            master_seed: PrivateKey::random(&mut OsRng),
+            branch_seed: "boop boop".to_string(),
+            primary_key_index: 1,
+        };
+
+        let state_sql = KeyManagerStateSql::from(starting_state.clone());
+        state_sql.set_state(&conn).unwrap();
+
+        let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
+        let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
+        output.commit(&conn).unwrap();
+
+        let (_, uo2) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories).unwrap();
+        let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None);
+        output2.commit(&conn).unwrap();
+
+        let key = GenericArray::from_slice(b"an example very very secret key.");
+        let cipher = Aes256Gcm::new(key);
+
+        let connection = Arc::new(Mutex::new(conn));
+
+        let db1 = OutputManagerSqliteDatabase::new(connection.clone(), Some(cipher.clone()));
+        assert!(db1.apply_encryption(cipher.clone()).is_err());
+
+        let db2 = OutputManagerSqliteDatabase::new(connection.clone(), None);
+        assert!(db2.remove_encryption().is_ok());
+        db2.apply_encryption(cipher.clone()).unwrap();
+
+        let db3 = OutputManagerSqliteDatabase::new(connection.clone(), None);
+        assert!(db3.fetch(&DbKey::UnspentOutputs).is_err());
+
+        db2.remove_encryption().unwrap();
+
+        assert!(db3.fetch(&DbKey::UnspentOutputs).is_ok());
     }
 }

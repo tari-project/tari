@@ -26,7 +26,7 @@ use crate::{
     peer_manager::Peer,
     protocol::messaging::{MessagingEvent, MessagingProtocol},
 };
-use futures::{channel::mpsc, AsyncRead, AsyncWrite, SinkExt};
+use futures::{channel::mpsc, future::Either, AsyncRead, AsyncWrite, SinkExt};
 use log::*;
 use std::{sync::Arc, time::Duration};
 use tokio::{stream::StreamExt, sync::broadcast};
@@ -39,7 +39,7 @@ pub struct InboundMessaging {
     messaging_events_tx: broadcast::Sender<Arc<MessagingEvent>>,
     rate_limit_capacity: usize,
     rate_limit_restock_interval: Duration,
-    inactivity_timeout: Duration,
+    inactivity_timeout: Option<Duration>,
 }
 
 impl InboundMessaging {
@@ -49,7 +49,7 @@ impl InboundMessaging {
         messaging_events_tx: broadcast::Sender<Arc<MessagingEvent>>,
         rate_limit_capacity: usize,
         rate_limit_restock_interval: Duration,
-        inactivity_timeout: Duration,
+        inactivity_timeout: Option<Duration>,
     ) -> Self
     {
         Self {
@@ -69,10 +69,14 @@ impl InboundMessaging {
             "Starting inbound messaging protocol for peer '{}'",
             self.peer.node_id.short_str()
         );
-        let mut framed_socket = MessagingProtocol::framed(socket)
-            .timeout(self.inactivity_timeout)
-            .rate_limit(self.rate_limit_capacity, self.rate_limit_restock_interval);
+        let framed_socket =
+            MessagingProtocol::framed(socket).rate_limit(self.rate_limit_capacity, self.rate_limit_restock_interval);
         let peer = &self.peer;
+
+        let mut framed_socket = match self.inactivity_timeout {
+            Some(timeout) => Either::Left(framed_socket.timeout(timeout)),
+            None => Either::Right(framed_socket.map(Ok)),
+        };
 
         while let Some(result) = framed_socket.next().await {
             match result {
@@ -120,9 +124,10 @@ impl InboundMessaging {
                 Err(_) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Inbound messaging for peer '{}' has stopped because it was inactive for {}s",
+                        "Inbound messaging for peer '{}' has stopped because it was inactive for {:.0?}",
                         peer.node_id.short_str(),
-                        self.inactivity_timeout.as_secs(),
+                        self.inactivity_timeout
+                            .expect("Inactivity timeout reached but it was not enabled"),
                     );
                     break;
                 },

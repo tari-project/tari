@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
@@ -37,7 +36,7 @@ use crate::{
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-        types::{Commitment, HashOutput},
+        types::{Commitment, HashOutput, Signature},
     },
     validation::{StatelessValidation, StatelessValidator, Validation, ValidationError, Validator},
 };
@@ -226,7 +225,7 @@ macro_rules! fetch {
     ($db:ident, $key_val:expr, $key_var:ident) => {{
         let key = DbKey::$key_var($key_val);
         match $db.fetch(&key) {
-            Ok(None) => Err(ChainStorageError::ValueNotFound(key)),
+            Ok(None) => Err(key.to_value_not_found_error()),
             Ok(Some(DbValue::$key_var(k))) => Ok(*k),
             Ok(Some(other)) => unexpected_result(key, other),
             Err(e) => log_error(key, e),
@@ -376,8 +375,9 @@ where T: BlockchainBackend
         fetch_header(&*db, block_num)
     }
 
-    /// Store the provided set of headers.
-    pub fn insert_headers(&self, headers: Vec<BlockHeader>) -> Result<(), ChainStorageError> {
+    /// Store the provided headers. This function does no validation and assumes the inserted header has been already
+    /// been validated.
+    pub fn insert_valid_headers(&self, headers: Vec<BlockHeader>) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
         insert_headers(&mut db, headers)
     }
@@ -505,7 +505,7 @@ where T: BlockchainBackend
         pos: u32,
         count: u32,
         hist_height: Option<u64>,
-    ) -> Result<Vec<(Vec<u8>, bool)>, ChainStorageError>
+    ) -> Result<Vec<(Hash, bool)>, ChainStorageError>
     {
         let db = self.db_read_access()?;
         db.fetch_mmr_nodes(tree, pos, count, hist_height)
@@ -624,6 +624,27 @@ where T: BlockchainBackend
         fetch_block_with_hash(&*db, hash)
     }
 
+    /// Attempt to fetch the block corresponding to the provided kernel hash from the main chain, if the block is past
+    /// pruning horizon, it will return Ok<None>
+    pub fn fetch_block_with_kernel(&self, excess_sig: Signature) -> Result<Option<HistoricalBlock>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        fetch_block_with_kernel(&*db, excess_sig)
+    }
+
+    /// Attempt to fetch the block corresponding to the provided stxo hash from the main chain, if the block is past
+    /// pruning horizon, it will return Ok<None>
+    pub fn fetch_block_with_stxo(&self, commitment: Commitment) -> Result<Option<HistoricalBlock>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        fetch_block_with_stxo(&*db, commitment)
+    }
+
+    /// Attempt to fetch the block corresponding to the provided utxo hash from the main chain, if the block is past
+    /// pruning horizon, it will return Ok<None>
+    pub fn fetch_block_with_utxo(&self, commitment: Commitment) -> Result<Option<HistoricalBlock>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        fetch_block_with_utxo(&*db, commitment)
+    }
+
     /// Returns true if this block exists in the chain, or is orphaned.
     pub fn block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
@@ -706,7 +727,9 @@ fn insert_headers<T: BlockchainBackend>(
 ) -> Result<(), ChainStorageError>
 {
     let mut txn = DbTransaction::new();
-    headers.into_iter().for_each(|header| txn.insert_header(header));
+    headers.into_iter().for_each(|header| {
+        txn.insert_header(header);
+    });
     commit(db, txn)
 }
 
@@ -899,6 +922,114 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
     Ok(HistoricalBlock::new(block, tip_height - height + 1, spent))
 }
 
+fn fetch_block_with_kernel<T: BlockchainBackend>(
+    db: &T,
+    excess_sig: Signature,
+) -> Result<Option<HistoricalBlock>, ChainStorageError>
+{
+    let metadata = db.fetch_metadata()?;
+    let db_height = metadata.height_of_longest_chain.unwrap_or(0);
+    let horizon_height = metadata.horizon_block(db_height);
+    for i in (horizon_height..db_height).rev() {
+        let kernel_cp = fetch_checkpoint(db, MmrTree::Kernel, i)?;
+        let (kernel_hashes, _) = kernel_cp.into_parts();
+        let kernels = fetch_kernels(db, kernel_hashes)?;
+        for kernel in kernels {
+            if kernel.excess_sig == excess_sig {
+                return Ok(Some(fetch_block(db, i)?));
+            }
+        }
+    }
+    // data is not in the pruning horizon, let's check behind that but only if there is a pruning horizon
+    if horizon_height > 0 {
+        let kernel_cp = fetch_checkpoint(db, MmrTree::Kernel, horizon_height - 1)?;
+        let (kernel_hashes, _) = kernel_cp.into_parts();
+        let kernels = fetch_kernels(db, kernel_hashes)?;
+        for kernel in kernels {
+            if kernel.excess_sig == excess_sig {
+                return Ok(None);
+            }
+        }
+    }
+    Err(ChainStorageError::ValueNotFound {
+        entity: "Kernel".to_string(),
+        field: "Excess sig".to_string(),
+        value: excess_sig.get_signature().to_hex(),
+    })
+}
+
+fn fetch_block_with_utxo<T: BlockchainBackend>(
+    db: &T,
+    commitment: Commitment,
+) -> Result<Option<HistoricalBlock>, ChainStorageError>
+{
+    let metadata = db.fetch_metadata()?;
+    let db_height = metadata.height_of_longest_chain.unwrap_or(0);
+    let horizon_height = metadata.horizon_block(db_height);
+    for i in (horizon_height..db_height).rev() {
+        let utxo_cp = fetch_checkpoint(db, MmrTree::Utxo, i)?;
+        let (utxo_hashes, _) = utxo_cp.into_parts();
+        let utxos = fetch_outputs(db, utxo_hashes)?;
+        for utxo in utxos.0 {
+            if utxo.commitment == commitment {
+                return Ok(Some(fetch_block(db, i)?));
+            }
+        }
+        for comm in utxos.1 {
+            if comm == commitment {
+                return Ok(Some(fetch_block(db, i)?));
+            }
+        }
+    }
+    // data is not in the pruning horizon, let's check behind that but only if there is a pruning horizon
+    if horizon_height > 0 {
+        let utxo_cp = fetch_checkpoint(db, MmrTree::Utxo, horizon_height - 1)?;
+        let (utxo_hashes, _) = utxo_cp.into_parts();
+        let utxos = fetch_outputs(db, utxo_hashes)?;
+        for utxo in utxos.0 {
+            if utxo.commitment == commitment {
+                return Ok(None);
+            }
+        }
+        for comm in utxos.1 {
+            if comm == commitment {
+                return Ok(None);
+            }
+        }
+    }
+    Err(ChainStorageError::ValueNotFound {
+        entity: "Utxo".to_string(),
+        field: "Commitment".to_string(),
+        value: commitment.to_hex(),
+    })
+}
+
+fn fetch_block_with_stxo<T: BlockchainBackend>(
+    db: &T,
+    commitment: Commitment,
+) -> Result<Option<HistoricalBlock>, ChainStorageError>
+{
+    let metadata = db.fetch_metadata()?;
+    let db_height = metadata.height_of_longest_chain.unwrap_or(0);
+    let horizon_height = metadata.horizon_block(db_height);
+    for i in (horizon_height..db_height).rev() {
+        let utxo_cp = fetch_checkpoint(db, MmrTree::Utxo, i)?;
+        let (_, deleted) = utxo_cp.into_parts();
+        let inputs = fetch_inputs(db, deleted)?;
+        for input in inputs {
+            if input.commitment == commitment {
+                return Ok(Some(fetch_block(db, i)?));
+            }
+        }
+    }
+    // data is not in the pruning horizon, we cannot check stxo's behind pruning horizon
+    Err(ChainStorageError::ValueNotFound {
+        entity: "Utxo".to_string(),
+        field: "Commitment".to_string(),
+        value: commitment.to_hex(),
+    })
+}
+
 fn fetch_block_with_hash<T: BlockchainBackend>(
     db: &T,
     hash: BlockHash,
@@ -985,8 +1116,8 @@ fn fetch_outputs<T: BlockchainBackend>(
                 outputs.push(utxo);
                 continue;
             },
-            Err(ChainStorageError::ValueNotFound(_)) => {}, // Check STXO set below
-            Err(e) => return Err(e),                        // Something bad happened. Abort.
+            Err(ChainStorageError::ValueNotFound { .. }) => {}, // Check STXO set below
+            Err(e) => return Err(e),                            // Something bad happened. Abort.
         }
         // Check the STXO set
         let stxo = fetch_stxo(db, hash)?;
@@ -1413,7 +1544,7 @@ fn try_construct_fork<T: BlockchainBackend>(
                 height -= 1;
                 fork_chain.push_front(prev_block);
             },
-            Err(ChainStorageError::ValueNotFound(_)) => {
+            Err(ChainStorageError::ValueNotFound { .. }) => {
                 debug!(
                     target: LOG_TARGET,
                     "Fork chain extension not found, block #{} ({}) not connected to main chain.",
@@ -1544,27 +1675,31 @@ fn cleanup_pruned_mode<T: BlockchainBackend>(
 }
 
 fn commit_horizon_state<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>) -> Result<(), ChainStorageError> {
+    let mut txn = DbTransaction::new();
+
+    // Update metadata
     let tip_header = db
         .fetch_last_header()?
         .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve header. Blockchain DB is empty".into()))?;
-    let best_block = tip_header.hash();
-    let accumulated_difficulty =
-        ProofOfWork::new_from_difficulty(&tip_header.pow, ProofOfWork::achieved_difficulty(&tip_header))
-            .total_accumulated_difficulty();
-    let mut txn = DbTransaction::new();
-    // Update metadata
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::ChainHeight,
         MetadataValue::ChainHeight(Some(tip_header.height)),
     ));
+
+    let best_block = tip_header.hash();
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::BestBlock,
         MetadataValue::BestBlock(Some(best_block)),
     ));
+
+    let accumulated_difficulty =
+        ProofOfWork::new_from_difficulty(&tip_header.pow, ProofOfWork::achieved_difficulty(&tip_header))
+            .total_accumulated_difficulty();
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::AccumulatedWork,
         MetadataValue::AccumulatedWork(Some(accumulated_difficulty)),
     ));
+
     // Create horizon state checkpoint
     txn.commit_block();
     commit(db, txn)

@@ -1,23 +1,18 @@
 #!/usr/bin/env bash
 # NB: The order these are listed in is IMPORTANT! Dependencies must go first
 
-#infrastructure/derive
-#infrastructure/shutdown
-#infrastructure/storage
-#infrastructure/test_utils
-#common
-#comms
-#comms/dht
-#base_layer/service_framework
-#base_layer/mmr
-#base_layer/key_manager
-#base_layer/p2p
-#base_layer/core
-#base_layer/wallet
-#base_layer/wallet_ffi
-#applications/tari_base_node
-
 packages=${@:-'
+infrastructure/derive
+infrastructure/shutdown
+infrastructure/storage
+infrastructure/test_utils
+common
+comms
+comms/dht
+base_layer/service_framework
+base_layer/mmr
+base_layer/key_manager
+base_layer/p2p
 base_layer/core
 base_layer/wallet
 base_layer/wallet_ffi

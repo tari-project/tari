@@ -25,7 +25,6 @@ use crate::{
         state_machine::BaseNodeStateMachine,
         states::{
             helpers::{ban_all_sync_peers, ban_sync_peer, request_headers, select_sync_peer},
-            horizon_state_sync::synchronize_horizon_state,
             ForwardBlockSyncInfo,
             ListeningData,
             StateEvent,
@@ -213,24 +212,6 @@ impl BestChainMetadataBlockSyncInfo {
         }
         shared.publish_event_info().await;
 
-        // TODO: the horizon sync check should also be added to forward_block_sync
-        match shared.db.get_metadata() {
-            Ok(local_metadata) => {
-                if local_metadata.is_pruned_node() {
-                    match synchronize_horizon_state(shared, network_tip, sync_peers).await {
-                        Ok(()) => {
-                            info!(target: LOG_TARGET, "Horizon state has synchronised.");
-                        },
-                        Err(e) => {
-                            warn!(target: LOG_TARGET, "Synchronizing horizon state has failed. {:?}", e);
-                            return StateEvent::FatalError(format!("Synchronizing horizon state has failed. {:?}", e));
-                        },
-                    }
-                }
-            },
-            Err(e) => return StateEvent::FatalError(format!("Unable to retrieve local chain metadata. {:?}", e)),
-        };
-
         info!(target: LOG_TARGET, "Synchronizing missing blocks.");
         match synchronize_blocks(shared, network_tip, sync_peers).await {
             Ok(()) => {
@@ -286,8 +267,8 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
 ) -> Result<(), BlockSyncError>
 {
     let local_metadata = shared.db.get_metadata()?;
-    if let Some(local_block_hash) = local_metadata.best_block.clone() {
-        if let Some(network_block_hash) = network_metadata.best_block.clone() {
+    if let Some(local_block_hash) = local_metadata.best_block.as_ref() {
+        if let Some(network_block_hash) = network_metadata.best_block.as_ref() {
             debug!(
                 target: LOG_TARGET,
                 "Checking if current chain lagging on best network chain."
@@ -300,8 +281,8 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                 sync_peers,
                 local_tip_height,
                 network_tip_height,
-                &local_block_hash,
-                &network_block_hash,
+                local_block_hash,
+                network_block_hash,
             )
             .await?
             {

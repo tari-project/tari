@@ -37,7 +37,7 @@ use tari_wallet::{
         },
         ContactsServiceInitializer,
     },
-    storage::connection_manager::run_migration_and_create_sqlite_connection,
+    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
 };
 use tempfile::tempdir;
 use tokio::runtime::Runtime;

@@ -110,8 +110,7 @@ impl SendMessageParams {
         self
     }
 
-    /// Set broadcast_strategy to Closest.`excluded_peers` are excluded. Only Peers which have all `features` are
-    /// included.
+    /// Set broadcast_strategy to Closest.`excluded_peers` are excluded.
     pub fn closest(&mut self, node_id: NodeId, n: usize, excluded_peers: Vec<NodeId>) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
             excluded_peers,
@@ -122,7 +121,7 @@ impl SendMessageParams {
         self
     }
 
-    /// Set broadcast_strategy to Closest.`excluded_peers` are excluded. Only Peers which have all `features` are
+    /// Set broadcast_strategy to Closest.`excluded_peers` are excluded. Only peers that are currently connected will be
     /// included.
     pub fn closest_connected(&mut self, node_id: NodeId, n: usize, excluded_peers: Vec<NodeId>) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {

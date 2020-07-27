@@ -461,7 +461,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
                         if self
                             .resources
                             .db
-                            .revalidate_output(output.unblinded_output.spending_key.clone())
+                            .revalidate_output(output.commitment.clone())
                             .await
                             .is_ok()
                         {

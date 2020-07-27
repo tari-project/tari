@@ -27,10 +27,10 @@ use crate::{
     multiplexing::Substream,
     peer_manager::NodeId,
 };
-use futures::{channel::mpsc, SinkExt};
+use futures::{channel::mpsc, future::Either, FutureExt, SinkExt, StreamExt};
 use log::*;
 use std::time::{Duration, Instant};
-use tokio::{stream::StreamExt, time};
+use tokio::time;
 
 const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
 
@@ -39,7 +39,7 @@ pub struct OutboundMessaging {
     request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
     messaging_events_tx: mpsc::Sender<MessagingEvent>,
     peer_node_id: NodeId,
-    inactivity_timeout: Duration,
+    inactivity_timeout: Option<Duration>,
 }
 
 impl OutboundMessaging {
@@ -48,7 +48,7 @@ impl OutboundMessaging {
         messaging_events_tx: mpsc::Sender<MessagingEvent>,
         request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
         peer_node_id: NodeId,
-        inactivity_timeout: Duration,
+        inactivity_timeout: Option<Duration>,
     ) -> Self
     {
         Self {
@@ -125,8 +125,14 @@ impl OutboundMessaging {
 
     async fn start_forwarding_messages(mut self, substream: Substream) -> Result<(), MessagingProtocolError> {
         let mut framed = MessagingProtocol::framed(substream);
+
         loop {
-            match time::timeout(self.inactivity_timeout, self.request_rx.next()).await {
+            let request_rx = match self.inactivity_timeout {
+                Some(timeout) => Either::Left(time::timeout(timeout, self.request_rx.next())),
+                None => Either::Right(self.request_rx.next().map(Ok)),
+            };
+
+            match request_rx.await {
                 Ok(Some(mut out_msg)) => {
                     debug!(
                         target: LOG_TARGET,
@@ -181,6 +187,7 @@ impl OutboundMessaging {
                         "Outbound messaging for peer '{}' has stopped because the stream was closed",
                         self.peer_node_id.short_str()
                     );
+                    framed.close().await?;
                     break;
                 },
                 Err(_) => {
@@ -189,6 +196,7 @@ impl OutboundMessaging {
                         "Outbound messaging for peer '{}' has stopped because it was inactive",
                         self.peer_node_id.short_str()
                     );
+                    framed.close().await?;
                     break;
                 },
             }

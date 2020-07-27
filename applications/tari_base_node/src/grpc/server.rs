@@ -20,29 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::grpc::{
-    blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
+    blocks::{block_fees, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
     helpers::{mean, median},
+    server::base_node_grpc::*,
 };
-use base_node_grpc::*;
 use log::*;
-use prost_types::Timestamp;
-use std::{cmp, convert::TryFrom};
+use std::{cmp, convert::TryInto};
 use tari_common::GlobalConfig;
 use tari_core::{
-    base_node::LocalNodeCommsInterface,
-    blocks::{Block, BlockHeader},
-    chain_storage::HistoricalBlock,
-    consensus::{
-        emission::EmissionSchedule,
-        ConsensusConstants,
-        Network,
-        KERNEL_WEIGHT,
-        WEIGHT_PER_INPUT,
-        WEIGHT_PER_OUTPUT,
-    },
+    base_node::{comms_interface::Broadcast, LocalNodeCommsInterface},
+    blocks::{Block, BlockHeader, NewBlockTemplate},
+    consensus::{emission::EmissionSchedule, ConsensusManagerBuilder, Network},
     proof_of_work::PowAlgorithm,
 };
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray, Hashable};
+
+use tari_crypto::tari_utilities::Hashable;
 use tokio::{runtime, sync::mpsc};
 use tonic::{Request, Response, Status};
 
@@ -65,10 +57,6 @@ const LIST_HEADERS_PAGE_SIZE: usize = 10;
 // The `num_headers` value if none is provided.
 const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
 
-pub(crate) mod base_node_grpc {
-    tonic::include_proto!("tari.base_node");
-}
-
 pub struct BaseNodeGrpcServer {
     executor: runtime::Handle,
     node_service: LocalNodeCommsInterface,
@@ -83,6 +71,10 @@ impl BaseNodeGrpcServer {
             node_config,
         }
     }
+}
+
+pub(crate) mod base_node_grpc {
+    tonic::include_proto!("tari.base_node");
 }
 
 #[tonic::async_trait]
@@ -296,6 +288,93 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    async fn get_new_block_template(
+        &self,
+        request: Request<base_node_grpc::PowAlgo>,
+    ) -> Result<Response<base_node_grpc::NewBlockTemplate>, Status>
+    {
+        let request = request.into_inner();
+        debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
+        let algo: PowAlgorithm = (request.pow_algo as u64)
+            .try_into()
+            .map_err(|_| Status::invalid_argument("No valid pow algo selected".to_string()))?;
+        let mut handler = self.node_service.clone();
+
+        let new_template = handler
+            .get_new_block_template(algo)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let response: base_node_grpc::NewBlockTemplate = new_template.into();
+
+        debug!(target: LOG_TARGET, "Sending GetNewBlockTemplate response to client");
+        Ok(Response::new(response))
+    }
+
+    async fn get_new_block(
+        &self,
+        request: Request<base_node_grpc::NewBlockTemplate>,
+    ) -> Result<Response<base_node_grpc::GetNewBlockResult>, Status>
+    {
+        let request = request.into_inner();
+        debug!(target: LOG_TARGET, "Incoming GRPC request for get new block");
+        let block_template: NewBlockTemplate = request
+            .try_into()
+            .map_err(|_| Status::internal("Failed to convert arguments".to_string()))?;
+
+        let mut handler = self.node_service.clone();
+
+        let new_block = handler
+            .get_new_block(block_template)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        // construct response
+        let cm = ConsensusManagerBuilder::new(self.node_config.network.into()).build();
+        let block_hash = new_block.hash();
+        let mining_hash = new_block.header.merged_mining_hash();
+        let pow = match new_block.header.pow.pow_algo {
+            PowAlgorithm::Monero => 0,
+            PowAlgorithm::Blake => 1,
+        };
+        let target_difficulty = new_block.header.pow.target_difficulty;
+        let reward = cm.calculate_coinbase_and_fees(&new_block);
+        let block: Option<base_node_grpc::Block> = Some(new_block.into());
+        let mining_data = Some(base_node_grpc::MinerData {
+            algo: Some(base_node_grpc::PowAlgo { pow_algo: pow }),
+            target_difficulty: target_difficulty.as_u64(),
+            reward: reward.0,
+            mergemining_hash: mining_hash,
+        });
+        let response = base_node_grpc::GetNewBlockResult {
+            block_hash,
+            block,
+            mining_data,
+        };
+        debug!(target: LOG_TARGET, "Sending GetNewBlock response to client");
+        Ok(Response::new(response))
+    }
+
+    async fn submit_block(
+        &self,
+        request: Request<base_node_grpc::Block>,
+    ) -> Result<Response<base_node_grpc::Empty>, Status>
+    {
+        let request = request.into_inner();
+        let block: Block = request
+            .try_into()
+            .map_err(|_| Status::internal("Failed to convert arguments".to_string()))?;
+
+        let mut handler = self.node_service.clone();
+        handler
+            .submit_block(block, Broadcast::from(true))
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let response: base_node_grpc::Empty = base_node_grpc::Empty {};
+
+        debug!(target: LOG_TARGET, "Sending SubmitBlock response to client");
+        Ok(Response::new(response))
+    }
+
     async fn get_blocks(&self, request: Request<GetBlocksRequest>) -> Result<Response<Self::GetBlocksStream>, Status> {
         let request = request.into_inner();
         debug!(
@@ -348,6 +427,26 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         debug!(target: LOG_TARGET, "Sending GetBlocks response stream to client");
         Ok(Response::new(rx))
+    }
+
+    async fn get_tip_info(
+        &self,
+        _request: Request<base_node_grpc::Empty>,
+    ) -> Result<Response<base_node_grpc::MetaData>, Status>
+    {
+        debug!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
+
+        let mut handler = self.node_service.clone();
+
+        let meta = handler
+            .get_metadata()
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let response: base_node_grpc::MetaData = meta.into();
+
+        debug!(target: LOG_TARGET, "Sending MetaData response to client");
+        Ok(Response::new(response))
     }
 
     async fn get_calc_timing(&self, request: Request<HeightRequest>) -> Result<Response<CalcTimingResponse>, Status> {
@@ -523,150 +622,4 @@ async fn get_block_group(
         value,
         calc_type: calc_type_response,
     }))
-}
-/// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`
-fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {
-    Timestamp {
-        seconds: datetime.as_u64() as i64,
-        nanos: 0,
-    }
-}
-
-impl From<u64> for base_node_grpc::IntegerValue {
-    fn from(value: u64) -> Self {
-        Self { value }
-    }
-}
-
-impl From<String> for base_node_grpc::StringValue {
-    fn from(value: String) -> Self {
-        Self { value }
-    }
-}
-
-impl base_node_grpc::HeightRequest {
-    pub async fn get_heights(&self, handler: LocalNodeCommsInterface) -> Result<Vec<u64>, Status> {
-        block_heights(handler, self.start_height, self.end_height, self.from_tip).await
-    }
-}
-
-impl From<base_node_grpc::BlockGroupRequest> for base_node_grpc::HeightRequest {
-    fn from(b: BlockGroupRequest) -> Self {
-        Self {
-            from_tip: b.from_tip,
-            start_height: b.start_height,
-            end_height: b.end_height,
-        }
-    }
-}
-
-impl From<ConsensusConstants> for base_node_grpc::ConsensusConstants {
-    fn from(cc: ConsensusConstants) -> Self {
-        let (emission_initial, emission_decay, emission_tail) = cc.emission_amounts();
-        Self {
-            coinbase_lock_height: cc.coinbase_lock_height(),
-            blockchain_version: cc.blockchain_version().into(),
-            future_time_limit: cc.ftl().as_u64(),
-            target_block_interval: cc.get_target_block_interval(),
-            difficulty_block_window: cc.get_difficulty_block_window(),
-            difficulty_max_block_interval: cc.get_difficulty_max_block_interval(),
-            max_block_transaction_weight: cc.get_max_block_transaction_weight(),
-            pow_algo_count: cc.get_pow_algo_count(),
-            median_timestamp_count: u64::try_from(cc.get_median_timestamp_count()).unwrap_or(0),
-            emission_initial: emission_initial.into(),
-            emission_decay: emission_decay.into(),
-            emission_tail: emission_tail.into(),
-            min_blake_pow_difficulty: cc.min_pow_difficulty(PowAlgorithm::Blake).into(),
-            block_weight_inputs: WEIGHT_PER_INPUT,
-            block_weight_outputs: WEIGHT_PER_OUTPUT,
-            block_weight_kernels: KERNEL_WEIGHT,
-        }
-    }
-}
-impl From<HistoricalBlock> for base_node_grpc::HistoricalBlock {
-    fn from(hb: HistoricalBlock) -> Self {
-        Self {
-            confirmations: hb.confirmations,
-            spent_commitments: hb.spent_commitments.iter().map(|c| Vec::from(c.as_bytes())).collect(),
-            block: Some(hb.block.into()),
-        }
-    }
-}
-
-impl From<tari_core::blocks::Block> for base_node_grpc::Block {
-    fn from(block: Block) -> Self {
-        Self {
-            body: Some(base_node_grpc::AggregateBody {
-                inputs: block
-                    .body
-                    .inputs()
-                    .iter()
-                    .map(|input| base_node_grpc::TransactionInput {
-                        features: Some(base_node_grpc::OutputFeatures {
-                            flags: input.features.flags.bits() as u32,
-                            maturity: input.features.maturity,
-                        }),
-                        commitment: Vec::from(input.commitment.as_bytes()),
-                    })
-                    .collect(),
-                outputs: block
-                    .body
-                    .outputs()
-                    .iter()
-                    .map(|output| base_node_grpc::TransactionOutput {
-                        features: Some(base_node_grpc::OutputFeatures {
-                            flags: output.features.flags.bits() as u32,
-                            maturity: output.features.maturity,
-                        }),
-                        commitment: Vec::from(output.commitment.as_bytes()),
-                        range_proof: Vec::from(output.proof.as_bytes()),
-                    })
-                    .collect(),
-                kernels: block
-                    .body
-                    .kernels()
-                    .iter()
-                    .map(|kernel| base_node_grpc::TransactionKernel {
-                        features: kernel.features.bits() as u32,
-                        fee: kernel.fee.0,
-                        lock_height: kernel.lock_height,
-                        meta_info: kernel.meta_info.as_ref().map(|info| info.clone()).unwrap_or(vec![]),
-                        linked_kernel: kernel.linked_kernel.as_ref().map(|link| link.clone()).unwrap_or(vec![]),
-                        excess: Vec::from(kernel.excess.as_bytes()),
-                        excess_sig: Some(base_node_grpc::Signature {
-                            public_nonce: Vec::from(kernel.excess_sig.get_public_nonce().as_bytes()),
-                            signature: Vec::from(kernel.excess_sig.get_signature().as_bytes()),
-                        }),
-                    })
-                    .collect(),
-            }),
-            header: Some(block.header.into()),
-        }
-    }
-}
-
-impl From<BlockHeader> for base_node_grpc::BlockHeader {
-    fn from(h: BlockHeader) -> Self {
-        Self {
-            hash: h.hash(),
-            version: h.version as u32,
-            height: h.height,
-            prev_hash: h.prev_hash.clone(),
-            timestamp: Some(datetime_to_timestamp(h.timestamp)),
-            output_mr: h.output_mr.clone(),
-            range_proof_mr: h.range_proof_mr.clone(),
-            kernel_mr: h.kernel_mr.clone(),
-            total_kernel_offset: Vec::from(h.total_kernel_offset.as_bytes()),
-            nonce: h.nonce,
-            pow: Some(base_node_grpc::ProofOfWork {
-                pow_algo: match h.pow.pow_algo {
-                    PowAlgorithm::Monero => 0,
-                    PowAlgorithm::Blake => 1,
-                },
-                accumulated_monero_difficulty: h.pow.accumulated_monero_difficulty.into(),
-                accumulated_blake_difficulty: h.pow.accumulated_blake_difficulty.into(),
-                pow_data: h.pow.pow_data,
-            }),
-        }
-    }
 }

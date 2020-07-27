@@ -28,8 +28,13 @@ use super::base_node::{
     FetchMmrNodes as ProtoFetchMmrNodes,
     HashOutputs,
 };
-use crate::{base_node::comms_interface as ci, proof_of_work::PowAlgorithm, transactions::types::HashOutput};
+use crate::{
+    base_node::comms_interface as ci,
+    proof_of_work::PowAlgorithm,
+    transactions::types::{Commitment, HashOutput, Signature},
+};
 use std::convert::{From, TryFrom, TryInto};
+use tari_crypto::tari_utilities::ByteArrayError;
 
 //---------------------------------- BaseNodeRequest --------------------------------------------//
 impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
@@ -50,6 +55,27 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchTxos(hash_outputs) => ci::NodeCommsRequest::FetchTxos(hash_outputs.outputs),
             FetchBlocks(block_heights) => ci::NodeCommsRequest::FetchBlocks(block_heights.heights),
             FetchBlocksWithHashes(block_hashes) => ci::NodeCommsRequest::FetchBlocksWithHashes(block_hashes.outputs),
+            FetchBlocksWithKernels(signatures) => {
+                let mut sigs = Vec::new();
+                for sig in signatures.sigs {
+                    sigs.push(Signature::try_from(sig).map_err(|err: ByteArrayError| err.to_string())?)
+                }
+                ci::NodeCommsRequest::FetchBlocksWithKernels(sigs)
+            },
+            FetchBlocksWithStxos(commitments) => {
+                let mut commits = Vec::new();
+                for stxo in commitments.commitments {
+                    commits.push(Commitment::try_from(stxo).map_err(|err: ByteArrayError| err.to_string())?)
+                }
+                ci::NodeCommsRequest::FetchBlocksWithStxos(commits)
+            },
+            FetchBlocksWithUtxos(commitments) => {
+                let mut commits = Vec::new();
+                for stxo in commitments.commitments {
+                    commits.push(Commitment::try_from(stxo).map_err(|err: ByteArrayError| err.to_string())?)
+                }
+                ci::NodeCommsRequest::FetchBlocksWithUtxos(commits)
+            },
             GetNewBlockTemplate(pow_algo) => {
                 ci::NodeCommsRequest::GetNewBlockTemplate(PowAlgorithm::try_from(pow_algo)?)
             },
@@ -86,6 +112,18 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchTxos(hash_outputs) => ProtoNodeCommsRequest::FetchTxos(hash_outputs.into()),
             FetchBlocks(block_heights) => ProtoNodeCommsRequest::FetchBlocks(block_heights.into()),
             FetchBlocksWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchBlocksWithHashes(block_hashes.into()),
+            FetchBlocksWithKernels(signatures) => {
+                let sigs = signatures.into_iter().map(Into::into).collect();
+                ProtoNodeCommsRequest::FetchBlocksWithKernels(super::base_node::Signatures { sigs })
+            },
+            FetchBlocksWithStxos(commitments) => {
+                let commits = commitments.into_iter().map(Into::into).collect();
+                ProtoNodeCommsRequest::FetchBlocksWithStxos(super::base_node::Commitments { commitments: commits })
+            },
+            FetchBlocksWithUtxos(commitments) => {
+                let commits = commitments.into_iter().map(Into::into).collect();
+                ProtoNodeCommsRequest::FetchBlocksWithUtxos(super::base_node::Commitments { commitments: commits })
+            },
             GetNewBlockTemplate(pow_algo) => ProtoNodeCommsRequest::GetNewBlockTemplate(pow_algo as u64),
             GetNewBlock(block_template) => ProtoNodeCommsRequest::GetNewBlock(block_template.into()),
             GetTargetDifficulty(pow_algo) => ProtoNodeCommsRequest::GetTargetDifficulty(pow_algo as u64),

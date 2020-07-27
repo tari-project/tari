@@ -57,21 +57,28 @@
 //! required, and then shutdown.
 
 mod block_sync;
-mod events_and_states;
-mod forward_block_sync;
-mod helpers;
-mod horizon_state_sync;
-mod listening;
-mod shutdown_state;
-mod starting_state;
-mod waiting;
-
 pub use block_sync::{BestChainMetadataBlockSyncInfo, BlockSyncConfig, BlockSyncInfo, BlockSyncStrategy};
+
+mod events_and_states;
 pub use events_and_states::{BaseNodeState, StateEvent, StatusInfo, SyncStatus};
+
+mod forward_block_sync;
 pub use forward_block_sync::ForwardBlockSyncInfo;
+
+mod helpers;
 pub use helpers::SyncPeerConfig;
-pub use horizon_state_sync::{synchronize_horizon_state, HorizonSyncConfig};
+
+mod horizon_state_sync;
+pub use horizon_state_sync::{HorizonHeadersValidator, HorizonStateSync, HorizonSyncConfig, HorizonSyncValidators};
+
+mod listening;
 pub use listening::{ListeningData, ListeningInfo};
+
+mod shutdown_state;
 pub use shutdown_state::Shutdown;
+
+mod starting_state;
 pub use starting_state::Starting;
+
+mod waiting;
 pub use waiting::Waiting;

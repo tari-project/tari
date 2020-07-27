@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{output_manager_service::TxId, transaction_service::error::TransactionStorageError};
+use aes_gcm::Aes256Gcm;
 use chrono::{NaiveDateTime, Utc};
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -90,6 +91,10 @@ pub trait TransactionBackend: Send + Sync {
         tx_id: TxId,
         timestamp: NaiveDateTime,
     ) -> Result<(), TransactionStorageError>;
+    /// Apply encryption to the backend.
+    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), TransactionStorageError>;
+    /// Remove encryption from the backend.
+    fn remove_encryption(&self) -> Result<(), TransactionStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -836,6 +841,22 @@ where T: TransactionBackend + 'static
         .await
         .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
+    }
+
+    pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), TransactionStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.apply_encryption(cipher))
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn remove_encryption(&self) -> Result<(), TransactionStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.remove_encryption())
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
     }
 }
 

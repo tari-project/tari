@@ -29,6 +29,7 @@ use super::{
 use crate::{
     connection_manager::ConnectionManagerError,
     peer_manager::{Peer, PeerFeatures},
+    runtime::task,
     test_utils::{
         mocks::{create_connection_manager_mock, create_peer_connection_mock_pair, ConnectionManagerMockState},
         node_identity::{build_node_identity, ordered_node_identities},
@@ -42,7 +43,7 @@ use futures::{channel::mpsc, future};
 use std::{sync::Arc, time::Duration};
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
-use tokio::{sync::broadcast, task};
+use tokio::sync::broadcast;
 
 fn setup_connectivity_manager(
     config: ConnectivityConfig,

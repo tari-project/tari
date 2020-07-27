@@ -31,8 +31,10 @@ pub struct ConnectivityConfig {
     /// Interval to check the connection pool, including reaping inactive connections and retrying failed managed peer
     /// connections. Default: 30s
     pub connection_pool_refresh_interval: Duration,
+    /// True if connection reaping is enabled, otherwise false (default: true)
+    pub is_connection_reaping_enabled: bool,
     /// The minimum age of the connection before it can be reaped. This prevents a connection that has just been
-    /// established from being reaped.
+    /// established from being reaped due to inactivity.
     pub reaper_min_inactive_age: Duration,
     /// The number of connection failures before a peer is considered offline
     /// Default: 2
@@ -45,6 +47,7 @@ impl Default for ConnectivityConfig {
             min_connectivity: 0.3,
             connection_pool_refresh_interval: Duration::from_secs(30),
             reaper_min_inactive_age: Duration::from_secs(60),
+            is_connection_reaping_enabled: true,
             max_failures_mark_offline: 2,
         }
     }

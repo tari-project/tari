@@ -92,7 +92,7 @@ use tari_wallet::{
         storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
         OutputManagerServiceInitializer,
     },
-    storage::connection_manager::run_migration_and_create_sqlite_connection,
+    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::{
         config::TransactionServiceConfig,
         handle::{TransactionEvent, TransactionServiceHandle},
@@ -301,7 +301,7 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
     let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
         &mut runtime,
         alice_node_identity.clone(),
-        vec![bob_node_identity.clone()],
+        vec![],
         factories.clone(),
         alice_backend,
         database_path.clone(),

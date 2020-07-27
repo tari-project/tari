@@ -248,7 +248,7 @@ impl DhtActor {
         loop {
             futures::select! {
                 request = self.request_rx.select_next_some() => {
-                    trace!(target: LOG_TARGET, "DhtActor received message: {}", request);
+                    trace!(target: LOG_TARGET, "DhtActor received request: {}", request);
                     pending_jobs.push(self.request_handler(request));
                 },
 
@@ -353,6 +353,7 @@ impl DhtActor {
             .send_message_no_header(
                 SendMessageParams::new()
                     .closest(node_identity.node_id().clone(), config.num_neighbouring_nodes, vec![])
+                    .with_destination(node_identity.node_id().clone().into())
                     .with_dht_message_type(DhtMessageType::Join)
                     .force_origin()
                     .finish(),
@@ -468,8 +469,7 @@ impl DhtActor {
                     Some(node_id) => {
                         let dest_connection = connectivity.get_connection(node_id.clone()).await?;
                         // If the peer was added to the exclude list, we don't want to send directly to the peer.
-                        // This handles an edge case for the the join message which has a destination to the peer that
-                        // sent it.
+                        // This ensures that we don't just send a message back to the peer that sent it.
                         let dest_connection = dest_connection.filter(|c| !exclude.contains(c.peer_node_id()));
                         match dest_connection {
                             Some(conn) => {
@@ -480,11 +480,12 @@ impl DhtActor {
                                 // Select connections closer to the destination
                                 let mut connections = connectivity
                                     .select_connections(ConnectivitySelection::closest_to(
-                                        node_identity.node_id().clone(),
+                                        node_id.clone(),
                                         config.num_neighbouring_nodes,
                                         exclude.clone(),
                                     ))
                                     .await?;
+
                                 // Exclude candidates that are further away from the destination than this node
                                 // unless this node has not selected a big enough sample i.e. this node is not well
                                 // connected
@@ -493,7 +494,7 @@ impl DhtActor {
                                     let before_len = connections.len();
                                     connections = connections
                                         .into_iter()
-                                        .filter(|conn| conn.peer_node_id().distance(&node_id) < dist_from_dest)
+                                        .filter(|conn| conn.peer_node_id().distance(&node_id) <= dist_from_dest)
                                         .collect();
 
                                     debug!(
@@ -503,14 +504,19 @@ impl DhtActor {
                                     );
                                 }
 
+                                connections.truncate(config.propagation_factor);
                                 connections
                             },
                         }
                     },
                     None => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "No destination for propagation, sending to {} random peers", config.propagation_factor
+                        );
                         connectivity
                             .select_connections(ConnectivitySelection::random_nodes(
-                                config.num_neighbouring_nodes,
+                                config.propagation_factor,
                                 exclude.clone(),
                             ))
                             .await?
@@ -526,7 +532,6 @@ impl DhtActor {
 
                 let candidates = connections
                     .iter()
-                    .take(config.propagation_factor)
                     .map(|c| c.peer_node_id())
                     .cloned()
                     .collect::<Vec<_>>();
@@ -536,6 +541,13 @@ impl DhtActor {
                     "{} candidate(s) selected for propagation to {}",
                     candidates.len(),
                     destination
+                );
+
+                trace!(
+                    target: LOG_TARGET,
+                    "(ThisNode = {}) Candidates are {}",
+                    node_identity.node_id().short_str(),
+                    candidates.iter().map(|n| n.short_str()).collect::<Vec<_>>().join(", ")
                 );
 
                 Ok(candidates)
@@ -623,6 +635,7 @@ mod test {
     use super::*;
     use crate::{
         broadcast_strategy::BroadcastClosestRequest,
+        envelope::NodeDestination,
         test_utils::{make_client_identity, make_node_identity, make_peer_manager},
     };
     use chrono::{DateTime, Utc};
@@ -748,6 +761,21 @@ mod test {
             .await;
         let peers = requester
             .select_peers(BroadcastStrategy::Broadcast(Vec::new()))
+            .await
+            .unwrap();
+        assert_eq!(peers.len(), 1);
+
+        let peers = requester
+            .select_peers(BroadcastStrategy::Propagate(NodeDestination::Unknown, Vec::new()))
+            .await
+            .unwrap();
+        assert_eq!(peers.len(), 1);
+
+        let peers = requester
+            .select_peers(BroadcastStrategy::Propagate(
+                conn_out.peer_node_id().clone().into(),
+                Vec::new(),
+            ))
             .await
             .unwrap();
         assert_eq!(peers.len(), 1);

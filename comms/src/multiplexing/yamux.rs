@@ -332,7 +332,12 @@ impl SubstreamCounter {
 
 #[cfg(test)]
 mod test {
-    use crate::{connection_manager::ConnectionDirection, memsocket::MemorySocket, multiplexing::yamux::Yamux};
+    use crate::{
+        connection_manager::ConnectionDirection,
+        memsocket::MemorySocket,
+        multiplexing::yamux::Yamux,
+        runtime::task,
+    };
     use futures::{
         future,
         io::{AsyncReadExt, AsyncWriteExt},
@@ -340,7 +345,6 @@ mod test {
     };
     use std::{io, time::Duration};
     use tari_test_utils::collect_stream;
-    use tokio::task;
 
     #[tokio_macros::test_basic]
     async fn open_substream() -> io::Result<()> {

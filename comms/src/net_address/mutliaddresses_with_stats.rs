@@ -20,6 +20,10 @@ impl MultiaddressesWithStats {
         }
     }
 
+    pub fn first(&self) -> Option<&MutliaddrWithStats> {
+        self.addresses.first()
+    }
+
     /// Provides the date and time of the last successful communication with this peer
     pub fn last_seen(&self) -> Option<DateTime<Utc>> {
         let mut latest_valid_datetime: Option<DateTime<Utc>> = None;

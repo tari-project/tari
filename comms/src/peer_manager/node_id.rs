@@ -125,7 +125,7 @@ impl HammingDistance {
 
     /// Returns the maximum distance.
     pub const fn max_distance() -> Self {
-        Self([255; NODE_HAMMING_DISTANCE_ARRAY_SIZE])
+        Self([NODE_ID_ARRAY_SIZE as u8 * 8; NODE_HAMMING_DISTANCE_ARRAY_SIZE])
     }
 }
 
@@ -217,11 +217,6 @@ impl NodeId {
         let v = hasher.vec_result();
         Self::try_from(v.as_slice())
     }
-
-    /// Generate a node id from a base layer registration using the block hash and public key
-    // pub fn from_baselayer_registration<?>(......) -> NodeId {
-    // TODO: NodeId=hash(blockhash(with block_height),public key?)
-    // }
 
     /// Calculate the distance between the current node id and the provided node id using the XOR metric
     pub fn distance(&self, node_id: &NodeId) -> NodeDistance {
@@ -496,7 +491,6 @@ mod test {
 
         let k = 3;
         let knn_node_ids = node_id.closest(&node_ids, k);
-        println!(" KNN = {:?}", knn_node_ids);
         assert_eq!(knn_node_ids.len(), k);
         // XOR metric nearest neighbours
         assert_eq!(knn_node_ids[0].0, [
@@ -551,5 +545,11 @@ mod test {
 
         let hamming_dist = HammingDistance::from_node_ids(&node_id1, &node_id2);
         assert_eq!(hamming_dist, HammingDistance([18]));
+
+        let node_max = NodeId::from_bytes(&[255; NODE_ID_ARRAY_SIZE]).unwrap();
+        let node_min = NodeId::default();
+
+        let hamming_dist = HammingDistance::from_node_ids(&node_max, &node_min);
+        assert_eq!(hamming_dist, HammingDistance::max_distance());
     }
 }

@@ -24,8 +24,10 @@ use crate::{
     error::WalletStorageError,
     storage::database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
 };
+use aes_gcm::Aes256Gcm;
 use std::sync::{Arc, RwLock};
-use tari_comms::types::CommsSecretKey;
+use tari_comms::types::{CommsPublicKey, CommsSecretKey};
+use tari_crypto::keys::PublicKey;
 
 #[derive(Default)]
 pub struct InnerDatabase {
@@ -63,6 +65,10 @@ impl WalletBackend for WalletMemoryDatabase {
         let db = acquire_read_lock!(self.db);
         let result = match key {
             DbKey::CommsSecretKey => db.comms_private_key.clone().map(DbValue::CommsSecretKey),
+            DbKey::CommsPublicKey => db
+                .comms_private_key
+                .clone()
+                .map(|sk| DbValue::CommsPublicKey(CommsPublicKey::from_secret_key(&sk))),
         };
 
         Ok(result)
@@ -80,9 +86,20 @@ impl WalletBackend for WalletMemoryDatabase {
                 DbKey::CommsSecretKey => {
                     db.comms_private_key = None;
                 },
+                DbKey::CommsPublicKey => {
+                    return Err(WalletStorageError::OperationNotSupported);
+                },
             },
         }
 
         Ok(None)
+    }
+
+    fn apply_encryption(&self, _: Aes256Gcm) -> Result<(), WalletStorageError> {
+        Ok(())
+    }
+
+    fn remove_encryption(&self) -> Result<(), WalletStorageError> {
+        Ok(())
     }
 }

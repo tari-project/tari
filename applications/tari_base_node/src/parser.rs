@@ -29,7 +29,7 @@ use crate::{
 };
 use chrono::Utc;
 use chrono_english::{parse_date_string, Dialect};
-use futures::StreamExt;
+use futures::{future::Either, StreamExt};
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use regex::Regex;
@@ -58,7 +58,7 @@ use tari_common::GlobalConfig;
 use tari_comms::{
     connection_manager::ConnectionManagerRequester,
     connectivity::ConnectivityRequester,
-    peer_manager::{PeerFeatures, PeerManager, PeerQuery},
+    peer_manager::{NodeId, PeerFeatures, PeerManager, PeerQuery},
     types::CommsPublicKey,
     NodeIdentity,
 };
@@ -71,6 +71,7 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroTari},
         transaction::OutputFeatures,
+        types::{Commitment, PrivateKey, PublicKey, Signature},
     },
 };
 use tari_crypto::ristretto::pedersen::PedersenCommitmentFactory;
@@ -105,6 +106,9 @@ pub enum BaseNodeCommand {
     CalcTiming,
     DiscoverPeer,
     GetBlock,
+    SearchUtxo,
+    SearchKernel,
+    SearchStxo,
     GetMempoolStats,
     GetMempoolState,
     Whoami,
@@ -312,6 +316,15 @@ impl Parser {
             GetBlock => {
                 self.process_get_block(args);
             },
+            SearchUtxo => {
+                self.process_search_utxo(args);
+            },
+            SearchKernel => {
+                self.process_search_kernel(args);
+            },
+            SearchStxo => {
+                self.process_search_stxo(args);
+            },
             GetMempoolStats => {
                 self.process_get_mempool_stats();
             },
@@ -424,6 +437,28 @@ impl Parser {
                 println!(
                     "[format] Optional. Supported options are 'json' and 'text'. 'text' is the default if omitted."
                 );
+            },
+            SearchUtxo => {
+                println!(
+                    "This will search the main chain for the utxo. If the utxo is found, it will print out the block \
+                     it was found in."
+                );
+                println!("search-utxo [hex of commitment of the utxo]");
+            },
+            SearchKernel => {
+                println!(
+                    "This will search the main chain for the kernel. If the kernel is found, it will print out the \
+                     block it was found in."
+                );
+                println!("This searches for the kernel via the excess signature");
+                println!("search-kernel [hex of nonce] [Hex of signature]");
+            },
+            SearchStxo => {
+                println!(
+                    "This will search the main chain for the stxo. If the stxo is found, it will print out the block \
+                     it was found in."
+                );
+                println!("search-stxo [hex of commitment of the stxo]");
             },
             GetMempoolStats => {
                 println!("Retrieves your mempools stats");
@@ -771,6 +806,135 @@ impl Parser {
         });
     }
 
+    /// Function to process the search utxo command
+    fn process_search_utxo<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        // let command_arg = args.take(4).collect::<Vec<&str>>();
+        let hex = args.next();
+        if hex.is_none() {
+            self.print_help("search-utxo".split(" "));
+            return;
+        }
+        let commitment = match Commitment::from_hex(&hex.unwrap().to_string()) {
+            Ok(v) => v,
+            _ => {
+                println!("Invalid commitment provided.");
+                self.print_help("search-utxo".split(" "));
+                return;
+            },
+        };
+        let mut handler = self.node_service.clone();
+        self.executor.spawn(async move {
+            match handler.get_blocks_with_utxos(vec![commitment.clone()]).await {
+                Err(err) => {
+                    println!("Failed to retrieve blocks: {:?}", err);
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error communicating with local base node: {:?}", err,
+                    );
+                    return;
+                },
+                Ok(mut data) => match data.pop() {
+                    Some(v) => println!("{}", v.block),
+                    _ => println!(
+                        "Pruned node: utxo found, but lock not found for utxo commitment {}",
+                        commitment.to_hex()
+                    ),
+                },
+            };
+        });
+    }
+
+    /// Function to process the search stxo command
+    fn process_search_stxo<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        // let command_arg = args.take(4).collect::<Vec<&str>>();
+        let hex = args.next();
+        if hex.is_none() {
+            self.print_help("search-stxo".split(" "));
+            return;
+        }
+        let commitment = match Commitment::from_hex(&hex.unwrap().to_string()) {
+            Ok(v) => v,
+            _ => {
+                println!("Invalid commitment provided.");
+                self.print_help("search-stxo".split(" "));
+                return;
+            },
+        };
+        let mut handler = self.node_service.clone();
+        self.executor.spawn(async move {
+            match handler.get_blocks_with_stxos(vec![commitment.clone()]).await {
+                Err(err) => {
+                    println!("Failed to retrieve blocks: {:?}", err);
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error communicating with local base node: {:?}", err,
+                    );
+                    return;
+                },
+                Ok(mut data) => match data.pop() {
+                    Some(v) => println!("{}", v.block),
+                    _ => println!(
+                        "Pruned node: stxo found, but block not found for stxo commitment {}",
+                        commitment.to_hex()
+                    ),
+                },
+            };
+        });
+    }
+
+    /// Function to process the search kernel command
+    fn process_search_kernel<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        // let command_arg = args.take(4).collect::<Vec<&str>>();
+        let hex = args.next();
+        if hex.is_none() {
+            self.print_help("search-kernel".split(" "));
+            return;
+        }
+        let public_nonce = match PublicKey::from_hex(&hex.unwrap().to_string()) {
+            Ok(v) => v,
+            _ => {
+                println!("Invalid public nonce provided.");
+                self.print_help("search-kernel".split(" "));
+                return;
+            },
+        };
+
+        let hex = args.next();
+        if hex.is_none() {
+            self.print_help("search-kernel".split(" "));
+            return;
+        }
+        let signature = match PrivateKey::from_hex(&hex.unwrap().to_string()) {
+            Ok(v) => v,
+            _ => {
+                println!("Invalid signature provided.");
+                self.print_help("search-kernel".split(" "));
+                return;
+            },
+        };
+        let kernel = Signature::new(public_nonce, signature);
+        let mut handler = self.node_service.clone();
+        self.executor.spawn(async move {
+            match handler.get_blocks_with_kernels(vec![kernel.clone()]).await {
+                Err(err) => {
+                    println!("Failed to retrieve blocks: {:?}", err);
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error communicating with local base node: {:?}", err,
+                    );
+                    return;
+                },
+                Ok(mut data) => match data.pop() {
+                    Some(v) => println!("{}", v.block),
+                    _ => println!(
+                        "Pruned node: kernel found, but block not found for kernel signature {}",
+                        kernel.get_signature().to_hex()
+                    ),
+                },
+            };
+        });
+    }
+
     /// Function to process the get-mempool-stats command
     fn process_get_mempool_stats(&mut self) {
         let mut handler = self.mempool_service.clone();
@@ -870,7 +1034,7 @@ impl Parser {
                             s.join(", ")
                         };
                         table.add_row(row![
-                            peer.node_id.short_str(),
+                            peer.node_id,
                             peer.public_key,
                             format!("{:?}", peer.flags),
                             {
@@ -899,8 +1063,8 @@ impl Parser {
 
     /// Function to process the ban-peer command
     fn process_ban_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I, must_ban: bool) {
-        let public_key = match args.next().and_then(parse_emoji_id_or_public_key) {
-            Some(v) => Box::new(v),
+        let node_key = match args.next().and_then(parse_emoji_id_or_public_key_or_node_id) {
+            Some(v) => v,
             None => {
                 println!("Please enter a valid destination public key or emoji id");
                 println!(
@@ -910,13 +1074,24 @@ impl Parser {
             },
         };
 
-        let pubkeys = vec![
-            self.base_node_identity.public_key(),
-            self.wallet_node_identity.public_key(),
-        ];
-        if pubkeys.contains(&&*public_key) {
-            println!("Cannot ban our own wallet or node");
-            return;
+        match &node_key {
+            Either::Left(public_key) => {
+                let pubkeys = &[
+                    self.base_node_identity.public_key(),
+                    self.wallet_node_identity.public_key(),
+                ];
+                if pubkeys.contains(&public_key) {
+                    println!("Cannot ban our own wallet or node");
+                    return;
+                }
+            },
+            Either::Right(node_id) => {
+                let node_ids = &[self.base_node_identity.node_id(), self.wallet_node_identity.node_id()];
+                if node_ids.contains(&node_id) {
+                    println!("Cannot ban our own wallet or node");
+                    return;
+                }
+            },
         }
 
         let mut connectivity = self.connectivity.clone();
@@ -931,9 +1106,9 @@ impl Parser {
             .unwrap_or_else(|| Duration::from_secs(std::u64::MAX));
 
         self.executor.spawn(async move {
-            if must_ban {
-                let peer = match peer_manager.find_by_public_key(&public_key).await {
-                    Ok(peer) => peer,
+            let node_id = match node_key {
+                Either::Left(public_key) => match peer_manager.find_by_public_key(&public_key).await {
+                    Ok(peer) => peer.node_id,
                     Err(err) if err.is_peer_not_found() => {
                         println!("Peer not found in base node");
                         return;
@@ -943,9 +1118,12 @@ impl Parser {
                         error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
                         return;
                     },
-                };
+                },
+                Either::Right(node_id) => node_id,
+            };
 
-                match connectivity.ban_peer(peer.node_id.clone(), duration).await {
+            if must_ban {
+                match connectivity.ban_peer(node_id.clone(), duration).await {
                     Ok(_) => println!("Peer was banned in base node."),
                     Err(err) => {
                         println!("Failed to ban peer: {:?}", err);
@@ -953,7 +1131,7 @@ impl Parser {
                     },
                 }
 
-                match wallet_connectivity.ban_peer(peer.node_id, duration).await {
+                match wallet_connectivity.ban_peer(node_id, duration).await {
                     Ok(_) => println!("Peer was banned in wallet."),
                     Err(err) => {
                         println!("Failed to ban peer: {:?}", err);
@@ -961,7 +1139,7 @@ impl Parser {
                     },
                 }
             } else {
-                match peer_manager.unban_peer(&public_key).await {
+                match peer_manager.unban_peer(&node_id).await {
                     Ok(_) => {
                         println!("Peer ban was removed from base node.");
                     },
@@ -974,7 +1152,7 @@ impl Parser {
                     },
                 }
 
-                match wallet_peer_manager.unban_peer(&public_key).await {
+                match wallet_peer_manager.unban_peer(&node_id).await {
                     Ok(_) => {
                         println!("Peer ban was removed from wallet.");
                     },
@@ -1012,7 +1190,7 @@ impl Parser {
                             .expect("Unexpected peer database error or peer not found");
 
                         table.add_row(row![
-                            peer.node_id.short_str(),
+                            peer.node_id,
                             peer.public_key,
                             conn.address(),
                             conn.direction(),
@@ -1504,4 +1682,11 @@ fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
     EmojiId::str_to_pubkey(&key.trim().replace('|', ""))
         .or_else(|_| CommsPublicKey::from_hex(key))
         .ok()
+}
+
+/// Returns a CommsPublicKey from either a emoji id, a public key or node id
+fn parse_emoji_id_or_public_key_or_node_id(key: &str) -> Option<Either<CommsPublicKey, NodeId>> {
+    parse_emoji_id_or_public_key(key)
+        .map(Either::Left)
+        .or_else(|| NodeId::from_hex(key).ok().map(Either::Right))
 }

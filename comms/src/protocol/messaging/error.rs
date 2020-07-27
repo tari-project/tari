@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{connection_manager::PeerConnectionError, peer_manager::PeerManagerError, protocol::ProtocolError};
+use std::io;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -42,4 +43,6 @@ pub enum MessagingProtocolError {
     PeerDialFailed,
     #[error("Failure when sending on an outbound substream")]
     OutboundSubstreamFailure,
+    #[error("IO Error: {0}")]
+    Io(#[from] io::Error),
 }

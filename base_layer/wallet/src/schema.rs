@@ -59,7 +59,9 @@ table! {
 }
 
 table! {
-    outputs (spending_key) {
+    outputs (id) {
+        id -> Integer,
+        commitment -> Nullable<Binary>,
         spending_key -> Binary,
         value -> BigInt,
         flags -> Integer,

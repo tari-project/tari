@@ -87,6 +87,11 @@ impl ChainMetadata {
     pub fn is_pruned_node(&self) -> bool {
         self.pruning_horizon != 0
     }
+
+    /// Returns the height of longest chain.
+    pub fn height_of_longest_chain(&self) -> u64 {
+        self.height_of_longest_chain.unwrap_or_default()
+    }
 }
 
 impl Default for ChainMetadata {

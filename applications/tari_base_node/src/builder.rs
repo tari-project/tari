@@ -54,7 +54,7 @@ use tari_core::{
     base_node::{
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
-        states::StatusInfo,
+        states::{HorizonHeadersValidator, HorizonSyncValidators, StatusInfo},
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
         LocalNodeCommsInterface,
@@ -111,7 +111,7 @@ use tari_wallet::{
         storage::sqlite_db::OutputManagerSqliteDatabase,
         OutputManagerServiceInitializer,
     },
-    storage::connection_manager::{run_migration_and_create_sqlite_connection, WalletDbConnection},
+    storage::sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection},
     transaction_service::{
         config::TransactionServiceConfig,
         handle::TransactionServiceHandle,
@@ -263,7 +263,6 @@ pub struct BaseNodeContext<B: BlockchainBackend> {
     base_node_comms: CommsNode,
     base_node_dht: Dht,
     wallet_comms: CommsNode,
-    wallet_dht: Dht,
     base_node_handles: Arc<ServiceHandles>,
     wallet_handles: Arc<ServiceHandles>,
     node: BaseNodeStateMachine<B>,
@@ -514,6 +513,11 @@ where
     let (base_node_comms, base_node_dht) =
         setup_base_node_comms(base_node_identity, config, publisher, protocols).await?;
     base_node_comms
+        .peer_manager()
+        .add_peer(wallet_node_identity.to_peer())
+        .await
+        .map_err(|err| err.to_string())?;
+    base_node_comms
         .connectivity()
         .add_managed_peers(vec![wallet_node_identity.node_id().clone()])
         .await
@@ -545,6 +549,11 @@ where
         base_node_comms.node_identity().to_peer(),
     )
     .await?;
+    wallet_comms
+        .connectivity()
+        .add_managed_peers(vec![base_node_comms.node_identity().node_id().clone()])
+        .await
+        .map_err(|err| err.to_string())?;
 
     task::spawn(sync_peers(
         base_node_comms.subscribe_connection_manager_events(),
@@ -607,9 +616,13 @@ where
         .block_sync_strategy
         .parse()
         .expect("Problem reading block sync strategy from config");
+
+    state_machine_config.horizon_sync_config.horizon_sync_height_offset =
+        rules.consensus_constants().coinbase_lock_height() + 20;
     let node_local_interface = base_node_handles
         .get_handle::<LocalNodeCommsInterface>()
         .expect("Problem getting node local interface handle.");
+    let horizon_sync_validators = HorizonSyncValidators::new(HorizonHeadersValidator::new(db.clone(), rules.clone()));
     let node = BaseNodeStateMachine::new(
         &db,
         &node_local_interface,
@@ -618,6 +631,7 @@ where
         base_node_comms.connectivity(),
         chain_metadata_service.get_event_stream(),
         state_machine_config,
+        horizon_sync_validators,
         interrupt_signal,
     );
 
@@ -652,7 +666,6 @@ where
         base_node_comms,
         base_node_dht,
         wallet_comms,
-        wallet_dht,
         base_node_handles,
         wallet_handles,
         node,
@@ -1180,6 +1193,9 @@ async fn register_wallet_services(
     broadcast_send_timeout: Duration,
 ) -> Arc<ServiceHandles>
 {
+    let transaction_db = TransactionServiceSqliteDatabase::new(wallet_db_conn.clone(), None);
+    transaction_db.migrate(wallet_comms.node_identity().public_key().clone());
+
     StackBuilder::new(runtime::Handle::current(), wallet_comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(wallet_dht.outbound_requester()))
         .add_initializer(LivenessInitializer::new(
@@ -1195,7 +1211,7 @@ async fn register_wallet_services(
         .add_initializer(OutputManagerServiceInitializer::new(
             OutputManagerServiceConfig{ base_node_query_timeout: Duration::from_secs(120), ..Default::default() },
             subscription_factory.clone(),
-            OutputManagerSqliteDatabase::new(wallet_db_conn.clone()),
+            OutputManagerSqliteDatabase::new(wallet_db_conn.clone(),None),
             factories.clone(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
@@ -1203,7 +1219,7 @@ async fn register_wallet_services(
                                           direct_send_timeout,
                                           broadcast_send_timeout,),
             subscription_factory,
-            TransactionServiceSqliteDatabase::new(wallet_db_conn.clone(), Some(wallet_comms.node_identity().public_key().clone())),
+            transaction_db,
             wallet_comms.node_identity(),
             factories,
         ))

@@ -7,14 +7,10 @@
 @echo Downloading and installing SQLite...
 @echo.
 
-@rem Determine if running as administrator
-@call :TEST_ADMINISTRATOR
-@if [%errorlevel%]==[10101] goto :END
-
 @rem Install dependencies
 @call :INSTALL_SQLITE
 @goto END:
-`
+
 :INSTALL_SQLITE
 @rem Download install file
 @powershell wget https://www.sqlite.org/2020/%sqlite_zip% -outfile "%TEMP%\%sqlite_zip%"
@@ -38,26 +34,11 @@
 )
 @goto :eof
 
-:TEST_ADMINISTRATOR
-@echo.
-@set guid=%random%%random%-%random%-%random%-%random%-%random%%random%%random%
-@mkdir %WINDIR%\%guid%>nul 2>&1
-@rmdir %WINDIR%\%guid%>nul 2>&1
-@if %ERRORLEVEL% equ 0 (
-    @echo Administrator OK
-    @echo.
-) else (
-    @echo Please run as administrator {hint: Right click, then "Run as administrator"}
-    @echo.
-    @exit /b 10101
-)
-@goto :eof
-
 :END
 @echo.
 @if not [%1]==[NO_PAUSE] (
     @pause
 ) else (
-    @ping -n 3 localhost>nul
+    @ping -n 5 localhost>nul
 )
 @@if [%errorlevel%]==[10101] exit

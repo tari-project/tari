@@ -25,7 +25,7 @@ use crate::{
         node_id::{NodeDistance, NodeId},
         peer::{Peer, PeerFlags},
         peer_id::PeerId,
-        peer_storage::{PeerStorage, RegionStats},
+        peer_storage::PeerStorage,
         PeerFeatures,
         PeerManagerError,
         PeerQuery,
@@ -218,8 +218,8 @@ impl PeerManager {
     }
 
     /// Unbans the peer if it is banned. This function is idempotent.
-    pub async fn unban_peer(&self, public_key: &CommsPublicKey) -> Result<NodeId, PeerManagerError> {
-        self.peer_storage.write().await.unban_peer(public_key)
+    pub async fn unban_peer(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        self.peer_storage.write().await.unban_peer(node_id)
     }
 
     /// Ban the peer for a length of time specified by the duration
@@ -261,22 +261,7 @@ impl PeerManager {
         Ok(updated_count)
     }
 
-    /// Return some basic stats about the region around region_node_id
-    pub async fn get_region_stats(
-        &self,
-        region_node_id: &NodeId,
-        n: usize,
-        features: PeerFeatures,
-    ) -> Result<RegionStats, PeerManagerError>
-    {
-        self.peer_storage
-            .read()
-            .await
-            .get_region_stats(region_node_id, n, features)
-    }
-
     pub async fn get_peer_features(&self, node_id: &NodeId) -> Result<PeerFeatures, PeerManagerError> {
-        // TODO: #sqliterefactor fetch the features with a sql query
         let peer = self.find_by_node_id(node_id).await?;
         Ok(peer.features)
     }

@@ -297,6 +297,20 @@ where
                 .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
                 .await
                 .map(OutputManagerResponse::Transaction),
+            OutputManagerRequest::ApplyEncryption(cipher) => self
+                .resources
+                .db
+                .apply_encryption(*cipher)
+                .await
+                .map(|_| OutputManagerResponse::EncryptionApplied)
+                .map_err(OutputManagerError::OutputManagerStorageError),
+            OutputManagerRequest::RemoveEncryption => self
+                .resources
+                .db
+                .remove_encryption()
+                .await
+                .map(|_| OutputManagerResponse::EncryptionRemoved)
+                .map_err(OutputManagerError::OutputManagerStorageError),
         }
     }
 

@@ -67,6 +67,7 @@
 mod test;
 
 mod error;
+
 use error::MempoolProtocolError;
 
 use crate::{
@@ -74,11 +75,12 @@ use crate::{
     mempool::{async_mempool, proto, Mempool, MempoolServiceConfig},
     transactions::transaction::Transaction,
 };
-use futures::{stream::Fuse, AsyncRead, AsyncWrite, SinkExt, StreamExt};
+use futures::{stream, stream::Fuse, AsyncRead, AsyncWrite, SinkExt, Stream, StreamExt};
 use log::*;
 use prost::Message;
 use std::{
     convert::TryFrom,
+    iter,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -350,7 +352,7 @@ where
         // If we don't have any transactions at the given indexes we still need to send back an empty if they requested
         // at least one index
         if !missing_items.indexes.is_empty() {
-            self.write_transactions(&missing_txns).await?;
+            self.write_transactions(missing_txns).await?;
         }
 
         // Close the stream after writing
@@ -422,7 +424,7 @@ where
             self.peer_node_id.short_str()
         );
 
-        self.write_transactions(&transactions).await?;
+        self.write_transactions(transactions).await?;
 
         // Generate an index list of inventory indexes that this node does not have
         let missing_items = inventory
@@ -447,7 +449,6 @@ where
         let missing_items = proto::InventoryIndexes { indexes: missing_items };
         let num_missing_items = missing_items.indexes.len();
         self.write_message(missing_items).await?;
-        self.flush().await?;
 
         if num_missing_items > 0 {
             debug!(target: LOG_TARGET, "Waiting for missing transactions");
@@ -528,17 +529,17 @@ where
         Ok(())
     }
 
-    async fn write_transactions(&mut self, transactions: &[Arc<Transaction>]) -> Result<(), MempoolProtocolError> {
-        for transaction in transactions.into_iter().take(self.config.initial_sync_max_transactions) {
-            let txn = proto::TransactionItem {
-                transaction: Some(Clone::clone(&**transaction).into()),
-            };
-            self.write_message(txn).await?
-        }
+    async fn write_transactions(&mut self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolProtocolError> {
+        let txns = transactions.into_iter().take(self.config.initial_sync_max_transactions)
+            .map(|txn| {
+                proto::TransactionItem {
+                    transaction: Some(Clone::clone(&*txn).into()),
+                }
+            })
+            // Write an empty `TransactionItem` to indicate we're done
+            .chain(iter::once(proto::TransactionItem::empty()));
 
-        // Write an empty `TransactionItem` to indicate we're done
-        self.write_message(proto::TransactionItem::empty()).await?;
-        self.flush().await?;
+        self.write_messages(stream::iter(txns)).await?;
 
         Ok(())
     }
@@ -556,12 +557,18 @@ where
         })
     }
 
-    async fn write_message<T: prost::Message>(&mut self, message: T) -> Result<(), MempoolProtocolError> {
-        self.framed.send(message.to_encoded_bytes().into()).await?;
+    async fn write_messages<S, T>(&mut self, stream: S) -> Result<(), MempoolProtocolError>
+    where
+        S: Stream<Item = T> + Unpin,
+        T: prost::Message,
+    {
+        let mut s = stream.map(|m| Bytes::from(m.to_encoded_bytes())).map(Ok);
+        self.framed.send_all(&mut s).await?;
         Ok(())
     }
 
-    async fn flush(&mut self) -> Result<(), MempoolProtocolError> {
-        self.framed.flush().await.map_err(Into::into)
+    async fn write_message<T: prost::Message>(&mut self, message: T) -> Result<(), MempoolProtocolError> {
+        self.framed.send(message.to_encoded_bytes().into()).await?;
+        Ok(())
     }
 }

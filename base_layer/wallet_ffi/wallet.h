@@ -353,9 +353,42 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 
 /// -------------------------------- TariWallet ----------------------------------------------- //
 
-// Creates a TariWallet
+/// Creates a TariWallet
+/// ## Arguments
+/// `config` - The TariCommsConfig pointer
+/// `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
+/// pointer.
+/// `passphrase` - An optional string that represents the passphrase used to encrypt/decrypt the databases for this
+/// wallet. If it is left Null no encryption is used. If the databases have been encrypted then the correct passphrase
+/// is required or this function will fail.
+/// `callback_received_transaction` - The callback function pointer matching the
+/// function signature. This will be called when an inbound transaction is received.
+/// `callback_received_transaction_reply` - The callback function pointer matching the function signature. This will be
+/// called when a reply is received for a pending outbound transaction
+/// `callback_received_finalized_transaction` - The callback function pointer matching the function signature. This will
+/// be called when a Finalized version on an Inbound transaction is received
+/// `callback_transaction_broadcast` - The callback function pointer matching the function signature. This will be
+/// called when a Finalized transaction is detected a Broadcast to a base node mempool.
+/// `callback_transaction_mined` - The callback function pointer matching the function signature. This will be called
+/// when a Broadcast transaction is detected as mined.
+/// `callback_discovery_process_complete` - The callback function pointer matching the function signature. This will be
+/// called when a `send_transacion(..)` call is made to a peer whose address is not known and a discovery process must
+/// be conducted. The outcome of the discovery process is relayed via this callback
+/// `callback_base_node_sync_complete` - The callback function pointer matching the function signature. This is called
+/// when a Base Node Sync process is completed or times out. The request_key is used to identify which request this
+/// callback references and a result of true means it was successful and false that the process timed out and new one
+/// will be started
+/// `error_out` - Pointer to an int which will be modified
+/// to an error code should one occur, may not be null. Functions as an out parameter.
+/// ## Returns
+/// `*mut TariWallet` - Returns a pointer to a TariWallet, note that it returns ptr::null_mut()
+/// if config is null, a wallet error was encountered or if the runtime could not be created
+///
+/// # Safety
+/// The ```wallet_destroy``` method must be called when finished with a TariWallet to prevent a memory leak
 struct TariWallet *wallet_create(struct TariWalletConfig *config,
                                     const char *log_path,
+                                    const char *passphrase,
                                     void (*callback_received_transaction)(struct TariPendingInboundTransaction*),
                                     void (*callback_received_transaction_reply)(struct TariCompletedTransaction*),
                                     void (*callback_received_finalized_transaction)(struct TariCompletedTransaction*),
@@ -464,11 +497,21 @@ unsigned long long wallet_coin_split(struct TariWallet *wallet, unsigned long lo
 /// Get the seed words representing the seed private key of the provided TariWallet
 struct TariSeedWords *wallet_get_seed_words(struct TariWallet *wallet, int* error_out);
 
-// This function will produce a partial backup of the wallet at the location specified but with the sensitive data cleared.
-void wallet_partial_backup(struct TariWallet *wallet, const char *backup_file_path, int* error_out);
+// Apply encryption to the databases used in this wallet using the provided passphrase. If the databases are already
+// encrypted this function will fail.
+void wallet_apply_encryption(struct TariWallet *wallet, const char *passphrase, int* error_out);
+
+// Remove encryption to the databases used in this wallet. If this wallet is currently encrypted this encryption will
+// be removed. If it is not encrypted then this function will still succeed to make the operation idempotent
+void wallet_remove_encryption(struct TariWallet *wallet, int* error_out);
 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
+
+// This function will produce a partial backup of the specified wallet database file (full file path must be provided.
+// This backup will be written to the provided file (full path must include the filename and extension) and will include
+// the full wallet db but will clear the sensitive Comms Private Key
+void file_partial_backup(const char *original_file_path, const char *backup_file_path, int* error_out);
 
 /// This function will log the provided string at debug level. To be used to have a client log messages to the LibWallet
 void log_debug_message(const char* msg);

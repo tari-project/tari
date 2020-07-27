@@ -40,6 +40,12 @@ const NUM_NODES: usize = 40;
 // Must be at least 2
 const NUM_WALLETS: usize = 6;
 const QUIET_MODE: bool = true;
+/// Number of neighbouring nodes each node should include in the connection pool
+const NUM_NEIGHBOURING_NODES: usize = 8;
+/// Number of randomly-selected nodes each node should include in the connection pool
+const NUM_RANDOM_NODES: usize = 4;
+/// The number of messages that should be propagated out
+const PROPAGATION_FACTOR: usize = 4;
 
 mod memory_net;
 
@@ -178,6 +184,7 @@ async fn main() {
     )
     .await;
 
+    log::info!("------------------------------- BASE NODE JOIN -------------------------------");
     for node in nodes.iter_mut() {
         println!(
             "Node '{}' is joining the network via the seed node '{}'",
@@ -201,6 +208,7 @@ async fn main() {
         NUM_WALLETS
     );
 
+    log::info!("------------------------------- WALLET JOIN -------------------------------");
     for wallet in wallets.iter_mut() {
         println!(
             "Wallet '{}' is joining the network via node '{}'",
@@ -216,24 +224,34 @@ async fn main() {
         wallet.dht.dht_requester().send_join().await.unwrap();
     }
 
+    take_a_break().await;
     let mut total_messages = 0;
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
-    take_a_break().await;
-    total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
+    network_peer_list_stats(&nodes, &nodes).await;
     network_peer_list_stats(&nodes, &wallets).await;
     network_connectivity_stats(&nodes, &wallets).await;
 
     {
         let count = seed_node.comms.peer_manager().count().await;
-        println!("Seed node knows {} peers", count);
+        let num_connections = seed_node
+            .comms
+            .connection_manager()
+            .get_num_active_connections()
+            .await
+            .unwrap();
+        println!("Seed node knows {} peers ({} connections)", count, num_connections);
     }
 
+    take_a_break().await;
+
+    log::info!("------------------------------- DISCOVERY -------------------------------");
     total_messages += discovery(&wallets, &mut messaging_events_rx).await;
 
     take_a_break().await;
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
+    log::info!("------------------------------- SAF/DIRECTED PROPAGATION -------------------------------");
     for _ in 0..5 {
         let random_wallet = wallets.remove(OsRng.gen_range(0, wallets.len() - 1));
         let (num_msgs, random_wallet) = do_store_and_forward_message_propagation(
@@ -248,6 +266,7 @@ async fn main() {
         wallets.push(random_wallet);
     }
 
+    log::info!("------------------------------- PROPAGATION -------------------------------");
     do_network_wide_propagation(&mut nodes).await;
 
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
@@ -258,6 +277,7 @@ async fn main() {
     network_connectivity_stats(&nodes, &wallets).await;
 
     banner!("That's it folks! Network is shutting down...");
+    log::info!("------------------------------- SHUTDOWN -------------------------------");
 
     shutdown_all(nodes).await;
     shutdown_all(wallets).await;
@@ -297,11 +317,11 @@ async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut MessagingEven
                 successes += 1;
                 total_time += start.elapsed();
                 banner!(
-                    "⚡️🎉😎 '{}' discovered peer '{}' ({}) in {}ms",
+                    "⚡️🎉😎 '{}' discovered peer '{}' ({}) in {:.2?}",
                     wallet1,
                     get_name(&peer.node_id),
                     peer,
-                    start.elapsed().as_millis()
+                    start.elapsed()
                 );
 
                 time::delay_for(Duration::from_secs(5)).await;
@@ -309,15 +329,15 @@ async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut MessagingEven
             },
             Err(err) => {
                 banner!(
-                    "💩 '{}' failed to discover '{}' after {}ms because '{:?}'",
+                    "💩 '{}' failed to discover '{}' after {:.2?} because '{}'",
                     wallet1,
                     wallet2,
-                    start.elapsed().as_millis(),
+                    start.elapsed(),
                     err
                 );
 
                 time::delay_for(Duration::from_secs(5)).await;
-                total_messages += drain_messaging_events(messaging_events_rx, true).await;
+                total_messages += drain_messaging_events(messaging_events_rx, false).await;
             },
         }
     }
@@ -409,8 +429,8 @@ async fn network_connectivity_stats(nodes: &[TestNode], wallets: &[TestNode]) {
             total += conns.len();
             avg.push(conns.len());
 
+            println!("{} connected to {} nodes", node, conns.len());
             if !QUIET_MODE {
-                println!("{} connected to {} nodes", node, conns.len());
                 for c in conns {
                     println!("  {} ({})", get_name(c.peer_node_id()), c.direction());
                 }
@@ -435,7 +455,7 @@ async fn do_network_wide_propagation(nodes: &mut [TestNode]) {
     const PUBLIC_MESSAGE: &str = "This is something you're all interested in!";
 
     banner!("🌎 {} is going to broadcast a message to the network", random_node);
-    random_node
+    let send_states = random_node
         .dht
         .outbound_requester()
         .broadcast(
@@ -446,7 +466,22 @@ async fn do_network_wide_propagation(nodes: &mut [TestNode]) {
         )
         .await
         .unwrap();
+    let num_connections = random_node
+        .comms
+        .connection_manager()
+        .get_num_active_connections()
+        .await
+        .unwrap();
+    let (success, failed) = send_states.wait_all().await;
+    println!(
+        "🦠 {} broadcast to {}/{} peer(s) ({} connection(s))",
+        random_node.name,
+        success.len(),
+        success.len() + failed.len(),
+        num_connections
+    );
 
+    let start_global = Instant::now();
     // Spawn task for each peer that will read the message and propagate it on
     let tasks = nodes
         .into_iter()
@@ -454,12 +489,14 @@ async fn do_network_wide_propagation(nodes: &mut [TestNode]) {
         .enumerate()
         .map(|(idx, node)| {
             let mut outbound_req = node.dht.outbound_requester();
+            let mut conn_man = node.comms.connection_manager();
             let mut ims_rx = node.ims_rx.take().unwrap();
             let start = Instant::now();
+            let start_global = start_global.clone();
             let node_name = node.name.clone();
 
             task::spawn(async move {
-                let result = time::timeout(Duration::from_secs(5), ims_rx.next()).await;
+                let result = time::timeout(Duration::from_secs(10), ims_rx.next()).await;
                 let mut is_success = false;
                 match result {
                     Ok(Some(msg)) => {
@@ -469,7 +506,12 @@ async fn do_network_wide_propagation(nodes: &mut [TestNode]) {
                             .decode_part::<String>(1)
                             .unwrap()
                             .unwrap();
-                        println!("📬 {} got public message '{}'", node_name, public_msg);
+                        println!(
+                            "📬 {} got public message '{}' (t={:.0?})",
+                            node_name,
+                            public_msg,
+                            start_global.elapsed()
+                        );
                         is_success = true;
                         let send_states = outbound_req
                             .propagate(
@@ -480,13 +522,21 @@ async fn do_network_wide_propagation(nodes: &mut [TestNode]) {
                             )
                             .await
                             .unwrap();
-                        println!("🦠 {} propagated to {} peer(s)", node_name, send_states.len());
+                        let num_connections = conn_man.get_num_active_connections().await.unwrap();
+                        let (success, failed) = send_states.wait_all().await;
+                        println!(
+                            "🦠 {} propagated to {}/{} peer(s) ({} connection(s))",
+                            node_name,
+                            success.len(),
+                            success.len() + failed.len(),
+                            num_connections
+                        );
                     },
                     Err(_) | Ok(None) => {
                         banner!(
-                            "💩 {} failed to receive network message after {}ms",
+                            "💩 {} failed to receive network message after {:.2?}",
                             node_name,
-                            start.elapsed().as_millis(),
+                            start.elapsed(),
                         );
                     },
                 }
@@ -588,16 +638,16 @@ async fn do_store_and_forward_message_propagation(
                     .unwrap()
                     .unwrap();
                 banner!(
-                    "🎉 Wallet {} received propagated message '{}' from store and forward in {}ms",
+                    "🎉 Wallet {} received propagated message '{}' from store and forward in {:.2?}",
                     wallet,
                     secret_msg,
-                    start.elapsed().as_millis()
+                    start.elapsed()
                 );
             },
             Err(err) => {
                 banner!(
-                    "💩 Failed to receive message after {}ms using store and forward '{:?}'",
-                    start.elapsed().as_millis(),
+                    "💩 Failed to receive message after {:.0?} using store and forward '{}'",
+                    start.elapsed(),
                     err
                 );
             },
@@ -823,7 +873,12 @@ impl AsRef<TestNode> for TestNode {
 
 impl fmt::Display for TestNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
+        write!(
+            f,
+            "{} ({})",
+            self.name,
+            self.comms.node_identity().node_id().short_str()
+        )
     }
 }
 
@@ -897,9 +952,9 @@ async fn setup_comms_dht(
     .local_test()
     .enable_auto_join()
     .with_discovery_timeout(Duration::from_secs(15))
-    .with_num_neighbouring_nodes(10)
-    .with_num_random_nodes(5)
-    .with_propagation_factor(4)
+    .with_num_neighbouring_nodes(NUM_NEIGHBOURING_NODES)
+    .with_num_random_nodes(NUM_RANDOM_NODES)
+    .with_propagation_factor(PROPAGATION_FACTOR)
     .finish()
     .await
     .unwrap();
@@ -930,5 +985,5 @@ async fn setup_comms_dht(
 
 async fn take_a_break() {
     banner!("Taking a break for a few seconds to let things settle...");
-    time::delay_for(Duration::from_millis(NUM_NODES as u64 * 50)).await;
+    time::delay_for(Duration::from_millis(NUM_NODES as u64 * 100)).await;
 }

@@ -26,6 +26,7 @@ use crate::output_manager_service::{
     storage::models::DbUnblindedOutput,
     TxId,
 };
+use aes_gcm::Aes256Gcm;
 use chrono::{NaiveDateTime, Utc};
 use log::*;
 use std::{
@@ -37,7 +38,7 @@ use std::{
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, UnblindedOutput},
-    types::{BlindingFactor, CryptoFactories, PrivateKey},
+    types::{BlindingFactor, Commitment, CryptoFactories, PrivateKey},
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
@@ -84,7 +85,11 @@ pub trait OutputManagerBackend: Send + Sync {
     /// the invalid outputs collection. The function will return the last recorded TxId associated with this output.
     fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError>;
     /// If an invalid output is found to be valid this function will turn it back into an unspent output
-    fn revalidate_unspent_output(&self, spending_key: &BlindingFactor) -> Result<(), OutputManagerStorageError>;
+    fn revalidate_unspent_output(&self, spending_key: &Commitment) -> Result<(), OutputManagerStorageError>;
+    /// Apply encryption to the backend.
+    fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError>;
+    /// Remove encryption from the backend.
+    fn remove_encryption(&self) -> Result<(), OutputManagerStorageError>;
 }
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
@@ -427,7 +432,7 @@ where T: OutputManagerBackend + Clone + 'static
 
         let uo = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::SpentOutputs) {
             Ok(None) => log_error(
-                DbKey::UnspentOutputs,
+                DbKey::SpentOutputs,
                 OutputManagerStorageError::UnexpectedResult("Could not retrieve spent outputs".to_string()),
             ),
             Ok(Some(DbValue::SpentOutputs(uo))) => Ok(uo),
@@ -506,9 +511,25 @@ where T: OutputManagerBackend + Clone + 'static
             .and_then(|inner_result| inner_result)
     }
 
-    pub async fn revalidate_output(&self, spending_key: BlindingFactor) -> Result<(), OutputManagerStorageError> {
+    pub async fn revalidate_output(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.revalidate_unspent_output(&spending_key))
+        tokio::task::spawn_blocking(move || db_clone.revalidate_unspent_output(&commitment))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.apply_encryption(cipher))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn remove_encryption(&self) -> Result<(), OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.remove_encryption())
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
