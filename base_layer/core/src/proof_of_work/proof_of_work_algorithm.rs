@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,51 +19,24 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use serde::{Deserialize, Serialize};
+use std::convert::TryFrom;
 
-// Needed to make futures::select! work
-#![recursion_limit = "1024"]
-// Used to eliminate the need for boxing futures in many cases.
-// Tracking issue: https://github.com/rust-lang/rust/issues/63063
-#![feature(type_alias_impl_trait)]
-// Enable usage of Vec::shrink_to
-#![feature(shrink_to)]
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum PowAlgorithm {
+    Monero = 0,
+    Blake = 1,
+}
 
-#[macro_use]
-extern crate bitflags;
+impl TryFrom<u64> for PowAlgorithm {
+    type Error = String;
 
-#[cfg(feature = "base_node")]
-pub mod blocks;
-#[cfg(feature = "base_node")]
-pub mod chain_storage;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub mod consensus;
-#[cfg(feature = "base_node")]
-pub mod helpers;
-#[cfg(feature = "base_node")]
-pub mod iterators;
-#[cfg(feature = "base_node")]
-pub mod mining;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub mod proof_of_work;
-#[cfg(feature = "base_node")]
-pub mod validation;
-
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod base_node;
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod proto;
-
-#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
-pub mod mempool;
-
-#[cfg(feature = "transactions")]
-pub mod transactions;
-
-// Re-export the crypto crate to make exposing traits etc easier for clients of this crate
-pub use crypto::tari_utilities;
-pub use tari_crypto as crypto;
-
-uint::construct_uint! {
-    /// 256-bit unsigned integer.
-    pub(crate) struct U256(4);
+    fn try_from(v: u64) -> Result<Self, Self::Error> {
+        match v {
+            0 => Ok(PowAlgorithm::Monero),
+            1 => Ok(PowAlgorithm::Blake),
+            _ => Err("Invalid PoWAlgorithm".into()),
+        }
+    }
 }

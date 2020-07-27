@@ -45,14 +45,14 @@ pub struct DerivedKey<K>
 where K: SecretKey
 {
     pub k: K,
-    pub key_index: usize,
+    pub key_index: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct KeyManager<K: SecretKey, D: Digest> {
-    pub master_key: K,
+    master_key: K,
     pub branch_seed: String,
-    pub primary_key_index: usize,
+    pub primary_key_index: u64,
     digest_type: PhantomData<D>,
 }
 
@@ -72,7 +72,7 @@ where
     }
 
     /// Constructs a KeyManager from known parts
-    pub fn from(master_key: K, branch_seed: String, primary_key_index: usize) -> KeyManager<K, D> {
+    pub fn from(master_key: K, branch_seed: String, primary_key_index: u64) -> KeyManager<K, D> {
         KeyManager {
             master_key,
             branch_seed,
@@ -85,7 +85,7 @@ where
     pub fn from_seed_phrase(
         seed_phrase: String,
         branch_seed: String,
-        primary_key_index: usize,
+        primary_key_index: u64,
     ) -> Result<KeyManager<K, D>, KeyManagerError>
     {
         match K::from_bytes(D::digest(&seed_phrase.into_bytes()).as_slice()) {
@@ -104,7 +104,7 @@ where
     pub fn from_mnemonic(
         mnemonic_seq: &[String],
         branch_seed: String,
-        primary_key_index: usize,
+        primary_key_index: u64,
     ) -> Result<KeyManager<K, D>, KeyManagerError>
     {
         match K::from_mnemonic(mnemonic_seq) {
@@ -119,7 +119,7 @@ where
     }
 
     /// Derive a new private key from master key: derived_key=SHA256(master_key||branch_seed||index)
-    pub fn derive_key(&self, key_index: usize) -> Result<DerivedKey<K>, ByteArrayError> {
+    pub fn derive_key(&self, key_index: u64) -> Result<DerivedKey<K>, ByteArrayError> {
         let concatenated = format!("{}{}", self.master_key.to_hex(), key_index.to_string());
         match K::from_bytes(D::digest(&concatenated.into_bytes()).as_slice()) {
             Ok(k) => Ok(DerivedKey { k, key_index }),
@@ -131,6 +131,10 @@ where
     pub fn next_key(&mut self) -> Result<DerivedKey<K>, ByteArrayError> {
         self.primary_key_index += 1;
         self.derive_key(self.primary_key_index)
+    }
+
+    pub fn master_key(&self) -> &K {
+        &self.master_key
     }
 }
 

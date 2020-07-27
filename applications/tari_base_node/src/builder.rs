@@ -571,6 +571,11 @@ where
     let wallet_conn = run_migration_and_create_sqlite_connection(&config.wallet_db_file)
         .map_err(|e| format!("Could not create wallet: {:?}", e))?;
 
+    let network = match &config.network {
+        Network::MainNet => NetworkType::MainNet,
+        Network::Rincewind => NetworkType::Rincewind,
+    };
+
     let wallet_handles = register_wallet_services(
         &wallet_comms,
         &wallet_dht,
@@ -580,6 +585,7 @@ where
         config.transaction_base_node_monitoring_timeout,
         config.transaction_direct_send_timeout,
         config.transaction_broadcast_send_timeout,
+        network,
     )
     .await;
 
@@ -1192,6 +1198,7 @@ async fn register_wallet_services(
     base_node_monitoring_timeout: Duration,
     direct_send_timeout: Duration,
     broadcast_send_timeout: Duration,
+    network: NetworkType,
 ) -> Arc<ServiceHandles>
 {
     let transaction_db = TransactionServiceSqliteDatabase::new(wallet_db_conn.clone(), None);
@@ -1214,6 +1221,7 @@ async fn register_wallet_services(
             subscription_factory.clone(),
             OutputManagerSqliteDatabase::new(wallet_db_conn.clone(),None),
             factories.clone(),
+            network
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig::new(base_node_monitoring_timeout,
@@ -1222,7 +1230,7 @@ async fn register_wallet_services(
             subscription_factory,
             transaction_db,
             wallet_comms.node_identity(),
-            factories,
+            factories,network
         ))
         .finish()
         .await

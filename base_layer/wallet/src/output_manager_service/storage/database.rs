@@ -86,6 +86,9 @@ pub trait OutputManagerBackend: Send + Sync {
     fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError>;
     /// If an invalid output is found to be valid this function will turn it back into an unspent output
     fn revalidate_unspent_output(&self, spending_key: &Commitment) -> Result<(), OutputManagerStorageError>;
+    /// Check to see if there exist any pending transaction with a blockheight equal that provided and cancel those
+    /// pending transaction outputs.
+    fn cancel_pending_transaction_at_block_height(&self, block_height: u64) -> Result<(), OutputManagerStorageError>;
     /// Apply encryption to the backend.
     fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError>;
     /// Remove encryption from the backend.
@@ -99,14 +102,15 @@ pub struct PendingTransactionOutputs {
     pub outputs_to_be_spent: Vec<DbUnblindedOutput>,
     pub outputs_to_be_received: Vec<DbUnblindedOutput>,
     pub timestamp: NaiveDateTime,
+    pub coinbase_block_height: Option<u64>,
 }
 
 /// Holds the state of the KeyManager being used by the Output Manager Service
 #[derive(Clone, Debug, PartialEq)]
 pub struct KeyManagerState {
-    pub master_seed: PrivateKey,
+    pub master_key: PrivateKey,
     pub branch_seed: String,
-    pub primary_key_index: usize,
+    pub primary_key_index: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -323,6 +327,7 @@ where T: OutputManagerBackend + Clone + 'static
         spending_key: PrivateKey,
         output_features: OutputFeatures,
         factory: &CryptoFactories,
+        coinbase_block_height: Option<u64>,
     ) -> Result<(), OutputManagerStorageError>
     {
         let db_clone = self.db.clone();
@@ -342,6 +347,7 @@ where T: OutputManagerBackend + Clone + 'static
                     outputs_to_be_spent: Vec::new(),
                     outputs_to_be_received: vec![output],
                     timestamp: Utc::now().naive_utc(),
+                    coinbase_block_height,
                 }),
             )))
         })
@@ -514,6 +520,18 @@ where T: OutputManagerBackend + Clone + 'static
     pub async fn revalidate_output(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.revalidate_unspent_output(&commitment))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn cancel_pending_transaction_at_block_height(
+        &self,
+        block_height: u64,
+    ) -> Result<(), OutputManagerStorageError>
+    {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.cancel_pending_transaction_at_block_height(block_height))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)

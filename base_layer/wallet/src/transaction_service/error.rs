@@ -30,7 +30,11 @@ use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
 use tari_comms::peer_manager::node_id::NodeIdError;
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
+use tari_core::transactions::{
+    transaction::TransactionError,
+    transaction_protocol::TransactionProtocolError,
+    CoinbaseBuildError,
+};
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use time::OutOfRangeError;
@@ -86,6 +90,8 @@ pub enum TransactionServiceError {
     UnexpectedBaseNodeResponse,
     /// The current transaction has been cancelled
     TransactionCancelled,
+    /// Chain tip has moved beyond this coinbase before it was mined so it must be cnacelled
+    ChainTipHigherThanCoinbaseHeight,
     DhtOutboundError(DhtOutboundError),
     OutputManagerError(OutputManagerError),
     TransportChannelError(TransportChannelError),
@@ -102,6 +108,7 @@ pub enum TransactionServiceError {
     BroadcastRecvError(RecvError),
     OneshotCancelled(Canceled),
     LivenessError(LivenessError),
+    CoinbaseBuildError(CoinbaseBuildError),
 }
 
 #[derive(Debug, Error)]

@@ -13,3 +13,10 @@ pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::S
 pub use tari_crypto as crypto;
 #[macro_use]
 pub mod helpers;
+#[cfg(any(feature = "base_node", feature = "transactions"))]
+mod coinbase_builder;
+
+#[cfg(any(feature = "base_node", feature = "transactions"))]
+pub use crate::transactions::coinbase_builder::CoinbaseBuildError;
+#[cfg(any(feature = "base_node", feature = "transactions"))]
+pub use crate::transactions::coinbase_builder::CoinbaseBuilder;

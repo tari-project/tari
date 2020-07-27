@@ -33,7 +33,11 @@ use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
 use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_core::{base_node::proto::base_node as BaseNodeProto, transactions::types::CryptoFactories};
+use tari_core::{
+    base_node::proto::base_node as BaseNodeProto,
+    consensus::{ConsensusConstantsBuilder, Network},
+    transactions::types::CryptoFactories,
+};
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
     domain_message::DomainMessage,
@@ -69,6 +73,7 @@ where T: OutputManagerBackend
     subscription_factory: Arc<SubscriptionFactory>,
     backend: Option<T>,
     factories: CryptoFactories,
+    network: Network,
 }
 
 impl<T> OutputManagerServiceInitializer<T>
@@ -79,6 +84,7 @@ where T: OutputManagerBackend + Clone + 'static
         subscription_factory: Arc<SubscriptionFactory>,
         backend: T,
         factories: CryptoFactories,
+        network: Network,
     ) -> Self
     {
         Self {
@@ -86,6 +92,7 @@ where T: OutputManagerBackend + Clone + 'static
             subscription_factory,
             backend: Some(backend),
             factories,
+            network,
         }
     }
 
@@ -131,6 +138,7 @@ where T: OutputManagerBackend + Clone + 'static
             .expect("Cannot start Output Manager Service without setting a storage backend");
         let factories = self.factories.clone();
         let config = self.config.clone();
+        let constants = ConsensusConstantsBuilder::new(self.network).build();
 
         executor.spawn(async move {
             let handles = handles_fut.await;
@@ -152,6 +160,7 @@ where T: OutputManagerBackend + Clone + 'static
                 OutputManagerDatabase::new(backend),
                 publisher,
                 factories,
+                constants.coinbase_lock_height(),
             )
             .await
             .expect("Could not initialize Output Manager Service")

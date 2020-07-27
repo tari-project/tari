@@ -480,6 +480,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 inbound_tx.message.clone(),
                 inbound_tx.timestamp,
                 TransactionDirection::Inbound,
+                None,
             );
 
             self.resources

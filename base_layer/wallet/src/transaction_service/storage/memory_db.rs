@@ -460,4 +460,16 @@ impl TransactionBackend for TransactionMemoryDatabase {
     fn remove_encryption(&self) -> Result<(), TransactionStorageError> {
         Ok(())
     }
+
+    fn cancel_coinbase_transaction_at_block_height(&self, block_height: u64) -> Result<(), TransactionStorageError> {
+        let mut db = acquire_write_lock!(self.db);
+
+        for (_, tx) in db.completed_transactions.iter_mut() {
+            if tx.status == TransactionStatus::Coinbase && tx.coinbase_block_height == Some(block_height) {
+                tx.cancelled = true;
+            }
+        }
+
+        Ok(())
+    }
 }

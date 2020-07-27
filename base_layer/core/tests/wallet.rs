@@ -161,6 +161,7 @@ fn wallet_base_node_integration_test() {
             low_power_polling_timeout: Duration::from_secs(10),
             ..Default::default()
         }),
+        Network::Rincewind,
     );
     let alice_runtime = create_runtime();
     let mut alice_wallet = Wallet::new(
@@ -204,7 +205,7 @@ fn wallet_base_node_integration_test() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
     };
-    let bob_wallet_config = WalletConfig::new(bob_comms_config, factories.clone(), None);
+    let bob_wallet_config = WalletConfig::new(bob_comms_config, factories.clone(), None, Network::Rincewind);
     let bob_runtime = create_runtime();
     let mut bob_wallet = Wallet::new(
         bob_wallet_config,

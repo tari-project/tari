@@ -11,6 +11,7 @@ table! {
         timestamp -> Timestamp,
         cancelled -> Integer,
         direction -> Nullable<Integer>,
+        coinbase_block_height -> Nullable<BigInt>,
     }
 }
 
@@ -37,7 +38,7 @@ table! {
 table! {
     key_manager_states (id) {
         id -> Nullable<BigInt>,
-        master_seed -> Binary,
+        master_key -> Binary,
         branch_seed -> Text,
         primary_key_index -> BigInt,
         timestamp -> Timestamp,
@@ -77,6 +78,7 @@ table! {
         tx_id -> BigInt,
         short_term -> Integer,
         timestamp -> Timestamp,
+        coinbase_block_height -> Nullable<BigInt>,
     }
 }
 

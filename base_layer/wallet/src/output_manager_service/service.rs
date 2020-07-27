@@ -81,6 +81,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
 {
     resources: OutputManagerResources<TBackend>,
     key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
+    coinbase_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_response_stream: Option<BNResponseStream>,
@@ -105,13 +106,14 @@ where
         db: OutputManagerDatabase<TBackend>,
         event_publisher: OutputManagerEventSender,
         factories: CryptoFactories,
+        coinbase_lock_height: u64,
     ) -> Result<OutputManagerService<TBackend, BNResponseStream>, OutputManagerError>
     {
         // Check to see if there is any persisted state, otherwise start fresh
         let key_manager_state = match db.get_key_manager_state().await? {
             None => {
                 let starting_state = KeyManagerState {
-                    master_seed: PrivateKey::random(&mut OsRng),
+                    master_key: PrivateKey::random(&mut OsRng),
                     branch_seed: "".to_string(),
                     primary_key_index: 0,
                 };
@@ -120,6 +122,15 @@ where
             },
             Some(km) => km,
         };
+
+        let coinbase_key_manager =
+            KeyManager::<PrivateKey, KeyDigest>::from(key_manager_state.master_key.clone(), "coinbase".to_string(), 0);
+
+        let key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
+            key_manager_state.master_key,
+            key_manager_state.branch_seed,
+            key_manager_state.primary_key_index,
+        );
 
         // Clear any encumberances for transactions that were being negotiated but did not complete to become official
         // Pending Transactions.
@@ -133,17 +144,15 @@ where
             factories,
             base_node_public_key: None,
             event_publisher,
+            coinbase_lock_height,
         };
 
         let (base_node_response_publisher, _) = broadcast::channel(50);
 
         Ok(OutputManagerService {
             resources,
-            key_manager: Mutex::new(KeyManager::<PrivateKey, KeyDigest>::from(
-                key_manager_state.master_seed,
-                key_manager_state.branch_seed,
-                key_manager_state.primary_key_index,
-            )),
+            key_manager: Mutex::new(key_manager),
+            coinbase_key_manager: Mutex::new(coinbase_key_manager),
             request_stream: Some(request_stream),
             base_node_response_stream: Some(base_node_response_stream),
             base_node_response_publisher,
@@ -234,6 +243,10 @@ where
                 .get_recipient_spending_key(tx_id, amount)
                 .await
                 .map(OutputManagerResponse::RecipientKeyGenerated),
+            OutputManagerRequest::GetCoinbaseKey((tx_id, amount, block_height)) => self
+                .get_coinbase_spending_key(tx_id, amount, block_height)
+                .await
+                .map(OutputManagerResponse::CoinbaseKeyGenerated),
             OutputManagerRequest::PrepareToSendTransaction((amount, fee_per_gram, lock_height, message)) => self
                 .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message)
                 .await
@@ -436,6 +449,45 @@ where
                 key.clone(),
                 OutputFeatures::default(),
                 &self.resources.factories,
+                None,
+            )
+            .await?;
+
+        self.confirm_encumberance(tx_id).await?;
+        Ok(key)
+    }
+
+    /// Request a spending key for a coinbase transaction for a specific height. All existing pending transactions with
+    /// this blockheight will be cancelled.
+    /// The key will be derived from the coinbase specific keychain using the blockheight as an index. The coinbase
+    /// keychain is based on the wallets master_key and the "coinbase" branch.
+    async fn get_coinbase_spending_key(
+        &mut self,
+        tx_id: TxId,
+        amount: MicroTari,
+        block_height: u64,
+    ) -> Result<PrivateKey, OutputManagerError>
+    {
+        let mut key = PrivateKey::default();
+        {
+            let km = self.coinbase_key_manager.lock().await;
+            key = km.derive_key(block_height)?.k;
+        }
+
+        self.resources
+            .db
+            .cancel_pending_transaction_at_block_height(block_height)
+            .await?;
+
+        self.resources
+            .db
+            .accept_incoming_pending_transaction(
+                tx_id,
+                amount,
+                key.clone(),
+                OutputFeatures::create_coinbase(block_height + self.resources.coinbase_lock_height),
+                &self.resources.factories,
+                Some(block_height),
             )
             .await?;
 
@@ -855,7 +907,7 @@ where
     /// Return the Seed words for the current Master Key set in the Key Manager
     pub async fn get_seed_words(&self) -> Result<Vec<String>, OutputManagerError> {
         Ok(from_secret_key(
-            &self.key_manager.lock().await.master_key,
+            self.key_manager.lock().await.master_key(),
             &MnemonicLanguage::English,
         )?)
     }
@@ -905,4 +957,5 @@ where TBackend: OutputManagerBackend + Clone + 'static
     pub factories: CryptoFactories,
     pub base_node_public_key: Option<CommsPublicKey>,
     pub event_publisher: OutputManagerEventSender,
+    pub coinbase_lock_height: u64,
 }

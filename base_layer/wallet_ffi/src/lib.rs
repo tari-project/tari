@@ -195,6 +195,7 @@ use tari_wallet::{
     wallet::WalletConfig,
 };
 
+use tari_core::consensus::Network;
 use tokio::runtime::Runtime;
 
 const LOG_TARGET: &str = "wallet_ffi";
@@ -2654,6 +2655,7 @@ pub unsafe extern "C" fn wallet_create(
                         direct_send_timeout: (*config).dht.discovery_request_timeout,
                         ..Default::default()
                     }),
+                    Network::Rincewind,
                 ),
                 runtime,
                 wallet_backend,
@@ -3555,7 +3557,6 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
                 // classified as Pending Transactions. In order to support this logic without impacting the practical
                 // definitions and storage of a MimbleWimble CompletedTransaction we will add those transaction to the
                 // list here in the FFI interface
-                let my_public_key = (*wallet).comms.node_identity().public_key().clone();
                 for ct in completed_txs
                     .values()
                     .filter(|ct| ct.status == TransactionStatus::Completed || ct.status == TransactionStatus::Broadcast)

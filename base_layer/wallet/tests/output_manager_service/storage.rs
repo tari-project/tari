@@ -76,6 +76,7 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
             outputs_to_be_received: vec![],
             timestamp: Utc::now().naive_utc() -
                 ChronoDuration::from_std(Duration::from_millis(120_000_000 * i)).unwrap(),
+            coinbase_block_height: None,
         };
         for _ in 0..(OsRng.next_u64() % 5 + 1) {
             let (_ti, uo) = make_input(
@@ -216,6 +217,7 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
             uo_incoming.spending_key.clone(),
             OutputFeatures::default(),
             &factories,
+            None,
         ))
         .unwrap();
 
@@ -374,7 +376,7 @@ pub fn test_key_manager_crud<T: OutputManagerBackend + Clone + 'static>(backend:
     assert!(runtime.block_on(db.increment_key_index()).is_err());
 
     let state1 = KeyManagerState {
-        master_seed: PrivateKey::random(&mut OsRng),
+        master_key: PrivateKey::random(&mut OsRng),
         branch_seed: "blah".to_string(),
         primary_key_index: 0,
     };
@@ -385,7 +387,7 @@ pub fn test_key_manager_crud<T: OutputManagerBackend + Clone + 'static>(backend:
     assert_eq!(state1, read_state1);
 
     let state2 = KeyManagerState {
-        master_seed: PrivateKey::random(&mut OsRng),
+        master_key: PrivateKey::random(&mut OsRng),
         branch_seed: "blah2".to_string(),
         primary_key_index: 0,
     };
@@ -428,6 +430,7 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + Clone + 'sta
         outputs_to_be_spent: vec![],
         outputs_to_be_received: vec![],
         timestamp: Utc::now().naive_utc() - ChronoDuration::from_std(Duration::from_millis(120_000_000)).unwrap(),
+        coinbase_block_height: None,
     };
     for i in 1..4 {
         let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000 * i), &factories.commitment);

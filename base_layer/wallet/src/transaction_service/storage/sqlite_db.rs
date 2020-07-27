@@ -716,6 +716,16 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
         Ok(())
     }
+
+    fn cancel_coinbase_transaction_at_block_height(&self, block_height: u64) -> Result<(), TransactionStorageError> {
+        let conn = acquire_lock!(self.database_connection);
+
+        let coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(block_height as i64, &conn)?;
+        for c in coinbase_txs.iter() {
+            c.cancel(&conn)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Queryable, Insertable, PartialEq)]
@@ -1069,6 +1079,7 @@ struct CompletedTransactionSql {
     timestamp: NaiveDateTime,
     cancelled: i32,
     direction: Option<i32>,
+    coinbase_block_height: Option<i64>,
 }
 
 impl CompletedTransactionSql {
@@ -1090,6 +1101,17 @@ impl CompletedTransactionSql {
     {
         Ok(completed_transactions::table
             .filter(completed_transactions::cancelled.eq(cancelled as i32))
+            .load::<CompletedTransactionSql>(conn)?)
+    }
+
+    pub fn index_coinbase_at_block_height(
+        block_height: i64,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError>
+    {
+        Ok(completed_transactions::table
+            .filter(completed_transactions::status.eq(TransactionStatus::Coinbase as i32))
+            .filter(completed_transactions::coinbase_block_height.eq(block_height))
             .load::<CompletedTransactionSql>(conn)?)
     }
 
@@ -1236,6 +1258,7 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
             timestamp: c.timestamp,
             cancelled: c.cancelled as i32,
             direction: Some(c.direction as i32),
+            coinbase_block_height: c.coinbase_block_height.map(|b| b as i64),
         })
     }
 }
@@ -1258,6 +1281,7 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             timestamp: c.timestamp,
             cancelled: c.cancelled != 0,
             direction: TransactionDirection::try_from(c.direction.unwrap_or(2i32))?,
+            coinbase_block_height: c.coinbase_block_height.map(|b| b as u64),
         })
     }
 }
@@ -1481,6 +1505,7 @@ mod test {
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
             direction: TransactionDirection::Unknown,
+            coinbase_block_height: None,
         };
         let completed_tx2 = CompletedTransaction {
             tx_id: 3,
@@ -1494,6 +1519,7 @@ mod test {
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
             direction: TransactionDirection::Unknown,
+            coinbase_block_height: None,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone())
@@ -1591,6 +1617,71 @@ mod test {
         assert!(CompletedTransactionSql::find(completed_tx1.tx_id, false, &conn).is_err());
         assert!(CompletedTransactionSql::find(completed_tx1.tx_id, true, &conn).is_ok());
 
+        let coinbase_tx1 = CompletedTransaction {
+            tx_id: 101,
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            amount,
+            fee: MicroTari::from(100),
+            transaction: tx.clone(),
+            status: TransactionStatus::Coinbase,
+            message: "Hey!".to_string(),
+            timestamp: Utc::now().naive_utc(),
+            cancelled: false,
+            direction: TransactionDirection::Unknown,
+            coinbase_block_height: Some(2),
+        };
+
+        let coinbase_tx2 = CompletedTransaction {
+            tx_id: 102,
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            amount,
+            fee: MicroTari::from(100),
+            transaction: tx.clone(),
+            status: TransactionStatus::Coinbase,
+            message: "Hey!".to_string(),
+            timestamp: Utc::now().naive_utc(),
+            cancelled: false,
+            direction: TransactionDirection::Unknown,
+            coinbase_block_height: Some(2),
+        };
+
+        let coinbase_tx3 = CompletedTransaction {
+            tx_id: 103,
+            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            amount,
+            fee: MicroTari::from(100),
+            transaction: tx.clone(),
+            status: TransactionStatus::Coinbase,
+            message: "Hey!".to_string(),
+            timestamp: Utc::now().naive_utc(),
+            cancelled: false,
+            direction: TransactionDirection::Unknown,
+            coinbase_block_height: Some(3),
+        };
+
+        CompletedTransactionSql::try_from(coinbase_tx1.clone())
+            .unwrap()
+            .commit(&conn)
+            .unwrap();
+        CompletedTransactionSql::try_from(coinbase_tx2.clone())
+            .unwrap()
+            .commit(&conn)
+            .unwrap();
+        CompletedTransactionSql::try_from(coinbase_tx3.clone())
+            .unwrap()
+            .commit(&conn)
+            .unwrap();
+
+        let coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(2, &conn).unwrap();
+
+        assert_eq!(coinbase_txs.len(), 2);
+        assert!(coinbase_txs.iter().find(|c| c.tx_id == 101).is_some());
+        assert!(coinbase_txs.iter().find(|c| c.tx_id == 102).is_some());
+        assert!(coinbase_txs.iter().find(|c| c.tx_id == 103).is_none());
+
         #[cfg(feature = "test_harness")]
         CompletedTransactionSql::find(completed_tx2.tx_id, false, &conn)
             .unwrap()
@@ -1635,6 +1726,7 @@ mod test {
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
             direction: TransactionDirection::Unknown,
+            coinbase_block_height: None,
         })
         .unwrap();
         completed_tx1.direction = None;
@@ -1652,6 +1744,7 @@ mod test {
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
             direction: TransactionDirection::Unknown,
+            coinbase_block_height: None,
         })
         .unwrap();
         completed_tx2.direction = None;
@@ -1746,6 +1839,7 @@ mod test {
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
             direction: TransactionDirection::Unknown,
+            coinbase_block_height: None,
         };
 
         let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
@@ -1811,6 +1905,7 @@ mod test {
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
             direction: TransactionDirection::Unknown,
+            coinbase_block_height: None,
         };
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
         completed_tx_sql.commit(&conn).unwrap();

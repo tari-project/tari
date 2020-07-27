@@ -54,6 +54,7 @@ pub enum TransactionServiceRequest {
     SetNormalPowerMode,
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
+    GenerateCoinbaseTransaction(MicroTari, MicroTari, u64),
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
     #[cfg(feature = "test_harness")]
@@ -87,6 +88,9 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SetNormalPowerMode => f.write_str("SetNormalPowerMode"),
             TransactionServiceRequest::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
             TransactionServiceRequest::RemoveEncryption => f.write_str("RemoveEncryption"),
+            TransactionServiceRequest::GenerateCoinbaseTransaction(_, _, bh) => {
+                f.write_str(&format!("GenerateCoinbaseTransaction (Blockheight {})", bh))
+            },
             #[cfg(feature = "test_harness")]
             Self::CompletePendingOutboundTransaction(tx) => {
                 f.write_str(&format!("CompletePendingOutboundTransaction ({})", tx.tx_id))
@@ -121,6 +125,7 @@ pub enum TransactionServiceResponse {
     NormalPowerModeSet,
     EncryptionApplied,
     EncryptionRemoved,
+    CoinbaseTransactionGenerated(Box<Transaction>),
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -391,6 +396,27 @@ impl TransactionServiceHandle {
     pub async fn remove_encryption(&mut self) -> Result<(), TransactionServiceError> {
         match self.handle.call(TransactionServiceRequest::RemoveEncryption).await?? {
             TransactionServiceResponse::EncryptionRemoved => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn generate_coinbase_transaction(
+        &mut self,
+        rewards: MicroTari,
+        fees: MicroTari,
+        block_height: u64,
+    ) -> Result<Transaction, TransactionServiceError>
+    {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GenerateCoinbaseTransaction(
+                rewards,
+                fees,
+                block_height,
+            ))
+            .await??
+        {
+            TransactionServiceResponse::CoinbaseTransactionGenerated(tx) => Ok(*tx),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }
