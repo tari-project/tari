@@ -26,7 +26,7 @@ use tari_service_framework::reply_channel::TransportChannelError;
 
 #[derive(Debug, Error, PartialEq, Clone)]
 pub enum CommsInterfaceError {
-    /// Access to the underlying storage mechanism failed
+    /// Received an unexpected response from a remote peer
     UnexpectedApiResponse,
     RequestTimedOut,
     NoBootstrapNodesConfigured,

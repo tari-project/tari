@@ -23,7 +23,7 @@
 use super::consensus_constants::ConsensusConstants;
 use tari_common::configuration::Network as GlobalNetwork;
 /// Specifies the configured chain network.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Network {
     /// Mainnet of Tari, currently should panic if network is set to this.
     MainNet,

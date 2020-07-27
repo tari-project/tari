@@ -120,17 +120,17 @@ where
     }
 
     fn push(&mut self, item: Self::Value) -> Result<usize, Self::Error> {
-        let index = self.len()?;
-        let key = self.fetch_key(index)?;
+        let len = self.len()?;
+        let new_key = self.fetch_key(len)?;
         let txn = WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         {
-            lmdb_insert::<i64, T>(&txn, &self.db, &key, &item)?;
+            lmdb_insert::<i64, T>(&txn, &self.db, &new_key, &item)?;
         }
         txn.commit().map_err(|e| {
             error!(target: LOG_TARGET, "Lmdb commit failed with: {:?}", e);
             ChainStorageError::AccessError(e.to_string())
         })?;
-        Ok(index)
+        Ok(len)
     }
 
     fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {

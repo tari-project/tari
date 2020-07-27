@@ -23,11 +23,11 @@
 use super::error::HorizonSyncError;
 use crate::{
     base_node::{
-        states::{helpers, BlockSyncInfo, StateEvent, StatusInfo},
+        states::{helpers, helpers::exclude_sync_peer, BlockSyncInfo, StateEvent, StatusInfo},
         BaseNodeStateMachine,
     },
-    blocks::BlockHeader,
     chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, ChainMetadata, MmrTree},
+    iterators::NonOverlappingIntegerPairIter,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -35,24 +35,33 @@ use crate::{
 };
 use croaring::Bitmap;
 use log::*;
-use std::cmp;
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::Hashable;
 use tokio::task::spawn_blocking;
 
 const LOG_TARGET: &str = "c::bn::states::horizon_state_sync";
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HorizonStateSync {
-    network_metadata: ChainMetadata,
-    sync_peers: Vec<NodeId>,
+    pub local_metadata: ChainMetadata,
+    pub network_metadata: ChainMetadata,
+    pub sync_peers: Vec<NodeId>,
+    pub sync_height: u64,
 }
 
 impl HorizonStateSync {
-    pub fn new(network_metadata: ChainMetadata, sync_peers: Vec<NodeId>) -> Self {
+    pub fn new(
+        local_metadata: ChainMetadata,
+        network_metadata: ChainMetadata,
+        sync_peers: Vec<NodeId>,
+        sync_height: u64,
+    ) -> Self
+    {
         Self {
+            local_metadata,
             network_metadata,
             sync_peers,
+            sync_height,
         }
     }
 
@@ -61,172 +70,74 @@ impl HorizonStateSync {
         shared: &mut BaseNodeStateMachine<B>,
     ) -> StateEvent
     {
-        match async_db::get_metadata(shared.db.clone()).await {
-            Ok(local_metadata) => {
-                shared
-                    .set_status_info(StatusInfo::HorizonSync(BlockSyncInfo::new(
-                        self.network_metadata.height_of_longest_chain(),
-                        local_metadata.height_of_longest_chain(),
-                        self.sync_peers.clone(),
-                    )))
-                    .await;
+        shared
+            .set_status_info(StatusInfo::HorizonSync(BlockSyncInfo::new(
+                self.network_metadata.height_of_longest_chain(),
+                self.local_metadata.height_of_longest_chain(),
+                self.sync_peers.clone(),
+            )))
+            .await;
 
-                if !local_metadata.is_pruned_node() {
-                    warn!(
-                        target: LOG_TARGET,
-                        "HorizonStateSync invoked but node is not in pruned mode"
-                    );
-                    return StateEvent::HorizonStateSynchronized;
-                }
+        if !self.local_metadata.is_pruned_node() {
+            warn!(
+                target: LOG_TARGET,
+                "HorizonStateSync invoked but node is not in pruned mode"
+            );
+            return StateEvent::HorizonStateSynchronized;
+        }
 
-                info!(target: LOG_TARGET, "Synchronizing horizon state.");
-                let horizon_sync_height = self.get_horizon_sync_height(&shared, &local_metadata);
-                let local_tip_height = local_metadata.height_of_longest_chain.unwrap_or(0);
-                if local_tip_height >= horizon_sync_height {
-                    debug!(target: LOG_TARGET, "Horizon state already synchronized.");
-                    return StateEvent::HorizonStateSynchronized;
-                }
-                debug!(
-                    target: LOG_TARGET,
-                    "Horizon sync starting to height {}", horizon_sync_height
-                );
+        info!(
+            target: LOG_TARGET,
+            "Synchronizing horizon state to height {}. Network tip height is {}.",
+            self.sync_height,
+            self.network_metadata.height_of_longest_chain()
+        );
+        let local_tip_height = self.local_metadata.height_of_longest_chain();
+        if local_tip_height >= self.sync_height {
+            debug!(target: LOG_TARGET, "Horizon state already synchronized.");
+            return StateEvent::HorizonStateSynchronized;
+        }
+        debug!(
+            target: LOG_TARGET,
+            "Horizon sync starting to height {}", self.sync_height
+        );
 
-                let mut horizon_header_sync = HorizonStateSynchronization {
-                    shared,
-                    local_metadata,
-                    sync_peers: &mut self.sync_peers,
-                    horizon_sync_height,
-                };
-                match horizon_header_sync.synchronize().await {
-                    Ok(()) => {
-                        info!(target: LOG_TARGET, "Horizon state has synchronised.");
-                        StateEvent::HorizonStateSynchronized
-                    },
-                    Err(err) => {
-                        warn!(target: LOG_TARGET, "Synchronizing horizon state has failed. {:?}", err);
-                        StateEvent::HorizonStateSyncFailure
-                    },
-                }
+        let mut horizon_header_sync = HorizonStateSynchronization {
+            shared,
+            local_metadata: &self.local_metadata,
+            sync_peers: &mut self.sync_peers,
+            horizon_sync_height: self.sync_height,
+        };
+        match horizon_header_sync.synchronize().await {
+            Ok(()) => {
+                info!(target: LOG_TARGET, "Horizon state has synchronised.");
+                StateEvent::HorizonStateSynchronized
             },
-            Err(err) => StateEvent::FatalError(format!("Unable to retrieve local chain metadata. {:?}", err)),
+            Err(err) => {
+                warn!(target: LOG_TARGET, "Synchronizing horizon state has failed. {:?}", err);
+                StateEvent::HorizonStateSyncFailure
+            },
         }
     }
-
-    // Calculate the target horizon sync height from the horizon height, network tip and a height offset.
-    fn get_horizon_sync_height<B: BlockchainBackend>(
-        &self,
-        shared: &BaseNodeStateMachine<B>,
-        local_metadata: &ChainMetadata,
-    ) -> u64
-    {
-        let network_tip_height = self.network_metadata.height_of_longest_chain.unwrap_or(0);
-        let horizon_height = local_metadata.horizon_block(network_tip_height);
-        let horizon_sync_height_offset = shared.config.horizon_sync_config.horizon_sync_height_offset;
-        cmp::min(horizon_height + horizon_sync_height_offset, network_tip_height)
-    }
-
-    pub fn network_metadata(&self) -> &ChainMetadata {
-        &self.network_metadata
-    }
-
-    pub fn sync_peers(&self) -> &[NodeId] {
-        &self.sync_peers
-    }
 }
 
-impl PartialEq for HorizonStateSync {
-    fn eq(&self, other: &Self) -> bool {
-        self.sync_peers == other.sync_peers && self.network_metadata == other.network_metadata
-    }
-}
-
-struct HorizonStateSynchronization<'a, 'b, B> {
+struct HorizonStateSynchronization<'a, 'b, 'c, B> {
     shared: &'a mut BaseNodeStateMachine<B>,
-    local_metadata: ChainMetadata,
     sync_peers: &'b mut Vec<NodeId>,
+    local_metadata: &'c ChainMetadata,
     horizon_sync_height: u64,
 }
 
-impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
+impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> {
     pub async fn synchronize(&mut self) -> Result<(), HorizonSyncError> {
-        let local_tip_height = self.local_metadata.height_of_longest_chain.unwrap_or(0);
-        debug!(
-            target: LOG_TARGET,
-            "Syncing from height {} to horizon sync height {}.", local_tip_height, self.horizon_sync_height
-        );
-
-        let tip_header = async_db::fetch_tip_header(self.db()).await?;
-        if tip_header.height >= self.horizon_sync_height {
-            return Ok(());
-        }
-
-        // During horizon state syncing the blockchain backend will be in an inconsistent state until the entire horizon
-        // state has been synced. Reset the local chain metadata will limit other nodes and local service from
-        // requesting data while the horizon sync is in progress.
-        trace!(target: LOG_TARGET, "Resetting chain metadata.");
-        self.reset_chain_metadata_to_genesis().await?;
-        trace!(target: LOG_TARGET, "Synchronizing headers");
-        self.synchronize_headers(tip_header.height).await?;
         trace!(target: LOG_TARGET, "Synchronizing kernels");
         self.synchronize_kernels().await?;
         trace!(target: LOG_TARGET, "Check the deletion state of current UTXOs");
-        self.check_state_of_current_utxos(tip_header.height).await?;
+        self.check_state_of_current_utxos().await?;
         trace!(target: LOG_TARGET, "Synchronizing UTXOs and RangeProofs");
         self.synchronize_utxos_and_rangeproofs().await?;
         trace!(target: LOG_TARGET, "Finalizing horizon synchronizing");
         self.finalize_horizon_sync().await?;
-
-        Ok(())
-    }
-
-    async fn synchronize_headers(&mut self, tip_height: u64) -> Result<(), HorizonSyncError> {
-        let config = self.shared.config.horizon_sync_config;
-
-        let block_height_range = ((tip_height + 1)..=self.horizon_sync_height).collect::<Vec<_>>();
-        for block_nums in block_height_range.chunks(config.header_request_size) {
-            for attempt in 1..=config.max_sync_request_retry_attempts {
-                let (headers, sync_peer) = helpers::request_headers(
-                    LOG_TARGET,
-                    self.shared,
-                    self.sync_peers,
-                    block_nums,
-                    self.shared.config.horizon_sync_config.max_header_request_retry_attempts,
-                )
-                .await?;
-
-                match self.validate_and_insert_headers(block_nums, headers).await {
-                    Ok(_) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Headers successfully added to database: {:?}",
-                            block_nums
-                        );
-                        break;
-                    },
-                    Err(err @ HorizonSyncError::EmptyResponse) |
-                    Err(err @ HorizonSyncError::IncorrectResponse) |
-                    Err(err @ HorizonSyncError::InvalidHeader(_)) => {
-                        warn!(target: LOG_TARGET, "Peer `{}`: {}", sync_peer, err);
-                        debug!(
-                            target: LOG_TARGET,
-                            "Banning peer {} from local node, because they supplied an invalid response", sync_peer
-                        );
-                        self.ban_sync_peer(sync_peer).await?;
-                    },
-                    // Fatal
-                    Err(e) => return Err(e),
-                }
-
-                if attempt == config.max_sync_request_retry_attempts {
-                    debug!(target: LOG_TARGET, "Reached maximum ({}) attempts", attempt);
-                    return Err(HorizonSyncError::MaxSyncAttemptsReached);
-                }
-                debug!(
-                    target: LOG_TARGET,
-                    "Retrying header sync. Attempt {} of {}", attempt, config.max_sync_request_retry_attempts
-                );
-            }
-        }
 
         Ok(())
     }
@@ -242,7 +153,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
             self.sync_peers,
             MmrTree::Kernel,
             self.horizon_sync_height,
-            config.max_mmr_node_request_retry_attempts,
+            config.max_sync_request_retry_attempts,
         )
         .await?;
 
@@ -253,13 +164,19 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
 
         debug!(
             target: LOG_TARGET,
-            "Requesting kernels from peers between {} and {}", local_num_kernels, remote_num_kernels
+            "Requesting kernels from {} to {}",
+            local_num_kernels,
+            remote_num_kernels - 1
         );
-        let kernel_num_range = (local_num_kernels..remote_num_kernels).collect::<Vec<_>>();
-        for indices in kernel_num_range.chunks(config.mmr_node_or_utxo_request_size) {
-            for attempt in 1..=config.max_sync_request_retry_attempts {
-                let pos = indices.first().cloned().unwrap_or(0);
-                let count = indices.len() as u32;
+
+        let chunks = self.chunked_count_iter(
+            local_num_kernels,
+            remote_num_kernels,
+            config.max_utxo_mmr_node_request_size,
+        );
+        for (pos, count) in chunks {
+            let num_sync_peers = self.sync_peers.len();
+            for attempt in 1..=num_sync_peers {
                 let (kernel_hashes, _, sync_peer1) = helpers::request_mmr_nodes(
                     LOG_TARGET,
                     self.shared,
@@ -268,7 +185,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
                     pos,
                     count,
                     self.horizon_sync_height,
-                    config.max_mmr_node_request_retry_attempts,
+                    config.max_sync_request_retry_attempts,
                 )
                 .await?;
                 let (kernels, sync_peer2) = helpers::request_kernels(
@@ -276,17 +193,19 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
                     self.shared,
                     self.sync_peers,
                     kernel_hashes.clone(),
-                    config.max_kernel_request_retry_attempts,
+                    config.max_sync_request_retry_attempts,
                 )
                 .await?;
 
-                match self.validate_kernels(&kernel_hashes, &kernels) {
+                match self.validate_kernel_response(&kernel_hashes, &kernels) {
                     Ok(_) => {
+                        let num_kernels = kernels.len();
                         async_db::insert_kernels(self.db(), kernels).await?;
+                        async_db::create_mmr_checkpoint(self.db(), MmrTree::Kernel).await?;
                         trace!(
                             target: LOG_TARGET,
-                            "Kernels successfully added to database: {:?}",
-                            kernel_hashes
+                            "{} kernels successfully added to database",
+                            num_kernels
                         );
                         break;
                     },
@@ -308,12 +227,32 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
                     target: LOG_TARGET,
                     "Retrying kernel sync. Attempt {} of {}", attempt, config.max_sync_request_retry_attempts
                 );
-                if attempt == config.max_sync_request_retry_attempts {
+                if attempt == num_sync_peers {
                     return Err(HorizonSyncError::MaxSyncAttemptsReached);
                 }
             }
         }
+
+        self.validate_mmr_root(MmrTree::Kernel).await?;
+
         Ok(())
+    }
+
+    async fn validate_mmr_root(&self, tree: MmrTree) -> Result<(), HorizonSyncError> {
+        debug!(target: LOG_TARGET, "Validating {} MMR root", tree);
+        if async_db::validate_merkle_root(self.db(), MmrTree::Kernel, self.horizon_sync_height).await? {
+            debug!(
+                target: LOG_TARGET,
+                "{} MMR root is VALID at height {}", tree, self.horizon_sync_height
+            );
+            Ok(())
+        } else {
+            warn!(
+                target: LOG_TARGET,
+                "{} MMR root is INVALID at height {}", tree, self.horizon_sync_height
+            );
+            Err(HorizonSyncError::InvalidMmrRoot(tree))
+        }
     }
 
     async fn ban_sync_peer(&mut self, sync_peer: NodeId) -> Result<(), HorizonSyncError> {
@@ -328,14 +267,21 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
         Ok(())
     }
 
-    async fn check_state_of_current_utxos(&mut self, local_tip_height: u64) -> Result<(), HorizonSyncError> {
+    // Checks if any existing UTXOs in the local database have been spent according to the remote state
+    async fn check_state_of_current_utxos(&mut self) -> Result<(), HorizonSyncError> {
         let config = self.shared.config.horizon_sync_config;
+        let local_tip_height = self.local_metadata.height_of_longest_chain();
         let local_num_utxo_nodes = async_db::fetch_mmr_node_count(self.db(), MmrTree::Utxo, local_tip_height).await?;
-        let range = (0..local_num_utxo_nodes).collect::<Vec<_>>();
-        for indices in range.chunks(config.mmr_node_or_utxo_request_size) {
-            for attempt in 1..=config.max_sync_request_retry_attempts {
-                let pos = indices.first().cloned().unwrap_or(0);
-                let count = indices.len() as u32;
+
+        debug!(
+            target: LOG_TARGET,
+            "Checking current utxo state between {} and {}", 0, local_num_utxo_nodes
+        );
+
+        let chunks = self.chunked_count_iter(0, local_num_utxo_nodes, config.max_utxo_mmr_node_request_size);
+        for (pos, count) in chunks {
+            let num_sync_peers = self.sync_peers.len();
+            for attempt in 1..=num_sync_peers {
                 let (remote_utxo_hashes, remote_utxo_deleted, sync_peer) = helpers::request_mmr_nodes(
                     LOG_TARGET,
                     self.shared,
@@ -344,7 +290,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
                     pos,
                     count,
                     self.horizon_sync_height,
-                    config.max_mmr_node_request_retry_attempts,
+                    config.max_sync_request_retry_attempts,
                 )
                 .await?;
                 let (local_utxo_hashes, local_utxo_bitmap_bytes) = self
@@ -354,43 +300,49 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
                     .await?;
                 let local_utxo_deleted = Bitmap::deserialize(&local_utxo_bitmap_bytes);
 
-                match self.validate_utxo_hashes(&remote_utxo_hashes, &local_utxo_hashes) {
+                match self.validate_utxo_hashes_response(&remote_utxo_hashes, &local_utxo_hashes) {
                     Ok(_) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Existing UTXOs is being checked and updated: {:?}",
-                            local_utxo_hashes
-                        );
+                        let num_hashes = local_utxo_hashes.len();
+                        let mut num_deleted = 0u32;
                         for (index, utxo_hash) in local_utxo_hashes.into_iter().enumerate() {
-                            let local_deleted = local_utxo_deleted.contains(index as u32);
-                            let remote_deleted = remote_utxo_deleted.contains(index as u32);
+                            let local_deleted = local_utxo_deleted.contains(pos + index as u32);
+                            let remote_deleted = remote_utxo_deleted.contains(pos + index as u32);
                             if remote_deleted && !local_deleted {
-                                async_db::delete_mmr_node(self.db(), MmrTree::Utxo, utxo_hash).await?;
+                                async_db::delete_mmr_node(self.db(), MmrTree::Utxo, utxo_hash.clone()).await?;
+                                async_db::spend_utxo(self.db(), utxo_hash).await?;
+                                num_deleted += 1;
                             }
                         }
+
+                        debug!(
+                            target: LOG_TARGET,
+                            "Checked {} existing UTXO(s). {} were spent.", num_hashes, num_deleted
+                        );
 
                         break;
                     },
                     Err(err @ HorizonSyncError::IncorrectResponse) => {
-                        // TODO: not sure you can ban here as the local node might have the incorrect chain.
                         warn!(
                             target: LOG_TARGET,
                             "Invalid UTXO hashes received from peer `{}`: {}", sync_peer, err
                         );
+                        // Exclude the peer (without banning) as they could be on the wrong chain
+                        exclude_sync_peer(LOG_TARGET, self.sync_peers, sync_peer)?;
                     },
                     Err(e) => return Err(e),
                 };
                 debug!(target: LOG_TARGET, "Retrying UTXO state check. Attempt {}", attempt);
-                if attempt == config.max_sync_request_retry_attempts {
+                if attempt == num_sync_peers {
                     return Err(HorizonSyncError::MaxSyncAttemptsReached);
                 }
             }
         }
+
         Ok(())
     }
 
-    // Synchronize UTXO MMR Nodes, RangeProof MMR Nodes and the UTXO set upto the horizon sync height from remote sync
-    // peers.
+    // Synchronize UTXO MMR Nodes, RangeProof MMR Nodes and the UTXO set upto the horizon sync height from
+    // remote sync peers.
     async fn synchronize_utxos_and_rangeproofs(&mut self) -> Result<(), HorizonSyncError> {
         let config = self.shared.config.horizon_sync_config;
         let local_num_utxo_nodes =
@@ -401,17 +353,22 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
             self.sync_peers,
             MmrTree::Utxo,
             self.horizon_sync_height,
-            config.max_mmr_node_request_retry_attempts,
+            config.max_sync_request_retry_attempts,
         )
         .await?;
+        debug!(
+            target: LOG_TARGET,
+            "Synchronizing UTXO MMR nodes from {} to {}", local_num_utxo_nodes, remote_num_utxo_nodes
+        );
 
-        for indices in (local_num_utxo_nodes..remote_num_utxo_nodes)
-            .collect::<Vec<u32>>()
-            .chunks(config.mmr_node_or_utxo_request_size)
-        {
-            for attempt in 1..=config.max_sync_request_retry_attempts {
-                let pos = indices.first().cloned().unwrap_or(0);
-                let count = indices.len() as u32;
+        let chunks = self.chunked_count_iter(
+            local_num_utxo_nodes,
+            remote_num_utxo_nodes,
+            config.max_utxo_mmr_node_request_size,
+        );
+        for (pos, count) in chunks {
+            let num_sync_peers = self.sync_peers.len();
+            for attempt in 1..=num_sync_peers {
                 let (utxo_hashes, utxo_bitmap, sync_peer1) = helpers::request_mmr_nodes(
                     LOG_TARGET,
                     self.shared,
@@ -420,7 +377,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
                     pos,
                     count,
                     self.horizon_sync_height,
-                    config.max_mmr_node_request_retry_attempts,
+                    config.max_sync_request_retry_attempts,
                 )
                 .await?;
                 let (rp_hashes, _, sync_peer2) = helpers::request_mmr_nodes(
@@ -431,7 +388,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
                     pos,
                     count,
                     self.horizon_sync_height,
-                    config.max_mmr_node_request_retry_attempts,
+                    config.max_sync_request_retry_attempts,
                 )
                 .await?;
 
@@ -440,25 +397,33 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
                 let mut request_rp_hashes = Vec::new();
                 let mut is_stxos = Vec::with_capacity(utxo_hashes.len());
                 for index in 0..utxo_hashes.len() {
-                    let deleted = utxo_bitmap.contains(index as u32 + 1);
+                    let deleted = utxo_bitmap.contains(pos + index as u32);
                     is_stxos.push(deleted);
                     if !deleted {
                         request_utxo_hashes.push(utxo_hashes[index].clone());
                         request_rp_hashes.push(rp_hashes[index].clone());
                     }
                 }
+
                 // Download a partial UTXO set
                 let (mut utxos, sync_peer3) = helpers::request_txos(
                     LOG_TARGET,
                     self.shared,
                     self.sync_peers,
                     &request_utxo_hashes,
-                    config.max_txo_request_retry_attempts,
+                    config.max_sync_request_retry_attempts,
                 )
                 .await?;
 
+                debug!(
+                    target: LOG_TARGET,
+                    "Fetched {} UTXOs ({} were not downloaded because they are spent)",
+                    utxos.len(),
+                    is_stxos.iter().filter(|x| **x).count()
+                );
+
                 let db = &self.shared.db;
-                match self.validate_utxos_and_rangeproofs(
+                match self.validate_utxo_and_rangeproof_response(
                     &utxo_hashes,
                     &rp_hashes,
                     &request_utxo_hashes,
@@ -466,17 +431,12 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
                     &utxos,
                 ) {
                     Ok(_) => {
-                        // The order of these inserts are important to ensure the MMRs are constructed correctly and the
-                        // roots match.
+                        // The order of these inserts are important to ensure the MMRs are constructed correctly
+                        // and the roots match.
                         for (index, is_stxo) in is_stxos.into_iter().enumerate() {
                             if is_stxo {
-                                async_db::insert_mmr_node(
-                                    db.clone(),
-                                    MmrTree::Utxo,
-                                    utxo_hashes[index].clone(),
-                                    is_stxo,
-                                )
-                                .await?;
+                                async_db::insert_mmr_node(db.clone(), MmrTree::Utxo, utxo_hashes[index].clone(), true)
+                                    .await?;
                                 async_db::insert_mmr_node(
                                     db.clone(),
                                     MmrTree::RangeProof,
@@ -485,14 +445,18 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
                                 )
                                 .await?;
                             } else {
-                                // Inserting the UTXO will also insert the corresponding UTXO and RangeProof MMR Nodes.
+                                // Inserting the UTXO will also insert the corresponding UTXO and RangeProof MMR
+                                // Nodes.
                                 async_db::insert_utxo(db.clone(), utxos.remove(0)).await?;
                             }
                         }
+
+                        async_db::create_mmr_checkpoint(self.db(), MmrTree::Utxo).await?;
+                        async_db::create_mmr_checkpoint(self.db(), MmrTree::RangeProof).await?;
                         trace!(
                             target: LOG_TARGET,
-                            "UTXOs and MMR nodes inserted into database: {:?}",
-                            utxo_hashes
+                            "{} UTXOs with MMR nodes inserted into database",
+                            utxo_hashes.len()
                         );
 
                         break;
@@ -517,27 +481,72 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
                 };
 
                 debug!(target: LOG_TARGET, "Retrying kernel sync. Attempt {}", attempt);
-                if attempt == config.max_sync_request_retry_attempts {
+                if attempt == num_sync_peers {
                     return Err(HorizonSyncError::MaxSyncAttemptsReached);
                 }
             }
         }
+
+        self.validate_mmr_root(MmrTree::Utxo).await?;
+        self.validate_mmr_root(MmrTree::RangeProof).await?;
         Ok(())
     }
 
-    // Finalize the horizon state synchronization by setting the chain metadata to the local tip and committing the
-    // horizon state to the blockchain backend.
+    // Finalize the horizon state synchronization by setting the chain metadata to the local tip and committing
+    // the horizon state to the blockchain backend.
     async fn finalize_horizon_sync(&self) -> Result<(), HorizonSyncError> {
-        // TODO: Perform final validation on full synced horizon state before committing horizon state checkpoint.
-        // TODO: Verify header and kernel set using Mmr Roots
+        let validator = self.shared.sync_validators.final_state.clone();
+        let horizon_sync_height = self.horizon_sync_height;
+        let validation_result = spawn_blocking(move || {
+            validator
+                .validate(&horizon_sync_height)
+                .map_err(HorizonSyncError::FinalStateValidationFailed)
+        })
+        .await?;
 
-        async_db::commit_horizon_state(self.db()).await?;
+        match validation_result {
+            Ok(_) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Horizon state validation succeeded! Committing horizon state."
+                );
+                async_db::commit_horizon_state(self.db()).await?;
+                Ok(())
+            },
+            Err(err) => {
+                debug!(target: LOG_TARGET, "Horizon state validation failed! Resetting state.");
 
+                if let Err(err) = self.reset_state().await {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to reset horizon state to height {}: {}. **The blockchain is in an invalid state**",
+                        0,
+                        err
+                    );
+                }
+                Err(err)
+            },
+        }
+    }
+
+    async fn reset_state(&self) -> Result<(), HorizonSyncError> {
+        error!(
+            target: LOG_TARGET,
+            "Horizon state sync has failed and the database is in an inconsistent state. Reverting the database to \
+             the last consistent state is not yet implemented."
+        );
+        // TODO: Revert the db back to the last good state, something like
+        // async_db::revert_horizon_state(
+        //     self.db(),
+        //     self.good_state.utxo_node_count,
+        //     self.good_state.kernel_node_count,
+        //     self.deleted_utxos // (bitmap)
+        // );
         Ok(())
     }
 
     // Validate the received UTXO set and, UTXO and RangeProofs MMR nodes.
-    fn validate_utxos_and_rangeproofs(
+    fn validate_utxo_and_rangeproof_response(
         &self,
         utxo_hashes: &[HashOutput],
         rp_hashes: &[HashOutput],
@@ -546,9 +555,6 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
         utxos: &[TransactionOutput],
     ) -> Result<(), HorizonSyncError>
     {
-        if utxo_hashes.is_empty() | rp_hashes.is_empty() | utxos.is_empty() {
-            return Err(HorizonSyncError::EmptyResponse);
-        }
         // Check if the same number of utxo and rp MMR nodes returned
         if utxo_hashes.len() != rp_hashes.len() {
             return Err(HorizonSyncError::IncorrectResponse);
@@ -572,7 +578,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
     }
 
     // Validate the received UTXO set and, UTXO and RangeProofs MMR nodes.
-    fn validate_utxo_hashes(
+    fn validate_utxo_hashes_response(
         &self,
         local_utxo_hashes: &[HashOutput],
         remote_utxo_hashes: &[HashOutput],
@@ -592,7 +598,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
     }
 
     // Check the received set of kernels.
-    fn validate_kernels(
+    fn validate_kernel_response(
         &self,
         kernel_hashes: &[HashOutput],
         kernels: &[TransactionKernel],
@@ -614,88 +620,18 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
         {
             return Err(HorizonSyncError::IncorrectResponse);
         }
-        Ok(())
-    }
 
-    // Check the received set of headers.
-    async fn validate_and_insert_headers(
-        &self,
-        block_nums: &[u64],
-        headers: Vec<BlockHeader>,
-    ) -> Result<(), HorizonSyncError>
-    {
-        if headers.is_empty() {
-            return Err(HorizonSyncError::EmptyResponse);
+        for k in kernels {
+            k.verify_signature()?;
         }
-        // Check that the received headers are the requested headers
-        if (0..block_nums.len()).any(|i| headers[i].height != block_nums[i]) {
-            return Err(HorizonSyncError::IncorrectResponse);
-        }
-        // Check that header set forms a sequence
-        for index in 1..headers.len() {
-            let prev_header = &headers[index - 1];
-            let curr_header = &headers[index];
-            if prev_header.height + 1 != curr_header.height {
-                return Err(HorizonSyncError::InvalidHeader(format!(
-                    "Headers heights are not in sequence. (Previous height: {}, Current height: {})",
-                    prev_header.height, curr_header.height
-                )));
-            }
-            if curr_header.prev_hash != prev_header.hash() {
-                return Err(HorizonSyncError::InvalidHeader(
-                    "Headers do not form a chain.".to_string(),
-                ));
-            }
-        }
-        // Check that the first header is linked to the chain tip header
-        assert_eq!(
-            headers.is_empty(),
-            false,
-            "validate_headers: headers.is_empty() assertion failed"
-        );
-        let first_header = &headers[0];
-        let db = &self.shared.db;
-        let tip_header = async_db::fetch_tip_header(db.clone()).await?;
-        if tip_header.height + 1 != first_header.height {
-            return Err(HorizonSyncError::InvalidHeader(format!(
-                "Headers do not link to the current chain tip header (Tip height = {}, Received header height = {})",
-                tip_header.height, first_header.height
-            )));
-        }
-        if first_header.prev_hash != tip_header.hash() {
-            return Err(HorizonSyncError::InvalidHeader(
-                "Headers do not form a chain from the current tip.".to_string(),
-            ));
-        }
-
-        // Validate and insert each header
-        let validator = self.shared.horizon_sync_validators.header.clone();
-        let db = self.db();
-        spawn_blocking(move || -> Result<(), HorizonSyncError> {
-            for header in headers {
-                validator
-                    .validate(&header)
-                    .map_err(HorizonSyncError::HeaderValidationFailed)?;
-                db.insert_valid_headers(vec![header])?;
-            }
-            Ok(())
-        })
-        .await
-        .map_err(HorizonSyncError::JoinError)??;
 
         Ok(())
     }
 
-    // Reset the chain metadata to the genesis block while in horizon sync mode. The chain metadata will be restored to
-    // the latest data once the horizon sync has been finalized.
-    async fn reset_chain_metadata_to_genesis(&self) -> Result<(), HorizonSyncError> {
-        let genesis_header = async_db::fetch_header(self.db(), 0).await?;
-        let mut metadata = async_db::get_metadata(self.db()).await?;
-        metadata.height_of_longest_chain = Some(genesis_header.height);
-        metadata.best_block = Some(genesis_header.hash());
-        metadata.accumulated_difficulty = Some(genesis_header.achieved_difficulty());
-        async_db::write_metadata(self.db(), metadata).await?;
-        Ok(())
+    fn chunked_count_iter(&self, start: u32, end: u32, chunk_size: usize) -> impl Iterator<Item = (u32, u32)> {
+        NonOverlappingIntegerPairIter::new(start, end, chunk_size)
+                    // Convert (start, end) into (start, count)
+                    .map(|(pos, end)| (pos, end - pos + 1))
     }
 
     #[inline]

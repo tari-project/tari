@@ -20,45 +20,28 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// The selected horizon block height might be similar to other pruned nodes resulting in spent UTXOs being discarded
-// before the horizon sync has completed. A height offset is used to help with this problem by selecting a future height
-// after the current horizon block height.
-const HORIZON_SYNC_HEIGHT_OFFSET: u64 = 50;
-// The maximum number of retry attempts a node can perform a request from remote nodes.
-const MAX_SYNC_REQUEST_RETRY_ATTEMPTS: usize = 3;
-const MAX_HEADER_REQUEST_RETRY_ATTEMPTS: usize = 5;
-const MAX_MMR_NODE_REQUEST_RETRY_ATTEMPTS: usize = 5;
-const MAX_KERNEL_REQUEST_RETRY_ATTEMPTS: usize = 5;
-const MAX_TXO_REQUEST_RETRY_ATTEMPTS: usize = 5;
-// The number of headers that can be requested in a single query.
-const HEADER_REQUEST_SIZE: usize = 100;
-// The number of MMR nodes or UTXOs that can be requested in a single query.
-const MMR_NODE_OR_UTXO_REQUEST_SIZE: usize = 1000;
-
 /// Configuration for the Horizon State Synchronization.
 #[derive(Clone, Copy)]
 pub struct HorizonSyncConfig {
+    /// The selected horizon block height might be similar to other pruned nodes resulting in spent UTXOs being
+    /// discarded before the horizon sync has completed. A height offset is used to help with this problem by
+    /// selecting a future height after the current horizon block height.
     pub horizon_sync_height_offset: u64,
+    /// The maximum number of retry attempts a node can perform a request from remote nodes.
     pub max_sync_request_retry_attempts: usize,
-    pub max_header_request_retry_attempts: usize,
-    pub max_mmr_node_request_retry_attempts: usize,
-    pub max_kernel_request_retry_attempts: usize,
-    pub max_txo_request_retry_attempts: usize,
-    pub header_request_size: usize,
-    pub mmr_node_or_utxo_request_size: usize,
+    /// The maximum number of kernel MMR nodes and kernels that can be requested in a single query.
+    pub max_kernel_mmr_node_request_size: usize,
+    /// The maximum number of UTXO MMR nodes, range proof MMR nodes and UTXOs that can be requested in a single query.
+    pub max_utxo_mmr_node_request_size: usize,
 }
 
 impl Default for HorizonSyncConfig {
     fn default() -> Self {
         Self {
-            horizon_sync_height_offset: HORIZON_SYNC_HEIGHT_OFFSET,
-            max_sync_request_retry_attempts: MAX_SYNC_REQUEST_RETRY_ATTEMPTS,
-            max_header_request_retry_attempts: MAX_HEADER_REQUEST_RETRY_ATTEMPTS,
-            max_mmr_node_request_retry_attempts: MAX_MMR_NODE_REQUEST_RETRY_ATTEMPTS,
-            max_kernel_request_retry_attempts: MAX_KERNEL_REQUEST_RETRY_ATTEMPTS,
-            max_txo_request_retry_attempts: MAX_TXO_REQUEST_RETRY_ATTEMPTS,
-            header_request_size: HEADER_REQUEST_SIZE,
-            mmr_node_or_utxo_request_size: MMR_NODE_OR_UTXO_REQUEST_SIZE,
+            horizon_sync_height_offset: 50,
+            max_sync_request_retry_attempts: 5,
+            max_kernel_mmr_node_request_size: 1000,
+            max_utxo_mmr_node_request_size: 1000,
         }
     }
 }

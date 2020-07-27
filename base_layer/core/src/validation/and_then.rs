@@ -20,14 +20,49 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod config;
-pub use self::config::HorizonSyncConfig;
+use crate::validation::{StatelessValidation, ValidationError};
 
-mod error;
-pub use error::HorizonSyncError;
+pub struct AndThenValidator<T, U> {
+    first: T,
+    second: U,
+}
 
-mod validators;
-pub use validators::{HorizonHeadersValidator, HorizonSyncValidators};
+impl<T, U> AndThenValidator<T, U> {
+    pub fn new(first: T, second: U) -> Self {
+        Self { first, second }
+    }
+}
 
-mod state_sync;
-pub use state_sync::HorizonStateSync;
+impl<T, U, I> StatelessValidation<I> for AndThenValidator<T, U>
+where
+    T: StatelessValidation<I>,
+    U: StatelessValidation<I>,
+{
+    fn validate(&self, item: &I) -> Result<(), ValidationError> {
+        self.first.validate(item)?;
+        self.second.validate(item)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::validation::mocks::MockValidator;
+
+    #[test]
+    fn validation_succeeds() {
+        let validator = AndThenValidator::new(MockValidator::new(true), MockValidator::new(true));
+        validator.validate(&1).unwrap();
+    }
+
+    #[test]
+    fn validation_fails() {
+        let validator = AndThenValidator::new(MockValidator::new(false), MockValidator::new(true));
+        validator.validate(&1).unwrap_err();
+        let validator = AndThenValidator::new(MockValidator::new(true), MockValidator::new(false));
+        validator.validate(&1).unwrap_err();
+        let validator = AndThenValidator::new(MockValidator::new(false), MockValidator::new(false));
+        validator.validate(&1).unwrap_err();
+    }
+}

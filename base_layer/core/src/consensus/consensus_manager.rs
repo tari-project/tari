@@ -67,7 +67,7 @@ impl ConsensusManager {
         match self.inner.network {
             Network::MainNet => get_mainnet_genesis_block(),
             Network::Rincewind => get_rincewind_genesis_block(),
-            Network::LocalNet => (self.inner.gen_block.clone().unwrap_or_else(get_rincewind_genesis_block)),
+            Network::LocalNet => self.inner.gen_block.clone().unwrap_or_else(get_rincewind_genesis_block),
         }
     }
 
@@ -76,7 +76,12 @@ impl ConsensusManager {
         match self.inner.network {
             Network::MainNet => get_mainnet_block_hash(),
             Network::Rincewind => get_rincewind_block_hash(),
-            Network::LocalNet => (self.inner.gen_block.clone().unwrap_or_else(get_rincewind_genesis_block)).hash(),
+            Network::LocalNet => self
+                .inner
+                .gen_block
+                .clone()
+                .unwrap_or_else(get_rincewind_genesis_block)
+                .hash(),
         }
     }
 

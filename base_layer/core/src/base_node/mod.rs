@@ -44,6 +44,11 @@ pub mod service;
 mod state_machine;
 #[cfg(feature = "base_node")]
 pub mod states;
+#[cfg(feature = "base_node")]
+mod validators;
+#[cfg(feature = "base_node")]
+pub use validators::{ChainBalanceValidator, HeaderValidator, SyncValidators};
+
 // Public re-exports
 #[cfg(feature = "base_node")]
 pub use comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface};

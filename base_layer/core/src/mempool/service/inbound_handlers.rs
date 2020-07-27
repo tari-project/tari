@@ -119,12 +119,12 @@ where T: BlockchainBackend + 'static
         exclude_peers: Vec<NodeId>,
     ) -> Result<TxStorageResponse, MempoolServiceError>
     {
-        let kernel_excess_sig = tx.body.kernels()[0].excess_sig.get_signature().to_hex();
         trace!(target: LOG_TARGET, "submit_transaction: {}.", tx);
         let tx_storage =
             async_mempool::has_tx_with_excess_sig(self.mempool.clone(), tx.body.kernels()[0].excess_sig.clone())
                 .await?;
 
+        let kernel_excess_sig = tx.body.kernels()[0].excess_sig.get_signature().to_hex();
         if tx_storage.is_stored() {
             debug!(
                 target: LOG_TARGET,

@@ -48,7 +48,7 @@ pub enum ChainStorageError {
     CriticalError(String),
     #[error("Cannot return data for requests older than the current pruning horizon")]
     BeyondPruningHorizon,
-    #[error("A parameter to the request was invalid")]
+    #[error("An invalid query was attempted: {0}")]
     InvalidQuery(String),
     #[error("The requested {entity} was not found via {field}:{value} in the database")]
     ValueNotFound {

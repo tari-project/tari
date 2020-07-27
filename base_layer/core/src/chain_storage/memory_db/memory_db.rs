@@ -54,7 +54,7 @@ use std::{
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 use tari_mmr::{
-    functions::{prune_mutable_mmr, PrunedMutableMmr},
+    functions::{calculate_pruned_mmr_root, prune_mutable_mmr, PrunedMutableMmr},
     ArrayLike,
     ArrayLikeExt,
     Hash as MmrHash,
@@ -63,6 +63,7 @@ use tari_mmr::{
     MerkleProof,
     MmrCache,
     MmrCacheConfig,
+    MutableMmr,
 };
 
 /// A generic struct for storing node objects in the BlockchainDB that also form part of an MMR. The index field makes
@@ -444,7 +445,7 @@ where D: Digest + Send + Sync
 
     fn fetch_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
         let db = self.db_access()?;
-        let tip_height = db.headers.len().saturating_sub(1) as u64;
+        let tip_height = db.headers.len() as u64;
         let pruned_mode = self.fetch_metadata()?.is_pruned_node();
         match tree {
             MmrTree::Kernel => fetch_checkpoint(&db.kernel_checkpoints, pruned_mode, tip_height, height),
@@ -509,7 +510,7 @@ where D: Digest + Send + Sync
     {
         let mut leaf_nodes = Vec::<(Vec<u8>, bool)>::with_capacity(count as usize);
         for pos in pos..pos + count {
-            leaf_nodes.push(self.fetch_mmr_node(tree.clone(), pos, hist_height)?);
+            leaf_nodes.push(self.fetch_mmr_node(tree, pos, hist_height)?);
         }
         Ok(leaf_nodes)
     }
@@ -660,6 +661,54 @@ where D: Digest + Send + Sync
             .into_iter()
             .collect::<Vec<(EpochTime, Difficulty)>>())
     }
+
+    fn count_utxos(&self) -> Result<usize, ChainStorageError> {
+        let db = self.db_access()?;
+        Ok(db.utxos.len())
+    }
+
+    fn count_kernels(&self) -> Result<usize, ChainStorageError> {
+        let db = self.db_access()?;
+        Ok(db.kernels.len())
+    }
+
+    fn validate_merkle_root(&self, tree: MmrTree, height: u64) -> Result<bool, ChainStorageError> {
+        let db = self.db_access()?;
+        let header = db.headers.get(&height).ok_or_else(|| {
+            ChainStorageError::InvalidQuery(format!(
+                "Requested header at height {} was not found when validating {} merkle root",
+                height, tree
+            ))
+        })?;
+
+        match tree {
+            MmrTree::Utxo => validate_merkle_root(&db.utxo_mmr, &db.curr_utxo_checkpoint, &header.output_mr),
+            MmrTree::Kernel => validate_merkle_root(&db.kernel_mmr, &db.curr_kernel_checkpoint, &header.kernel_mr),
+            MmrTree::RangeProof => validate_merkle_root(
+                &db.range_proof_mmr,
+                &db.curr_range_proof_checkpoint,
+                &header.range_proof_mr,
+            ),
+        }
+    }
+}
+
+fn validate_merkle_root<D, B>(
+    mmr: &MutableMmr<D, B>,
+    current_cp: &MerkleCheckPoint,
+    expected_mr: &BlockHash,
+) -> Result<bool, ChainStorageError>
+where
+    D: Digest,
+    B: ArrayLike<Value = Hash>,
+{
+    let mmr = prune_mutable_mmr(&mmr)?;
+    let root = calculate_pruned_mmr_root(
+        &mmr,
+        current_cp.nodes_added().clone(),
+        current_cp.nodes_deleted().to_vec(),
+    )?;
+    Ok(expected_mr == &root)
 }
 
 impl<D> Clone for MemoryDatabase<D>
@@ -791,10 +840,12 @@ fn fetch_checkpoint(
     height: u64,
 ) -> Result<Option<MerkleCheckPoint>, ChainStorageError>
 {
-    let last_cp_index = checkpoints.len()?.saturating_sub(1);
-    let height_offset = tip_height
+    let tip_index = tip_height.saturating_sub(1);
+    let height_offset = tip_index
         .checked_sub(height)
         .ok_or_else(|| ChainStorageError::OutOfRange)?;
+
+    let last_cp_index = checkpoints.len()?.saturating_sub(1);
     let index = last_cp_index
         .checked_sub(height_offset as usize)
         .ok_or_else(|| ChainStorageError::BeyondPruningHorizon)?;
@@ -852,8 +903,8 @@ fn rewind_checkpoints(
     Ok(last_cp)
 }
 
-// Attempt to merge the set of oldest checkpoints into the horizon state and return the number of checkpoints that have
-// been merged.
+/// Attempt to merge the set of oldest checkpoints into the horizon state and return the number of checkpoints that have
+/// been merged. If an `offset_height` is specified, the internal offset is set to the given height
 fn merge_checkpoints(
     checkpoints: &mut MemDbVec<MerkleCheckPoint>,
     max_cp_count: usize,
@@ -886,6 +937,7 @@ fn merge_checkpoints(
             return Ok((num_cps_merged, stxo_leaf_indices));
         }
     }
+
     Ok((0, stxo_leaf_indices))
 }
 

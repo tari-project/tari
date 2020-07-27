@@ -22,7 +22,8 @@
 
 use crate::{
     base_node::{comms_interface::CommsInterfaceError, states::block_sync::BlockSyncError},
-    chain_storage::ChainStorageError,
+    chain_storage::{ChainStorageError, MmrTree},
+    transactions::transaction::TransactionError,
     validation::ValidationError,
 };
 use thiserror::Error;
@@ -34,8 +35,6 @@ pub enum HorizonSyncError {
     EmptyResponse,
     #[error("Peer sent an invalid response")]
     IncorrectResponse,
-    #[error("Received invalid headers from peer: {0}")]
-    InvalidHeader(String),
     #[error("Exceeded maximum sync attempts")]
     MaxSyncAttemptsReached,
     #[error("Chain storage error: {0:?}")]
@@ -44,8 +43,12 @@ pub enum HorizonSyncError {
     CommsInterfaceError(#[from] CommsInterfaceError),
     #[error("Block sync error: {0:?}")]
     BlockSyncError(#[from] BlockSyncError),
-    #[error("Header validation failed: {0:?}")]
-    HeaderValidationFailed(ValidationError),
+    #[error("Final state validation failed: {0:?}")]
+    FinalStateValidationFailed(ValidationError),
     #[error("Join error: {0}")]
-    JoinError(#[source] task::JoinError),
+    JoinError(#[from] task::JoinError),
+    #[error("Transaction error: {0:?}")]
+    TransactionError(#[from] TransactionError),
+    #[error("Validation failed for {0} MMR")]
+    InvalidMmrRoot(MmrTree),
 }

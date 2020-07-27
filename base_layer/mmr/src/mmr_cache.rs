@@ -188,7 +188,7 @@ where
             self.create_base_mmr()?;
             self.create_curr_mmr()?;
         } else if cp_count < self.curr_cp_index {
-            // A short checkpoint reorg has occured, and requires the current MMR to be reconstructed.
+            // A short checkpoint reorg has occurred, and requires the current MMR to be reconstructed.
             self.create_curr_mmr()?;
         } else if cp_count > self.curr_cp_index {
             // The cache has fallen behind and needs to update to the new checkpoint state.

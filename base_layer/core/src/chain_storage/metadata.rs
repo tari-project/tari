@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::tari_utilities::hex::Hex;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ChainMetadata {
     /// The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
     pub height_of_longest_chain: Option<u64>,
@@ -89,6 +89,7 @@ impl ChainMetadata {
     }
 
     /// Returns the height of longest chain.
+    #[inline]
     pub fn height_of_longest_chain(&self) -> u64 {
         self.height_of_longest_chain.unwrap_or_default()
     }

@@ -369,21 +369,14 @@ where T: BlockchainBackend + 'static
                 self.get_target_difficulty(*pow_algo).await?,
             )),
             NodeCommsRequest::FetchMmrNodeCount(tree, height) => {
-                let node_count =
-                    async_db::fetch_mmr_node_count(self.blockchain_db.clone(), tree.clone(), *height).await?;
+                let node_count = async_db::fetch_mmr_node_count(self.blockchain_db.clone(), *tree, *height).await?;
                 Ok(NodeCommsResponse::MmrNodeCount(node_count))
             },
             NodeCommsRequest::FetchMmrNodes(tree, pos, count, hist_height) => {
                 let mut added = Vec::<Vec<u8>>::with_capacity(*count as usize);
                 let mut deleted = Bitmap::create();
-                match async_db::fetch_mmr_nodes(
-                    self.blockchain_db.clone(),
-                    tree.clone(),
-                    *pos,
-                    *count,
-                    Some(*hist_height),
-                )
-                .await
+                match async_db::fetch_mmr_nodes(self.blockchain_db.clone(), *tree, *pos, *count, Some(*hist_height))
+                    .await
                 {
                     Ok(mmr_nodes) => {
                         for (index, (leaf_hash, deletion_status)) in mmr_nodes.into_iter().enumerate() {

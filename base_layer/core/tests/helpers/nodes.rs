@@ -36,7 +36,7 @@ use tari_core::{
         LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
     },
-    blocks::{Block, BlockHeader},
+    blocks::Block,
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     mempool::{

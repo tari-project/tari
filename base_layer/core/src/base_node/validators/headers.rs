@@ -25,60 +25,34 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
     proof_of_work::{get_median_timestamp, get_target_difficulty, Difficulty, PowError},
-    validation::{StatelessValidation, StatelessValidator, ValidationError},
+    validation::{StatelessValidation, ValidationError},
 };
 use log::*;
-use std::{fmt, sync::Arc};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, Hashable};
 
-const LOG_TARGET: &str = "c::bn::states::horizon_state_sync::validators";
+const LOG_TARGET: &str = "c::bn::states::horizon_state_sync::headers";
 
-#[derive(Clone)]
-pub struct HorizonSyncValidators {
-    pub header: Arc<StatelessValidator<BlockHeader>>,
-}
-
-impl HorizonSyncValidators {
-    pub fn new<S: StatelessValidation<BlockHeader> + 'static>(header: S) -> Self {
-        Self {
-            header: Arc::new(Box::new(header)),
-        }
-    }
-}
-
-impl fmt::Debug for HorizonSyncValidators {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("HorizonHeaderValidators")
-            .field("header", &"...")
-            .finish()
-    }
-}
-
-pub struct HorizonHeadersValidator<B> {
+pub struct HeaderValidator<B> {
     rules: ConsensusManager,
     db: BlockchainDatabase<B>,
 }
 
-impl<B: BlockchainBackend> HorizonHeadersValidator<B> {
+impl<B: BlockchainBackend> HeaderValidator<B> {
     pub fn new(db: BlockchainDatabase<B>, rules: ConsensusManager) -> Self {
         Self { db, rules }
     }
 }
 
-impl<B: BlockchainBackend> StatelessValidation<BlockHeader> for HorizonHeadersValidator<B> {
+impl<B: BlockchainBackend> StatelessValidation<BlockHeader> for HeaderValidator<B> {
     fn validate(&self, header: &BlockHeader) -> Result<(), ValidationError> {
         let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
-        let tip_header = self
-            .db
-            .fetch_tip_header()
-            .map_err(|e| ValidationError::CustomError(e.to_string()))?;
-        self.check_median_timestamp(header, &tip_header)?;
+        self.check_median_timestamp(header)?;
         trace!(
             target: LOG_TARGET,
             "BlockHeader validation: Median timestamp is ok for {} ",
             &header_id
         );
-        self.check_achieved_and_target_difficulty(header, &tip_header)?;
+        self.check_achieved_and_target_difficulty(header)?;
         trace!(
             target: LOG_TARGET,
             "BlockHeader validation: Achieved difficulty is ok for {} ",
@@ -93,23 +67,18 @@ impl<B: BlockchainBackend> StatelessValidation<BlockHeader> for HorizonHeadersVa
     }
 }
 
-impl<B: BlockchainBackend> HorizonHeadersValidator<B> {
+impl<B: BlockchainBackend> HeaderValidator<B> {
     pub fn is_genesis(&self, block_header: &BlockHeader) -> bool {
         block_header.height == 0 && self.rules.get_genesis_block_hash() == block_header.hash()
     }
 
     /// Calculates the achieved and target difficulties at the specified height and compares them.
-    pub fn check_achieved_and_target_difficulty(
-        &self,
-        block_header: &BlockHeader,
-        tip_header: &BlockHeader,
-    ) -> Result<(), ValidationError>
-    {
+    pub fn check_achieved_and_target_difficulty(&self, block_header: &BlockHeader) -> Result<(), ValidationError> {
         let pow_algo = block_header.pow.pow_algo;
         let target = if self.is_genesis(block_header) {
             Difficulty::from(1)
         } else {
-            let target_difficulties = self.fetch_target_difficulties(block_header, tip_header)?;
+            let target_difficulties = self.fetch_target_difficulties(block_header)?;
 
             let constants = self.rules.consensus_constants();
             get_target_difficulty(
@@ -119,11 +88,11 @@ impl<B: BlockchainBackend> HorizonHeadersValidator<B> {
                 constants.min_pow_difficulty(pow_algo),
                 constants.get_difficulty_max_block_interval(),
             )
-            .or_else(|e| {
-                error!(target: LOG_TARGET, "Validation could not get target difficulty");
-                Err(e)
-            })
-            .map_err(|_| {
+            .map_err(|err| {
+                error!(
+                    target: LOG_TARGET,
+                    "Validation could not get target difficulty: {}", err
+                );
                 ValidationError::BlockHeaderError(BlockHeaderValidationError::ProofOfWorkError(
                     PowError::InvalidProofOfWork,
                 ))
@@ -159,79 +128,28 @@ impl<B: BlockchainBackend> HorizonHeadersValidator<B> {
         Ok(())
     }
 
-    /// This function tests that the block timestamp is greater than the median timestamp at the specified height.
-    pub fn check_median_timestamp(
-        &self,
-        block_header: &BlockHeader,
-        tip_header: &BlockHeader,
-    ) -> Result<(), ValidationError>
-    {
-        if self.is_genesis(block_header) {
-            // Median timestamps check not required for the genesis block header
-            return Ok(());
-        }
-
-        let start_height = block_header
-            .height
-            .saturating_sub(self.rules.consensus_constants().get_median_timestamp_count() as u64);
-
-        if start_height == tip_header.height {
-            return Ok(());
-        }
-
-        let block_nums = (start_height..tip_header.height).collect();
-        let mut timestamps = self
-            .db
-            .fetch_headers(block_nums)
-            .map_err(|e| ValidationError::CustomError(e.to_string()))?
-            .iter()
-            .map(|h| h.timestamp)
-            .collect::<Vec<_>>();
-        timestamps.push(tip_header.timestamp);
-
-        // TODO: get_median_timestamp incorrectly returns an Option
-        let median_timestamp =
-            get_median_timestamp(timestamps).expect("get_median_timestamp only returns None if `timestamps` is empty");
-
-        if block_header.timestamp < median_timestamp {
-            warn!(
-                target: LOG_TARGET,
-                "Block header timestamp {} is less than median timestamp: {} for block:{}",
-                block_header.timestamp,
-                median_timestamp,
-                block_header.hash().to_hex()
-            );
-            return Err(ValidationError::BlockHeaderError(
-                BlockHeaderValidationError::InvalidTimestamp,
-            ));
-        }
-        Ok(())
-    }
-
-    /// Returns the set of target difficulties for the specified proof of work algorithm.
+    /// Returns the set of target difficulties for the given `BlockHeader`
     fn fetch_target_difficulties(
         &self,
         block_header: &BlockHeader,
-        tip_header: &BlockHeader,
     ) -> Result<Vec<(EpochTime, Difficulty)>, ValidationError>
     {
         let block_window = self.rules.consensus_constants().get_difficulty_block_window();
-        let start_height = tip_header.height.saturating_sub(block_window);
-        if start_height == tip_header.height {
+        let start_height = block_header.height.saturating_sub(block_window);
+        if start_height == block_header.height {
             return Ok(vec![]);
         }
 
         trace!(
             target: LOG_TARGET,
-            "fetch_target_difficulties: tip height = {}, new header height = {}, block window = {}",
-            tip_header.height,
+            "fetch_target_difficulties: new header height = {}, block window = {}",
             block_header.height,
             block_window
         );
 
         let block_window = block_window as usize;
         // TODO: create custom iterator for chunks that does not require a large number of u64s to exist in memory
-        let heights = (0..=tip_header.height).rev().collect::<Vec<_>>();
+        let heights = (0..block_header.height).rev().collect::<Vec<_>>();
         let mut target_difficulties = Vec::with_capacity(block_window);
         for block_nums in heights.chunks(block_window) {
             let headers = self
@@ -268,5 +186,53 @@ impl<B: BlockchainBackend> HorizonHeadersValidator<B> {
             target_difficulties.len()
         );
         Ok(target_difficulties.into_iter().rev().collect())
+    }
+
+    /// This function tests that the block timestamp is greater than the median timestamp at the specified height.
+    pub fn check_median_timestamp(&self, block_header: &BlockHeader) -> Result<(), ValidationError> {
+        if self.is_genesis(block_header) {
+            // Median timestamps check not required for the genesis block header
+            return Ok(());
+        }
+
+        let start_height = block_header
+            .height
+            .saturating_sub(self.rules.consensus_constants().get_median_timestamp_count() as u64);
+
+        if start_height == block_header.height {
+            return Ok(());
+        }
+
+        let block_nums = (start_height..block_header.height).collect();
+        let timestamps = self
+            .db
+            .fetch_headers(block_nums)
+            .map_err(ValidationError::custom_error)?
+            .iter()
+            .map(|h| h.timestamp)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            timestamps.is_empty(),
+            false,
+            "check_median_timestamp: timestamps are empty"
+        );
+
+        let median_timestamp = get_median_timestamp(timestamps)
+            .expect("check_median_timestamp: get_median_timestamp only returns None if `timestamps` is empty");
+
+        if block_header.timestamp < median_timestamp {
+            warn!(
+                target: LOG_TARGET,
+                "Block header timestamp {} is less than median timestamp: {} for block:{}",
+                block_header.timestamp,
+                median_timestamp,
+                block_header.hash().to_hex()
+            );
+            return Err(ValidationError::BlockHeaderError(
+                BlockHeaderValidationError::InvalidTimestamp,
+            ));
+        }
+        Ok(())
     }
 }

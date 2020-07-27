@@ -28,12 +28,12 @@ use crate::{
             BaseNodeState,
             BlockSyncConfig,
             HorizonSyncConfig,
-            HorizonSyncValidators,
             StateEvent,
             StatusInfo,
             SyncPeerConfig,
             SyncStatus,
         },
+        validators::SyncValidators,
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
@@ -80,7 +80,7 @@ pub struct BaseNodeStateMachine<B> {
     pub(super) metadata_event_stream: Subscriber<ChainMetadataEvent>,
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StatusInfo,
-    pub(super) horizon_sync_validators: HorizonSyncValidators,
+    pub(super) sync_validators: SyncValidators,
     status_event_publisher: Publisher<StatusInfo>,
     status_event_subscriber: Subscriber<StatusInfo>,
     event_sender: Publisher<StateEvent>,
@@ -99,7 +99,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         connectivity: ConnectivityRequester,
         metadata_event_stream: Subscriber<ChainMetadataEvent>,
         config: BaseNodeStateMachineConfig,
-        horizon_sync_validators: HorizonSyncValidators,
+        sync_validators: SyncValidators,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -119,7 +119,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             event_receiver,
             status_event_publisher,
             status_event_subscriber,
-            horizon_sync_validators,
+            sync_validators,
         }
     }
 
@@ -129,11 +129,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         use self::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
+            (HeaderSync(s), HeadersSynchronized(local, sync_height)) => HorizonStateSync(
+                states::HorizonStateSync::new(local, s.network_metadata, s.sync_peers, sync_height),
+            ),
+            (HeaderSync(s), HeaderSyncFailure) => Waiting(s.into()),
             // TODO: Simplify block sync and implement From<HorizonStateSync>
             (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(
                 self.config.block_sync_config.sync_strategy,
-                s.network_metadata().clone(),
-                s.sync_peers().to_vec(),
+                s.network_metadata,
+                s.sync_peers,
             ),
             (HorizonStateSync(s), HorizonStateSyncFailure) => Waiting(s.into()),
             (BlockSync(s, _, _), BlocksSynchronized) => Listening(s.into()),
@@ -142,7 +146,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                 BlockSync(self.config.block_sync_config.sync_strategy, network_tip, sync_peers)
             },
             (Listening(_), FallenBehind(LaggingBehindHorizon(network_tip, sync_peers))) => {
-                HorizonStateSync(states::HorizonStateSync::new(network_tip, sync_peers))
+                HeaderSync(states::HeaderSync::new(network_tip, sync_peers))
             },
             (Waiting(s), Continue) => Listening(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
@@ -218,6 +222,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         let shared_state = self;
         match state {
             Starting(s) => s.next_event(shared_state).await,
+            HeaderSync(s) => s.next_event(shared_state).await,
             HorizonStateSync(s) => s.next_event(shared_state).await,
             BlockSync(s, network_tip, sync_peers) => s.next_event(shared_state, network_tip, sync_peers).await,
             Listening(s) => s.next_event(shared_state).await,

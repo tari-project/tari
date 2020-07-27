@@ -65,14 +65,17 @@ pub use events_and_states::{BaseNodeState, StateEvent, StatusInfo, SyncStatus};
 mod forward_block_sync;
 pub use forward_block_sync::ForwardBlockSyncInfo;
 
+mod header_sync;
+pub use header_sync::HeaderSync;
+
 mod helpers;
 pub use helpers::SyncPeerConfig;
 
 mod horizon_state_sync;
-pub use horizon_state_sync::{HorizonHeadersValidator, HorizonStateSync, HorizonSyncConfig, HorizonSyncValidators};
+pub use horizon_state_sync::{HorizonStateSync, HorizonSyncConfig};
 
 mod listening;
-pub use listening::{ListeningData, ListeningInfo};
+pub use listening::{Listening, ListeningInfo};
 
 mod shutdown_state;
 pub use shutdown_state::Shutdown;

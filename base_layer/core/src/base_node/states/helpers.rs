@@ -78,13 +78,13 @@ pub fn select_sync_peer(config: &SyncPeerConfig, sync_peers: &[NodeId]) -> Resul
 }
 
 /// Excluded the provided peer from the sync peers.
-pub async fn exclude_sync_peer(
+pub fn exclude_sync_peer(
     log_target: &str,
     sync_peers: &mut Vec<NodeId>,
     sync_peer: NodeId,
 ) -> Result<(), BlockSyncError>
 {
-    trace!(target: log_target, "Excluding peer ({}) from sync peers.", sync_peer,);
+    trace!(target: log_target, "Excluding peer ({}) from sync peers.", sync_peer);
     sync_peers.retain(|p| *p != sync_peer);
     if sync_peers.is_empty() {
         return Err(BlockSyncError::NoSyncPeers);
@@ -122,7 +122,7 @@ pub async fn ban_sync_peer(
 {
     info!(target: log_target, "Banning peer {} from local node.", sync_peer);
     connectivity.ban_peer(sync_peer.clone(), ban_duration).await?;
-    exclude_sync_peer(log_target, sync_peers, sync_peer).await
+    exclude_sync_peer(log_target, sync_peers, sync_peer)
 }
 
 /// Ban and disconnect entire set of sync peers.
@@ -262,10 +262,13 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
         let sync_peer = select_sync_peer(&config, sync_peers)?;
-        debug!(target: log_target, "Requesting mmr node count from {}.", sync_peer);
+        debug!(
+            target: log_target,
+            "Requesting mmr node count to height {} from {}.", height, sync_peer
+        );
         match shared
             .comms
-            .fetch_mmr_node_count(tree.clone(), height, Some(sync_peer.clone()))
+            .fetch_mmr_node_count(tree, height, Some(sync_peer.clone()))
             .await
         {
             Ok(num_nodes) => {
@@ -327,10 +330,17 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
         let sync_peer = select_sync_peer(&config, sync_peers)?;
-        debug!(target: log_target, "Requesting {} mmr nodes from {}.", count, sync_peer);
+        debug!(
+            target: log_target,
+            "Requesting {} mmr nodes ({}-{}) from {}.",
+            tree,
+            pos,
+            pos + count,
+            sync_peer
+        );
         match shared
             .comms
-            .fetch_mmr_nodes(tree.clone(), pos, count, height, Some(sync_peer.clone()))
+            .fetch_mmr_nodes(tree, pos, count, height, Some(sync_peer.clone()))
             .await
         {
             Ok((added, deleted)) => {
@@ -450,7 +460,16 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
         let sync_peer = select_sync_peer(&config, sync_peers)?;
-        debug!(target: log_target, "Requesting kernels from {}.", sync_peer);
+        // If no hashes are requested, return an empty response without performing the request.
+        if hashes.is_empty() {
+            return Ok((Vec::new(), sync_peer));
+        }
+        debug!(
+            target: log_target,
+            "Requesting {} transaction outputs from {}.",
+            hashes.len(),
+            sync_peer
+        );
         match shared
             .comms
             .request_txos_from_peer(hashes.to_vec(), Some(sync_peer.clone()))

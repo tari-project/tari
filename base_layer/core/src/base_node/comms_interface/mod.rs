@@ -21,16 +21,19 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod comms_request;
-mod comms_response;
-mod error;
-mod inbound_handlers;
-mod local_interface;
-mod outbound_interface;
-
-// Public re-exports
 pub use comms_request::{MmrStateRequest, NodeCommsRequest};
+
+mod comms_response;
 pub use comms_response::NodeCommsResponse;
+
+mod error;
 pub use error::CommsInterfaceError;
+
+mod inbound_handlers;
 pub use inbound_handlers::{BlockEvent, Broadcast, InboundNodeCommsHandlers};
+
+mod local_interface;
 pub use local_interface::{BlockEventReceiver, BlockEventSender, LocalNodeCommsInterface};
+
+mod outbound_interface;
 pub use outbound_interface::OutboundNodeCommsInterface;

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::validation::error::ValidationError;
+use crate::validation::{and_then::AndThenValidator, error::ValidationError};
 
 pub type Validator<T, B> = Box<dyn Validation<T, B>>;
 pub type StatelessValidator<T> = Box<dyn StatelessValidation<T>>;
@@ -38,3 +38,13 @@ pub trait StatelessValidation<T>: Send + Sync {
     /// General validation code that can run independent of external state
     fn validate(&self, item: &T) -> Result<(), ValidationError>;
 }
+
+pub trait StatelessValidationExt<T>: StatelessValidation<T> {
+    /// Creates a new validator that performs this validation followed by another. If the first validation fails, the
+    /// second one is not run.
+    fn and_then<V: StatelessValidation<T>>(self, other: V) -> AndThenValidator<Self, V>
+    where Self: Sized {
+        AndThenValidator::new(self, other)
+    }
+}
+impl<T, U> StatelessValidationExt<T> for U where U: StatelessValidation<T> {}

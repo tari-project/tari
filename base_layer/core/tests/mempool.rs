@@ -64,7 +64,7 @@ use tari_core::{
 };
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
-use tari_test_utils::{async_assert_eventually, random::string};
+use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
@@ -739,6 +739,7 @@ fn block_event_and_reorg_event_handling() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
 
+    let runtime = tokio::runtime::Builder::new().enable_time().build().unwrap();
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =

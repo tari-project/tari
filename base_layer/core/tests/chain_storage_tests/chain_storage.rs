@@ -1686,6 +1686,7 @@ fn pruned_mode_fetch_insert_and_commit() {
     let kernels = alice_store.fetch_kernels(kernel_hashes).unwrap();
     assert_eq!(kernels.len(), 3);
     assert!(bob_store.insert_kernels(kernels).is_ok());
+    bob_store.create_mmr_checkpoint(MmrTree::Kernel).unwrap();
 
     // Sync Utxos and RangeProofs
     let alice_num_utxos = alice_store
@@ -1716,6 +1717,7 @@ fn pruned_mode_fetch_insert_and_commit() {
         assert_eq!(alice_utxo_hash, bob_utxo_hash);
         if alice_utxo_deleted && !bob_utxo_deleted {
             assert!(bob_store.delete_mmr_node(MmrTree::Utxo, &bob_utxo_hash).is_ok());
+            assert!(bob_store.spend_utxo(bob_utxo_hash).is_ok());
         }
     }
 
@@ -1752,6 +1754,10 @@ fn pruned_mode_fetch_insert_and_commit() {
             assert!(bob_store.insert_utxo(txo).is_ok());
         }
     }
+
+    bob_store.create_mmr_checkpoint(MmrTree::Utxo).unwrap();
+    bob_store.create_mmr_checkpoint(MmrTree::RangeProof).unwrap();
+
     // Finalize horizon state sync
     assert!(bob_store.commit_horizon_state().is_ok());
 

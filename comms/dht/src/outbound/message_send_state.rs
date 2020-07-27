@@ -245,8 +245,8 @@ impl Index<usize> for MessageSendStates {
 #[cfg(test)]
 mod test {
     use super::*;
-    use bitflags::_core::iter::repeat_with;
     use futures::channel::oneshot;
+    use std::iter::repeat_with;
     use tari_comms::message::MessagingReplyTx;
 
     fn create_send_state() -> (MessageSendState, MessagingReplyTx) {
