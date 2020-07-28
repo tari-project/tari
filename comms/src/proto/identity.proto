@@ -7,4 +7,5 @@ message PeerIdentityMsg {
     repeated string addresses = 2;
     uint64 features = 3;
     repeated bytes supported_protocols = 4;
+    string user_agent = 5;
 }

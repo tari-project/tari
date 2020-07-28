@@ -79,6 +79,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
         &[],
+        Default::default(),
     )
 }
 
@@ -112,6 +113,7 @@ fn create_wallet(
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
+        user_agent: "tari/test-wallet".to_string(),
     };
 
     let sql_database_path = comms_config
@@ -472,6 +474,7 @@ fn test_import_utxo() {
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
+        user_agent: "tari/test-wallet".to_string(),
     };
     let config = WalletConfig::new(comms_config, factories.clone(), None, Network::Rincewind);
     let runtime_node = Runtime::new().unwrap();
@@ -538,6 +541,7 @@ fn test_data_generation() {
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
+        user_agent: "tari/test-wallet".to_string(),
     };
 
     let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind);

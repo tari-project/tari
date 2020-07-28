@@ -96,6 +96,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
         &[],
+        Default::default(),
     )
 }
 
@@ -152,6 +153,7 @@ fn wallet_base_node_integration_test() {
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
+        user_agent: "tari/test-wallet".to_string(),
     };
     let alice_wallet_config = WalletConfig::new(
         alice_comms_config,
@@ -204,6 +206,7 @@ fn wallet_base_node_integration_test() {
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
+        user_agent: "tari/test-wallet".to_string(),
     };
     let bob_wallet_config = WalletConfig::new(bob_comms_config, factories.clone(), None, Network::Rincewind);
     let bob_runtime = create_runtime();

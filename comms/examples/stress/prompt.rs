@@ -149,5 +149,6 @@ pub fn parse_from_short_str(s: &String) -> Option<Peer> {
         Default::default(),
         Default::default(),
         &[],
+        "tari/stress-test/1.0".to_string(),
     ))
 }

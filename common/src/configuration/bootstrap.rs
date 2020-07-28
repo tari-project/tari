@@ -217,7 +217,6 @@ mod test {
     };
     use std::path::PathBuf;
     use structopt::StructOpt;
-    use tari_test_utils::random::string;
     use tempfile::tempdir;
 
     #[test]

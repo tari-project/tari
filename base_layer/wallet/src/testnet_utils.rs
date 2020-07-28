@@ -136,6 +136,7 @@ pub fn create_wallet(
         peer_database_name: random_string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
+        user_agent: "/tari/wallet/test".to_string(),
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(30),
             ..Default::default()

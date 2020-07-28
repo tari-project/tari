@@ -128,6 +128,7 @@ async fn peer_to_peer_custom_protocols() {
             Default::default(),
             Default::default(),
             &[TEST_PROTOCOL, ANOTHER_TEST_PROTOCOL],
+            Default::default(),
         ))
         .await
         .unwrap();
@@ -200,6 +201,7 @@ async fn peer_to_peer_messaging() {
             Default::default(),
             Default::default(),
             &[],
+            Default::default(),
         ))
         .await
         .unwrap();
@@ -273,6 +275,7 @@ async fn peer_to_peer_messaging_simultaneous() {
             Default::default(),
             Default::default(),
             &[],
+            Default::default(),
         ))
         .await
         .unwrap();
@@ -285,6 +288,7 @@ async fn peer_to_peer_messaging_simultaneous() {
             Default::default(),
             Default::default(),
             &[],
+            Default::default(),
         ))
         .await
         .unwrap();

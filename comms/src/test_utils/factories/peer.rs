@@ -94,6 +94,7 @@ impl TestFactory for PeerFactory {
             flags,
             self.peer_features,
             &[],
+            Default::default(),
         ))
     }
 }

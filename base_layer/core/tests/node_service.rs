@@ -72,7 +72,7 @@ use tari_core::{
 use tari_crypto::tari_utilities::hash::Hashable;
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
-use tari_test_utils::{random, unpack_enum};
+use tari_test_utils::unpack_enum;
 use tempfile::tempdir;
 use tokio::runtime::Runtime;
 

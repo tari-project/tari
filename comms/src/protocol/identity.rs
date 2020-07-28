@@ -43,6 +43,7 @@ pub async fn identity_exchange<'p, TSocket, P>(
     node_identity: &NodeIdentity,
     direction: ConnectionDirection,
     our_supported_protocols: P,
+    user_agent: String,
     mut socket: TSocket,
 ) -> Result<PeerIdentityMsg, IdentityProtocolError>
 where
@@ -88,6 +89,7 @@ where
         addresses: vec![node_identity.public_address().to_string()],
         features: node_identity.features().bits(),
         supported_protocols,
+        user_agent,
     }
     .to_encoded_bytes();
 
@@ -169,8 +171,20 @@ mod test {
         let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
 
         let (result1, result2) = future::join(
-            super::identity_exchange(&node_identity1, ConnectionDirection::Inbound, &[], in_sock),
-            super::identity_exchange(&node_identity2, ConnectionDirection::Outbound, &[], out_sock),
+            super::identity_exchange(
+                &node_identity1,
+                ConnectionDirection::Inbound,
+                &[],
+                Default::default(),
+                in_sock,
+            ),
+            super::identity_exchange(
+                &node_identity2,
+                ConnectionDirection::Outbound,
+                &[],
+                Default::default(),
+                out_sock,
+            ),
         )
         .await;
 

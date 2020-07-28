@@ -167,7 +167,7 @@ where
                     target: LOG_TARGET,
                     "Received ping from peer '{}' with useragent '{}'. {} {}",
                     node_id.short_str(),
-                    ping_pong_msg.useragent,
+                    source_peer.user_agent,
                     maybe_latency.map(|ms| format!("Latency: {}ms", ms)).unwrap_or_default(),
                     if is_monitored { "(monitored)" } else { "" },
                 );
@@ -182,7 +182,7 @@ where
                         target: LOG_TARGET,
                         "Received Pong that was not requested from '{}' with useragent {}. Ignoring it.",
                         node_id.short_str(),
-                        ping_pong_msg.useragent,
+                        source_peer.user_agent,
                     );
                     return Ok(());
                 }
@@ -193,7 +193,7 @@ where
                     target: LOG_TARGET,
                     "Received pong from peer '{}' with useragent '{}'. {} {}",
                     node_id.short_str(),
-                    ping_pong_msg.useragent,
+                    source_peer.user_agent,
                     maybe_latency.map(|ms| format!("Latency: {}ms", ms)).unwrap_or_default(),
                     if is_monitored { "(monitored)" } else { "" },
                 );
@@ -207,14 +207,9 @@ where
     }
 
     async fn send_ping(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
-        let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone(), self.config.useragent.clone());
+        let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
         self.state.add_inflight_ping(msg.nonce, &node_id);
-        debug!(
-            target: LOG_TARGET,
-            "Sending ping to peer '{}' with useragent '{}'",
-            node_id.short_str(),
-            msg.useragent
-        );
+        debug!(target: LOG_TARGET, "Sending ping to peer '{}'", node_id.short_str(),);
 
         self.oms_handle
             .send_direct_node_id(node_id, OutboundDomainMessage::new(TariMessageType::PingPong, msg))
@@ -225,8 +220,7 @@ where
     }
 
     async fn send_pong(&mut self, nonce: u64, dest: CommsPublicKey) -> Result<(), LivenessError> {
-        let msg =
-            PingPongMessage::pong_with_metadata(nonce, self.state.metadata().clone(), self.config.useragent.clone());
+        let msg = PingPongMessage::pong_with_metadata(nonce, self.state.metadata().clone());
         self.oms_handle
             .send_direct(dest, OutboundDomainMessage::new(TariMessageType::PingPong, msg))
             .await
@@ -296,7 +290,7 @@ where
         debug!(target: LOG_TARGET, "Sending liveness ping to {} peer(s)", len_peers);
 
         for node_id in broadcast_nodes {
-            let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone(), self.config.useragent.clone());
+            let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
             self.state.add_inflight_ping(msg.nonce, &node_id);
             self.oms_handle
                 .send_direct_node_id(node_id, OutboundDomainMessage::new(TariMessageType::PingPong, msg))
@@ -317,8 +311,7 @@ where
                 num_nodes,
             );
             for node_id in self.state.get_monitored_node_ids() {
-                let msg =
-                    PingPongMessage::ping_with_metadata(self.state.metadata().clone(), self.config.useragent.clone());
+                let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
                 self.state.add_inflight_ping(msg.nonce, &node_id);
                 self.oms_handle
                     .send_direct_node_id(node_id, OutboundDomainMessage::new(TariMessageType::PingPong, msg))
@@ -479,6 +472,7 @@ mod test {
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
             &[],
+            Default::default(),
         );
         DomainMessage {
             dht_header: DhtMessageHeader {
@@ -500,14 +494,13 @@ mod test {
     #[tokio_macros::test]
     async fn handle_message_ping() {
         let state = LivenessState::new();
-        let config = LivenessConfig::default();
 
         // Setup a CommsOutbound service handle which is not connected to the actual CommsOutbound service
         let (outbound_tx, mut outbound_rx) = mpsc::channel(10);
         let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
         let metadata = Metadata::new();
-        let msg = create_dummy_message(PingPongMessage::ping_with_metadata(metadata, config.useragent.clone()));
+        let msg = create_dummy_message(PingPongMessage::ping_with_metadata(metadata));
         // A stream which emits one message and then closes
         let pingpong_stream = stream::iter(std::iter::once(msg));
 
@@ -537,27 +530,18 @@ mod test {
     #[tokio_macros::test_basic]
     async fn handle_message_pong() {
         let mut state = LivenessState::new();
-        let config = LivenessConfig::default();
 
         let (outbound_tx, _) = mpsc::channel(10);
         let oms_handle = OutboundMessageRequester::new(outbound_tx);
 
         let mut metadata = Metadata::new();
         metadata.insert(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
-        let msg = create_dummy_message(PingPongMessage::pong_with_metadata(
-            123,
-            metadata.clone(),
-            config.useragent.clone(),
-        ));
+        let msg = create_dummy_message(PingPongMessage::pong_with_metadata(123, metadata.clone()));
         let peer = msg.source_peer.clone();
 
         state.add_inflight_ping(msg.inner.nonce, &msg.source_peer.node_id);
         // A stream which emits an inflight pong message and an unexpected one
-        let malicious_msg = create_dummy_message(PingPongMessage::pong_with_metadata(
-            321,
-            metadata,
-            config.useragent.clone(),
-        ));
+        let malicious_msg = create_dummy_message(PingPongMessage::pong_with_metadata(321, metadata));
         let pingpong_stream = stream::iter(vec![msg, malicious_msg]);
 
         let (dht_tx, mut dht_rx) = mpsc::channel(10);
