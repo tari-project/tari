@@ -201,6 +201,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
             direction: TransactionDirection::Outbound,
+            coinbase_block_height: None,
         });
         runtime
             .block_on(db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone()))

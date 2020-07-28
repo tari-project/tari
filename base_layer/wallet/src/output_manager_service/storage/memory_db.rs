@@ -267,6 +267,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             outputs_to_be_spent,
             outputs_to_be_received: Vec::new(),
             timestamp: Utc::now().naive_utc(),
+            coinbase_block_height: None,
         };
 
         for co in outputs_to_receive {
@@ -389,6 +390,24 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             },
             None => Err(OutputManagerStorageError::ValuesNotFound),
         }
+    }
+
+    fn cancel_pending_transaction_at_block_height(&self, block_height: u64) -> Result<(), OutputManagerStorageError> {
+        let pending_txs;
+        {
+            let db = acquire_write_lock!(self.db);
+            pending_txs = db.pending_transactions.clone();
+        }
+
+        for (tx_id, p) in pending_txs {
+            if let Some(bh) = p.coinbase_block_height {
+                if bh == block_height {
+                    self.cancel_pending_transaction(tx_id)?;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn apply_encryption(&self, _: Aes256Gcm) -> Result<(), OutputManagerStorageError> {

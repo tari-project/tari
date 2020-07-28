@@ -84,6 +84,8 @@ pub trait TransactionBackend: Send + Sync {
     ) -> Result<CommsPublicKey, TransactionStorageError>;
     /// Mark a pending transaction direct send attempt as a success
     fn mark_direct_send_success(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    /// Cancel coinbase transactions at a specific block height
+    fn cancel_coinbase_transaction_at_block_height(&self, block_height: u64) -> Result<(), TransactionStorageError>;
     /// Update a completed transactions timestamp for use in test data generation
     #[cfg(feature = "test_harness")]
     fn update_completed_transaction_timestamp(
@@ -110,6 +112,8 @@ pub enum TransactionStatus {
     Imported,
     /// This transaction is still being negotiated by the parties
     Pending,
+    /// This is a created Coinbase Transaction
+    Coinbase,
 }
 
 impl TryFrom<i32> for TransactionStatus {
@@ -234,6 +238,7 @@ pub struct CompletedTransaction {
     pub timestamp: NaiveDateTime,
     pub cancelled: bool,
     pub direction: TransactionDirection,
+    pub coinbase_block_height: Option<u64>,
 }
 
 impl CompletedTransaction {
@@ -249,6 +254,7 @@ impl CompletedTransaction {
         message: String,
         timestamp: NaiveDateTime,
         direction: TransactionDirection,
+        coinbase_block_height: Option<u64>,
     ) -> Self
     {
         Self {
@@ -263,6 +269,7 @@ impl CompletedTransaction {
             timestamp,
             cancelled: false,
             direction,
+            coinbase_block_height,
         }
     }
 }
@@ -370,6 +377,7 @@ impl From<OutboundTransaction> for CompletedTransaction {
             cancelled: tx.cancelled,
             transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default()),
             direction: TransactionDirection::Outbound,
+            coinbase_block_height: None,
         }
     }
 }
@@ -388,6 +396,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             cancelled: tx.cancelled,
             transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default()),
             direction: TransactionDirection::Inbound,
+            coinbase_block_height: None,
         }
     }
 }
@@ -829,6 +838,7 @@ where T: TransactionBackend + 'static
             message,
             Utc::now().naive_utc(),
             TransactionDirection::Inbound,
+            None,
         );
 
         let db_clone = self.db.clone();
@@ -841,6 +851,19 @@ where T: TransactionBackend + 'static
         .await
         .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
+    }
+
+    pub async fn cancel_coinbase_transaction_at_block_height(
+        &self,
+        block_height: u64,
+    ) -> Result<(), TransactionStorageError>
+    {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || db_clone.cancel_coinbase_transaction_at_block_height(block_height))
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
     }
 
     pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), TransactionStorageError> {

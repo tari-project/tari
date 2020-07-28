@@ -53,10 +53,13 @@ use tari_comms::{
     CommsNode,
 };
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, UnblindedOutput},
-    types::{CryptoFactories, PrivateKey},
+use tari_core::{
+    consensus::Network,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, UnblindedOutput},
+        types::{CryptoFactories, PrivateKey},
+    },
 };
 use tari_crypto::{
     common::Blake256,
@@ -81,6 +84,7 @@ pub struct WalletConfig {
     pub transaction_service_config: Option<TransactionServiceConfig>,
     pub buffer_size: usize,
     pub rate_limit: usize,
+    pub network: Network,
 }
 
 impl WalletConfig {
@@ -88,6 +92,7 @@ impl WalletConfig {
         comms_config: CommsConfig,
         factories: CryptoFactories,
         transaction_service_config: Option<TransactionServiceConfig>,
+        network: Network,
     ) -> Self
     {
         Self {
@@ -98,6 +103,7 @@ impl WalletConfig {
             buffer_size: 100,
             // This is the default rate limit fot the pubsub_connector for the mobile wallet
             rate_limit: 5,
+            network,
         }
     }
 }
@@ -174,6 +180,7 @@ where
                 subscription_factory.clone(),
                 output_manager_backend,
                 factories.clone(),
+                config.network,
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
@@ -181,6 +188,7 @@ where
                 transaction_backend,
                 comms.node_identity(),
                 factories.clone(),
+                config.network,
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .finish();

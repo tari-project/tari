@@ -45,6 +45,7 @@ pub enum OutputManagerRequest {
     GetBalance,
     AddOutput(UnblindedOutput),
     GetRecipientKey((u64, MicroTari)),
+    GetCoinbaseKey((u64, MicroTari, u64)),
     ConfirmPendingTransaction(u64),
     ConfirmTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
     PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String)),
@@ -85,6 +86,7 @@ impl fmt::Display for OutputManagerRequest {
             Self::CreateCoinSplit(v) => f.write_str(&format!("CreateCoinSplit ({})", v.0)),
             OutputManagerRequest::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
             OutputManagerRequest::RemoveEncryption => f.write_str("RemoveEncryption"),
+            OutputManagerRequest::GetCoinbaseKey(v) => f.write_str(&format!("GetCoinbaseKey ({})", v.0)),
         }
     }
 }
@@ -94,6 +96,7 @@ pub enum OutputManagerResponse {
     Balance(Balance),
     OutputAdded,
     RecipientKeyGenerated(PrivateKey),
+    CoinbaseKeyGenerated(PrivateKey),
     OutputConfirmed,
     PendingTransactionConfirmed,
     TransactionConfirmed,
@@ -172,6 +175,23 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::RecipientKeyGenerated(k) => Ok(k),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_coinbase_spending_key(
+        &mut self,
+        tx_id: u64,
+        amount: MicroTari,
+        block_height: u64,
+    ) -> Result<PrivateKey, OutputManagerError>
+    {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetCoinbaseKey((tx_id, amount, block_height)))
+            .await??
+        {
+            OutputManagerResponse::CoinbaseKeyGenerated(k) => Ok(k),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

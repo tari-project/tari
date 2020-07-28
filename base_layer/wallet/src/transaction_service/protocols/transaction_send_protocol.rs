@@ -297,6 +297,7 @@ where TBackend: TransactionBackend + Clone + 'static
             outbound_tx.message.clone(),
             Utc::now().naive_utc(),
             TransactionDirection::Outbound,
+            None,
         );
 
         self.resources

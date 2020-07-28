@@ -58,10 +58,13 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::DhtConfig;
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
-    types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
+use tari_core::{
+    consensus::Network,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
+        types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
+    },
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -142,7 +145,7 @@ pub fn create_wallet(
         listener_liveness_max_sessions: 0,
     };
 
-    let config = WalletConfig::new(comms_config, factories, None);
+    let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind);
 
     Wallet::new(
         config,
@@ -709,6 +712,7 @@ pub fn complete_sent_transaction<
                 p.message.clone(),
                 Utc::now().naive_utc(),
                 TransactionDirection::Outbound,
+                None,
             );
             wallet.runtime.block_on(
                 wallet

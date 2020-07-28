@@ -145,7 +145,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         self.decrypt_if_necessary(o)?;
                     }
                     Some(DbValue::PendingTransactionOutputs(Box::new(
-                        pending_transaction_outputs_from_sql_outputs(p.tx_id as u64, &p.timestamp, outputs)?,
+                        pending_transaction_outputs_from_sql_outputs(
+                            p.tx_id as u64,
+                            &p.timestamp,
+                            outputs,
+                            p.coinbase_block_height.map(|h| h as u64),
+                        )?,
                     )))
                 },
                 Err(e) => {
@@ -194,7 +199,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
                     pending_txs.insert(
                         p_tx.tx_id as u64,
-                        pending_transaction_outputs_from_sql_outputs(p_tx.tx_id as u64, &p_tx.timestamp, outputs)?,
+                        pending_transaction_outputs_from_sql_outputs(
+                            p_tx.tx_id as u64,
+                            &p_tx.timestamp,
+                            outputs,
+                            p_tx.coinbase_block_height.map(|h| h as u64),
+                        )?,
                     );
                 }
                 Some(DbValue::AllPendingTransactionOutputs(pending_txs))
@@ -252,7 +262,13 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     if PendingTransactionOutputSql::find(tx_id, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
-                    PendingTransactionOutputSql::new(p.tx_id, true, p.timestamp).commit(&(*conn))?;
+                    PendingTransactionOutputSql::new(
+                        p.tx_id,
+                        true,
+                        p.timestamp,
+                        p.coinbase_block_height.map(|h| h as i64),
+                    )
+                    .commit(&(*conn))?;
                     for o in p.outputs_to_be_spent {
                         let mut new_output = NewOutputSql::new(o, OutputStatus::EncumberedToBeSpent, Some(p.tx_id));
                         self.encrypt_if_necessary(&mut new_output)?;
@@ -305,7 +321,12 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
                         p.delete(&(*conn))?;
                         return Ok(Some(DbValue::PendingTransactionOutputs(Box::new(
-                            pending_transaction_outputs_from_sql_outputs(p.tx_id as u64, &p.timestamp, outputs)?,
+                            pending_transaction_outputs_from_sql_outputs(
+                                p.tx_id as u64,
+                                &p.timestamp,
+                                outputs,
+                                p.coinbase_block_height.map(|h| h as u64),
+                            )?,
                         ))));
                     },
                     Err(e) => {
@@ -386,7 +407,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             outputs_to_be_spent.push(output);
         }
 
-        PendingTransactionOutputSql::new(tx_id, true, Utc::now().naive_utc()).commit(&(*conn))?;
+        PendingTransactionOutputSql::new(tx_id, true, Utc::now().naive_utc(), None).commit(&(*conn))?;
 
         for o in outputs_to_be_spent {
             o.update(
@@ -546,6 +567,18 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
+    fn cancel_pending_transaction_at_block_height(&self, block_height: u64) -> Result<(), OutputManagerStorageError> {
+        let pending_txs;
+        {
+            let conn = acquire_lock!(self.database_connection);
+            pending_txs = PendingTransactionOutputSql::index_block_height(block_height as i64, &conn)?;
+        }
+        for p in pending_txs {
+            self.cancel_pending_transaction(p.tx_id as u64)?;
+        }
+        Ok(())
+    }
+
     fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError> {
         let mut current_cipher = acquire_write_lock!(self.cipher);
 
@@ -573,7 +606,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         let mut key_manager_state = KeyManagerStateSql::get_state(&conn)?;
 
-        let _ = PrivateKey::from_vec(&key_manager_state.master_seed).map_err(|_| {
+        let _ = PrivateKey::from_vec(&key_manager_state.master_key).map_err(|_| {
             error!(
                 target: LOG_TARGET,
                 "Could not create PrivateKey from stored bytes, They might already be encrypted"
@@ -624,6 +657,7 @@ fn pending_transaction_outputs_from_sql_outputs(
     tx_id: TxId,
     timestamp: &NaiveDateTime,
     outputs: Vec<OutputSql>,
+    coinbase_block_height: Option<u64>,
 ) -> Result<PendingTransactionOutputs, OutputManagerStorageError>
 {
     let mut outputs_to_be_spent = Vec::new();
@@ -641,6 +675,7 @@ fn pending_transaction_outputs_from_sql_outputs(
         outputs_to_be_spent,
         outputs_to_be_received,
         timestamp: *timestamp,
+        coinbase_block_height,
     })
 }
 
@@ -1026,13 +1061,15 @@ struct PendingTransactionOutputSql {
     tx_id: i64,
     short_term: i32,
     timestamp: NaiveDateTime,
+    coinbase_block_height: Option<i64>,
 }
 impl PendingTransactionOutputSql {
-    pub fn new(tx_id: TxId, short_term: bool, timestamp: NaiveDateTime) -> Self {
+    pub fn new(tx_id: TxId, short_term: bool, timestamp: NaiveDateTime, coinbase_block_height: Option<i64>) -> Self {
         Self {
             tx_id: tx_id as i64,
             short_term: short_term as i32,
             timestamp,
+            coinbase_block_height,
         }
     }
 
@@ -1072,6 +1109,17 @@ impl PendingTransactionOutputSql {
     {
         Ok(pending_transaction_outputs::table
             .filter(pending_transaction_outputs::timestamp.lt(timestamp))
+            .load::<PendingTransactionOutputSql>(conn)?)
+    }
+
+    /// Find pending transaction outputs with specified block_height
+    pub fn index_block_height(
+        block_height: i64,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<PendingTransactionOutputSql>, OutputManagerStorageError>
+    {
+        Ok(pending_transaction_outputs::table
+            .filter(pending_transaction_outputs::coinbase_block_height.eq(block_height))
             .load::<PendingTransactionOutputSql>(conn)?)
     }
 
@@ -1125,7 +1173,7 @@ pub struct UpdatePendingTransactionOutputSql {
 #[table_name = "key_manager_states"]
 struct KeyManagerStateSql {
     id: Option<i64>,
-    master_seed: Vec<u8>,
+    master_key: Vec<u8>,
     branch_seed: String,
     primary_key_index: i64,
     timestamp: NaiveDateTime,
@@ -1135,7 +1183,7 @@ impl From<KeyManagerState> for KeyManagerStateSql {
     fn from(km: KeyManagerState) -> Self {
         Self {
             id: None,
-            master_seed: km.master_seed.to_vec(),
+            master_key: km.master_key.to_vec(),
             branch_seed: km.branch_seed,
             primary_key_index: km.primary_key_index as i64,
             timestamp: Utc::now().naive_utc(),
@@ -1148,10 +1196,9 @@ impl TryFrom<KeyManagerStateSql> for KeyManagerState {
 
     fn try_from(km: KeyManagerStateSql) -> Result<Self, Self::Error> {
         Ok(Self {
-            master_seed: PrivateKey::from_vec(&km.master_seed)
-                .map_err(|_| OutputManagerStorageError::ConversionError)?,
+            master_key: PrivateKey::from_vec(&km.master_key).map_err(|_| OutputManagerStorageError::ConversionError)?,
             branch_seed: km.branch_seed,
-            primary_key_index: km.primary_key_index as usize,
+            primary_key_index: km.primary_key_index as u64,
         })
     }
 }
@@ -1174,7 +1221,7 @@ impl KeyManagerStateSql {
         match KeyManagerStateSql::get_state(conn) {
             Ok(km) => {
                 let update = KeyManagerStateUpdateSql {
-                    master_seed: Some(self.master_seed.clone()),
+                    master_key: Some(self.master_key.clone()),
                     branch_seed: Some(self.branch_seed.clone()),
                     primary_key_index: Some(self.primary_key_index),
                 };
@@ -1198,7 +1245,7 @@ impl KeyManagerStateSql {
             Ok(km) => {
                 let current_index = km.primary_key_index + 1;
                 let update = KeyManagerStateUpdateSql {
-                    master_seed: None,
+                    master_key: None,
                     branch_seed: None,
                     primary_key_index: Some(current_index),
                 };
@@ -1220,26 +1267,26 @@ impl KeyManagerStateSql {
 #[derive(AsChangeset)]
 #[table_name = "key_manager_states"]
 struct KeyManagerStateUpdateSql {
-    master_seed: Option<Vec<u8>>,
+    master_key: Option<Vec<u8>>,
     branch_seed: Option<String>,
     primary_key_index: Option<i64>,
 }
 
 impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), Error> {
-        let encrypted_master_seed = encrypt_bytes_integral_nonce(&cipher, self.master_seed.clone())?;
+        let encrypted_master_key = encrypt_bytes_integral_nonce(&cipher, self.master_key.clone())?;
         let encrypted_branch_seed =
             encrypt_bytes_integral_nonce(&cipher, self.branch_seed.clone().as_bytes().to_vec())?;
-        self.master_seed = encrypted_master_seed;
+        self.master_key = encrypted_master_key;
         self.branch_seed = encrypted_branch_seed.to_hex();
         Ok(())
     }
 
     fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), Error> {
-        let decrypted_master_seed = decrypt_bytes_integral_nonce(&cipher, self.master_seed.clone())?;
+        let decrypted_master_key = decrypt_bytes_integral_nonce(&cipher, self.master_key.clone())?;
         let decrypted_branch_seed =
             decrypt_bytes_integral_nonce(&cipher, from_hex(self.branch_seed.as_str()).map_err(|_| Error)?)?;
-        self.master_seed = decrypted_master_seed;
+        self.master_key = decrypted_master_key;
         self.branch_seed = from_utf8(decrypted_branch_seed.as_slice())
             .map_err(|_| Error)?
             .to_string();
@@ -1367,11 +1414,11 @@ mod test {
 
         let tx_id = 44u64;
 
-        PendingTransactionOutputSql::new(tx_id, true, Utc::now().naive_utc())
+        PendingTransactionOutputSql::new(tx_id, true, Utc::now().naive_utc(), Some(1))
             .commit(&conn)
             .unwrap();
 
-        PendingTransactionOutputSql::new(11u64, true, Utc::now().naive_utc())
+        PendingTransactionOutputSql::new(11u64, true, Utc::now().naive_utc(), Some(2))
             .commit(&conn)
             .unwrap();
 
@@ -1415,6 +1462,7 @@ mod test {
             12u64,
             true,
             Utc::now().naive_utc() - ChronoDuration::from_std(Duration::from_millis(600_000)).unwrap(),
+            Some(3),
         )
         .commit(&conn)
         .unwrap();
@@ -1428,6 +1476,15 @@ mod test {
         )
         .unwrap();
         assert_eq!(pending_older2.len(), 1);
+
+        PendingTransactionOutputSql::new(13u64, true, Utc::now().naive_utc(), None)
+            .commit(&conn)
+            .unwrap();
+
+        let pending_block_height = PendingTransactionOutputSql::index_block_height(2, &conn).unwrap();
+
+        assert_eq!(pending_block_height.len(), 1);
+        assert!(pending_block_height.iter().find(|p| p.tx_id == 11).is_some());
     }
 
     #[test]
@@ -1447,7 +1504,7 @@ mod test {
         assert!(KeyManagerStateSql::get_state(&conn).is_err());
 
         let state1 = KeyManagerState {
-            master_seed: PrivateKey::random(&mut OsRng),
+            master_key: PrivateKey::random(&mut OsRng),
             branch_seed: random_string(8),
             primary_key_index: 0,
         };
@@ -1458,7 +1515,7 @@ mod test {
         assert_eq!(state1, KeyManagerState::try_from(state1_read).unwrap());
 
         let state2 = KeyManagerState {
-            master_seed: PrivateKey::random(&mut OsRng),
+            master_key: PrivateKey::random(&mut OsRng),
             branch_seed: random_string(8),
             primary_key_index: 0,
         };
@@ -1552,7 +1609,7 @@ mod test {
         let cipher = Aes256Gcm::new(key);
 
         let starting_state = KeyManagerState {
-            master_seed: PrivateKey::random(&mut OsRng),
+            master_key: PrivateKey::random(&mut OsRng),
             branch_seed: "boop boop".to_string(),
             primary_key_index: 1,
         };
@@ -1573,7 +1630,7 @@ mod test {
         db_state.decrypt(&cipher).unwrap();
         let decrypted_data = KeyManagerState::try_from(db_state).unwrap();
 
-        assert_eq!(decrypted_data.master_seed, starting_state.master_seed);
+        assert_eq!(decrypted_data.master_key, starting_state.master_key);
         assert_eq!(decrypted_data.branch_seed, starting_state.branch_seed);
         assert_eq!(decrypted_data.primary_key_index, 2);
     }
@@ -1592,7 +1649,7 @@ mod test {
         let factories = CryptoFactories::default();
 
         let starting_state = KeyManagerState {
-            master_seed: PrivateKey::random(&mut OsRng),
+            master_key: PrivateKey::random(&mut OsRng),
             branch_seed: "boop boop".to_string(),
             primary_key_index: 1,
         };

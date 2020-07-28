@@ -46,6 +46,7 @@ use tari_core::{
             base_node_service_response::Response as BaseNodeResponseProto,
         },
     },
+    consensus::{ConsensusConstantsBuilder, Network},
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
@@ -111,6 +112,8 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + Clone + 'static>(
     let (event_publisher, _) = channel(100);
     let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
 
+    let constants = ConsensusConstantsBuilder::new(Network::Rincewind).build();
+
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig {
@@ -124,6 +127,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + Clone + 'static>(
             OutputManagerDatabase::new(backend),
             oms_event_publisher.clone(),
             factories.clone(),
+            constants.coinbase_lock_height(),
         ))
         .unwrap();
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
@@ -1225,4 +1229,84 @@ fn coin_split_no_change_sqlite_db() {
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
     coin_split_no_change(OutputManagerSqliteDatabase::new(connection, None));
+}
+
+fn handle_coinbase<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+    let factories = CryptoFactories::default();
+
+    let mut runtime = Runtime::new().unwrap();
+
+    let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
+
+    let value1 = MicroTari::from(1000);
+    let value2 = MicroTari::from(2000);
+    let value3 = MicroTari::from(4000);
+    let recv_key1 = runtime.block_on(oms.get_coinbase_spending_key(1, value1, 1)).unwrap();
+    assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 0);
+    assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 1);
+    assert_eq!(
+        runtime.block_on(oms.get_balance()).unwrap().pending_incoming_balance,
+        value1
+    );
+    let recv_key2 = runtime.block_on(oms.get_coinbase_spending_key(2, value2, 1)).unwrap();
+    assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 0);
+    assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 1);
+    assert_eq!(
+        runtime.block_on(oms.get_balance()).unwrap().pending_incoming_balance,
+        value2
+    );
+    let recv_key3 = runtime.block_on(oms.get_coinbase_spending_key(3, value3, 2)).unwrap();
+    assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 0);
+    assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 2);
+    assert_eq!(
+        runtime.block_on(oms.get_balance()).unwrap().pending_incoming_balance,
+        value2 + value3
+    );
+
+    assert_eq!(recv_key1, recv_key2);
+    assert_ne!(recv_key1, recv_key3);
+
+    let commitment = factories.commitment.commit(&recv_key3, &value3.into());
+    let rr = factories
+        .range_proof
+        .construct_proof(&recv_key3, value3.into())
+        .unwrap();
+    let output = TransactionOutput::new(
+        OutputFeatures::create_coinbase(3),
+        commitment,
+        RangeProof::from_bytes(&rr).unwrap(),
+    );
+
+    runtime
+        .block_on(oms.confirm_transaction(3, vec![], vec![output]))
+        .unwrap();
+
+    assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 1);
+    assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 1);
+    assert_eq!(runtime.block_on(oms.get_balance()).unwrap().available_balance, value3);
+    assert_eq!(
+        runtime.block_on(oms.get_balance()).unwrap().pending_incoming_balance,
+        MicroTari::from(value2)
+    );
+    assert_eq!(
+        runtime.block_on(oms.get_balance()).unwrap().pending_outgoing_balance,
+        MicroTari::from(0)
+    );
+}
+
+#[test]
+fn handle_coinbase_memory_db() {
+    handle_coinbase(OutputManagerMemoryDatabase::new());
+}
+
+#[test]
+fn handle_coinbase_sqlite_db() {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    handle_coinbase(OutputManagerSqliteDatabase::new(connection, None));
 }

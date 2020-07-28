@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{blake_pow::blake_difficulty, monero_rx::monero_difficulty, Difficulty},
+    proof_of_work::{blake_pow::blake_difficulty, monero_rx::monero_difficulty, Difficulty, PowAlgorithm},
 };
 use bytes::{self, BufMut};
 use serde::{Deserialize, Serialize};
@@ -34,13 +34,6 @@ use tari_crypto::tari_utilities::hex::Hex;
 
 pub trait AchievedDifficulty {}
 
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-pub enum PowAlgorithm {
-    Monero = 0,
-    Blake = 1,
-}
-
 /// Used to compare proof of work difficulties without scaling factors
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ordering {
@@ -48,18 +41,6 @@ pub enum Ordering {
     LessThan,
     Equal,
     Indeterminate,
-}
-
-impl TryFrom<u64> for PowAlgorithm {
-    type Error = String;
-
-    fn try_from(v: u64) -> Result<Self, Self::Error> {
-        match v {
-            0 => Ok(PowAlgorithm::Monero),
-            1 => Ok(PowAlgorithm::Blake),
-            _ => Err("Invalid PoWAlgorithm".into()),
-        }
-    }
 }
 
 /// The proof of work data structure that is included in the block header. There's some non-Rustlike redundancy here

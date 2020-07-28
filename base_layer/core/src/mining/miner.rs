@@ -28,11 +28,12 @@ use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     consensus::ConsensusManager,
     mempool::MempoolStateEvent,
-    mining::{blake_miner::CpuBlakePow, error::MinerError, CoinbaseBuilder},
+    mining::{blake_miner::CpuBlakePow, error::MinerError},
     proof_of_work::PowAlgorithm,
     transactions::{
         transaction::UnblindedOutput,
         types::{CryptoFactories, PrivateKey},
+        CoinbaseBuilder,
     },
 };
 use core::sync::atomic::{AtomicBool, AtomicU64};
@@ -341,7 +342,7 @@ impl Miner {
             .with_nonce(r)
             .with_spend_key(key);
         let (tx, unblinded_output) = builder
-            .build(self.consensus.clone())
+            .build(self.consensus.consensus_constants(), self.consensus.emission_schedule())
             .expect("invalid constructed coinbase");
         block.body.add_output(tx.body.outputs()[0].clone());
         block.body.add_kernel(tx.body.kernels()[0].clone());

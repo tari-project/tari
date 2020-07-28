@@ -22,7 +22,7 @@
 //
 
 use crate::{
-    consensus::ConsensusManager,
+    consensus::{emission::EmissionSchedule, ConsensusConstants},
     transactions::{
         tari_amount::{uT, MicroTari},
         transaction::{
@@ -109,25 +109,49 @@ impl CoinbaseBuilder {
     ///
     /// After `build` is called, the struct is destroyed and the private keys stored are dropped and the memory zeroed
     /// out (by virtue of the zero_on_drop crate).
-    #[allow(clippy::erasing_op)] // This is for 0 * uT
-    pub fn build(self, rules: ConsensusManager) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError> {
+
+    pub fn build(
+        self,
+        constants: &ConsensusConstants,
+        emission_schedule: &EmissionSchedule,
+    ) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError>
+    {
         let height = self
             .block_height
             .ok_or_else(|| CoinbaseBuildError::MissingBlockHeight)?;
-        let reward = rules.emission_schedule().block_reward(height) +
-            self.fees.ok_or_else(|| CoinbaseBuildError::MissingFees)?;
+        let reward = emission_schedule.block_reward(height);
+        self.build_with_reward(constants, reward)
+    }
+
+    /// Try and construct a Coinbase Transaction while specifying the block reward. The other parameters (keys, nonces
+    /// etc.) are provided by the caller. Other data is automatically set: Coinbase transactions have an offset of
+    /// zero, no fees, the `COINBASE_OUTPUT` flags are set on the output and kernel, and the maturity schedule is
+    /// set from the consensus rules.
+    ///
+    /// After `build_with_reward` is called, the struct is destroyed and the private keys stored are dropped and the
+    /// memory zeroed out (by virtue of the zero_on_drop crate).
+    #[allow(clippy::erasing_op)] // This is for 0 * uT
+    pub fn build_with_reward(
+        self,
+        constants: &ConsensusConstants,
+        block_reward: MicroTari,
+    ) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError>
+    {
+        let height = self
+            .block_height
+            .ok_or_else(|| CoinbaseBuildError::MissingBlockHeight)?;
+        let total_reward = block_reward + self.fees.ok_or_else(|| CoinbaseBuildError::MissingFees)?;
         let nonce = self.private_nonce.ok_or_else(|| CoinbaseBuildError::MissingNonce)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let key = self.spend_key.ok_or_else(|| CoinbaseBuildError::MissingSpendKey)?;
-        let output_features =
-            OutputFeatures::create_coinbase(height + rules.consensus_constants().coinbase_lock_height());
+        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
         let excess = self.factories.commitment.commit_value(&key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::default();
         let challenge = build_challenge(&public_nonce, &metadata);
         let sig = Signature::sign(key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
-        let unblinded_output = UnblindedOutput::new(reward, key, Some(output_features));
+        let unblinded_output = UnblindedOutput::new(total_reward, key, Some(output_features));
         let output = unblinded_output
             .as_transaction_output(&self.factories)
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
@@ -144,7 +168,7 @@ impl CoinbaseBuilder {
         builder
             .add_output(output)
             .add_offset(BlindingFactor::default())
-            .with_reward(reward)
+            .with_reward(total_reward)
             .with_kernel(kernel);
         let tx = builder
             .build(&self.factories)
@@ -157,12 +181,13 @@ impl CoinbaseBuilder {
 mod test {
     use crate::{
         consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
-        mining::{coinbase_builder::CoinbaseBuildError, CoinbaseBuilder},
         transactions::{
+            coinbase_builder::CoinbaseBuildError,
             helpers::TestParams,
             tari_amount::uT,
             transaction::{OutputFlags, UnblindedOutput},
             types::CryptoFactories,
+            CoinbaseBuilder,
         },
     };
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
@@ -178,7 +203,9 @@ mod test {
     fn missing_height() {
         let (builder, rules, _) = get_builder();
         assert_eq!(
-            builder.build(rules).unwrap_err(),
+            builder
+                .build(rules.consensus_constants(), rules.emission_schedule())
+                .unwrap_err(),
             CoinbaseBuildError::MissingBlockHeight
         );
     }
@@ -187,7 +214,12 @@ mod test {
     fn missing_fees() {
         let (builder, rules, _) = get_builder();
         let builder = builder.with_block_height(42);
-        assert_eq!(builder.build(rules).unwrap_err(), CoinbaseBuildError::MissingFees);
+        assert_eq!(
+            builder
+                .build(rules.consensus_constants(), rules.emission_schedule())
+                .unwrap_err(),
+            CoinbaseBuildError::MissingFees
+        );
     }
 
     #[test]
@@ -195,7 +227,12 @@ mod test {
         let p = TestParams::new();
         let (builder, rules, _) = get_builder();
         let builder = builder.with_block_height(42).with_fees(0 * uT).with_nonce(p.nonce);
-        assert_eq!(builder.build(rules).unwrap_err(), CoinbaseBuildError::MissingSpendKey);
+        assert_eq!(
+            builder
+                .build(rules.consensus_constants(), rules.emission_schedule())
+                .unwrap_err(),
+            CoinbaseBuildError::MissingSpendKey
+        );
     }
 
     #[test]
@@ -207,7 +244,9 @@ mod test {
             .with_fees(145 * uT)
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
-        let (tx, unblinded_output) = builder.build(rules.clone()).unwrap();
+        let (tx, unblinded_output) = builder
+            .build(rules.consensus_constants(), rules.emission_schedule())
+            .unwrap();
         let utxo = &tx.body.outputs()[0];
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
         let unblinded_test = UnblindedOutput::new(block_reward, p.spend_key.clone(), Some(utxo.features.clone()));

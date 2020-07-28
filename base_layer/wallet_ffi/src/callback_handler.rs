@@ -562,6 +562,7 @@ mod test {
             "2".to_string(),
             Utc::now().naive_utc(),
             TransactionDirection::Inbound,
+            None,
         );
         let stp = SenderTransactionProtocol::new_placeholder();
         let outbound_tx = OutboundTransaction::new(

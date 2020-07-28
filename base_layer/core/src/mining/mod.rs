@@ -21,9 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod blake_miner;
-mod coinbase_builder;
 mod error;
 mod miner;
 
-pub use coinbase_builder::CoinbaseBuilder;
 pub use miner::Miner;

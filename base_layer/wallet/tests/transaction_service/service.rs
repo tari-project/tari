@@ -35,6 +35,7 @@ use futures::{
 use prost::Message;
 use rand::rngs::OsRng;
 use std::{
+    collections::{HashMap, HashSet},
     convert::{TryFrom, TryInto},
     path::Path,
     sync::Arc,
@@ -54,8 +55,12 @@ use tari_comms_dht::outbound::mock::{
 use tari_core::{
     base_node::proto::{
         base_node as BaseNodeProto,
-        base_node::base_node_service_response::Response as BaseNodeResponseProto,
+        base_node::{
+            base_node_service_request::Request as BaseNodeRequestProto,
+            base_node_service_response::Response as BaseNodeResponseProto,
+        },
     },
+    consensus::{ConsensusConstantsBuilder, Network},
     mempool::{
         proto::mempool as MempoolProto,
         service::{MempoolRequest, MempoolResponse, MempoolServiceRequest},
@@ -160,6 +165,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static, P: AsR
             subscription_factory.clone(),
             OutputManagerMemoryDatabase::new(),
             factories.clone(),
+            Network::Rincewind,
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig {
@@ -171,6 +177,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static, P: AsR
             backend,
             comms.node_identity().clone(),
             factories.clone(),
+            Network::Rincewind,
         ))
         .finish();
 
@@ -216,6 +223,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
 
     let outbound_mock_state = mock_outbound_service.get_state();
     runtime.spawn(mock_outbound_service.run());
+    let constants = ConsensusConstantsBuilder::new(Network::Rincewind).build();
 
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
@@ -227,10 +235,12 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
             OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
             oms_event_publisher.clone(),
             factories.clone(),
+            constants.coinbase_lock_height(),
         ))
         .unwrap();
 
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
+    let constants = ConsensusConstantsBuilder::new(Network::Rincewind).build();
 
     let ts_service = TransactionService::new(
         TransactionServiceConfig {
@@ -253,6 +263,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
             NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
         ),
         factories.clone(),
+        constants,
     );
     runtime.spawn(async move { output_manager_service.start().await.unwrap() });
     runtime.spawn(async move { ts_service.start().await.unwrap() });
@@ -1633,6 +1644,7 @@ fn test_power_mode_updates() {
         timestamp: Utc::now().naive_utc(),
         cancelled: false,
         direction: TransactionDirection::Outbound,
+        coinbase_block_height: None,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -1647,6 +1659,7 @@ fn test_power_mode_updates() {
         timestamp: Utc::now().naive_utc(),
         cancelled: false,
         direction: TransactionDirection::Outbound,
+        coinbase_block_height: None,
     };
 
     backend
@@ -1716,6 +1729,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         timestamp: Utc::now().naive_utc(),
         cancelled: false,
         direction: TransactionDirection::Outbound,
+        coinbase_block_height: None,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -2232,6 +2246,7 @@ fn query_all_completed_transactions_on_startup() {
         timestamp: Utc::now().naive_utc(),
         cancelled: false,
         direction: TransactionDirection::Outbound,
+        coinbase_block_height: None,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -3296,4 +3311,332 @@ fn test_restarting_transaction_protocols() {
         }
         assert!(received_finalized, "Should have received finalized tx");
     });
+}
+
+#[test]
+fn test_handling_coinbase_transactions() {
+    let _ = env_logger::try_init();
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    let base_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+
+    let (
+        mut alice_ts,
+        mut alice_output_manager,
+        alice_outbound_service,
+        _,
+        _,
+        _,
+        _,
+        mut alice_base_node_response_sender,
+    ) = setup_transaction_service_no_comms(
+        &mut runtime,
+        factories.clone(),
+        TransactionMemoryDatabase::new(),
+        Some(Duration::from_secs(5)),
+    );
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+
+    let blockheight1 = 10;
+    let fees1 = 2000 * uT;
+    let reward1 = 1_000_000 * uT;
+
+    let blockheight2 = 10;
+    let fees2 = 3000 * uT;
+    let reward2 = 2_000_000 * uT;
+    let mut tx_id2 = 0;
+
+    let blockheight3 = 11;
+    let fees3 = 4000 * uT;
+    let reward3 = 3_000_000 * uT;
+    let tx_id3;
+
+    let _tx1 = runtime
+        .block_on(alice_ts.generate_coinbase_transaction(reward1, fees1, blockheight1))
+        .unwrap();
+
+    let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+    assert_eq!(transactions.len(), 1);
+    for tx in transactions.values() {
+        assert_eq!(tx.amount, fees1 + reward1);
+    }
+    assert_eq!(
+        runtime
+            .block_on(alice_output_manager.get_balance())
+            .unwrap()
+            .pending_incoming_balance,
+        fees1 + reward1
+    );
+
+    let _tx2 = runtime
+        .block_on(alice_ts.generate_coinbase_transaction(reward2, fees2, blockheight2))
+        .unwrap();
+
+    let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+
+    assert_eq!(transactions.len(), 1);
+    for tx in transactions.values() {
+        assert_eq!(tx.amount, fees2 + reward2);
+        tx_id2 = tx.tx_id;
+    }
+    assert_eq!(
+        runtime
+            .block_on(alice_output_manager.get_balance())
+            .unwrap()
+            .pending_incoming_balance,
+        fees2 + reward2
+    );
+
+    let _tx3 = runtime
+        .block_on(alice_ts.generate_coinbase_transaction(reward3, fees3, blockheight3))
+        .unwrap();
+
+    let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+
+    assert_eq!(transactions.len(), 2);
+
+    assert!(transactions.values().find(|tx| tx.amount == fees3 + reward3).is_some());
+    tx_id3 = transactions
+        .values()
+        .find(|tx| tx.amount == fees3 + reward3)
+        .clone()
+        .unwrap()
+        .tx_id;
+    assert!(transactions.values().find(|tx| tx.amount == fees2 + reward2).is_some());
+    assert!(transactions.values().find(|tx| tx.amount == fees1 + reward1).is_none());
+
+    assert_eq!(
+        runtime
+            .block_on(alice_output_manager.get_balance())
+            .unwrap()
+            .pending_incoming_balance,
+        fees2 + reward2 + fees3 + reward3
+    );
+
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
+        .unwrap();
+
+    // Two Coinbase Monitoring Protocols should be started at this stage.
+    alice_outbound_service
+        .wait_call_count(4, Duration::from_secs(30))
+        .expect("Alice call wait 1");
+
+    let mut chain_metadata_request = HashSet::new();
+    let mut fetch_utxo_request = HashMap::new();
+    for _ in 0..4 {
+        let call = alice_outbound_service.pop_call().unwrap();
+        if let Some(bsr) = try_decode_base_node_request(call.1.to_vec().clone()) {
+            match bsr.request.unwrap() {
+                BaseNodeRequestProto::GetChainMetadata(_c) => {
+                    chain_metadata_request.insert(bsr.request_key);
+                },
+                BaseNodeRequestProto::FetchUtxos(f) => {
+                    fetch_utxo_request.insert(bsr.request_key, f);
+                },
+                _ => (),
+            }
+        }
+    }
+
+    assert_eq!(chain_metadata_request.len(), 2);
+    assert_eq!(fetch_utxo_request.len(), 2);
+
+    let mut request_key1 = 0;
+    for v in chain_metadata_request.iter() {
+        assert!(fetch_utxo_request.keys().find(|k| k == &v).is_some());
+        request_key1 = *v;
+    }
+
+    // Firstly lets respond with a higher tip than the request blockheight and see if the transaction gets cancelled as
+    // it should
+    let _ = chain_metadata_request.remove(&request_key1);
+
+    let base_node_response_outputs = BaseNodeProto::BaseNodeServiceResponse {
+        request_key: request_key1,
+        response: Some(BaseNodeResponseProto::TransactionOutputs(
+            BaseNodeProto::TransactionOutputs { outputs: vec![].into() },
+        )),
+    };
+    let metadata_response1 = BaseNodeProto::BaseNodeServiceResponse {
+        request_key: request_key1,
+        response: Some(BaseNodeResponseProto::ChainMetadata(BaseNodeProto::ChainMetadata {
+            height_of_longest_chain: Some(20),
+            best_block: None,
+            pruning_horizon: 0,
+            accumulated_difficulty: None,
+        })),
+    };
+    runtime
+        .block_on(alice_base_node_response_sender.send(create_dummy_message(
+            base_node_response_outputs,
+            base_node_identity.public_key(),
+        )))
+        .unwrap();
+    runtime
+        .block_on(alice_base_node_response_sender.send(create_dummy_message(
+            metadata_response1,
+            base_node_identity.public_key(),
+        )))
+        .unwrap();
+
+    let mut transaction_cancelled2 = false;
+    let mut transaction_cancelled3 = false;
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                     match &*event.unwrap() {
+                       TransactionEvent::TransactionCancelled(tx_id) => {
+                            if tx_id == &tx_id2 {
+                                transaction_cancelled2 = true;
+                                break;
+                            }
+                            if tx_id == &tx_id3 {
+                                transaction_cancelled3 = true;
+                                break;
+                            }
+                       }
+                       _ => (),
+                   }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert!(transaction_cancelled2 || transaction_cancelled3);
+    });
+
+    // Now lets send back an acceptable chain tip and affirmative output for a success
+    let (target_tx_id, target_balance) = if transaction_cancelled2 {
+        (tx_id3, reward3 + fees3)
+    } else {
+        (tx_id2, reward2 + fees2)
+    };
+
+    let target_tx = runtime
+        .block_on(alice_ts.get_completed_transactions())
+        .unwrap()
+        .remove(&target_tx_id)
+        .expect("Completed Transaction must be in collection   ");
+
+    let mut request_key2 = 0;
+    for v in chain_metadata_request.iter() {
+        request_key2 = *v;
+    }
+
+    let target_tx_outputs: Vec<TransactionOutputProto> = target_tx
+        .transaction
+        .body
+        .outputs()
+        .iter()
+        .map(|o| TransactionOutputProto::from(o.clone()))
+        .collect();
+
+    let base_node_response_outputs = BaseNodeProto::BaseNodeServiceResponse {
+        request_key: request_key2,
+        response: Some(BaseNodeResponseProto::TransactionOutputs(
+            BaseNodeProto::TransactionOutputs {
+                outputs: target_tx_outputs.into(),
+            },
+        )),
+    };
+    let metadata_response1 = BaseNodeProto::BaseNodeServiceResponse {
+        request_key: request_key2,
+        response: Some(BaseNodeResponseProto::ChainMetadata(BaseNodeProto::ChainMetadata {
+            height_of_longest_chain: Some(blockheight2),
+            best_block: None,
+            pruning_horizon: 0,
+            accumulated_difficulty: None,
+        })),
+    };
+    runtime
+        .block_on(alice_base_node_response_sender.send(create_dummy_message(
+            base_node_response_outputs,
+            base_node_identity.public_key(),
+        )))
+        .unwrap();
+    runtime
+        .block_on(alice_base_node_response_sender.send(create_dummy_message(
+            metadata_response1,
+            base_node_identity.public_key(),
+        )))
+        .unwrap();
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut transaction_mined = false;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                     match &*event.unwrap() {
+                       TransactionEvent::TransactionMined(tx_id) => {
+                            if tx_id == &target_tx_id {
+                                transaction_mined = true;
+                                break;
+                            }
+
+                       }
+                       _ => (),
+                   }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert!(transaction_mined);
+    });
+
+    assert_eq!(
+        runtime
+            .block_on(alice_output_manager.get_balance())
+            .unwrap()
+            .available_balance,
+        target_balance
+    );
+
+    // Finally just test that the protocol gets started after Base Node Pubkey is provided and that it repeats after the
+    // timeout
+    let _ = runtime
+        .block_on(alice_ts.generate_coinbase_transaction(reward1, fees1, 66))
+        .unwrap();
+
+    alice_outbound_service
+        .wait_call_count(4, Duration::from_secs(30))
+        .expect("Alice call wait 2");
+    // make sure that there are 2 sets of requests and they all have the same request key
+    let mut request_key = 0;
+    let mut fetch_count = 0;
+    let mut metadata_count = 0;
+    for _ in 0..4 {
+        let call = alice_outbound_service.pop_call().unwrap();
+        if let Some(bsr) = try_decode_base_node_request(call.1.to_vec().clone()) {
+            match bsr.request.unwrap() {
+                BaseNodeRequestProto::GetChainMetadata(_c) => {
+                    if request_key == 0 {
+                        request_key = bsr.request_key;
+                    } else {
+                        assert_eq!(request_key, bsr.request_key);
+                    }
+                    metadata_count += 1;
+                },
+                BaseNodeRequestProto::FetchUtxos(_f) => {
+                    if request_key == 0 {
+                        request_key = bsr.request_key;
+                    } else {
+                        assert_eq!(request_key, bsr.request_key);
+                    }
+                    fetch_count += 1;
+                },
+                _ => (),
+            }
+        }
+    }
+    assert_eq!(fetch_count, 2);
+    assert_eq!(metadata_count, 2);
 }

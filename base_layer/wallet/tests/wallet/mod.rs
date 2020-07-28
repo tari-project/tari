@@ -41,7 +41,10 @@ use aes_gcm::{
 use digest::Digest;
 use futures::{FutureExt, StreamExt};
 use std::path::Path;
-use tari_core::transactions::{tari_amount::uT, transaction::UnblindedOutput, types::PrivateKey};
+use tari_core::{
+    consensus::Network,
+    transactions::{tari_amount::uT, transaction::UnblindedOutput, types::PrivateKey},
+};
 use tari_crypto::common::Blake256;
 use tari_p2p::transport::TransportType;
 use tari_wallet::{
@@ -123,7 +126,7 @@ fn create_wallet(
     let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let contacts_backend = ContactsServiceSqliteDatabase::new(connection);
 
-    let config = WalletConfig::new(comms_config, factories, None);
+    let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind);
 
     let runtime_node = Runtime::new().unwrap();
     let wallet = Wallet::new(
@@ -470,7 +473,7 @@ fn test_import_utxo() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
     };
-    let config = WalletConfig::new(comms_config, factories.clone(), None);
+    let config = WalletConfig::new(comms_config, factories.clone(), None, Network::Rincewind);
     let runtime_node = Runtime::new().unwrap();
     let mut alice_wallet = Wallet::new(
         config,
@@ -537,7 +540,7 @@ fn test_data_generation() {
         listener_liveness_max_sessions: 0,
     };
 
-    let config = WalletConfig::new(comms_config, factories, None);
+    let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind);
 
     let transaction_backend = TransactionMemoryDatabase::new();
 

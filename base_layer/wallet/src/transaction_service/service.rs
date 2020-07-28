@@ -29,6 +29,7 @@ use crate::{
         protocols::{
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
             transaction_chain_monitoring_protocol::TransactionChainMonitoringProtocol,
+            transaction_coinbase_monitoring_protocol::TransactionCoinbaseMonitoringProtocol,
             transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
             transaction_send_protocol::{TransactionSendProtocol, TransactionSendProtocolStage},
         },
@@ -64,14 +65,17 @@ use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::transactions::{tari_amount::uT, types::BlindingFactor};
 use tari_core::{
     base_node::proto::base_node as BaseNodeProto,
+    consensus::ConsensusConstants,
     mempool::{proto::mempool as MempoolProto, service::MempoolServiceResponse},
     transactions::{
         tari_amount::MicroTari,
         transaction::Transaction,
         transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
         types::{CryptoFactories, PrivateKey},
+        CoinbaseBuilder,
     },
 };
+use tari_crypto::keys::SecretKey;
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tokio::{sync::broadcast, task::JoinHandle};
@@ -118,7 +122,7 @@ where TBackend: TransactionBackend + Clone + 'static
     event_publisher: TransactionEventSender,
     node_identity: Arc<NodeIdentity>,
     base_node_public_key: Option<CommsPublicKey>,
-    service_resources: TransactionServiceResources<TBackend>,
+    resources: TransactionServiceResources<TBackend>,
     pending_transaction_reply_senders: HashMap<TxId, Sender<(CommsPublicKey, RecipientSignedMessage)>>,
     mempool_response_senders: HashMap<u64, Sender<MempoolServiceResponse>>,
     base_node_response_senders: HashMap<u64, Sender<BaseNodeProto::BaseNodeServiceResponse>>,
@@ -157,11 +161,12 @@ where
         event_publisher: TransactionEventSender,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
+        consensus_constants: ConsensusConstants,
     ) -> Self
     {
         // Collect the resources that all protocols will need so that they can be neatly cloned as the protocols are
         // spawned.
-        let service_resources = TransactionServiceResources {
+        let resources = TransactionServiceResources {
             db: db.clone(),
             output_manager_service: output_manager_service.clone(),
             outbound_message_service,
@@ -169,6 +174,7 @@ where
             node_identity: node_identity.clone(),
             factories,
             config: config.clone(),
+            consensus_constants,
         };
         let (timeout_update_publisher, _) = broadcast::channel(20);
 
@@ -185,7 +191,7 @@ where
             event_publisher,
             node_identity,
             base_node_public_key: None,
-            service_resources,
+            resources,
             pending_transaction_reply_senders: HashMap::new(),
             mempool_response_senders: HashMap::new(),
             base_node_response_senders: HashMap::new(),
@@ -252,6 +258,10 @@ where
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         > = FuturesUnordered::new();
 
+        let mut coinbase_transaction_monitoring_protocol_handles: FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        > = FuturesUnordered::new();
+
         info!(target: LOG_TARGET, "Transaction Service started");
         loop {
             futures::select! {
@@ -263,7 +273,8 @@ where
                         &mut send_transaction_protocol_handles,
                         &mut receive_transaction_protocol_handles,
                         &mut transaction_broadcast_protocol_handles,
-                        &mut transaction_chain_monitoring_protocol_handles).await.or_else(|resp| {
+                        &mut transaction_chain_monitoring_protocol_handles,
+                        &mut coinbase_transaction_monitoring_protocol_handles).await.or_else(|resp| {
                         error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
                         Err(resp)
                     })).or_else(|resp| {
@@ -393,6 +404,14 @@ where
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Chain Monitoring protocol: {:?}", e),
                     };
                 }
+                join_result = coinbase_transaction_monitoring_protocol_handles.select_next_some() => {
+                    trace!(target: LOG_TARGET, "Coinbase transaction monitoring protocol has ended with result {:?}",
+                    join_result);
+                    match join_result {
+                        Ok(join_result_inner) => self.complete_coinbase_transaction_monitoring_protocol(join_result_inner),
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving Coinbase Monitoring protocol: {:?}", e),
+                    };
+                }
                 complete => {
                     info!(target: LOG_TARGET, "Transaction service shutting down");
                     break;
@@ -414,6 +433,9 @@ where
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
         chain_monitoring_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+        coinbase_monitoring_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
     ) -> Result<TransactionServiceResponse, TransactionServiceError>
     {
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
@@ -472,6 +494,7 @@ where
                     chain_monitoring_join_handles,
                     send_transaction_join_handles,
                     receive_transaction_join_handles,
+                    coinbase_monitoring_join_handles,
                 )
                 .await
                 .map(|_| TransactionServiceResponse::BaseNodePublicKeySet),
@@ -483,6 +506,10 @@ where
                 .submit_transaction(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
                 .await
                 .map(|_| TransactionServiceResponse::TransactionSubmitted),
+            TransactionServiceRequest::GenerateCoinbaseTransaction(reward, fees, block_height) => self
+                .generate_coinbase_transaction(reward, fees, block_height, coinbase_monitoring_join_handles)
+                .await
+                .map(|tx| TransactionServiceResponse::CoinbaseTransactionGenerated(Box::new(tx))),
             #[cfg(feature = "test_harness")]
             TransactionServiceRequest::CompletePendingOutboundTransaction(completed_transaction) => {
                 self.complete_pending_outbound_transaction(completed_transaction)
@@ -561,7 +588,7 @@ where
             .insert(tx_id, cancellation_sender);
         let protocol = TransactionSendProtocol::new(
             tx_id,
-            self.service_resources.clone(),
+            self.resources.clone(),
             tx_reply_receiver,
             cancellation_receiver,
             dest_pubkey,
@@ -707,7 +734,7 @@ where
                     .insert(tx_id, cancellation_sender);
                 let protocol = TransactionSendProtocol::new(
                     tx_id,
-                    self.service_resources.clone(),
+                    self.resources.clone(),
                     tx_reply_receiver,
                     cancellation_receiver,
                     tx.destination_public_key,
@@ -775,7 +802,7 @@ where
                 source_pubkey,
                 sender_message,
                 TransactionReceiveProtocolStage::Initial,
-                self.service_resources.clone(),
+                self.resources.clone(),
                 tx_finalized_receiver,
                 cancellation_receiver,
             );
@@ -892,7 +919,7 @@ where
                     tx.source_public_key,
                     TransactionSenderMessage::None,
                     TransactionReceiveProtocolStage::WaitForFinalize,
-                    self.service_resources.clone(),
+                    self.resources.clone(),
                     tx_finalized_receiver,
                     cancellation_receiver,
                 );
@@ -915,6 +942,9 @@ where
         chain_monitoring_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
         send_transaction_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
         receive_transaction_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
+        coinbase_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
     ) -> Result<(), TransactionServiceError>
@@ -963,6 +993,17 @@ where
                 .map_err(|resp| {
                     error!(
                         target: LOG_TARGET,
+                        "Error restarting protocols for all coinbase transactions: {:?}", resp
+                    );
+                    resp
+                });
+
+            let _ = self
+                .restart_chain_monitoring_for_all_coinbase_transactions(coinbase_transaction_join_handles)
+                .await
+                .map_err(|resp| {
+                    error!(
+                        target: LOG_TARGET,
                         "Error restarting protocols for all pending inbound transactions: {:?}", resp
                     );
                     resp
@@ -998,7 +1039,7 @@ where
                 self.base_node_response_senders.insert(tx_id, base_node_response_sender);
                 let protocol = TransactionBroadcastProtocol::new(
                     tx_id,
-                    self.service_resources.clone(),
+                    self.resources.clone(),
                     timeout,
                     pk,
                     mempool_response_receiver,
@@ -1148,7 +1189,7 @@ where
                 let protocol = TransactionChainMonitoringProtocol::new(
                     protocol_id,
                     completed_tx.tx_id,
-                    self.service_resources.clone(),
+                    self.resources.clone(),
                     timeout,
                     pk,
                     mempool_response_receiver,
@@ -1308,6 +1349,7 @@ where
                     message,
                     Utc::now().naive_utc(),
                     TransactionDirection::Inbound,
+                    None,
                 ),
             )
             .await?;
@@ -1318,6 +1360,174 @@ where
         );
         self.complete_send_transaction_protocol(Ok(tx_id), transaction_broadcast_join_handles)
             .await;
+        Ok(())
+    }
+
+    async fn generate_coinbase_transaction(
+        &mut self,
+        reward: MicroTari,
+        fees: MicroTari,
+        block_height: u64,
+        coinbase_monitoring_protocol_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
+    ) -> Result<Transaction, TransactionServiceError>
+    {
+        let tx_id = OsRng.next_u64();
+        let total_reward = reward + fees;
+        let spending_key = self
+            .output_manager_service
+            .get_coinbase_spending_key(tx_id, total_reward, block_height)
+            .await?;
+        let nonce = PrivateKey::random(&mut OsRng);
+        let (tx, _) = CoinbaseBuilder::new(self.resources.factories.clone())
+            .with_block_height(block_height)
+            .with_fees(fees)
+            .with_spend_key(spending_key)
+            .with_nonce(nonce)
+            .build_with_reward(&self.resources.consensus_constants, reward)?;
+
+        // Cancel existing unmined coinbase transactions for this blockheight
+        self.db
+            .cancel_coinbase_transaction_at_block_height(block_height)
+            .await?;
+
+        self.db
+            .insert_completed_transaction(
+                tx_id,
+                CompletedTransaction::new(
+                    tx_id,
+                    self.node_identity.public_key().clone(),
+                    self.node_identity.public_key().clone(),
+                    total_reward,
+                    MicroTari::from(0),
+                    tx.clone(),
+                    TransactionStatus::Coinbase,
+                    format!("Coinbase Transaction for Block {}", block_height),
+                    Utc::now().naive_utc(),
+                    TransactionDirection::Inbound,
+                    Some(block_height),
+                ),
+            )
+            .await?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Coinbase transaction (TxId: {}) for Block Height: {} added", tx_id, block_height
+        );
+
+        if let Err(e) = self
+            .start_coinbase_transaction_monitoring_protocol(tx_id, coinbase_monitoring_protocol_join_handles)
+            .await
+        {
+            warn!(
+                target: LOG_TARGET,
+                "Could not start chain monitoring for Coinbase transaction (TxId: {}): {:?}", tx_id, e
+            );
+        }
+
+        Ok(tx)
+    }
+
+    /// Send a request to the Base Node to see if the specified coinbase transaction has been mined yet. This function
+    /// will send the request and store a timeout future to check in on the status of the transaction in the future.
+    async fn start_coinbase_transaction_monitoring_protocol(
+        &mut self,
+        tx_id: TxId,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+    ) -> Result<(), TransactionServiceError>
+    {
+        let completed_tx = self.db.get_completed_transaction(tx_id).await?;
+
+        if completed_tx.status != TransactionStatus::Coinbase || completed_tx.coinbase_block_height.is_none() {
+            return Err(TransactionServiceError::InvalidCompletedTransaction);
+        }
+
+        let block_height = if let Some(bh) = completed_tx.coinbase_block_height {
+            bh
+        } else {
+            0
+        };
+
+        let timeout = match self.power_mode {
+            PowerMode::Normal => self.config.base_node_monitoring_timeout,
+            PowerMode::Low => self.config.low_power_polling_timeout,
+        };
+        match self.base_node_public_key.clone() {
+            None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
+            Some(pk) => {
+                let protocol_id = OsRng.next_u64();
+
+                let (base_node_response_sender, base_node_response_receiver) = mpsc::channel(100);
+                self.base_node_response_senders
+                    .insert(protocol_id, base_node_response_sender);
+                let protocol = TransactionCoinbaseMonitoringProtocol::new(
+                    protocol_id,
+                    completed_tx.tx_id,
+                    block_height,
+                    self.resources.clone(),
+                    timeout,
+                    pk,
+                    base_node_response_receiver,
+                    self.timeout_update_publisher.subscribe(),
+                );
+                let join_handle = tokio::spawn(protocol.execute());
+                join_handles.push(join_handle);
+            },
+        }
+        Ok(())
+    }
+
+    /// Handle the final clean up after a Coinbase Transaction Monitoring protocol completes
+    fn complete_coinbase_transaction_monitoring_protocol(
+        &mut self,
+        join_result: Result<u64, TransactionServiceProtocolError>,
+    )
+    {
+        match join_result {
+            Ok(id) => {
+                // Cleanup any registered senders
+                let _ = self.base_node_response_senders.remove(&id);
+
+                trace!(
+                    target: LOG_TARGET,
+                    "Coinbase Transaction monitoring Protocol for TxId: {} completed successfully",
+                    id
+                );
+            },
+            Err(TransactionServiceProtocolError { id, error }) => {
+                let _ = self.base_node_response_senders.remove(&id);
+
+                warn!(
+                    target: LOG_TARGET,
+                    "Error completing Coinbase Transaction monitoring Protocol (Id: {}): {:?}", id, error
+                );
+                let _ = self
+                    .event_publisher
+                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
+            },
+        }
+    }
+
+    /// Go through all completed transactions that have the Coinbase status and start querying the base_node to see if
+    /// they have been mined
+    async fn restart_chain_monitoring_for_all_coinbase_transactions(
+        &mut self,
+        join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+    ) -> Result<(), TransactionServiceError>
+    {
+        trace!(
+            target: LOG_TARGET,
+            "Starting Coinbase monitoring for all Broadcast Transactions"
+        );
+        let completed_txs = self.db.get_completed_transactions().await?;
+        for completed_tx in completed_txs.values() {
+            if completed_tx.status == TransactionStatus::Coinbase {
+                self.start_coinbase_transaction_monitoring_protocol(completed_tx.tx_id, join_handles)
+                    .await?;
+            }
+        }
+
         Ok(())
     }
 
@@ -1388,10 +1598,8 @@ where
                     .outputs_to_be_spent
                     .iter()
                     .map(|o| {
-                        o.unblinded_output.as_transaction_input(
-                            &self.service_resources.factories.commitment,
-                            OutputFeatures::default(),
-                        )
+                        o.unblinded_output
+                            .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default())
                     })
                     .collect(),
                 pending_tx
@@ -1399,7 +1607,7 @@ where
                     .iter()
                     .map(|o| {
                         o.unblinded_output
-                            .as_transaction_output(&self.service_resources.factories)
+                            .as_transaction_output(&self.resources.factories)
                             .expect("Failed to convert to Transaction Output")
                     })
                     .collect(),
@@ -1442,8 +1650,11 @@ where
             transaction_service::{handle::TransactionServiceHandle, storage::database::InboundTransaction},
         };
         use futures::stream;
-        use tari_core::transactions::{transaction::OutputFeatures, ReceiverTransactionProtocol};
-        use tari_crypto::keys::SecretKey;
+        use tari_core::{
+            consensus::{ConsensusConstantsBuilder, Network},
+            transactions::{transaction::OutputFeatures, ReceiverTransactionProtocol},
+        };
+        use tari_crypto::keys::SecretKey as SecretKeyTrait;
 
         let (_sender, receiver) = reply_channel::unbounded();
         let (tx, _rx) = mpsc::channel(20);
@@ -1451,6 +1662,7 @@ where
         let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
         let (event_publisher, _) = broadcast::channel(100);
         let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
+        let constants = ConsensusConstantsBuilder::new(Network::Rincewind).build();
 
         let mut fake_oms = OutputManagerService::new(
             OutputManagerServiceConfig::default(),
@@ -1460,12 +1672,13 @@ where
             stream::empty(),
             OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
             oms_event_publisher,
-            self.service_resources.factories.clone(),
+            self.resources.factories.clone(),
+            constants.coinbase_lock_height(),
         )
         .await?;
 
         use crate::testnet_utils::make_input;
-        let (_ti, uo) = make_input(&mut OsRng, amount + 1000 * uT, &self.service_resources.factories);
+        let (_ti, uo) = make_input(&mut OsRng, amount + 1000 * uT, &self.resources.factories);
 
         fake_oms.add_output(uo).await?;
 
@@ -1489,7 +1702,7 @@ where
             nonce,
             spending_key.clone(),
             OutputFeatures::default(),
-            &self.service_resources.factories,
+            &self.resources.factories,
         );
 
         let inbound_transaction = InboundTransaction::new(
@@ -1542,6 +1755,7 @@ where
             found_tx.message.clone(),
             found_tx.timestamp,
             TransactionDirection::Inbound,
+            None,
         );
 
         self.db
@@ -1574,6 +1788,7 @@ where TBackend: TransactionBackend + Clone + 'static
     pub node_identity: Arc<NodeIdentity>,
     pub factories: CryptoFactories,
     pub config: TransactionServiceConfig,
+    pub consensus_constants: ConsensusConstants,
 }
 
 #[derive(Clone, Copy)]
