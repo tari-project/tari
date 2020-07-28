@@ -67,6 +67,7 @@ use tari_core::{
     base_node::{states::StatusInfo, LocalNodeCommsInterface},
     blocks::BlockHeader,
     mempool::service::LocalMempoolService,
+    mining::MinerInstruction,
     tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable},
     transactions::{
         tari_amount::{uT, MicroTari},
@@ -81,7 +82,7 @@ use tari_wallet::{
     transaction_service::{error::TransactionServiceError, handle::TransactionServiceHandle},
     util::emoji::EmojiId,
 };
-use tokio::{runtime, time};
+use tokio::{runtime, sync::broadcast::Sender as syncSender, time};
 
 /// Enum representing commands used by the basenode
 #[derive(Clone, PartialEq, Debug, Display, EnumIter, EnumString)]
@@ -140,7 +141,9 @@ pub struct Parser {
     mempool_service: LocalMempoolService,
     wallet_transaction_service: TransactionServiceHandle,
     enable_miner: Arc<AtomicBool>,
+    mining_status: Arc<AtomicBool>,
     miner_hashrate: Arc<AtomicU64>,
+    miner_instructions: syncSender<MinerInstruction>,
     miner_thread_count: u64,
     state_machine_info: Subscriber<StatusInfo>,
 }
@@ -199,7 +202,9 @@ impl Parser {
             mempool_service: ctx.local_mempool(),
             wallet_transaction_service: ctx.wallet_transaction_service(),
             enable_miner: ctx.miner_enabled(),
+            mining_status: ctx.mining_status(),
             miner_hashrate: ctx.miner_hashrate(),
+            miner_instructions: ctx.miner_instruction_events(),
             miner_thread_count: config.num_mining_threads as u64,
             state_machine_info: ctx.get_state_machine_info_channel(),
         }
@@ -1268,24 +1273,86 @@ impl Parser {
 
     /// Function to process the toggle-mining command
     fn process_toggle_mining(&mut self) {
-        let new_state = !self.enable_miner.load(Ordering::SeqCst);
-        self.enable_miner.store(new_state, Ordering::SeqCst);
-        if new_state {
-            println!("Mining is ON");
-        } else {
-            println!("Mining is OFF");
-        }
-        debug!(target: LOG_TARGET, "Mining state is now switched to {}", new_state);
+        // 'enable_miner' should not be changed directly; this is done indirectly via miner instructions,
+        // while 'mining_status' will reflect if mining is happening or not
+        let enable_miner = self.enable_miner.clone();
+        let mining_status = self.mining_status.clone();
+        let miner_instructions = self.miner_instructions.clone();
+        self.executor.spawn(async move {
+            let new_state = !enable_miner.load(Ordering::SeqCst);
+            // The event channel can interrupt the mining thread timeously to stop or start mining
+            let _ = match new_state {
+                true => {
+                    println!("Mining requested to be turned ON");
+                    miner_instructions.send(MinerInstruction::StartMining).map_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Could not send 'StartMining' instruction to miner. {:?}.", e
+                        );
+                        e
+                    })
+                },
+                false => {
+                    println!("Mining requested to be turned OFF");
+                    miner_instructions.send(MinerInstruction::PauseMining).map_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Could not send 'PauseMining' instruction to miner. {:?}.", e
+                        );
+                        e
+                    })
+                },
+            };
+            debug!(
+                target: LOG_TARGET,
+                "Mining state requested to be switched to {}", new_state
+            );
+
+            // Verify the mining status
+            let mut attempts = 0;
+            const DELAY: u64 = 2500;
+            const WAIT_CYCLES: usize = 50;
+            loop {
+                tokio::time::delay_for(Duration::from_millis(DELAY)).await;
+                if new_state == mining_status.load(Ordering::SeqCst) {
+                    match new_state {
+                        true => println!("Mining is ON"),
+                        false => println!("Mining is OFF"),
+                    }
+                    break;
+                }
+                attempts += 1;
+                if attempts > WAIT_CYCLES {
+                    match new_state {
+                        true => println!(
+                            "Mining could not be turned ON in {:.1} s (mining enabled is set to {})",
+                            DELAY as f32 * attempts as f32 / 1000.0,
+                            enable_miner.load(Ordering::SeqCst)
+                        ),
+                        false => println!(
+                            "Mining could not to be turned OFF in {:.1} s (mining enabled is set to {})",
+                            DELAY as f32 * attempts as f32 / 1000.0,
+                            enable_miner.load(Ordering::SeqCst)
+                        ),
+                    }
+                    break;
+                }
+            }
+        });
     }
 
     /// Function to process the get_mining_state command
     fn process_get_mining_state(&mut self) {
         let cur_state = self.enable_miner.load(Ordering::SeqCst);
-        if cur_state {
-            println!("Mining is ON");
-        } else {
-            println!("Mining is OFF");
-        };
+        let mining_status = self.mining_status.load(Ordering::SeqCst);
+        match cur_state {
+            true => println!("Mining is ENABLED by the user"),
+            false => println!("Mining is DISABLED by the user"),
+        }
+        match mining_status {
+            true => println!("Mining state is currently ON"),
+            false => println!("Mining state is currently OFF"),
+        }
         let hashrate = self.miner_hashrate.load(Ordering::SeqCst);
         let total_hashrate = (self.miner_thread_count * hashrate) as f64 / 1_000_000.0;
         println!("Mining hash rate is: {:.6} MH/s", total_hashrate);
