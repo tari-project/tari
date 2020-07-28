@@ -89,8 +89,8 @@ impl<'a> EmissionRate<'a> {
     fn new(schedule: &'a Emission) -> EmissionRate<'a> {
         EmissionRate {
             block_num: 0,
-            supply: schedule.initial + schedule.tail,
-            reward: schedule.initial + schedule.tail,
+            supply: schedule.initial,
+            reward: schedule.initial,
             schedule,
         }
     }
@@ -107,14 +107,24 @@ impl<'a> EmissionRate<'a> {
         self.reward
     }
 
+    /// Calculates the next reward by multiplying the decay factor by the previous block reward using integer math.
+    ///
+    /// We write the decay factor, 1 - k, as a sum of fraction powers of two. e.g. if we wanted 0.25 as our k, then
+    /// (1-k) would be 0.75 = 1/2 plus 1/4 (1/2^2).
+    ///
+    /// Then we calculate k.R = (1 - e).R = R - e.R = R - (0.5 * R + 0.25 * R) = R - R >> 1 - R >> 2
     fn next_reward(&self) -> MicroTari {
         let r: u64 = self.reward.into();
-        self.schedule
+        let next = self
+            .schedule
             .decay
             .iter()
-            .fold(self.schedule.tail + self.reward, |sum, i| {
-                sum - MicroTari::from(r >> *i)
-            })
+            .fold(self.reward, |sum, i| sum - MicroTari::from(r >> *i));
+        if next > self.schedule.tail {
+            next
+        } else {
+            self.schedule.tail
+        }
     }
 }
 
@@ -305,27 +315,25 @@ mod test {
 
     #[test]
     fn emission() {
-        let emission = Emission::new(1000 * T, &[2, 3], 10 * T);
+        let emission = Emission::new(1 * T, &[1, 2], 100 * uT);
         let mut emission = emission.iter();
         // decay is 1 - 0.25 - 0.125 = 0.625
         assert_eq!(emission.block_height(), 0);
-        assert_eq!(emission.block_reward(), 1010 * T);
-        assert_eq!(emission.supply(), 1010 * T);
+        assert_eq!(emission.block_reward(), 1 * T);
+        assert_eq!(emission.supply(), 1 * T);
 
-        assert_eq!(emission.next(), Some((1, 641_250_000 * uT, 1_651_250_000 * uT)));
-        assert_eq!(emission.next(), Some((2, 410_781_250 * uT, 2_062_031_250 * uT)));
-        assert_eq!(emission.next(), Some((3, 266_738_282 * uT, 2_328_769_532 * uT)));
-        assert_eq!(emission.next(), Some((4, 176_711_427 * uT, 2_505_480_959 * uT)));
-        assert_eq!(emission.next(), Some((5, 120_444_643 * uT, 2_625_925_602 * uT)));
-        assert_eq!(emission.next(), Some((6, 85_277_903 * uT, 2_711_203_505 * uT)));
-        assert_eq!(emission.next(), Some((7, 63_298_691 * uT, 2_774_502_196 * uT)));
-        assert_eq!(emission.next(), Some((8, 49_561_683 * uT, 2_824_063_879 * uT)));
-        assert_eq!(emission.next(), Some((9, 40_976_053 * uT, 2_865_039_932 * uT)));
-        assert_eq!(emission.next(), Some((10, 35_610_034 * uT, 2_900_649_966 * uT)));
-        assert_eq!(emission.next(), Some((11, 32_256_272 * uT, 2_932_906_238 * uT)));
+        assert_eq!(emission.next(), Some((1, 250_000 * uT, 1_250_000 * uT)));
+        assert_eq!(emission.next(), Some((2, 62_500 * uT, 1_312_500 * uT)));
+        assert_eq!(emission.next(), Some((3, 15_625 * uT, 1_328_125 * uT)));
+        assert_eq!(emission.next(), Some((4, 3_907 * uT, 1_332_032 * uT)));
+        assert_eq!(emission.next(), Some((5, 978 * uT, 1_333_010 * uT)));
+        assert_eq!(emission.next(), Some((6, 245 * uT, 1_333_255 * uT)));
+        // Tail emission kicks in
+        assert_eq!(emission.next(), Some((7, 100 * uT, 1_333_355 * uT)));
+        assert_eq!(emission.next(), Some((8, 100 * uT, 1_333_455 * uT)));
 
-        assert_eq!(emission.block_height(), 11);
-        assert_eq!(emission.block_reward(), 32_256_272 * uT);
-        assert_eq!(emission.supply(), 2_932_906_238 * uT);
+        assert_eq!(emission.block_height(), 8);
+        assert_eq!(emission.block_reward(), 100 * uT);
+        assert_eq!(emission.supply(), 1333455 * uT);
     }
 }
