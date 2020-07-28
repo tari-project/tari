@@ -299,7 +299,9 @@ impl OutboundNodeCommsInterface {
     {
         self.block_sender
             .unbounded_send((new_block, exclude_peers))
-            .map_err(|_| CommsInterfaceError::BroadcastFailed)
+            .map_err(|err| {
+                CommsInterfaceError::InternalChannelError(format!("Failed to send on block_sender: {}", err))
+            })
     }
 
     /// Fetches the total merkle mountain range node count upto the specified height from remote base nodes.

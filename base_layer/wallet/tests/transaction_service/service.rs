@@ -3467,6 +3467,7 @@ fn test_handling_coinbase_transactions() {
             best_block: None,
             pruning_horizon: 0,
             accumulated_difficulty: None,
+            effective_pruned_height: 0,
         })),
     };
     runtime
@@ -3552,6 +3553,7 @@ fn test_handling_coinbase_transactions() {
             best_block: None,
             pruning_horizon: 0,
             accumulated_difficulty: None,
+            effective_pruned_height: 0,
         })),
     };
     runtime

@@ -20,26 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{chain_storage::ChainStorageError, consensus::ConsensusManagerError};
-use derive_error::Error;
+use crate::{chain_storage::ChainStorageError, consensus::ConsensusManagerError, mempool::MempoolError};
+use tari_comms_dht::outbound::DhtOutboundError;
 use tari_service_framework::reply_channel::TransportChannelError;
+use thiserror::Error;
 
-#[derive(Debug, Error, PartialEq, Clone)]
+#[derive(Debug, Error)]
 pub enum CommsInterfaceError {
-    /// Received an unexpected response from a remote peer
+    #[error("Received an unexpected response from a remote peer")]
     UnexpectedApiResponse,
+    #[error("Request timed out")]
     RequestTimedOut,
+    #[error("No bootstrap nodes have been configured")]
     NoBootstrapNodesConfigured,
-    TransportChannelError(TransportChannelError),
-    ChainStorageError(ChainStorageError),
-    #[error(non_std, no_from)]
-    OutboundMessageService(String),
-    EventStreamError,
-    #[error(non_std, no_from)]
-    MempoolError(String),
-    /// Failure in broadcast DHT middleware
+    #[error("Transport channel error: {0}")]
+    TransportChannelError(#[from] TransportChannelError),
+    #[error("Chain storage error: {0}")]
+    ChainStorageError(#[from] ChainStorageError),
+    #[error("Failed to send outbound message: {0}")]
+    OutboundMessageError(#[from] DhtOutboundError),
+    #[error("Mempool error: {0}")]
+    MempoolError(#[from] MempoolError),
+    #[error("Failed to broadcast message")]
     BroadcastFailed,
-    DifficultyAdjustmentManagerError(ConsensusManagerError),
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Internal channel error: {0}")]
+    InternalChannelError(String),
+    #[error("Difficulty adjustment error: {0}")]
+    DifficultyAdjustmentManagerError(#[from] ConsensusManagerError),
+    #[error("Invalid peer response: {0}")]
     InvalidPeerResponse(String),
 }

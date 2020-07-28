@@ -71,7 +71,16 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn fetch_checkpoint(&self, _tree: MmrTree, _index: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
+    fn fetch_checkpoint_at_height(&self, _tree: MmrTree, _index: u64) -> Result<MerkleCheckPoint, ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn fetch_checkpoint_at_index(
+        &self,
+        _tree: MmrTree,
+        _index: usize,
+    ) -> Result<Option<MerkleCheckPoint>, ChainStorageError>
+    {
         unimplemented!()
     }
 
@@ -152,7 +161,7 @@ impl BlockchainBackend for MockBackend {
         unimplemented!()
     }
 
-    fn fetch_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
+    fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
         unimplemented!()
     }
 
@@ -171,6 +180,10 @@ impl BlockchainBackend for MockBackend {
     }
 
     fn count_kernels(&self) -> Result<usize, ChainStorageError> {
+        unimplemented!()
+    }
+
+    fn count_checkpoints(&self, _tree: MmrTree) -> Result<usize, ChainStorageError> {
         unimplemented!()
     }
 

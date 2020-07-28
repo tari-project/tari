@@ -30,20 +30,20 @@ use crate::{
         ListeningInfo,
         Shutdown,
         Starting,
+        SyncPeers,
         Waiting,
     },
     chain_storage::ChainMetadata,
     proof_of_work::Difficulty,
 };
 use std::fmt::{Display, Error, Formatter};
-use tari_comms::peer_manager::NodeId;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BaseNodeState {
     Starting(Starting),
     HeaderSync(HeaderSync),
     HorizonStateSync(HorizonStateSync),
-    BlockSync(BlockSyncStrategy, ChainMetadata, Vec<NodeId>),
+    BlockSync(BlockSyncStrategy, ChainMetadata, SyncPeers),
     // The best network chain metadata
     Listening(Listening),
     // We're in a paused state, and will return to Listening after a timeout
@@ -75,9 +75,9 @@ pub enum StateEvent {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SyncStatus {
     // We are behind the chain tip.
-    Lagging(ChainMetadata, Vec<NodeId>),
+    Lagging(ChainMetadata, SyncPeers),
     // We are behind the pruning horizon.
-    LaggingBehindHorizon(ChainMetadata, Vec<NodeId>),
+    LaggingBehindHorizon(ChainMetadata, SyncPeers),
     UpToDate,
 }
 
@@ -98,7 +98,7 @@ impl Display for SyncStatus {
                 f,
                 "Lagging behind {} peers (#{}, Difficulty: {})",
                 v.len(),
-                m.height_of_longest_chain.unwrap_or(0),
+                m.height_of_longest_chain(),
                 m.accumulated_difficulty.unwrap_or_else(Difficulty::min),
             ),
             LaggingBehindHorizon(m, v) => write!(

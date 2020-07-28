@@ -87,7 +87,7 @@ fn fetch_async_headers() {
             let db = db.clone();
             rt.spawn(async move {
                 let header_height = async_db::fetch_header(db.clone(), height).await.unwrap();
-                let header_hash = async_db::fetch_header_with_block_hash(db.clone(), hash).await.unwrap();
+                let header_hash = async_db::fetch_header_by_block_hash(db.clone(), hash).await.unwrap();
                 assert_eq!(block.header, header_height);
                 assert_eq!(block.header, header_hash);
             });
@@ -123,12 +123,12 @@ fn fetch_async_utxo() {
         let db2 = db.clone();
         let _blocks2 = blocks.clone();
         rt.spawn(async move {
-            let utxo_check = async_db::fetch_utxo(db.clone(), utxo.hash()).await;
-            assert_eq!(utxo_check, Ok(utxo));
+            let utxo_check = async_db::fetch_utxo(db.clone(), utxo.hash()).await.unwrap();
+            assert_eq!(utxo_check, utxo);
         });
         rt.spawn(async move {
-            let stxo_check = async_db::fetch_stxo(db2.clone(), stxo.hash()).await;
-            assert_eq!(stxo_check, Ok(stxo));
+            let stxo_check = async_db::fetch_stxo(db2.clone(), stxo.hash()).await.unwrap();
+            assert_eq!(stxo_check, stxo);
         });
     });
 }
@@ -142,29 +142,29 @@ fn async_is_utxo_stxo() {
     let utxo = find_utxo(&outputs[4][0], &blocks[4], &factory).unwrap();
     let stxo = find_utxo(&outputs[1][0], &blocks[1], &factory).unwrap();
     // Check using sync functions
-    assert_eq!(db.is_utxo(utxo.hash()), Ok(true));
-    assert_eq!(db.is_utxo(stxo.hash()), Ok(false));
+    assert_eq!(db.is_utxo(utxo.hash()).unwrap(), true);
+    assert_eq!(db.is_utxo(stxo.hash()).unwrap(), false);
 
-    assert_eq!(db.is_stxo(utxo.hash()), Ok(false));
-    assert_eq!(db.is_stxo(stxo.hash()), Ok(true));
+    assert_eq!(db.is_stxo(utxo.hash()).unwrap(), false);
+    assert_eq!(db.is_stxo(stxo.hash()).unwrap(), true);
 
     test_async(move |rt| {
         let db = db.clone();
         let db2 = db.clone();
         let _blocks2 = blocks.clone();
         rt.spawn(async move {
-            let is_utxo = async_db::is_utxo(db.clone(), utxo.hash()).await;
-            assert_eq!(is_utxo, Ok(true));
+            let is_utxo = async_db::is_utxo(db.clone(), utxo.hash()).await.unwrap();
+            assert_eq!(is_utxo, true);
 
-            let is_stxo = async_db::is_stxo(db.clone(), utxo.hash()).await;
-            assert_eq!(is_stxo, Ok(false));
+            let is_stxo = async_db::is_stxo(db.clone(), utxo.hash()).await.unwrap();
+            assert_eq!(is_stxo, false);
         });
         rt.spawn(async move {
-            let is_utxo = async_db::is_utxo(db2.clone(), stxo.hash()).await;
-            assert_eq!(is_utxo, Ok(false));
+            let is_utxo = async_db::is_utxo(db2.clone(), stxo.hash()).await.unwrap();
+            assert_eq!(is_utxo, false);
 
-            let is_stxo = async_db::is_stxo(db2.clone(), stxo.hash()).await;
-            assert_eq!(is_stxo, Ok(true));
+            let is_stxo = async_db::is_stxo(db2.clone(), stxo.hash()).await.unwrap();
+            assert_eq!(is_stxo, true);
         });
     });
 }
@@ -212,7 +212,7 @@ fn async_add_new_block() {
 #[test]
 fn fetch_async_mmr_roots() {
     let (db, _blocks, _, _) = create_blockchain_db_no_cut_through();
-    let metadata = db.get_metadata().unwrap();
+    let metadata = db.get_chain_metadata().unwrap();
     test_async(move |rt| {
         let dbc = db.clone();
         rt.spawn(async move {

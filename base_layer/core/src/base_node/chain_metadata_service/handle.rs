@@ -26,7 +26,7 @@ use std::fmt::{Display, Error, Formatter};
 use tari_broadcast_channel::Subscriber;
 use tari_comms::peer_manager::NodeId;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeerChainMetadata {
     pub node_id: NodeId,
     pub chain_metadata: ChainMetadata,

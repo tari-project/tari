@@ -23,7 +23,7 @@
 use crate::{
     base_node::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
-        states::{StateEvent, StateEvent::FatalError, StatusInfo, SyncStatus, Waiting},
+        states::{StateEvent, StateEvent::FatalError, StatusInfo, SyncPeers, SyncStatus, Waiting},
         BaseNodeStateMachine,
     },
     chain_storage::{async_db, BlockchainBackend, ChainMetadata},
@@ -32,7 +32,6 @@ use crate::{
 use futures::stream::StreamExt;
 use log::*;
 use std::fmt::{Display, Formatter};
-use tari_comms::peer_manager::NodeId;
 
 const LOG_TARGET: &str = "c::bn::states::listening";
 
@@ -47,9 +46,9 @@ impl Display for ListeningInfo {
 }
 
 impl ListeningInfo {
-    /// Creates a new ListeningData
-    pub fn new() -> ListeningInfo {
-        ListeningInfo
+    /// Creates a new ListeningInfo
+    pub const fn new() -> Self {
+        Self
     }
 }
 
@@ -66,14 +65,15 @@ impl Listening {
     ) -> StateEvent
     {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
-        shared.info = StatusInfo::Listening(ListeningInfo::new());
-        shared.publish_event_info().await;
+        shared
+            .set_status_info(StatusInfo::Listening(ListeningInfo::new()))
+            .await;
         while let Some(metadata_event) = shared.metadata_event_stream.next().await {
             match &*metadata_event {
-                ChainMetadataEvent::PeerChainMetadataReceived(ref peer_metadata_list) => {
+                ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata_list) => {
                     if !peer_metadata_list.is_empty() {
                         debug!(target: LOG_TARGET, "Loading local blockchain metadata.");
-                        let local = match async_db::get_metadata(shared.db.clone()).await {
+                        let local = match async_db::get_chain_metadata(shared.db.clone()).await {
                             Ok(m) => m,
                             Err(e) => {
                                 let msg = format!("Could not get local blockchain metadata. {}", e.to_string());
@@ -82,11 +82,12 @@ impl Listening {
                         };
                         // Find the best network metadata and set of sync peers with the best tip.
                         let best_metadata = best_metadata(peer_metadata_list.as_slice());
-                        let local_tip_height = local.height_of_longest_chain.unwrap_or(0);
+                        let local_tip_height = local.height_of_longest_chain();
                         let sync_peers = select_sync_peers(local_tip_height, &best_metadata, &peer_metadata_list);
 
                         let sync_mode = determine_sync_mode(&local, best_metadata, sync_peers);
                         if sync_mode.is_lagging() {
+                            debug!(target: LOG_TARGET, "{}", sync_mode);
                             return StateEvent::FallenBehind(sync_mode);
                         }
                     }
@@ -114,16 +115,16 @@ fn select_sync_peers(
     local_tip_height: u64,
     best_metadata: &ChainMetadata,
     peer_metadata_list: &[PeerChainMetadata],
-) -> Vec<NodeId>
+) -> Vec<PeerChainMetadata>
 {
-    let mut sync_peers = Vec::<NodeId>::new();
+    let mut sync_peers = Vec::new();
     for peer_metadata in peer_metadata_list {
         let peer_tip_height = peer_metadata.chain_metadata.height_of_longest_chain;
         let peer_horizon_height = peer_metadata.chain_metadata.horizon_block(peer_tip_height.unwrap_or(0));
         if (peer_horizon_height <= local_tip_height) &&
             (peer_metadata.chain_metadata.best_block == best_metadata.best_block)
         {
-            sync_peers.push(peer_metadata.node_id.clone());
+            sync_peers.push(peer_metadata.clone());
         }
     }
     sync_peers
@@ -147,7 +148,7 @@ fn best_metadata(metadata_list: &[PeerChainMetadata]) -> ChainMetadata {
 }
 
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
-fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers: Vec<NodeId>) -> SyncStatus {
+fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers: SyncPeers) -> SyncStatus {
     use crate::base_node::states::SyncStatus::*;
     match network.accumulated_difficulty {
         None => {
@@ -161,8 +162,8 @@ fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers
         Some(network_tip_accum_difficulty) => {
             let local_tip_accum_difficulty = local.accumulated_difficulty.unwrap_or_else(|| 0.into());
             if local_tip_accum_difficulty < network_tip_accum_difficulty {
-                let local_tip_height = local.height_of_longest_chain.unwrap_or(0);
-                let network_tip_height = network.height_of_longest_chain.unwrap_or(0);
+                let local_tip_height = local.height_of_longest_chain();
+                let network_tip_height = network.height_of_longest_chain();
                 info!(
                     target: LOG_TARGET,
                     "Our local blockchain accumulated difficulty is a little behind that of the network. We're at \
@@ -185,9 +186,9 @@ fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers
                     target: LOG_TARGET,
                     "Our blockchain is up-to-date. We're at block {} with an accumulated difficulty of {} and the \
                      network chain tip is at {} with an accumulated difficulty of {}",
-                    local.height_of_longest_chain.unwrap_or(0),
+                    local.height_of_longest_chain(),
                     local_tip_accum_difficulty,
-                    network.height_of_longest_chain.unwrap_or(0),
+                    network.height_of_longest_chain(),
                     network_tip_accum_difficulty,
                 );
                 UpToDate
@@ -201,7 +202,7 @@ mod test {
     use super::*;
     use crate::blocks::BlockHash;
     use rand::rngs::OsRng;
-    use tari_comms::types::CommsPublicKey;
+    use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
     use tari_crypto::keys::PublicKey;
 
     fn random_node_id() -> NodeId {
@@ -231,23 +232,35 @@ mod test {
         let node_id5 = random_node_id();
         let peer1 = PeerChainMetadata::new(
             node_id1.clone(),
-            ChainMetadata::new(network_tip_height, block_hash1.clone(), 0, accumulated_difficulty1),
+            ChainMetadata::new(network_tip_height, block_hash1.clone(), 0, 0, accumulated_difficulty1),
         ); // Archival node
         let peer2 = PeerChainMetadata::new(
             node_id2,
-            ChainMetadata::new(network_tip_height, block_hash1.clone(), 500, accumulated_difficulty1),
+            ChainMetadata::new(network_tip_height, block_hash1.clone(), 500, 0, accumulated_difficulty1),
         ); // Pruning horizon is to short to sync from
         let peer3 = PeerChainMetadata::new(
             node_id3.clone(),
-            ChainMetadata::new(network_tip_height, block_hash1.clone(), 1440, accumulated_difficulty1),
+            ChainMetadata::new(
+                network_tip_height,
+                block_hash1.clone(),
+                1440,
+                0,
+                accumulated_difficulty1,
+            ),
         );
         let peer4 = PeerChainMetadata::new(
             node_id4,
-            ChainMetadata::new(network_tip_height, block_hash2, 2880, accumulated_difficulty2),
+            ChainMetadata::new(network_tip_height, block_hash2, 2880, 0, accumulated_difficulty2),
         ); // Node running a fork
         let peer5 = PeerChainMetadata::new(
             node_id5.clone(),
-            ChainMetadata::new(network_tip_height, block_hash1.clone(), 2880, accumulated_difficulty1),
+            ChainMetadata::new(
+                network_tip_height,
+                block_hash1.clone(),
+                2880,
+                0,
+                accumulated_difficulty1,
+            ),
         );
         peer_metadata_list.push(peer1);
         peer_metadata_list.push(peer2);
@@ -264,9 +277,9 @@ mod test {
         );
         let sync_peers = select_sync_peers(local_tip_height, &best_network_metadata, &peer_metadata_list);
         assert_eq!(sync_peers.len(), 3);
-        assert!(sync_peers.contains(&node_id1));
-        assert!(sync_peers.contains(&node_id3));
-        assert!(sync_peers.contains(&node_id5));
+        sync_peers.iter().find(|p| p.node_id == node_id1).unwrap();
+        sync_peers.iter().find(|p| p.node_id == node_id3).unwrap();
+        sync_peers.iter().find(|p| p.node_id == node_id5).unwrap();
     }
 
     #[test]

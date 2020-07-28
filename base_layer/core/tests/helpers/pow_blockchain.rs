@@ -65,7 +65,7 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
             .increase(constants.get_target_block_interval());
         new_block.header.pow.pow_algo = pow_algo;
 
-        let height = db.get_metadata().unwrap().height_of_longest_chain.unwrap();
+        let height = db.get_chain_metadata().unwrap().height_of_longest_chain.unwrap();
         let target_difficulties = db
             .fetch_target_difficulties(pow_algo, height, constants.get_difficulty_block_window() as usize)
             .unwrap();

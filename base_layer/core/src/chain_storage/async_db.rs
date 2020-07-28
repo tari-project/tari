@@ -29,6 +29,7 @@ use crate::{
         BlockchainDatabase,
         ChainStorageError,
         HistoricalBlock,
+        InProgressHorizonSyncState,
         MmrTree,
     },
     transactions::{
@@ -71,9 +72,7 @@ macro_rules! make_async {
             tokio::task::spawn_blocking(move || {
                 trace_log($name, move || db.$fn())
             })
-            .await
-            .map_err(|err| ChainStorageError::BlockingTaskSpawnError(err.to_string()))
-            .and_then(|inner_result| inner_result)
+            .await?
         }
     };
 
@@ -83,20 +82,17 @@ macro_rules! make_async {
             tokio::task::spawn_blocking(move || {
                 trace_log($name, move || db.$fn($($param),+))
             })
-                .await
-                .map_err(|err| ChainStorageError::BlockingTaskSpawnError(err.to_string()))
-                .and_then(|inner_result| inner_result)
+                .await?
         }
     };
 }
 
-make_async!(commit_horizon_state() -> (), "commit_horizon_state");
-make_async!(get_metadata() -> ChainMetadata, "get_metadata");
-make_async!(write_metadata(metadata: ChainMetadata) -> (), "write_metadata");
+//---------------------------------- Metadata --------------------------------------------//
+make_async!(get_chain_metadata() -> ChainMetadata, "get_chain_metadata");
+make_async!(set_chain_metadata(metadata: ChainMetadata) -> (), "set_chain_metadata");
 
 //---------------------------------- Kernels --------------------------------------------//
 make_async!(fetch_kernel(hash: HashOutput) -> TransactionKernel, "fetch_kernel");
-make_async!(insert_kernels(kernels: Vec<TransactionKernel>) -> (), "insert_kernels");
 
 //---------------------------------- TXO --------------------------------------------//
 make_async!(fetch_stxo(hash: HashOutput) -> TransactionOutput, "fetch_stxo");
@@ -109,7 +105,7 @@ make_async!(is_utxo(hash: HashOutput) -> bool, "is_utxo");
 
 //---------------------------------- Headers --------------------------------------------//
 make_async!(fetch_header(block_num: u64) -> BlockHeader, "fetch_header");
-make_async!(fetch_header_with_block_hash(hash: HashOutput) -> BlockHeader, "fetch_header_with_block_hash");
+make_async!(fetch_header_by_block_hash(hash: HashOutput) -> BlockHeader, "fetch_header_by_block_hash");
 make_async!(fetch_tip_header() -> BlockHeader, "fetch_header");
 make_async!(insert_valid_headers(headers: Vec<BlockHeader>) -> (), "insert_valid_headers");
 
@@ -122,17 +118,8 @@ make_async!(fetch_mmr_only_root(tree: MmrTree) -> HashOutput, "fetch_mmr_only_ro
 make_async!(fetch_mmr_proof(tree: MmrTree, pos: usize) -> MerkleProof, "fetch_mmr_proof");
 make_async!(fetch_mmr_root(tree: MmrTree) -> HashOutput, "fetch_mmr_root");
 make_async!(insert_mmr_node(tree: MmrTree, hash: Hash, deleted: bool) -> (), "insert_mmr_node");
-make_async!(create_mmr_checkpoint(tree: MmrTree) -> (), "create_mmr_checkpoint");
 make_async!(validate_merkle_root(tree: MmrTree, height: u64) -> bool, "validate_merkle_root");
 make_async!(rewind_to_height(height: u64) -> Vec<Block>, "rewind_to_height");
-
-pub async fn delete_mmr_node<T>(db: BlockchainDatabase<T>, tree: MmrTree, hash: Hash) -> Result<(), ChainStorageError>
-where T: BlockchainBackend + 'static {
-    tokio::task::spawn_blocking(move || trace_log("delete_mmr_node", move || db.delete_mmr_node(tree, &hash)))
-        .await
-        .map_err(|err| ChainStorageError::BlockingTaskSpawnError(err.to_string()))
-        .and_then(|inner_result| inner_result)
-}
 
 //---------------------------------- Block --------------------------------------------//
 make_async!(add_block(block: Block) -> BlockAddResult, "add_block");
@@ -143,3 +130,13 @@ make_async!(fetch_block_with_hash(hash: HashOutput) -> Option<HistoricalBlock>, 
 make_async!(fetch_block_with_kernel(excess_sig: Signature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
 make_async!(fetch_block_with_stxo(commitment: Commitment) -> Option<HistoricalBlock>, "fetch_block_with_stxo");
 make_async!(fetch_block_with_utxo(commitment: Commitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
+
+//---------------------------------- Horizon Sync --------------------------------------------//
+make_async!(get_horizon_sync_state() -> Option<InProgressHorizonSyncState>, "get_horizon_sync_state");
+make_async!(set_horizon_sync_state(state: InProgressHorizonSyncState) -> (), "set_horizon_sync_state");
+make_async!(horizon_sync_begin() -> InProgressHorizonSyncState, "horizon_sync_begin");
+make_async!(horizon_sync_commit() -> (), "horizon_sync_commit");
+make_async!(horizon_sync_rollback() -> (), "horizon_sync_rollback");
+make_async!(horizon_sync_insert_kernels(kernels: Vec<TransactionKernel>) -> (), "horizon_sync_insert_kernels");
+make_async!(horizon_sync_spend_utxos(hash: Vec<HashOutput>) -> (), "horizon_sync_spend_utxos");
+make_async!(horizon_sync_create_mmr_checkpoint(tree: MmrTree) -> (), "horizon_sync_create_mmr_checkpoint");

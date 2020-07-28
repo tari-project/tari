@@ -52,19 +52,16 @@ impl<B: BlockchainBackend> StatelessValidation<u64> for ChainBalanceValidator<B>
     fn validate(&self, horizon_height: &u64) -> Result<(), ValidationError> {
         let total_offset = self.fetch_total_offset_commitment(*horizon_height)?;
         let emission_h = self.get_emission_commitment_at(*horizon_height);
-        let kernel_excess = self.fetch_aggregate_kernel_excess()?;
+        let kernel_excess = self.db.fetch_kernel_commitment_sum()?;
         let genesis_input_commit = self.get_aggregate_genesis_commitment();
-        let output = self.fetch_aggregate_utxo_commitment()?;
+        let output = self.db.fetch_utxo_commitment_sum()?;
 
         // Validate: ∑UTXO_i ?= Emission + ∑GENESIS_COMMIT_i + ∑KERNEL_EXCESS_i + ∑OFFSET_i
         let agg_excess = &kernel_excess + &genesis_input_commit;
         let input = &(&emission_h + &agg_excess) + &total_offset;
 
         if output != input {
-            return Err(ValidationError::custom_error(format!(
-                "Final state validation failed: The UTXO set did not balance with the expected emission at height {}",
-                horizon_height
-            )));
+            return Err(ValidationError::ChainBalanceValidationFailed(*horizon_height));
         }
 
         Ok(())
@@ -77,19 +74,13 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
         let mut total_offset = BlindingFactor::default();
         let mut count = 0u64;
         for header in header_iter {
-            let header = header.map_err(ValidationError::custom_error)?;
+            let header = header?;
             count += 1;
             total_offset = total_offset + header.total_kernel_offset;
         }
         trace!(target: LOG_TARGET, "Fetched {} headers", count);
         let offset_commitment = self.factories.commitment.commit(&total_offset, &0u64.into());
         Ok(offset_commitment)
-    }
-
-    fn fetch_aggregate_utxo_commitment(&self) -> Result<Commitment, ValidationError> {
-        let utxos = self.db.fetch_all_utxos().map_err(ValidationError::custom_error)?;
-        trace!(target: LOG_TARGET, "Fetched {} UTXOs", utxos.len());
-        Ok(utxos.into_iter().map(|u| u.commitment).sum())
     }
 
     fn get_emission_commitment_at(&self, height: u64) -> Commitment {
@@ -114,12 +105,6 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
             .filter(|u| !u.is_coinbase())
             .map(|u| &u.commitment)
             .sum()
-    }
-
-    fn fetch_aggregate_kernel_excess(&self) -> Result<Commitment, ValidationError> {
-        let kernels = self.db.fetch_all_kernels().map_err(ValidationError::custom_error)?;
-        trace!(target: LOG_TARGET, "Fetched {} kernels", kernels.len());
-        Ok(kernels.into_iter().map(|k| k.excess).sum())
     }
 
     #[inline]

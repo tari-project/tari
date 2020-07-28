@@ -43,8 +43,8 @@ use tari_core::{
         BlockchainDatabaseConfig,
         ChainMetadata,
         ChainStorageError,
-        DbKey,
         DbTransaction,
+        InProgressHorizonSyncState,
         MemoryDatabase,
         MmrTree,
         Validators,
@@ -80,7 +80,7 @@ fn write_and_fetch_metadata() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_mem_db(&consensus_manager);
-    let metadata = store.get_metadata().unwrap();
+    let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(0));
     assert!(metadata.best_block.is_some());
     assert!(metadata.accumulated_difficulty.is_some());
@@ -91,12 +91,23 @@ fn write_and_fetch_metadata() {
     metadata.height_of_longest_chain = Some(height);
     metadata.best_block = None;
     metadata.accumulated_difficulty = Some(accumulated_difficulty);
-    assert!(store.write_metadata(metadata).is_ok());
+    store.set_chain_metadata(metadata).unwrap();
 
-    let metadata = store.get_metadata().unwrap();
+    let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(height));
     assert_eq!(metadata.best_block, None);
     assert_eq!(metadata.accumulated_difficulty, Some(accumulated_difficulty));
+    assert_eq!(metadata.effective_pruned_height, 0);
+
+    let state = InProgressHorizonSyncState {
+        metadata: metadata.clone(),
+        initial_rangeproof_checkpoint_count: 1,
+        initial_utxo_checkpoint_count: 2,
+        initial_kernel_checkpoint_count: 3,
+    };
+    store.set_horizon_sync_state(state).unwrap();
+    let state = store.get_horizon_sync_state().unwrap().unwrap();
+    assert_eq!(state.metadata, metadata);
 }
 
 #[test]
@@ -105,10 +116,12 @@ fn fetch_nonexistent_kernel() {
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_mem_db(&consensus_manager);
     let h = vec![0u8; 32];
-    assert_eq!(
-        store.fetch_kernel(h.clone()),
-        Err(DbKey::TransactionKernel(h).to_value_not_found_error())
+    unpack_enum!(
+        ChainStorageError::ValueNotFound { entity, field, value } = store.fetch_kernel(h.clone()).unwrap_err()
     );
+    assert_eq!(entity, "Kernel");
+    assert_eq!(field, "Hash");
+    assert_eq!(value, h.to_hex());
 }
 
 #[test]
@@ -121,9 +134,11 @@ fn insert_and_fetch_kernel() {
     let hash1 = kernel1.hash();
     let hash2 = kernel2.hash();
 
-    assert!(store.insert_kernels(vec![kernel1.clone(), kernel2.clone()]).is_ok());
-    assert_eq!(store.fetch_kernel(hash1), Ok(kernel1));
-    assert_eq!(store.fetch_kernel(hash2), Ok(kernel2));
+    assert!(store
+        .horizon_sync_insert_kernels(vec![kernel1.clone(), kernel2.clone()])
+        .is_ok());
+    assert_eq!(store.fetch_kernel(hash1).unwrap(), kernel1);
+    assert_eq!(store.fetch_kernel(hash2).unwrap(), kernel2);
 }
 
 #[test]
@@ -131,10 +146,10 @@ fn fetch_nonexistent_header() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_mem_db(&consensus_manager);
-    assert_eq!(
-        store.fetch_header(1),
-        Err(DbKey::BlockHeader(1).to_value_not_found_error())
-    );
+    unpack_enum!(ChainStorageError::ValueNotFound { entity, field, value } = store.fetch_header(1).unwrap_err());
+    assert_eq!(entity, "BlockHeader");
+    assert_eq!(field, "Height");
+    assert_eq!(value, "1");
 }
 
 #[test]
@@ -150,12 +165,13 @@ fn insert_and_fetch_header() {
         .insert_valid_headers(vec![header1.clone(), header2.clone()])
         .unwrap();
     store.fetch_header(0).unwrap();
-    assert_eq!(
-        store.fetch_header(1),
-        Err(DbKey::BlockHeader(1).to_value_not_found_error())
-    );
-    assert_eq!(store.fetch_header(42), Ok(header1));
-    assert_eq!(store.fetch_header(43), Ok(header2));
+
+    unpack_enum!(ChainStorageError::ValueNotFound { entity, field, value } = store.fetch_header(1).unwrap_err());
+    assert_eq!(entity, "BlockHeader");
+    assert_eq!(field, "Height");
+    assert_eq!(value, "1");
+    assert_eq!(store.fetch_header(42).unwrap(), header1);
+    assert_eq!(store.fetch_header(43).unwrap(), header2);
 }
 
 #[test]
@@ -169,7 +185,7 @@ fn insert_and_fetch_utxo() {
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), false);
     assert!(store.insert_utxo(utxo.clone()).is_ok());
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), true);
-    assert_eq!(store.fetch_utxo(hash), Ok(utxo));
+    assert_eq!(store.fetch_utxo(hash).unwrap(), utxo);
 }
 
 #[test]
@@ -186,7 +202,7 @@ fn insert_and_fetch_orphan() {
     let mut txn = DbTransaction::new();
     txn.insert_orphan(orphan.clone());
     assert!(store.commit(txn).is_ok());
-    assert_eq!(store.fetch_orphan(orphan_hash), Ok(orphan));
+    assert_eq!(store.fetch_orphan(orphan_hash).unwrap(), orphan);
 }
 
 #[test]
@@ -414,7 +430,7 @@ fn store_and_retrieve_block() {
     let (db, blocks, _, _) = create_new_blockchain(Network::LocalNet);
     let hash = blocks[0].hash();
     // Check the metadata
-    let metadata = db.get_metadata().unwrap();
+    let metadata = db.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(0));
     assert_eq!(metadata.best_block, Some(hash));
     assert_eq!(metadata.horizon_block(metadata.height_of_longest_chain.unwrap()), 0);
@@ -433,7 +449,7 @@ fn add_multiple_blocks() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_mem_db(&consensus_manager);
-    let metadata = store.get_metadata().unwrap();
+    let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(0));
     let block0 = store.fetch_block(0).unwrap().block().clone();
     assert_eq!(metadata.best_block, Some(block0.hash()));
@@ -446,14 +462,14 @@ fn add_multiple_blocks() {
         1.into(),
     )
     .unwrap();
-    let metadata = store.get_metadata().unwrap();
+    let metadata = store.get_chain_metadata().unwrap();
     let hash = block1.hash();
     assert_eq!(metadata.height_of_longest_chain, Some(1));
     assert_eq!(metadata.best_block.unwrap(), hash);
     // Adding blocks is idempotent
-    assert_eq!(store.add_block(block1.clone()), Ok(BlockAddResult::BlockExists));
+    assert_eq!(store.add_block(block1.clone()).unwrap(), BlockAddResult::BlockExists);
     // Check the metadata
-    let metadata = store.get_metadata().unwrap();
+    let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(1));
     assert_eq!(metadata.best_block.unwrap(), hash);
 }
@@ -501,8 +517,9 @@ fn rewind_to_height() {
             &mut outputs,
             schema,
             &consensus_manager.consensus_constants(),
-        ),
-        Ok(BlockAddResult::Ok)
+        )
+        .unwrap(),
+        BlockAddResult::Ok
     );
     // Block 2
     let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
@@ -513,8 +530,9 @@ fn rewind_to_height() {
             &mut outputs,
             schema,
             &consensus_manager.consensus_constants(),
-        ),
-        Ok(BlockAddResult::Ok)
+        )
+        .unwrap(),
+        BlockAddResult::Ok
     );
     // Block 3
     let schema = vec![
@@ -528,12 +546,13 @@ fn rewind_to_height() {
             &mut outputs,
             schema,
             &consensus_manager.consensus_constants(),
-        ),
-        Ok(BlockAddResult::Ok)
+        )
+        .unwrap(),
+        BlockAddResult::Ok
     );
 
     assert!(db.rewind_to_height(3).is_ok());
-    assert_eq!(db.get_height(), Ok(Some(3)));
+    assert_eq!(db.get_height().unwrap(), Some(3));
     // Check MMRs are correct
     let mmr_check = blocks[3].header.kernel_mr.clone();
     let mmr = db.fetch_mmr_root(MmrTree::Kernel).unwrap();
@@ -546,9 +565,9 @@ fn rewind_to_height() {
     assert_eq!(mmr, mmr_check);
     // Invalid rewind
     assert!(db.rewind_to_height(4).is_err());
-    assert_eq!(db.get_height(), Ok(Some(3)));
+    assert_eq!(db.get_height().unwrap(), Some(3));
     assert!(db.rewind_to_height(1).is_ok());
-    assert_eq!(db.get_height(), Ok(Some(1)));
+    assert_eq!(db.get_height().unwrap(), Some(1));
     // Check MMRs are correct
     let mmr_check = blocks[1].header.kernel_mr.clone();
     let mmr = db.fetch_mmr_root(MmrTree::Kernel).unwrap();
@@ -576,7 +595,7 @@ fn rewind_past_horizon_height() {
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
         pruning_horizon: 2,
-        pruned_mode_cleanup_interval: 50,
+        pruning_interval: 50,
     };
     let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
 
@@ -585,11 +604,11 @@ fn rewind_past_horizon_height() {
     let block3 = append_block(&store, &block2, vec![], &consensus_constansts, 1.into()).unwrap();
     let _block4 = append_block(&store, &block3, vec![], &consensus_constansts, 1.into()).unwrap();
 
-    let metadata = store.get_metadata().unwrap();
+    let metadata = store.get_chain_metadata().unwrap();
     let horizon_height = metadata.horizon_block(metadata.height_of_longest_chain.unwrap_or(0));
     assert!(store.rewind_to_height(horizon_height - 1).is_err());
     assert!(store.rewind_to_height(horizon_height).is_ok());
-    assert_eq!(store.get_height(), Ok(Some(horizon_height)));
+    assert_eq!(store.get_height().unwrap(), Some(horizon_height));
 }
 
 #[test]
@@ -654,7 +673,7 @@ fn handle_tip_reorg() {
     } else {
         assert!(false);
     }
-    assert_eq!(store.fetch_tip_header(), Ok(orphan_blocks[2].header.clone()));
+    assert_eq!(store.fetch_tip_header().unwrap(), orphan_blocks[2].header.clone());
 
     // Check that B2 was removed from the block orphans and A2 has been orphaned.
     assert!(store.fetch_orphan(orphan_blocks[2].hash()).is_err());
@@ -803,7 +822,7 @@ fn handle_reorg() {
     store.add_block(orphan1_blocks[2].clone()).unwrap(); // B2
     store.add_block(orphan1_blocks[4].clone()).unwrap(); // B4
     store.add_block(orphan1_blocks[3].clone()).unwrap(); // B3
-    assert_eq!(store.fetch_tip_header(), Ok(orphan2_blocks[4].header.clone()));
+    assert_eq!(store.fetch_tip_header().unwrap(), orphan2_blocks[4].header.clone());
 
     // Check that B2,B3 and C4 were removed from the block orphans and A2,A3,A4 and B4 has been orphaned.
     assert!(store.fetch_orphan(orphan1_blocks[2].hash()).is_err()); // B2
@@ -884,8 +903,9 @@ fn store_and_retrieve_blocks_from_contents() {
             &mut outputs,
             schema,
             &consensus_manager.consensus_constants(),
-        ),
-        Ok(BlockAddResult::Ok)
+        )
+        .unwrap(),
+        BlockAddResult::Ok
     );
     // Block 2
     let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
@@ -896,8 +916,9 @@ fn store_and_retrieve_blocks_from_contents() {
             &mut outputs,
             schema,
             &consensus_manager.consensus_constants(),
-        ),
-        Ok(BlockAddResult::Ok)
+        )
+        .unwrap(),
+        BlockAddResult::Ok
     );
     let kernel_sig = blocks[1].body.kernels()[0].clone().excess_sig;
     let stxo_commit = blocks[1].body.inputs()[0].clone().commitment;
@@ -942,29 +963,29 @@ fn restore_metadata_and_pruning_horizon_update() {
             let block1 = append_block(&db, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
             db.add_block(block1.clone()).unwrap();
             block_hash = block1.hash();
-            let metadata = db.get_metadata().unwrap();
+            let metadata = db.get_chain_metadata().unwrap();
             assert_eq!(metadata.height_of_longest_chain, Some(1));
             assert_eq!(metadata.best_block, Some(block_hash.clone()));
             assert_eq!(metadata.pruning_horizon, pruning_horizon1);
         }
-        // Restore blockchain db with invalid pruning horizon update
+        // Restore blockchain db with larger pruning horizon
         {
             config.pruning_horizon = 2000;
             let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
             let db = BlockchainDatabase::new(db, &rules, validators.clone(), config).unwrap();
 
-            let metadata = db.get_metadata().unwrap();
+            let metadata = db.get_chain_metadata().unwrap();
             assert_eq!(metadata.height_of_longest_chain, Some(1));
             assert_eq!(metadata.best_block, Some(block_hash.clone()));
-            assert_eq!(metadata.pruning_horizon, pruning_horizon1);
+            assert_eq!(metadata.pruning_horizon, 2000);
         }
-        // Restore blockchain db with valid pruning horizon update
+        // Restore blockchain db with smaller pruning horizon update
         {
-            config.pruning_horizon = pruning_horizon2; // Invalid pruning horizon, keep original
+            config.pruning_horizon = 900;
             let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
             let db = BlockchainDatabase::new(db, &rules, validators, config).unwrap();
 
-            let metadata = db.get_metadata().unwrap();
+            let metadata = db.get_chain_metadata().unwrap();
             assert_eq!(metadata.height_of_longest_chain, Some(1));
             assert_eq!(metadata.best_block, Some(block_hash));
             assert_eq!(metadata.pruning_horizon, pruning_horizon2);
@@ -1002,7 +1023,7 @@ fn invalid_block() {
         let mut blocks = vec![block0];
         let mut outputs = vec![vec![output]];
         let block0_hash = blocks[0].hash();
-        let metadata = store.get_metadata().unwrap();
+        let metadata = store.get_chain_metadata().unwrap();
         let utxo_root0 = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
         let kernel_root0 = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
         let rp_root0 = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
@@ -1026,11 +1047,12 @@ fn invalid_block() {
                 txs,
                 coinbase_value,
                 &consensus_manager.consensus_constants()
-            ),
-            Ok(BlockAddResult::Ok)
+            )
+            .unwrap(),
+            BlockAddResult::Ok
         );
         let block1_hash = blocks[1].hash();
-        let metadata = store.get_metadata().unwrap();
+        let metadata = store.get_chain_metadata().unwrap();
         let utxo_root1 = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
         let kernel_root1 = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
         let rp_root1 = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
@@ -1046,8 +1068,8 @@ fn invalid_block() {
         // Invalid Block 2 - Double spends genesis block output
         let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
         let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
-        assert_eq!(
-            generate_new_block_with_coinbase(
+        unpack_enum!(
+            ChainStorageError::UnspendableInput = generate_new_block_with_coinbase(
                 &mut store,
                 &factories,
                 &mut blocks,
@@ -1055,10 +1077,10 @@ fn invalid_block() {
                 txs,
                 coinbase_value,
                 &consensus_manager.consensus_constants()
-            ),
-            Err(ChainStorageError::UnspendableInput)
+            )
+            .unwrap_err()
         );
-        let metadata = store.get_metadata().unwrap();
+        let metadata = store.get_chain_metadata().unwrap();
         let utxo_root2 = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
         let kernel_root2 = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
         let rp_root2 = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
@@ -1083,11 +1105,12 @@ fn invalid_block() {
                 txs,
                 coinbase_value,
                 &consensus_manager.consensus_constants()
-            ),
-            Ok(BlockAddResult::Ok)
+            )
+            .unwrap(),
+            BlockAddResult::Ok
         );
         let block2_hash = blocks[2].hash();
-        let metadata = store.get_metadata().unwrap();
+        let metadata = store.get_chain_metadata().unwrap();
         let utxo_root2 = store.fetch_mmr_root(MmrTree::Utxo).unwrap();
         let kernel_root2 = store.fetch_mmr_root(MmrTree::Kernel).unwrap();
         let rp_root2 = store.fetch_mmr_root(MmrTree::RangeProof).unwrap();
@@ -1121,7 +1144,7 @@ fn orphan_cleanup_on_block_add() {
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
         pruning_horizon: 0,
-        pruned_mode_cleanup_interval: 50,
+        pruning_interval: 50,
     };
     let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
 
@@ -1139,22 +1162,22 @@ fn orphan_cleanup_on_block_add() {
     let orphan5_hash = orphan5.hash();
     let orphan6_hash = orphan6.hash();
     let orphan7_hash = orphan7.hash();
-    assert_eq!(store.add_block(orphan1.clone()), Ok(BlockAddResult::OrphanBlock));
-    assert_eq!(store.add_block(orphan2), Ok(BlockAddResult::OrphanBlock));
-    assert_eq!(store.add_block(orphan3), Ok(BlockAddResult::OrphanBlock));
-    assert_eq!(store.add_block(orphan4.clone()), Ok(BlockAddResult::OrphanBlock));
-    assert_eq!(store.add_block(orphan5), Ok(BlockAddResult::OrphanBlock));
-    assert_eq!(store.add_block(orphan6), Ok(BlockAddResult::OrphanBlock));
-    assert_eq!(store.add_block(orphan7.clone()), Ok(BlockAddResult::OrphanBlock));
+    assert_eq!(store.add_block(orphan1.clone()).unwrap(), BlockAddResult::OrphanBlock);
+    assert_eq!(store.add_block(orphan2).unwrap(), BlockAddResult::OrphanBlock);
+    assert_eq!(store.add_block(orphan3).unwrap(), BlockAddResult::OrphanBlock);
+    assert_eq!(store.add_block(orphan4.clone()).unwrap(), BlockAddResult::OrphanBlock);
+    assert_eq!(store.add_block(orphan5).unwrap(), BlockAddResult::OrphanBlock);
+    assert_eq!(store.add_block(orphan6).unwrap(), BlockAddResult::OrphanBlock);
+    assert_eq!(store.add_block(orphan7.clone()).unwrap(), BlockAddResult::OrphanBlock);
 
-    assert_eq!(store.db_read_access().unwrap().get_orphan_count(), Ok(3));
-    assert_eq!(store.fetch_orphan(orphan1_hash), Ok(orphan1));
+    assert_eq!(store.db_read_access().unwrap().get_orphan_count().unwrap(), 3);
+    assert_eq!(store.fetch_orphan(orphan1_hash).unwrap(), orphan1);
     assert!(store.fetch_orphan(orphan2_hash).is_err());
     assert!(store.fetch_orphan(orphan3_hash).is_err());
-    assert_eq!(store.fetch_orphan(orphan4_hash), Ok(orphan4));
+    assert_eq!(store.fetch_orphan(orphan4_hash).unwrap(), orphan4);
     assert!(store.fetch_orphan(orphan5_hash).is_err());
     assert!(store.fetch_orphan(orphan6_hash).is_err());
-    assert_eq!(store.fetch_orphan(orphan7_hash), Ok(orphan7));
+    assert_eq!(store.fetch_orphan(orphan7_hash).unwrap(), orphan7);
 }
 
 #[test]
@@ -1172,7 +1195,7 @@ fn horizon_height_orphan_cleanup() {
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
         pruning_horizon: 2,
-        pruned_mode_cleanup_interval: 50,
+        pruning_interval: 50,
     };
     let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
     let orphan1 = create_orphan_block(2, vec![], &consensus_constansts);
@@ -1183,10 +1206,10 @@ fn horizon_height_orphan_cleanup() {
     let orphan2_hash = orphan2.hash();
     let orphan3_hash = orphan3.hash();
     let orphan4_hash = orphan4.hash();
-    assert_eq!(store.add_block(orphan1), Ok(BlockAddResult::OrphanBlock));
-    assert_eq!(store.add_block(orphan2.clone()), Ok(BlockAddResult::OrphanBlock));
-    assert_eq!(store.add_block(orphan3), Ok(BlockAddResult::OrphanBlock));
-    assert_eq!(store.db_read_access().unwrap().get_orphan_count(), Ok(3));
+    assert_eq!(store.add_block(orphan1).unwrap(), BlockAddResult::OrphanBlock);
+    assert_eq!(store.add_block(orphan2.clone()).unwrap(), BlockAddResult::OrphanBlock);
+    assert_eq!(store.add_block(orphan3).unwrap(), BlockAddResult::OrphanBlock);
+    assert_eq!(store.db_read_access().unwrap().get_orphan_count().unwrap(), 3);
 
     let block1 = append_block(&store, &block0, vec![], &consensus_constansts, 1.into()).unwrap();
     let block2 = append_block(&store, &block1, vec![], &consensus_constansts, 1.into()).unwrap();
@@ -1194,13 +1217,13 @@ fn horizon_height_orphan_cleanup() {
     let _block4 = append_block(&store, &block3, vec![], &consensus_constansts, 1.into()).unwrap();
 
     // Adding another orphan block will trigger the orphan cleanup as the storage limit was reached
-    assert_eq!(store.add_block(orphan4.clone()), Ok(BlockAddResult::OrphanBlock));
+    assert_eq!(store.add_block(orphan4.clone()).unwrap(), BlockAddResult::OrphanBlock);
 
-    assert_eq!(store.db_read_access().unwrap().get_orphan_count(), Ok(2));
+    assert_eq!(store.db_read_access().unwrap().get_orphan_count().unwrap(), 2);
     assert!(store.fetch_orphan(orphan1_hash).is_err());
-    assert_eq!(store.fetch_orphan(orphan2_hash), Ok(orphan2));
+    assert_eq!(store.fetch_orphan(orphan2_hash).unwrap(), orphan2);
     assert!(store.fetch_orphan(orphan3_hash).is_err());
-    assert_eq!(store.fetch_orphan(orphan4_hash), Ok(orphan4));
+    assert_eq!(store.fetch_orphan(orphan4_hash).unwrap(), orphan4);
 }
 
 #[test]
@@ -1223,7 +1246,7 @@ fn orphan_cleanup_on_reorg() {
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
         pruning_horizon: 0,
-        pruned_mode_cleanup_interval: 50,
+        pruning_interval: 50,
     };
     let mut store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
     let mut blocks = vec![block0];
@@ -1311,13 +1334,13 @@ fn orphan_cleanup_on_reorg() {
     // Fill orphan block pool
     let orphan1 = create_orphan_block(1, vec![], &consensus_manager.consensus_constants());
     let orphan2 = create_orphan_block(1, vec![], &consensus_manager.consensus_constants());
-    assert_eq!(store.add_block(orphan1.clone()), Ok(BlockAddResult::OrphanBlock));
-    assert_eq!(store.add_block(orphan2.clone()), Ok(BlockAddResult::OrphanBlock));
+    assert_eq!(store.add_block(orphan1.clone()).unwrap(), BlockAddResult::OrphanBlock);
+    assert_eq!(store.add_block(orphan2.clone()).unwrap(), BlockAddResult::OrphanBlock);
 
     // Adding B1 and B2 to the main chain will produce a reorg from GB->A1->A2->A3->A4 to GB->B1->B2->B3.
     assert_eq!(
-        store.add_block(orphan_blocks[1].clone()),
-        Ok(BlockAddResult::OrphanBlock)
+        store.add_block(orphan_blocks[1].clone()).unwrap(),
+        BlockAddResult::OrphanBlock
     );
     if let Ok(BlockAddResult::ChainReorg(_)) = store.add_block(orphan_blocks[2].clone()) {
         assert!(true);
@@ -1327,10 +1350,10 @@ fn orphan_cleanup_on_reorg() {
 
     // Check that A2, A3 and A4 is in the orphan block pool, A1 and the other orphans were discarded by the orphan
     // cleanup.
-    assert_eq!(store.db_read_access().unwrap().get_orphan_count(), Ok(3));
-    assert_eq!(store.fetch_orphan(blocks[2].hash()), Ok(blocks[2].clone()));
-    assert_eq!(store.fetch_orphan(blocks[3].hash()), Ok(blocks[3].clone()));
-    assert_eq!(store.fetch_orphan(blocks[4].hash()), Ok(blocks[4].clone()));
+    assert_eq!(store.db_read_access().unwrap().get_orphan_count().unwrap(), 3);
+    assert_eq!(store.fetch_orphan(blocks[2].hash()).unwrap(), blocks[2].clone());
+    assert_eq!(store.fetch_orphan(blocks[3].hash()).unwrap(), blocks[3].clone());
+    assert_eq!(store.fetch_orphan(blocks[4].hash()).unwrap(), blocks[4].clone());
 }
 
 #[test]
@@ -1352,7 +1375,7 @@ fn fails_validation() {
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
         pruning_horizon: 0,
-        pruned_mode_cleanup_interval: 50,
+        pruning_interval: 50,
     };
     let mut store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
     let mut blocks = vec![block0];
@@ -1371,7 +1394,7 @@ fn fails_validation() {
     unpack_enum!(ChainStorageError::ValidationError { source } = err);
     unpack_enum!(ValidationError::CustomError(_s) = source);
 
-    let metadata = store.get_metadata().unwrap();
+    let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain.unwrap(), 0);
 }
 
@@ -1389,7 +1412,7 @@ fn pruned_mode_cleanup_and_fetch_block() {
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
         pruning_horizon: 2,
-        pruned_mode_cleanup_interval: 2,
+        pruning_interval: 2,
     };
     let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
     let block1 = append_block(
@@ -1459,7 +1482,7 @@ fn pruned_mode_is_stxo() {
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
         pruning_horizon: 2,
-        pruned_mode_cleanup_interval: 2,
+        pruning_interval: 2,
     };
     let mut store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
     let mut blocks = vec![block0];
@@ -1479,10 +1502,11 @@ fn pruned_mode_is_stxo() {
             txs,
             coinbase_value,
             &consensus_manager.consensus_constants()
-        ),
-        Ok(BlockAddResult::Ok)
+        )
+        .unwrap(),
+        BlockAddResult::Ok
     );
-    let metadata = store.get_metadata().unwrap();
+    let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(1));
     let txo_hash2 = outputs[1][0].as_transaction_output(&factories).unwrap().hash();
     let txo_hash3 = outputs[1][1].as_transaction_output(&factories).unwrap().hash();
@@ -1504,10 +1528,11 @@ fn pruned_mode_is_stxo() {
             txs,
             coinbase_value,
             &consensus_manager.consensus_constants()
-        ),
-        Ok(BlockAddResult::Ok)
+        )
+        .unwrap(),
+        BlockAddResult::Ok
     );
-    let metadata = store.get_metadata().unwrap();
+    let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(2));
     let txo_hash5 = outputs[2][0].as_transaction_output(&factories).unwrap().hash();
     let txo_hash6 = outputs[2][1].as_transaction_output(&factories).unwrap().hash();
@@ -1532,10 +1557,11 @@ fn pruned_mode_is_stxo() {
             txs,
             coinbase_value,
             &consensus_manager.consensus_constants()
-        ),
-        Ok(BlockAddResult::Ok)
+        )
+        .unwrap(),
+        BlockAddResult::Ok
     );
-    let metadata = store.get_metadata().unwrap();
+    let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(3));
     let txo_hash8 = outputs[3][0].as_transaction_output(&factories).unwrap().hash();
     let txo_hash9 = outputs[3][1].as_transaction_output(&factories).unwrap().hash();
@@ -1563,10 +1589,11 @@ fn pruned_mode_is_stxo() {
             txs,
             coinbase_value,
             &consensus_manager.consensus_constants()
-        ),
-        Ok(BlockAddResult::Ok)
+        )
+        .unwrap(),
+        BlockAddResult::Ok
     );
-    let metadata = store.get_metadata().unwrap();
+    let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(4));
     let txo_hash11 = outputs[4][0].as_transaction_output(&factories).unwrap().hash();
     let txo_hash12 = outputs[4][1].as_transaction_output(&factories).unwrap().hash();
@@ -1645,7 +1672,7 @@ fn pruned_mode_fetch_insert_and_commit() {
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
         pruning_horizon: 2,
-        pruned_mode_cleanup_interval: 2,
+        pruning_interval: 2,
     };
     let bob_store = BlockchainDatabase::new(
         MemoryDatabase::<HashDigest>::default(),
@@ -1654,9 +1681,18 @@ fn pruned_mode_fetch_insert_and_commit() {
         config,
     )
     .unwrap();
-    let network_tip_height = alice_store.get_metadata().unwrap().height_of_longest_chain.unwrap();
-    let bob_metadata = bob_store.get_metadata().unwrap();
+    let network_tip_height = alice_store
+        .get_chain_metadata()
+        .unwrap()
+        .height_of_longest_chain
+        .unwrap();
+    let bob_metadata = bob_store.get_chain_metadata().unwrap();
     let sync_horizon_height = bob_metadata.horizon_block(network_tip_height) + 1;
+    let state = bob_store.horizon_sync_begin().unwrap();
+    assert_eq!(state.metadata, bob_metadata);
+    assert_eq!(state.initial_kernel_checkpoint_count, 1);
+    assert_eq!(state.initial_utxo_checkpoint_count, 1);
+    assert_eq!(state.initial_rangeproof_checkpoint_count, 1);
 
     // Sync headers
     let bob_height = bob_metadata.height_of_longest_chain.unwrap();
@@ -1685,8 +1721,8 @@ fn pruned_mode_fetch_insert_and_commit() {
     assert_eq!(kernel_hashes.len(), 3);
     let kernels = alice_store.fetch_kernels(kernel_hashes).unwrap();
     assert_eq!(kernels.len(), 3);
-    assert!(bob_store.insert_kernels(kernels).is_ok());
-    bob_store.create_mmr_checkpoint(MmrTree::Kernel).unwrap();
+    assert!(bob_store.horizon_sync_insert_kernels(kernels).is_ok());
+    bob_store.horizon_sync_create_mmr_checkpoint(MmrTree::Kernel).unwrap();
 
     // Sync Utxos and RangeProofs
     let alice_num_utxos = alice_store
@@ -1755,14 +1791,17 @@ fn pruned_mode_fetch_insert_and_commit() {
         }
     }
 
-    bob_store.create_mmr_checkpoint(MmrTree::Utxo).unwrap();
-    bob_store.create_mmr_checkpoint(MmrTree::RangeProof).unwrap();
+    bob_store.horizon_sync_create_mmr_checkpoint(MmrTree::Utxo).unwrap();
+    bob_store
+        .horizon_sync_create_mmr_checkpoint(MmrTree::RangeProof)
+        .unwrap();
 
     // Finalize horizon state sync
-    assert!(bob_store.commit_horizon_state().is_ok());
+    bob_store.horizon_sync_commit().unwrap();
+    assert!(bob_store.get_horizon_sync_state().unwrap().is_none());
 
     // Check Metadata
-    let bob_metadata = bob_store.get_metadata().unwrap();
+    let bob_metadata = bob_store.get_chain_metadata().unwrap();
     let sync_height_header = blocks[sync_horizon_height as usize].header.clone();
     assert_eq!(bob_metadata.height_of_longest_chain, Some(sync_horizon_height));
     assert_eq!(bob_metadata.best_block, Some(sync_height_header.hash()));
@@ -1843,5 +1882,5 @@ fn pruned_mode_fetch_insert_and_commit() {
 
     // Check if chain can be extending using blocks after horizon state
     let height = sync_horizon_height as usize + 1;
-    assert_eq!(bob_store.add_block(blocks[height].clone()), Ok(BlockAddResult::Ok));
+    assert_eq!(bob_store.add_block(blocks[height].clone()).unwrap(), BlockAddResult::Ok);
 }

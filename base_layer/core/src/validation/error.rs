@@ -22,38 +22,52 @@
 
 use crate::{
     blocks::{blockheader::BlockHeaderValidationError, BlockValidationError},
+    chain_storage::ChainStorageError,
     transactions::transaction::TransactionError,
 };
-use derive_error::Error;
+use thiserror::Error;
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum ValidationError {
-    BlockHeaderError(BlockHeaderValidationError),
-    BlockError(BlockValidationError),
-    /// Contains kernels or inputs that are not yet spendable
+    #[error("Block header validation failed: {0}")]
+    BlockHeaderError(#[from] BlockHeaderValidationError),
+    #[error("Block validation error: {0}")]
+    BlockError(#[from] BlockValidationError),
+    #[error("Contains kernels or inputs that are not yet spendable")]
     MaturityError,
-    /// Contains unknown inputs
+    #[error("Contains unknown inputs")]
     UnknownInputs,
-    /// The transaction has some transaction error
-    TransactionError(TransactionError),
-    /// Custom error with string message
-    #[error(no_from, non_std, msg_embedded)]
+    #[error("The transaction has some transaction error")]
+    TransactionError(#[from] TransactionError),
+    #[error("Error: {0}")]
     CustomError(String),
-    /// A database instance must be set for this validator
-    NoDatabaseConfigured,
-    /// The total expected supply plus the total accumulated (offset) excess does not equal the sum of all UTXO
-    /// commitments.
+    #[error("Fatal storage error during validation: {0}")]
+    FatalStorageError(String),
+    #[error(
+        "The total expected supply plus the total accumulated (offset) excess does not equal the sum of all UTXO \
+         commitments."
+    )]
     InvalidAccountingBalance,
-    /// Transaction contains already spent inputs
+    #[error("Transaction contains already spent inputs")]
     ContainsSTxO,
-    /// The recorded chain accumulated difficulty was stronger
+    #[error("The recorded chain accumulated difficulty was stronger")]
     WeakerAccumulatedDifficulty,
-    /// Invalid output merkle root
+    #[error("Invalid output merkle root")]
     InvalidOutputMr,
-    /// Invalid kernel merkle root
+    #[error("Invalid kernel merkle root")]
     InvalidKernelMr,
-    /// Invalid range proof merkle root
+    #[error("Invalid range proof merkle root")]
     InvalidRangeProofMr,
+    #[error("Final state validation failed: The UTXO set did not balance with the expected emission at height {0}")]
+    ChainBalanceValidationFailed(u64),
+}
+
+// ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
+// for storage errors that cause validation failures.
+impl From<ChainStorageError> for ValidationError {
+    fn from(err: ChainStorageError) -> Self {
+        Self::FatalStorageError(err.to_string())
+    }
 }
 
 impl ValidationError {

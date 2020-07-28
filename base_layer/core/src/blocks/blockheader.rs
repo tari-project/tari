@@ -44,7 +44,6 @@ use crate::{
     transactions::types::{BlindingFactor, HashDigest},
 };
 use chrono::{DateTime, Utc};
-use derive_error::Error;
 use digest::Digest;
 use serde::{
     de::{self, Visitor},
@@ -58,27 +57,28 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
+use thiserror::Error;
 
 pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum BlockHeaderValidationError {
-    // The Genesis block header is incorrectly chained
+    #[error("The Genesis block header is incorrectly chained")]
     ChainedGenesisBlockHeader,
-    // Incorrect Genesis block header,
+    #[error("Incorrect Genesis block header")]
     IncorrectGenesisBlockHeader,
-    // Header does not form a valid chain
+    #[error("Header does not form a valid chain")]
     InvalidChaining,
-    // Invalid timestamp received on the header
+    #[error("Invalid timestamp received on the header")]
     InvalidTimestamp,
-    // Invalid timestamp future time limit received on the header
+    #[error("Invalid timestamp future time limit received on the header")]
     InvalidTimestampFutureTimeLimit,
-    // Invalid Proof of work for the header
-    ProofOfWorkError(PowError),
-    // Mismatched MMR roots
+    #[error("Invalid Proof of work for the header: {0}")]
+    ProofOfWorkError(#[from] PowError),
+    #[error("Mismatched MMR roots")]
     MismatchedMmrRoots,
-    // Monero seed hash too old
+    #[error("Monero seed hash too old")]
     OldSeedHash,
 }
 

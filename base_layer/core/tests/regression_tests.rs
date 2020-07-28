@@ -28,7 +28,6 @@ use tari_core::{
     transactions::types::CryptoFactories,
     validation::{block_validators::StatelessBlockValidator, StatelessValidation},
 };
-use tari_crypto::range_proof::RangeProofService;
 
 /// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 9182
 /// failing validation tests. This test checks to see that this issue has been resolved.

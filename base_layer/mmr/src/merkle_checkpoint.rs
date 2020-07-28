@@ -117,6 +117,16 @@ impl MerkleCheckPoint {
     }
 }
 
+impl Default for MerkleCheckPoint {
+    fn default() -> Self {
+        Self {
+            nodes_added: Default::default(),
+            nodes_deleted: Bitmap::create(),
+            prev_accumulated_nodes_added_count: Default::default(),
+        }
+    }
+}
+
 impl Eq for MerkleCheckPoint {}
 
 #[allow(clippy::derive_hash_xor_eq)]

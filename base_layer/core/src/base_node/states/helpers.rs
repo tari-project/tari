@@ -24,7 +24,7 @@ use crate::{
     base_node::{
         comms_interface::CommsInterfaceError,
         state_machine::BaseNodeStateMachine,
-        states::block_sync::BlockSyncError,
+        states::{block_sync::BlockSyncError, sync_peers::SyncPeer, SyncPeers},
     },
     blocks::blockheader::BlockHeader,
     chain_storage::{BlockchainBackend, MmrTree},
@@ -37,7 +37,7 @@ use croaring::Bitmap;
 use log::*;
 use rand::seq::SliceRandom;
 use std::time::Duration;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
+use tari_comms::connectivity::ConnectivityRequester;
 
 // If more than one sync peer discovered with the correct chain, enable or disable the selection of a random sync peer
 // to query headers and blocks.
@@ -67,7 +67,7 @@ impl Default for SyncPeerConfig {
 
 /// Selects the first sync peer or a random peer from the set of sync peers that have the current network tip depending
 /// on the selected configuration.
-pub fn select_sync_peer(config: &SyncPeerConfig, sync_peers: &[NodeId]) -> Result<NodeId, BlockSyncError> {
+pub fn select_sync_peer(config: &SyncPeerConfig, sync_peers: &[SyncPeer]) -> Result<SyncPeer, BlockSyncError> {
     if config.random_sync_peer_with_chain {
         sync_peers.choose(&mut rand::thread_rng())
     } else {
@@ -80,12 +80,12 @@ pub fn select_sync_peer(config: &SyncPeerConfig, sync_peers: &[NodeId]) -> Resul
 /// Excluded the provided peer from the sync peers.
 pub fn exclude_sync_peer(
     log_target: &str,
-    sync_peers: &mut Vec<NodeId>,
-    sync_peer: NodeId,
+    sync_peers: &mut SyncPeers,
+    sync_peer: SyncPeer,
 ) -> Result<(), BlockSyncError>
 {
     trace!(target: log_target, "Excluding peer ({}) from sync peers.", sync_peer);
-    sync_peers.retain(|p| *p != sync_peer);
+    sync_peers.retain(|p| p.node_id != sync_peer.node_id);
     if sync_peers.is_empty() {
         return Err(BlockSyncError::NoSyncPeers);
     }
@@ -96,8 +96,8 @@ pub fn exclude_sync_peer(
 pub async fn ban_sync_peer_if_online(
     log_target: &str,
     connectivity: &mut ConnectivityRequester,
-    sync_peers: &mut Vec<NodeId>,
-    sync_peer: NodeId,
+    sync_peers: &mut SyncPeers,
+    sync_peer: SyncPeer,
     ban_duration: Duration,
 ) -> Result<(), BlockSyncError>
 {
@@ -115,13 +115,13 @@ pub async fn ban_sync_peer_if_online(
 pub async fn ban_sync_peer(
     log_target: &str,
     connectivity: &mut ConnectivityRequester,
-    sync_peers: &mut Vec<NodeId>,
-    sync_peer: NodeId,
+    sync_peers: &mut SyncPeers,
+    sync_peer: SyncPeer,
     ban_duration: Duration,
 ) -> Result<(), BlockSyncError>
 {
     info!(target: log_target, "Banning peer {} from local node.", sync_peer);
-    connectivity.ban_peer(sync_peer.clone(), ban_duration).await?;
+    connectivity.ban_peer(sync_peer.node_id.clone(), ban_duration).await?;
     exclude_sync_peer(log_target, sync_peers, sync_peer)
 }
 
@@ -129,7 +129,7 @@ pub async fn ban_sync_peer(
 pub async fn ban_all_sync_peers<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut Vec<NodeId>,
+    sync_peers: &mut SyncPeers,
     ban_duration: Duration,
 ) -> Result<(), BlockSyncError>
 {
@@ -150,10 +150,10 @@ pub async fn ban_all_sync_peers<B: BlockchainBackend + 'static>(
 pub async fn request_headers<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut Vec<NodeId>,
+    sync_peers: &mut SyncPeers,
     block_nums: &[u64],
     request_retry_attempts: usize,
-) -> Result<(Vec<BlockHeader>, NodeId), BlockSyncError>
+) -> Result<(Vec<BlockHeader>, SyncPeer), BlockSyncError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
@@ -162,11 +162,11 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
             target: log_target,
             "Requesting {} headers from {}.",
             block_nums.len(),
-            sync_peer
+            sync_peer.node_id
         );
         match shared
             .comms
-            .request_headers_from_peer(block_nums.to_vec(), Some(sync_peer.clone()))
+            .request_headers_from_peer(block_nums.to_vec(), Some(sync_peer.node_id.clone()))
             .await
         {
             Ok(headers) => {
@@ -253,22 +253,22 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
 pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut Vec<NodeId>,
+    sync_peers: &mut SyncPeers,
     tree: MmrTree,
     height: u64,
     request_retry_attempts: usize,
-) -> Result<(u32, NodeId), BlockSyncError>
+) -> Result<(u32, SyncPeer), BlockSyncError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
         let sync_peer = select_sync_peer(&config, sync_peers)?;
         debug!(
             target: log_target,
-            "Requesting mmr node count to height {} from {}.", height, sync_peer
+            "Requesting mmr node count to height {} from {}.", height, sync_peer.node_id
         );
         match shared
             .comms
-            .fetch_mmr_node_count(tree, height, Some(sync_peer.clone()))
+            .fetch_mmr_node_count(tree, height, Some(sync_peer.node_id.clone()))
             .await
         {
             Ok(num_nodes) => {
@@ -319,13 +319,13 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
 pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut Vec<NodeId>,
+    sync_peers: &mut SyncPeers,
     tree: MmrTree,
     pos: u32,
     count: u32,
     height: u64,
     request_retry_attempts: usize,
-) -> Result<(Vec<HashOutput>, Bitmap, NodeId), BlockSyncError>
+) -> Result<(Vec<HashOutput>, Bitmap, SyncPeer), BlockSyncError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
@@ -336,11 +336,11 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
             tree,
             pos,
             pos + count,
-            sync_peer
+            sync_peer.node_id
         );
         match shared
             .comms
-            .fetch_mmr_nodes(tree, pos, count, height, Some(sync_peer.clone()))
+            .fetch_mmr_nodes(tree, pos, count, height, Some(sync_peer.node_id.clone()))
             .await
         {
             Ok((added, deleted)) => {
@@ -388,10 +388,10 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
 pub async fn request_kernels<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut Vec<NodeId>,
+    sync_peers: &mut SyncPeers,
     hashes: Vec<HashOutput>,
     request_retry_attempts: usize,
-) -> Result<(Vec<TransactionKernel>, NodeId), BlockSyncError>
+) -> Result<(Vec<TransactionKernel>, SyncPeer), BlockSyncError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
@@ -400,11 +400,11 @@ pub async fn request_kernels<B: BlockchainBackend + 'static>(
             target: log_target,
             "Requesting {} kernels from {}.",
             hashes.len(),
-            sync_peer
+            sync_peer.node_id
         );
         match shared
             .comms
-            .request_kernels_from_peer(hashes.clone(), Some(sync_peer.clone()))
+            .request_kernels_from_peer(hashes.clone(), Some(sync_peer.node_id.clone()))
             .await
         {
             Ok(kernels) => {
@@ -452,10 +452,10 @@ pub async fn request_kernels<B: BlockchainBackend + 'static>(
 pub async fn request_txos<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut Vec<NodeId>,
-    hashes: &[HashOutput],
+    sync_peers: &mut SyncPeers,
+    hashes: &[&HashOutput],
     request_retry_attempts: usize,
-) -> Result<(Vec<TransactionOutput>, NodeId), BlockSyncError>
+) -> Result<(Vec<TransactionOutput>, SyncPeer), BlockSyncError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
@@ -468,11 +468,14 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
             target: log_target,
             "Requesting {} transaction outputs from {}.",
             hashes.len(),
-            sync_peer
+            sync_peer.node_id
         );
         match shared
             .comms
-            .request_txos_from_peer(hashes.to_vec(), Some(sync_peer.clone()))
+            .request_txos_from_peer(
+                hashes.into_iter().map(|c| Clone::clone(&**c)).collect(),
+                Some(sync_peer.node_id.clone()),
+            )
             .await
         {
             Ok(utxos) => {

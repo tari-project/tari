@@ -55,6 +55,7 @@ use tari_core::{
             HorizonSyncConfig,
             Listening,
             StateEvent,
+            SyncPeer,
             SyncPeerConfig,
             SyncStatus,
             SyncStatus::Lagging,
@@ -149,7 +150,7 @@ fn test_listening_lagging() {
             .submit_block(prev_block, Broadcast::from(true))
             .await
             .unwrap();
-        assert_eq!(bob_db.get_height(), Ok(Some(2)));
+        assert_eq!(bob_db.get_height().unwrap(), Some(2));
 
         let next_event = time::timeout(Duration::from_secs(10), await_event_task)
             .await
@@ -205,10 +206,10 @@ fn test_event_channel() {
         assert_eq!(*event.unwrap(), StateEvent::Initialized);
         let event = fused.next().await;
         match *event.unwrap() {
-            StateEvent::FallenBehind(SyncStatus::Lagging(ref data, ref id)) => {
+            StateEvent::FallenBehind(SyncStatus::Lagging(ref data, ref peers)) => {
                 assert_eq!(data.height_of_longest_chain, Some(10));
                 assert_eq!(data.accumulated_difficulty, Some(5_000.into()));
-                assert_eq!(id[0], node_id);
+                assert_eq!(peers[0].node_id, node_id);
             },
             _ => assert!(false),
         }
@@ -282,16 +283,22 @@ fn test_block_sync() {
         }
 
         // Sync Blocks from genesis block to tip
-        let network_tip = bob_db.get_metadata().unwrap();
-        let mut sync_peers = vec![bob_node.node_identity.node_id().clone()];
+        let network_tip = bob_db.get_chain_metadata().unwrap();
+        let mut sync_peers = vec![SyncPeer {
+            node_id: bob_node.node_identity.node_id().clone(),
+            chain_metadata: network_tip.clone(),
+        }];
         let state_event = BestChainMetadataBlockSyncInfo {}
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
-        assert_eq!(alice_db.get_height(), bob_db.get_height());
+        assert_eq!(alice_db.get_height().unwrap(), bob_db.get_height().unwrap());
 
         for height in 1..=network_tip.height_of_longest_chain.unwrap() {
-            assert_eq!(alice_db.fetch_block(height), bob_db.fetch_block(height));
+            assert_eq!(
+                alice_db.fetch_block(height).unwrap(),
+                bob_db.fetch_block(height).unwrap()
+            );
         }
 
         alice_node.comms.shutdown().await;
@@ -373,23 +380,26 @@ fn test_lagging_block_sync() {
             )
             .unwrap();
         }
-        assert_eq!(alice_db.get_height(), Ok(Some(4)));
-        assert_eq!(bob_db.get_height(), Ok(Some(8)));
+        assert_eq!(alice_db.get_height().unwrap(), Some(4));
+        assert_eq!(bob_db.get_height().unwrap(), Some(8));
 
         // Lagging state beyond horizon, sync remaining Blocks to tip
-        let network_tip = bob_db.get_metadata().unwrap();
-        let mut sync_peers = vec![bob_node.node_identity.node_id().clone()];
+        let network_tip = bob_db.get_chain_metadata().unwrap();
+        let mut sync_peers = vec![SyncPeer {
+            node_id: bob_node.node_identity.node_id().clone(),
+            chain_metadata: network_tip.clone(),
+        }];
         let state_event = BestChainMetadataBlockSyncInfo {}
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
 
-        assert_eq!(alice_db.get_height(), bob_db.get_height());
+        assert_eq!(alice_db.get_height().unwrap(), bob_db.get_height().unwrap());
 
         for height in 0..=network_tip.height_of_longest_chain.unwrap() {
             assert_eq!(
-                alice_node.blockchain_db.fetch_block(height),
-                bob_node.blockchain_db.fetch_block(height)
+                alice_node.blockchain_db.fetch_block(height).unwrap(),
+                bob_node.blockchain_db.fetch_block(height).unwrap()
             );
         }
 
@@ -477,8 +487,11 @@ fn test_block_sync_recovery() {
         // start to request blocks from her random peers. When Alice requests these blocks from Carol, Carol
         // won't always have these blocks and Alice will have to request these blocks again until her maximum attempts
         // have been reached.
-        let network_tip = bob_db.get_metadata().unwrap();
-        let mut sync_peers = vec![bob_node.node_identity.node_id().clone()];
+        let network_tip = bob_db.get_chain_metadata().unwrap();
+        let mut sync_peers = vec![SyncPeer {
+            node_id: bob_node.node_identity.node_id().clone(),
+            chain_metadata: network_tip.clone(),
+        }];
         let state_event = BestChainMetadataBlockSyncInfo
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
@@ -563,8 +576,8 @@ fn test_forked_block_sync() {
             alice_db.add_block(prev_block.clone()).unwrap();
         }
 
-        assert_eq!(alice_db.get_height(), Ok(Some(2)));
-        assert_eq!(bob_db.get_height(), Ok(Some(2)));
+        assert_eq!(alice_db.get_height().unwrap(), Some(2));
+        assert_eq!(bob_db.get_height().unwrap(), Some(2));
 
         let mut alice_prev_block = prev_block.clone();
         let mut bob_prev_block = prev_block;
@@ -590,20 +603,26 @@ fn test_forked_block_sync() {
             )
             .unwrap();
         }
-        assert_eq!(alice_db.get_height(), Ok(Some(4)));
-        assert_eq!(bob_db.get_height(), Ok(Some(9)));
+        assert_eq!(alice_db.get_height().unwrap(), Some(4));
+        assert_eq!(bob_db.get_height().unwrap(), Some(9));
 
-        let network_tip = bob_db.get_metadata().unwrap();
-        let mut sync_peers = vec![bob_node.node_identity.node_id().clone()];
+        let network_tip = bob_db.get_chain_metadata().unwrap();
+        let mut sync_peers = vec![SyncPeer {
+            node_id: bob_node.node_identity.node_id().clone(),
+            chain_metadata: network_tip.clone(),
+        }];
         let state_event = BestChainMetadataBlockSyncInfo {}
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
 
-        assert_eq!(alice_db.get_height(), bob_db.get_height());
+        assert_eq!(alice_db.get_height().unwrap(), bob_db.get_height().unwrap());
 
         for height in 0..=network_tip.height_of_longest_chain.unwrap() {
-            assert_eq!(alice_db.fetch_block(height), bob_db.fetch_block(height));
+            assert_eq!(
+                alice_db.fetch_block(height).unwrap(),
+                bob_db.fetch_block(height).unwrap()
+            );
         }
 
         alice_node.comms.shutdown().await;
@@ -714,8 +733,8 @@ fn test_sync_peer_banning() {
             alice_db.add_block(prev_block.clone()).unwrap();
             bob_db.add_block(prev_block.clone()).unwrap();
         }
-        assert_eq!(alice_db.get_height(), Ok(Some(2)));
-        assert_eq!(bob_db.get_height(), Ok(Some(2)));
+        assert_eq!(alice_db.get_height().unwrap(), Some(2));
+        assert_eq!(bob_db.get_height().unwrap(), Some(2));
         let peer = alice_peer_manager.find_by_public_key(bob_public_key).await.unwrap();
         assert_eq!(peer.is_banned(), false);
 
@@ -754,18 +773,21 @@ fn test_sync_peer_banning() {
             .unwrap();
         }
 
-        assert_eq!(alice_db.get_height(), Ok(Some(4)));
-        assert_eq!(bob_db.get_height(), Ok(Some(6)));
+        assert_eq!(alice_db.get_height().unwrap(), Some(4));
+        assert_eq!(bob_db.get_height().unwrap(), Some(6));
 
         let mut connectivity_events = alice_node.comms.connectivity().subscribe_event_stream();
-        let network_tip = bob_db.get_metadata().unwrap();
-        let mut sync_peers = vec![bob_node.node_identity.node_id().clone()];
+        let network_tip = bob_db.get_chain_metadata().unwrap();
+        let mut sync_peers = vec![SyncPeer {
+            node_id: bob_node.node_identity.node_id().clone(),
+            chain_metadata: network_tip.clone(),
+        }];
         let state_event = BestChainMetadataBlockSyncInfo {}
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlockSyncFailure);
 
-        assert_eq!(alice_db.get_height(), Ok(Some(4)));
+        assert_eq!(alice_db.get_height().unwrap(), Some(4));
 
         let _events = collect_stream!(connectivity_events, take = 1, timeout = Duration::from_secs(10));
 

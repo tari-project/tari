@@ -25,10 +25,12 @@ use crate::{
         state_machine::BaseNodeStateMachine,
         states::{
             helpers::{ban_all_sync_peers, ban_sync_peer, request_headers, select_sync_peer},
+            sync_peers::SyncPeer,
             ForwardBlockSyncInfo,
             Listening,
             StateEvent,
             StatusInfo,
+            SyncPeers,
         },
     },
     blocks::{blockheader::BlockHeader, Block},
@@ -41,10 +43,7 @@ use std::{
     fmt::{Display, Formatter},
     str::FromStr,
 };
-use tari_comms::{
-    connectivity::ConnectivityError,
-    peer_manager::{NodeId, PeerManagerError},
-};
+use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "c::bn::states::block_sync";
@@ -78,12 +77,12 @@ pub struct BlockSyncConfig {
 pub struct BlockSyncInfo {
     pub tip_height: u64,
     pub local_height: u64,
-    pub sync_peers: Vec<NodeId>,
+    pub sync_peers: SyncPeers,
 }
 
 impl BlockSyncInfo {
     /// Creates a new blockSyncInfo
-    pub fn new(tip_height: u64, local_height: u64, sync_peers: Vec<NodeId>) -> BlockSyncInfo {
+    pub fn new(tip_height: u64, local_height: u64, sync_peers: SyncPeers) -> BlockSyncInfo {
         BlockSyncInfo {
             tip_height,
             local_height,
@@ -96,7 +95,7 @@ impl Display for BlockSyncInfo {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         fmt.write_str("Syncing from the following peers: \n")?;
         for peer in &self.sync_peers {
-            fmt.write_str(&format!("{}\n", peer))?;
+            fmt.write_str(&format!("{}\n", peer.node_id))?;
         }
         fmt.write_str(&format!("Syncing {}/{}\n", self.local_height, self.tip_height))
     }
@@ -141,7 +140,7 @@ impl BlockSyncStrategy {
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
         network_tip: &ChainMetadata,
-        sync_peers: &mut Vec<NodeId>,
+        sync_peers: &mut SyncPeers,
     ) -> StateEvent
     {
         shared.info = StatusInfo::BlockSync(BlockSyncInfo::default());
@@ -178,7 +177,7 @@ impl PartialEq for BlockSyncStrategy {
     }
 }
 
-#[derive(Clone, Debug, Error)]
+#[derive(Debug, Error)]
 pub enum BlockSyncError {
     MaxRequestAttemptsReached,
     MaxAddBlockAttemptsReached,
@@ -201,7 +200,7 @@ impl BestChainMetadataBlockSyncInfo {
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
         network_tip: &ChainMetadata,
-        sync_peers: &mut Vec<NodeId>,
+        sync_peers: &mut SyncPeers,
     ) -> StateEvent
     where
         B: 'static,
@@ -263,18 +262,25 @@ impl BestChainMetadataBlockSyncInfo {
 async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
     network_metadata: &ChainMetadata,
-    sync_peers: &mut Vec<NodeId>,
+    sync_peers: &mut SyncPeers,
 ) -> Result<(), BlockSyncError>
 {
-    let local_metadata = shared.db.get_metadata()?;
+    let local_metadata = shared.db.get_chain_metadata()?;
+    // Filter the peers we can sync from: any peer which has an effective pruning horizon less than this nodes
+    // current height
+    sync_peers.retain(|p| p.chain_metadata.effective_pruned_height <= local_metadata.height_of_longest_chain());
+    if sync_peers.is_empty() {
+        return Err(BlockSyncError::NoSyncPeers);
+    }
+
     if let Some(local_block_hash) = local_metadata.best_block.as_ref() {
         if let Some(network_block_hash) = network_metadata.best_block.as_ref() {
             debug!(
                 target: LOG_TARGET,
                 "Checking if current chain lagging on best network chain."
             );
-            let local_tip_height = local_metadata.height_of_longest_chain.unwrap_or(0);
-            let network_tip_height = network_metadata.height_of_longest_chain.unwrap_or(0);
+            let local_tip_height = local_metadata.height_of_longest_chain();
+            let network_tip_height = network_metadata.height_of_longest_chain();
             let mut sync_height = local_tip_height + 1;
             if check_chain_split(
                 shared,
@@ -330,7 +336,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
 // at the shared height if the local tip has a lower accumulated difficulty compared to the network tip.
 async fn check_chain_split<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut Vec<NodeId>,
+    sync_peers: &mut SyncPeers,
     local_tip_height: u64,
     network_tip_height: u64,
     local_block_hash: &[u8],
@@ -351,7 +357,7 @@ async fn check_chain_split<B: BlockchainBackend + 'static>(
 // not common between the local and network chains.
 async fn find_chain_split_height<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut Vec<NodeId>,
+    sync_peers: &mut SyncPeers,
     tip_height: u64,
 ) -> Result<u64, BlockSyncError>
 {
@@ -371,10 +377,10 @@ async fn find_chain_split_height<B: BlockchainBackend + 'static>(
         for header in headers {
             // Check if header is linked to local chain
             if let Ok(prev_header) =
-                async_db::fetch_header_with_block_hash(shared.db.clone(), header.prev_hash.clone()).await
+                async_db::fetch_header_by_block_hash(shared.db.clone(), header.prev_hash.clone()).await
             {
-                if prev_header.height + 1 == header.height {
-                    return Ok(header.height);
+                return if prev_header.height + 1 == header.height {
+                    Ok(header.height)
                 } else {
                     warn!(
                         target: LOG_TARGET,
@@ -388,8 +394,8 @@ async fn find_chain_split_height<B: BlockchainBackend + 'static>(
                         shared.config.sync_peer_config.peer_ban_duration,
                     )
                     .await?;
-                    return Err(BlockSyncError::InvalidChainLink);
-                }
+                    Err(BlockSyncError::InvalidChainLink)
+                };
             }
         }
     }
@@ -410,7 +416,7 @@ async fn find_chain_split_height<B: BlockchainBackend + 'static>(
 // Request a block from a remote sync peer and attempt to add it to the local blockchain.
 async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut Vec<NodeId>,
+    sync_peers: &mut SyncPeers,
     mut block_nums: Vec<u64>,
 ) -> Result<(), BlockSyncError>
 {
@@ -501,9 +507,9 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
 // Request a block from a remote sync peer.
 async fn request_blocks<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut Vec<NodeId>,
+    sync_peers: &mut SyncPeers,
     block_nums: Vec<u64>,
-) -> Result<(Vec<Block>, NodeId), BlockSyncError>
+) -> Result<(Vec<Block>, SyncPeer), BlockSyncError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=shared.config.block_sync_config.max_block_request_retry_attempts {
@@ -522,7 +528,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
         shared.publish_event_info().await;
         match shared
             .comms
-            .request_blocks_from_peer(block_nums.clone(), Some(sync_peer.clone()))
+            .request_blocks_from_peer(block_nums.clone(), Some(sync_peer.node_id.clone()))
             .await
         {
             Ok(hist_blocks) => {
@@ -607,9 +613,9 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
 // Request a header from a remote sync peer.
 async fn request_header<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut Vec<NodeId>,
+    sync_peers: &mut SyncPeers,
     height: u64,
-) -> Result<(BlockHeader, NodeId), BlockSyncError>
+) -> Result<(BlockHeader, SyncPeer), BlockSyncError>
 {
     let (headers, sync_peer) = request_headers(
         LOG_TARGET,

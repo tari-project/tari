@@ -24,22 +24,25 @@ use crate::chain_storage::{
     error::ChainStorageError,
     lmdb_db::lmdb::{lmdb_clear_db, lmdb_delete, lmdb_get, lmdb_insert, lmdb_len, lmdb_replace},
 };
-use derive_error::Error;
 use lmdb_zero::{Database, Environment, WriteTransaction};
 use log::*;
 use std::{cmp::min, marker::PhantomData, sync::Arc};
 use tari_crypto::tari_utilities::message_format::MessageFormatError;
 use tari_mmr::{error::MerkleMountainRangeError, ArrayLike, ArrayLikeExt};
 use tari_storage::lmdb_store::LMDBError;
+use thiserror::Error;
 
 const INDEX_OFFSET_DB_KEY: i64 = i64::min_value();
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb_vec";
 
 #[derive(Debug, Error)]
 pub enum LMDBVecError {
-    MessageFormatError(MessageFormatError),
-    LMDBError(LMDBError),
-    ChainStorageError(ChainStorageError),
+    #[error("Message format error: {0}")]
+    MessageFormatError(#[from] MessageFormatError),
+    #[error("LMDB error: {0}")]
+    LMDBError(#[from] LMDBError),
+    #[error("Chain storage error: {0}")]
+    ChainStorageError(#[from] ChainStorageError),
 }
 
 pub struct LMDBVec<T> {

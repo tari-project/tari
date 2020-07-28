@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader},
-    chain_storage::error::ChainStorageError,
+    chain_storage::{error::ChainStorageError, InProgressHorizonSyncState},
     proof_of_work::Difficulty,
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
@@ -31,6 +31,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
+    fmt,
     fmt::{Display, Error, Formatter},
 };
 use strum_macros::Display;
@@ -72,6 +73,16 @@ impl DbTransaction {
     /// A general insert request. There are convenience functions for specific insert queries.
     pub fn insert(&mut self, insert: DbKeyValuePair) {
         self.operations.push(WriteOperation::Insert(insert));
+    }
+
+    /// Set a metadata entry
+    pub fn set_metadata(&mut self, key: MetadataKey, value: MetadataValue) {
+        self.insert(DbKeyValuePair::Metadata(key, value));
+    }
+
+    /// Clear a metadata entry
+    pub fn delete_metadata(&mut self, key: MetadataKey) {
+        self.delete(DbKey::Metadata(key));
     }
 
     /// A general insert request. There are convenience functions for specific delete queries.
@@ -147,18 +158,6 @@ impl DbTransaction {
         self.operations.push(WriteOperation::CreateMmrCheckpoint(tree));
     }
 
-    /// Set the horizon beyond which we cannot be guaranteed provide detailed blockchain information anymore.
-    /// A value of zero indicates that no pruning should be carried out at all. That is, this state should act as a
-    /// archival node.
-    ///
-    /// This operation just sets the new horizon value. No pruning is done at this point.
-    pub fn set_pruning_horizon(&mut self, new_pruning_horizon: u64) {
-        self.operations.push(WriteOperation::Insert(DbKeyValuePair::Metadata(
-            MetadataKey::PruningHorizon,
-            MetadataValue::PruningHorizon(new_pruning_horizon),
-        )));
-    }
-
     /// Rewinds the Kernel MMR state by the given number of Checkpoints.
     pub fn rewind_kernel_mmr(&mut self, steps_back: usize) {
         self.operations
@@ -172,7 +171,7 @@ impl DbTransaction {
     }
 
     /// Rewinds the RangeProof MMR state by the given number of Checkpoints.
-    pub fn rewind_rp_mmr(&mut self, steps_back: usize) {
+    pub fn rewind_rangeproof_mmr(&mut self, steps_back: usize) {
         self.operations
             .push(WriteOperation::RewindMmr(MmrTree::RangeProof, steps_back));
     }
@@ -216,12 +215,27 @@ pub enum MmrTree {
     RangeProof,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum MetadataKey {
     ChainHeight,
     BestBlock,
     AccumulatedWork,
     PruningHorizon,
+    EffectivePrunedHeight,
+    HorizonSyncState,
+}
+
+impl fmt::Display for MetadataKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MetadataKey::ChainHeight => f.write_str("Current chain height"),
+            MetadataKey::AccumulatedWork => f.write_str("Total accumulated work"),
+            MetadataKey::PruningHorizon => f.write_str("Pruning horizon"),
+            MetadataKey::EffectivePrunedHeight => f.write_str("Effective pruned height"),
+            MetadataKey::BestBlock => f.write_str("Chain tip block hash"),
+            MetadataKey::HorizonSyncState => f.write_str("Database info"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -230,6 +244,25 @@ pub enum MetadataValue {
     BestBlock(Option<BlockHash>),
     AccumulatedWork(Option<Difficulty>),
     PruningHorizon(u64),
+    EffectivePrunedHeight(u64),
+    HorizonSyncState(InProgressHorizonSyncState),
+}
+
+impl fmt::Display for MetadataValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MetadataValue::ChainHeight(h) => write!(f, "Chain height is {}", h.unwrap_or(0)),
+            MetadataValue::AccumulatedWork(d) => write!(f, "Total accumulated work is {}", d.unwrap_or_default()),
+            MetadataValue::PruningHorizon(h) => write!(f, "Pruning horizon is {}", h),
+            MetadataValue::EffectivePrunedHeight(h) => write!(f, "Effective pruned height is {}", h),
+            MetadataValue::BestBlock(hash) => write!(
+                f,
+                "Chain tip block hash is {}",
+                hash.as_ref().map(Hex::to_hex).unwrap_or_else(|| "None".to_string())
+            ),
+            MetadataValue::HorizonSyncState(state) => write!(f, "Horizon state sync in progress: {}", state),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -244,20 +277,9 @@ pub enum DbKey {
 }
 
 impl DbKey {
-    pub fn to_value_not_found_error(self) -> ChainStorageError {
+    pub fn to_value_not_found_error(&self) -> ChainStorageError {
         let (entity, field, value) = match self {
-            DbKey::Metadata(MetadataKey::ChainHeight) => {
-                ("MetaData".to_string(), "ChainHeight".to_string(), "".to_string())
-            },
-            DbKey::Metadata(MetadataKey::AccumulatedWork) => {
-                ("MetaData".to_string(), "Accumulated work".to_string(), "".to_string())
-            },
-            DbKey::Metadata(MetadataKey::PruningHorizon) => {
-                ("MetaData".to_string(), "Pruning horizon".to_string(), "".to_string())
-            },
-            DbKey::Metadata(MetadataKey::BestBlock) => {
-                ("MetaData".to_string(), "Best block".to_string(), "".to_string())
-            },
+            DbKey::Metadata(key) => ("MetaData".to_string(), key.to_string(), "".to_string()),
             DbKey::BlockHeader(v) => ("BlockHeader".to_string(), "Height".to_string(), v.to_string()),
             DbKey::BlockHash(v) => ("Block".to_string(), "Hash".to_string(), v.to_hex()),
             DbKey::UnspentOutput(v) => ("Utxo".to_string(), "Hash".to_string(), v.to_hex()),
@@ -283,10 +305,7 @@ pub enum DbValue {
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::Metadata(MetadataValue::ChainHeight(_)) => f.write_str("Current chain height"),
-            DbValue::Metadata(MetadataValue::AccumulatedWork(_)) => f.write_str("Total accumulated work"),
-            DbValue::Metadata(MetadataValue::PruningHorizon(_)) => f.write_str("Pruning horizon"),
-            DbValue::Metadata(MetadataValue::BestBlock(_)) => f.write_str("Chain tip block hash"),
+            DbValue::Metadata(v) => v.fmt(f),
             DbValue::BlockHeader(_) => f.write_str("Block header"),
             DbValue::BlockHash(_) => f.write_str("Block hash"),
             DbValue::UnspentOutput(_) => f.write_str("Unspent output"),
@@ -300,10 +319,7 @@ impl Display for DbValue {
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::Metadata(MetadataKey::ChainHeight) => f.write_str("Current chain height"),
-            DbKey::Metadata(MetadataKey::AccumulatedWork) => f.write_str("Total accumulated work"),
-            DbKey::Metadata(MetadataKey::PruningHorizon) => f.write_str("Pruning horizon"),
-            DbKey::Metadata(MetadataKey::BestBlock) => f.write_str("Chain tip block hash"),
+            DbKey::Metadata(key) => key.fmt(f),
             DbKey::BlockHeader(v) => f.write_str(&format!("Block header (#{})", v)),
             DbKey::BlockHash(v) => f.write_str(&format!("Block hash (#{})", to_hex(v))),
             DbKey::UnspentOutput(v) => f.write_str(&format!("Unspent output ({})", to_hex(v))),

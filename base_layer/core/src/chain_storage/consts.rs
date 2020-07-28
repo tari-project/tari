@@ -24,5 +24,5 @@
 pub const BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY: usize = 720;
 /// The pruning horizon that is set for a default configuration of the blockchain db.
 pub const BLOCKCHAIN_DATABASE_PRUNING_HORIZON: u64 = 0;
-/// The chain height interval used to determine when pruned mode cleanup should be performed.
-pub const BLOCKCHAIN_DATABASE_PRUNED_MODE_CLEANUP_INTERVAL: u64 = 50;
+/// The chain height interval used to determine when a pruned node should perform pruning.
+pub const BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL: u64 = 50;

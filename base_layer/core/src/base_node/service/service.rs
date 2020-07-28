@@ -525,8 +525,7 @@ async fn handle_outbound_request(
             send_msg_params.finish(),
             OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
         )
-        .await
-        .map_err(|e| CommsInterfaceError::OutboundMessageService(e.to_string()))?;
+        .await?;
 
     match send_result.resolve().await {
         Ok(send_states) if send_states.is_empty() => {
@@ -596,12 +595,8 @@ async fn handle_outbound_block(
                 shared_protos::core::NewBlock::from(new_block),
             ),
         )
-        .await
-        .map_err(|e| {
-            error!(target: LOG_TARGET, "Handle outbound block failed: {:?}", e);
-            CommsInterfaceError::OutboundMessageService(e.to_string())
-        })
-        .map(|_| ())
+        .await?;
+    Ok(())
 }
 
 async fn handle_request_timeout(

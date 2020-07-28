@@ -30,7 +30,11 @@ use crate::{
 use log::*;
 use tari_crypto::tari_utilities::hash::Hashable;
 pub const LOG_TARGET: &str = "c::val::helpers";
-use crate::{chain_storage::fetch_target_difficulties, proof_of_work::get_median_timestamp};
+use crate::{
+    chain_storage::{DbKey, MmrTree},
+    proof_of_work::get_median_timestamp,
+    transactions::types::HashOutput,
+};
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// This function tests that the block timestamp is greater than the median timestamp at the specified height.
@@ -46,8 +50,7 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
     }
     let min_height = height.saturating_sub(rules.consensus_constants().get_median_timestamp_count() as u64);
     let block_nums = (min_height..=height).collect();
-    let timestamps = fetch_headers(db, block_nums)
-        .map_err(|e| ValidationError::CustomError(e.to_string()))?
+    let timestamps = fetch_headers(db, block_nums)?
         .iter()
         .map(|h| h.timestamp)
         .collect::<Vec<_>>();
@@ -97,21 +100,17 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
     // This tests the target diff.
     let target = if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
         let constants = rules.consensus_constants();
-        let target_difficulties =
-            fetch_target_difficulties(db, pow_algo, height, constants.get_difficulty_block_window() as usize)
-                .map_err(|e| ValidationError::CustomError(e.to_string()))?;
+        let block_window = constants.get_difficulty_block_window() as usize;
+        let target_difficulties = db.fetch_target_difficulties(pow_algo, height, block_window)?;
         get_target_difficulty(
             target_difficulties,
-            constants.get_difficulty_block_window() as usize,
+            block_window,
             constants.get_diff_target_block_interval(),
             constants.min_pow_difficulty(pow_algo),
             constants.get_difficulty_max_block_interval(),
         )
-        .or_else(|e| {
-            error!(target: LOG_TARGET, "Validation could not get target difficulty");
-            Err(e)
-        })
-        .map_err(|_| {
+        .map_err(|e| {
+            error!(target: LOG_TARGET, "Validation could not get target difficulty: {}", e);
             ValidationError::BlockHeaderError(BlockHeaderValidationError::ProofOfWorkError(
                 PowError::InvalidProofOfWork,
             ))
@@ -142,4 +141,21 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
         ));
     }
     Ok(())
+}
+
+pub fn is_stxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ValidationError> {
+    // Check if the UTXO MMR contains the specified deleted UTXO hash, the backend stxo_db is not used for this task as
+    // archival nodes and pruning nodes might have different STXOs in their stxo_db as horizon state STXOs are
+    // discarded by pruned nodes.
+    match db.fetch_mmr_leaf_index(MmrTree::Utxo, &hash)? {
+        Some(leaf_index) => {
+            let (_, deleted) = db.fetch_mmr_node(MmrTree::Utxo, leaf_index, None)?;
+            return Ok(deleted);
+        },
+        None => Ok(false),
+    }
+}
+
+pub fn is_utxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ValidationError> {
+    db.contains(&DbKey::UnspentOutput(hash)).map_err(Into::into)
 }

@@ -23,11 +23,10 @@
 mod lmdb;
 #[allow(clippy::module_inception)]
 mod lmdb_db;
-mod lmdb_vec;
-
-// Public API exports
 pub use lmdb_db::{create_lmdb_database, LMDBDatabase};
-pub use lmdb_vec::LMDBVec;
+
+mod lmdb_vec;
+pub use lmdb_vec::{LMDBVec, LMDBVecError};
 
 pub const LMDB_DB_METADATA: &str = "metadata";
 pub const LMDB_DB_HEADERS: &str = "headers";

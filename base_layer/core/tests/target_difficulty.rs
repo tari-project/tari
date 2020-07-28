@@ -53,7 +53,7 @@ fn test_target_difficulty_at_tip() {
         PowAlgorithm::Blake,
     ];
     create_test_pow_blockchain(&store, pow_algos.clone(), &consensus_manager);
-    let height = store.get_metadata().unwrap().height_of_longest_chain.unwrap();
+    let height = store.get_chain_metadata().unwrap().height_of_longest_chain.unwrap();
 
     let pow_algo = PowAlgorithm::Monero;
     let target_difficulties = store.fetch_target_difficulties(pow_algo, height, block_window).unwrap();
@@ -64,13 +64,9 @@ fn test_target_difficulty_at_tip() {
             target_time,
             constants.min_pow_difficulty(pow_algo),
             max_block_time
-        ),
-        Ok(calculate_accumulated_difficulty(
-            &store,
-            pow_algo,
-            vec![2, 5, 6, 8],
-            &constants
-        ))
+        )
+        .unwrap(),
+        calculate_accumulated_difficulty(&store, pow_algo, vec![2, 5, 6, 8], &constants)
     );
 
     let pow_algo = PowAlgorithm::Blake;
@@ -82,13 +78,9 @@ fn test_target_difficulty_at_tip() {
             target_time,
             constants.min_pow_difficulty(pow_algo),
             max_block_time
-        ),
-        Ok(calculate_accumulated_difficulty(
-            &store,
-            pow_algo,
-            vec![0, 1, 3, 4, 7, 9],
-            &constants
-        ))
+        )
+        .unwrap(),
+        calculate_accumulated_difficulty(&store, pow_algo, vec![0, 1, 3, 4, 7, 9], &constants)
     );
 }
 
@@ -120,13 +112,9 @@ fn test_target_difficulty_with_height() {
             target_time,
             constants.min_pow_difficulty(pow_algo),
             max_block_time
-        ),
-        Ok(calculate_accumulated_difficulty(
-            &store,
-            pow_algo,
-            vec![1, 4],
-            &constants
-        ))
+        )
+        .unwrap(),
+        calculate_accumulated_difficulty(&store, pow_algo, vec![1, 4], &constants)
     );
 
     let pow_algo = PowAlgorithm::Blake;
@@ -137,13 +125,9 @@ fn test_target_difficulty_with_height() {
             target_time,
             constants.min_pow_difficulty(pow_algo),
             max_block_time
-        ),
-        Ok(calculate_accumulated_difficulty(
-            &store,
-            pow_algo,
-            vec![0, 2, 3, 5],
-            &constants
-        ))
+        )
+        .unwrap(),
+        calculate_accumulated_difficulty(&store, pow_algo, vec![0, 2, 3, 5], &constants)
     );
 
     let pow_algo = PowAlgorithm::Monero;
@@ -154,8 +138,9 @@ fn test_target_difficulty_with_height() {
             target_time,
             constants.min_pow_difficulty(pow_algo),
             max_block_time
-        ),
-        Ok(calculate_accumulated_difficulty(&store, pow_algo, vec![1], &constants))
+        )
+        .unwrap(),
+        calculate_accumulated_difficulty(&store, pow_algo, vec![1], &constants)
     );
 
     let pow_algo = PowAlgorithm::Blake;
@@ -166,13 +151,9 @@ fn test_target_difficulty_with_height() {
             target_time,
             constants.min_pow_difficulty(pow_algo),
             max_block_time
-        ),
-        Ok(calculate_accumulated_difficulty(
-            &store,
-            pow_algo,
-            vec![0, 2],
-            &constants
-        ))
+        )
+        .unwrap(),
+        calculate_accumulated_difficulty(&store, pow_algo, vec![0, 2], &constants)
     );
     let pow_algo = PowAlgorithm::Monero;
     assert_eq!(
@@ -182,8 +163,9 @@ fn test_target_difficulty_with_height() {
             target_time,
             constants.min_pow_difficulty(pow_algo),
             max_block_time
-        ),
-        Ok(calculate_accumulated_difficulty(&store, pow_algo, vec![1], &constants))
+        )
+        .unwrap(),
+        calculate_accumulated_difficulty(&store, pow_algo, vec![1], &constants)
     );
 
     let pow_algo = PowAlgorithm::Blake;
@@ -194,12 +176,8 @@ fn test_target_difficulty_with_height() {
             target_time,
             constants.min_pow_difficulty(pow_algo),
             max_block_time
-        ),
-        Ok(calculate_accumulated_difficulty(
-            &store,
-            pow_algo,
-            vec![0, 2, 3],
-            &constants
-        ))
+        )
+        .unwrap(),
+        calculate_accumulated_difficulty(&store, pow_algo, vec![0, 2, 3], &constants)
     );
 }

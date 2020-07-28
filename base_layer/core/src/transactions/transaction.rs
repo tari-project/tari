@@ -40,7 +40,6 @@ use crate::transactions::{
         Signature,
     },
 };
-use derive_error::Error;
 use digest::Input;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -55,6 +54,7 @@ use tari_crypto::{
     range_proof::{RangeProofError, RangeProofService as RangeProofServiceTrait},
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
+use thiserror::Error;
 
 // Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 19,003, still well enough below block weight of 19,500
 pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
@@ -156,15 +156,14 @@ bitflags! {
 
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
 pub enum TransactionError {
-    // Error validating the transaction
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Error validating the transaction: {0}")]
     ValidationError(String),
-    // Signature could not be verified
+    #[error("Signature could not be verified")]
     InvalidSignatureError,
-    // Transaction kernel does not contain a signature
+    #[error("Transaction kernel does not contain a signature")]
     NoSignatureError,
-    // A range proof construction or verification has produced an error
-    RangeProofError(RangeProofError),
+    #[error("A range proof construction or verification has produced an error: {0}")]
+    RangeProofError(#[from] RangeProofError),
 }
 
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//

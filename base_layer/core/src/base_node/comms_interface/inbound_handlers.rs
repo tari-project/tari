@@ -132,7 +132,7 @@ where T: BlockchainBackend + 'static
         debug!(target: LOG_TARGET, "Handling remote request {}", request);
         match request {
             NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
-                async_db::get_metadata(self.blockchain_db.clone()).await?,
+                async_db::get_chain_metadata(self.blockchain_db.clone()).await?,
             )),
             NodeCommsRequest::FetchKernels(kernel_hashes) => {
                 let mut kernels = Vec::<TransactionKernel>::new();
@@ -156,7 +156,7 @@ where T: BlockchainBackend + 'static
                 let mut block_headers = Vec::<BlockHeader>::new();
                 for block_hash in block_hashes {
                     if let Ok(block_header) =
-                        async_db::fetch_header_with_block_hash(self.blockchain_db.clone(), block_hash.clone()).await
+                        async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), block_hash.clone()).await
                     {
                         block_headers.push(block_header);
                     }
@@ -169,7 +169,7 @@ where T: BlockchainBackend + 'static
                 // Find first header that matches
                 for header_hash in header_hashes {
                     if let Ok(from_block) =
-                        async_db::fetch_header_with_block_hash(self.blockchain_db.clone(), header_hash.clone()).await
+                        async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), header_hash.clone()).await
                     {
                         starting_block = from_block;
                         break;
@@ -328,12 +328,12 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
             NodeCommsRequest::GetNewBlockTemplate(pow_algo) => {
-                let metadata = async_db::get_metadata(self.blockchain_db.clone()).await?;
+                let metadata = async_db::get_chain_metadata(self.blockchain_db.clone()).await?;
                 let best_block_hash = metadata
                     .best_block
                     .ok_or_else(|| CommsInterfaceError::UnexpectedApiResponse)?;
                 let best_block_header =
-                    async_db::fetch_header_with_block_hash(self.blockchain_db.clone(), best_block_hash).await?;
+                    async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), best_block_hash).await?;
 
                 let constants = self.consensus_manager.consensus_constants();
                 let mut header = BlockHeader::from_previous(&best_block_header);
@@ -347,8 +347,7 @@ where T: BlockchainBackend + 'static
                         .consensus_constants()
                         .get_max_block_weight_excluding_coinbase(),
                 )
-                .await
-                .map_err(|e| CommsInterfaceError::MempoolError(e.to_string()))?
+                .await?
                 .iter()
                 .map(|tx| (**tx).clone())
                 .collect();
@@ -525,7 +524,7 @@ where T: BlockchainBackend + 'static
     }
 
     async fn get_target_difficulty(&self, pow_algo: PowAlgorithm) -> Result<Difficulty, CommsInterfaceError> {
-        let height_of_longest_chain = async_db::get_metadata(self.blockchain_db.clone())
+        let height_of_longest_chain = async_db::get_chain_metadata(self.blockchain_db.clone())
             .await?
             .height_of_longest_chain
             .ok_or_else(|| CommsInterfaceError::UnexpectedApiResponse)?;
@@ -536,14 +535,13 @@ where T: BlockchainBackend + 'static
             pow_algo
         );
         let constants = self.consensus_manager.consensus_constants();
-        let target_difficulties = self.blockchain_db.fetch_target_difficulties(
-            pow_algo,
-            height_of_longest_chain,
-            constants.get_difficulty_block_window() as usize,
-        )?;
+        let block_window = constants.get_difficulty_block_window() as usize;
+        let target_difficulties =
+            self.blockchain_db
+                .fetch_target_difficulties(pow_algo, height_of_longest_chain, block_window)?;
         let target = get_target_difficulty(
             target_difficulties,
-            constants.get_difficulty_block_window() as usize,
+            block_window,
             constants.get_diff_target_block_interval(),
             constants.min_pow_difficulty(pow_algo),
             constants.get_difficulty_max_block_interval(),

@@ -69,6 +69,6 @@ pub fn random_peer_metadata(height: u64, difficulty: Difficulty) -> PeerChainMet
     let key: Vec<u8> = (0..13).map(|_| rand::random::<u8>()).collect();
     let id = NodeId::from_key(&key).unwrap();
     let block_hash = Blake256::digest(id.as_bytes()).to_vec();
-    let metadata = ChainMetadata::new(height, block_hash, 2800, difficulty);
+    let metadata = ChainMetadata::new(height, block_hash, 2800, 0, difficulty);
     PeerChainMetadata::new(id, metadata)
 }

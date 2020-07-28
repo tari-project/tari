@@ -491,7 +491,7 @@ where
     let db_config = BlockchainDatabaseConfig {
         orphan_storage_capacity: config.orphan_storage_capacity,
         pruning_horizon: config.pruning_horizon,
-        pruned_mode_cleanup_interval: config.pruned_mode_cleanup_interval,
+        pruning_interval: config.pruned_mode_cleanup_interval,
     };
     let db = BlockchainDatabase::new(backend, &rules, validators, db_config).map_err(|e| e.to_string())?;
     let mempool_validator =

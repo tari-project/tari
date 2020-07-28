@@ -710,12 +710,7 @@ fn service_request_timeout() {
     runtime.block_on(async {
         // Bob should not be reachable
         bob_node.comms.shutdown().await;
-
-        assert_eq!(
-            alice_node.outbound_nci.get_metadata().await,
-            Err(CommsInterfaceError::RequestTimedOut)
-        );
-
+        unpack_enum!(CommsInterfaceError::RequestTimedOut = alice_node.outbound_nci.get_metadata().await.unwrap_err());
         alice_node.comms.shutdown().await;
     });
 }
@@ -795,7 +790,7 @@ fn local_get_target_difficulty() {
 
     let db = &node.blockchain_db;
     let block0 = db.fetch_block(0).unwrap().block().clone();
-    assert_eq!(node.blockchain_db.get_height(), Ok(Some(0)));
+    assert_eq!(node.blockchain_db.get_height().unwrap(), Some(0));
 
     runtime.block_on(async {
         let monero_target_difficulty1 = node
@@ -815,7 +810,7 @@ fn local_get_target_difficulty() {
             .increase(consensus_manager.consensus_constants().get_target_block_interval());
         block1.header.pow.pow_algo = PowAlgorithm::Blake;
         node.blockchain_db.add_block(block1).unwrap();
-        assert_eq!(node.blockchain_db.get_height(), Ok(Some(1)));
+        assert_eq!(node.blockchain_db.get_height().unwrap(), Some(1));
         let monero_target_difficulty2 = node
             .local_nci
             .get_target_difficulty(PowAlgorithm::Monero)
