@@ -116,6 +116,18 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                     .map(|o| DbUnblindedOutput::from((*o).clone()))
                     .collect(),
             )),
+            DbKey::TimeLockedUnspentOutputs(tip) => Some(DbValue::UnspentOutputs(
+                db.unspent_outputs
+                    .iter()
+                    .filter_map(|o| {
+                        if (*o).output.unblinded_output.features.maturity > *tip {
+                            Some(DbUnblindedOutput::from((*o).clone()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+            )),
             DbKey::AllPendingTransactionOutputs => {
                 let mut pending_tx_outputs = db.pending_transactions.clone();
                 for (k, v) in db.short_term_pending_transactions.iter() {
@@ -212,6 +224,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 DbKey::AllPendingTransactionOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::KeyManagerState => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::InvalidOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::TimeLockedUnspentOutputs(_) => return Err(OutputManagerStorageError::OperationNotSupported),
             },
         }
         Ok(None)

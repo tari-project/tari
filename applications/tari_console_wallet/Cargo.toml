@@ -1,0 +1,30 @@
+[package]
+name = "tari_console_wallet"
+version = "0.1.0"
+authors = ["Philip Robinson <simian@tari.com>"]
+edition = "2018"
+
+[dependencies]
+tari_wallet = { version = "^0.2", path = "../../base_layer/wallet" }
+tari_comms = { version = "^0.2", path = "../../comms"}
+tari_crypto = { version = "^0.5" }
+tari_common = { version= "^0.2", path = "../../common" }
+
+chrono = { version = "0.4.6", features = ["serde"]}
+crossterm = { version = "0.17"}
+rand = "0.7.2"
+unicode-width = "0.1"
+lazy_static = "1.4.0"
+unicode-segmentation = "1.6.0"
+log = { version = "0.4.8", features = ["std"] }
+
+[dependencies.tari_core]
+path = "../../base_layer/core"
+version = "^0.2"
+default-features = false
+features = ["transactions", "mempool_proto", "base_node_proto"]
+
+[dependencies.tui]
+version = "0.10"
+default-features = false
+features = ["crossterm"]

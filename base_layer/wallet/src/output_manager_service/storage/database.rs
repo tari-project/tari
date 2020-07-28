@@ -118,6 +118,7 @@ pub enum DbKey {
     SpentOutput(BlindingFactor),
     UnspentOutput(BlindingFactor),
     PendingTransactionOutputs(TxId),
+    TimeLockedUnspentOutputs(u64),
     UnspentOutputs,
     SpentOutputs,
     AllPendingTransactionOutputs,
@@ -224,9 +225,10 @@ where T: OutputManagerBackend + Clone + 'static
         Ok(())
     }
 
-    pub async fn get_balance(&self) -> Result<Balance, OutputManagerStorageError> {
+    pub async fn get_balance(&self, current_chain_tip: Option<u64>) -> Result<Balance, OutputManagerStorageError> {
         let db_clone = self.db.clone();
         let db_clone2 = self.db.clone();
+        let db_clone3 = self.db.clone();
 
         let pending_txs = tokio::task::spawn_blocking(move || {
             db_clone.fetch(&DbKey::AllPendingTransactionOutputs)?.ok_or_else(|| {
@@ -245,11 +247,34 @@ where T: OutputManagerBackend + Clone + 'static
         })
         .await
         .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+
         if let DbValue::UnspentOutputs(uo) = unspent_outputs {
             if let DbValue::AllPendingTransactionOutputs(pto) = pending_txs {
                 let available_balance = uo
                     .iter()
                     .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+                let time_locked_balance = if let Some(tip) = current_chain_tip {
+                    let time_locked_outputs = tokio::task::spawn_blocking(move || {
+                        db_clone3.fetch(&DbKey::TimeLockedUnspentOutputs(tip))?.ok_or_else(|| {
+                            OutputManagerStorageError::UnexpectedResult(
+                                "Time-locked Outputs cannot be retrieved".to_string(),
+                            )
+                        })
+                    })
+                    .await
+                    .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+                    if let DbValue::UnspentOutputs(time_locked_uo) = time_locked_outputs {
+                        Some(
+                            time_locked_uo
+                                .iter()
+                                .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value),
+                        )
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
                 let mut pending_incoming = MicroTari::from(0);
                 let mut pending_outgoing = MicroTari::from(0);
 
@@ -266,6 +291,7 @@ where T: OutputManagerBackend + Clone + 'static
 
                 return Ok(Balance {
                     available_balance,
+                    time_locked_balance,
                     pending_incoming_balance: pending_incoming,
                     pending_outgoing_balance: pending_outgoing,
                 });
@@ -488,6 +514,23 @@ where T: OutputManagerBackend + Clone + 'static
         Ok(uo)
     }
 
+    pub async fn get_timelocked_outputs(&self, tip: u64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+
+        let uo = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::TimeLockedUnspentOutputs(tip)) {
+            Ok(None) => log_error(
+                DbKey::UnspentOutputs,
+                OutputManagerStorageError::UnexpectedResult("Could not retrieve unspent outputs".to_string()),
+            ),
+            Ok(Some(DbValue::UnspentOutputs(uo))) => Ok(uo),
+            Ok(Some(other)) => unexpected_result(DbKey::UnspentOutputs, other),
+            Err(e) => log_error(DbKey::UnspentOutputs, e),
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(uo)
+    }
+
     pub async fn get_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
 
@@ -573,6 +616,7 @@ impl Display for DbKey {
             DbKey::AllPendingTransactionOutputs => f.write_str(&"All Pending Transaction Outputs".to_string()),
             DbKey::KeyManagerState => f.write_str(&"Key Manager State".to_string()),
             DbKey::InvalidOutputs => f.write_str(&"Invalid Outputs Key"),
+            DbKey::TimeLockedUnspentOutputs(_t) => f.write_str(&"Timelocked Outputs"),
         }
     }
 }

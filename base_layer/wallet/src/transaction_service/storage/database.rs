@@ -140,7 +140,14 @@ impl Default for TransactionStatus {
 impl Display for TransactionStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         // No struct or tuple variants
-        write!(f, "{:?}", self)
+        match self {
+            TransactionStatus::Completed => write!(f, "Completed"),
+            TransactionStatus::Broadcast => write!(f, "Broadcast"),
+            TransactionStatus::Mined => write!(f, "Mined"),
+            TransactionStatus::Imported => write!(f, "Imported"),
+            TransactionStatus::Pending => write!(f, "Pending"),
+            TransactionStatus::Coinbase => write!(f, "Coinbase"),
+        }
     }
 }
 
@@ -289,6 +296,17 @@ impl TryFrom<i32> for TransactionDirection {
             1 => Ok(TransactionDirection::Outbound),
             2 => Ok(TransactionDirection::Unknown),
             _ => Err(TransactionStorageError::ConversionError),
+        }
+    }
+}
+
+impl Display for TransactionDirection {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        // No struct or tuple variants
+        match self {
+            TransactionDirection::Inbound => write!(f, "Inbound"),
+            TransactionDirection::Outbound => write!(f, "Outbound"),
+            TransactionDirection::Unknown => write!(f, "Unknown"),
         }
     }
 }

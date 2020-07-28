@@ -238,7 +238,7 @@ where
             OutputManagerRequest::AddOutput(uo) => {
                 self.add_output(uo).await.map(|_| OutputManagerResponse::OutputAdded)
             },
-            OutputManagerRequest::GetBalance => self.get_balance().await.map(OutputManagerResponse::Balance),
+            OutputManagerRequest::GetBalance => self.get_balance(None).await.map(OutputManagerResponse::Balance),
             OutputManagerRequest::GetRecipientKey((tx_id, amount)) => self
                 .get_recipient_spending_key(tx_id, amount)
                 .await
@@ -421,8 +421,8 @@ where
         Ok(self.resources.db.add_unspent_output(output).await?)
     }
 
-    async fn get_balance(&self) -> Result<Balance, OutputManagerError> {
-        let balance = self.resources.db.get_balance().await?;
+    async fn get_balance(&self, current_chain_tip: Option<u64>) -> Result<Balance, OutputManagerError> {
+        let balance = self.resources.db.get_balance(current_chain_tip).await?;
         trace!(target: LOG_TARGET, "Balance: {:?}", balance);
         Ok(balance)
     }
@@ -930,6 +930,8 @@ pub enum UTXOSelectionStrategy {
 pub struct Balance {
     /// The current balance that is available to spend
     pub available_balance: MicroTari,
+    /// The amount of the available balance that is current time-locked, None if no chain tip is provided
+    pub time_locked_balance: Option<MicroTari>,
     /// The current balance of funds that are due to be received but have not yet been confirmed
     pub pending_incoming_balance: MicroTari,
     /// The current balance of funds encumbered in pending outbound transactions that have not been confirmed
