@@ -14,5 +14,6 @@ members = [
     "infrastructure/storage",
     "infrastructure/test_utils",
     "applications/tari_base_node",
+    "applications/tari_console_wallet",
     "applications/test_faucet",
 ]

@@ -187,6 +187,19 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
+            DbKey::TimeLockedUnspentOutputs(tip) => {
+                let mut outputs = OutputSql::index_time_locked(*tip, &(*conn))?;
+                for o in outputs.iter_mut() {
+                    self.decrypt_if_necessary(o)?;
+                }
+
+                Some(DbValue::UnspentOutputs(
+                    outputs
+                        .iter()
+                        .map(|o| DbUnblindedOutput::try_from(o.clone()))
+                        .collect::<Result<Vec<_>, _>>()?,
+                ))
+            },
             DbKey::AllPendingTransactionOutputs => {
                 let pending_sql_txs = PendingTransactionOutputSql::index(&(*conn))?;
                 let mut pending_txs = HashMap::new();
@@ -340,7 +353,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 DbKey::SpentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::AllPendingTransactionOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::KeyManagerState => return Err(OutputManagerStorageError::OperationNotSupported),
-                DbKey::InvalidOutputs => {},
+                DbKey::InvalidOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
+                DbKey::TimeLockedUnspentOutputs(_) => return Err(OutputManagerStorageError::OperationNotSupported),
             },
         }
 
@@ -822,6 +836,14 @@ impl OutputSql {
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError>
     {
         Ok(outputs::table.filter(outputs::status.eq(status as i32)).load(conn)?)
+    }
+
+    /// Return all unspent outputs that have a maturity above the provided chain tip
+    pub fn index_time_locked(tip: u64, conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .filter(outputs::maturity.gt(tip as i64))
+            .load(conn)?)
     }
 
     /// Find a particular Output, if it exists
