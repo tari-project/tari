@@ -29,6 +29,123 @@ use num::pow;
 /// NB: We don't know what the final emission schedule will be on Tari yet, so do not give any weight to values or
 /// formulae provided in this file, they will almost certainly change ahead of main-net release.
 #[derive(Clone)]
+pub struct Emission {
+    initial: MicroTari,
+    decay: &'static [u64],
+    tail: MicroTari,
+}
+
+impl Emission {
+    /// Create a new emission schedule instance.
+    ///
+    /// The Emission schedule follows a similar pattern to Monero; with an exponentially decaying emission rate with
+    /// a constant tail emission rate.
+    ///
+    /// The block reward is given by
+    ///  $$ r_n = r_{n-1} * (1 - \epsilon) + t, n > 0 $$
+    ///  $$ r_0 = A_0 $$
+    ///
+    /// where
+    ///  * $$A_0$$ is the genesis block reward
+    ///  * $$1 - \epsilon$$ is the decay rate
+    ///  * $$t$$ is the constant tail emission rate
+    ///
+    /// The decay in this constructor is calculated as follows:
+    /// $$ \epsilon = \sum 2^{-k} \foreach k \in decay $$
+    ///
+    /// So for example, if the decay rate is 0.25, then $$\epsilon$$ is 0.75 or 1/2 + 1/4 i.e. `1 >> 1 + 1 >> 2`
+    /// and the decay array is `&[1, 2]`
+    pub fn new(initial: MicroTari, decay: &'static [u64], tail: MicroTari) -> Emission {
+        Emission { initial, decay, tail }
+    }
+
+    /// Return an iterator over the block reward and total supply. This is the most efficient way to iterate through
+    /// the emission curve if you're interested in the supply as well as the reward.
+    ///
+    /// This is an infinite iterator, and each value returned is a tuple of (block number, reward, and total supply)
+    ///
+    /// ```edition2018
+    /// use tari_core::consensus::emission::Emission;
+    /// use tari_core::transactions::tari_amount::MicroTari;
+    /// // Print the reward and supply for first 100 blocks
+    /// let schedule = Emission::new(10.into(), &[3], 1.into());
+    /// for (n, reward, supply) in schedule.iter().take(100) {
+    ///     println!("{:3} {:9} {:9}", n, reward, supply);
+    /// }
+    /// ```
+    pub fn iter(&self) -> EmissionRate {
+        EmissionRate::new(self)
+    }
+}
+
+pub struct EmissionRate<'a> {
+    block_num: u64,
+    supply: MicroTari,
+    reward: MicroTari,
+    schedule: &'a Emission,
+}
+
+impl<'a> EmissionRate<'a> {
+    fn new(schedule: &'a Emission) -> EmissionRate<'a> {
+        EmissionRate {
+            block_num: 0,
+            supply: schedule.initial,
+            reward: schedule.initial,
+            schedule,
+        }
+    }
+
+    pub fn supply(&self) -> MicroTari {
+        self.supply
+    }
+
+    pub fn block_height(&self) -> u64 {
+        self.block_num
+    }
+
+    pub fn block_reward(&self) -> MicroTari {
+        self.reward
+    }
+
+    /// Calculates the next reward by multiplying the decay factor by the previous block reward using integer math.
+    ///
+    /// We write the decay factor, 1 - k, as a sum of fraction powers of two. e.g. if we wanted 0.25 as our k, then
+    /// (1-k) would be 0.75 = 1/2 plus 1/4 (1/2^2).
+    ///
+    /// Then we calculate k.R = (1 - e).R = R - e.R = R - (0.5 * R + 0.25 * R) = R - R >> 1 - R >> 2
+    fn next_reward(&self) -> MicroTari {
+        let r: u64 = self.reward.into();
+        let next = self
+            .schedule
+            .decay
+            .iter()
+            .fold(self.reward, |sum, i| sum - MicroTari::from(r >> *i));
+        if next > self.schedule.tail {
+            next
+        } else {
+            self.schedule.tail
+        }
+    }
+}
+
+impl<'a> Iterator for EmissionRate<'a> {
+    type Item = (u64, MicroTari, MicroTari);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.reward = self.next_reward();
+        self.supply += self.reward;
+        self.block_num += 1;
+        Some((self.block_num, self.reward, self.supply))
+    }
+}
+
+/// The Tari emission schedule. The emission schedule determines how much Tari is mined as a block reward at every
+/// block.
+///
+/// NB: We don't know what the final emission schedule will be on Tari yet, so do not give any weight to values or
+/// formulae provided in this file, they will almost certainly change ahead of main-net release.
+#[derive(Clone)]
+#[deprecated(note = "Use Emission instead")]
 pub struct EmissionSchedule {
     initial: MicroTari,
     decay: f64,
@@ -126,7 +243,7 @@ impl<'a> Iterator for EmissionValues<'a> {
 #[cfg(test)]
 mod test {
     use crate::{
-        consensus::emission::EmissionSchedule,
+        consensus::emission::{Emission, EmissionSchedule},
         transactions::tari_amount::{uT, MicroTari, T},
     };
     use num::pow;
@@ -194,5 +311,29 @@ mod test {
             tot_supply += reward;
             assert_eq!(tot_supply, supply);
         }
+    }
+
+    #[test]
+    fn emission() {
+        let emission = Emission::new(1 * T, &[1, 2], 100 * uT);
+        let mut emission = emission.iter();
+        // decay is 1 - 0.25 - 0.125 = 0.625
+        assert_eq!(emission.block_height(), 0);
+        assert_eq!(emission.block_reward(), 1 * T);
+        assert_eq!(emission.supply(), 1 * T);
+
+        assert_eq!(emission.next(), Some((1, 250_000 * uT, 1_250_000 * uT)));
+        assert_eq!(emission.next(), Some((2, 62_500 * uT, 1_312_500 * uT)));
+        assert_eq!(emission.next(), Some((3, 15_625 * uT, 1_328_125 * uT)));
+        assert_eq!(emission.next(), Some((4, 3_907 * uT, 1_332_032 * uT)));
+        assert_eq!(emission.next(), Some((5, 978 * uT, 1_333_010 * uT)));
+        assert_eq!(emission.next(), Some((6, 245 * uT, 1_333_255 * uT)));
+        // Tail emission kicks in
+        assert_eq!(emission.next(), Some((7, 100 * uT, 1_333_355 * uT)));
+        assert_eq!(emission.next(), Some((8, 100 * uT, 1_333_455 * uT)));
+
+        assert_eq!(emission.block_height(), 8);
+        assert_eq!(emission.block_reward(), 100 * uT);
+        assert_eq!(emission.supply(), 1333455 * uT);
     }
 }
