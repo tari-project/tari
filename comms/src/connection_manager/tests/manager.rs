@@ -32,6 +32,7 @@ use crate::{
     noise::NoiseConfig,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags, PeerManagerError},
     protocol::{ProtocolEvent, ProtocolId, Protocols, IDENTITY_PROTOCOL},
+    runtime::task,
     test_utils::{
         count_string_occurrences,
         node_identity::{build_node_identity, ordered_node_identities},
@@ -39,7 +40,13 @@ use crate::{
     },
     transports::MemoryTransport,
 };
-use futures::{channel::mpsc, future, AsyncReadExt, AsyncWriteExt, StreamExt};
+use futures::{
+    channel::{mpsc, oneshot},
+    future,
+    AsyncReadExt,
+    AsyncWriteExt,
+    StreamExt,
+};
 use std::time::Duration;
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
@@ -71,15 +78,9 @@ async fn connect_to_nonexistent_peer() {
 
     rt_handle.spawn(connection_manager.run());
 
-    let result = requester.dial_peer(NodeId::default()).await;
-    unpack_enum!(Result::Err(err) = result);
-    match err {
-        ConnectionManagerError::PeerManagerError(PeerManagerError::PeerNotFoundError) => {},
-        _ => panic!(
-            "Unexpected error. Expected \
-             `ConnectionManagerError::PeerManagerError(PeerManagerError::PeerNotFoundError)`"
-        ),
-    }
+    let err = requester.dial_peer(NodeId::default()).await.unwrap_err();
+    unpack_enum!(ConnectionManagerError::PeerManagerError(err) = err);
+    unpack_enum!(PeerManagerError::PeerNotFoundError = err);
 
     shutdown.trigger().unwrap();
 }
@@ -287,4 +288,64 @@ async fn simultaneous_dial_events() {
     // TODO: Investigate why two PeerDisconnected events are sometimes received
     // assert!(count_string_occurrences(&events1, &["PeerDisconnected", "PeerConnectWillClose"]) >= 1);
     // assert!(count_string_occurrences(&events2, &["PeerDisconnected", "PeerConnectWillClose"]) >= 1);
+}
+
+#[tokio_macros::test_basic]
+async fn dial_cancelled() {
+    let mut shutdown = Shutdown::new();
+
+    let node_identity1 = build_node_identity(PeerFeatures::empty());
+    let node_identity2 = build_node_identity(PeerFeatures::empty());
+
+    // Setup connection manager 1
+    let peer_manager1 = build_peer_manager();
+
+    let mut conn_man1 = build_connection_manager(
+        {
+            let mut config = TestNodeConfig {
+                node_identity: node_identity1.clone(),
+                dial_backoff_duration: Duration::from_secs(100),
+                ..Default::default()
+            };
+            config.connection_manager_config.user_agent = "node1".to_string();
+            config
+        },
+        peer_manager1.clone(),
+        Default::default(),
+        shutdown.to_signal(),
+    );
+
+    conn_man1.wait_until_listening().await.unwrap();
+
+    let mut subscription1 = conn_man1.get_event_subscription();
+
+    peer_manager1.add_peer(node_identity2.to_peer()).await.unwrap();
+
+    let (ready_tx, ready_rx) = oneshot::channel();
+    let dial_result = task::spawn({
+        let mut cm = conn_man1.clone();
+        let node_id = node_identity2.node_id().clone();
+        async move {
+            ready_tx.send(()).unwrap();
+            cm.dial_peer(node_id).await
+        }
+    });
+
+    ready_rx.await.unwrap();
+    conn_man1.cancel_dial(node_identity2.node_id().clone()).await.unwrap();
+    let err = dial_result.await.unwrap().unwrap_err();
+    unpack_enum!(ConnectionManagerError::DialCancelled = err);
+
+    shutdown.trigger().unwrap();
+    drop(conn_man1);
+
+    let events1 = collect_stream!(subscription1, timeout = Duration::from_secs(5))
+        .into_iter()
+        .map(Result::unwrap)
+        .collect::<Vec<_>>();
+
+    assert_eq!(events1.len(), 1);
+    unpack_enum!(ConnectionManagerEvent::PeerConnectFailed(node_id, err) = &*events1[0]);
+    assert_eq!(&**node_id, node_identity2.node_id());
+    unpack_enum!(ConnectionManagerError::DialCancelled = err);
 }
