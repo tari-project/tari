@@ -93,7 +93,7 @@ if not exist %config_path%\node_id.json (
 ) else (
     echo.
     echo.
-    echo Using old "%config_path%\node_id.json"
+    echo Using existing "%config_path%\node_id.json"
     echo.
 )
 
