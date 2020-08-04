@@ -36,3 +36,9 @@ cargo install tari_base_node
 ```
 
 ## Configuration
+### Running in pruned mode
+To run your node in pruned mode, add a `pruning_horizon` value
+to the config file.
+> Example  
+> `pruning_horizon = 1000`
+ 
