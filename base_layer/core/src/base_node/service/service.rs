@@ -477,7 +477,14 @@ async fn handle_incoming_response(
         .and_then(|r| r.try_into().ok())
         .ok_or_else(|| BaseNodeServiceError::InvalidResponse("Received an invalid base node response".to_string()))?;
 
-    if let Some(reply_tx) = waiting_requests.remove(request_key).await {
+    if let Some((reply_tx, started)) = waiting_requests.remove(request_key).await {
+        trace!(
+            target: LOG_TARGET,
+            "Response for {} (request key: {}) received after {}ms",
+            response,
+            &request_key,
+            started.elapsed().as_millis()
+        );
         let _ = reply_tx.send(Ok(response).or_else(|resp| {
             warn!(
                 target: LOG_TARGET,
@@ -602,7 +609,13 @@ async fn handle_request_timeout(
     request_key: RequestKey,
 ) -> Result<(), CommsInterfaceError>
 {
-    if let Some(reply_tx) = waiting_requests.remove(request_key).await {
+    if let Some((reply_tx, started)) = waiting_requests.remove(request_key).await {
+        warn!(
+            target: LOG_TARGET,
+            "Request (request key {}) timed out after {}ms",
+            &request_key,
+            started.elapsed().as_millis()
+        );
         let reply_msg = Err(CommsInterfaceError::RequestTimedOut);
         let _ = reply_tx.send(reply_msg.or_else(|resp| {
             error!(

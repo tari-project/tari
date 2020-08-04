@@ -25,6 +25,7 @@ use crate::{
     mempool::{StateResponse, StatsResponse, TxStorageResponse},
 };
 use serde::{Deserialize, Serialize};
+use std::{fmt, fmt::Formatter};
 
 /// API Response enum for Mempool responses.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -32,6 +33,17 @@ pub enum MempoolResponse {
     Stats(StatsResponse),
     State(StateResponse),
     TxStorage(TxStorageResponse),
+}
+
+impl fmt::Display for MempoolResponse {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use MempoolResponse::*;
+        match &self {
+            Stats(_) => write!(f, "Stats"),
+            State(_) => write!(f, "State"),
+            TxStorage(_) => write!(f, "TxStorage"),
+        }
+    }
 }
 
 /// Response type for a received MempoolService requests

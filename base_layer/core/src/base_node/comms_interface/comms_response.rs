@@ -30,6 +30,7 @@ use crate::{
     },
 };
 use serde::{Deserialize, Serialize};
+use std::fmt::{self, Display, Formatter};
 
 /// API Response enum
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -45,4 +46,23 @@ pub enum NodeCommsResponse {
     FetchHeadersAfterResponse(Vec<BlockHeader>),
     MmrNodeCount(u32),
     MmrNodes(Vec<HashOutput>, Vec<u8>),
+}
+
+impl Display for NodeCommsResponse {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use NodeCommsResponse::*;
+        match &self {
+            ChainMetadata(_) => write!(f, "ChainMetadata"),
+            TransactionKernels(_) => write!(f, "TransactionKernel"),
+            BlockHeaders(_) => write!(f, "BlockHeaders"),
+            TransactionOutputs(_) => write!(f, "TransactionOutputs"),
+            HistoricalBlocks(_) => write!(f, "HistoricalBlocks"),
+            NewBlockTemplate(_) => write!(f, "NewBlockTemplate"),
+            NewBlock(_) => write!(f, "NewBlock"),
+            TargetDifficulty(_) => write!(f, "TargetDifficulty"),
+            FetchHeadersAfterResponse(_) => write!(f, "FetchHeadersAfterResponse"),
+            MmrNodeCount(_) => write!(f, "MmrNodeCount"),
+            MmrNodes(_, _) => write!(f, "MmrNodes"),
+        }
+    }
 }
