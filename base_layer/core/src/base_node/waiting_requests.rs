@@ -22,7 +22,7 @@
 
 use futures::channel::oneshot::Sender as OneshotSender;
 use rand::RngCore;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 use tokio::sync::RwLock;
 
 pub type RequestKey = u64;
@@ -35,7 +35,7 @@ where R: RngCore {
 
 /// WaitingRequests is used to keep track of a set of WaitingRequests.
 pub struct WaitingRequests<T> {
-    requests: Arc<RwLock<HashMap<RequestKey, Option<OneshotSender<T>>>>>,
+    requests: Arc<RwLock<HashMap<RequestKey, Option<(OneshotSender<T>, Instant)>>>>,
 }
 
 impl<T> WaitingRequests<T> {
@@ -48,11 +48,14 @@ impl<T> WaitingRequests<T> {
 
     /// Insert a new waiting request.
     pub async fn insert(&self, key: RequestKey, reply_tx: OneshotSender<T>) {
-        self.requests.write().await.insert(key, Some(reply_tx));
+        self.requests
+            .write()
+            .await
+            .insert(key, Some((reply_tx, Instant::now())));
     }
 
     /// Remove the waiting request corresponding to the provided key.
-    pub async fn remove(&self, key: RequestKey) -> Option<OneshotSender<T>> {
+    pub async fn remove(&self, key: RequestKey) -> Option<(OneshotSender<T>, Instant)> {
         self.requests.write().await.remove(&key).unwrap_or(None)
     }
 }
