@@ -318,7 +318,7 @@ where
         match request {
             DialPeer(node_id, reply_tx) => match self.get_active_connection(&node_id) {
                 Some(conn) => {
-                    debug!(target: LOG_TARGET, "[{}] Found existing active connection", conn);
+                    debug!(target: LOG_TARGET, "Found existing active connection: {}", conn);
                     let _ = reply_tx.send(Ok(conn.clone()));
                 },
                 None => {
@@ -503,6 +503,18 @@ where
                 debug!(target: LOG_TARGET, "Peer `{}` disconnected", node_id.short_str());
                 self.active_connections.remove(&node_id);
                 self.publish_event(PeerDisconnected(node_id));
+            },
+            PeerConnectFailed(node_id, ConnectionManagerError::DialCancelled) => {
+                // The dial can be cancelled for a simultaneous dial if an inbound connection already exists. We only
+                // want to publish the PeerConnectFailed event if this is not the case.
+                if self
+                    .active_connections
+                    .get(&node_id)
+                    .filter(|c| c.is_connected() && c.direction().is_inbound())
+                    .is_none()
+                {
+                    self.publish_event(PeerConnectFailed(node_id, ConnectionManagerError::DialCancelled));
+                }
             },
             event => {
                 self.publish_event(event);
