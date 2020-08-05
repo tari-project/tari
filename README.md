@@ -28,7 +28,7 @@ First you'll need to make sure you have a full development environment set up:
 #### (macOS)
 
 ```
-brew install cmake
+brew install cmake openssl tor
 ```
 
 #### (Ubuntu 18.04)
