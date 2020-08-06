@@ -21,14 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::mempool::priority::PriorityError;
-use derive_error::Error;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum PendingPoolError {
-    /// The HashMap and BTreeMap are out of sync
+    #[error("The HashMap and BTreeMap are out of sync")]
     StorageOutofSync,
-    /// A problem has been encountered with the storage backend.
-    #[error(non_std, no_from)]
+    #[error("A problem has been encountered with the storage backend: `{0}`")]
     BackendError(String),
-    PriorityError(PriorityError),
+    #[error("Priority error: `{0}`")]
+    PriorityError(#[from] PriorityError),
 }

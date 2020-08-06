@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{blocks::BlockHeader, proof_of_work::Difficulty, tari_utilities::ByteArray, U256};
-use derive_error::Error;
 use monero::{
     blockdata::{
         block::{Block as MoneroBlock, BlockHeader as MoneroBlockHeader},
@@ -34,21 +33,22 @@ use monero::{
 #[cfg(feature = "monero_merge_mining")]
 use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 const MAX_TARGET: U256 = U256::MAX;
 
 #[derive(Debug, Error, Clone)]
 pub enum MergeMineError {
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Serialization error: {0}")]
     SerializeError(String),
-    // Error deserializing Monero data
+    #[error("Error deserializing Monero data")]
     DeserializeError,
-    // Hashing of Monero data failed
+    #[error("Hashing of Monero data failed")]
     HashingError,
-    // RandomX Failure
     #[cfg(feature = "monero_merge_mining")]
-    RandomXError(RandomXError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("RandomX error: {0}")]
+    RandomXError(#[from] RandomXError),
+    #[error("Validation error: {0}")]
     ValidationError(String),
 }
 

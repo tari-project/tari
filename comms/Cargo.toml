@@ -34,7 +34,7 @@ rand = "0.7.2"
 serde = "1.0.90"
 serde_derive = "1.0.90"
 snow = {version="=0.6.2", features=["default-resolver"]}
-thiserror = "1.0.19"
+thiserror = "1.0.20"
 tokio = {version="~0.2.19", features=["blocking", "time", "tcp", "dns", "sync", "stream", "signal"]}
 tokio-util = {version="0.2.0", features=["codec"]}
 tower= "0.3.1"

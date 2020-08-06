@@ -30,21 +30,26 @@ use crate::{
     },
     transactions::transaction::TransactionError,
 };
-use derive_error::Error;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum MempoolError {
-    UnconfirmedPoolError(UnconfirmedPoolError),
-    OrphanPoolError(OrphanPoolError),
-    PendingPoolError(PendingPoolError),
-    ReorgPoolError(ReorgPoolError),
-    TransactionError(TransactionError),
-    ChainStorageError(ChainStorageError),
-    /// The Blockchain height is undefined
+    #[error("Unconfirmed pool error: `{0}`")]
+    UnconfirmedPoolError(#[from] UnconfirmedPoolError),
+    #[error("Orphan pool error: `{0}`")]
+    OrphanPoolError(#[from] OrphanPoolError),
+    #[error("Pending pool error: `{0}`")]
+    PendingPoolError(#[from] PendingPoolError),
+    #[error("Reorg pool error: `{0}`")]
+    ReorgPoolError(#[from] ReorgPoolError),
+    #[error("Transaction error: `{0}`")]
+    TransactionError(#[from] TransactionError),
+    #[error("Chain storage error: `{0}`")]
+    ChainStorageError(#[from] ChainStorageError),
+    #[error("The Blockchain height is undefined")]
     ChainHeightUndefined,
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Blocking task spawn error: `{0}`")]
     BlockingTaskSpawnError(String),
-    /// A problem has been encountered with the storage backend.
-    #[error(non_std, no_from)]
+    #[error("A problem has been encountered with the storage backend: `{0}`")]
     BackendError(String),
 }

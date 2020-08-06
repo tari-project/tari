@@ -39,31 +39,31 @@ use crate::{
         },
     },
 };
-use derive_error::Error;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use thiserror::Error;
 
 pub const LOG_TARGET: &str = "c::bl::block";
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum BlockValidationError {
-    // A transaction in the block failed to validate
-    TransactionError(TransactionError),
-    // Invalid kernel in block
+    #[error("A transaction in the block failed to validate: `{0}`")]
+    TransactionError(#[from] TransactionError),
+    #[error("Invalid kernel in block")]
     InvalidKernel,
-    // Invalid input in block
+    #[error("Invalid input in block")]
     InvalidInput,
-    // Input maturity not reached
+    #[error("Input maturity not reached")]
     InputMaturity,
-    // Invalid coinbase maturity in block or more than one coinbase
+    #[error("Invalid coinbase maturity in block or more than one coinbase")]
     InvalidCoinbase,
-    // Mismatched MMR roots
+    #[error("Mismatched MMR roots")]
     MismatchedMmrRoots,
-    // The block contains transactions that should have been cut through.
+    #[error("The block contains transactions that should have been cut through.")]
     NoCutThrough,
-    // The block weight is above the maximum
+    #[error("The block weight is above the maximum")]
     BlockTooLarge,
 }
 

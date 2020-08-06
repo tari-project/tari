@@ -20,24 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
+use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Clone)]
 pub enum MerkleMountainRangeError {
-    // The next position was not a leaf node as expected
+    #[error("The next position was not a leaf node as expected")]
     CorruptDataStructure,
-    // A problem has been encountered with the backend
-    #[error(non_std, no_from)]
+    #[error("A problem has been encountered with the backend: `{0}`")]
     BackendError(String),
-    // The Merkle tree is not internally consistent. A parent hash isn't equal to the hash of its children
+    #[error("The Merkle tree is not internally consistent. A parent hash isn't equal to the hash of its children")]
     InvalidMerkleTree,
-    // The tree has reached its maximum size
+    #[error("The tree has reached its maximum size")]
     MaximumSizeReached,
-    // A node hash was not found for the given node index
-    #[error(non_std, no_from)]
+    #[error("A node hash was not found for the given node index: `{0}`")]
     HashNotFound(usize),
-    // A request was out of range
+    #[error("A request was out of range")]
     OutOfRange,
-    // Conflicting or invalid configuration parameters provided.
+    #[error("Conflicting or invalid configuration parameters provided.")]
     InvalidConfig,
 }

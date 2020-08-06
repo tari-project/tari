@@ -36,7 +36,7 @@ ttl_cache = "0.5.1"
 
 # tower-filter dependencies
 pin-project = "0.4"
-thiserror = "1.0.19"
+thiserror = "1.0.20"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.2", path = "../../infrastructure/test_utils"}

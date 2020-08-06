@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use derive_error::Error;
 use log::*;
 use tari_comms::{
     multiaddr,
@@ -35,27 +34,25 @@ use tari_wallet::{
     output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
 };
+use thiserror::Error;
 
 const LOG_TARGET: &str = "wallet_ffi::error";
 
 #[derive(Debug, Error, PartialEq)]
 pub enum InterfaceError {
-    /// An error has occurred due to one of the parameters being null
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("An error has occurred due to one of the parameters being null: `{0}`")]
     NullError(String),
-    /// An error has occurred when checking the length of the allocated object
+    #[error("An error has occurred when checking the length of the allocated object")]
     AllocationError,
-    /// An error because the supplied position was out of range
+    #[error("An error because the supplied position was out of range")]
     PositionInvalidError,
-    /// An error has occurred when trying to create the tokio runtime
-    #[error(non_std, no_from)]
+    #[error("An error has occurred when trying to create the tokio runtime: `{0}`")]
     TokioError(String),
-    /// An error has occurred when attempting to deserialize input data
-    #[error(non_std, no_from)]
+    #[error("An error has occurred when attempting to deserialize input data: `{0}`")]
     DeserializationError(String),
-    /// Emoji ID is invalid
+    #[error("Emoji ID is invalid")]
     InvalidEmojiId,
-    /// Comms Private Key is not present while Db appears to be encrypted which should not happen
+    #[error("Comms Private Key is not present while Db appears to be encrypted which should not happen")]
     MissingCommsPrivateKey,
 }
 
@@ -260,7 +257,7 @@ impl From<WalletError> for LibWalletError {
     }
 }
 
-/// This implementation maps the internal HexError to a set of LibWalletErrors. The mapping is explicitly manager
+/// This implementation maps the internal HexError to a set of LibWalletErrors. The mapping is explicitly managed
 /// here and error code 999 is a catch-all code for any errors that are not explicitly mapped
 impl From<HexError> for LibWalletError {
     fn from(h: HexError) -> Self {

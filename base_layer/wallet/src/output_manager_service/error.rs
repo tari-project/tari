@@ -21,91 +21,104 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::output_manager_service::storage::database::DbKey;
-use derive_error::Error;
 use diesel::result::Error as DieselError;
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
 use tari_crypto::tari_utilities::ByteArrayError;
 use tari_key_manager::{key_manager::KeyManagerError, mnemonic::MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
+use thiserror::Error;
 use time::OutOfRangeError;
 
 #[derive(Debug, Error)]
 pub enum OutputManagerError {
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Build error: `{0}`")]
     BuildError(String),
-    ByteArrayError(ByteArrayError),
-    TransactionProtocolError(TransactionProtocolError),
-    TransportChannelError(TransportChannelError),
-    OutOfRangeError(OutOfRangeError),
-    OutputManagerStorageError(OutputManagerStorageError),
-    MnemonicError(MnemonicError),
-    KeyManagerError(KeyManagerError),
-    TransactionError(TransactionError),
-    DhtOutboundError(DhtOutboundError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Byte array error: `{0}`")]
+    ByteArrayError(#[from] ByteArrayError),
+    #[error("Transaction protocol error: `{0}`")]
+    TransactionProtocolError(#[from] TransactionProtocolError),
+    #[error("Transport channel error: `{0}`")]
+    TransportChannelError(#[from] TransportChannelError),
+    #[error("Out of range error: `{0}`")]
+    OutOfRangeError(#[from] OutOfRangeError),
+    #[error("Output manager storage error: `{0}`")]
+    OutputManagerStorageError(#[from] OutputManagerStorageError),
+    #[error("Mnemonic error: `{0}`")]
+    MnemonicError(#[from] MnemonicError),
+    #[error("Key manager error: `{0}`")]
+    KeyManagerError(#[from] KeyManagerError),
+    #[error("Transaction error: `{0}`")]
+    TransactionError(#[from] TransactionError),
+    #[error("DHT outbound error: `{0}`")]
+    DhtOutboundError(#[from] DhtOutboundError),
+    #[error("Conversion error: `{0}`")]
     ConversionError(String),
-    /// Not all the transaction inputs and outputs are present to be confirmed
+    #[error("Not all the transaction inputs and outputs are present to be confirmed")]
     IncompleteTransaction,
-    /// Not enough funds to fulfil transaction
+    #[error("Not enough funds to fulfil transaction")]
     NotEnoughFunds,
-    /// Output already exists
+    #[error("Output already exists")]
     DuplicateOutput,
-    /// Error sending a message to the public API
+    #[error("Error sending a message to the public API")]
     ApiSendFailed,
-    /// Error receiving a message from the public API
+    #[error("Error receiving a message from the public API")]
     ApiReceiveFailed,
-    /// API returned something unexpected.
+    #[error("API returned something unexpected.")]
     UnexpectedApiResponse,
-    /// Invalid config provided to Output Manager
+    #[error("Invalid config provided to Output Manager")]
     InvalidConfig,
-    /// The response received from another service is an incorrect variant
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("The response received from another service is an incorrect variant: `{0}`")]
     InvalidResponseError(String),
-    /// No Base Node public key has been provided for this service to use for contacting a base node
+    #[error("No Base Node public key has been provided for this service to use for contacting a base node")]
     NoBaseNodeKeysProvided,
-    /// An error occured sending an event out on the event stream
+    #[error("An error occured sending an event out on the event stream")]
     EventStreamError,
-    /// Maximum Attempts Exceeded
+    #[error("Maximum Attempts Exceeded")]
     MaximumAttemptsExceeded,
-    /// An error has been experienced in the service
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("An error has been experienced in the service: `{0}`")]
     ServiceError(String),
 }
 
 #[derive(Debug, Error, PartialEq)]
 pub enum OutputManagerStorageError {
-    /// Tried to insert an output that already exists in the database
+    #[error("Tried to insert an output that already exists in the database")]
     DuplicateOutput,
-    #[error(non_std, no_from)]
+    #[error("Value not found: `{0}`")]
     ValueNotFound(DbKey),
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Unexpected result: `{0}`")]
     UnexpectedResult(String),
-    /// If an pending transaction does not exist to be confirmed
+    #[error("If an pending transaction does not exist to be confirmed")]
     PendingTransactionNotFound,
-    /// This write operation is not supported for provided DbKey
+    #[error("This write operation is not supported for provided DbKey")]
     OperationNotSupported,
-    /// Could not find all values specified for batch operation
+    #[error("Could not find all values specified for batch operation")]
     ValuesNotFound,
-    /// Error converting a type
+    #[error("Error converting a type")]
     ConversionError,
-    /// Output has already been spent
+    #[error("Output has already been spent")]
     OutputAlreadySpent,
-    /// Key Manager not initialized
+    #[error("Key Manager not initialized")]
     KeyManagerNotInitialized,
-    OutOfRangeError(OutOfRangeError),
+    #[error("Out of range error: `{0}`")]
+    OutOfRangeError(#[from] OutOfRangeError),
+    #[error("R2d2 error")]
     R2d2Error,
-    TransactionError(TransactionError),
-    DieselError(DieselError),
-    DieselConnectionError(diesel::ConnectionError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Transaction error: `{0}`")]
+    TransactionError(#[from] TransactionError),
+    #[error("Diesel error: `{0}`")]
+    DieselError(#[from] DieselError),
+    #[error("Diesel connection error: `{0}`")]
+    DieselConnectionError(#[from] diesel::ConnectionError),
+    #[error("Database migration error: `{0}`")]
     DatabaseMigrationError(String),
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Blocking task spawn error: `{0}`")]
     BlockingTaskSpawnError(String),
-    /// Wallet db is already encrypted and cannot be encrypted until the previous encryption is removed
+    #[error("Wallet db is already encrypted and cannot be encrypted until the previous encryption is removed")]
     AlreadyEncrypted,
-    ByteArrayError(ByteArrayError),
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Byte array error: `{0}`")]
+    ByteArrayError(#[from] ByteArrayError),
+    #[error("Aead error: `{0}`")]
     AeadError(String),
 }
 

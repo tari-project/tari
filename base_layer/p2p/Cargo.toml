@@ -22,7 +22,7 @@ tari_utilities = "^0.2"
 
 bytes = "0.4.12"
 chrono = {version = "0.4.6", features = ["serde"]}
-derive-error = "0.0.4"
+thiserror = "1.0.20"
 futures = {version = "^0.3.1"}
 lmdb-zero = "0.4.4"
 log = "0.4.6"
@@ -33,7 +33,7 @@ serde_derive = "1.0.90"
 tokio = {version="0.2.10", features=["blocking"]}
 tower = "0.3.0-alpha.2"
 tower-service = { version="0.3.0-alpha.2" }
- 
+
 [dev-dependencies]
 tari_test_utils = { version = "^0.2", path="../../infrastructure/test_utils" }
 

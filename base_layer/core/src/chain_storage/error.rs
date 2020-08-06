@@ -30,11 +30,11 @@ use tokio::task;
 
 #[derive(Debug, Clone, Error)]
 pub enum ChainStorageError {
-    #[error("Access to the underlying storage mechanism failed:{0}")]
+    #[error("Access to the underlying storage mechanism failed: {0}")]
     AccessError(String),
     #[error(
         "The database may be corrupted or otherwise be in an inconsistent state. Please check logs to try and \
-         identify the issue:{0}"
+         identify the issue: {0}"
     )]
     CorruptedDatabase(String),
     #[error("A given input could not be spent because it was not in the UTXO set")]
@@ -46,9 +46,9 @@ pub enum ChainStorageError {
          internal error or bug of sorts: {0}"
     )]
     UnexpectedResult(String),
-    #[error("You tried to execute an invalid Database operation:{0}")]
+    #[error("You tried to execute an invalid Database operation: {0}")]
     InvalidOperation(String),
-    #[error("There appears to be a critical error on the back end:{0}. Check the logs for more information.")]
+    #[error("There appears to be a critical error on the back end: {0}. Check the logs for more information.")]
     CriticalError(String),
     #[error("Cannot return data for requests older than the current pruning horizon")]
     BeyondPruningHorizon,

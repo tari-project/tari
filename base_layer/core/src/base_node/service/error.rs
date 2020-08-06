@@ -21,15 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::base_node::comms_interface::CommsInterfaceError;
-use derive_error::Error;
 use tari_comms_dht::outbound::DhtOutboundError;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum BaseNodeServiceError {
-    CommsInterfaceError(CommsInterfaceError),
-    DhtOutboundError(DhtOutboundError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Comms interface error: `{0}`")]
+    CommsInterfaceError(#[from] CommsInterfaceError),
+    #[error("DHT outbound error: `{0}`")]
+    DhtOutboundError(#[from] DhtOutboundError),
+    #[error("Invalid request error: `{0}`")]
     InvalidRequest(String),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Invalid response error: `{0}`")]
     InvalidResponse(String),
 }

@@ -11,8 +11,7 @@ license = "BSD-3-Clause"
 
 [dependencies]
 tari_shutdown = { version = "^0.0", path="../../infrastructure/shutdown" }
-
-derive-error = "0.0.4"
+thiserror = "1.0.20"
 futures = { version = "^0.3.1", features=["async-await"]}
 tower-service = { version="0.3.0" }
 tokio = "0.2.10"

@@ -20,22 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
+use thiserror::Error;
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum PowError {
-    // ProofOfWorkFailed
+    #[error("ProofOfWorkFailed")]
     InvalidProofOfWork,
-    // Target difficulty not achieved
+    #[error("Target difficulty not achieved")]
     AchievedDifficultyTooLow,
-    // Invalid target difficulty
+    #[error("Invalid target difficulty")]
     InvalidTargetDifficulty,
 }
 
 #[derive(Debug, Error, Clone, PartialEq)]
 pub enum DifficultyAdjustmentError {
-    // Accumulated difficulty values can only strictly increase
+    #[error("Accumulated difficulty values can only strictly increase")]
     DecreasingAccumulatedDifficulty,
-    // Other difficulty algorithm errors
+    #[error("Other difficulty algorithm error")]
     Other,
 }

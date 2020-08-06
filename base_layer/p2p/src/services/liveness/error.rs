@@ -20,28 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
 use tari_comms::message::MessageError;
 use tari_comms_dht::{outbound::DhtOutboundError, DhtActorError};
 use tari_service_framework::reply_channel::TransportChannelError;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum LivenessError {
-    DhtOutboundError(DhtOutboundError),
-    DhtActorError(DhtActorError),
-    /// Failed to send a pong message
+    #[error("DHT outbound error: `{0}`")]
+    DhtOutboundError(#[from] DhtOutboundError),
+    #[error("DHT actor error: `{0}`")]
+    DhtActorError(#[from] DhtActorError),
+    #[error("Failed to send a pong message")]
     SendPongFailed,
-    /// Failed to send a ping message
+    #[error("Failed to send a ping message")]
     SendPingFailed,
-    /// Occurs when a message cannot deserialize into a PingPong message
-    MessageError(MessageError),
-    /// The Handle repsonse was not what was expected for this request
+    #[error("Occurs when a message cannot deserialize into a PingPong message: `{0}`")]
+    MessageError(#[from] MessageError),
+    #[error("The Handle repsonse was not what was expected for this request")]
     UnexpectedApiResponse,
-    /// An error has occurred reading from the event subscriber stream
+    #[error("An error has occurred reading from the event subscriber stream")]
     EventStreamError,
-    TransportChannelError(TransportChannelError),
-    /// Ping pong type was invalid or unrecognised
+    #[error("Transport channel error: `{0}`")]
+    TransportChannelError(#[from] TransportChannelError),
+    #[error("Ping pong type was invalid or unrecognised")]
     InvalidPingPongType,
-    /// NodeId does not exist
+    #[error("NodeId does not exist")]
     NodeIdDoesNotExist,
 }

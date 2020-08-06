@@ -52,7 +52,7 @@ pub enum Error {
     SendError(#[from] SendError),
     #[error("JoinError: {0}")]
     JoinError(#[from] task::JoinError),
-    #[error("Example did not exit cleanly")]
+    #[error("Example did not exit cleanly: `{0}`")]
     WaitTimeout(#[from] time::Elapsed),
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
