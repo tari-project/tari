@@ -19,11 +19,31 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+syntax = "proto3";
 
-mod blocks;
-mod requests;
-mod transactions;
+package tari.base_node;
 
-pub use blocks::*;
-pub use requests::*;
-pub use transactions::*;
+import "types.proto";
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/timestamp.proto";
+
+
+// The gRPC interface for interacting with the wallet.
+service Wallet {
+    // This returns a coinbase transction
+    rpc GetCoinbase(CoinbaseRequest) returns (CoinbaseSupply);
+}
+
+
+
+// Network difficulty response
+message CoinbaseRequest {
+    uint64 fee= 1;
+    uint64 height = 2;
+}
+
+// A generic single value response for a specific height
+message CoinbaseSupply {
+    TransactionKernel kernel = 1;
+    TransactionOutput utxo = 2;
+}

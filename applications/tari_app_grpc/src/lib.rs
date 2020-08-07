@@ -21,5 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod blocks;
-pub mod helpers;
-pub mod server;
+pub mod requests;
+pub mod tari_grpc;
+pub mod transactions;
+
+pub use blocks::*;
+pub use requests::*;
+pub use tari_grpc::*;
+pub use transactions::*;

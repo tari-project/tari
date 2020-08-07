@@ -26,7 +26,6 @@ use std::{
 use tari_core::{
     blocks::NewBlockTemplate,
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
-    mining::CoinbaseBuilder,
     proof_of_work::monero_rx::{
         append_merge_mining_tag,
         create_input_blob,
@@ -35,18 +34,14 @@ use tari_core::{
         tree_hash,
         MoneroData,
     },
-    transactions::types::CryptoFactories,
+    transactions::{types::CryptoFactories, CoinbaseBuilder},
 };
 use tari_crypto::{keys::SecretKey, ristretto::RistrettoSecretKey};
 use tokio::runtime::Runtime;
 
-mod grpc_conversions;
+use tari_app_grpc::base_node_grpc as grpc;
 
 pub type PrivateKey = RistrettoSecretKey;
-
-pub mod grpc {
-    tonic::include_proto!("tari.base_node"); // The string specified here must match the proto package name
-}
 
 // TODO: Refactor into a configuration file
 const MONEROD_URL: &str = "monero-stagenet.exan.tech:38081";
@@ -248,7 +243,9 @@ fn add_coinbase(
         .with_fees(fees)
         .with_nonce(r)
         .with_spend_key(key);
-    let (tx, _unblinded_output) = builder.build(consensus).expect("invalid constructed coinbase");
+    let (tx, _unblinded_output) = builder
+        .build(consensus.consensus_constants(), consensus.emission_schedule())
+        .expect("invalid constructed coinbase");
     block.body.add_output(tx.body.outputs()[0].clone());
     block.body.add_kernel(tx.body.kernels()[0].clone());
     Ok(grpc::NewBlockTemplate::try_from(block).unwrap())
@@ -368,9 +365,10 @@ fn handle_connection(
                     match grpcclientresult {
                         Ok(mut grpcclient) => {
                             match rt.block_on(grpcclient.get_new_block_template(grpc::PowAlgo { pow_algo: 0 })) {
-                                Ok(newblocktemplate) => {
-                                    let coinbased_block =
-                                        add_coinbase(consensus, newblocktemplate.into_inner()).unwrap();
+                                Ok(new_block_template_response) => {
+                                    let new_template =
+                                        new_block_template_response.into_inner().new_block_template.unwrap();
+                                    let coinbased_block = add_coinbase(consensus, new_template).unwrap();
                                     match rt.block_on(grpcclient.get_new_block(coinbased_block)) {
                                         Ok(newblock) => {
                                             let block = newblock.into_inner();

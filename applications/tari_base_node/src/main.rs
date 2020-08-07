@@ -230,7 +230,9 @@ async fn run_grpc(grpc: crate::grpc::server::BaseNodeGrpcServer, grpc_address: S
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     Server::builder()
-        .add_service(crate::grpc::server::base_node_grpc::base_node_server::BaseNodeServer::new(grpc))
+        .add_service(tari_app_grpc::base_node_grpc::base_node_server::BaseNodeServer::new(
+            grpc,
+        ))
         .serve(grpc_address)
         .await
         .map_err(|e| format!("GRPC server returned error:{}", e))?;

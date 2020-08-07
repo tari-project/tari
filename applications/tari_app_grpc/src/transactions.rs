@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::grpc;
 use std::convert::{TryFrom, TryInto};
 use tari_core::{
     proto::utils::try_convert_all,
@@ -40,6 +39,8 @@ use tari_core::{
     },
 };
 use tari_crypto::tari_utilities::ByteArray;
+
+use crate::tari_grpc::base_node_grpc as grpc;
 
 impl TryFrom<grpc::AggregateBody> for AggregateBody {
     type Error = String;
