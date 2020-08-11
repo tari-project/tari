@@ -1,8 +1,8 @@
 @rem Control variables
 @rem - Tor Services {Note: `powershell` cannot `expand-archive` to `C:\Program Files (x86)`}
 @rem   - Download 'Windows Expert Bundle' at https://www.torproject.org/download/tor/
-@set tor_version=9.5
-@set tor_zip=tor-win32-0.4.3.5.zip
+@set tor_version=9.5.3
+@set tor_zip=tor-win32-0.4.3.6.zip
 @set tor_folder=%USERPROFILE%\.tor_services
 @set tor_runtime=tor.exe
 
