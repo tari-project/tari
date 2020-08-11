@@ -1,0 +1,205 @@
+// Copyright 2020. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+syntax = "proto3";
+
+
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/timestamp.proto";
+import "types.proto";
+
+package tari.base_node;
+
+// The gRPC interface for interacting with the base node.
+service BaseNode {
+    // Lists headers in the current best chain
+    rpc ListHeaders(ListHeadersRequest) returns (stream BlockHeader);
+    // Returns blocks in the current best chain. Currently only supports querying by height
+    rpc GetBlocks(GetBlocksRequest) returns (stream HistoricalBlock);
+    // Returns the calc timing for the chain heights
+    rpc GetCalcTiming(HeightRequest) returns (CalcTimingResponse);
+    // Returns the network Constants
+    rpc GetConstants(Empty) returns (ConsensusConstants);
+    // Returns Block Sizes
+    rpc GetBlockSize (BlockGroupRequest) returns (BlockGroupResponse);
+    // Returns Block Fees
+    rpc GetBlockFees (BlockGroupRequest) returns (BlockGroupResponse);
+    // Get Version
+    rpc GetVersion(Empty) returns (StringValue);
+    // Get coins in circulation
+    rpc GetTokensInCirculation(GetBlocksRequest) returns (stream ValueAtHeightResponse);
+    // Get network difficulties
+    rpc GetNetworkDifficulty(HeightRequest) returns (stream NetworkDifficultyResponse);
+    // Get the block template
+    rpc GetNewBlockTemplate(PowAlgo) returns (NewBlockTemplateResponse);
+    // Construct a new block from a provided template
+    rpc GetNewBlock(NewBlockTemplate) returns (GetNewBlockResult);
+    // Submit a new block for propogation
+    rpc SubmitBlock(Block) returns (Empty);
+    // Get the base node tip information
+    rpc GetTipInfo(Empty) returns (TipInfoResponse);
+}
+
+/// return type of GetTipInfo
+message TipInfoResponse{
+    MetaData metadata = 1;
+}
+/// return type of GetNewBlockTemplate
+message NewBlockTemplateResponse{
+    NewBlockTemplate new_block_template = 1;
+}
+
+/// An Empty placeholder for endpoints without request parameters
+message Empty {}
+
+// Network difficulty response
+message NetworkDifficultyResponse {
+    uint64 difficulty = 1;
+    uint64 estimated_hash_rate = 2;
+    uint64 height = 3;
+    uint64 timestamp = 4;
+}
+
+// A generic single value response for a specific height
+message ValueAtHeightResponse {
+    uint64 value= 1;
+    uint64 height = 2;
+}
+
+// A generic uint value
+message IntegerValue {
+    uint64 value = 1;
+}
+
+// A generic String value
+message StringValue {
+    string value = 1;
+}
+
+/// GetBlockSize / GetBlockFees Request
+/// Either the starting and ending heights OR the from_tip param must be specified
+message BlockGroupRequest {
+    // The height from the chain tip (optional)
+    uint64 from_tip = 1;
+    // The starting height (optional)
+    uint64 start_height = 2;
+    // The ending height (optional)
+    uint64 end_height = 3;
+    /// The type of calculation required (optional)
+    /// Defaults to median
+    /// median, mean, quartile, quantile
+    CalcType calc_type = 4;
+}
+
+/// GetBlockSize / GetBlockFees  Response
+message BlockGroupResponse {
+    repeated double value = 1;
+    CalcType calc_type = 2;
+}
+
+enum CalcType {
+    MEAN = 0;
+    MEDIAN = 1;
+    QUANTILE = 2;
+    QUARTILE = 3;
+}
+
+// The request used for querying a function that requires a height, either between 2 points or from the chain tip
+// If start_height and end_height are set and > 0, they take precedence, otherwise from_tip is used
+message HeightRequest {
+    // The height from the chain tip (optional)
+    uint64 from_tip = 1;
+    // The starting height (optional)
+    uint64 start_height = 2;
+    // The ending height (optional)
+    uint64 end_height = 3;
+}
+
+// The return type of the rpc GetCalcTiming
+message CalcTimingResponse {
+    uint64 max = 1;
+    uint64 min = 2;
+    double avg = 3;
+}
+// The request used for querying headers from the base node. The parameters `from_height` and `num_headers` can be used
+// to page through the current best chain.
+message ListHeadersRequest {
+    // The height to start at. Depending on sorting, will either default to use the tip or genesis block, for `SORTING_DESC`
+    // and `SORTING_ASC` respectively, if a value is not provided. The first header returned will be at this height
+    // followed by `num_headers` - 1 headers in the direction specified by `sorting`. If greater than the current tip,
+    // the current tip will be used.
+    uint64 from_height = 1;
+    // The number of headers to return. If not specified, it will default to 10
+    uint64 num_headers = 2;
+    // The ordering to return the headers in. If not specified will default to SORTING_DESC. Note that if `from_height`
+    // is not specified or is 0, if `sorting` is SORTING_DESC, the tip will be used as `from_height`, otherwise the
+    // block at height 0 will be used.
+    Sorting sorting = 3;
+}
+
+// The request used for querying blocks in the base node's current best chain. Currently only querying by height is
+// available. Multiple blocks may be queried.e.g. [189092,100023,122424]. The order in which they are returned is not
+// guarenteed.
+message GetBlocksRequest {
+  repeated uint64 heights = 1;
+}
+
+// The return type of the rpc GetBlocks. Blocks are not guaranteed to be returned in the order requested.
+message GetBlocksResponse {
+    repeated HistoricalBlock blocks = 1;
+}
+
+
+enum Sorting {
+    SORTING_DESC = 0;
+    SORTING_ASC = 1;
+}
+
+
+message MetaData {
+        // The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
+        uint64 height_of_longest_chain = 1;
+        // The block hash of the current tip of the longest valid chain, or `None` for an empty chain
+        bytes best_block = 2;
+        // The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
+        // tracked (i.e. the database is in full archival mode).
+        uint64 pruning_horizon = 4;
+        // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
+        uint64 accumulated_difficulty = 5;
+}
+
+// This is the message that is returned for a miner after it asks for a new block.
+message GetNewBlockResult{
+    // This is the header hash of the complated block
+    bytes block_hash = 1;
+    // This is the completed block
+    Block block = 2;
+    // This is the merge_mining hash of the completed block.
+    MinerData mining_data = 3;
+}
+
+// This is mining data for the miner asking for a new block
+message MinerData{
+    PowAlgo algo = 1;
+    uint64 target_difficulty = 2;
+    uint64 reward = 3;
+    bytes mergemining_hash =4;
+}

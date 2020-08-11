@@ -78,6 +78,8 @@ pub enum BlockHeaderValidationError {
     ProofOfWorkError(PowError),
     // Mismatched MMR roots
     MismatchedMmrRoots,
+    // Monero seed hash too old
+    OldSeedHash,
 }
 
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block

@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::grpc::{
-    blocks::{block_fees, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
+    blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
     helpers::{mean, median},
-    server::base_node_grpc::*,
 };
+
 use log::*;
 use std::{cmp, convert::TryInto};
 use tari_common::GlobalConfig;
@@ -34,6 +34,10 @@ use tari_core::{
     proof_of_work::PowAlgorithm,
 };
 
+use tari_app_grpc::{
+    base_node_grpc,
+    base_node_grpc::{CalcType, Sorting},
+};
 use tari_crypto::tari_utilities::Hashable;
 use tokio::{runtime, sync::mpsc};
 use tonic::{Request, Response, Status};
@@ -73,8 +77,12 @@ impl BaseNodeGrpcServer {
     }
 }
 
-pub(crate) mod base_node_grpc {
-    tonic::include_proto!("tari.base_node");
+pub async fn get_heights(
+    request: &base_node_grpc::HeightRequest,
+    handler: LocalNodeCommsInterface,
+) -> Result<Vec<u64>, Status>
+{
+    block_heights(handler, request.start_height, request.end_height, request.from_tip).await
 }
 
 #[tonic::async_trait]
@@ -86,7 +94,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn get_network_difficulty(
         &self,
-        request: Request<HeightRequest>,
+        request: Request<base_node_grpc::HeightRequest>,
     ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status>
     {
         let request = request.into_inner();
@@ -98,7 +106,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             request.end_height
         );
         let mut handler = self.node_service.clone();
-        let mut heights: Vec<u64> = request.get_heights(handler.clone()).await?;
+        let mut heights: Vec<u64> = get_heights(&request, handler.clone()).await?;
         heights = heights
             .drain(..cmp::min(heights.len(), GET_DIFFICULTY_MAX_HEIGHTS))
             .collect();
@@ -153,7 +161,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 for difficulty in difficulties {
                     match tx
                         .send(Ok({
-                            NetworkDifficultyResponse {
+                            base_node_grpc::NetworkDifficultyResponse {
                                 height: difficulty.0,
                                 difficulty: difficulty.1,
                                 estimated_hash_rate: difficulty.2,
@@ -193,7 +201,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn list_headers(
         &self,
-        request: Request<ListHeadersRequest>,
+        request: Request<base_node_grpc::ListHeadersRequest>,
     ) -> Result<Response<Self::ListHeadersStream>, Status>
     {
         let request = request.into_inner();
@@ -291,7 +299,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_new_block_template(
         &self,
         request: Request<base_node_grpc::PowAlgo>,
-    ) -> Result<Response<base_node_grpc::NewBlockTemplate>, Status>
+    ) -> Result<Response<base_node_grpc::NewBlockTemplateResponse>, Status>
     {
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
@@ -305,7 +313,9 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let response: base_node_grpc::NewBlockTemplate = new_template.into();
+        let response = base_node_grpc::NewBlockTemplateResponse {
+            new_block_template: Some(new_template.into()),
+        };
 
         debug!(target: LOG_TARGET, "Sending GetNewBlockTemplate response to client");
         Ok(Response::new(response))
@@ -375,7 +385,11 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
-    async fn get_blocks(&self, request: Request<GetBlocksRequest>) -> Result<Response<Self::GetBlocksStream>, Status> {
+    async fn get_blocks(
+        &self,
+        request: Request<base_node_grpc::GetBlocksRequest>,
+    ) -> Result<Response<Self::GetBlocksStream>, Status>
+    {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -432,7 +446,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     async fn get_tip_info(
         &self,
         _request: Request<base_node_grpc::Empty>,
-    ) -> Result<Response<base_node_grpc::MetaData>, Status>
+    ) -> Result<Response<base_node_grpc::TipInfoResponse>, Status>
     {
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
 
@@ -443,13 +457,19 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let response: base_node_grpc::MetaData = meta.into();
+        let response = base_node_grpc::TipInfoResponse {
+            metadata: Some(meta.into()),
+        };
 
         debug!(target: LOG_TARGET, "Sending MetaData response to client");
         Ok(Response::new(response))
     }
 
-    async fn get_calc_timing(&self, request: Request<HeightRequest>) -> Result<Response<CalcTimingResponse>, Status> {
+    async fn get_calc_timing(
+        &self,
+        request: Request<base_node_grpc::HeightRequest>,
+    ) -> Result<Response<base_node_grpc::CalcTimingResponse>, Status>
+    {
         let request = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -460,7 +480,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         );
 
         let mut handler = self.node_service.clone();
-        let heights: Vec<u64> = request.get_heights(handler.clone()).await?;
+        let heights: Vec<u64> = get_heights(&request, handler.clone()).await?;
 
         let headers = match handler.get_headers(heights).await {
             Ok(headers) => headers,
@@ -489,21 +509,25 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn get_block_size(
         &self,
-        request: Request<BlockGroupRequest>,
-    ) -> Result<Response<BlockGroupResponse>, Status>
+        request: Request<base_node_grpc::BlockGroupRequest>,
+    ) -> Result<Response<base_node_grpc::BlockGroupResponse>, Status>
     {
         get_block_group(self.node_service.clone(), request, BlockGroupType::BlockSize).await
     }
 
     async fn get_block_fees(
         &self,
-        request: Request<BlockGroupRequest>,
-    ) -> Result<Response<BlockGroupResponse>, Status>
+        request: Request<base_node_grpc::BlockGroupRequest>,
+    ) -> Result<Response<base_node_grpc::BlockGroupResponse>, Status>
     {
         get_block_group(self.node_service.clone(), request, BlockGroupType::BlockFees).await
     }
 
-    async fn get_version(&self, _request: Request<base_node_grpc::Empty>) -> Result<Response<StringValue>, Status> {
+    async fn get_version(
+        &self,
+        _request: Request<base_node_grpc::Empty>,
+    ) -> Result<Response<base_node_grpc::StringValue>, Status>
+    {
         Ok(Response::new(VERSION.to_string().into()))
     }
 
@@ -528,10 +552,10 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             let (initial, decay, tail) = constants.emission_amounts();
             let schedule = EmissionSchedule::new(initial, decay, tail);
             while page.len() > 0 {
-                let values: Vec<ValueAtHeightResponse> = page
+                let values: Vec<base_node_grpc::ValueAtHeightResponse> = page
                     .clone()
                     .into_iter()
-                    .map(|height| ValueAtHeightResponse {
+                    .map(|height| base_node_grpc::ValueAtHeightResponse {
                         height,
                         value: schedule.supply_at_block(height).into(),
                     })
@@ -572,14 +596,14 @@ enum BlockGroupType {
 }
 async fn get_block_group(
     mut handler: LocalNodeCommsInterface,
-    request: Request<BlockGroupRequest>,
+    request: Request<base_node_grpc::BlockGroupRequest>,
     block_group_type: BlockGroupType,
-) -> Result<Response<BlockGroupResponse>, Status>
+) -> Result<Response<base_node_grpc::BlockGroupResponse>, Status>
 {
     let request = request.into_inner();
     let calc_type_response = request.calc_type;
     let calc_type: CalcType = request.calc_type();
-    let height_request: HeightRequest = request.into();
+    let height_request: base_node_grpc::HeightRequest = request.into();
 
     debug!(
         target: LOG_TARGET,
@@ -589,7 +613,7 @@ async fn get_block_group(
         height_request.end_height
     );
 
-    let heights = height_request.get_heights(handler.clone()).await?;
+    let heights = get_heights(&height_request, handler.clone()).await?;
 
     let blocks = match handler.get_blocks(heights).await {
         Err(err) => {
@@ -618,7 +642,7 @@ async fn get_block_group(
         target: LOG_TARGET,
         "Sending GetBlockSize response to client: {:?}", value
     );
-    Ok(Response::new(BlockGroupResponse {
+    Ok(Response::new(base_node_grpc::BlockGroupResponse {
         value,
         calc_type: calc_type_response,
     }))

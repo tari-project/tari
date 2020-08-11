@@ -40,7 +40,7 @@ use tari_core::{
 };
 use tari_crypto::tari_utilities::ByteArray;
 
-use crate::grpc::server::base_node_grpc as grpc;
+use crate::tari_grpc::base_node_grpc as grpc;
 
 impl TryFrom<grpc::AggregateBody> for AggregateBody {
     type Error = String;

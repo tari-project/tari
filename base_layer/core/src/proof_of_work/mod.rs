@@ -30,7 +30,7 @@ mod error;
 mod median_timestamp;
 #[cfg(feature = "base_node")]
 #[allow(clippy::enum_variant_names)]
-mod monero_rx;
+pub mod monero_rx;
 #[cfg(feature = "base_node")]
 #[allow(clippy::module_inception)]
 mod proof_of_work;

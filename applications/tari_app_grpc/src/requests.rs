@@ -20,18 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::grpc::{
-    blocks::block_heights,
-    server::{base_node_grpc as grpc, base_node_grpc::*},
-};
+// use crate::grpc::{
+//     blocks::block_heights,
+//     server::{base_node_grpc as grpc, base_node_grpc::*},
+// };
+use crate::tari_grpc::{base_node_grpc as grpc, base_node_grpc::BlockGroupRequest};
 use std::convert::TryFrom;
 use tari_core::{
-    base_node::LocalNodeCommsInterface,
     chain_storage::ChainMetadata,
     consensus::{ConsensusConstants, KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
     proof_of_work::{Difficulty, PowAlgorithm},
 };
-use tonic::Status;
 
 impl From<u64> for grpc::IntegerValue {
     fn from(value: u64) -> Self {
@@ -42,12 +41,6 @@ impl From<u64> for grpc::IntegerValue {
 impl From<String> for grpc::StringValue {
     fn from(value: String) -> Self {
         Self { value }
-    }
-}
-
-impl grpc::HeightRequest {
-    pub async fn get_heights(&self, handler: LocalNodeCommsInterface) -> Result<Vec<u64>, Status> {
-        block_heights(handler, self.start_height, self.end_height, self.from_tip).await
     }
 }
 

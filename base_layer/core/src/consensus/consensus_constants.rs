@@ -61,6 +61,8 @@ pub struct ConsensusConstants {
     min_pow_difficulty: (Difficulty, Difficulty),
     /// The offset relative to the expected genesis coinbase value
     genesis_coinbase_value_offset: MicroTari,
+    /// This is the maximum age a monero merge mined seed can be reused
+    max_randomx_seed_height: u64,
 }
 
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
@@ -152,6 +154,11 @@ impl ConsensusConstants {
         }
     }
 
+    // This is the maximum age a monero merge mined seed can be reused
+    pub fn max_randomx_seed_height(&self) -> u64 {
+        self.max_randomx_seed_height
+    }
+
     #[allow(clippy::identity_op)]
     pub fn rincewind() -> Self {
         let target_block_interval = 120;
@@ -170,6 +177,7 @@ impl ConsensusConstants {
             emission_decay: 0.999_999_560_409_038_5,
             emission_tail: 1 * T,
             min_pow_difficulty: (1.into(), 60_000_000.into()),
+            max_randomx_seed_height: std::u64::MAX,
             genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
         }
     }
@@ -191,6 +199,7 @@ impl ConsensusConstants {
             emission_decay: 0.999,
             emission_tail: 100.into(),
             min_pow_difficulty: (1.into(), 1.into()),
+            max_randomx_seed_height: std::u64::MAX,
             genesis_coinbase_value_offset: 0.into(),
         }
     }
@@ -213,6 +222,7 @@ impl ConsensusConstants {
             emission_decay: 0.999,
             emission_tail: 100.into(),
             min_pow_difficulty: (1.into(), 500_000_000.into()),
+            max_randomx_seed_height: std::u64::MAX,
             genesis_coinbase_value_offset: 0.into(),
         }
     }

@@ -1,0 +1,20 @@
+[package]
+name = "tari_app_grpc"
+authors = ["The Tari Development Community"]
+description = "This crate is to provide a single source for all cross application grpc files and conversions to and from tari::core"
+repository = "https://github.com/tari-project/tari"
+license = "BSD-3-Clause"
+version = "0.0.1"
+edition = "2018"
+
+[dependencies]
+tari_core = { version= "^0.2", path = "../../base_layer/core", default-features = false, features = ["transactions", "monero_merge_mining"]}
+tari_crypto = { version = "^0.5" }
+
+
+prost = "0.6"
+prost-types = "0.6.1"
+tonic = "0.2"
+
+[build-dependencies]
+tonic-build = "0.2"

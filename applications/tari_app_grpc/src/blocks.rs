@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::grpc::server::base_node_grpc as grpc;
+use crate::tari_grpc::base_node_grpc as grpc;
 use prost_types::Timestamp;
 use std::convert::{TryFrom, TryInto};
 use tari_core::{
