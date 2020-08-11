@@ -208,9 +208,9 @@ The new transaction balance is thus
 
 $$  
 \begin{array}
-  .\sum(\mathrm{Inputs}) - \sum(\mathrm{Outputs}) + \sum(\mathrm{fee}_i.G)  \\\\
-  \sum\hat{C_i} - \sum\hat{C_j} + \sum(\mathrm{fee}_i.G)  \\\\
-  \sum(C_i + \mathrm{H}(C_i \Vert s_i).G) - \sum(C_j + \mathrm{H}(C_j \Vert s_j).G) + \sum(\mathrm{fee}.G)  \\\\
+  .\sum(\mathrm{Inputs}) - \sum(\mathrm{Outputs}) - \sum(\mathrm{fee}_i.G)  \\\\
+  \sum\hat{C_i} - \sum\hat{C_j} - \sum(\mathrm{fee}_i.G)  \\\\
+  \sum(C_i + \mathrm{H}(C_i \Vert s_i).G) - \sum(C_j + \mathrm{H}(C_j \Vert s_j).G) - \sum(\mathrm{fee}.G)  \\\\
   \text{If the accounting is correct, all values will cancel} \\\\
   \sum(k_i + \mathrm{H}(C_i \Vert s_i).G) - \sum(k_j + \mathrm{H}(C_j \Vert s_j).G)  \\\\
   \text{The sum of all the blinding factors (times G) is the definition of the excess,}\\; x_s\cdot G = X_s \\\\
