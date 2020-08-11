@@ -157,7 +157,7 @@ malicious actors could take the UTXO for themselves.
 Therefore, it's imperative that the UTXO creator sign the script.
 
 Further, this signature must be present in the _kernel_ in some form, otherwise miners will be able to remove the script
-via cut-through.
+via cut-through, whereas kernels are never pruned.
 
 One approach to commit to the script hashes is to modify the output commitments using the [data commitments] approach
 suggested by [Phyro](https://github.com/phyro). In this approach, when creating a new UTXO, the owner also calculates
@@ -198,7 +198,7 @@ is modified with a commitment to the script hash, so
 
 $$ \hat{C} = C + \mathrm{H}(C \Vert s).G $$
 
-and wallets will sign the kernel with $$ k + \mathrm{H}(C_i \Vert s_i) $$ rather than just _k_.
+and wallets will sign the kernel with $$ k + \mathrm{H}(C \Vert s) $$ rather than just _k_.
 
 The overall and block balance checks must also be modified to use \\( \hat{C} \\) rather than _C_.
 
@@ -213,7 +213,7 @@ $$
   \sum(C_i + \mathrm{H}(C_i \Vert s_i).G) - \sum(C_j + \mathrm{H}(C_j \Vert s_j).G) + \sum(\mathrm{fee}.G)  \\\\
   \text{If the accounting is correct, all values will cancel} \\\\
   \sum(k_i + \mathrm{H}(C_i \Vert s_i).G) - \sum(k_j + \mathrm{H}(C_j \Vert s_j).G)  \\\\
-  \text{The sum of all the blinding factors is the definition of the excess,}\\; x_s\cdot G = X_s \\\\
+  \text{The sum of all the blinding factors (times G) is the definition of the excess,}\\; x_s\cdot G = X_s \\\\
   X_s + \sum(\mathrm{H}(C_i \Vert s_i).G) - \sum(\mathrm{H}(C_j \Vert s_j).G) \\\\
   \text{Define}\\, \Lambda = \sum(\mathrm{H}(C_i \Vert s_i).G) - \sum(\mathrm{H}(C_j \Vert s_j).G) \\\\
   X_s + \Lambda \\\\
@@ -254,9 +254,9 @@ In particular, UTXOs can still be pruned because the \\( \Lambda \\) values chan
 cancel out in the overall balance in the same way that the pruned out excesses are.
 
 However, a problem arises now in that as it stands, the UTXOs _cannot_ be pruned because we would lose some data needed
-to verify the kernel signatures, i.e. \\ \mathrm{H}(C_i \Vert s_i) \\) and that data only exists in the UTXOs. However,
+to verify the kernel signatures, i.e. \\( \mathrm{H}(C_i \Vert s_i) \\) and that data only exists in the UTXOs. However,
 we can salvage this situation fairly easily by noticing that we only need that _hash_ of the commitment and script hash.
-If we track an MMR of \\ C_i \Vert s_i \\), then those hashes are always available, even after the UTXOs themselves have
+If we track an MMR of \\( C_i \Vert s_i \\), then those hashes are always available, even after the UTXOs themselves have
 been discarded. In terms of additional block space required, this amounts to a single 32 byte hash per header (the MMR
 root).
 
@@ -269,9 +269,9 @@ The main properties of Tari script are
 * The scripting language is stack-based. At redeem time, the UTXO spender must supply an input stack. The script runs by
   operating on the the stack contents.
 * If an error occurs during execution, the script fails.
-* After the script completes, the script fails if the stack contains zero, or more than one element.
-* The script passes if and only if the script executes to completion with no errors, the resulting stack has a single
-  element, and the value of that element is equivalent to zero.
+* After the script completes, it is successful if and only if it has not aborted, and there is exactly a single element
+  on the stack with a value of zero. In other words, the script fails if the stack is empty, or contains more than one
+  element, or aborts early.
 * It is not Turing complete, so there are no loops or timing functions.
 * The Rust type system ensures that only compatible data types can be operated on, e.g. A public key cannot be added to
   an integer scalar. Errors of this kind cause the script to fail.
@@ -329,10 +329,22 @@ which maps to
 
 ```text
 71  b0           7a       ae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e5  81          70   ac
-Dup HashBlake256 PushHash(ae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e5) EqualVerify Drop CheckSig"
+Dup HashBlake256 PushHash(ae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e5) EqualVerify Drop CheckSig
 ```
 
 Input parameters are serialised in an analogous manner.
+
+The types of input parameters that are accepted are:
+
+```rust,ignore
+pub enum StackItem {
+    Number(i64),
+    Hash(HashValue),
+    Commitment(PedersenCommitment),
+    PublicKey(RistrettoPublicKey),
+    Signature(RistrettoSchnorr),
+}
+```
 
 ## Extensions
 
@@ -371,9 +383,10 @@ Alice then locks the output with the following script:
 Dup PushPubkey(P_B) EqualVerify CheckSig Add
 ```
 
-where `P_B` is Bob's public key. Tari script is similar, but not identical to Bitcoin script, and has slightly different
-semantics. The interpretation of this script is, "Given a Public key, and a signature of this script, the public key
-must be equal to the one in the locking script, and the signature must be valid using the same public key".
+where `P_B` is Bob's public key. As one can see, this Tari script is very similar to Bitcoin script.  
+The interpretation of this script is, "Given a Public key, and a signature of this
+script, the public key must be equal to the one in the locking script, and the signature must be valid using the same
+public key".
 
 This is in effect the same as Bitcoin's P2PK script. To increase privacy, Alice could also lock the UTXO with a P2PKH
 script:
@@ -386,6 +399,10 @@ where `HB` is the hash of Bob's public key.
 
 In either case, only someone with the knowledge of Bob's private key can generate a valid signature, so Alice will not
 be able to unlock the UTXO to spend it.
+
+Since the script is committed to and cannot be cut-through, only Bob will be able to spend this UTXO unless someone is
+able to discover the private key from the public key information (the discrete log assumption), or if the majority of
+miners collude to not honour the consensus rules governing the successful evaluation of the script (the 51% assumption).
 
 [data commitments]: https://phyro.github.io/grinvestigation/data_commitments.html
 [LIP-004]: https://github.com/DavidBurkett/lips/blob/master/lip-0004.mediawiki
