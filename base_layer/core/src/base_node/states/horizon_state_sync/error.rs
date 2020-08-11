@@ -39,9 +39,9 @@ pub enum HorizonSyncError {
     MaxSyncAttemptsReached,
     #[error("Chain storage error: {0}")]
     ChainStorageError(#[from] ChainStorageError),
-    #[error("Comms interface error: {0:?}")]
+    #[error("Comms interface error: {0}")]
     CommsInterfaceError(#[from] CommsInterfaceError),
-    #[error("Block sync error: {0:?}")]
+    #[error("Block sync error: {0}")]
     BlockSyncError(#[from] BlockSyncError),
     #[error("Final state validation failed: {0}")]
     FinalStateValidationFailed(ValidationError),

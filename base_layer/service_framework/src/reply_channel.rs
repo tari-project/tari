@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
 use futures::{
     channel::{
         mpsc::{self, SendError},
@@ -35,6 +34,7 @@ use futures::{
     StreamExt,
 };
 use std::{pin::Pin, task::Poll};
+use thiserror::Error;
 use tower_service::Service;
 
 /// Create a new Requester/Responder pair which wraps and calls the given service
@@ -103,11 +103,11 @@ impl<TReq, TRes> Service<TReq> for SenderService<TReq, TRes> {
 
 #[derive(Debug, Error, Eq, PartialEq, Clone)]
 pub enum TransportChannelError {
-    /// Error occurred when sending
-    SendError(SendError),
-    /// Request was canceled
+    #[error("Error occurred when sending: `{0}`")]
+    SendError(#[from] SendError),
+    #[error("Request was canceled")]
     Canceled,
-    /// The response channel has closed
+    #[error("The response channel has closed")]
     ChannelClosed,
 }
 

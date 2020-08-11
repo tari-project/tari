@@ -24,7 +24,6 @@ use crate::{
     output_manager_service::{error::OutputManagerError, TxId},
     transaction_service::storage::database::DbKey,
 };
-use derive_error::Error;
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
@@ -37,108 +36,126 @@ use tari_core::transactions::{
 };
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
+use thiserror::Error;
 use time::OutOfRangeError;
 use tokio::sync::broadcast::RecvError;
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {
-    /// Transaction protocol is not in the correct state for this operation
+    #[error("Transaction protocol is not in the correct state for this operation")]
     InvalidStateError,
-    /// Transaction Protocol Error
-    TransactionProtocolError(TransactionProtocolError),
-    /// The message being processed is not recognized by the Transaction Manager
+    #[error("Transaction Protocol Error: `{0}`")]
+    TransactionProtocolError(#[from] TransactionProtocolError),
+    #[error("The message being processed is not recognized by the Transaction Manager")]
     InvalidMessageTypeError,
-    /// A message for a specific tx_id has been repeated
+    #[error("A message for a specific tx_id has been repeated")]
     RepeatedMessageError,
-    /// A recipient reply was received for a non-existent tx_id
+    #[error("A recipient reply was received for a non-existent tx_id")]
     TransactionDoesNotExistError,
-    /// The Outbound Message Service is not initialized
+    #[error("The Outbound Message Service is not initialized")]
     OutboundMessageServiceNotInitialized,
-    /// Received an unexpected API response
+    #[error("Received an unexpected API response")]
     UnexpectedApiResponse,
-    /// Failed to send from API
+    #[error("Failed to send from API")]
     ApiSendFailed,
-    /// Failed to receive in API from service
+    #[error("Failed to receive in API from service")]
     ApiReceiveFailed,
-    /// An error has occurred reading or writing the event subscriber stream
+    #[error("An error has occurred reading or writing the event subscriber stream")]
     EventStreamError,
-    /// The Source Public Key on the received transaction does not match the transaction with the same TX_ID in the
-    /// database
+    #[error(
+        "The Source Public Key on the received transaction does not match the transaction with the same TX_ID in the \
+         database"
+    )]
     InvalidSourcePublicKey,
-    /// The transaction does not contain the receivers output
+    #[error("The transaction does not contain the receivers output")]
     ReceiverOutputNotFound,
-    /// Outbound Service send failed
+    #[error("Outbound Service send failed")]
     OutboundSendFailure,
-    /// Outbound Service Discovery process needed to be conducted before message could be sent. The result of the
-    /// process will be communicated via the callback at some time in the future (could be minutes)
-    #[error(no_from, non_std)]
+    #[error(
+        "Outbound Service Discovery process needed to be conducted before message could be sent. The result of the \
+         process will be communicated via the callback at some time in the future (could be minutes): TxId `{0}`"
+    )]
     OutboundSendDiscoveryInProgress(TxId),
-    /// Discovery process failed to return a result
-    #[error(no_from, non_std)]
+    #[error("Discovery process failed to return a result: TxId `{0}`")]
     DiscoveryProcessFailed(TxId),
-    /// Invalid Completed Transaction provided
+    #[error("Invalid Completed Transaction provided")]
     InvalidCompletedTransaction,
-    /// No Base Node public keys are provided for Base chain broadcast and monitoring
+    #[error("No Base Node public keys are provided for Base chain broadcast and monitoring")]
     NoBaseNodeKeysProvided,
-    /// Error sending data to Protocol via register channels
+    #[error("Error sending data to Protocol via register channels")]
     ProtocolChannelError,
-    /// Transaction detected as rejected by mempool
+    #[error("Transaction detected as rejected by mempool")]
     MempoolRejection,
-    /// Mempool response key does not match on that is expected
+    #[error("Mempool response key does not match on that is expected")]
     UnexpectedMempoolResponse,
-    /// Base Node response key does not match on that is expected
+    #[error("Base Node response key does not match on that is expected")]
     UnexpectedBaseNodeResponse,
-    /// The current transaction has been cancelled
+    #[error("The current transaction has been cancelled")]
     TransactionCancelled,
-    /// Chain tip has moved beyond this coinbase before it was mined so it must be cnacelled
+    #[error("Chain tip has moved beyond this coinbase before it was mined so it must be cancelled")]
     ChainTipHigherThanCoinbaseHeight,
-    DhtOutboundError(DhtOutboundError),
-    OutputManagerError(OutputManagerError),
-    TransportChannelError(TransportChannelError),
-    TransactionStorageError(TransactionStorageError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("DHT outbound error: `{0}`")]
+    DhtOutboundError(#[from] DhtOutboundError),
+    #[error("Output manager error: `{0}`")]
+    OutputManagerError(#[from] OutputManagerError),
+    #[error("Transport channel error: `{0}`")]
+    TransportChannelError(#[from] TransportChannelError),
+    #[error("Transaction storage error: `{0}`")]
+    TransactionStorageError(#[from] TransactionStorageError),
+    #[error("Invalid message error: `{0}`")]
     InvalidMessageError(String),
     #[cfg(feature = "test_harness")]
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Test harness error: `{0}`")]
     TestHarnessError(String),
-    TransactionError(TransactionError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Transaction error: `{0}`")]
+    TransactionError(#[from] TransactionError),
+    #[error("Conversion error: `{0}`")]
     ConversionError(String),
-    NodeIdError(NodeIdError),
-    BroadcastRecvError(RecvError),
-    OneshotCancelled(Canceled),
-    LivenessError(LivenessError),
-    CoinbaseBuildError(CoinbaseBuildError),
+    #[error("Node ID error: `{0}`")]
+    NodeIdError(#[from] NodeIdError),
+    #[error("Broadcast recv error: `{0}`")]
+    BroadcastRecvError(#[from] RecvError),
+    #[error("Oneshot cancelled error: `{0}`")]
+    OneshotCancelled(#[from] Canceled),
+    #[error("Liveness error: `{0}`")]
+    LivenessError(#[from] LivenessError),
+    #[error("Coinbase build error: `{0}`")]
+    CoinbaseBuildError(#[from] CoinbaseBuildError),
 }
 
 #[derive(Debug, Error)]
 pub enum TransactionStorageError {
-    /// Tried to insert an output that already exists in the database
+    #[error("Tried to insert an output that already exists in the database")]
     DuplicateOutput,
-    #[error(non_std, no_from)]
+    #[error("Value not found: `{0}`")]
     ValueNotFound(DbKey),
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Unexpected result: `{0}`")]
     UnexpectedResult(String),
-    /// This write operation is not supported for provided DbKey
+    #[error("This write operation is not supported for provided DbKey")]
     OperationNotSupported,
-    /// Could not find all values specified for batch operation
+    #[error("Could not find all values specified for batch operation")]
     ValuesNotFound,
-    /// Transaction is already present in the database
+    #[error("Transaction is already present in the database")]
     TransactionAlreadyExists,
-    OutOfRangeError(OutOfRangeError),
-    /// Error converting a type
+    #[error("Out of range error: `{0}`")]
+    OutOfRangeError(#[from] OutOfRangeError),
+    #[error("Error converting a type")]
     ConversionError,
-    SerdeJsonError(SerdeJsonError),
+    #[error("Serde json error: `{0}`")]
+    SerdeJsonError(#[from] SerdeJsonError),
+    #[error("R2d2 error")]
     R2d2Error,
-    DieselError(DieselError),
-    DieselConnectionError(diesel::ConnectionError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Diesel error: `{0}`")]
+    DieselError(#[from] DieselError),
+    #[error("Diesel connection error: `{0}`")]
+    DieselConnectionError(#[from] diesel::ConnectionError),
+    #[error("Database migration error: `{0}`")]
     DatabaseMigrationError(String),
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Blocking task spawn error: `{0}`")]
     BlockingTaskSpawnError(String),
-    /// Wallet db is already encrypted and cannot be encrypted until the previous encryption is removed
+    #[error("Wallet db is already encrypted and cannot be encrypted until the previous encryption is removed")]
     AlreadyEncrypted,
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Aead error: `{0}`")]
     AeadError(String),
 }
 

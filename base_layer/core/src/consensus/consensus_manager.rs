@@ -35,22 +35,21 @@ use crate::{
     proof_of_work::DifficultyAdjustmentError,
     transactions::tari_amount::MicroTari,
 };
-use derive_error::Error;
 use std::sync::Arc;
 use tari_crypto::tari_utilities::hash::Hashable;
+use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum ConsensusManagerError {
-    /// Difficulty adjustment encountered an error
-    DifficultyAdjustmentError(DifficultyAdjustmentError),
-    /// Problem with the DB backend storage
-    ChainStorageError(ChainStorageError),
-    /// There is no blockchain to query
+    #[error("Difficulty adjustment encountered an error: `{0}`")]
+    DifficultyAdjustmentError(#[from] DifficultyAdjustmentError),
+    #[error("Problem with the DB backend storage: `{0}`")]
+    ChainStorageError(#[from] ChainStorageError),
+    #[error("There is no blockchain to query")]
     EmptyBlockchain,
-    /// RwLock access broken.
-    #[error(non_std, no_from)]
+    #[error("RwLock access broken: `{0}`")]
     PoisonedAccess(String),
-    /// No Difficulty adjustment manager present
+    #[error("No Difficulty adjustment manager present")]
     MissingDifficultyAdjustmentManager,
 }
 

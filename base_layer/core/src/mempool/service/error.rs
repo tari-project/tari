@@ -21,25 +21,32 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::mempool::MempoolError;
-use derive_error::Error;
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_service_framework::reply_channel::TransportChannelError;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum MempoolServiceError {
-    DhtOutboundError(DhtOutboundError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("DHT outbound error: `{0}`")]
+    DhtOutboundError(#[from] DhtOutboundError),
+    #[error("Invalid request error: `{0}`")]
     InvalidRequest(String),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Invalid response error: `{0}`")]
     InvalidResponse(String),
+    #[error("Request timed out error")]
     RequestTimedOut,
+    #[error("No bootstrap nodes configured error")]
     NoBootstrapNodesConfigured,
-    #[error(non_std, no_from)]
+    #[error("Outbound message service error: `{0}`")]
     OutboundMessageService(String),
-    MempoolError(MempoolError),
+    #[error("Mempool error: `{0}`")]
+    MempoolError(#[from] MempoolError),
+    #[error("Unexpected API response error")]
     UnexpectedApiResponse,
-    TransportChannelError(TransportChannelError),
-    /// Failed to send broadcast message
+    #[error("Transport channel error: `{0}`")]
+    TransportChannelError(#[from] TransportChannelError),
+    #[error("Failed to send broadcast message")]
     BroadcastFailed,
+    #[error("Event stream error")]
     EventStreamError,
 }

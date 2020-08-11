@@ -47,7 +47,7 @@ pub struct MicroTari(pub u64);
 
 #[derive(Debug, Clone, ThisError, PartialEq)]
 pub enum MicroTariError {
-    #[error("Failed to parse value:{0}")]
+    #[error("Failed to parse value: {0}")]
     ParseError(String),
 }
 /// A convenience constant that makes it easier to define Tari amounts.

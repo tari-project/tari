@@ -20,17 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
+use thiserror::Error;
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum MinerError {
-    // Could not construct the coinbase utxo and kernel for the block
+    #[error("Could not construct the coinbase utxo and kernel for the block")]
     CoinbaseError,
-    // No block provided to mine
+    #[error("No block provided to mine")]
     MissingBlock,
-    // Config issue
+    #[error("Config issue")]
     ConfigError,
-    // Error communicating to base node or wallet
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Error communicating to base node or wallet: `{0}`")]
     CommunicationError(String),
 }

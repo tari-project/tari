@@ -21,12 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{diacritics::*, mnemonic_wordlists::*};
-use derive_error::Error;
 use std::slice::Iter;
 use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{bit::*, byte_array::ByteArrayError},
 };
+use thiserror::Error;
 
 /// The Mnemonic system simplifies the encoding and decoding of a secret key into and from a Mnemonic word sequence
 /// It can autodetect the language of the Mnemonic word sequence
@@ -34,16 +34,18 @@ use tari_crypto::{
 
 #[derive(Debug, Error, PartialEq)]
 pub enum MnemonicError {
-    // Only ChineseSimplified, ChineseTraditional, English, French, Italian, Japanese, Korean and Spanish are defined
-    // natural languages
+    #[error(
+        "Only ChineseSimplified, ChineseTraditional, English, French, Italian, Japanese, Korean and Spanish are \
+         defined natural languages"
+    )]
     UnknownLanguage,
-    // Only 2048 words for each language was selected to form Mnemonic word lists
+    #[error("Only 2048 words for each language was selected to form Mnemonic word lists")]
     WordNotFound,
-    // A mnemonic word does not exist for the requested index
+    #[error("A mnemonic word does not exist for the requested index")]
     IndexOutOfBounds,
-    // A problem encountered constructing a secret key from bytes or mnemonic sequence
-    ByteArrayError(ByteArrayError),
-    // Encoding and decoding a mnemonic sequence from bytes require exactly 32 bytes or 24 mnemonic words
+    #[error("A problem encountered constructing a secret key from bytes or mnemonic sequence: `{0}`")]
+    ByteArrayError(#[from] ByteArrayError),
+    #[error("Encoding and decoding a mnemonic sequence from bytes require exactly 32 bytes or 24 mnemonic words")]
     ConversionProblem,
 }
 

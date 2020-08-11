@@ -21,18 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::handles::ServiceHandlesFuture;
-use derive_error::Error;
 use futures::{Future, FutureExt};
 use std::pin::Pin;
 use tari_shutdown::ShutdownSignal;
+use thiserror::Error;
 use tokio::runtime;
 
 #[derive(Debug, Error)]
 pub enum ServiceInitializationError {
-    // General error for failed initialization.
-    // Specialized errors should be added and used if appropriate.
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("General error for failed initialization: `{0}`")]
     Failed(String),
+    // Specialized errors should be added and used if appropriate.
 }
 
 /// Implementors of this trait will initialize a service

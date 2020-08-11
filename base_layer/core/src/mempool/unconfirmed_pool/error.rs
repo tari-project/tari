@@ -21,11 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::mempool::priority::PriorityError;
-use derive_error::Error;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum UnconfirmedPoolError {
-    /// The HashMap and BTreeMap are out of sync
+    #[error("The HashMap and BTreeMap are out of sync")]
     StorageOutofSync,
-    PriorityError(PriorityError),
+    #[error("Priority error: `{0}`")]
+    PriorityError(#[from] PriorityError),
 }

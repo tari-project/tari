@@ -37,7 +37,6 @@ use crate::{
     chain_storage::{async_db, BlockchainBackend, ChainMetadata, ChainStorageError},
 };
 use core::cmp::min;
-use derive_error::Error;
 use log::*;
 use std::{
     fmt::{Display, Formatter},
@@ -45,6 +44,7 @@ use std::{
 };
 use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use thiserror::Error;
 
 const LOG_TARGET: &str = "c::bn::states::block_sync";
 
@@ -179,17 +179,28 @@ impl PartialEq for BlockSyncStrategy {
 
 #[derive(Debug, Error)]
 pub enum BlockSyncError {
+    #[error("Maximum request attempts reached error")]
     MaxRequestAttemptsReached,
+    #[error("Maximum add block attempts reached error")]
     MaxAddBlockAttemptsReached,
+    #[error("Fork chain not linked error")]
     ForkChainNotLinked,
+    #[error("Invalid chain link error")]
     InvalidChainLink,
+    #[error("Empty blockchain error")]
     EmptyBlockchain,
+    #[error("Empty network best block error")]
     EmptyNetworkBestBlock,
+    #[error("No sync peers error")]
     NoSyncPeers,
-    ChainStorageError(ChainStorageError),
-    PeerManagerError(PeerManagerError),
-    ConnectivityError(ConnectivityError),
-    CommsInterfaceError(CommsInterfaceError),
+    #[error("Chain storage error: `{0}`")]
+    ChainStorageError(#[from] ChainStorageError),
+    #[error("Peer manager error: `{0}`")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("Connectivity error: `{0}`")]
+    ConnectivityError(#[from] ConnectivityError),
+    #[error("Comms interface error: `{0}`")]
+    CommsInterfaceError(#[from] CommsInterfaceError),
 }
 
 #[derive(Clone, Debug, PartialEq, Copy)]

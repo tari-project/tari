@@ -25,13 +25,13 @@ use thiserror::Error;
 pub enum LMDBError {
     #[error("Cannot create LMDB. The path does not exist")]
     InvalidPath,
-    #[error("An error occurred during serialization:{0}")]
+    #[error("An error occurred during serialization: {0}")]
     SerializationErr(String),
-    #[error("An error occurred during a get query:{0}")]
+    #[error("An error occurred during a get query: {0}")]
     GetError(String),
-    #[error("An error occurred during commit:{0}")]
+    #[error("An error occurred during commit: {0}")]
     CommitError(String),
-    #[error("An LMDB error occurred:{source}")]
+    #[error("An LMDB error occurred: {source}")]
     DatabaseError {
         #[from]
         source: lmdb_zero::error::Error,

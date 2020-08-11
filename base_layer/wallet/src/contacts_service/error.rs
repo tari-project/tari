@@ -21,37 +21,42 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::contacts_service::storage::database::DbKey;
-use derive_error::Error;
 use diesel::result::Error as DieselError;
 use tari_service_framework::reply_channel::TransportChannelError;
+use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum ContactsServiceError {
-    /// Contact is not found
+    #[error("Contact is not found")]
     ContactNotFound,
-    /// Received incorrect response from service request
+    #[error("Received incorrect response from service request")]
     UnexpectedApiResponse,
-    ContactsServiceStorageError(ContactsServiceStorageError),
-    TransportChannelError(TransportChannelError),
+    #[error("Contacts service storage error: `{0}`")]
+    ContactsServiceStorageError(#[from] ContactsServiceStorageError),
+    #[error("Transport channel error: `{0}`")]
+    TransportChannelError(#[from] TransportChannelError),
 }
 
 #[derive(Debug, Error, PartialEq)]
 pub enum ContactsServiceStorageError {
-    /// This write operation is not supported for provided DbKey
+    #[error("This write operation is not supported for provided DbKey")]
     OperationNotSupported,
-    /// Error converting a type
+    #[error("Error converting a type")]
     ConversionError,
-    /// Could not find all values specified for batch operation
+    #[error("Could not find all values specified for batch operation")]
     ValuesNotFound,
-    #[error(non_std, no_from)]
+    #[error("Value not found error: `{0}`")]
     ValueNotFound(DbKey),
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Unexpected result error: `{0}`")]
     UnexpectedResult(String),
+    #[error("R2d2 error")]
     R2d2Error,
-    DieselError(DieselError),
-    DieselConnectionError(diesel::ConnectionError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Diesel error: `{0}`")]
+    DieselError(#[from] DieselError),
+    #[error("Diesel connection error: `{0}`")]
+    DieselConnectionError(#[from] diesel::ConnectionError),
+    #[error("Database migration error: `{0}`")]
     DatabaseMigrationError(String),
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Blocking task spawn error: `{0}`")]
     BlockingTaskSpawnError(String),
 }

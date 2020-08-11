@@ -29,28 +29,28 @@ use crate::{
     HashSlice,
     MerkleMountainRange,
 };
-use derive_error::Error;
 use digest::Digest;
 use log::error;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
 use tari_utilities::hex::Hex;
+use thiserror::Error;
 
 /// Merkle proof errors.
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum MerkleProofError {
-    // Merkle proof root hash does not match when attempting to verify.
+    #[error("Merkle proof root hash does not match when attempting to verify.")]
     RootMismatch,
-    // You tried to construct or verify a Merkle proof using a non-leaf node as the inclusion candidate
+    #[error("You tried to construct or verify a Merkle proof using a non-leaf node as the inclusion candidate")]
     NonLeafNode,
-    // There was no hash in the merkle tree backend with the given position
-    #[error(non_std, no_from)]
+    #[error("There was no hash in the merkle tree backend with the given position: `{0}`")]
     HashNotFound(usize),
-    // The list of peak hashes provided in the proof has an error
+    #[error("The list of peak hashes provided in the proof has an error")]
     IncorrectPeakMap,
-    // Unexpected
+    #[error("Unexpected error")]
     Unexpected,
-    MerkleMountainRangeError(MerkleMountainRangeError),
+    #[error("Merkle mountain range error: `{0}`")]
+    MerkleMountainRangeError(#[from] MerkleMountainRangeError),
 }
 
 /// A Merkle proof that proves a particular element at a particular position exists in an MMR.

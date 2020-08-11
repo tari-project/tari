@@ -91,7 +91,6 @@ use crate::transactions::{
     transaction::TransactionError,
     types::{Challenge, HashOutput, MessageHash, PublicKey},
 };
-use derive_error::Error;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
@@ -99,32 +98,31 @@ use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::byte_array::ByteArray,
 };
+use thiserror::Error;
 
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
 pub enum TransactionProtocolError {
-    // The current state is not yet completed, cannot transition to next state
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("The current state is not yet completed, cannot transition to next state: `{0}`")]
     IncompleteStateError(String),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Validation error: `{0}`")]
     ValidationError(String),
-    /// Invalid state transition
+    #[error("Invalid state transition")]
     InvalidTransitionError,
-    /// Invalid state
+    #[error("Invalid state")]
     InvalidStateError,
-    /// An error occurred while performing a signature
-    SigningError(SchnorrSignatureError),
-    /// A signature verification failed
+    #[error("An error occurred while performing a signature: `{0}`")]
+    SigningError(#[from] SchnorrSignatureError),
+    #[error("A signature verification failed")]
     InvalidSignatureError,
-    /// An error occurred while building the final transaction
-    TransactionBuildError(TransactionError),
-    /// The transaction construction broke down due to communication failure
+    #[error("An error occurred while building the final transaction: `{0}`")]
+    TransactionBuildError(#[from] TransactionError),
+    #[error("The transaction construction broke down due to communication failure")]
     TimeoutError,
-    /// An error was produced while constructing a rangeproof
-    RangeProofError(RangeProofError),
-    /// This set of parameters is currently not supported
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("An error was produced while constructing a rangeproof: `{0}`")]
+    RangeProofError(#[from] RangeProofError),
+    #[error("This set of parameters is currently not supported: `{0}`")]
     UnsupportedError(String),
-    /// There has been an error serializing or deserializing this structure
+    #[error("There has been an error serializing or deserializing this structure")]
     SerializationError,
 }
 

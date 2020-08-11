@@ -31,7 +31,7 @@ pub enum MempoolProtocolError {
     ExcessSignatureMissing(NodeId),
     #[error("Peer `{0}` unexpectedly closed the substream")]
     SubstreamClosed(NodeId),
-    #[error("Mempool database error: {0:?}")]
+    #[error("Mempool database error: {0}")]
     MempoolError(#[from] MempoolError),
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),

@@ -21,14 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::chain_storage::ChainStorageError;
-use derive_error::Error;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum OrphanPoolError {
-    /// A problem has been encountered with the storage backend.
-    #[error(non_std, no_from)]
+    #[error("A problem has been encountered with the storage backend: `{0}`")]
     BackendError(String),
-    ChainStorageError(ChainStorageError),
-    /// The Blockchain height is undefined
+    #[error("Chain storage error: `{0}`")]
+    ChainStorageError(#[from] ChainStorageError),
+    #[error("The Blockchain height is undefined")]
     ChainHeightUndefined,
 }

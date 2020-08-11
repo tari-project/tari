@@ -20,25 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
 use serde::de::DeserializeOwned;
 use std::{fs::File, io::prelude::*};
+use thiserror::Error;
 
 // TODO: file should be decrypted using Salsa20 or ChaCha20
 
 #[derive(Debug, Error)]
 pub enum FileError {
-    // The specified backup file could not be created
+    #[error("The specified backup file could not be created")]
     FileCreate,
-    // The specified backup file could not be opened
+    #[error("The specified backup file could not be opened")]
     FileOpen,
-    // Could not read from backup file
+    #[error("Could not read from backup file")]
     FileRead,
-    // Could not write to backup file
+    #[error("Could not write to backup file")]
     FileWrite,
-    // Problem serializing struct into JSON
+    #[error("Problem serializing struct into JSON")]
     Serialize,
-    // Problem deserializing JSON into a new struct
+    #[error("Problem deserializing JSON into a new struct")]
     Deserialize,
 }
 

@@ -26,7 +26,6 @@ use crate::{
     storage::database::DbKey,
     transaction_service::error::TransactionServiceError,
 };
-use derive_error::Error;
 use diesel::result::Error as DieselError;
 use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
@@ -34,58 +33,76 @@ use tari_comms::{connectivity::ConnectivityError, multiaddr, peer_manager::PeerM
 use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum WalletError {
-    CommsInitializationError(CommsInitializationError),
-    OutputManagerError(OutputManagerError),
-    TransactionServiceError(TransactionServiceError),
-    PeerManagerError(PeerManagerError),
-    MultiaddrError(multiaddr::Error),
-    WalletStorageError(WalletStorageError),
-    SetLoggerError(SetLoggerError),
-    ContactsServiceError(ContactsServiceError),
-    LivenessServiceError(LivenessError),
-    StoreAndForwardError(StoreAndForwardError),
-    ConnectivityError(ConnectivityError),
+    #[error("Comms initialization error: `{0}`")]
+    CommsInitializationError(#[from] CommsInitializationError),
+    #[error("Output manager error: `{0}`")]
+    OutputManagerError(#[from] OutputManagerError),
+    #[error("Transaction service error: `{0}`")]
+    TransactionServiceError(#[from] TransactionServiceError),
+    #[error("Peer manager error: `{0}`")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("Multiaddr error: `{0}`")]
+    MultiaddrError(#[from] multiaddr::Error),
+    #[error("Wallet storage error: `{0}`")]
+    WalletStorageError(#[from] WalletStorageError),
+    #[error("Set logger error: `{0}`")]
+    SetLoggerError(#[from] SetLoggerError),
+    #[error("Contacts service error: `{0}`")]
+    ContactsServiceError(#[from] ContactsServiceError),
+    #[error("Liveness service error: `{0}`")]
+    LivenessServiceError(#[from] LivenessError),
+    #[error("Store and forward error: `{0}`")]
+    StoreAndForwardError(#[from] StoreAndForwardError),
+    #[error("Connectivity error: `{0}`")]
+    ConnectivityError(#[from] ConnectivityError),
 }
 
 #[derive(Debug, Error)]
 pub enum WalletStorageError {
-    /// Tried to insert an output that already exists in the database
+    #[error("Tried to insert an output that already exists in the database")]
     DuplicateContact,
-    /// This write operation is not supported for provided DbKey
+    #[error("This write operation is not supported for provided DbKey")]
     OperationNotSupported,
-    /// Error converting a type
+    #[error("Error converting a type")]
     ConversionError,
-    /// Could not find all values specified for batch operation
+    #[error("Could not find all values specified for batch operation")]
     ValuesNotFound,
-    /// Db Path does not exist
+    #[error("Db Path does not exist")]
     DbPathDoesNotExist,
-    SerdeJsonError(SerdeJsonError),
+    #[error("Serde json error: `{0}`")]
+    SerdeJsonError(#[from] SerdeJsonError),
+    #[error("R2d2 error")]
     R2d2Error,
-    DieselError(DieselError),
-    DieselConnectionError(diesel::ConnectionError),
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("Diesel error: `{0}`")]
+    DieselError(#[from] DieselError),
+    #[error("Diesel connection error: `{0}`")]
+    DieselConnectionError(#[from] diesel::ConnectionError),
+    #[error("Database migration error")]
     DatabaseMigrationError(String),
-    #[error(non_std, no_from)]
+    #[error("Value not found: `{0}`")]
     ValueNotFound(DbKey),
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Unexpected result: `{0}`")]
     UnexpectedResult(String),
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Blocking task spawn error: `{0}`")]
     BlockingTaskSpawnError(String),
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("File error: `{0}`")]
     FileError(String),
-    /// The storage path was invalid unicode or not supported by the host OS
+    #[error("The storage path was invalid unicode or not supported by the host OS")]
     InvalidUnicodePath,
-    HexError(HexError),
-    /// Invalid Encryption Cipher was provided to database
+    #[error("Hex error: `{0}`")]
+    HexError(#[from] HexError),
+    #[error("Invalid Encryption Cipher was provided to database")]
     InvalidEncryptionCipher,
-    /// Missing Nonce in encrypted data
+    #[error("Missing Nonce in encrypted data")]
     MissingNonce,
-    #[error(msg_embedded, non_std, no_from)]
+    #[error("Aead error: `{0}`")]
     AeadError(String),
-    /// Wallet db is already encrypted and cannot be encrypted until the previous encryption is removed
+    #[error("Wallet db is already encrypted and cannot be encrypted until the previous encryption is removed")]
     AlreadyEncrypted,
-    ByteArrayError(ByteArrayError),
+    #[error("Byte array error: `{0}`")]
+    ByteArrayError(#[from] ByteArrayError),
 }

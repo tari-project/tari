@@ -20,21 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derive_error::Error;
+use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
 pub enum KeyValStoreError {
-    /// The Thread Safety has been breached and the data access has become poisoned
+    #[error("The Thread Safety has been breached and the data access has become poisoned")]
     PoisonedAccess,
-    /// An error occurred with the key value query or store
-    #[error(no_from, non_std)]
+    #[error("An error occurred with the key value query or store: `{0}`")]
     DatabaseError(String),
-    /// An error occurred during serialization
-    #[error(no_from, non_std)]
+    #[error("An error occurred during serialization: `{0}`")]
     SerializationError(String),
-    /// An error occurred during deserialization
-    #[error(no_from, non_std)]
+    #[error("An error occurred during deserialization: `{0}`")]
     DeserializationError(String),
-    /// The specified key did not exist in the key-val store
+    #[error("The specified key did not exist in the key-val store")]
     KeyNotFound,
 }

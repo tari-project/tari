@@ -314,11 +314,11 @@ pub enum HeaderSyncError {
     InvalidHeader(String),
     #[error("Exceeded maximum sync attempts")]
     MaxSyncAttemptsReached,
-    #[error("Chain storage error: {0:?}")]
+    #[error("Chain storage error: {0}")]
     ChainStorageError(#[from] ChainStorageError),
-    #[error("Block sync error: {0:?}")]
+    #[error("Block sync error: {0}")]
     BlockSyncError(#[from] BlockSyncError),
-    #[error("Header validation failed: {0:?}")]
+    #[error("Header validation failed: {0}")]
     HeaderValidationFailed(ValidationError),
     #[error("Join error: {0}")]
     JoinError(#[from] task::JoinError),

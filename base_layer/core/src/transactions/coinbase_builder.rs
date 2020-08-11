@@ -37,23 +37,22 @@ use crate::{
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
 };
-use derive_error::Error;
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
+use thiserror::Error;
 
 #[derive(Debug, Clone, Error, PartialEq)]
 pub enum CoinbaseBuildError {
-    /// The block height for this coinbase transaction wasn't provided
+    #[error("The block height for this coinbase transaction wasn't provided")]
     MissingBlockHeight,
-    /// The value for the coinbase transaction is missing
+    #[error("The value for the coinbase transaction is missing")]
     MissingFees,
-    /// The private nonce for this coinbase transaction wasn't provided
+    #[error("The private nonce for this coinbase transaction wasn't provided")]
     MissingNonce,
-    /// The spend key for this coinbase transaction wasn't provided
+    #[error("The spend key for this coinbase transaction wasn't provided")]
     MissingSpendKey,
-    /// An error occurred building the final transaction
-    #[error(msg_embedded, no_from, non_std)]
+    #[error("An error occurred building the final transaction: `{0}`")]
     BuildError(String),
-    /// Some inconsistent data was given to the builder. This transaction is not valid
+    #[error("Some inconsistent data was given to the builder. This transaction is not valid")]
     InvalidTransaction,
 }
 

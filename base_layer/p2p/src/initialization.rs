@@ -24,7 +24,6 @@ use crate::{
     comms_connector::{InboundDomainConnector, PeerMessage},
     transport::{TorConfig, TransportType},
 };
-use derive_error::Error;
 use futures::{channel::mpsc, AsyncRead, AsyncWrite, Sink};
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
@@ -46,19 +45,23 @@ use tari_comms::{
 };
 use tari_comms_dht::{Dht, DhtBuilder, DhtConfig, DhtInitializationError};
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use thiserror::Error;
 use tower::ServiceBuilder;
 
 const LOG_TARGET: &str = "p2p::initialization";
 
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
-    CommsBuilderError(CommsBuilderError),
-    DhtInitializationError(DhtInitializationError),
-    HiddenServiceBuilderError(tor::HiddenServiceBuilderError),
-    #[error(non_std, no_from, msg_embedded)]
+    #[error("Comms builder error: `{0}`")]
+    CommsBuilderError(#[from] CommsBuilderError),
+    #[error("DHT initialization error: `{0}`")]
+    DhtInitializationError(#[from] DhtInitializationError),
+    #[error("Hidden service builder error: `{0}`")]
+    HiddenServiceBuilderError(#[from] tor::HiddenServiceBuilderError),
+    #[error("Invalid liveness CIDRs error: `{0}`")]
     InvalidLivenessCidrs(String),
-    /// Could not add seed peers to comms layer
-    FailedToAddSeedPeer(PeerManagerError),
+    #[error("Could not add seed peers to comms layer: `{0}`")]
+    FailedToAddSeedPeer(#[from] PeerManagerError),
 }
 
 impl CommsInitializationError {
@@ -69,7 +72,7 @@ impl CommsInitializationError {
                 tor::HiddenServiceBuilderError::HiddenServiceControllerError(
                     tor::HiddenServiceControllerError::TorControlPortOffline,
                 ),
-            ) => r#"Unable to connect to the Tor control port. 
+            ) => r#"Unable to connect to the Tor control port.
 Please check that you have the Tor proxy running and that access to the Tor control port is turned on.
 If you are unsure of what to do, use the following command to start the Tor proxy:
 tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --log "notice stdout" --clientuseipv6 1"#

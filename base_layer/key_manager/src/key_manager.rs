@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::mnemonic;
-use derive_error::Error;
 use digest::Digest;
 use rand::{CryptoRng, Rng};
 use serde::de::DeserializeOwned;
@@ -31,13 +30,14 @@ use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{byte_array::ByteArrayError, hex::Hex},
 };
+use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum KeyManagerError {
-    // Could not convert into byte array
-    ByteArrayError(ByteArrayError),
-    // Could not convert provided Mnemonic into master key
-    MnemonicError(mnemonic::MnemonicError),
+    #[error("Could not convert into byte array: `{0}`")]
+    ByteArrayError(#[from] ByteArrayError),
+    #[error("Could not convert provided Mnemonic into master key: `{0}`")]
+    MnemonicError(#[from] mnemonic::MnemonicError),
 }
 
 #[derive(Clone, Debug)]
