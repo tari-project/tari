@@ -22,7 +22,16 @@
 
 use crate::{
     base_node::{
-        states::{block_sync::BlockSyncError, helpers, BlockSyncInfo, HorizonStateSync, StateEvent, StatusInfo},
+        states::{
+            block_sync::BlockSyncError,
+            helpers,
+            sync_peers::SyncPeer,
+            BlockSyncInfo,
+            HorizonStateSync,
+            StateEvent,
+            StatusInfo,
+            SyncPeers,
+        },
         BaseNodeStateMachine,
     },
     blocks::BlockHeader,
@@ -31,7 +40,7 @@ use crate::{
     validation::ValidationError,
 };
 use log::*;
-use tari_comms::peer_manager::NodeId;
+use std::cmp;
 use tari_crypto::tari_utilities::Hashable;
 use thiserror::Error;
 use tokio::{task, task::spawn_blocking};
@@ -41,11 +50,11 @@ const LOG_TARGET: &str = "c::bn::states::header_sync";
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HeaderSync {
     pub network_metadata: ChainMetadata,
-    pub sync_peers: Vec<NodeId>,
+    pub sync_peers: SyncPeers,
 }
 
 impl HeaderSync {
-    pub fn new(network_metadata: ChainMetadata, sync_peers: Vec<NodeId>) -> Self {
+    pub fn new(network_metadata: ChainMetadata, sync_peers: SyncPeers) -> Self {
         Self {
             network_metadata,
             sync_peers,
@@ -57,7 +66,7 @@ impl HeaderSync {
         shared: &mut BaseNodeStateMachine<B>,
     ) -> StateEvent
     {
-        match async_db::get_metadata(shared.db.clone()).await {
+        match async_db::get_chain_metadata(shared.db.clone()).await {
             Ok(local_metadata) => {
                 shared
                     .set_status_info(StatusInfo::HeaderSync(BlockSyncInfo::new(
@@ -76,14 +85,13 @@ impl HeaderSync {
                 );
                 let local_tip_height = local_metadata.height_of_longest_chain();
                 if local_tip_height >= sync_height {
-                    debug!(target: LOG_TARGET, "Horizon state already synchronized.");
+                    debug!(target: LOG_TARGET, "Header state already synchronized.");
                     return StateEvent::HeadersSynchronized(local_metadata, sync_height);
                 }
                 debug!(target: LOG_TARGET, "Horizon sync starting to height {}", sync_height);
 
                 let mut sync = HeaderSynchronisation {
                     shared,
-                    local_metadata: &local_metadata,
                     sync_peers: &mut self.sync_peers,
                     sync_height,
                 };
@@ -112,8 +120,10 @@ impl HeaderSync {
             return self.network_metadata.height_of_longest_chain();
         }
         let network_tip_height = self.network_metadata.height_of_longest_chain();
+
         let horizon_sync_height_offset = shared.config.horizon_sync_config.horizon_sync_height_offset;
-        network_tip_height.saturating_sub(local_metadata.pruning_horizon + horizon_sync_height_offset)
+
+        calc_sync_height(network_tip_height, local_metadata, horizon_sync_height_offset)
     }
 }
 
@@ -126,29 +136,20 @@ impl From<HorizonStateSync> for HeaderSync {
     }
 }
 
-struct HeaderSynchronisation<'a, 'b, 'c, B> {
+struct HeaderSynchronisation<'a, 'b, B> {
     shared: &'a mut BaseNodeStateMachine<B>,
-    sync_peers: &'b mut Vec<NodeId>,
-    local_metadata: &'c ChainMetadata,
+    sync_peers: &'b mut SyncPeers,
     sync_height: u64,
 }
 
-impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, '_, B> {
+impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
     pub async fn synchronize(&mut self) -> Result<(), HeaderSyncError> {
         let tip_header = async_db::fetch_tip_header(self.db()).await?;
         debug!(
             target: LOG_TARGET,
-            "Syncing from height {} to horizon sync height {}.", tip_header.height, self.sync_height
+            "Syncing from height {} to sync height {}.", tip_header.height, self.sync_height
         );
 
-        if self.local_metadata.is_pruned_node() {
-            // During horizon state syncing the blockchain backend will be in an inconsistent state until the entire
-            // horizon state has been synced. Reset the local chain metadata will limit other nodes and
-            // local service from requesting data while the horizon sync is in progress.
-            // This does not reset `Self::local_metadata`
-            trace!(target: LOG_TARGET, "Resetting chain metadata.");
-            self.reset_chain_metadata_to_genesis().await?;
-        }
         trace!(target: LOG_TARGET, "Synchronizing headers");
         self.synchronize_headers(&tip_header).await?;
 
@@ -285,7 +286,7 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, '_, B> {
         Ok(())
     }
 
-    async fn ban_sync_peer(&mut self, sync_peer: NodeId) -> Result<(), HeaderSyncError> {
+    async fn ban_sync_peer(&mut self, sync_peer: SyncPeer) -> Result<(), HeaderSyncError> {
         helpers::ban_sync_peer(
             LOG_TARGET,
             &mut self.shared.connectivity,
@@ -294,18 +295,6 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, '_, B> {
             self.shared.config.sync_peer_config.peer_ban_duration,
         )
         .await?;
-        Ok(())
-    }
-
-    // Reset the chain metadata to the genesis block while in an inconsistent state. The chain metadata will be restored
-    // to the latest data once the horizon sync has been finalized.
-    async fn reset_chain_metadata_to_genesis(&self) -> Result<(), HeaderSyncError> {
-        let genesis_header = async_db::fetch_header(self.db(), 0).await?;
-        let mut metadata = async_db::get_metadata(self.db()).await?;
-        metadata.height_of_longest_chain = Some(genesis_header.height);
-        metadata.best_block = Some(genesis_header.hash());
-        metadata.accumulated_difficulty = Some(genesis_header.achieved_difficulty());
-        async_db::write_metadata(self.db(), metadata).await?;
         Ok(())
     }
 
@@ -333,4 +322,65 @@ pub enum HeaderSyncError {
     HeaderValidationFailed(ValidationError),
     #[error("Join error: {0}")]
     JoinError(#[from] task::JoinError),
+}
+
+fn calc_sync_height(network_tip: u64, local_metadata: &ChainMetadata, horizon_offset: u64) -> u64 {
+    let pruning_horizon = local_metadata.pruning_horizon;
+    let target_height = network_tip.saturating_sub(pruning_horizon + horizon_offset);
+    // Can never sync to lower than our current network tip
+    cmp::max(target_height, local_metadata.height_of_longest_chain())
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{base_node::states::header_sync::calc_sync_height, chain_storage::ChainMetadata};
+
+    #[test]
+    fn calc_sync_height_zero_pruning_horizon() {
+        let metadata = ChainMetadata {
+            pruning_horizon: 0,
+            ..Default::default()
+        };
+        assert_eq!(calc_sync_height(100, &metadata, 0), 100);
+        assert_eq!(calc_sync_height(100, &metadata, 5), 95);
+        assert_eq!(calc_sync_height(100, &metadata, 500), 0);
+    }
+
+    #[test]
+    fn calc_sync_height_non_zero_pruning_horizon() {
+        let metadata = ChainMetadata {
+            pruning_horizon: 100,
+            ..Default::default()
+        };
+        assert_eq!(calc_sync_height(0, &metadata, 0), 0);
+        assert_eq!(calc_sync_height(100, &metadata, 0), 0);
+        assert_eq!(calc_sync_height(101, &metadata, 0), 1);
+        assert_eq!(calc_sync_height(1000, &metadata, 0), 900);
+    }
+
+    #[test]
+    fn calc_sync_height_behind_chain_tip() {
+        let metadata = ChainMetadata {
+            pruning_horizon: 100,
+            height_of_longest_chain: Some(50),
+            ..Default::default()
+        };
+        assert_eq!(calc_sync_height(0, &metadata, 0), 50);
+        assert_eq!(calc_sync_height(100, &metadata, 0), 50);
+        assert_eq!(calc_sync_height(101, &metadata, 0), 50);
+        assert_eq!(calc_sync_height(1000, &metadata, 0), 900);
+    }
+
+    #[test]
+    fn calc_sync_height_infront_chain_tip() {
+        let metadata = ChainMetadata {
+            pruning_horizon: 50,
+            height_of_longest_chain: Some(100),
+            ..Default::default()
+        };
+        assert_eq!(calc_sync_height(0, &metadata, 0), 100);
+        assert_eq!(calc_sync_height(200, &metadata, 0), 150);
+        assert_eq!(calc_sync_height(200, &metadata, 1), 149);
+        assert_eq!(calc_sync_height(101, &metadata, 0), 100);
+    }
 }

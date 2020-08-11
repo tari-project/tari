@@ -246,7 +246,6 @@ mod test {
         consensus::emission::{Emission, EmissionSchedule},
         transactions::tari_amount::{uT, MicroTari, T},
     };
-    use num::pow;
 
     /// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in certain
     /// blocks failing validation tests. The cause was traced to an erroneous implementation of the std::f64::powi

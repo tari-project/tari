@@ -20,45 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node::{comms_interface::CommsInterfaceError, states::block_sync::BlockSyncError},
-    chain_storage::{ChainStorageError, MmrTree},
-    transactions::transaction::TransactionError,
-    validation::ValidationError,
-};
-use thiserror::Error;
-use tokio::task;
+use crate::base_node::chain_metadata_service::PeerChainMetadata;
 
-#[derive(Debug, Error)]
-pub enum HorizonSyncError {
-    #[error("Peer sent an empty response")]
-    EmptyResponse,
-    #[error("Peer sent an invalid response")]
-    IncorrectResponse,
-    #[error("Exceeded maximum sync attempts")]
-    MaxSyncAttemptsReached,
-    #[error("Chain storage error: {0}")]
-    ChainStorageError(#[from] ChainStorageError),
-    #[error("Comms interface error: {0:?}")]
-    CommsInterfaceError(#[from] CommsInterfaceError),
-    #[error("Block sync error: {0:?}")]
-    BlockSyncError(#[from] BlockSyncError),
-    #[error("Final state validation failed: {0}")]
-    FinalStateValidationFailed(ValidationError),
-    #[error("Join error: {0}")]
-    JoinError(#[from] task::JoinError),
-    #[error("Invalid kernel signature: {0}")]
-    InvalidKernelSignature(TransactionError),
-    #[error("Validation failed for {0} MMR")]
-    InvalidMmrRoot(MmrTree),
-}
-
-impl HorizonSyncError {
-    pub fn is_recoverable(&self) -> bool {
-        use HorizonSyncError::*;
-        match self {
-            FinalStateValidationFailed(_) | InvalidMmrRoot(_) => false,
-            _ => true,
-        }
-    }
-}
+pub type SyncPeer = PeerChainMetadata;
+/// Type alias for a collection of PeerChainMetadata
+pub type SyncPeers = Vec<SyncPeer>;

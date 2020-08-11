@@ -21,9 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{is_stxo, is_utxo, BlockchainBackend},
+    chain_storage::BlockchainBackend,
     transactions::{transaction::Transaction, types::CryptoFactories},
-    validation::{StatelessValidation, Validation, ValidationError},
+    validation::{
+        helpers::{is_stxo, is_utxo},
+        StatelessValidation,
+        Validation,
+        ValidationError,
+    },
 };
 use log::*;
 use tari_crypto::tari_utilities::hash::Hashable;
@@ -66,11 +71,7 @@ impl<B: BlockchainBackend> Validation<Transaction, B> for FullTxValidator {
         verify_tx(tx, &self.factories)?;
         verify_not_stxos(tx, db)?;
         verify_inputs_are_utxos(tx, db)?;
-        let tip_height = db
-            .fetch_metadata()
-            .map_err(|e| ValidationError::CustomError(e.to_string()))?
-            .height_of_longest_chain
-            .unwrap_or(0);
+        let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain.unwrap_or(0);
         verify_timelocks(tx, tip_height)?;
         Ok(())
     }
@@ -84,11 +85,7 @@ impl<B: BlockchainBackend> Validation<Transaction, B> for TxInputAndMaturityVali
     fn validate(&self, tx: &Transaction, db: &B) -> Result<(), ValidationError> {
         verify_not_stxos(tx, db)?;
         verify_inputs_are_utxos(tx, db)?;
-        let tip_height = db
-            .fetch_metadata()
-            .map_err(|e| ValidationError::CustomError(e.to_string()))?
-            .height_of_longest_chain
-            .unwrap_or(0);
+        let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain.unwrap_or(0);
         verify_timelocks(tx, tip_height)?;
         Ok(())
     }
@@ -110,11 +107,7 @@ pub struct TimeLockTxValidator {}
 
 impl<B: BlockchainBackend> Validation<Transaction, B> for TimeLockTxValidator {
     fn validate(&self, tx: &Transaction, db: &B) -> Result<(), ValidationError> {
-        let tip_height = db
-            .fetch_metadata()
-            .map_err(|e| ValidationError::CustomError(e.to_string()))?
-            .height_of_longest_chain
-            .unwrap_or(0);
+        let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
         verify_timelocks(tx, tip_height)?;
         Ok(())
     }
@@ -139,7 +132,7 @@ fn verify_timelocks(tx: &Transaction, current_height: u64) -> Result<(), Validat
 // This function checks that the inputs and outputs do not exist in the STxO set.
 fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
     for input in tx.body.inputs() {
-        if is_stxo(db, input.hash()).map_err(|e| ValidationError::CustomError(e.to_string()))? {
+        if is_stxo(db, input.hash())? {
             // we dont want to log this as a node or wallet might retransmit a transaction
             debug!(
                 target: LOG_TARGET,
@@ -149,7 +142,7 @@ fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<()
         }
     }
     for output in tx.body.outputs() {
-        if is_stxo(db, output.hash()).map_err(|e| ValidationError::CustomError(e.to_string()))? {
+        if is_stxo(db, output.hash())? {
             debug!(
                 target: LOG_TARGET,
                 "Transaction validation failed due to previously spent output: {}", output
@@ -163,7 +156,7 @@ fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<()
 // This function checks that all inputs in the transaction are valid UTXO's to be spend.
 fn verify_inputs_are_utxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
     for input in tx.body.inputs() {
-        if !(is_utxo(db, input.hash())).map_err(|e| ValidationError::CustomError(e.to_string()))? {
+        if !is_utxo(db, input.hash())? {
             debug!(
                 target: LOG_TARGET,
                 "Transaction validation failed due to unknown input: {}", input

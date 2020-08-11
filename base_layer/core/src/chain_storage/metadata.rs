@@ -23,6 +23,7 @@
 use crate::{blocks::blockheader::BlockHash, proof_of_work::Difficulty};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
+
 use tari_crypto::tari_utilities::hex::Hex;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -34,6 +35,10 @@ pub struct ChainMetadata {
     /// The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
     /// tracked (i.e. the database is in full archival mode).
     pub pruning_horizon: u64,
+    /// The effective height of the pruning horizon. This indicates from what height a full block can be provided
+    /// (exclusive). If `effective_pruned_height` is equal to the `height_of_longest_chain` no blocks can be
+    /// provided. Archival nodes wil always have an `effective_pruned_height` of zero.
+    pub effective_pruned_height: u64,
     /// The geometric mean of the proof of work of the longest chain, none if the chain is empty
     pub accumulated_difficulty: Option<Difficulty>,
 }
@@ -43,6 +48,7 @@ impl ChainMetadata {
         height: u64,
         hash: BlockHash,
         pruning_horizon: u64,
+        effective_pruned_height: u64,
         accumulated_difficulty: Difficulty,
     ) -> ChainMetadata
     {
@@ -50,6 +56,7 @@ impl ChainMetadata {
             height_of_longest_chain: Some(height),
             best_block: Some(hash),
             pruning_horizon,
+            effective_pruned_height,
             accumulated_difficulty: Some(accumulated_difficulty),
         }
     }
@@ -57,7 +64,6 @@ impl ChainMetadata {
     /// The block height at the pruning horizon, given the chain height of the network. Typically database backends
     /// cannot provide any block data earlier than this point.
     /// Zero is returned if the blockchain still hasn't reached the pruning horizon.
-    #[inline(always)]
     pub fn horizon_block(&self, chain_tip: u64) -> u64 {
         match self.pruning_horizon {
             0 => 0,
@@ -73,9 +79,9 @@ impl ChainMetadata {
         self.pruning_horizon = 0;
     }
 
-    /// Set the pruning horizon to indicate that the chain is in pruned mode (i.e. a pruning horizon of 2880)
-    pub fn pruned_mode(&mut self) {
-        self.pruning_horizon = 2880;
+    /// Set the pruning horizon
+    pub fn set_pruning_horizon(&mut self, pruning_horizon: u64) {
+        self.pruning_horizon = pruning_horizon;
     }
 
     /// Check if the node is an archival node based on its pruning horizon.
@@ -101,6 +107,7 @@ impl Default for ChainMetadata {
             height_of_longest_chain: None,
             best_block: None,
             pruning_horizon: 0,
+            effective_pruned_height: 0,
             accumulated_difficulty: None,
         }
     }
@@ -113,15 +120,49 @@ impl Display for ChainMetadata {
             .best_block
             .clone()
             .map(|b| b.to_hex())
-            .unwrap_or_else(|| "Empty Database".into());
+            .unwrap_or_else(|| "None".into());
         let accumulated_difficulty = self.accumulated_difficulty.unwrap_or_else(|| 0.into());
         fmt.write_str(&format!("Height of longest chain : {}\n", height))?;
         fmt.write_str(&format!(
             "Geometric mean of longest chain : {}\n",
             accumulated_difficulty
         ))?;
-        fmt.write_str(&format!("Best_block : {}\n", best_block))?;
-        fmt.write_str(&format!("Pruning horizon : {}\n", self.pruning_horizon))
+        fmt.write_str(&format!("Best block : {}\n", best_block))?;
+        fmt.write_str(&format!("Pruning horizon : {}\n", self.pruning_horizon))?;
+        fmt.write_str(&format!("Effective pruned height : {}\n", self.effective_pruned_height))?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InProgressHorizonSyncState {
+    pub metadata: ChainMetadata,
+    pub initial_kernel_checkpoint_count: u64,
+    pub initial_utxo_checkpoint_count: u64,
+    pub initial_rangeproof_checkpoint_count: u64,
+}
+
+impl InProgressHorizonSyncState {
+    pub fn new_with_metadata(metadata: ChainMetadata) -> Self {
+        Self {
+            metadata,
+            initial_kernel_checkpoint_count: 0,
+            initial_utxo_checkpoint_count: 0,
+            initial_rangeproof_checkpoint_count: 0,
+        }
+    }
+}
+
+impl Display for InProgressHorizonSyncState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(
+            f,
+            "metadata = {}, #kernel checkpoints = ({}), #UTXO checkpoints = ({}), #range proof checkpoints = ({})",
+            self.metadata,
+            self.initial_kernel_checkpoint_count,
+            self.initial_utxo_checkpoint_count,
+            self.initial_rangeproof_checkpoint_count,
+        )
     }
 }
 
@@ -138,7 +179,11 @@ mod test {
     #[test]
     fn pruned_mode() {
         let mut metadata = ChainMetadata::default();
-        metadata.pruned_mode();
+        assert_eq!(metadata.is_pruned_node(), false);
+        assert_eq!(metadata.is_archival_node(), true);
+        metadata.set_pruning_horizon(2880);
+        assert_eq!(metadata.is_pruned_node(), true);
+        assert_eq!(metadata.is_archival_node(), false);
         assert_eq!(metadata.horizon_block(0), 0);
         assert_eq!(metadata.horizon_block(100), 0);
         assert_eq!(metadata.horizon_block(2880), 0);

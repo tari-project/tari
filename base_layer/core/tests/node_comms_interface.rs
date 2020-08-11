@@ -88,7 +88,7 @@ fn outbound_get_metadata() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
-        let metadata = ChainMetadata::new(5, vec![0u8], 3, 5.into());
+        let metadata = ChainMetadata::new(5, vec![0u8], 3, 0, 5.into());
         let metadata_response = NodeCommsResponse::ChainMetadata(metadata.clone());
         let (received_metadata, _) = futures::join!(
             outbound_nci.get_metadata(),

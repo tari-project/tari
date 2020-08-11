@@ -42,7 +42,8 @@ pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
 
 pub fn serialize<T>(data: &T) -> Result<Vec<u8>, ChainStorageError>
 where T: Serialize {
-    let mut buf = Vec::with_capacity(512);
+    let size = bincode::serialized_size(&data).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+    let mut buf = Vec::with_capacity(size as usize);
     bincode::serialize_into(&mut buf, data)
         .or_else(|e| {
             error!(target: LOG_TARGET, "Could not serialize lmdb: {:?}", e);
@@ -98,16 +99,12 @@ where
         })
 }
 
+/// Deletes the given key. An error is returned if the key does not exist
 pub fn lmdb_delete<K>(txn: &WriteTransaction, db: &Database, key: &K) -> Result<(), ChainStorageError>
 where K: Serialize {
     let key_buf = serialize(key)?;
-    txn.access().del_key(&db, &key_buf).map_err(|e| {
-        error!(
-            target: LOG_TARGET,
-            "Could not add delete value into lmdb transaction: {:?}", e
-        );
-        ChainStorageError::AccessError(e.to_string())
-    })
+    txn.access().del_key(&db, &key_buf)?;
+    Ok(())
 }
 
 pub fn lmdb_get<K, V>(env: &Environment, db: &Database, key: &K) -> Result<Option<V>, ChainStorageError>

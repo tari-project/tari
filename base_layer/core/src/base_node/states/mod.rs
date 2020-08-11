@@ -83,5 +83,8 @@ pub use shutdown_state::Shutdown;
 mod starting_state;
 pub use starting_state::Starting;
 
+mod sync_peers;
+pub use sync_peers::{SyncPeer, SyncPeers};
+
 mod waiting;
 pub use waiting::Waiting;

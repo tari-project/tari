@@ -33,9 +33,8 @@ pub struct AccumDifficultyValidator {}
 impl<B: BlockchainBackend> Validation<Difficulty, B> for AccumDifficultyValidator {
     fn validate(&self, accum_difficulty: &Difficulty, db: &B) -> Result<(), ValidationError> {
         let tip_header = db
-            .fetch_last_header()
-            .map_err(|e| ValidationError::CustomError(e.to_string()))?
-            .ok_or_else(|| ValidationError::CustomError("Cannot retrieve tip header. Blockchain DB is empty".into()))?;
+            .fetch_last_header()?
+            .ok_or_else(|| ValidationError::custom_error("Cannot retrieve tip header. Blockchain DB is empty"))?;
         if *accum_difficulty <= tip_header.total_accumulated_difficulty_inclusive() {
             return Err(ValidationError::WeakerAccumulatedDifficulty);
         }
@@ -52,9 +51,8 @@ pub struct MockAccumDifficultyValidator;
 impl<B: BlockchainBackend> Validation<Difficulty, B> for MockAccumDifficultyValidator {
     fn validate(&self, accum_difficulty: &Difficulty, db: &B) -> Result<(), ValidationError> {
         let tip_header = db
-            .fetch_last_header()
-            .map_err(|e| ValidationError::CustomError(e.to_string()))?
-            .ok_or_else(|| ValidationError::CustomError("Cannot retrieve tip header. Blockchain DB is empty".into()))?;
+            .fetch_last_header()?
+            .ok_or_else(|| ValidationError::custom_error("Cannot retrieve tip header. Blockchain DB is empty"))?;
         if *accum_difficulty < tip_header.total_accumulated_difficulty_inclusive() {
             return Err(ValidationError::WeakerAccumulatedDifficulty);
         }

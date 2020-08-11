@@ -21,20 +21,23 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::base_node::comms_interface::CommsInterfaceError;
-use derive_error::Error;
 use prost::DecodeError;
 use tari_comms::message::MessageError;
 use tari_p2p::services::liveness::error::LivenessError;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ChainMetadataSyncError {
-    /// Failed to decode chain metadata
-    DecodeError(DecodeError),
-    /// Peer did not send any chain metadata
+    #[error("Failed to decode chain metadata")]
+    DecodeError(#[from] DecodeError),
+    #[error("Peer did not send any chain metadata")]
     NoChainMetadata,
-    LivenessError(LivenessError),
-    CommsInterfaceError(CommsInterfaceError),
-    MessageError(MessageError),
-    /// Failed to publish `ChainMetadataEvent`
+    #[error("Liveness error: {0}")]
+    LivenessError(#[from] LivenessError),
+    #[error("Comms interface error: {0}")]
+    CommsInterfaceError(#[from] CommsInterfaceError),
+    #[error("Message error: {0}")]
+    MessageError(#[from] MessageError),
+    #[error("Failed to publish `ChainMetadataEvent`")]
     EventPublishFailed,
 }

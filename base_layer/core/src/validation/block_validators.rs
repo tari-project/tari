@@ -27,11 +27,11 @@ use crate::{
         BlockValidationError,
         NewBlockTemplate,
     },
-    chain_storage::{calculate_mmr_roots, is_stxo, is_utxo, BlockchainBackend},
+    chain_storage::{calculate_mmr_roots, BlockchainBackend, DbKey},
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{transaction::OutputFlags, types::CryptoFactories},
     validation::{
-        helpers::{check_achieved_and_target_difficulty, check_median_timestamp},
+        helpers::{check_achieved_and_target_difficulty, check_median_timestamp, is_stxo},
         StatelessValidation,
         Validation,
         ValidationError,
@@ -76,7 +76,7 @@ impl StatelessValidation<Block> for StatelessBlockValidator {
             &block_id
         );
         // Check that the inputs are are allowed to be spent
-        block.check_stxo_rules().map_err(BlockValidationError::from)?;
+        block.check_stxo_rules()?;
         trace!(target: LOG_TARGET, "SV - Output constraints are ok for {} ", &block_id);
         check_cut_through(block)?;
         trace!(target: LOG_TARGET, "SV - Cut-through is ok for {} ", &block_id);
@@ -147,11 +147,7 @@ impl<B: BlockchainBackend> Validation<BlockHeader, B> for FullConsensusValidator
             "BlockHeader validation: FTL timestamp is ok for {} ",
             &header_id
         );
-        let tip_height = db
-            .fetch_metadata()
-            .map_err(|e| ValidationError::CustomError(e.to_string()))?
-            .height_of_longest_chain
-            .unwrap_or(0);
+        let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
         check_median_timestamp(db, header, tip_height, self.rules.clone())?;
         trace!(
             target: LOG_TARGET,
@@ -262,12 +258,12 @@ fn check_duplicate_transactions_inputs(block: &Block) -> Result<(), ValidationEr
     );
     for i in 1..block.body.inputs().len() {
         if block.body.inputs()[i..].contains(&block.body.inputs()[i - 1]) {
-            return Err(ValidationError::CustomError("Duplicate Input".to_string()));
+            return Err(ValidationError::custom_error("Duplicate Input"));
         }
     }
     for i in 1..block.body.outputs().len() {
         if block.body.outputs()[i..].contains(&block.body.outputs()[i - 1]) {
-            return Err(ValidationError::CustomError("Duplicate Output".to_string()));
+            return Err(ValidationError::custom_error("Duplicate Output"));
         }
     }
     Ok(())
@@ -280,7 +276,7 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result
             continue;
         }
 
-        if !is_utxo(db, utxo.hash()).map_err(ValidationError::custom_error)? {
+        if !db.contains(&DbKey::UnspentOutput(utxo.hash()))? {
             warn!(
                 target: LOG_TARGET,
                 "Block validation failed because the block has invalid input: {}", utxo
@@ -294,7 +290,7 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result
 // This function checks that the inputs and outputs do not exist in the STxO set.
 fn check_not_stxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     for input in block.body.inputs() {
-        if is_stxo(db, input.hash()).map_err(ValidationError::custom_error)? {
+        if is_stxo(db, input.hash())? {
             // we dont want to log this as a node or wallet might retransmit a transaction
             debug!(
                 target: LOG_TARGET,
@@ -304,7 +300,7 @@ fn check_not_stxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), Va
         }
     }
     for output in block.body.outputs() {
-        if is_stxo(db, output.hash()).map_err(|e| ValidationError::CustomError(e.to_string()))? {
+        if is_stxo(db, output.hash())? {
             debug!(
                 target: LOG_TARGET,
                 "Block validation failed due to previously spent output: {}", output
@@ -336,7 +332,7 @@ fn check_timestamp_ftl(
 
 fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     let template = NewBlockTemplate::from(block.clone());
-    let tmp_block = calculate_mmr_roots(db, template).map_err(|e| ValidationError::CustomError(e.to_string()))?;
+    let tmp_block = calculate_mmr_roots(db, template)?;
     let tmp_header = &tmp_block.header;
     let header = &block.header;
     if header.kernel_mr != tmp_header.kernel_mr {

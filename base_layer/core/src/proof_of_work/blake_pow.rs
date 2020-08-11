@@ -38,12 +38,12 @@ pub fn blake_difficulty(header: &BlockHeader) -> Difficulty {
 
 pub fn blake_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
     let bytes = header.hash();
-    let hash = Blake2b::digest(&bytes).to_vec();
-    let hash = Blake256::digest(&hash).to_vec();
+    let hash = Blake2b::digest(&bytes);
+    let hash = Blake256::digest(&hash);
     let scalar = U256::from_big_endian(&hash); // Big endian so the hash has leading zeroes
     let result = MAX_TARGET / scalar;
     let difficulty = result.low_u64().into();
-    (difficulty, hash)
+    (difficulty, hash.to_vec())
 }
 
 #[cfg(test)]

@@ -24,19 +24,20 @@ use crate::{
     chain_storage::{
         consts::{
             BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
-            BLOCKCHAIN_DATABASE_PRUNED_MODE_CLEANUP_INTERVAL,
+            BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
         },
-        db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
+        db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
         error::ChainStorageError,
         ChainMetadata,
         HistoricalBlock,
+        InProgressHorizonSyncState,
     },
     consensus::ConsensusManager,
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-        types::{Commitment, HashOutput, Signature},
+        types::{Commitment, HashOutput, PublicKey, Signature},
     },
     validation::{StatelessValidation, StatelessValidator, Validation, ValidationError, Validator},
 };
@@ -45,6 +46,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
+    convert::TryFrom,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use strum_macros::Display;
@@ -58,7 +60,7 @@ const LOG_TARGET: &str = "c::cs::database";
 pub struct BlockchainDatabaseConfig {
     pub orphan_storage_capacity: usize,
     pub pruning_horizon: u64,
-    pub pruned_mode_cleanup_interval: u64,
+    pub pruning_interval: u64,
 }
 
 impl Default for BlockchainDatabaseConfig {
@@ -66,7 +68,7 @@ impl Default for BlockchainDatabaseConfig {
         Self {
             orphan_storage_capacity: BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
             pruning_horizon: BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
-            pruned_mode_cleanup_interval: BLOCKCHAIN_DATABASE_PRUNED_MODE_CLEANUP_INTERVAL,
+            pruning_interval: BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
         }
     }
 }
@@ -157,9 +159,16 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<HashOutput, ChainStorageError>;
     /// Constructs a merkle proof for the specified merkle mountain range and the given leaf position.
     fn fetch_mmr_proof(&self, tree: MmrTree, pos: usize) -> Result<MerkleProof, ChainStorageError>;
-    /// Fetches the checkpoint corresponding to the provided height, the checkpoint consist of the list of nodes
-    /// added & deleted for the given Merkle tree.
-    fn fetch_checkpoint(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
+    /// Fetches the `MerkleCheckPoint` corresponding to the given height. In pruned mode, the underlying database may
+    /// not be able to provide the checkpoint as it has been merged into the base checkpoint. In this case a
+    /// `BeyondPruningHorizon` error is returned.
+    fn fetch_checkpoint_at_height(&self, tree: MmrTree, height: u64) -> Result<MerkleCheckPoint, ChainStorageError>;
+    /// Fetches the `MerkleCheckPoint` at the given index
+    fn fetch_checkpoint_at_index(
+        &self,
+        tree: MmrTree,
+        index: usize,
+    ) -> Result<Option<MerkleCheckPoint>, ChainStorageError>;
     /// Fetches the total merkle mountain range node count upto the specified height.
     fn fetch_mmr_node_count(&self, tree: MmrTree, height: u64) -> Result<u32, ChainStorageError>;
     /// Fetches the leaf node hash and its deletion status for the nth leaf node in the given MMR tree. The height
@@ -210,7 +219,7 @@ pub trait BlockchainBackend: Send + Sync {
     /// Returns the stored header with the highest corresponding height.
     fn fetch_last_header(&self) -> Result<Option<BlockHeader>, ChainStorageError>;
     /// Returns the stored chain metadata.
-    fn fetch_metadata(&self) -> Result<ChainMetadata, ChainStorageError>;
+    fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError>;
     /// Returns the set of target difficulties for the specified proof of work algorithm.
     fn fetch_target_difficulties(
         &self,
@@ -223,6 +232,8 @@ pub trait BlockchainBackend: Send + Sync {
     fn count_utxos(&self) -> Result<usize, ChainStorageError>;
     /// Returns the kernel count
     fn count_kernels(&self) -> Result<usize, ChainStorageError>;
+    /// Returns the checkpoint count for the given MmrTree
+    fn count_checkpoints(&self, tree: MmrTree) -> Result<usize, ChainStorageError>;
     /// Validate the Merkle root for the given `MmrTree` matches the header at the given height
     fn validate_merkle_root(&self, tree: MmrTree, height: u64) -> Result<bool, ChainStorageError>;
 }
@@ -268,36 +279,39 @@ macro_rules! fetch {
 /// let db = BlockchainDatabase::new(db_backend, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
 /// // Do stuff with db
 /// ```
-pub struct BlockchainDatabase<T> {
-    db: Arc<RwLock<T>>,
-    validators: Validators<T>,
+pub struct BlockchainDatabase<B> {
+    db: Arc<RwLock<B>>,
+    validators: Validators<B>,
     config: BlockchainDatabaseConfig,
 }
 
-impl<T> BlockchainDatabase<T>
-where T: BlockchainBackend
+impl<B> BlockchainDatabase<B>
+where B: BlockchainBackend
 {
     /// Creates a new `BlockchainDatabase` using the provided backend.
     pub fn new(
-        db: T,
+        db: B,
         consensus_manager: &ConsensusManager,
-        validators: Validators<T>,
+        validators: Validators<B>,
         config: BlockchainDatabaseConfig,
     ) -> Result<Self, ChainStorageError>
     {
+        debug!(
+            target: LOG_TARGET,
+            "Initializing database pj={}", config.pruning_horizon
+        );
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
             validators,
             config,
         };
-        let metadata = blockchain_db.get_metadata()?;
+        let metadata = blockchain_db.get_chain_metadata()?;
         if metadata.height_of_longest_chain.is_none() {
             let genesis_block = consensus_manager.get_genesis_block();
             blockchain_db.store_new_block(genesis_block)?;
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
-        } else if (metadata.is_archival_node() && (config.pruning_horizon != metadata.pruning_horizon)) ||
-            (metadata.is_pruned_node() && (config.pruning_horizon < metadata.pruning_horizon))
-        {
+        }
+        if config.pruning_horizon != metadata.pruning_horizon {
             debug!(
                 target: LOG_TARGET,
                 "Updating pruning horizon from {} to {}.", metadata.pruning_horizon, config.pruning_horizon,
@@ -309,7 +323,7 @@ where T: BlockchainBackend
 
     // Be careful about making this method public. Rather use `db_and_metadata_read_access`
     // so that metadata and db are read in the correct order so that deadlocks don't occur
-    pub fn db_read_access(&self) -> Result<RwLockReadGuard<T>, ChainStorageError> {
+    pub fn db_read_access(&self) -> Result<RwLockReadGuard<B>, ChainStorageError> {
         self.db.read().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -319,7 +333,7 @@ where T: BlockchainBackend
         })
     }
 
-    pub fn db_write_access(&self) -> Result<RwLockWriteGuard<T>, ChainStorageError> {
+    fn db_write_access(&self) -> Result<RwLockWriteGuard<B>, ChainStorageError> {
         self.db.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -336,26 +350,26 @@ where T: BlockchainBackend
     /// If the chain is empty (the genesis block hasn't been added yet), this function returns `None`
     pub fn get_height(&self) -> Result<Option<u64>, ChainStorageError> {
         let db = self.db_read_access()?;
-        Ok(db.fetch_metadata()?.height_of_longest_chain)
+        Ok(db.fetch_chain_metadata()?.height_of_longest_chain)
     }
 
     /// Return the geometric mean of the proof of work of the longest chain.
     /// The proof of work is returned as the geometric mean of all difficulties
     pub fn get_accumulated_difficulty(&self) -> Result<Option<Difficulty>, ChainStorageError> {
         let db = self.db_read_access()?;
-        Ok(db.fetch_metadata()?.accumulated_difficulty)
+        Ok(db.fetch_chain_metadata()?.accumulated_difficulty)
     }
 
     /// Returns a copy of the current blockchain database metadata
-    pub fn get_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
+    pub fn get_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_metadata()
+        db.fetch_chain_metadata()
     }
 
-    /// Sets the stored chain metadata to the provided metadata.
-    pub fn write_metadata(&self, metadata: ChainMetadata) -> Result<(), ChainStorageError> {
+    /// Sets and stores the chain metadata, overwriting previous metadata.
+    pub fn set_chain_metadata(&self, metadata: ChainMetadata) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
-        write_metadata(&mut db, metadata)
+        set_chain_metadata(&mut db, metadata)
     }
 
     /// Returns the transaction kernel with the given hash.
@@ -368,12 +382,6 @@ where T: BlockchainBackend
     pub fn fetch_kernels(&self, hashes: Vec<HashOutput>) -> Result<Vec<TransactionKernel>, ChainStorageError> {
         let db = self.db_read_access()?;
         fetch_kernels(&*db, hashes)
-    }
-
-    /// Store the provided set of kernels.
-    pub fn insert_kernels(&self, kernels: Vec<TransactionKernel>) -> Result<(), ChainStorageError> {
-        let mut db = self.db_write_access()?;
-        insert_kernels(&mut db, kernels)
     }
 
     /// Returns the block header at the given block height.
@@ -396,9 +404,9 @@ where T: BlockchainBackend
     }
 
     /// Returns the block header corresponding` to the provided BlockHash
-    pub fn fetch_header_with_block_hash(&self, hash: HashOutput) -> Result<BlockHeader, ChainStorageError> {
+    pub fn fetch_header_by_block_hash(&self, hash: HashOutput) -> Result<BlockHeader, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_header_with_block_hash(&*db, hash)
+        fetch_header_by_block_hash(&*db, hash)
     }
 
     pub fn fetch_tip_header(&self) -> Result<BlockHeader, ChainStorageError> {
@@ -418,32 +426,30 @@ where T: BlockchainBackend
         spend_utxo(&mut db, hash)
     }
 
-    /// Returns all UTXOs
-    pub fn fetch_all_utxos(&self) -> Result<Vec<TransactionOutput>, ChainStorageError> {
+    /// Returns the sum of all UTXO commitments
+    pub fn fetch_utxo_commitment_sum(&self) -> Result<Commitment, ChainStorageError> {
         let db = self.db_read_access()?;
-        let utxo_count = db.count_utxos()?;
-        let mut outputs = Vec::with_capacity(utxo_count);
+        let mut sum = Commitment::from_public_key(&PublicKey::default());
         db.for_each_utxo(|utxo| {
             if let Ok((_, output)) = utxo {
-                outputs.push(output);
+                sum = &sum + output.commitment();
             }
         })?;
 
-        Ok(outputs)
+        Ok(sum)
     }
 
-    /// Returns all kernels
-    pub fn fetch_all_kernels(&self) -> Result<Vec<TransactionKernel>, ChainStorageError> {
+    /// Returns the sum of all kernels
+    pub fn fetch_kernel_commitment_sum(&self) -> Result<Commitment, ChainStorageError> {
         let db = self.db_read_access()?;
-        let kernel_count = db.count_kernels()?;
-        let mut kernels = Vec::with_capacity(kernel_count);
+        let mut sum = Commitment::from_public_key(&PublicKey::default());
         db.for_each_kernel(|kernel| {
             if let Ok((_, kernel)) = kernel {
-                kernels.push(kernel);
+                sum = &sum + &kernel.excess
             }
         })?;
 
-        Ok(kernels)
+        Ok(sum)
     }
 
     /// Store the provided UTXO.
@@ -485,13 +491,14 @@ where T: BlockchainBackend
     ) -> Result<Vec<(EpochTime, Difficulty)>, ChainStorageError>
     {
         let db = self.db_read_access()?;
-        fetch_target_difficulties(&*db, pow_algo, height, block_window)
+        db.fetch_target_difficulties(pow_algo, height, block_window)
     }
 
     /// Returns true if the given UTXO, represented by its hash exists in the UTXO set.
     pub fn is_utxo(&self, hash: HashOutput) -> Result<bool, ChainStorageError> {
+        let key = DbKey::UnspentOutput(hash);
         let db = self.db_read_access()?;
-        is_utxo(&*db, hash)
+        db.contains(&key)
     }
 
     /// Calculate the Merklish root of the specified merkle mountain range.
@@ -558,14 +565,6 @@ where T: BlockchainBackend
         db.insert_mmr_node(tree, hash, deleted)
     }
 
-    /// Create a MMR checkpoint for the given `MmrTree`
-    pub fn create_mmr_checkpoint(&self, tree: MmrTree) -> Result<(), ChainStorageError> {
-        let mut db = self.db_write_access()?;
-        let mut txn = DbTransaction::new();
-        txn.create_mmr_checkpoint(tree);
-        commit(&mut db, txn)
-    }
-
     /// Validates the merkle root against the header at the given height
     pub fn validate_merkle_root(&self, tree: MmrTree, height: u64) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
@@ -604,12 +603,13 @@ where T: BlockchainBackend
     ///
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
+        let new_height = block.header.height;
         // Perform orphan block validation.
         if let Err(e) = self.validators.orphan.validate(&block) {
             warn!(
                 target: LOG_TARGET,
                 "Block #{} ({}) failed validation - {}",
-                block.header.height,
+                new_height,
                 block.hash().to_hex(),
                 e.to_string()
             );
@@ -634,10 +634,11 @@ where T: BlockchainBackend
 
         // Cleanup of backend when in pruned mode.
         match block_add_result {
-            BlockAddResult::Ok | BlockAddResult::ChainReorg(_) => cleanup_pruned_mode(
+            BlockAddResult::Ok | BlockAddResult::ChainReorg(_) => prune_database(
                 &mut db,
-                self.config.pruned_mode_cleanup_interval,
+                self.config.pruning_interval,
                 self.config.pruning_horizon,
+                new_height,
             )?,
             _ => {},
         }
@@ -712,6 +713,17 @@ where T: BlockchainBackend
         commit(&mut db, txn)
     }
 
+    pub fn get_horizon_sync_state(&self) -> Result<Option<InProgressHorizonSyncState>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        get_horizon_sync_state(&*db)
+    }
+
+    pub fn set_horizon_sync_state(&self, state: InProgressHorizonSyncState) -> Result<(), ChainStorageError> {
+        let mut txn = DbTransaction::new();
+        txn.set_metadata(MetadataKey::HorizonSyncState, MetadataValue::HorizonSyncState(state));
+        self.commit(txn)
+    }
+
     /// Rewind the blockchain state to the block height given and return the blocks that were removed and orphaned.
     ///
     /// The operation will fail if
@@ -722,10 +734,197 @@ where T: BlockchainBackend
         rewind_to_height(&mut db, height)
     }
 
-    /// Commit the current synced horizon state.
-    pub fn commit_horizon_state(&self) -> Result<(), ChainStorageError> {
+    /// Prepares the database for horizon sync. This function sets the PendingHorizonSyncState for the database
+    /// and sets the chain metadata to indicate that this node can not provide any sync data until sync is complete.
+    pub fn horizon_sync_begin(&self) -> Result<InProgressHorizonSyncState, ChainStorageError> {
         let mut db = self.db_write_access()?;
-        commit_horizon_state(&mut db)
+        match get_horizon_sync_state(&*db)? {
+            Some(state) => {
+                info!(
+                    target: LOG_TARGET,
+                    "Previous horizon sync was interrupted. Attempting to recover."
+                );
+                debug!(target: LOG_TARGET, "Existing PendingHorizonSyncState = ({})", state);
+                Ok(state)
+            },
+            None => {
+                let metadata = db.fetch_chain_metadata()?;
+
+                let state = InProgressHorizonSyncState {
+                    metadata,
+                    initial_kernel_checkpoint_count: db.count_checkpoints(MmrTree::Kernel)? as u64,
+                    initial_utxo_checkpoint_count: db.count_checkpoints(MmrTree::Utxo)? as u64,
+                    initial_rangeproof_checkpoint_count: db.count_checkpoints(MmrTree::Utxo)? as u64,
+                };
+                debug!(target: LOG_TARGET, "Preparing database for horizon sync. ({})", state);
+
+                let mut txn = DbTransaction::new();
+
+                txn.set_metadata(
+                    MetadataKey::HorizonSyncState,
+                    MetadataValue::HorizonSyncState(state.clone()),
+                );
+
+                // During horizon state syncing the blockchain backend will be in an inconsistent state until the entire
+                // horizon state has been synced. Reset the local chain metadata will limit other nodes and
+                // local service from requesting data while the horizon sync is in progress.
+                txn.set_metadata(MetadataKey::ChainHeight, MetadataValue::ChainHeight(Some(0)));
+                txn.set_metadata(
+                    MetadataKey::EffectivePrunedHeight,
+                    MetadataValue::EffectivePrunedHeight(0),
+                );
+                txn.set_metadata(MetadataKey::AccumulatedWork, MetadataValue::AccumulatedWork(None));
+                commit(&mut db, txn)?;
+
+                Ok(state)
+            },
+        }
+    }
+
+    /// Commit the current synced horizon state.
+    pub fn horizon_sync_commit(&self) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        let tip_header = db
+            .fetch_last_header()?
+            .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve header. Blockchain DB is empty".into()))?;
+
+        let mut txn = DbTransaction::new();
+
+        // Update metadata
+        txn.set_metadata(
+            MetadataKey::ChainHeight,
+            MetadataValue::ChainHeight(Some(tip_header.height)),
+        );
+
+        let best_block = tip_header.hash();
+        txn.set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(Some(best_block)));
+
+        let accumulated_difficulty =
+            ProofOfWork::new_from_difficulty(&tip_header.pow, ProofOfWork::achieved_difficulty(&tip_header))
+                .total_accumulated_difficulty();
+        txn.set_metadata(
+            MetadataKey::AccumulatedWork,
+            MetadataValue::AccumulatedWork(Some(accumulated_difficulty)),
+        );
+
+        txn.set_metadata(
+            MetadataKey::EffectivePrunedHeight,
+            MetadataValue::EffectivePrunedHeight(tip_header.height),
+        );
+
+        // Merge all MMR checkpoints created during horizon sync into a single checkpoint
+        txn.merge_checkpoints(1);
+
+        // Remove pending horizon sync state
+        txn.delete_metadata(MetadataKey::HorizonSyncState);
+
+        commit(&mut db, txn)
+    }
+
+    /// Rollback the current synced horizon state to a consistent state.
+    pub fn horizon_sync_rollback(&self) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        let sync_state = match get_horizon_sync_state(&*db)? {
+            Some(state) => state,
+            None => {
+                debug!(target: LOG_TARGET, "Horizon sync: Nothing to roll back");
+                return Ok(());
+            },
+        };
+
+        let mut txn = DbTransaction::new();
+
+        // Rollback added kernels
+        let first_tmp_checkpoint_index =
+            usize::try_from(sync_state.initial_kernel_checkpoint_count).map_err(|_| ChainStorageError::OutOfRange)?;
+        let cp_count = db.count_checkpoints(MmrTree::Kernel)?;
+        for i in first_tmp_checkpoint_index..cp_count {
+            let cp = db.fetch_checkpoint_at_index(MmrTree::Kernel, i)?.expect(&format!(
+                "Database is corrupt: Failed to fetch kernel checkpoint at index {}",
+                i
+            ));
+            let (nodes_added, _) = cp.into_parts();
+            for hash in nodes_added {
+                txn.delete(DbKey::TransactionKernel(hash));
+            }
+        }
+
+        txn.rewind_kernel_mmr(cp_count - first_tmp_checkpoint_index);
+
+        // Rollback UTXO changes
+        let first_tmp_checkpoint_index =
+            usize::try_from(sync_state.initial_utxo_checkpoint_count).map_err(|_| ChainStorageError::OutOfRange)?;
+        let cp_count = db.count_checkpoints(MmrTree::Utxo)?;
+        for i in first_tmp_checkpoint_index..cp_count {
+            let cp = db.fetch_checkpoint_at_index(MmrTree::Utxo, i)?.expect(&format!(
+                "Database is corrupt: Failed to fetch UTXO checkpoint at index {}",
+                i
+            ));
+            let (nodes_added, deleted) = cp.into_parts();
+            for hash in nodes_added {
+                txn.delete(DbKey::UnspentOutput(hash));
+            }
+            for pos in deleted.iter() {
+                let (stxo_hash, is_deleted) = db.fetch_mmr_node(MmrTree::Utxo, pos, None)?;
+                debug_assert!(is_deleted);
+                txn.unspend_stxo(stxo_hash);
+            }
+        }
+
+        txn.rewind_utxo_mmr(cp_count - first_tmp_checkpoint_index);
+
+        // Rollback Rangeproof checkpoints
+        let first_tmp_checkpoint_index = usize::try_from(sync_state.initial_rangeproof_checkpoint_count)
+            .map_err(|_| ChainStorageError::OutOfRange)?;
+        let rp_checkpoint_count = db.count_checkpoints(MmrTree::RangeProof)?;
+        txn.rewind_rangeproof_mmr(rp_checkpoint_count - first_tmp_checkpoint_index);
+
+        // Rollback metadata
+        let metadata = sync_state.metadata;
+        txn.set_metadata(
+            MetadataKey::ChainHeight,
+            MetadataValue::ChainHeight(metadata.height_of_longest_chain),
+        );
+        txn.set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(metadata.best_block));
+        txn.set_metadata(
+            MetadataKey::AccumulatedWork,
+            MetadataValue::AccumulatedWork(metadata.accumulated_difficulty),
+        );
+        txn.set_metadata(
+            MetadataKey::EffectivePrunedHeight,
+            MetadataValue::EffectivePrunedHeight(metadata.effective_pruned_height),
+        );
+
+        // Remove pending horizon sync state
+        txn.delete_metadata(MetadataKey::HorizonSyncState);
+
+        commit(&mut db, txn)
+    }
+
+    /// Store the provided set of kernels and persists a checkpoint
+    pub fn horizon_sync_insert_kernels(&self, kernels: Vec<TransactionKernel>) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        let mut txn = DbTransaction::new();
+        kernels.into_iter().for_each(|kernel| txn.insert_kernel(kernel));
+        txn.create_mmr_checkpoint(MmrTree::Kernel);
+        commit(&mut db, txn)
+    }
+
+    /// Spends the UTXOs with the given hashes
+    pub fn horizon_sync_spend_utxos(&self, hashes: Vec<HashOutput>) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        let mut txn = DbTransaction::new();
+        hashes.into_iter().for_each(|hash| txn.spend_utxo(hash));
+        txn.create_mmr_checkpoint(MmrTree::Utxo);
+        commit(&mut db, txn)
+    }
+
+    /// Create a MMR checkpoint for the given `MmrTree`
+    pub fn horizon_sync_create_mmr_checkpoint(&self, tree: MmrTree) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        let mut txn = DbTransaction::new();
+        txn.create_mmr_checkpoint(tree);
+        commit(&mut db, txn)
     }
 }
 
@@ -735,24 +934,21 @@ fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ChainStorageError
     Err(ChainStorageError::UnexpectedResult(msg))
 }
 
-fn write_metadata<T: BlockchainBackend>(
+fn set_chain_metadata<T: BlockchainBackend>(
     db: &mut RwLockWriteGuard<T>,
     metadata: ChainMetadata,
 ) -> Result<(), ChainStorageError>
 {
     let mut txn = DbTransaction::new();
-    txn.insert(DbKeyValuePair::Metadata(
+    txn.set_metadata(
         MetadataKey::ChainHeight,
         MetadataValue::ChainHeight(metadata.height_of_longest_chain),
-    ));
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::BestBlock,
-        MetadataValue::BestBlock(metadata.best_block),
-    ));
-    txn.insert(DbKeyValuePair::Metadata(
+    );
+    txn.set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(metadata.best_block));
+    txn.set_metadata(
         MetadataKey::AccumulatedWork,
         MetadataValue::AccumulatedWork(metadata.accumulated_difficulty),
-    ));
+    );
     commit(db, txn)
 }
 
@@ -788,11 +984,7 @@ fn insert_headers<T: BlockchainBackend>(
     commit(db, txn)
 }
 
-fn fetch_header_with_block_hash<T: BlockchainBackend>(
-    db: &T,
-    hash: BlockHash,
-) -> Result<BlockHeader, ChainStorageError>
-{
+fn fetch_header_by_block_hash<T: BlockchainBackend>(db: &T, hash: BlockHash) -> Result<BlockHeader, ChainStorageError> {
     fetch!(db, hash, BlockHash)
 }
 
@@ -845,22 +1037,7 @@ fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: BlockHash) -> Result<Block, 
     fetch!(db, hash, OrphanBlock)
 }
 
-pub fn fetch_target_difficulties<T: BlockchainBackend>(
-    db: &T,
-    pow_algo: PowAlgorithm,
-    height: u64,
-    block_window: usize,
-) -> Result<Vec<(EpochTime, Difficulty)>, ChainStorageError>
-{
-    db.fetch_target_difficulties(pow_algo, height, block_window)
-}
-
-pub fn is_utxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ChainStorageError> {
-    let key = DbKey::UnspentOutput(hash);
-    db.contains(&key)
-}
-
-pub fn is_stxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ChainStorageError> {
+fn is_stxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ChainStorageError> {
     // Check if the UTXO MMR contains the specified deleted UTXO hash, the backend stxo_db is not used for this task as
     // archival nodes and pruning nodes might have different STXOs in their stxo_db as horizon state STXOs are
     // discarded by pruned nodes.
@@ -929,23 +1106,17 @@ fn store_new_block<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, block: Bl
     // Build all the DB queries needed to add the block and the add it atomically
     let mut txn = DbTransaction::new();
     // Update metadata
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::ChainHeight,
-        MetadataValue::ChainHeight(Some(height)),
-    ));
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::BestBlock,
-        MetadataValue::BestBlock(Some(best_block)),
-    ));
-    txn.insert(DbKeyValuePair::Metadata(
+    txn.set_metadata(MetadataKey::ChainHeight, MetadataValue::ChainHeight(Some(height)));
+    txn.set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(Some(best_block)));
+    txn.set_metadata(
         MetadataKey::AccumulatedWork,
         MetadataValue::AccumulatedWork(Some(accumulated_difficulty)),
-    ));
+    );
     // Insert block
     txn.insert_header(header);
     txn.spend_inputs(&inputs);
-    outputs.iter().for_each(|utxo| txn.insert_utxo(utxo.clone()));
-    kernels.iter().for_each(|k| txn.insert_kernel(k.clone()));
+    outputs.into_iter().for_each(|utxo| txn.insert_utxo(utxo));
+    kernels.into_iter().for_each(|k| txn.insert_kernel(k));
     txn.commit_block();
     commit(db, txn)?;
     Ok(())
@@ -957,10 +1128,10 @@ fn store_pruning_horizon<T: BlockchainBackend>(
 ) -> Result<(), ChainStorageError>
 {
     let mut txn = DbTransaction::new();
-    txn.insert(DbKeyValuePair::Metadata(
+    txn.set_metadata(
         MetadataKey::PruningHorizon,
         MetadataValue::PruningHorizon(pruning_horizon),
-    ));
+    );
     commit(db, txn)
 }
 
@@ -988,7 +1159,7 @@ fn fetch_block_with_kernel<T: BlockchainBackend>(
     excess_sig: Signature,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError>
 {
-    let metadata = db.fetch_metadata()?;
+    let metadata = db.fetch_chain_metadata()?;
     let db_height = metadata.height_of_longest_chain.unwrap_or(0);
     let horizon_height = metadata.horizon_block(db_height);
     for i in (horizon_height..db_height).rev() {
@@ -1024,7 +1195,7 @@ fn fetch_block_with_utxo<T: BlockchainBackend>(
     commitment: Commitment,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError>
 {
-    let metadata = db.fetch_metadata()?;
+    let metadata = db.fetch_chain_metadata()?;
     let db_height = metadata.height_of_longest_chain.unwrap_or(0);
     let horizon_height = metadata.horizon_block(db_height);
     for i in (horizon_height..db_height).rev() {
@@ -1070,7 +1241,7 @@ fn fetch_block_with_stxo<T: BlockchainBackend>(
     commitment: Commitment,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError>
 {
-    let metadata = db.fetch_metadata()?;
+    let metadata = db.fetch_chain_metadata()?;
     let db_height = metadata.height_of_longest_chain.unwrap_or(0);
     let horizon_height = metadata.horizon_block(db_height);
     for i in (horizon_height..db_height).rev() {
@@ -1096,7 +1267,7 @@ fn fetch_block_with_hash<T: BlockchainBackend>(
     hash: BlockHash,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError>
 {
-    if let Ok(header) = fetch_header_with_block_hash(db, hash.clone()) {
+    if let Ok(header) = fetch_header_by_block_hash(db, hash.clone()) {
         return Ok(Some(fetch_block(db, header.height)?));
     }
     if let Ok(block) = fetch_orphan(db, hash) {
@@ -1111,7 +1282,7 @@ fn block_exists<T: BlockchainBackend>(db: &T, hash: BlockHash) -> Result<bool, C
 }
 
 fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<u64, ChainStorageError> {
-    let metadata = db.fetch_metadata()?;
+    let metadata = db.fetch_chain_metadata()?;
     let db_height = metadata.height_of_longest_chain();
     if height > db_height {
         return Err(ChainStorageError::InvalidQuery(format!(
@@ -1131,16 +1302,6 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<u
 
 fn fetch_kernels<T: BlockchainBackend>(db: &T, hashes: Vec<Hash>) -> Result<Vec<TransactionKernel>, ChainStorageError> {
     hashes.into_iter().map(|hash| fetch_kernel(db, hash)).collect()
-}
-
-fn insert_kernels<T: BlockchainBackend>(
-    db: &mut RwLockWriteGuard<T>,
-    kernels: Vec<TransactionKernel>,
-) -> Result<(), ChainStorageError>
-{
-    let mut txn = DbTransaction::new();
-    kernels.into_iter().for_each(|kernel| txn.insert_kernel(kernel));
-    commit(db, txn)
 }
 
 fn fetch_inputs<T: BlockchainBackend>(
@@ -1194,10 +1355,11 @@ fn fetch_checkpoint<T: BlockchainBackend>(
     height: u64,
 ) -> Result<MerkleCheckPoint, ChainStorageError>
 {
-    db.fetch_checkpoint(tree, height)
+    db.fetch_checkpoint_at_height(tree, height)
 }
 
-pub fn commit<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, txn: DbTransaction) -> Result<(), ChainStorageError> {
+#[inline]
+fn commit<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, txn: DbTransaction) -> Result<(), ChainStorageError> {
     db.write(txn)
 }
 
@@ -1248,24 +1410,24 @@ fn rewind_to_height<T: BlockchainBackend>(
     // Rewind MMRs
     txn.rewind_kernel_mmr(steps_back);
     txn.rewind_utxo_mmr(steps_back);
-    txn.rewind_rp_mmr(steps_back);
+    txn.rewind_rangeproof_mmr(steps_back);
     // Update metadata
     let last_header = fetch_header(&**db, height)?;
     let accumulated_work =
         ProofOfWork::new_from_difficulty(&last_header.pow, ProofOfWork::achieved_difficulty(&last_header))
             .total_accumulated_difficulty();
-    txn.insert(DbKeyValuePair::Metadata(
+    txn.set_metadata(
         MetadataKey::ChainHeight,
         MetadataValue::ChainHeight(Some(last_header.height)),
-    ));
-    txn.insert(DbKeyValuePair::Metadata(
+    );
+    txn.set_metadata(
         MetadataKey::BestBlock,
         MetadataValue::BestBlock(Some(last_header.hash())),
-    ));
-    txn.insert(DbKeyValuePair::Metadata(
+    );
+    txn.set_metadata(
         MetadataKey::AccumulatedWork,
         MetadataValue::AccumulatedWork(Some(accumulated_work)),
-    ));
+    );
     commit(db, txn)?;
 
     Ok(removed_blocks)
@@ -1281,7 +1443,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let db_height = db
-        .fetch_metadata()?
+        .fetch_chain_metadata()?
         .height_of_longest_chain
         .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve block. Blockchain DB is empty".into()))
         .or_else(|e| {
@@ -1556,7 +1718,7 @@ fn try_construct_fork<T: BlockchainBackend>(
             fork_start_header.height,
             fork_start_header.hash().to_hex(),
         );
-        if let Ok(header) = fetch_header_with_block_hash(&**db, fork_start_header.prev_hash) {
+        if let Ok(header) = fetch_header_by_block_hash(&**db, fork_start_header.prev_hash) {
             if header.height + 1 == fork_start_header.height {
                 debug!(
                     target: LOG_TARGET,
@@ -1692,7 +1854,7 @@ fn cleanup_orphans<T: BlockchainBackend>(
         .expect("Unexpected result for database query");
         orphans.sort_by(|a, b| a.0.cmp(&b.0));
 
-        let metadata = db.fetch_metadata()?;
+        let metadata = db.fetch_chain_metadata()?;
         let horizon_height = metadata.horizon_block(metadata.height_of_longest_chain.unwrap_or(0));
         let mut txn = DbTransaction::new();
         for (removed_count, (height, block_hash)) in orphans.into_iter().enumerate() {
@@ -1712,60 +1874,44 @@ fn cleanup_orphans<T: BlockchainBackend>(
     Ok(())
 }
 
-fn cleanup_pruned_mode<T: BlockchainBackend>(
+fn prune_database<T: BlockchainBackend>(
     db: &mut RwLockWriteGuard<T>,
-    pruned_mode_cleanup_interval: u64,
+    pruning_height_interval: u64,
     pruning_horizon: u64,
+    height: u64,
 ) -> Result<(), ChainStorageError>
 {
-    let metadata = db.fetch_metadata()?;
+    let metadata = db.fetch_chain_metadata()?;
     if metadata.is_pruned_node() {
         let db_height = metadata.height_of_longest_chain();
-        if db_height % pruned_mode_cleanup_interval == 0 {
-            info!(
-                target: LOG_TARGET,
-                "Pruned mode cleanup interval reached, performing cleanup.",
-            );
-            let max_cp_count = pruning_horizon + 1; // Include accumulated checkpoint
+        if db_height % pruning_height_interval == 0 {
+            info!(target: LOG_TARGET, "Pruning interval reached. Pruning the database.");
+            let abs_pruning_horizon = height.saturating_sub(pruning_horizon);
+
             let mut txn = DbTransaction::new();
+            let max_cp_count = pruning_horizon + 1; // Include accumulated checkpoint
             txn.merge_checkpoints(max_cp_count as usize);
-            return commit(db, txn);
+
+            if abs_pruning_horizon > metadata.effective_pruned_height {
+                txn.set_metadata(
+                    MetadataKey::EffectivePrunedHeight,
+                    MetadataValue::EffectivePrunedHeight(abs_pruning_horizon),
+                );
+            }
+            commit(db, txn)?;
         }
     }
+
     Ok(())
 }
 
-fn commit_horizon_state<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>) -> Result<(), ChainStorageError> {
-    let tip_header = db
-        .fetch_last_header()?
-        .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve header. Blockchain DB is empty".into()))?;
-
-    let mut txn = DbTransaction::new();
-
-    // Update metadata
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::ChainHeight,
-        MetadataValue::ChainHeight(Some(tip_header.height)),
-    ));
-
-    let best_block = tip_header.hash();
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::BestBlock,
-        MetadataValue::BestBlock(Some(best_block)),
-    ));
-
-    let accumulated_difficulty =
-        ProofOfWork::new_from_difficulty(&tip_header.pow, ProofOfWork::achieved_difficulty(&tip_header))
-            .total_accumulated_difficulty();
-    txn.insert(DbKeyValuePair::Metadata(
-        MetadataKey::AccumulatedWork,
-        MetadataValue::AccumulatedWork(Some(accumulated_difficulty)),
-    ));
-
-    // Merge all MMR checkpoints created during horizon sync into a single checkpoint
-    txn.merge_checkpoints(1);
-
-    commit(db, txn)
+fn get_horizon_sync_state<T: BlockchainBackend>(
+    db: &T,
+) -> Result<Option<InProgressHorizonSyncState>, ChainStorageError> {
+    match db.fetch(&DbKey::Metadata(MetadataKey::HorizonSyncState))? {
+        Some(DbValue::Metadata(MetadataValue::HorizonSyncState(val))) => Ok(Some(val)),
+        _ => Ok(None),
+    }
 }
 
 fn log_error<T>(req: DbKey, err: ChainStorageError) -> Result<T, ChainStorageError> {

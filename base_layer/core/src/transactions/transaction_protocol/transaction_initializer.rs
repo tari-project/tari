@@ -600,7 +600,7 @@ mod test {
 
         match result {
             Ok(_) => panic!("Range proof should have failed to verify"),
-            Err(e) => assert_eq!(e.message, "Range proof could not be verified".to_string()),
+            Err(e) => assert!(e.message.contains("Range proof could not be verified")),
         }
     }
 }

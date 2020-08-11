@@ -14,4 +14,9 @@ message ChainMetadata {
     uint64 pruning_horizon = 4;
     // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
     google.protobuf.UInt64Value accumulated_difficulty = 5;
+    // The effective height of the pruning horizon. This indicates from what height
+    // a full block can be provided (exclusive).
+    // If `effective_pruned_height` is equal to the `height_of_longest_chain` no blocks can be provided.
+    // Archival nodes wil always have an `effective_pruned_height` of zero.
+    uint64 effective_pruned_height = 6;
 }

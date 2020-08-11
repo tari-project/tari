@@ -39,8 +39,8 @@ impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
         if self.is_valid {
             Ok(())
         } else {
-            Err(ValidationError::CustomError(
-                "This mock validator always returns an error".into(),
+            Err(ValidationError::custom_error(
+                "This mock validator always returns an error",
             ))
         }
     }
@@ -51,8 +51,8 @@ impl<T> StatelessValidation<T> for MockValidator {
         if self.is_valid {
             Ok(())
         } else {
-            Err(ValidationError::CustomError(
-                "This mock validator always returns an error".into(),
+            Err(ValidationError::custom_error(
+                "This mock validator always returns an error",
             ))
         }
     }

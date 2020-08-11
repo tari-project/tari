@@ -152,10 +152,7 @@ impl<B: BlockchainBackend> HeaderValidator<B> {
         let heights = (0..block_header.height).rev().collect::<Vec<_>>();
         let mut target_difficulties = Vec::with_capacity(block_window);
         for block_nums in heights.chunks(block_window) {
-            let headers = self
-                .db
-                .fetch_headers(block_nums.to_vec())
-                .map_err(|err| ValidationError::CustomError(err.to_string()))?;
+            let headers = self.db.fetch_headers(block_nums.to_vec())?;
 
             let max_remaining = block_window.saturating_sub(target_difficulties.len());
             trace!(
@@ -206,8 +203,7 @@ impl<B: BlockchainBackend> HeaderValidator<B> {
         let block_nums = (start_height..block_header.height).collect();
         let timestamps = self
             .db
-            .fetch_headers(block_nums)
-            .map_err(ValidationError::custom_error)?
+            .fetch_headers(block_nums)?
             .iter()
             .map(|h| h.timestamp)
             .collect::<Vec<_>>();

@@ -26,10 +26,7 @@ use crate::{
 };
 use bytes::{self, BufMut};
 use serde::{Deserialize, Serialize};
-use std::{
-    convert::TryFrom,
-    fmt::{Display, Error, Formatter},
-};
+use std::fmt::{Display, Error, Formatter};
 use tari_crypto::tari_utilities::hex::Hex;
 
 pub trait AchievedDifficulty {}

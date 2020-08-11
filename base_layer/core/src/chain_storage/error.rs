@@ -20,11 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{chain_storage::MmrTree, validation::ValidationError};
+use crate::{
+    chain_storage::{lmdb_db::LMDBVecError, MmrTree},
+    validation::ValidationError,
+};
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 use thiserror::Error;
+use tokio::task;
 
-#[derive(Debug, Clone, Error, PartialEq)]
+#[derive(Debug, Clone, Error)]
 pub enum ChainStorageError {
     #[error("Access to the underlying storage mechanism failed:{0}")]
     AccessError(String),
@@ -66,7 +70,7 @@ pub enum ChainStorageError {
         #[from]
         source: MerkleProofError,
     },
-    #[error("Validation error:{source}")]
+    #[error("Validation error: {source}")]
     ValidationError {
         #[from]
         source: ValidationError,
@@ -75,8 +79,32 @@ pub enum ChainStorageError {
     MismatchedMmrRoot(MmrTree),
     #[error("An invalid block was submitted to the database")]
     InvalidBlock,
-    #[error("Blocking task spawn error:{0}")]
+    #[error("Blocking task spawn error: {0}")]
     BlockingTaskSpawnError(String),
     #[error("A request was out of range")]
     OutOfRange,
+    #[error("Value not found: {0}")]
+    LmdbValueNotFound(lmdb_zero::Error),
+}
+
+impl From<LMDBVecError> for ChainStorageError {
+    fn from(err: LMDBVecError) -> Self {
+        Self::AccessError(err.to_string())
+    }
+}
+
+impl From<task::JoinError> for ChainStorageError {
+    fn from(err: task::JoinError) -> Self {
+        Self::BlockingTaskSpawnError(err.to_string())
+    }
+}
+
+impl From<lmdb_zero::Error> for ChainStorageError {
+    fn from(err: lmdb_zero::Error) -> Self {
+        use lmdb_zero::Error::*;
+        match err {
+            Code(c) if c == lmdb_zero::error::NOTFOUND => ChainStorageError::LmdbValueNotFound(err),
+            _ => ChainStorageError::AccessError(err.to_string()),
+        }
+    }
 }

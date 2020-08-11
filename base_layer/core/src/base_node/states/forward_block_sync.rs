@@ -22,7 +22,7 @@
 use crate::{
     base_node::{
         comms_interface::{Broadcast, CommsInterfaceError},
-        states::{StateEvent, StatusInfo},
+        states::{sync_peers::SyncPeer, StateEvent, StatusInfo},
         BaseNodeStateMachine,
     },
     blocks::BlockHeader,
@@ -57,8 +57,8 @@ impl ForwardBlockSyncInfo {
             Ok(peers) => peers,
             Err(e) => return StateEvent::FatalError(format!("Cannot get peers to sync to: {}", e)),
         };
-        let sync_peers: Vec<NodeId> = peers.into_iter().map(|peer| peer.node_id).collect();
-        match synchronize_blocks(shared, &sync_peers).await {
+        let sync_peers = peers.into_iter().map(|peer| peer.node_id).collect();
+        match synchronize_blocks(shared, sync_peers).await {
             Ok(StateEvent::BlocksSynchronized) => {
                 info!(target: LOG_TARGET, "Block sync state has synchronised");
                 StateEvent::BlocksSynchronized
@@ -71,10 +71,9 @@ impl ForwardBlockSyncInfo {
 
 async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
-    sync_nodes: &[NodeId],
+    mut sync_nodes: Vec<NodeId>,
 ) -> Result<StateEvent, String>
 {
-    let mut sync_nodes = Vec::from(sync_nodes);
     let tip = shared.db.fetch_tip_header().map_err(|e| e.to_string())?;
     if let StatusInfo::BlockSync(ref mut info) = shared.info {
         info.tip_height = tip.height;
@@ -86,7 +85,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
 
     loop {
         if sync_node.is_none() {
-            return Err("No more valid nodes to sync to".to_string());
+            return Err("No more valid nodes sync peers".to_string());
         }
         let current_sync_node = sync_node
             .as_ref()
@@ -99,7 +98,11 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             from_headers.first().map(|h| h.height).unwrap(),
         );
         if let StatusInfo::BlockSync(ref mut info) = shared.info {
-            info.sync_peers = vec![current_sync_node.clone()];
+            // TODO: We don't have the peer's chainmetadata in this strategy - decide on a single block sync strategy
+            info.sync_peers = vec![SyncPeer {
+                node_id: current_sync_node.clone(),
+                chain_metadata: Default::default(),
+            }];
             info.tip_height = from_headers.last().map(|h| h.height).unwrap();
             info.local_height = from_headers.first().map(|h| h.height).unwrap();
         }
@@ -123,7 +126,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             },
             Ok(headers) => {
                 if let Some(first_header) = headers.first() {
-                    if let Ok(block) = shared.db.fetch_header_with_block_hash(first_header.prev_hash.clone()) {
+                    if let Ok(block) = shared.db.fetch_header_by_block_hash(first_header.prev_hash.clone()) {
                         if shared.db.fetch_tip_header().map_err(|e| e.to_string())? != block {
                             // If peer returns genesis block, it means that there is a split, but it is further back
                             // than the headers we sent.
