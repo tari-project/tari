@@ -122,22 +122,27 @@ not concerned that every transaction in history was valid from an inflation pers
 transactions lead to zero inflation. This sounds worse than it is, since locally, every individual transaction is
 checked for validity at the time of inclusion in the blockchain.
 
-We presume however, that the intervening transactions were all valid, since they all passed consensus at the time of
-inclusion.
-
-This is why we can discard range proofs after UTXOs are spent. We presume that the UTXO chain that led to the current
-set were all checked and had positive values, but we only really care that the current UTXO set contains all
-non-negative values.
-
 This argument is independent of the nature of the additional restrictions. Specifically, if these restrictions are
-manifested as a script that provides additional constraints over whether a UTXO may be spent, the same arguments apply:
-We assume that the rules were properly enforced up until now, but it's not really our concern. What we care about is
-that no inflation has occurred to this point and that we enforce all the consensus rules for any new transactions going
-forward.
+manifested as a script that provides additional constraints over whether a UTXO may be spent, the same arguments apply.
 
 This means that from a philosophical viewpoint, there ought to be no reason that Tari Script is not workable, and
-further, that pruning spent outputs (and possibly the scripts associated with them) is no different from pruning range
-proofs.
+further, that pruning spent outputs (and possibly the scripts associated with them) is not that different from pruning
+range proofs.
+
+There is one key difference though that we need to address.
+
+If it somehow happened that two illegal transactions made it into the blockchain (perhaps due to a bug), and the two
+cancelled each other out, such that the global coin supply was still correct, one would never know this when doing a
+chain synchronisation in pruned mode.
+
+But if there was a steady inflation bug due to invalid range proofs making it into the blockchain, a pruned mode sync
+would still detect that _something_ was awry, because the global coin supply balance acts as another check.
+
+With Tari script, once the script has been pruned away, and then there is a re-org to an earlier point on the chain,
+then there's no way way to ensure that the script was honoured.
+
+However, a single honest archival node would be able to detect any fraud on the same chain and provide a simple proof
+that a transaction did not honour the redeem script.
 
 ### Additional requirements
 
@@ -161,7 +166,7 @@ via cut-through, whereas kernels are never pruned.
 
 One approach to commit to the script hashes is to modify the output commitments using the [data commitments] approach
 suggested by [Phyro](https://github.com/phyro). In this approach, when creating a new UTXO, the owner also calculates
-the hash of the locking script, _s_, such that `s = H(script)`. The hash script gets stored in the UTXO itself.
+the hash of the locking script, _s_, such that `s = H(script)`. The script hash gets stored in the UTXO itself.
 
 ## Protocol modifications
 
@@ -207,28 +212,42 @@ The overall and block balance checks must also be modified to use \\( \hat{C} \\
 The new transaction balance is thus
 
 $$  
-\begin{array}
-  .\sum(\mathrm{Inputs}) - \sum(\mathrm{Outputs}) + \sum(\mathrm{fee}_i.G)  \\\\
-  \sum\hat{C_i} - \sum\hat{C_j} + \sum(\mathrm{fee}_i.G)  \\\\
-  \sum(C_i + \mathrm{H}(C_i \Vert s_i).G) - \sum(C_j + \mathrm{H}(C_j \Vert s_j).G) + \sum(\mathrm{fee}.G)  \\\\
-  \text{If the accounting is correct, all values will cancel} \\\\
-  \sum(k_i + \mathrm{H}(C_i \Vert s_i).G) - \sum(k_j + \mathrm{H}(C_j \Vert s_j).G)  \\\\
-  \text{The sum of all the blinding factors (times G) is the definition of the excess,}\\; x_s\cdot G = X_s \\\\
-  X_s + \sum(\mathrm{H}(C_i \Vert s_i).G) - \sum(\mathrm{H}(C_j \Vert s_j).G) \\\\
-  \text{Define}\\, \Lambda = \sum(\mathrm{H}(C_i \Vert s_i).G) - \sum(\mathrm{H}(C_j \Vert s_j).G) \\\\
-  X_s + \Lambda \\\\
-\end{array}  
+\begin{align}
+   & \sum(\mathrm{Inputs}) - \sum(\mathrm{Outputs}) + \sum(\mathrm{fee}_i.G)  \\\\
+  =& \sum\hat{C_i} - \sum\hat{C_j} + \sum(\mathrm{fee}_i.G)  \\\\
+  =& \sum(C_i + \mathrm{H}(C_i \Vert s_i).G) - \sum(C_j + \mathrm{H}(C_j \Vert s_j).G) + \sum(\mathrm{fee}.G)  
+\end{align}
+$$
+
+If the accounting is correct, all values will cancel
+
+$$
+  = \sum(k_i + \mathrm{H}(C_i \Vert s_i).G) - \sum(k_j + \mathrm{H}(C_j \Vert s_j).G)
+$$
+
+The sum of all the blinding factors (times G) is the definition of the standard Mimblewimble excess,
+
+$$ x_s\cdot G = X_s $$
+
+If we define,
+$$
+    \Lambda = \sum(\mathrm{H}(C_i \Vert s_i).G) - \sum(\mathrm{H}(C_j \Vert s_j).G)
+$$
+
+then the new transaction excess can be written as
+$$
+    X_\mathrm{new} = X_s + \Lambda
 $$
 
 The kernels are unmodified, except that the excess will now include \\( \Lambda \\), representing the sum of all the
 commitments to the UTXO script hashes. This also means that the kernel signatures are calculated slightly differently:
 
 $$  
-\begin{array}
-  .s_i &= r_i + e.\bigl(k_i + \mathrm{H}(C_i \Vert s_i) \bigr) \\\\
+\begin{align}
+  s_i &= r_i + e.\bigl(k_i + \mathrm{H}(C_i \Vert s_i) \bigr) \\\\
   s_i.G &= r_i.G + e.\bigl(k_i + \mathrm{H}(C_i \Vert s_i) \bigr).G \\\\
   s_i.G &= R_i + e.\bigl(P_i + \mathrm{H}(C_i \Vert s_i)\bigr) \\\\
-\end{array}
+\end{align}
 $$
 
 Summing the signatures, one can easily confirm that \\( X_s + \Lambda \\) signs the kernel correctly. The kernel offset
@@ -256,9 +275,9 @@ cancel out in the overall balance in the same way that the pruned out excesses a
 However, a problem arises now in that as it stands, the UTXOs _cannot_ be pruned because we would lose some data needed
 to verify the kernel signatures, i.e. \\( \mathrm{H}(C_i \Vert s_i) \\) and that data only exists in the UTXOs. However,
 we can salvage this situation fairly easily by noticing that we only need that _hash_ of the commitment and script hash.
-If we track an MMR of \\( C_i \Vert s_i \\), then those hashes are always available, even after the UTXOs themselves have
-been discarded. In terms of additional block space required, this amounts to a single 32 byte hash per header (the MMR
-root).
+If we track an MMR of \\( C_i \Vert s_i \\), then those hashes are always available, even after the UTXOs themselves
+have been discarded. In terms of additional block space required, this amounts to a single 32 byte hash per header (the
+MMR root). A more detailed storage assessment is given [below](#storage-impact-of-script-hash-mmr).
 
 ## Tari Script semantics
 
@@ -346,7 +365,25 @@ pub enum StackItem {
 }
 ```
 
+### Storage impact of script hash MMR
+
+Adding another MMR to track the script commitments, \\( \mathrm{H}(C \Vert s_i \\) has the following impacts on
+bandwidth and storage:
+
+Additional data transferred in each block would be:
+
+* 32 bytes for every UTXO (The script hash itself)
+* 32 bytes for every header (The MMR root).
+
+The storage impact is the size of the scripts, plus \\( (2^{\log_2 k + 1}-1) \\) * 32 bytes, where k = total number of
+UTXOs, or, if we just store the leaves it's k * 32 bytes.
+
+For 10 million UTXOs, this adds an additional 620 MB or so to the blockchain database if the entire MMR is stored, or
+305 MB if just the hashes are stored.
+
 ## Extensions
+
+### Covenants
 
 Tari script places restrictions on _who_ can spend UTXOs. It will also be useful for Tari digital asset applications to
 restrict _how_ or _where_ UTXOs may be spent in some cases. The general term for these sorts of restrictions are termed
@@ -354,6 +391,14 @@ _covenants_. The [Handshake white paper] has a fairly good description of how co
 
 It is beyond the scope of this RFC, but it's anticipated that Tari Script would play a key role in the introduction of
 generalised covenant support into Tari.
+
+### Lock-time malleability
+
+The current Tari protocol has an issue with Transaction Output Maturity malleability. This output feature is enforced in
+the consensus rules but it is actually possible for a miner to change the value without invalidating the transaction.
+
+The lock time could also be added to the script commitment hash to solve this problem.
+
 
 ## Applications
 
@@ -365,7 +410,8 @@ that the sender uses Diffie-Hellman exchange to generate a shared private key th
 factor.
 
 To prevent the sender from spending the coins (since both parties now know the spending key), there is an additional
-balance that is performed on the block and transaction that requires the spender to know the receiver's private key.
+commitment balance equation that is carried out on the block and transaction that requires the spender to know the
+receiver's private key.
 
 To implement one-sided payments in Tari, we propose using Diffie-Hellman exchange in conjunction with Tari Script to
 achieve the same thing.
@@ -403,6 +449,12 @@ be able to unlock the UTXO to spend it.
 Since the script is committed to and cannot be cut-through, only Bob will be able to spend this UTXO unless someone is
 able to discover the private key from the public key information (the discrete log assumption), or if the majority of
 miners collude to not honour the consensus rules governing the successful evaluation of the script (the 51% assumption).
+
+
+### Credits
+
+Thanks to [@philipr-za](https://github.com/philipr-za) and [@SWvheerden](https://github.com/SWvheerden) for their input
+and contributions to this RFC.
 
 [data commitments]: https://phyro.github.io/grinvestigation/data_commitments.html
 [LIP-004]: https://github.com/DavidBurkett/lips/blob/master/lip-0004.mediawiki
