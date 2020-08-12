@@ -4,22 +4,22 @@ authors = ["The Tari Development Community"]
 description = "The tari full base node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.4.2"
+version = "0.5.0"
 edition = "2018"
 
 [dependencies]
-tari_common = { version= "^0.2", path = "../../common" }
-tari_comms = { version = "^0.2", path = "../../comms"}
-tari_comms_dht = { version = "^0.2", path = "../../comms/dht"}
-tari_core = { version= "^0.2", path = "../../base_layer/core", default-features = false, features = ["transactions"]}
-tari_p2p = { version= "^0.2", path = "../../base_layer/p2p" }
-tari_service_framework = { version = "^0.0", path = "../../base_layer/service_framework"}
-tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0" }
-tari_mmr = { version = "^0.2", path = "../../base_layer/mmr" }
-tari_wallet = { version = "^0.2", path = "../../base_layer/wallet" }
+tari_common = {  path = "../../common" }
+tari_comms = {  path = "../../comms"}
+tari_comms_dht = {  path = "../../comms/dht"}
+tari_core = {  path = "../../base_layer/core", default-features = false, features = ["transactions"]}
+tari_p2p = {  path = "../../base_layer/p2p" }
+tari_service_framework = {  path = "../../base_layer/service_framework"}
+tari_shutdown = { path = "../../infrastructure/shutdown"}
+tari_mmr = {  path = "../../base_layer/mmr" }
+tari_wallet = {  path = "../../base_layer/wallet" }
 tari_broadcast_channel = "^0.2"
 tari_crypto = { version = "^0.5" }
-tari_app_grpc = { version = "^0.0", path = "../tari_app_grpc" }
+tari_app_grpc = {  path = "../tari_app_grpc" }
 
 structopt = { version = "0.3.13", default_features = false }
 config = { version = "0.9.3" }

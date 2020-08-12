@@ -17,16 +17,18 @@ THings to do before pushing a new commit to `master`:
 |:-----------------------------|:--------|:-----------------------------------------|
 | infrastructure/derive        | 0.0.10  | 7d734a2e79bfe2dd5d4ae00a2b760614d21e69c4 |
 | infrastructure/shutdown      | 0.0.10  | 7d734a2e79bfe2dd5d4ae00a2b760614d21e69c4 |
-| infrastructure/storage       | 0.2.0   |                                          |
-| infrastructure/test_utils    | 0.2.0   |                                          |
-| base_layer/core              | 0.2.0   |                                          |
-| base_layer/key_manager       | 0.2.0   |                                          |
-| base_layer/mmr               | 0.2.0   | d4780a588942d9bd5f3188fa373e9aa869a26870 |
-| base_layer/p2p               | 0.2.0   |                                          |
-| base_layer/service_framework | 0.0.10  | 7d734a2e79bfe2dd5d4ae00a2b760614d21e69c4 |
-| base_layer/wallet            | 0.2.0   |                                          |
-| base_layer/wallet_ffi        | 0.2.0   |                                          |
-| common                       | 0.2.0   |                                          |
-| comms                        | 0.2.0   |                                          |
-| comms/dht                    | 0.2.0   |                                          |
-| applications/tari_base_node  | 0.4.2   | 1f097732faf957323129d3bcfe073dd6dbdf8e41 |
+| infrastructure/storage       | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
+| infrastructure/test_utils    | 0.2.1   | 26951ddbada794d637c740a8ea4f84057ccdc7a2 |
+| base_layer/core              | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df |
+| base_layer/key_manager       | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
+| base_layer/mmr               | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
+| base_layer/p2p               | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
+| base_layer/service_framework | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
+| base_layer/wallet            | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
+| base_layer/wallet_ffi        | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
+| common                       | 0.2.1   | 2bfab016432c8f48d8f5e69c265c82f526e59f34 |
+| comms                        | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
+| comms/dht                    | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
+| applications/tari_base_node  | 0.5.0   | b0a9d784f4b6c21276e652a526eb40e1eb9931e6 |
+| applications/tari_app_grpc   | 0.5.0 | b706f4d54c7e5fbd487130e04355e9cea745cf5b | 
+| applications/tari_console_wallet | 0.5.0 | 7e94adb60c56d555af45af0cf0c65f439432713c | 
