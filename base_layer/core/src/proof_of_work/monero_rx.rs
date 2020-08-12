@@ -30,7 +30,6 @@ use monero::{
     consensus::{encode::VarInt, serialize},
     cryptonote::hash::Hash,
 };
-#[cfg(feature = "monero_merge_mining")]
 use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -45,7 +44,6 @@ pub enum MergeMineError {
     DeserializeError,
     #[error("Hashing of Monero data failed")]
     HashingError,
-    #[cfg(feature = "monero_merge_mining")]
     #[error("RandomX error: {0}")]
     RandomXError(#[from] RandomXError),
     #[error("Validation error: {0}")]
@@ -159,42 +157,26 @@ pub fn monero_difficulty(header: &BlockHeader) -> Difficulty {
 fn monero_difficulty_calculation(header: &BlockHeader) -> Result<Difficulty, MergeMineError> {
     let monero = MoneroData::new(header)?;
     verify_header(&header, &monero)?;
-    #[cfg(feature = "monero_merge_mining")]
-    {
-        let flags = RandomXFlag::get_recommended_flags();
-        let key = monero.key.clone();
-        let input = create_input_blob(&monero.header, &monero.count, &monero.transaction_hashes)?;
-        let cache = RandomXCache::new(flags, (&key).as_ref())?;
-        let dataset = RandomXDataset::new(flags, &cache, 0)?;
-        let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset))?;
-        let hash = vm.calculate_hash((&input).as_ref())?;
-        let scalar = U256::from_big_endian(&hash); // Big endian so the hash has leading zeroes
-        let result = MAX_TARGET / scalar;
-        let difficulty = Difficulty::from(result.low_u64());
-        Ok(difficulty)
-    }
-    #[cfg(not(feature = "monero_merge_mining"))]
-    {
-        Err(MergeMineError::HashingError)
-    }
+    let flags = RandomXFlag::get_recommended_flags();
+    let key = monero.key.clone();
+    let input = create_input_blob(&monero.header, &monero.count, &monero.transaction_hashes)?;
+    let cache = RandomXCache::new(flags, (&key).as_ref())?;
+    let dataset = RandomXDataset::new(flags, &cache, 0)?;
+    let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset))?;
+    let hash = vm.calculate_hash((&input).as_ref())?;
+    let scalar = U256::from_big_endian(&hash); // Big endian so the hash has leading zeroes
+    let result = MAX_TARGET / scalar;
+    let difficulty = Difficulty::from(result.low_u64());
+    Ok(difficulty)
 }
 
 /// Appends merge mining hash to a Monero block and returns the Monero blocktemplate_blob
 pub fn append_merge_mining_tag(block: &MoneroBlock, hash: Hash) -> Result<String, MergeMineError> {
-    #[cfg(feature = "monero_merge_mining")]
-    {
-        let mut monero_block = block.clone();
-        let mm_tag = SubField::MergeMining(VarInt(0), hash);
-        monero_block.miner_tx.prefix.extra.0.push(mm_tag);
-        let serialized = serialize::<MoneroBlock>(&block);
-        Ok(hex::encode(&serialized).into())
-    }
-    #[cfg(not(feature = "monero_merge_mining"))]
-    {
-        Err(MergeMineError::SerializeError(
-            "Could not append merge mining tag to Monero block".to_string(),
-        ))
-    }
+    let mut monero_block = block.clone();
+    let mm_tag = SubField::MergeMining(VarInt(0), hash);
+    monero_block.miner_tx.prefix.extra.0.push(mm_tag);
+    let serialized = serialize::<MoneroBlock>(&block);
+    Ok(hex::encode(&serialized).into())
 }
 
 /// Calculates the Monero blockhashing_blob
@@ -204,27 +186,18 @@ pub fn create_input_blob(
     tx_hashes: &Vec<[u8; 32]>,
 ) -> Result<String, MergeMineError>
 {
-    #[cfg(feature = "monero_merge_mining")]
-    {
-        let header = serialize::<MoneroBlockHeader>(header);
-        // Note count assumes the miner tx is included already
-        let mut count = serialize::<VarInt>(&VarInt(tx_count.clone() as u64));
-        let mut hashes = Vec::new();
-        for item in tx_hashes {
-            hashes.push(Hash(from_slice(item.clone().as_bytes())));
-        }
-        let mut root = tree_hash(hashes);
-        let mut encode2 = header;
-        encode2.append(&mut root);
-        encode2.append(&mut count);
-        Ok(hex::encode(encode2).into())
+    let header = serialize::<MoneroBlockHeader>(header);
+    // Note count assumes the miner tx is included already
+    let mut count = serialize::<VarInt>(&VarInt(tx_count.clone() as u64));
+    let mut hashes = Vec::new();
+    for item in tx_hashes {
+        hashes.push(Hash(from_slice(item.clone().as_bytes())));
     }
-    #[cfg(not(feature = "monero_merge_mining"))]
-    {
-        Err(MergeMineError::SerializeError(
-            "Could not create input blob for RandomX".to_string(),
-        ))
-    }
+    let mut root = tree_hash(hashes);
+    let mut encode2 = header;
+    encode2.append(&mut root);
+    encode2.append(&mut count);
+    Ok(hex::encode(encode2).into())
 }
 
 /// Utility function to transform array to fixed array

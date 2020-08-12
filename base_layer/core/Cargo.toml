@@ -10,8 +10,7 @@ version = "0.2.0"
 edition = "2018"
 
 [features]
-default = ["croaring", "tari_mmr", "transactions", "base_node", "mempool_proto", "base_node_proto", "monero"]
-monero_merge_mining = ["croaring", "tari_mmr", "transactions", "base_node", "mempool_proto", "base_node_proto", "monero", "randomx-rs"]
+default = ["croaring", "tari_mmr", "transactions", "base_node", "mempool_proto", "base_node_proto", "monero", "randomx-rs"]
 transactions = []
 mempool_proto = []
 base_node = []

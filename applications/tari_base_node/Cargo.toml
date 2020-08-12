@@ -11,7 +11,7 @@ edition = "2018"
 tari_common = { version= "^0.2", path = "../../common" }
 tari_comms = { version = "^0.2", path = "../../comms"}
 tari_comms_dht = { version = "^0.2", path = "../../comms/dht"}
-tari_core = { version= "^0.2", path = "../../base_layer/core", default-features = false, features = ["transactions", "monero_merge_mining"]}
+tari_core = { version= "^0.2", path = "../../base_layer/core", default-features = false, features = ["transactions"]}
 tari_p2p = { version= "^0.2", path = "../../base_layer/p2p" }
 tari_service_framework = { version = "^0.0", path = "../../base_layer/service_framework"}
 tari_shutdown = { path = "../../infrastructure/shutdown", version = "^0.0" }

@@ -3780,35 +3780,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_conduit"
-version = "0.1.0"
-dependencies = [
- "arrayref",
- "bincode",
- "chrono",
- "curl",
- "derive-error",
- "hex",
- "json",
- "jsonrpc",
- "log 0.4.11",
- "monero",
- "prost",
- "prost-types",
- "rand 0.7.3",
- "regex",
- "serde 1.0.114",
- "tari_app_grpc",
- "tari_core",
- "tari_crypto",
- "tari_utilities 0.1.2",
- "tokio",
- "tokio-macros",
- "tonic",
- "tonic-build",
-]
-
-[[package]]
 name = "tari_console_wallet"
 version = "0.1.0"
 dependencies = [
@@ -3929,6 +3900,38 @@ dependencies = [
  "sha2",
  "tari_crypto",
  "thiserror",
+]
+
+[[package]]
+name = "tari_merge_mining_proxy"
+version = "0.1.0"
+dependencies = [
+ "arrayref",
+ "bincode",
+ "chrono",
+ "curl",
+ "derive-error",
+ "hex",
+ "json",
+ "jsonrpc",
+ "log 0.4.11",
+ "monero",
+ "prost",
+ "prost-types",
+ "rand 0.7.3",
+ "regex",
+ "serde 1.0.114",
+ "structopt",
+ "tari_app_grpc",
+ "tari_common",
+ "tari_core",
+ "tari_crypto",
+ "tari_utilities 0.1.2",
+ "thiserror",
+ "tokio",
+ "tokio-macros",
+ "tonic",
+ "tonic-build",
 ]
 
 [[package]]
