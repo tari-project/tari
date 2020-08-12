@@ -213,9 +213,9 @@ The new transaction balance is thus
 
 $$  
 \begin{align}
-   & \sum(\mathrm{Inputs}) - \sum(\mathrm{Outputs}) + \sum(\mathrm{fee}_i.G)  \\\\
-  =& \sum\hat{C_i} - \sum\hat{C_j} + \sum(\mathrm{fee}_i.G)  \\\\
-  =& \sum(C_i + \mathrm{H}(C_i \Vert s_i).G) - \sum(C_j + \mathrm{H}(C_j \Vert s_j).G) + \sum(\mathrm{fee}.G)  
+   & \sum(\mathrm{Inputs}) - \sum(\mathrm{Outputs}) - \sum(\mathrm{fee}_i.G)  \\\\
+  =& \sum\hat{C_i} - \sum\hat{C_j} - \sum(\mathrm{fee}_i.G)  \\\\
+  =& \sum(C_i + \mathrm{H}(C_i \Vert s_i).G) - \sum(C_j + \mathrm{H}(C_j \Vert s_j).G) - \sum(\mathrm{fee}.G)
 \end{align}
 $$
 
@@ -306,7 +306,7 @@ pub enum Opcode {
     PushHeight,
     /// Push the associated 32-byte value onto the stack
     PushHash(Box<HashValue>),
-    /// Hash to top stack element with the Blake256 hash function and push the result to the stack
+    /// Hash the top stack element with the Blake256 hash function and push the result to the stack
     HashBlake256,
     /// Fail the script immediately. (Must be executed.)
     Return,
