@@ -1,7 +1,7 @@
 [package]
-name = "tari_conduit"
+name = "tari_merge_mining_proxy"
 authors = ["The Tari Development Community"]
-description = "The tari miner conduit for xmrig"
+description = "The tari merge miner proxy for xmrig"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
 version = "0.1.0"
@@ -26,10 +26,13 @@ tokio-macros = "0.2.5"
 serde = { version="1.0.106", features = ["derive"] }
 bincode = "1.3.1"
 tari_crypto = { version = "^0.5" }
-tari_core = { version= "^0.2", path = "../../base_layer/core", default-features = false, features = ["transactions", "monero_merge_mining"]}
+tari_core = { version= "^0.2", path = "../../base_layer/core", default-features = false, features = ["transactions"]}
+tari_common = { version= "^0.2", path = "../../common" }
 tari_app_grpc = { version = "^0.0", path = "../tari_app_grpc" }
 rand = "0.7.2"
 derive-error = "0.0.4"
+thiserror = "1.0.15"
+structopt = { version = "0.3.13", default_features = false }
 
 [build-dependencies]
 tonic-build = "0.2"

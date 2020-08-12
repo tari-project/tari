@@ -16,7 +16,7 @@ rand = "0.7.2"
 version = "^0.2"
 path = "../../base_layer/core/"
 default-features = false
-features = ["transactions", "avx2", "monero_merge_mining"]
+features = ["transactions", "avx2"]
 
 [dependencies.tokio]
 version = "^0.2.10"

@@ -8,7 +8,7 @@ version = "0.0.1"
 edition = "2018"
 
 [dependencies]
-tari_core = { version= "^0.2", path = "../../base_layer/core", default-features = false, features = ["transactions", "monero_merge_mining"]}
+tari_core = { version= "^0.2", path = "../../base_layer/core", default-features = false, features = ["transactions"]}
 tari_crypto = { version = "^0.5" }
 
 
