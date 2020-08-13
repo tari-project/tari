@@ -3699,7 +3699,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bitflags 1.2.1",
  "blake2",
@@ -3936,7 +3936,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bincode",
  "blake2",
@@ -4018,7 +4018,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bincode",
  "bytes 0.4.12",

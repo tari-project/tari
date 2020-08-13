@@ -18,17 +18,17 @@ base_node_proto = []
 avx2 = ["tari_crypto/avx2"]
 
 [dependencies]
-tari_comms = {  path = "../../comms"}
-tari_infra_derive = {   path = "../../infrastructure/derive" }
+tari_comms = { version = "^0.2", path = "../../comms"}
+tari_infra_derive = { version = "^0.0",  path = "../../infrastructure/derive" }
 tari_crypto = { version = "^0.5" }
-tari_storage = {  path = "../../infrastructure/storage" }
-tari_common = {  path = "../../common"}
-tari_service_framework = {  path = "../service_framework"}
-tari_p2p = {  path = "../../base_layer/p2p" }
-tari_comms_dht = {  path = "../../comms/dht"}
+tari_storage = { version = "^0.2", path = "../../infrastructure/storage" }
+tari_common = { version = "^0.2", path = "../../common"}
+tari_service_framework = { version = "^0.2", path = "../service_framework"}
+tari_p2p = { version = "^0.2", path = "../../base_layer/p2p" }
+tari_comms_dht = { version = "^0.2", path = "../../comms/dht"}
 tari_broadcast_channel = "^0.2"
-tari_shutdown = { path = "../../infrastructure/shutdown" }
-tari_mmr = { path = "../../base_layer/mmr", optional = true }
+tari_shutdown = { version = "^0.0", path = "../../infrastructure/shutdown" }
+tari_mmr = { version = "^0.2", path = "../../base_layer/mmr", optional = true }
 randomx-rs = { version = "0.4.0", optional = true }
 monero = { version = "0.8.1", features= ["serde_support"], optional = true }
 bitflags = "1.0.4"

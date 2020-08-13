@@ -11,13 +11,13 @@ edition = "2018"
 
 [dependencies]
 tari_broadcast_channel = "^0.2"
-tari_comms = { path = "../../comms"}
-tari_comms_dht = { path = "../../comms/dht"}
-tari_common = { path = "../../common" }
+tari_comms = { version = "^0.2", path = "../../comms"}
+tari_comms_dht = { version = "^0.2", path = "../../comms/dht"}
+tari_common = { version = "^0.2", path = "../../common" }
 tari_crypto = { version = "^0.5" }
-tari_service_framework = { path = "../service_framework"}
-tari_shutdown = { path="../../infrastructure/shutdown" }
-tari_storage = { path = "../../infrastructure/storage"}
+tari_service_framework = { version = "^0.2", path = "../service_framework"}
+tari_shutdown = { version = "^0.0", path="../../infrastructure/shutdown" }
+tari_storage = { version = "^0.2", path = "../../infrastructure/storage"}
 tari_utilities = "^0.2"
 
 bytes = "0.4.12"
