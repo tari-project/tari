@@ -52,7 +52,7 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::time;
@@ -519,9 +519,13 @@ where
                             .write(&[WireMode::Comms as u8])
                             .await
                             .map_err(|_| ConnectionManagerError::WireFormatSendFailed)?;
-                        let noise_socket = noise_config
-                            .upgrade_socket(socket, ConnectionDirection::Outbound)
-                            .await?;
+
+                        let noise_socket = time::timeout(
+                            Duration::from_secs(30),
+                            noise_config.upgrade_socket(socket, ConnectionDirection::Outbound),
+                        )
+                        .await
+                        .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)??;
                         Result::<_, ConnectionManagerError>::Ok(noise_socket)
                     };
 

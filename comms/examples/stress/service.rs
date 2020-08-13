@@ -35,28 +35,26 @@ use futures::{
 use rand::{rngs::OsRng, RngCore};
 use std::{
     iter::repeat_with,
+    sync::Arc,
     time::{Duration, Instant},
 };
 use tari_comms::{
     framing,
+    message::{InboundMessage, OutboundMessage},
     peer_manager::{NodeId, Peer},
     protocol::{ProtocolEvent, ProtocolNotification},
-    rate_limit::RateLimit,
     CommsNode,
     PeerConnection,
     Substream,
 };
 use tari_crypto::tari_utilities::hex::Hex;
-use tokio::{task, task::JoinHandle};
-
-/// The minimum amount of inbound messages to accept within the `RATE_LIMIT_RESTOCK_INTERVAL` window
-const RATE_LIMIT_MIN_CAPACITY: usize = 1;
-const RATE_LIMIT_RESTOCK_INTERVAL: Duration = Duration::from_millis(1000);
+use tokio::{sync::RwLock, task, task::JoinHandle, time};
 
 pub fn start_service(
     comms_node: CommsNode,
     protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
-    rate_limit: usize,
+    inbound_rx: mpsc::Receiver<InboundMessage>,
+    outbound_tx: mpsc::Sender<OutboundMessage>,
 ) -> (JoinHandle<Result<(), Error>>, mpsc::Sender<StressTestServiceRequest>)
 {
     let node_identity = comms_node.node_identity();
@@ -69,7 +67,7 @@ pub fn start_service(
         comms_node.listening_address(),
     );
 
-    let service = StressTestService::new(request_rx, comms_node, protocol_notif, rate_limit);
+    let service = StressTestService::new(request_rx, comms_node, protocol_notif, inbound_rx, outbound_tx);
     (task::spawn(service.start()), request_tx)
 }
 
@@ -78,17 +76,18 @@ pub enum StressTestServiceRequest {
     Shutdown,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct StressProtocol {
     pub kind: StressProtocolKind,
     pub num_messages: u32,
     pub message_size: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum StressProtocolKind {
     ContinuousSend,
     AlternatingSend,
+    MessagingFlood,
 }
 
 impl StressProtocol {
@@ -109,6 +108,9 @@ impl StressProtocol {
             StressProtocolKind::AlternatingSend => {
                 data.push(0x02);
             },
+            StressProtocolKind::MessagingFlood => {
+                data.push(0x03);
+            },
         }
 
         data.extend_from_slice(&self.num_messages.to_be_bytes());
@@ -125,6 +127,7 @@ impl StressProtocol {
         let kind = match bytes[0] {
             0x01 => StressProtocolKind::ContinuousSend,
             0x02 => StressProtocolKind::AlternatingSend,
+            0x03 => StressProtocolKind::MessagingFlood,
             _ => return None,
         };
 
@@ -137,7 +140,9 @@ struct StressTestService {
     comms_node: CommsNode,
     protocol_notif: Fuse<mpsc::Receiver<ProtocolNotification<Substream>>>,
     shutdown: bool,
-    rate_limit: usize,
+
+    inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
+    outbound_tx: mpsc::Sender<OutboundMessage>,
 }
 
 impl StressTestService {
@@ -145,7 +150,8 @@ impl StressTestService {
         request_rx: mpsc::Receiver<StressTestServiceRequest>,
         comms_node: CommsNode,
         protocol_notif: mpsc::Receiver<ProtocolNotification<Substream>>,
-        rate_limit: usize,
+        inbound_rx: mpsc::Receiver<InboundMessage>,
+        outbound_tx: mpsc::Sender<OutboundMessage>,
     ) -> Self
     {
         Self {
@@ -153,7 +159,8 @@ impl StressTestService {
             comms_node,
             protocol_notif: protocol_notif.fuse(),
             shutdown: false,
-            rate_limit,
+            inbound_rx: Arc::new(RwLock::new(inbound_rx)),
+            outbound_tx,
         }
     }
 
@@ -214,8 +221,10 @@ impl StressTestService {
         let start = Instant::now();
         let conn = self.comms_node.connectivity().dial_peer(node_id).await?;
         println!("Dial completed successfully in {:.2?}", start.elapsed());
+        let outbound_tx = self.outbound_tx.clone();
+        let inbound_rx = self.inbound_rx.clone();
         task::spawn(async move {
-            let _ = reply.send(start_initiator_protocol(conn, protocol).await);
+            let _ = reply.send(start_initiator_protocol(conn, protocol, inbound_rx, outbound_tx).await);
         });
 
         Ok(())
@@ -230,13 +239,25 @@ impl StressTestService {
                     String::from_utf8_lossy(&notification.protocol)
                 );
 
-                task::spawn(start_responder_protocol(*node_id, substream, self.rate_limit));
+                task::spawn(start_responder_protocol(
+                    *node_id,
+                    substream,
+                    self.inbound_rx.clone(),
+                    self.outbound_tx.clone(),
+                ));
             },
         }
     }
 }
 
-async fn start_initiator_protocol(mut conn: PeerConnection, protocol: StressProtocol) -> Result<(), Error> {
+async fn start_initiator_protocol(
+    mut conn: PeerConnection,
+    protocol: StressProtocol,
+
+    inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
+    outbound_tx: mpsc::Sender<OutboundMessage>,
+) -> Result<(), Error>
+{
     println!("Negotiating {:?} protocol...", protocol);
     let start = Instant::now();
     let substream = conn.open_substream(&STRESS_PROTOCOL_NAME).await?;
@@ -302,31 +323,34 @@ async fn start_initiator_protocol(mut conn: PeerConnection, protocol: StressProt
             framed.close().await?;
             println!("Done in {:.2?}. Closing substream.", start.elapsed());
         },
+        StressProtocolKind::MessagingFlood => {
+            messaging_flood(conn.peer_node_id().clone(), protocol, inbound_rx, outbound_tx).await?;
+            // Close to indicate we're done
+            framed.close().await?;
+        },
     }
 
     Ok(())
 }
 
-async fn start_responder_protocol(peer: NodeId, mut substream: Substream, rate_limit: usize) -> Result<(), Error> {
+async fn start_responder_protocol(
+    peer: NodeId,
+    mut substream: Substream,
+
+    inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
+    outbound_tx: mpsc::Sender<OutboundMessage>,
+) -> Result<(), Error>
+{
     let mut buf = [0u8; 9];
     substream.read_exact(&mut buf).await?;
     let protocol = StressProtocol::decode(&buf).ok_or_else(|| Error::InvalidProtocolFrame)?;
 
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
-    let (mut sink, stream) = framed.split();
-    let mut stream = stream.rate_limit(
-        std::cmp::max(rate_limit, RATE_LIMIT_MIN_CAPACITY),
-        RATE_LIMIT_RESTOCK_INTERVAL,
-    );
+    let (mut sink, mut stream) = framed.split();
 
     println!();
     println!("-------------------------------------------------");
-    println!(
-        "Peer `{}` chose {:?}.\n    [Receiver rate limited to {} messages/s]",
-        peer.short_str(),
-        protocol,
-        rate_limit
-    );
+    println!("Peer `{}` chose {:?}.", peer.short_str(), protocol,);
     println!("-------------------------------------------------");
     match protocol.kind {
         StressProtocolKind::ContinuousSend => {
@@ -355,20 +379,6 @@ async fn start_responder_protocol(peer: NodeId, mut substream: Substream, rate_l
                     );
                 },
             }
-
-            // TODO: Find a quick way to check that every message arrived exactly once
-            // println!("Checking that all messages are accounted for...");
-            // let dropped = (1..=n).filter(|i| !received.contains(&(*i as u32))).collect::<Vec<_>>();
-            // if dropped.is_empty() {
-            //     println!("All messages received");
-            // } else {
-            //     println!(
-            //         "{} messages arrived! But {} were dropped",
-            //         n as usize - dropped.len(),
-            //         dropped.len()
-            //     );
-            //     println!("{:?}", dropped);
-            // }
         },
         StressProtocolKind::AlternatingSend => {
             let mut received = vec![];
@@ -411,8 +421,76 @@ async fn start_responder_protocol(peer: NodeId, mut substream: Substream, rate_l
                 num_loops * 100
             );
         },
+        StressProtocolKind::MessagingFlood => {
+            messaging_flood(peer, protocol, inbound_rx, outbound_tx).await?;
+            sink.close().await?;
+        },
     }
 
+    Ok(())
+}
+
+async fn messaging_flood(
+    peer: NodeId,
+    protocol: StressProtocol,
+    inbound_rx: Arc<RwLock<mpsc::Receiver<InboundMessage>>>,
+    mut outbound_tx: mpsc::Sender<OutboundMessage>,
+) -> Result<(), Error>
+{
+    let start = Instant::now();
+    let mut counter = 1u32;
+    println!(
+        "Sending and receiving {} messages ({} MiB each way) using the messaging protocol",
+        protocol.num_messages,
+        protocol.num_messages * protocol.message_size / 1024 / 1024
+    );
+    let outbound_task = task::spawn(async move {
+        let mut iter = stream::iter(
+            repeat_with(|| {
+                counter += 1;
+
+                println!("Send MSG {}", counter);
+                OutboundMessage::new(peer.clone(), generate_message(counter, protocol.message_size as usize))
+            })
+            .take(protocol.num_messages as usize)
+            .map(Ok),
+        );
+        outbound_tx.send_all(&mut iter).await?;
+        time::delay_for(Duration::from_secs(5)).await;
+        outbound_tx
+            .send(OutboundMessage::new(peer.clone(), Bytes::from_static(&[0u8; 4])))
+            .await?;
+        Result::<_, Error>::Ok(())
+    });
+
+    let inbound_task = task::spawn(async move {
+        let mut inbound_rx = inbound_rx.write().await;
+        let mut msgs = vec![];
+        loop {
+            if let Some(msg) = inbound_rx.next().await {
+                let msg_id = decode_msg(msg.body);
+                println!("GOT MSG {}", msg_id);
+                if msgs.len() == protocol.num_messages as usize {
+                    // msg_id == 0 {
+                    break;
+                }
+                msgs.push(msg_id);
+            } else {
+                break;
+            }
+        }
+        msgs
+    });
+
+    outbound_task.await??;
+    let msgs = inbound_task.await?;
+
+    println!(
+        "Received {}/{} messages in {:.0?}",
+        msgs.len(),
+        protocol.num_messages,
+        start.elapsed()
+    );
     Ok(())
 }
 
@@ -425,8 +503,8 @@ fn generate_message(n: u32, size: usize) -> Bytes {
     bytes.freeze()
 }
 
-fn decode_msg(mut msg: BytesMut) -> u32 {
+fn decode_msg<T: prost::bytes::Buf>(msg: T) -> u32 {
     let mut buf = [0u8; 4];
-    msg.copy_to_slice(&mut buf);
+    msg.bytes().copy_to_slice(&mut buf);
     u32::from_be_bytes(buf)
 }

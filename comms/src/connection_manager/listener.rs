@@ -308,7 +308,12 @@ where
             "Starting noise protocol upgrade for peer at address '{}'", peer_addr
         );
 
-        let noise_socket = noise_config.upgrade_socket(socket, CONNECTION_DIRECTION).await?;
+        let noise_socket = time::timeout(
+            Duration::from_secs(30),
+            noise_config.upgrade_socket(socket, CONNECTION_DIRECTION),
+        )
+        .await
+        .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)??;
 
         let authenticated_public_key = noise_socket
             .get_remote_public_key()

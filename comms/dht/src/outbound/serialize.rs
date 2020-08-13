@@ -95,6 +95,12 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
 
             let body = Bytes::from(envelope.to_encoded_bytes());
 
+            trace!(
+                target: LOG_TARGET,
+                "Serialized outbound message {} for peer `{}`. Passing onto next service",
+                tag,
+                destination_node_id.short_str()
+            );
             next_service
                 .oneshot(OutboundMessage {
                     tag,

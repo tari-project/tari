@@ -238,7 +238,7 @@ impl Dht {
         // FIXME: There is an unresolved stack overflow issue on windows in debug mode during runtime, but not in
         //        release mode, related to the amount of layers. (issue #1416)
         ServiceBuilder::new()
-            .layer(inbound::DeserializeLayer)
+            .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
             .layer(inbound::ValidateLayer::new(self.config.network))
             .layer(DedupLayer::new(self.dht_requester()))
             .layer(tower_filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
@@ -373,6 +373,8 @@ mod test {
         let peer_manager = make_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
 
+        peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
+
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _) = mpsc::channel(10);
 
@@ -421,6 +423,8 @@ mod test {
         let peer_manager = make_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
 
+        peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
+
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _out_rx) = mpsc::channel(10);
 
@@ -467,8 +471,9 @@ mod test {
     async fn stack_forward() {
         let node_identity = make_node_identity();
         let peer_manager = make_peer_manager();
-
         let shutdown = Shutdown::new();
+
+        peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
 
         let (connectivity, _) = create_connectivity_mock();
         let (next_service_tx, mut next_service_rx) = mpsc::channel(10);
@@ -525,6 +530,8 @@ mod test {
         let node_identity = make_client_identity();
         let peer_manager = make_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
+
+        peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
 
         // Dummy out channel, we are not testing outbound here.
         let (out_tx, _) = mpsc::channel(10);

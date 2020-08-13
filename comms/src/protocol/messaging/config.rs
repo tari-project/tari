@@ -28,14 +28,14 @@ pub struct MessagingConfig {
     /// timeout
     ///
     /// Inbound/outbound substreams are closed independently, and they may be reopened in the future once closed.
-    /// (default: 5 mins)
+    /// (default: 8 mins)
     pub inactivity_timeout: Option<Duration>,
 }
 
 impl Default for MessagingConfig {
     fn default() -> Self {
         Self {
-            inactivity_timeout: Some(Duration::from_secs(5 * 60)),
+            inactivity_timeout: Some(Duration::from_secs(8 * 60)),
         }
     }
 }

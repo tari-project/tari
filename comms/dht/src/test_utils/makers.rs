@@ -64,18 +64,7 @@ pub fn make_peer() -> Peer {
 }
 
 pub fn make_comms_inbound_message(node_identity: &NodeIdentity, message: Bytes) -> InboundMessage {
-    InboundMessage::new(
-        Arc::new(Peer::new(
-            node_identity.public_key().clone(),
-            node_identity.node_id().clone(),
-            Vec::<Multiaddr>::new().into(),
-            PeerFlags::empty(),
-            PeerFeatures::COMMUNICATION_NODE,
-            &[],
-            Default::default(),
-        )),
-        message,
-    )
+    InboundMessage::new(node_identity.node_id().clone(), message)
 }
 
 pub fn make_dht_header(

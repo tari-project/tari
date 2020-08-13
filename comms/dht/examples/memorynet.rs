@@ -825,7 +825,7 @@ impl TestNode {
                 .filter_map(move |event| {
                     use MessagingEvent::*;
                     future::ready(match &*event {
-                        MessageReceived(peer_node_id, _) => Some((Clone::clone(&**peer_node_id), node_id.clone())),
+                        MessageReceived(peer_node_id, _) => Some((Clone::clone(&*peer_node_id), node_id.clone())),
                         _ => None,
                     })
                 })

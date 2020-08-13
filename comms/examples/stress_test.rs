@@ -30,7 +30,7 @@ use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tempfile::Builder;
 use tokio::time;
 
-#[tokio_macros::main_basic(max_threads = 1)]
+#[tokio_macros::main]
 async fn main() {
     env_logger::init();
     match run().await {
@@ -55,12 +55,6 @@ async fn run() -> Result<(), Error> {
     let mut args = env::args().skip(1).collect::<Vec<_>>();
 
     let is_tcp = remove_arg(&mut args, "--tcp").is_some();
-
-    let mut rate_limit = 100_000;
-    if let Some(pos) = remove_arg(&mut args, "--rate-limit") {
-        rate_limit = args.remove(pos).parse().expect("Unable to parse rate limit");
-    }
-    println!("Rate limit set to: {}/s", rate_limit);
 
     let mut public_ip = None;
     if let Some(pos) = remove_arg(&mut args, "--public-ip") {
@@ -93,7 +87,7 @@ async fn run() -> Result<(), Error> {
     let node_identity = node_identity_path.as_ref().and_then(load_json).map(Arc::new);
 
     let temp_dir = Builder::new().prefix("stress-test").tempdir().unwrap();
-    let (comms_node, protocol_notif) =
+    let (comms_node, protocol_notif, inbound_rx, outbound_tx) =
         node::create(node_identity, temp_dir.as_ref(), public_ip, port, tor_identity, is_tcp).await?;
     if let Some(node_identity_path) = node_identity_path.as_ref() {
         save_json(comms_node.node_identity_ref(), node_identity_path)?;
@@ -105,7 +99,7 @@ async fn run() -> Result<(), Error> {
     }
 
     println!("Stress test service started!");
-    let (handle, mut requester) = service::start_service(comms_node, protocol_notif, rate_limit);
+    let (handle, mut requester) = service::start_service(comms_node, protocol_notif, inbound_rx, outbound_tx);
 
     let mut last_peer = peer.as_ref().and_then(parse_from_short_str);
 
@@ -126,9 +120,7 @@ async fn run() -> Result<(), Error> {
         futures::pin_mut!(ctrl_c);
         match future::select(reply_rx, ctrl_c).await {
             Either::Left((result, _)) => {
-                println!("Stress test complete");
-                // TODO
-                result??;
+                println!("Stress test complete: {:?}", result);
             },
             Either::Right((_, _)) => {
                 println!("SIGINT caught. Waiting for service to exit");

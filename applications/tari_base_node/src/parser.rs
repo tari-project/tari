@@ -981,6 +981,7 @@ impl Parser {
         self.executor.spawn(async move {
             let start = Instant::now();
             println!("🌎 Peer discovery started.");
+
             match dht
                 .discover_peer(dest_pubkey.clone(), NodeDestination::PublicKey(dest_pubkey))
                 .await

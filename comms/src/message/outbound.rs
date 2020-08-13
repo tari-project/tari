@@ -51,6 +51,16 @@ impl OutboundMessage {
         }
     }
 
+    pub fn with_reply(peer_node_id: NodeId, body: Bytes, reply: MessagingReplyTx) -> Self {
+        Self {
+            tag: MessageTag::new(),
+            peer_node_id,
+            body,
+            reply,
+        }
+    }
+
+    #[inline]
     pub fn reply_success(&mut self) {
         self.reply.reply_success();
     }
