@@ -2,7 +2,7 @@
 
 ## Full-node Mining on Tari Base Layer
 
-![status: draft](theme/images/status-draft.svg)
+![status: deprecated](theme/images/status-deprecated.svg)
 
 **Maintainer(s)**: [Yuko Roodt] (https://github.com/neonknight64)
 
