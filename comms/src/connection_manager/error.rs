@@ -78,6 +78,8 @@ pub enum ConnectionManagerError {
     InvalidMultiaddr(String),
     #[error("Failed to send wire format byte")]
     WireFormatSendFailed,
+    #[error("Noise protocol handshake timed out")]
+    NoiseProtocolTimeout,
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {

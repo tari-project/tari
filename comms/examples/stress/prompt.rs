@@ -73,6 +73,7 @@ pub fn user_prompt(default_peer: Option<Peer>) -> Result<(Peer, StressProtocol),
         println!("Select a stress test to perform:");
         println!("1) Continuous Send (Server sends messages to client)");
         println!("2) Alternating Send (Server and client alternate send and receiving)");
+        println!("3) Messaging Flood (Both sides send a flood using the messaging protocol)");
         println!();
         println!(
             "p) Set peer (current: {})",
@@ -96,6 +97,13 @@ pub fn user_prompt(default_peer: Option<Peer>) -> Result<(Peer, StressProtocol),
                 prompt!("Enter the message size (default: 256 bytes)");
                 let msg_size = or_continue!(read_line::<u32>(256));
                 StressProtocol::new(StressProtocolKind::AlternatingSend, n, msg_size)
+            },
+            '3' => {
+                prompt!("Enter the number of messages to send (default: 5,000)");
+                let n = or_continue!(read_line::<u32>(5_000));
+                prompt!("Enter the message size (default: 256 bytes)");
+                let msg_size = or_continue!(read_line::<u32>(256));
+                StressProtocol::new(StressProtocolKind::MessagingFlood, n, msg_size)
             },
             'p' => {
                 prompt!(

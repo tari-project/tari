@@ -21,23 +21,22 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::MessageTag;
-use crate::peer_manager::Peer;
+use crate::peer_manager::NodeId;
 use bytes::Bytes;
-use std::sync::Arc;
 
 /// Authenticated inbound message
 #[derive(Clone, Debug)]
 pub struct InboundMessage {
     pub tag: MessageTag,
     /// The connected peer which sent this message
-    pub source_peer: Arc<Peer>,
+    pub source_peer: NodeId,
     /// The raw message envelope
     pub body: Bytes,
 }
 
 impl InboundMessage {
     /// Construct a new InboundMessage
-    pub fn new(source_peer: Arc<Peer>, body: Bytes) -> Self {
+    pub fn new(source_peer: NodeId, body: Bytes) -> Self {
         Self {
             tag: MessageTag::new(),
             source_peer,

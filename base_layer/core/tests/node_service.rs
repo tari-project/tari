@@ -530,7 +530,6 @@ fn propagate_and_forward_invalid_block_hash() {
     // Create unknown block hash
     block1.header.height = 0;
 
-    let mut alice_message_events = alice_node.comms.subscribe_messaging_events().fuse();
     let mut bob_message_events = bob_node.comms.subscribe_messaging_events().fuse();
     let mut carol_message_events = carol_node.comms.subscribe_messaging_events().fuse();
 
@@ -542,11 +541,6 @@ fn propagate_and_forward_invalid_block_hash() {
             .unwrap();
 
         // Alice propagated to Bob
-        let msg_event = event_stream_next(&mut alice_message_events, Duration::from_secs(10))
-            .await
-            .unwrap()
-            .unwrap();
-        unpack_enum!(MessagingEvent::MessageSent(_a) = &*msg_event);
         // Bob received the invalid hash
         let msg_event = event_stream_next(&mut bob_message_events, Duration::from_secs(10))
             .await
@@ -554,18 +548,13 @@ fn propagate_and_forward_invalid_block_hash() {
             .unwrap();
         unpack_enum!(MessagingEvent::MessageReceived(_a, _b) = &*msg_event);
         // Sent the request for the block to Alice
-        let msg_event = event_stream_next(&mut bob_message_events, Duration::from_secs(10))
-            .await
-            .unwrap()
-            .unwrap();
-        unpack_enum!(MessagingEvent::MessageSent(_a) = &*msg_event);
         // Bob received a response from Alice
         let msg_event = event_stream_next(&mut bob_message_events, Duration::from_secs(10))
             .await
             .unwrap()
             .unwrap();
         unpack_enum!(MessagingEvent::MessageReceived(node_id, _a) = &*msg_event);
-        assert_eq!(&**node_id, alice_node.node_identity.node_id());
+        assert_eq!(&*node_id, alice_node.node_identity.node_id());
         // Checking a negative: Bob should not have propagated this hash to Carol. If Bob does, this assertion will be
         // flaky.
         let msg_event = event_stream_next(&mut carol_message_events, Duration::from_millis(500)).await;

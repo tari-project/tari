@@ -38,8 +38,15 @@ use crate::{
     CommsNode,
 };
 use bytes::Bytes;
-use futures::{channel::mpsc, AsyncReadExt, AsyncWriteExt, SinkExt, StreamExt};
-use std::{collections::HashSet, convert::identity, hash::Hash, sync::Arc, time::Duration};
+use futures::{
+    channel::{mpsc, oneshot},
+    stream::FuturesUnordered,
+    AsyncReadExt,
+    AsyncWriteExt,
+    SinkExt,
+    StreamExt,
+};
+use std::{collections::HashSet, convert::identity, hash::Hash, time::Duration};
 use tari_storage::HashmapDatabase;
 use tari_test_utils::{collect_stream, unpack_enum};
 
@@ -145,7 +152,7 @@ async fn peer_to_peer_custom_protocols() {
     // Check that both nodes get the PeerConnected event. We subscribe after the nodes are initialized
     // so we miss those events.
     let next_event = conn_man_events2.next().await.unwrap().unwrap();
-    unpack_enum!(ConnectionManagerEvent::PeerConnected(conn2) = Arc::try_unwrap(next_event).unwrap());
+    unpack_enum!(ConnectionManagerEvent::PeerConnected(conn2) = &*next_event);
     let next_event = conn_man_events1.next().await.unwrap().unwrap();
     unpack_enum!(ConnectionManagerEvent::PeerConnected(_conn) = &*next_event);
 
@@ -154,7 +161,7 @@ async fn peer_to_peer_custom_protocols() {
     assert_eq!(negotiated_substream1.protocol, TEST_PROTOCOL);
     negotiated_substream1.stream.write_all(TEST_MSG).await.unwrap();
 
-    let mut negotiated_substream2 = conn2.open_substream(&ANOTHER_TEST_PROTOCOL).await.unwrap();
+    let mut negotiated_substream2 = conn2.clone().open_substream(&ANOTHER_TEST_PROTOCOL).await.unwrap();
     assert_eq!(negotiated_substream2.protocol, ANOTHER_TEST_PROTOCOL);
     negotiated_substream2.stream.write_all(ANOTHER_TEST_MSG).await.unwrap();
 
@@ -187,7 +194,6 @@ async fn peer_to_peer_messaging() {
     let (comms_node1, mut inbound_rx1, mut outbound_tx1) = spawn_node(Protocols::new()).await;
     let (comms_node2, mut inbound_rx2, mut outbound_tx2) = spawn_node(Protocols::new()).await;
 
-    let mut messaging_events1 = comms_node1.subscribe_messaging_events();
     let mut messaging_events2 = comms_node2.subscribe_messaging_events();
 
     let node_identity1 = comms_node1.node_identity();
@@ -207,18 +213,22 @@ async fn peer_to_peer_messaging() {
         .unwrap();
 
     // Send NUM_MSGS messages from node 1 to node 2
+    let mut replies = FuturesUnordered::new();
     for i in 0..NUM_MSGS {
-        let outbound_msg = OutboundMessage::new(
+        let (reply_tx, reply_rx) = oneshot::channel();
+        replies.push(reply_rx);
+        let outbound_msg = OutboundMessage::with_reply(
             node_identity2.node_id().clone(),
             format!("#{:0>3} - comms messaging is so hot right now!", i).into(),
+            reply_tx.into(),
         );
         outbound_tx1.send(outbound_msg).await.unwrap();
     }
 
     let messages1_to_2 = collect_stream!(inbound_rx2, take = NUM_MSGS, timeout = Duration::from_secs(10));
-    let events = collect_stream!(messaging_events1, take = NUM_MSGS, timeout = Duration::from_secs(10));
-    events.into_iter().map(Result::unwrap).for_each(|m| {
-        unpack_enum!(MessagingEvent::MessageSent(_t) = &*m);
+    let send_results = collect_stream!(replies, take = NUM_MSGS, timeout = Duration::from_secs(10));
+    send_results.into_iter().for_each(|r| {
+        r.unwrap().unwrap();
     });
 
     let events = collect_stream!(messaging_events2, take = NUM_MSGS, timeout = Duration::from_secs(10));
@@ -260,6 +270,12 @@ async fn peer_to_peer_messaging_simultaneous() {
 
     let (comms_node1, mut inbound_rx1, mut outbound_tx1) = spawn_node(Protocols::new()).await;
     let (comms_node2, mut inbound_rx2, mut outbound_tx2) = spawn_node(Protocols::new()).await;
+
+    log::info!(
+        "Peer1 = `{}`, Peer2 = `{}`",
+        comms_node1.node_identity().node_id().short_str(),
+        comms_node2.node_identity().node_id().short_str()
+    );
 
     let o1 = outbound_tx1.clone();
     let o2 = outbound_tx2.clone();

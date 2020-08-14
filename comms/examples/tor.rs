@@ -224,7 +224,7 @@ async fn start_ping_ponger(
         counter += 1;
 
         let msg_str = String::from_utf8_lossy(&msg.body);
-        println!("Received '{}' from '{}'", msg_str, msg.source_peer.node_id.short_str());
+        println!("Received '{}' from '{}'", msg_str, msg.source_peer.short_str());
 
         let mut msg_parts = msg_str.split(' ');
         match msg_parts.next() {

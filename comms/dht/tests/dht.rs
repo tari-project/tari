@@ -359,8 +359,9 @@ async fn dht_store_forward() {
         .request_saf_messages_from_peer(node_B.node_identity().node_id().clone())
         .await
         .unwrap();
-    // Wait for node C to send 1 SAF request, and receive a response
-    collect_stream!(node_C_msg_events, take = 2, timeout = Duration::from_secs(20));
+    // Wait for node C to and receive a response from the SAF request
+    let event = collect_stream!(node_C_msg_events, take = 1, timeout = Duration::from_secs(20));
+    unpack_enum!(MessagingEvent::MessageReceived(_node_id, _msg) = &**event.get(0).unwrap().as_ref().unwrap());
 
     let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
     assert_eq!(
@@ -481,39 +482,38 @@ async fn dht_propagate_dedup() {
     node_D.comms.shutdown().await;
 
     // Check the message flow BEFORE deduping
-    let (sent, received) = partition_events(collect_stream!(node_A_messaging, timeout = Duration::from_secs(20)));
-    assert_eq!(sent.len(), 2);
+    let received = filter_received(collect_stream!(node_A_messaging, timeout = Duration::from_secs(20)));
     // Expected race condition: If A->(B|C)->(C|B) before A->(C|B) then (C|B)->A
     if received.len() > 0 {
         assert_eq!(count_messages_received(&received, &[&node_B_id, &node_C_id]), 1);
     }
 
-    let (sent, received) = partition_events(collect_stream!(node_B_messaging, timeout = Duration::from_secs(20)));
-    assert_eq!(sent.len(), 1);
+    let received = filter_received(collect_stream!(node_B_messaging, timeout = Duration::from_secs(20)));
     let recv_count = count_messages_received(&received, &[&node_A_id, &node_C_id]);
     // Expected race condition: If A->B->C before A->C then C->B does not happen
     assert!(recv_count >= 1 && recv_count <= 2);
 
-    let (sent, received) = partition_events(collect_stream!(node_C_messaging, timeout = Duration::from_secs(20)));
+    let received = filter_received(collect_stream!(node_C_messaging, timeout = Duration::from_secs(20)));
     let recv_count = count_messages_received(&received, &[&node_A_id, &node_B_id]);
     assert_eq!(recv_count, 2);
-    assert_eq!(sent.len(), 2);
     assert_eq!(count_messages_received(&received, &[&node_D_id]), 0);
 
-    let (sent, received) = partition_events(collect_stream!(node_D_messaging, timeout = Duration::from_secs(20)));
-    assert_eq!(sent.len(), 0);
+    let received = filter_received(collect_stream!(node_D_messaging, timeout = Duration::from_secs(20)));
     assert_eq!(received.len(), 1);
     assert_eq!(count_messages_received(&received, &[&node_C_id]), 1);
 }
 
-fn partition_events(
+fn filter_received(
     events: Vec<Result<Arc<MessagingEvent>, tokio::sync::broadcast::RecvError>>,
-) -> (Vec<Arc<MessagingEvent>>, Vec<Arc<MessagingEvent>>) {
-    events.into_iter().map(Result::unwrap).partition(|e| match &**e {
-        MessagingEvent::MessageReceived(_, _) => false,
-        MessagingEvent::MessageSent(_) => true,
-        _ => unreachable!(),
-    })
+) -> Vec<Arc<MessagingEvent>> {
+    events
+        .into_iter()
+        .map(Result::unwrap)
+        .filter(|e| match &**e {
+            MessagingEvent::MessageReceived(_, _) => true,
+            _ => unreachable!(),
+        })
+        .collect()
 }
 
 fn count_messages_received(events: &[Arc<MessagingEvent>], node_ids: &[&NodeId]) -> usize {
@@ -521,7 +521,7 @@ fn count_messages_received(events: &[Arc<MessagingEvent>], node_ids: &[&NodeId])
         .into_iter()
         .filter(|event| {
             unpack_enum!(MessagingEvent::MessageReceived(recv_node_id, _tag) = &***event);
-            node_ids.into_iter().any(|n| &**recv_node_id == *n)
+            node_ids.into_iter().any(|n| &*recv_node_id == *n)
         })
         .count()
 }

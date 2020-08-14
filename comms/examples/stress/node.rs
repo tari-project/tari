@@ -23,12 +23,16 @@
 use super::{error::Error, STRESS_PROTOCOL_NAME, TOR_CONTROL_PORT_ADDR, TOR_SOCKS_ADDR};
 use futures::channel::mpsc;
 use rand::rngs::OsRng;
-use std::{net::Ipv4Addr, path::Path, sync::Arc};
+use std::{convert, net::Ipv4Addr, path::Path, sync::Arc, time::Duration};
 use tari_comms::{
+    backoff::ConstantBackoff,
+    message::{InboundMessage, OutboundMessage},
     multiaddr::Multiaddr,
+    pipeline,
+    pipeline::SinkService,
     protocol::{ProtocolNotification, Protocols},
     tor,
-    tor::TorIdentity,
+    tor::{HsFlags, TorIdentity},
     transports::{SocksConfig, TcpWithTorTransport},
     CommsBuilder,
     CommsNode,
@@ -44,7 +48,15 @@ pub async fn create(
     port: u16,
     tor_identity: Option<TorIdentity>,
     is_tcp: bool,
-) -> Result<(CommsNode, mpsc::Receiver<ProtocolNotification<Substream>>), Error>
+) -> Result<
+    (
+        CommsNode,
+        mpsc::Receiver<ProtocolNotification<Substream>>,
+        mpsc::Receiver<InboundMessage>,
+        mpsc::Sender<OutboundMessage>,
+    ),
+    Error,
+>
 {
     let datastore = LMDBBuilder::new()
         .set_path(database_path.to_str().unwrap())
@@ -82,8 +94,13 @@ pub async fn create(
         .allow_test_addresses()
         .with_protocols(protocols)
         .with_node_identity(node_identity.clone())
+        .with_dial_backoff(ConstantBackoff::new(Duration::from_secs(0)))
         .with_peer_storage(peer_database)
+        .with_listener_liveness_max_sessions(10)
         .disable_connection_reaping();
+
+    let (inbound_tx, inbound_rx) = mpsc::channel(100);
+    let (outbound_tx, outbound_rx) = mpsc::channel(100);
 
     let comms_node = if is_tcp {
         builder
@@ -93,14 +110,24 @@ pub async fn create(
                 authentication: Default::default(),
             }))
             .build()?
+            .with_messaging_pipeline(
+                pipeline::Builder::new()
+                    .with_inbound_pipeline(SinkService::new(inbound_tx))
+                    .max_concurrent_inbound_tasks(100)
+                    .with_outbound_pipeline(outbound_rx, convert::identity)
+                    .finish(),
+            )
             .spawn()
-            .await?
+            .await
+            .unwrap()
     } else {
         let mut hs_builder = tor::HiddenServiceBuilder::new()
+            .with_hs_flags(HsFlags::DETACH)
             .with_port_mapping(port)
             .with_control_server_address(TOR_CONTROL_PORT_ADDR.parse().unwrap());
 
         if let Some(tor_identity) = tor_identity {
+            println!("Set tor identity from file");
             hs_builder = hs_builder.with_tor_identity(tor_identity);
         }
 
@@ -115,9 +142,17 @@ pub async fn create(
         builder
             .configure_from_hidden_service(tor_hidden_service)
             .build()?
+            .with_messaging_pipeline(
+                pipeline::Builder::new()
+                    .with_inbound_pipeline(SinkService::new(inbound_tx))
+                    .max_concurrent_inbound_tasks(100)
+                    .with_outbound_pipeline(outbound_rx, convert::identity)
+                    .finish(),
+            )
             .spawn()
-            .await?
+            .await
+            .unwrap()
     };
 
-    Ok((comms_node, proto_notif_rx))
+    Ok((comms_node, proto_notif_rx, inbound_rx, outbound_tx))
 }

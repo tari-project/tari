@@ -24,8 +24,8 @@ use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope};
 use futures::{task::Context, Future};
 use log::*;
 use prost::Message;
-use std::{convert::TryInto, task::Poll};
-use tari_comms::{message::InboundMessage, pipeline::PipelineError};
+use std::{convert::TryInto, sync::Arc, task::Poll};
+use tari_comms::{message::InboundMessage, pipeline::PipelineError, PeerManager};
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::deserialize";
@@ -38,11 +38,15 @@ const LOG_TARGET: &str = "comms::dht::deserialize";
 #[derive(Clone)]
 pub struct DhtDeserializeMiddleware<S> {
     next_service: S,
+    peer_manager: Arc<PeerManager>,
 }
 
 impl<S> DhtDeserializeMiddleware<S> {
-    pub fn new(service: S) -> Self {
-        Self { next_service: service }
+    pub fn new(peer_manager: Arc<PeerManager>, service: S) -> Self {
+        Self {
+            peer_manager,
+            next_service: service,
+        }
     }
 }
 
@@ -60,6 +64,7 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
 
     fn call(&mut self, message: InboundMessage) -> Self::Future {
         let next_service = self.next_service.clone();
+        let peer_manager = self.peer_manager.clone();
         async move {
             trace!(target: LOG_TARGET, "Deserializing InboundMessage {}", message.tag);
 
@@ -78,6 +83,12 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
 
             match DhtEnvelope::decode(&mut body) {
                 Ok(dht_envelope) => {
+                    let source_peer = peer_manager
+                        .find_by_node_id(&source_peer)
+                        .await
+                        .map(Arc::new)
+                        .map_err(PipelineError::from_debug)?;
+
                     let inbound_msg = DhtInboundMessage::new(
                         tag,
                         dht_envelope.header.try_into().map_err(PipelineError::from_debug)?,
@@ -102,12 +113,13 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
     }
 }
 
-#[derive(Default)]
-pub struct DeserializeLayer;
+pub struct DeserializeLayer {
+    peer_manager: Arc<PeerManager>,
+}
 
 impl DeserializeLayer {
-    pub fn new() -> Self {
-        DeserializeLayer
+    pub fn new(peer_manager: Arc<PeerManager>) -> Self {
+        Self { peer_manager }
     }
 }
 
@@ -115,7 +127,7 @@ impl<S> Layer<S> for DeserializeLayer {
     type Service = DhtDeserializeMiddleware<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        DhtDeserializeMiddleware::new(service)
+        DhtDeserializeMiddleware::new(self.peer_manager.clone(), service)
     }
 }
 
@@ -124,21 +136,25 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
-        test_utils::{make_comms_inbound_message, make_dht_envelope, make_node_identity, service_spy},
+        test_utils::{
+            make_comms_inbound_message,
+            make_dht_envelope,
+            make_node_identity,
+            make_peer_manager,
+            service_spy,
+        },
     };
-    use futures::executor::block_on;
     use tari_comms::message::{MessageExt, MessageTag};
-    use tari_test_utils::panic_context;
 
-    #[test]
-    fn deserialize() {
+    #[tokio_macros::test_basic]
+    async fn deserialize() {
         let spy = service_spy();
-        let mut deserialize = DeserializeLayer::new().layer(spy.to_service::<PipelineError>());
-
-        panic_context!(cx);
-
-        assert!(deserialize.poll_ready(&mut cx).is_ready());
+        let peer_manager = make_peer_manager();
         let node_identity = make_node_identity();
+        peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
+
+        let mut deserialize = DeserializeLayer::new(peer_manager).layer(spy.to_service::<PipelineError>());
+
         let dht_envelope = make_dht_envelope(
             &node_identity,
             b"A".to_vec(),
@@ -146,11 +162,17 @@ mod test {
             false,
             MessageTag::new(),
         );
-        block_on(deserialize.call(make_comms_inbound_message(
-            &node_identity,
-            dht_envelope.to_encoded_bytes().into(),
-        )))
-        .unwrap();
+
+        deserialize
+            .ready_and()
+            .await
+            .unwrap()
+            .call(make_comms_inbound_message(
+                &node_identity,
+                dht_envelope.to_encoded_bytes().into(),
+            ))
+            .await
+            .unwrap();
 
         let msg = spy.pop_request().unwrap();
         assert_eq!(msg.body, b"A".to_vec());

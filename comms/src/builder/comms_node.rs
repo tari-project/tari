@@ -168,12 +168,7 @@ where
         let mut messaging_event_tx = None;
         if let Some(messaging_pipeline) = messaging_pipeline {
             let (messaging, notifier, messaging_request_tx, inbound_message_rx, messaging_event_sender) =
-                initialize_messaging(
-                    node_identity.clone(),
-                    peer_manager.clone(),
-                    connection_manager_requester.clone(),
-                    shutdown.to_signal(),
-                );
+                initialize_messaging(connection_manager_requester.clone(), shutdown.to_signal());
             messaging_event_tx = Some(messaging_event_sender);
             protocols.add(&[messaging::MESSAGING_PROTOCOL.clone()], notifier);
             // Spawn messaging protocol
@@ -336,8 +331,6 @@ impl CommsNode {
 }
 
 fn initialize_messaging(
-    node_identity: Arc<NodeIdentity>,
-    peer_manager: Arc<PeerManager>,
     connection_manager_requester: ConnectionManagerRequester,
     shutdown_signal: ShutdownSignal,
 ) -> (
@@ -355,8 +348,6 @@ fn initialize_messaging(
     let messaging = MessagingProtocol::new(
         Default::default(),
         connection_manager_requester,
-        peer_manager,
-        node_identity,
         proto_rx,
         messaging_request_rx,
         event_tx.clone(),
