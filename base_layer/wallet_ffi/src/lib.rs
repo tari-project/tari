@@ -195,6 +195,13 @@ use tari_wallet::{
     wallet::WalletConfig,
 };
 
+use log4rs::append::{
+    rolling_file::{
+        policy::compound::{roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy},
+        RollingFileAppender,
+    },
+    Append,
+};
 use tari_core::consensus::Network;
 use tokio::runtime::Runtime;
 
@@ -2505,9 +2512,13 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 /// `config` - The TariCommsConfig pointer
 /// `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
 /// pointer.
-/// `passphrase` - An optional string that represents the passphrase used to encrypt/decrypt the databases for this
-/// wallet. If it is left Null no encryption is used. If the databases have been encrypted then the correct passphrase
-/// is required or this function will fail.
+/// `num_rolling_log_files` - Specifies how many rolling log files to produce, if no rolling files are wanted then set
+/// this to 0
+/// `size_per_log_file_bytes` - Specifies the size, in bytes, at which the logs files will roll over, if no
+/// rolling files are wanted then set this to 0
+/// `passphrase` - An optional string that represents the passphrase used to
+/// encrypt/decrypt the databases for this wallet. If it is left Null no encryption is used. If the databases have been
+/// encrypted then the correct passphrase is required or this function will fail.
 /// `callback_received_transaction` - The callback function pointer matching the
 /// function signature. This will be called when an inbound transaction is received.
 /// `callback_received_transaction_reply` - The callback function pointer matching the function signature. This will be
@@ -2537,6 +2548,8 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 pub unsafe extern "C" fn wallet_create(
     config: *mut TariCommsConfig,
     log_path: *const c_char,
+    num_rolling_log_files: c_uint,
+    size_per_log_file_bytes: c_uint,
     passphrase: *const c_char,
     callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
@@ -2560,16 +2573,45 @@ pub unsafe extern "C" fn wallet_create(
 
     if !log_path.is_null() {
         let path = CStr::from_ptr(log_path).to_str().unwrap().to_owned();
-        let logfile = FileAppender::builder()
-            .encoder(Box::new(PatternEncoder::new(
-                "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}",
-            )))
-            .append(false)
-            .build(path.as_str())
-            .unwrap();
+        let encoder = PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}");
+        let log_appender: Box<dyn Append> = if num_rolling_log_files != 0 && size_per_log_file_bytes != 0 {
+            let mut pattern = "".to_string();
+            let split_str: Vec<&str> = path.split('.').collect();
+            if split_str.len() <= 1 {
+                pattern = format!("{}{}", path.clone(), "{}");
+            } else {
+                for i in 0..split_str.len() - 1 {
+                    pattern = format!("{}{}", pattern, split_str[i]);
+                }
+
+                pattern = format!("{}{}", pattern, ".{}.");
+                pattern = format!("{}{}", pattern, split_str[split_str.len() - 1]);
+            }
+            let roller = FixedWindowRoller::builder()
+                .build(pattern.as_str(), num_rolling_log_files)
+                .unwrap();
+            let size_trigger = SizeTrigger::new(size_per_log_file_bytes as u64);
+            let policy = CompoundPolicy::new(Box::new(size_trigger), Box::new(roller));
+
+            Box::new(
+                RollingFileAppender::builder()
+                    .encoder(Box::new(encoder))
+                    .append(true)
+                    .build(path.as_str(), Box::new(policy))
+                    .unwrap(),
+            )
+        } else {
+            Box::new(
+                FileAppender::builder()
+                    .encoder(Box::new(encoder))
+                    .append(false)
+                    .build(path.as_str())
+                    .expect("Should be able to create Appender"),
+            )
+        };
 
         let lconfig = Config::builder()
-            .appender(Appender::builder().build("logfile", Box::new(logfile)))
+            .appender(Appender::builder().build("logfile", log_appender))
             .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
             .unwrap();
 
@@ -5125,6 +5167,10 @@ mod test {
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
             let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
 
+            let alice_log_path =
+                CString::new(format!("{}{}", alice_temp_dir.path().to_str().unwrap(), "/test.log")).unwrap();
+            let alice_log_path_str: *const c_char = CString::into_raw(alice_log_path.clone()) as *const c_char;
+
             let alice_config = comms_config_create(
                 address_alice_str,
                 transport_type_alice,
@@ -5136,7 +5182,9 @@ mod test {
             comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
             let alice_wallet = wallet_create(
                 alice_config,
-                ptr::null(),
+                alice_log_path_str,
+                2,
+                10000,
                 ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -5169,9 +5217,16 @@ mod test {
                 error_ptr,
             );
             comms_config_set_secret_key(bob_config, secret_key_bob, error_ptr);
+
+            let bob_log_path =
+                CString::new(format!("{}{}", bob_temp_dir.path().to_str().unwrap(), "/test.log")).unwrap();
+            let bob_log_path_str: *const c_char = CString::into_raw(bob_log_path.clone()) as *const c_char;
+
             let bob_wallet = wallet_create(
                 bob_config,
-                ptr::null(),
+                bob_log_path_str,
+                0,
+                0,
                 ptr::null(),
                 received_tx_callback_bob,
                 received_tx_reply_callback_bob,
@@ -5615,6 +5670,8 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
+                0,
                 ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -5708,6 +5765,8 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
+                0,
                 ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -5747,6 +5806,8 @@ mod test {
             let _alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
+                0,
                 ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -5769,6 +5830,8 @@ mod test {
             let _alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
+                0,
                 wrong_passphrase_const_str,
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -5786,6 +5849,8 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
+                0,
                 passphrase_const_str,
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -5822,6 +5887,8 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
+                0,
                 ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
