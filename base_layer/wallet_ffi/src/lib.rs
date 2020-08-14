@@ -3821,7 +3821,9 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     match completed_transactions {
         Ok(completed_transactions) => {
             if let Some(tx) = completed_transactions.get(&transaction_id) {
-                if tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed {
+                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
+                    tx.direction == TransactionDirection::Inbound
+                {
                     let completed = tx.clone();
                     let pending_tx = TariPendingInboundTransaction::from(completed);
                     return Box::into_raw(Box::new(pending_tx));
@@ -3893,7 +3895,9 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     match completed_transactions {
         Ok(completed_transactions) => {
             if let Some(tx) = completed_transactions.get(&transaction_id) {
-                if tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed {
+                if (tx.status == TransactionStatus::Broadcast || tx.status == TransactionStatus::Completed) &&
+                    tx.direction == TransactionDirection::Outbound
+                {
                     let completed = tx.clone();
                     let pending_tx = TariPendingOutboundTransaction::from(completed);
                     return Box::into_raw(Box::new(pending_tx));
