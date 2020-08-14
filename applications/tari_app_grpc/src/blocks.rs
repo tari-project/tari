@@ -90,8 +90,8 @@ impl From<tari_core::blocks::Block> for grpc::Block {
                         features: kernel.features.bits() as u32,
                         fee: kernel.fee.0,
                         lock_height: kernel.lock_height,
-                        meta_info: kernel.meta_info.as_ref().map(|info| info.clone()).unwrap_or(vec![]),
-                        linked_kernel: kernel.linked_kernel.as_ref().map(|link| link.clone()).unwrap_or(vec![]),
+                        meta_info: kernel.meta_info.as_ref().cloned().unwrap_or_default(),
+                        linked_kernel: kernel.linked_kernel.as_ref().cloned().unwrap_or_default(),
                         excess: Vec::from(kernel.excess.as_bytes()),
                         excess_sig: Some(grpc::Signature {
                             public_nonce: Vec::from(kernel.excess_sig.get_public_nonce().as_bytes()),
@@ -185,8 +185,8 @@ impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
                         features: kernel.features.bits() as u32,
                         fee: kernel.fee.0,
                         lock_height: kernel.lock_height,
-                        meta_info: kernel.meta_info.as_ref().map(|info| info.clone()).unwrap_or(vec![]),
-                        linked_kernel: kernel.linked_kernel.as_ref().map(|link| link.clone()).unwrap_or(vec![]),
+                        meta_info: kernel.meta_info.as_ref().cloned().unwrap_or_default(),
+                        linked_kernel: kernel.linked_kernel.as_ref().cloned().unwrap_or_default(),
                         excess: Vec::from(kernel.excess.as_bytes()),
                         excess_sig: Some(grpc::Signature {
                             public_nonce: Vec::from(kernel.excess_sig.get_public_nonce().as_bytes()),
@@ -253,7 +253,7 @@ impl TryFrom<grpc::NewBlockTemplate> for NewBlockTemplate {
     type Error = String;
 
     fn try_from(block: grpc::NewBlockTemplate) -> Result<Self, Self::Error> {
-        let header = block.header.clone().ok_or("No header provided".to_string())?;
+        let header = block.header.clone().ok_or_else(|| "No header provided".to_string())?;
         let total_kernel_offset =
             BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
         let pow = match header.pow {
