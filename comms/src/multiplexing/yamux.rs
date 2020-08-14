@@ -336,6 +336,7 @@ mod test {
         connection_manager::ConnectionDirection,
         memsocket::MemorySocket,
         multiplexing::yamux::Yamux,
+        runtime,
         runtime::task,
     };
     use futures::{
@@ -346,7 +347,7 @@ mod test {
     use std::{io, time::Duration};
     use tari_test_utils::collect_stream;
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn open_substream() -> io::Result<()> {
         let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"The Way of Kings";
@@ -379,7 +380,7 @@ mod test {
         Ok(())
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn substream_count() {
         const NUM_SUBSTREAMS: usize = 10;
         let (dialer, listener) = MemorySocket::new_pair();
@@ -413,7 +414,7 @@ mod test {
         assert_eq!(listener.substream_count(), 0);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn close() -> io::Result<()> {
         let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"Words of Radiance";
@@ -453,7 +454,7 @@ mod test {
         Ok(())
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn send_big_message() -> io::Result<()> {
         #[allow(non_upper_case_globals)]
         static MiB: usize = 1 << 20;

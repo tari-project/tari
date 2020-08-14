@@ -92,9 +92,10 @@ where F: FnMut(I) -> Option<O>
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::runtime;
     use futures::{channel::mpsc, SinkExt, StreamExt};
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn check_translates() {
         let (tx, mut rx) = mpsc::channel(1);
 

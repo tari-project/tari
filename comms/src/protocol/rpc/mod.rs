@@ -20,19 +20,30 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::compat::IoCompat;
-use futures::{AsyncRead, AsyncWrite};
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
+// TODO: Remove once in use
+#![allow(dead_code)]
 
-/// Tari comms canonical framing
-pub type CanonicalFraming<T> = Framed<IoCompat<T>, LengthDelimitedCodec>;
+#[cfg(test)]
+mod test;
 
-pub fn canonical<T>(stream: T, max_frame_len: usize) -> CanonicalFraming<T>
-where T: AsyncRead + AsyncWrite + Unpin {
-    Framed::new(
-        IoCompat::new(stream),
-        LengthDelimitedCodec::builder()
-            .max_frame_length(max_frame_len)
-            .new_codec(),
-    )
-}
+mod body;
+
+mod server;
+pub use server::RpcServer;
+
+mod client;
+
+mod either;
+
+mod message;
+pub use message::{Request, Response};
+
+mod error;
+pub use error::RpcError;
+
+mod router;
+
+mod status;
+pub use status::{RpcStatus, RpcStatusCode};
+
+mod not_found;

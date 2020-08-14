@@ -29,6 +29,7 @@ use super::{
 use crate::{
     connection_manager::ConnectionManagerError,
     peer_manager::{Peer, PeerFeatures},
+    runtime,
     runtime::task,
     test_utils::{
         mocks::{create_connection_manager_mock, create_peer_connection_mock_pair, ConnectionManagerMockState},
@@ -98,7 +99,7 @@ async fn add_test_peers(peer_manager: &PeerManager, n: usize) -> Vec<Peer> {
     peers
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test_basic]
 async fn connecting_peers() {
     let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
         setup_connectivity_manager(Default::default());
@@ -133,7 +134,7 @@ async fn connecting_peers() {
     }
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test_basic]
 async fn add_many_managed_peers() {
     let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
         setup_connectivity_manager(Default::default());
@@ -212,7 +213,7 @@ async fn add_many_managed_peers() {
     }
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test_basic]
 async fn ban_peer() {
     let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
         setup_connectivity_manager(Default::default());
@@ -253,7 +254,7 @@ async fn ban_peer() {
     assert!(conn.is_none());
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test_basic]
 async fn peer_selection() {
     let config = ConnectivityConfig {
         min_connectivity: 1.0,

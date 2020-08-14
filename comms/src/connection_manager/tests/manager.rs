@@ -32,6 +32,7 @@ use crate::{
     noise::NoiseConfig,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags, PeerManagerError},
     protocol::{ProtocolEvent, ProtocolId, Protocols, IDENTITY_PROTOCOL},
+    runtime,
     runtime::task,
     test_utils::{
         count_string_occurrences,
@@ -52,7 +53,7 @@ use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
 use tokio::{runtime::Handle, sync::broadcast};
 
-#[tokio_macros::test_basic]
+#[runtime::test_basic]
 async fn connect_to_nonexistent_peer() {
     let rt_handle = Handle::current();
     let node_identity = build_node_identity(PeerFeatures::empty());
@@ -85,7 +86,7 @@ async fn connect_to_nonexistent_peer() {
     shutdown.trigger().unwrap();
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test_basic]
 async fn dial_success() {
     const TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
     let shutdown = Shutdown::new();
@@ -189,7 +190,7 @@ async fn dial_success() {
     assert_eq!(buf, MSG);
 }
 
-#[tokio_macros::test_basic]
+#[runtime::test_basic]
 async fn simultaneous_dial_events() {
     let mut shutdown = Shutdown::new();
 

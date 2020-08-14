@@ -129,9 +129,10 @@ impl<T: Stream> Stream for RateLimiter<T> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::runtime;
     use futures::{future::Either, stream};
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn rate_limit() {
         let repeater = stream::repeat(());
 
@@ -152,7 +153,7 @@ mod test {
         assert_eq!(count, 10);
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn rate_limit_restock() {
         let repeater = stream::repeat(());
 

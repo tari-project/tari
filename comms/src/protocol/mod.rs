@@ -32,6 +32,11 @@ pub use negotiation::ProtocolNegotiation;
 mod protocols;
 pub use protocols::{ProtocolEvent, ProtocolNotification, ProtocolNotificationRx, ProtocolNotificationTx, Protocols};
 
+#[cfg(feature = "rpc")]
+mod rpc;
+// #[cfg(feature = "rpc")]
+// pub use rpc::RpcServer;
+
 pub mod messaging;
 
 /// Represents a protocol id string (e.g. /tari/transactions/1.0.0).

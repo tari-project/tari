@@ -641,7 +641,7 @@ impl From<Box<TransportState>> for NoiseState {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{memsocket::MemorySocket, noise::config::NOISE_IX_PARAMETER};
+    use crate::{memsocket::MemorySocket, noise::config::NOISE_IX_PARAMETER, runtime};
     use futures::future::join;
     use snow::{params::NoiseParams, Builder, Error, Keypair};
     use std::io;
@@ -683,7 +683,7 @@ mod test {
         Ok((dialer_result?, listener_result?))
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn test_handshake() {
         let ((dialer_keypair, dialer), (listener_keypair, listener)) = build_test_connection().await.unwrap();
 
@@ -699,7 +699,7 @@ mod test {
         );
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn simple_test() -> io::Result<()> {
         let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 
@@ -719,7 +719,7 @@ mod test {
         Ok(())
     }
 
-    #[tokio_macros::test]
+    #[runtime::test]
     async fn interleaved_writes() -> io::Result<()> {
         let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 

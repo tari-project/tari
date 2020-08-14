@@ -116,6 +116,7 @@ impl<TSubstream> Protocols<TSubstream> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::runtime;
     use futures::StreamExt;
     use tari_test_utils::unpack_enum;
 
@@ -133,7 +134,7 @@ mod test {
         assert!(protocols.get_supported_protocols().iter().all(|p| protos.contains(p)));
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn notify() {
         let (tx, mut rx) = mpsc::channel(1);
         let protos = [ProtocolId::from_static(b"/tari/test/1")];
@@ -153,7 +154,7 @@ mod test {
         assert_eq!(*peer_id, NodeId::new());
     }
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn notify_fail_not_registered() {
         let mut protocols = Protocols::<()>::new();
 

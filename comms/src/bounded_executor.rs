@@ -21,8 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::runtime::current;
+use futures::future::Either;
 use std::{future::Future, sync::Arc};
-use tokio::{runtime, sync::Semaphore, task::JoinHandle};
+use tokio::{
+    runtime,
+    sync::{OwnedSemaphorePermit, Semaphore},
+    task::JoinHandle,
+};
+
+/// Error emitted from [`try_spawn`](self::BoundedExecutor::try_spawn) when there are no tasks available
+#[derive(Debug)]
+pub struct TrySpawnError;
 
 /// A task executor bounded by a semaphore.
 ///
@@ -43,6 +52,20 @@ impl BoundedExecutor {
 
     pub fn from_current(num_permits: usize) -> Self {
         Self::new(current(), num_permits)
+    }
+
+    pub fn can_spawn(&self) -> bool {
+        self.semaphore.available_permits() > 0
+    }
+
+    pub fn try_spawn<F>(&self, future: F) -> Result<JoinHandle<F::Output>, TrySpawnError>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        let permit = self.semaphore.clone().try_acquire_owned().map_err(|_| TrySpawnError)?;
+        let handle = self.do_spawn(permit, future);
+        Ok(handle)
     }
 
     /// Spawn a future onto the Tokio runtime asynchronously blocking if there are too many
@@ -94,24 +117,75 @@ impl BoundedExecutor {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        let permit = self.semaphore.acquire().await;
-        // Forget the permit without releasing it on drop. This is to work around the lifetime of semaphore in the
-        // permit not being 'static
-        permit.forget();
-        let cloned_semaphore = Arc::clone(&self.semaphore);
+        let permit = self.semaphore.clone().acquire_owned().await;
+        self.do_spawn(permit, future)
+    }
 
+    fn do_spawn<F>(&self, permit: OwnedSemaphorePermit, future: F) -> JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
         self.inner.spawn(async move {
             let ret = future.await;
-            // Task is finished, re-add the permit
-            cloned_semaphore.add_permits(1);
+            // Task is finished, release the permit
+            drop(permit);
             ret
         })
+    }
+}
+
+pub struct OptionallyBoundedExecutor {
+    inner: Either<runtime::Handle, BoundedExecutor>,
+}
+
+impl OptionallyBoundedExecutor {
+    pub fn new(executor: runtime::Handle, num_permits: Option<usize>) -> Self {
+        Self {
+            inner: num_permits
+                .map(|n| Either::Right(BoundedExecutor::new(executor.clone(), n)))
+                .unwrap_or_else(|| Either::Left(executor)),
+        }
+    }
+
+    pub fn from_current(num_permits: Option<usize>) -> Self {
+        Self::new(current(), num_permits)
+    }
+
+    pub fn can_spawn(&self) -> bool {
+        match &self.inner {
+            Either::Left(_) => true,
+            Either::Right(exec) => exec.can_spawn(),
+        }
+    }
+
+    pub fn try_spawn<F>(&self, future: F) -> Result<JoinHandle<F::Output>, TrySpawnError>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        match &self.inner {
+            Either::Left(exec) => Ok(exec.spawn(future)),
+            Either::Right(exec) => exec.try_spawn(future),
+        }
+    }
+
+    pub async fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        match &self.inner {
+            Either::Left(exec) => exec.spawn(future),
+            Either::Right(exec) => exec.spawn(future).await,
+        }
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::runtime;
     use std::{
         sync::{
             atomic::{AtomicBool, Ordering},
@@ -119,13 +193,13 @@ mod test {
         },
         time::Duration,
     };
-    use tokio::{runtime::Handle, time::delay_for};
+    use tokio::time::delay_for;
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn spawn() {
         let flag = Arc::new(AtomicBool::new(false));
         let flag_cloned = flag.clone();
-        let executor = BoundedExecutor::new(Handle::current(), 1);
+        let executor = BoundedExecutor::new(runtime::current(), 1);
 
         // Spawn 1
         let task1_fut = executor

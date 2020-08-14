@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package tari.comms.rpc;
+
+// Message type for all RPC requests
+message RpcRequest {
+    // An identifier that is unique per request per session. This value is not strictly needed as
+    // requests and responses alternate on the protocol level without the need for storing and matching
+    // request IDs. However, this value is useful for logging.
+    uint32 request_id = 1;
+    // The method identifier. The matching method for a given value is defined by each service.
+    uint32 method = 2;
+    // Message flags. Currently this is not used for requests.
+    uint32 flags = 3;
+    // The length of time in seconds that a client is willing to wait for a response
+    uint64 deadline = 4;
+
+    // The message payload
+    bytes message = 10;
+}
+
+// Message type for all RPC responses
+message RpcResponse {
+    // The request ID of a prior request.
+    uint32 request_id = 1;
+    // The status of the response. A non-zero status indicates an error.
+    uint32 status = 2;
+    // Message flags. Currently only used to indicate if a stream of messages has completed.
+    uint32 flags = 3;
+
+    // The message payload. If the status is non-zero, this contains additional error details.
+    bytes message = 10;
+}
+
+// Message sent by the client when negotiating an RPC session. A server may close the substream if it does
+// not agree with the session parameters.
+message RpcSession {
+    // The RPC versions supported by the client
+    repeated uint32 supported_versions = 1;
+}
+
+message RpcSessionReply {
+    oneof session_result {
+        // The RPC version selected by the server
+        uint32 accepted_version = 1;
+        // Indicates the server rejected the session
+        bool rejected = 2;
+    }
+}

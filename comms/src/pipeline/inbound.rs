@@ -85,6 +85,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::runtime;
     use futures::{channel::mpsc, future, stream};
     use std::time::Duration;
     use tari_shutdown::Shutdown;
@@ -92,7 +93,7 @@ mod test {
     use tokio::{runtime::Handle, time};
     use tower::service_fn;
 
-    #[tokio_macros::test_basic]
+    #[runtime::test_basic]
     async fn run() {
         let items = vec![1, 2, 3, 4, 5, 6];
         let stream = stream::iter(items.clone()).fuse();
