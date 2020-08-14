@@ -8,7 +8,7 @@ version = "0.5.0"
 edition = "2018"
 
 [dependencies]
-tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"]}
+tari_core = {  path = "../../base_layer/core"}
 tari_crypto = { version = "^0.5" }
 
 
