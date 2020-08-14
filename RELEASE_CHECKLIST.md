@@ -24,11 +24,11 @@ THings to do before pushing a new commit to `master`:
 | base_layer/mmr               | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
 | base_layer/p2p               | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
 | base_layer/service_framework | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
-| base_layer/wallet            | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
+| base_layer/wallet            | 0.2.2   | 7b8f69c9ddd83b36847cf33a07222852eb6e431b |
 | base_layer/wallet_ffi        | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
 | common                       | 0.2.1   | 2bfab016432c8f48d8f5e69c265c82f526e59f34 |
-| comms                        | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
+| comms                        | 0.2.2   | e5397eb56f65ffb696fb6dadcf8b5d548ebe87f6 |
 | comms/dht                    | 0.2.1   | 68a59fd9a54201b2955f8a8924a63c6b402d9df3 |
-| applications/tari_base_node  | 0.5.0   | b0a9d784f4b6c21276e652a526eb40e1eb9931e6 |
-| applications/tari_app_grpc   | 0.5.0 | b706f4d54c7e5fbd487130e04355e9cea745cf5b | 
+| applications/tari_base_node  | 0.5.1   | b0a9d784f4b6c21276e652a526eb40e1eb9931e6 |
+| applications/tari_app_grpc   | 0.5.1 |  | 
 | applications/tari_console_wallet | 0.5.0 | 7e94adb60c56d555af45af0cf0c65f439432713c | 

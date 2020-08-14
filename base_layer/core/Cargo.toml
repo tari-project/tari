@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2018"
 
 [features]
@@ -25,7 +25,7 @@ tari_storage = { version = "^0.2", path = "../../infrastructure/storage" }
 tari_common = { version = "^0.2", path = "../../common"}
 tari_service_framework = { version = "^0.2", path = "../service_framework"}
 tari_p2p = { version = "^0.2", path = "../../base_layer/p2p" }
-tari_comms_dht = { version = "^0.2", path = "../../comms/dht"}
+tari_comms_dht = { version = "^0.2.1", path = "../../comms/dht"}
 tari_broadcast_channel = "^0.2"
 tari_shutdown = { version = "^0.0", path = "../../infrastructure/shutdown" }
 tari_mmr = { version = "^0.2", path = "../../base_layer/mmr", optional = true }
