@@ -150,9 +150,7 @@ include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 
 const MAKE_IT_RAIN_USAGE: &str = "\nmake-it-rain [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx] \
                                   [\"start time (UTC)\" / 'now' for immediate start] [public key or emoji id to send \
-                                  to] [message]\n       or\nmake-it-rain [Txs/s] [duration (s)] [start amount (uT)] \
-                                  [increment (uT)/Tx] [\"start time (UTC)\" / 'now' for immediate start] --file \
-                                  [\"path to file\" containing list of 'public key or emoji id' 'message']\n";
+                                  to] [message]\n";
 
 /// This will go through all instructions and look for potential matches
 impl Completer for Parser {
@@ -755,14 +753,14 @@ impl Parser {
         // let command_arg = args.take(4).collect::<Vec<&str>>();
         let height = args.next();
         if height.is_none() {
-            self.print_help("get-block".split(" "));
+            self.print_help("get-block".split(' '));
             return;
         }
         let height = match height.unwrap().parse::<u64>().ok() {
             Some(height) => height,
             None => {
                 println!("Invalid block height provided. Height must be an integer.");
-                self.print_help("get-block".split(" "));
+                self.print_help("get-block".split(' '));
                 return;
             },
         };
@@ -776,7 +774,7 @@ impl Parser {
             None => Format::Text,
             Some(_) => {
                 println!("Unrecognized format sspecifier");
-                self.print_help("get-block".split(" "));
+                self.print_help("get-block".split(' '));
                 return;
             },
         };
@@ -798,7 +796,7 @@ impl Parser {
                         historical_block
                             .block
                             .to_json()
-                            .unwrap_or("Error deserializing block".into())
+                            .unwrap_or_else(|_| "Error deserializing block".into())
                     ),
                     (None, _) => println!("Block not found at height {}", height),
                 },
@@ -811,14 +809,14 @@ impl Parser {
         // let command_arg = args.take(4).collect::<Vec<&str>>();
         let hex = args.next();
         if hex.is_none() {
-            self.print_help("search-utxo".split(" "));
+            self.print_help("search-utxo".split(' '));
             return;
         }
         let commitment = match Commitment::from_hex(&hex.unwrap().to_string()) {
             Ok(v) => v,
             _ => {
                 println!("Invalid commitment provided.");
-                self.print_help("search-utxo".split(" "));
+                self.print_help("search-utxo".split(' '));
                 return;
             },
         };
@@ -849,14 +847,14 @@ impl Parser {
         // let command_arg = args.take(4).collect::<Vec<&str>>();
         let hex = args.next();
         if hex.is_none() {
-            self.print_help("search-stxo".split(" "));
+            self.print_help("search-stxo".split(' '));
             return;
         }
         let commitment = match Commitment::from_hex(&hex.unwrap().to_string()) {
             Ok(v) => v,
             _ => {
                 println!("Invalid commitment provided.");
-                self.print_help("search-stxo".split(" "));
+                self.print_help("search-stxo".split(' '));
                 return;
             },
         };
@@ -887,28 +885,28 @@ impl Parser {
         // let command_arg = args.take(4).collect::<Vec<&str>>();
         let hex = args.next();
         if hex.is_none() {
-            self.print_help("search-kernel".split(" "));
+            self.print_help("search-kernel".split(' '));
             return;
         }
         let public_nonce = match PublicKey::from_hex(&hex.unwrap().to_string()) {
             Ok(v) => v,
             _ => {
                 println!("Invalid public nonce provided.");
-                self.print_help("search-kernel".split(" "));
+                self.print_help("search-kernel".split(' '));
                 return;
             },
         };
 
         let hex = args.next();
         if hex.is_none() {
-            self.print_help("search-kernel".split(" "));
+            self.print_help("search-kernel".split(' '));
             return;
         }
         let signature = match PrivateKey::from_hex(&hex.unwrap().to_string()) {
             Ok(v) => v,
             _ => {
                 println!("Invalid signature provided.");
-                self.print_help("search-kernel".split(" "));
+                self.print_help("search-kernel".split(' '));
                 return;
             },
         };
@@ -1517,79 +1515,16 @@ impl Parser {
         // Use the rest of the command line as my message
         let msg = args.collect::<Vec<&str>>().join(" ");
 
-        let fee_per_gram = 25 * uT;
-        let mut txn_service = self.wallet_transaction_service.clone();
+        let wallet_transaction_service = self.wallet_transaction_service.clone();
         self.executor.spawn(async move {
-            let event_stream = txn_service.get_event_stream_fused();
-            match txn_service
-                .send_transaction(dest_pubkey.clone(), amount, fee_per_gram, msg)
-                .await
-            {
-                Err(TransactionServiceError::OutboundSendDiscoveryInProgress(tx_id)) => {
-                    println!(
-                        "No peer found matching that public key. Attempting to discover the peer on the network. 🌎"
-                    );
-                    let start = Instant::now();
-                    match time::timeout(
-                        Duration::from_secs(120),
-                        utils::wait_for_discovery_transaction_event(event_stream, tx_id),
-                    )
-                    .await
-                    {
-                        Ok(true) => {
-                            println!(
-                                "Discovery succeeded for peer {} after {}ms",
-                                dest_pubkey,
-                                start.elapsed().as_millis()
-                            );
-                            debug!(
-                                target: LOG_TARGET,
-                                "Discovery succeeded for peer {} after {}ms",
-                                dest_pubkey,
-                                start.elapsed().as_millis()
-                            );
-                        },
-                        Ok(false) => {
-                            println!(
-                                "Discovery failed for peer {} after {}ms",
-                                dest_pubkey,
-                                start.elapsed().as_millis()
-                            );
-                            println!("The peer may be offline. Please try again later.");
-
-                            debug!(
-                                target: LOG_TARGET,
-                                "Discovery failed for peer {} after {}ms",
-                                dest_pubkey,
-                                start.elapsed().as_millis()
-                            );
-                        },
-                        Err(_) => {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Discovery timed out before the node was discovered."
-                            );
-                            println!("Discovery timed out before the node was discovered.");
-                            println!("The peer may be offline. Please try again later.");
-                        },
-                    }
-                },
-                Err(TransactionServiceError::OutputManagerError(OutputManagerError::NotEnoughFunds)) => {
-                    println!("Not enough funds to fulfill the transaction.");
-                },
-                Err(e) => {
-                    println!("Something went wrong sending funds");
-                    println!("{:?}", e);
-                    warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
-                    return;
-                },
-                Ok(_) => println!("Sending {} Tari to {} ", amount, dest_pubkey),
-            };
+            send_tari(amount, dest_pubkey.clone(), msg.clone(), wallet_transaction_service).await;
         });
     }
 
-    // Function to process the make it rain transaction function
+    /// Function to process the make it rain transaction function
     fn process_make_it_rain(&mut self, command_arg: Vec<String>) {
+        // args: [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx]
+        //       [\"start time (UTC)\" / 'now' for immediate start] [public key or emoji id to send to] [message]
         let command_error_msg =
             "Command entered incorrectly, please use the following format:\n".to_owned() + MAKE_IT_RAIN_USAGE;
 
@@ -1603,10 +1538,9 @@ impl Parser {
         let mut inc: u8 = 0;
         let tx_per_s = command_arg[inc as usize].parse::<f64>();
         if tx_per_s.is_err() {
-            println!("{}", command_error_msg);
-            println!("Invalid data provided for [number of Txs/s]\n");
+            println!("Invalid data provided for [number of Txs]\n");
             return;
-        };
+        }
         let tx_per_s = tx_per_s.unwrap();
 
         // [test duration (s)]
@@ -1623,6 +1557,8 @@ impl Parser {
             println!("Invalid data provided for [number of Txs/s] * [test duration (s)], must be >= 1\n");
             return;
         }
+        let number_of_txs = (tx_per_s * duration as f64) as usize;
+        let tx_per_s = tx_per_s.min(25.0); // Maximum rate set to 25/s.
 
         // [starting amount (uT)]
         inc += 1;
@@ -1648,12 +1584,12 @@ impl Parser {
         inc += 1;
         let time = command_arg[inc as usize].to_string();
         let time_utc_ref = Utc::now();
-        let mut _time_utc_start = Utc::now();
+        let mut time_utc_start = Utc::now();
         let datetime = parse_date_string(&time, Utc::now(), Dialect::Uk);
         match datetime {
             Ok(t) => {
                 if t > time_utc_ref {
-                    _time_utc_start = t;
+                    time_utc_start = t;
                 }
             },
             Err(e) => {
@@ -1687,16 +1623,72 @@ impl Parser {
             msg = msg.trim().to_string();
         }
 
-        // TODO: Implement Tx rate vs. as fast as possible, must be non-blocking
-        // TODO: Start at specified time, must be non-blocking
-        for i in 0..(tx_per_s * duration as f64) as usize {
-            // `send-tari` commands: [amount of tari to send] [destination public key or emoji id] [optional: msg]
-            let command_str =
-                (start_amount.0 + amount_inc.0 * i as u64).to_string() + " " + &dest_pubkey.to_string() + " " + &msg;
-            let args = command_str.split_whitespace();
-            // Execute
-            self.process_send_tari(args);
-        }
+        let mut dht = self.discovery_service.clone();
+        let executor = self.executor.clone();
+        let wallet_transaction_service = self.wallet_transaction_service.clone();
+        self.executor.spawn(async move {
+            // Ensure a valid connection is available by forcing a peer discovery. This is intended to be
+            // a blocking operation before the test starts.
+            match dht
+                .discover_peer(
+                    Box::from(dest_pubkey.clone()),
+                    NodeDestination::PublicKey(Box::from(dest_pubkey.clone())),
+                )
+                .await
+            {
+                Ok(_p) => {
+                    // Wait until specified test start time
+                    let millis_to_wait = (time_utc_start - Utc::now()).num_milliseconds();
+                    println!(
+                        "`make-it-rain` to peer '{}' scheduled to start at {}: msg \"{}\"",
+                        &key, time_utc_start, &msg
+                    );
+                    if millis_to_wait > 0 {
+                        tokio::time::delay_for(Duration::from_millis(millis_to_wait as u64)).await;
+                    }
+
+                    // Send all the transactions
+                    let start = Utc::now();
+                    for i in 0..number_of_txs {
+                        // Manage Tx rate
+                        let millis_actual_i = (Utc::now() - start).num_milliseconds() as u64;
+                        let millis_target_i = (i as f64 / (tx_per_s / 1000.0)) as u64;
+                        if millis_target_i - millis_actual_i > 0 {
+                            // Maximum delay between Txs set to 120 s
+                            tokio::time::delay_for(Duration::from_millis(
+                                (millis_target_i - millis_actual_i).min(120_000u64),
+                            ))
+                            .await;
+                        }
+                        // Send Tx
+                        let wallet_transaction_service = wallet_transaction_service.clone();
+                        let dest_pubkey = dest_pubkey.clone();
+                        let msg = msg.clone();
+                        executor.spawn(async move {
+                            send_tari(
+                                start_amount + amount_inc * (i as u64),
+                                dest_pubkey,
+                                msg,
+                                wallet_transaction_service,
+                            )
+                            .await;
+                        });
+                    }
+                    println!(
+                        "`make-it-rain` to peer '{}' concluded at {}: msg \"{}\"",
+                        &key,
+                        Utc::now(),
+                        &msg
+                    );
+                },
+                Err(err) => {
+                    println!(
+                        "💀 Peer discovery for `{}` failed, cannot perform 'make-it-rain' test: '{:?}'",
+                        key, err
+                    );
+                },
+            }
+        });
     }
 }
 
@@ -1712,4 +1704,77 @@ fn parse_emoji_id_or_public_key_or_node_id(key: &str) -> Option<Either<CommsPubl
     parse_emoji_id_or_public_key(key)
         .map(Either::Left)
         .or_else(|| NodeId::from_hex(key).ok().map(Either::Right))
+}
+
+/// Function to process the send transaction command
+async fn send_tari(
+    amount: MicroTari,
+    dest_pubkey: tari_comms::types::CommsPublicKey,
+    msg: String,
+    mut wallet_transaction_service: TransactionServiceHandle,
+)
+{
+    let fee_per_gram = 25 * uT;
+    let event_stream = wallet_transaction_service.get_event_stream_fused();
+    match wallet_transaction_service
+        .send_transaction(dest_pubkey.clone(), amount, fee_per_gram, msg)
+        .await
+    {
+        Err(TransactionServiceError::OutboundSendDiscoveryInProgress(tx_id)) => {
+            println!("No peer found matching that public key. Attempting to discover the peer on the network. 🌎");
+            let start = Instant::now();
+            match time::timeout(
+                Duration::from_secs(120),
+                utils::wait_for_discovery_transaction_event(event_stream, tx_id),
+            )
+            .await
+            {
+                Ok(true) => {
+                    println!(
+                        "Discovery succeeded for peer {} after {}ms",
+                        dest_pubkey,
+                        start.elapsed().as_millis()
+                    );
+                    debug!(
+                        target: LOG_TARGET,
+                        "Discovery succeeded for peer {} after {}ms",
+                        dest_pubkey,
+                        start.elapsed().as_millis()
+                    );
+                },
+                Ok(false) => {
+                    println!(
+                        "Discovery failed for peer {} after {}ms",
+                        dest_pubkey,
+                        start.elapsed().as_millis()
+                    );
+                    println!("The peer may be offline. Please try again later.");
+
+                    debug!(
+                        target: LOG_TARGET,
+                        "Discovery failed for peer {} after {}ms",
+                        dest_pubkey,
+                        start.elapsed().as_millis()
+                    );
+                },
+                Err(_) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Discovery timed out before the node was discovered."
+                    );
+                    println!("Discovery timed out before the node was discovered.");
+                    println!("The peer may be offline. Please try again later.");
+                },
+            }
+        },
+        Err(TransactionServiceError::OutputManagerError(OutputManagerError::NotEnoughFunds)) => {
+            println!("Not enough funds to fulfill the transaction.");
+        },
+        Err(e) => {
+            println!("Something went wrong sending funds");
+            println!("{:?}", e);
+            warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
+        },
+        Ok(_) => println!("Sending {} Tari to {} ", amount, dest_pubkey),
+    };
 }

@@ -64,8 +64,6 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
     fn call(&mut self, message: DhtOutboundMessage) -> Self::Future {
         let next_service = self.inner.clone();
         async move {
-            trace!(target: LOG_TARGET, "Serializing outbound message {:?}", message.tag);
-
             let DhtOutboundMessage {
                 tag,
                 destination_node_id,
@@ -80,6 +78,12 @@ where S: Service<OutboundMessage, Response = (), Error = PipelineError> + Clone 
                 reply,
                 ..
             } = message;
+            trace!(
+                target: LOG_TARGET,
+                "Serializing outbound message {:?} for peer `{}`",
+                message.tag,
+                destination_node_id.short_str()
+            );
 
             let dht_header = custom_header.map(DhtHeader::from).unwrap_or_else(|| DhtHeader {
                 version: DHT_ENVELOPE_HEADER_VERSION,
