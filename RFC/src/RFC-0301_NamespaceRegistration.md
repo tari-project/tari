@@ -4,7 +4,7 @@
 
 ![status: raw](./theme/images/status-draft.svg)
 
-**Maintainer(s)**: [Hansie Odendaal](https://github,com/hansieodendaal)
+**Maintainer(s)**: [Hansie Odendaal](https://github.com/hansieodendaal)
 
 # Licence
 

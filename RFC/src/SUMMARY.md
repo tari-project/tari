@@ -7,7 +7,7 @@
     - [RFC-0110: Base nodes](RFC-0110_BaseNodes.md)
   -   [RFC-0111: Base node architecture](RFC-0111_BaseNodeArchitecture.md)
     - [RFC-0120: Consensus rules](RFC-0120_Consensus.md)
-    - [RFC-0130: Mining](RFC-0130_Mining.md)
+    - [RFC-0131: Mining](RFC-0131_Mining.md)
     - [RFC-0140: Sync and Seeding](RFC-0140_Syncing_and_seeding.md)
     - [RFC-0150: Wallets](RFC-0150_Wallets.md)
     - [RFC-0151: Transaction protocol](RFC-0151_TransactionProtocol.md)
@@ -30,5 +30,8 @@
     - [RFC-0340: Validator Node Consensus](RFC-0340_VNConsensusOverview.md)
 - [RFC-0500: Tari payment channels](RFC-0500_PaymentChannels.md)
 - [RFC-1000: Tari Use Cases](RFC-1000_TariUseCases.md)
+
+- [Deprecated RFCs](deprecated.md)
+  - [RFC-0130: Mining](RFC-0130_Mining.md)
 
 - [Glossary](Glossary.md)
