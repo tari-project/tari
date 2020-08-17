@@ -556,7 +556,7 @@ impl Parser {
                                 "   {}, {}, {:>3}, {:?}",
                                 uo.value,
                                 uo.as_transaction_input(&factory, OutputFeatures::default())
-                                    .commitment
+                                    .commitment()
                                     .to_hex(),
                                 mature_in,
                                 uo.features.flags

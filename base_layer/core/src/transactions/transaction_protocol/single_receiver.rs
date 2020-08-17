@@ -34,6 +34,7 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PK,
     range_proof::{RangeProofError, RangeProofService as RPS},
+    script::DEFAULT_SCRIPT_HASH,
     tari_utilities::byte_array::ByteArray,
 };
 
@@ -95,6 +96,7 @@ impl SingleReceiverTransactionProtocol {
             commitment,
             RangeProof::from_bytes(&proof)
                 .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
+            &DEFAULT_SCRIPT_HASH,
         ))
     }
 }
@@ -172,13 +174,15 @@ mod test {
         let out = &prot.output;
         // Check the output that was constructed
         assert!(
-            factories.commitment.open_value(&k, info.amount.into(), &out.commitment),
+            factories
+                .commitment
+                .open_value(&k, info.amount.into(), out.commitment()),
             "Output commitment is invalid"
         );
         assert!(
             out.verify_range_proof(&factories.range_proof).unwrap(),
             "Range proof is invalid"
         );
-        assert!(out.features.flags.is_empty(), "Output features flags have changed");
+        assert!(out.features().flags.is_empty(), "Output features flags have changed");
     }
 }

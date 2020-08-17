@@ -103,7 +103,7 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
             .outputs()
             .iter()
             .filter(|u| !u.is_coinbase())
-            .map(|u| &u.commitment)
+            .map(|u| u.commitment())
             .sum()
     }
 

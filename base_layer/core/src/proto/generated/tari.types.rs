@@ -70,6 +70,9 @@ pub struct TransactionInput {
     /// The commitment referencing the output being spent.
     #[prost(message, optional, tag = "2")]
     pub commitment: ::std::option::Option<Commitment>,
+    //// The hash of the locking script on this UTXO.
+    #[prost(message, optional, tag = "3")]
+    pub script_hash: ::std::option::Option<HashOutput>,
 }
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
 /// blinded value for the output while the range proof guarantees the commitment includes a positive value without
@@ -85,6 +88,9 @@ pub struct TransactionOutput {
     /// A proof that the commitment is in the right range
     #[prost(bytes, tag = "3")]
     pub range_proof: std::vec::Vec<u8>,
+    //// The hash of the locking script on this UTXO.
+    #[prost(message, optional, tag = "4")]
+    pub script_hash: ::std::option::Option<HashOutput>,
 }
 /// Options for UTXO's
 #[derive(Clone, PartialEq, ::prost::Message)]

@@ -37,7 +37,10 @@ use crate::{
     txn_schema,
     validation::{StatelessValidation, ValidationError},
 };
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, Hashable};
+use tari_crypto::{
+    script::TariScript,
+    tari_utilities::{epoch_time::EpochTime, Hashable},
+};
 use tari_test_utils::unpack_enum;
 
 #[test]
@@ -172,7 +175,7 @@ fn chain_balance_validation() {
 
     txn.spend_utxo(coinbase_hash);
 
-    let output = UnblindedOutput::new(coinbase_value, coinbase_key, None);
+    let output = UnblindedOutput::new(coinbase_value, coinbase_key, None, TariScript::default());
     let fee = Fee::calculate(25 * uT, 1, 1, 2);
     let schema = txn_schema!(from: vec![output], to: vec![coinbase_value - fee], fee: 25 * uT);
     let (tx, _, params) = spend_utxos(schema);
@@ -208,7 +211,7 @@ fn chain_balance_validation() {
 
     txn.spend_utxo(faucet_hash);
 
-    let output = UnblindedOutput::new(faucet_value, faucet_key, None);
+    let output = UnblindedOutput::new(faucet_value, faucet_key, None, TariScript::default());
     let fee = Fee::calculate(25 * uT, 1, 1, 2);
     let schema = txn_schema!(from: vec![output], to: vec![faucet_value - fee], fee: 25 * uT);
     let (tx, _, params) = spend_utxos(schema);

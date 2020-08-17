@@ -221,8 +221,8 @@ impl AggregateBody {
     /// Calculate the sum of the inputs and outputs including fees
     fn sum_commitments(&self, fees: u64, factory: &CommitmentFactory) -> Commitment {
         let fee_commitment = factory.commit_value(&PrivateKey::default(), fees);
-        let sum_inputs = &self.inputs.iter().map(|i| &i.commitment).sum::<Commitment>();
-        let sum_outputs = &self.outputs.iter().map(|o| &o.commitment).sum::<Commitment>();
+        let sum_inputs = &self.inputs.iter().map(|i| i.commitment()).sum::<Commitment>();
+        let sum_outputs = &self.outputs.iter().map(|o| o.commitment()).sum::<Commitment>();
         &(sum_outputs - sum_inputs) + &fee_commitment
     }
 

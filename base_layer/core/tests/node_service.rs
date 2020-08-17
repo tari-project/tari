@@ -880,8 +880,8 @@ fn request_and_response_fetch_mmr_node_and_count() {
     let utxo_hash2 = utxo2.hash();
     let utxo_hash3 = utxo3.hash();
     let utxo_hash4 = utxo4.hash();
-    let rp_hash2 = utxo2.proof.hash();
-    let rp_hash3 = utxo3.proof.hash();
+    let rp_hash2 = utxo2.proof().hash();
+    let rp_hash3 = utxo3.proof().hash();
     let kernel_hash2 = kernel2.hash();
     let kernel_hash3 = kernel3.hash();
 

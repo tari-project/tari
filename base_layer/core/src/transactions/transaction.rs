@@ -52,6 +52,7 @@ use std::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     range_proof::{RangeProofError, RangeProofService as RangeProofServiceTrait},
+    script::{TariScript, DEFAULT_SCRIPT_HASH},
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 use thiserror::Error;
@@ -175,42 +176,53 @@ pub struct UnblindedOutput {
     pub value: MicroTari,
     pub spending_key: BlindingFactor,
     pub features: OutputFeatures,
+    pub script: TariScript,
 }
 
 impl UnblindedOutput {
     /// Creates a new un-blinded output
-    pub fn new(value: MicroTari, spending_key: BlindingFactor, features: Option<OutputFeatures>) -> UnblindedOutput {
+    pub fn new(
+        value: MicroTari,
+        spending_key: BlindingFactor,
+        features: Option<OutputFeatures>,
+        script: TariScript,
+    ) -> UnblindedOutput
+    {
         UnblindedOutput {
             value,
             spending_key,
             features: features.unwrap_or_default(),
+            script,
         }
     }
 
     /// Commits an UnblindedOutput into a Transaction input
     pub fn as_transaction_input(&self, factory: &CommitmentFactory, features: OutputFeatures) -> TransactionInput {
         let commitment = factory.commit(&self.spending_key, &self.value.into());
-        TransactionInput { commitment, features }
+        let script_hash = self.script.as_hash::<HashDigest>().unwrap().to_vec(); // TODO deal with error
+        TransactionInput {
+            commitment,
+            features,
+            script_hash,
+        }
     }
 
     pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
+        let proof = RangeProof::from_bytes(
+            &factories
+                .range_proof
+                .construct_proof(&self.spending_key, self.value.into())?,
+        )
+        .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?;
+        let script_hash = self.script.as_hash::<HashDigest>().unwrap().to_vec(); // TODO deal with error
         let output = TransactionOutput {
             features: self.features.clone(),
             commitment,
-            proof: RangeProof::from_bytes(
-                &factories
-                    .range_proof
-                    .construct_proof(&self.spending_key, self.value.into())?,
-            )
-            .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
+            proof,
+            script_hash,
         };
-        // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
-        if !output.verify_range_proof(&factories.range_proof)? {
-            return Err(TransactionError::ValidationError(
-                "Range proof could not be verified".into(),
-            ));
-        }
+
         Ok(output)
     }
 }
@@ -250,21 +262,37 @@ impl Ord for UnblindedOutput {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TransactionInput {
     /// The features of the output being spent. We will check maturity for all outputs.
-    pub features: OutputFeatures,
+    features: OutputFeatures,
     /// The commitment referencing the output being spent.
-    pub commitment: Commitment,
+    commitment: Commitment,
+    /// The hash of the locking script on this input
+    script_hash: HashOutput,
 }
 
 /// An input for a transaction that spends an existing output
 impl TransactionInput {
     /// Create a new Transaction Input
-    pub fn new(features: OutputFeatures, commitment: Commitment) -> TransactionInput {
-        TransactionInput { features, commitment }
+    pub fn new(features: OutputFeatures, commitment: Commitment, script_hash: &[u8]) -> TransactionInput {
+        TransactionInput {
+            features,
+            commitment,
+            script_hash: script_hash.to_vec(),
+        }
+    }
+
+    /// Accessor method for the commitment contained in an input
+    pub fn features(&self) -> &OutputFeatures {
+        &self.features
     }
 
     /// Accessor method for the commitment contained in an input
     pub fn commitment(&self) -> &Commitment {
         &self.commitment
+    }
+
+    /// Return the hash of the locking script on this input
+    pub fn script_hash(&self) -> &[u8] {
+        &self.script_hash
     }
 
     /// Checks if the given un-blinded input instance corresponds to this blinded Transaction Input
@@ -284,6 +312,7 @@ impl From<TransactionOutput> for TransactionInput {
         TransactionInput {
             features: item.features,
             commitment: item.commitment,
+            script_hash: item.script_hash,
         }
     }
 }
@@ -313,21 +342,30 @@ impl Display for TransactionInput {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TransactionOutput {
     /// Options for an output's structure or use
-    pub features: OutputFeatures,
+    features: OutputFeatures,
     /// The homomorphic commitment representing the output amount
-    pub commitment: Commitment,
-    /// A proof that the commitment is in the right range
-    pub proof: RangeProof,
+    commitment: Commitment,
+    /// A proof the commitment is in the right range
+    proof: RangeProof,
+    /// The hash of the locking script on this UTXO.
+    script_hash: HashOutput,
 }
 
 /// An output for a transaction, includes a range proof
 impl TransactionOutput {
     /// Create new Transaction Output
-    pub fn new(features: OutputFeatures, commitment: Commitment, proof: RangeProof) -> TransactionOutput {
+    pub fn new(
+        features: OutputFeatures,
+        commitment: Commitment,
+        proof: RangeProof,
+        script_hash: &[u8],
+    ) -> TransactionOutput
+    {
         TransactionOutput {
             features,
             commitment,
             proof,
+            script_hash: script_hash.to_vec(),
         }
     }
 
@@ -341,6 +379,16 @@ impl TransactionOutput {
         &self.proof
     }
 
+    /// Return the feature set for this output
+    pub fn features(&self) -> &OutputFeatures {
+        &self.features
+    }
+
+    /// Return the hash of the locking script on this output
+    pub fn script_hash(&self) -> &[u8] {
+        &self.script_hash
+    }
+
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<bool, TransactionError> {
         Ok(prover.verify(&self.proof.to_vec(), &self.commitment))
@@ -349,7 +397,9 @@ impl TransactionOutput {
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.
     /// This will ignore the output rangeproof
     pub fn is_equal_to(&self, output: &TransactionInput) -> bool {
-        self.commitment == output.commitment && self.features == output.features
+        self.commitment == output.commitment &&
+            self.features == output.features &&
+            self.script_hash == output.script_hash
     }
 
     /// Returns true if the output is a coinbase, otherwise false
@@ -369,6 +419,7 @@ impl Hashable for TransactionOutput {
         HashDigest::new()
             .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
+            .chain(self.script_hash())
             // .chain(range proof) // See docs as to why we exclude this
             .result()
             .to_vec()
@@ -381,6 +432,7 @@ impl Default for TransactionOutput {
             OutputFeatures::default(),
             CommitmentFactory::default().zero(),
             RangeProof::default(),
+            &DEFAULT_SCRIPT_HASH,
         )
     }
 }
@@ -811,7 +863,7 @@ mod test {
     fn unblinded_input() {
         let k = BlindingFactor::random(&mut OsRng);
         let factory = PedersenCommitmentFactory::default();
-        let i = UnblindedOutput::new(10.into(), k, None);
+        let i = UnblindedOutput::new(10.into(), k, None, TariScript::default());
         let input = i.as_transaction_input(&factory, OutputFeatures::default());
         assert_eq!(input.features, OutputFeatures::default());
         assert!(input.opened_by(&i, &factory));
@@ -832,11 +884,12 @@ mod test {
         let k2 = BlindingFactor::random(&mut OsRng);
 
         // For testing the max range has been limited to 2^32 so this value is too large.
-        let unblinded_output1 = UnblindedOutput::new((2u64.pow(32) - 1u64).into(), k1, None);
+        let unblinded_output1 = UnblindedOutput::new((2u64.pow(32) - 1u64).into(), k1, None, TariScript::default());
         let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
         assert!(tx_output1.verify_range_proof(&factories.range_proof).unwrap());
 
-        let unblinded_output2 = UnblindedOutput::new((2u64.pow(32) + 1u64).into(), k2.clone(), None);
+        let unblinded_output2 =
+            UnblindedOutput::new((2u64.pow(32) + 1u64).into(), k2.clone(), None, TariScript::default());
         let tx_output2 = unblinded_output2.as_transaction_output(&factories);
 
         match tx_output2 {
@@ -849,7 +902,12 @@ mod test {
         let v = PrivateKey::from(2u64.pow(32) + 1);
         let c = factories.commitment.commit(&k2, &v);
         let proof = factories.range_proof.construct_proof(&k2, 2u64.pow(32) + 1).unwrap();
-        let tx_output3 = TransactionOutput::new(OutputFeatures::default(), c, RangeProof::from_bytes(&proof).unwrap());
+        let tx_output3 = TransactionOutput::new(
+            OutputFeatures::default(),
+            c,
+            RangeProof::from_bytes(&proof).unwrap(),
+            &DEFAULT_SCRIPT_HASH,
+        );
         assert_eq!(tx_output3.verify_range_proof(&factories.range_proof).unwrap(), false);
     }
 
@@ -902,7 +960,7 @@ mod test {
         let v = PrivateKey::from(2u64.pow(32) + 1);
         let c = factories.commitment.commit(&k, &v);
 
-        let mut input = TransactionInput::new(OutputFeatures::default(), c);
+        let mut input = TransactionInput::new(OutputFeatures::default(), c, &DEFAULT_SCRIPT_HASH);
         let mut kernel = create_test_kernel(0.into(), 0);
         let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into());
 

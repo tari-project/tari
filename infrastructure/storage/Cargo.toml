@@ -18,7 +18,7 @@ rmp = "0.8.7"
 rmp-serde = "0.13.7"
 serde = "1.0.80"
 serde_derive = "1.0.80"
-tari_utilities = "^0.2"
+tari_utilities = "^0.3"
 bytes = "0.4.12"
 
 [dev-dependencies]

@@ -43,7 +43,11 @@ use std::{
     collections::HashMap,
     fmt::{Debug, Error, Formatter},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::fixed_set::FixedSet};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    script::{TariScript, DEFAULT_SCRIPT_HASH},
+    tari_utilities::fixed_set::FixedSet,
+};
 
 /// The SenderTransactionInitializer is a Builder that helps set up the initial state for the Sender party of a new
 /// transaction Typically you don't instantiate this object directly. Rather use
@@ -190,7 +194,8 @@ impl SenderTransactionInitializer {
                             .as_ref()
                             .ok_or_else(|| "Change spending key was not provided")?;
                         let change_key = change_key.clone();
-                        self.with_output(UnblindedOutput::new(v, change_key, None));
+                        let out = UnblindedOutput::new(v, change_key, None, TariScript::default());
+                        self.with_output(out);
                         Ok((fee_with_change, v))
                     },
                 }
@@ -315,6 +320,7 @@ impl SenderTransactionInitializer {
 mod test {
     use crate::{
         consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
+        crypto::script::TariScript,
         transactions::{
             fee::Fee,
             helpers::{make_input, TestParams},
@@ -350,7 +356,12 @@ mod test {
             .with_lock_height(100)
             .with_offset(p.offset)
             .with_private_nonce(p.nonce);
-        builder.with_output(UnblindedOutput::new(MicroTari(100), p.spend_key, None));
+        builder.with_output(UnblindedOutput::new(
+            MicroTari(100),
+            p.spend_key,
+            None,
+            TariScript::default(),
+        ));
         let (utxo, input) = make_input(&mut OsRng, MicroTari(5_000), &factories.commitment);
         builder.with_input(utxo, input);
         builder.with_fee_per_gram(MicroTari(20));
@@ -385,7 +396,7 @@ mod test {
         let p = TestParams::new();
         let (utxo, input) = make_input(&mut OsRng, MicroTari(500), &factories.commitment);
         let expected_fee = Fee::calculate(MicroTari(20), 1, 1, 1);
-        let output = UnblindedOutput::new(MicroTari(500) - expected_fee, p.spend_key, None);
+        let output = UnblindedOutput::new(MicroTari(500) - expected_fee, p.spend_key, None, TariScript::default());
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
@@ -421,7 +432,12 @@ mod test {
         let expected_fee = MicroTari::from((KERNEL_WEIGHT + WEIGHT_PER_INPUT + 1 * WEIGHT_PER_OUTPUT) * 20);
         // fee == 340, output = 80
         // Pay out so that I should get change, but not enough to pay for the output
-        let output = UnblindedOutput::new(MicroTari(500) - expected_fee - MicroTari(50), p.spend_key, None);
+        let output = UnblindedOutput::new(
+            MicroTari(500) - expected_fee - MicroTari(50),
+            p.spend_key,
+            None,
+            TariScript::default(),
+        );
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
@@ -452,7 +468,7 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let output = UnblindedOutput::new(MicroTari(500), p.spend_key, None);
+        let output = UnblindedOutput::new(MicroTari(500), p.spend_key, None, TariScript::default());
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
@@ -475,7 +491,7 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input) = make_input(&mut OsRng, MicroTari(500), &factories.commitment);
-        let output = UnblindedOutput::new(MicroTari(400), p.spend_key, None);
+        let output = UnblindedOutput::new(MicroTari(400), p.spend_key, None, TariScript::default());
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
@@ -496,7 +512,7 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input) = make_input(&mut OsRng, MicroTari(400), &factories.commitment);
-        let output = UnblindedOutput::new(MicroTari(400), p.spend_key, None);
+        let output = UnblindedOutput::new(MicroTari(400), p.spend_key, None, TariScript::default());
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0);
         builder
@@ -517,7 +533,7 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input) = make_input(&mut OsRng, MicroTari(100_000), &factories.commitment);
-        let output = UnblindedOutput::new(MicroTari(150), p.spend_key, None);
+        let output = UnblindedOutput::new(MicroTari(150), p.spend_key, None, TariScript::default());
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(2);
         builder
@@ -548,7 +564,7 @@ mod test {
         let (utxo2, input2) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment);
         let weight = MicroTari(30);
         let expected_fee = Fee::calculate(weight, 1, 2, 3);
-        let output = UnblindedOutput::new(MicroTari(1500) - expected_fee, p.spend_key, None);
+        let output = UnblindedOutput::new(MicroTari(1500) - expected_fee, p.spend_key, None, TariScript::default());
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(1);
         builder
@@ -584,7 +600,7 @@ mod test {
         let p = TestParams::new();
         let (utxo1, input1) = make_input(&mut OsRng, (2u64.pow(32) + 10000u64).into(), &factories.commitment);
         let weight = MicroTari(30);
-        let output = UnblindedOutput::new((1u64.pow(32) + 1u64).into(), p.spend_key, None);
+        let output = UnblindedOutput::new((1u64.pow(32) + 1u64).into(), p.spend_key, None, TariScript::default());
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(1);
         builder

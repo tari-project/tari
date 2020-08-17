@@ -12,7 +12,7 @@ default = ["native_bitmap"]
 native_bitmap = ["croaring"]
 
 [dependencies]
-tari_utilities = "^0.2"
+tari_utilities = "^0.3"
 thiserror = "1.0.20"
 digest = "0.8.0"
 log = "0.4"
@@ -24,7 +24,7 @@ criterion = "0.2"
 rand="0.7.0"
 blake2 = "0.8.0"
 tari_infra_derive= { path = "../../infrastructure/derive", version = "^0.0" }
-tari_crypto = { version = "^0.5" }
+tari_crypto = { version = "^0.7", path = "../../../tari_crypto" }
 serde_json = "1.0"
 bincode = "1.1"
 [lib]

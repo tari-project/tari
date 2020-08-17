@@ -82,8 +82,8 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
         let key = Key {
             key: key.to_hex(),
             value: u64::from(value),
-            commitment: utxo.commitment.to_hex(),
-            proof: utxo.proof.to_hex(),
+            commitment: utxo.commitment().to_hex(),
+            proof: utxo.proof().to_hex(),
         };
         let key_str = format!("{}\n", serde_json::to_string(&key).unwrap());
         let _ = key_file.write_all(key_str.as_bytes());

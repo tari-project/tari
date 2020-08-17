@@ -47,6 +47,7 @@ use tari_core::{
         },
     },
     consensus::{ConsensusConstantsBuilder, Network},
+    crypto::script::{TariScript, DEFAULT_SCRIPT_HASH},
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
@@ -305,12 +306,22 @@ fn send_no_change<T: OutputManagerBackend + Clone + 'static>(backend: T) {
     let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
     runtime
-        .block_on(oms.add_output(UnblindedOutput::new(MicroTari::from(value1), key1, None)))
+        .block_on(oms.add_output(UnblindedOutput::new(
+            MicroTari::from(value1),
+            key1,
+            None,
+            TariScript::default(),
+        )))
         .unwrap();
     let key2 = PrivateKey::random(&mut OsRng);
     let value2 = 800;
     runtime
-        .block_on(oms.add_output(UnblindedOutput::new(MicroTari::from(value2), key2, None)))
+        .block_on(oms.add_output(UnblindedOutput::new(
+            MicroTari::from(value2),
+            key2,
+            None,
+            TariScript::default(),
+        )))
         .unwrap();
 
     let mut stp = runtime
@@ -379,12 +390,22 @@ fn send_not_enough_for_change<T: OutputManagerBackend + Clone + 'static>(backend
     let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
     runtime
-        .block_on(oms.add_output(UnblindedOutput::new(MicroTari::from(value1), key1, None)))
+        .block_on(oms.add_output(UnblindedOutput::new(
+            MicroTari::from(value1),
+            key1,
+            None,
+            TariScript::default(),
+        )))
         .unwrap();
     let key2 = PrivateKey::random(&mut OsRng);
     let value2 = 800;
     runtime
-        .block_on(oms.add_output(UnblindedOutput::new(MicroTari::from(value2), key2, None)))
+        .block_on(oms.add_output(UnblindedOutput::new(
+            MicroTari::from(value2),
+            key2,
+            None,
+            TariScript::default(),
+        )))
         .unwrap();
 
     match runtime.block_on(oms.prepare_transaction_to_send(
@@ -432,6 +453,7 @@ fn receiving_and_confirmation<T: OutputManagerBackend + Clone + 'static>(backend
         OutputFeatures::create_coinbase(1),
         commitment,
         RangeProof::from_bytes(&rr).unwrap(),
+        &DEFAULT_SCRIPT_HASH,
     );
 
     runtime
@@ -632,6 +654,7 @@ fn test_confirming_received_output<T: OutputManagerBackend + Clone + 'static>(ba
         OutputFeatures::create_coinbase(1),
         commitment,
         RangeProof::from_bytes(&rr).unwrap(),
+        &DEFAULT_SCRIPT_HASH,
     );
     runtime
         .block_on(oms.confirm_transaction(1, vec![], vec![output]))
@@ -664,7 +687,12 @@ fn test_startup_utxo_scan() {
 
     let invalid_key = PrivateKey::random(&mut OsRng);
     let invalid_value = 666;
-    let invalid_output = UnblindedOutput::new(MicroTari::from(invalid_value), invalid_key.clone(), None);
+    let invalid_output = UnblindedOutput::new(
+        MicroTari::from(invalid_value),
+        invalid_key.clone(),
+        None,
+        TariScript::default(),
+    );
     let invalid_hash = invalid_output.as_transaction_output(&factories).unwrap().hash();
 
     backend
@@ -686,7 +714,7 @@ fn test_startup_utxo_scan() {
     let mut hashes = Vec::new();
     let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
-    let output1 = UnblindedOutput::new(MicroTari::from(value1), key1.clone(), None);
+    let output1 = UnblindedOutput::new(MicroTari::from(value1), key1.clone(), None, TariScript::default());
     let tx_output1 = output1.as_transaction_output(&factories).unwrap();
     let output1_hash = tx_output1.hash();
     hashes.push(output1_hash.clone());
@@ -694,7 +722,7 @@ fn test_startup_utxo_scan() {
 
     let key2 = PrivateKey::random(&mut OsRng);
     let value2 = 800;
-    let output2 = UnblindedOutput::new(MicroTari::from(value2), key2.clone(), None);
+    let output2 = UnblindedOutput::new(MicroTari::from(value2), key2.clone(), None, TariScript::default());
     let tx_output2 = output2.as_transaction_output(&factories).unwrap();
     hashes.push(tx_output2.hash());
 
@@ -702,7 +730,7 @@ fn test_startup_utxo_scan() {
 
     let key3 = PrivateKey::random(&mut OsRng);
     let value3 = 900;
-    let output3 = UnblindedOutput::new(MicroTari::from(value3), key3.clone(), None);
+    let output3 = UnblindedOutput::new(MicroTari::from(value3), key3.clone(), None, TariScript::default());
     let tx_output3 = output3.as_transaction_output(&factories).unwrap();
     hashes.push(tx_output3.hash());
 
@@ -710,7 +738,7 @@ fn test_startup_utxo_scan() {
 
     let key4 = PrivateKey::random(&mut OsRng);
     let value4 = 901;
-    let output4 = UnblindedOutput::new(MicroTari::from(value4), key4.clone(), None);
+    let output4 = UnblindedOutput::new(MicroTari::from(value4), key4.clone(), None, TariScript::default());
     let tx_output4 = output4.as_transaction_output(&factories).unwrap();
     hashes.push(tx_output4.hash());
 
@@ -908,7 +936,7 @@ fn test_startup_utxo_scan() {
 
     let key5 = PrivateKey::random(&mut OsRng);
     let value5 = 1000;
-    let output5 = UnblindedOutput::new(MicroTari::from(value5), key5, None);
+    let output5 = UnblindedOutput::new(MicroTari::from(value5), key5, None, TariScript::default());
     runtime.block_on(oms.add_output(output5.clone())).unwrap();
 
     let invalid_txs = runtime.block_on(oms.get_invalid_outputs()).unwrap();
@@ -1275,6 +1303,7 @@ fn handle_coinbase<T: Clone + OutputManagerBackend + 'static>(backend: T) {
         OutputFeatures::create_coinbase(3),
         commitment,
         RangeProof::from_bytes(&rr).unwrap(),
+        &DEFAULT_SCRIPT_HASH,
     );
 
     runtime

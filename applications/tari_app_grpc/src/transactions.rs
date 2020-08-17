@@ -65,11 +65,12 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .ok_or_else(|| "transaction output features not provided".to_string())??;
 
         let commitment = Commitment::from_bytes(&output.commitment).map_err(|err| err.to_string())?;
-        Ok(Self {
+        Ok(TransactionOutput::new(
             features,
             commitment,
-            proof: BulletRangeProof(output.range_proof),
-        })
+            BulletRangeProof(output.range_proof),
+            &output.script_hash,
+        ))
     }
 }
 
@@ -119,8 +120,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             .ok_or_else(|| "transaction output features not provided".to_string())??;
 
         let commitment = Commitment::from_bytes(&input.commitment).map_err(|err| err.to_string())?;
-
-        Ok(Self { features, commitment })
+        Ok(TransactionInput::new(features, commitment, &input.script_hash))
     }
 }
 

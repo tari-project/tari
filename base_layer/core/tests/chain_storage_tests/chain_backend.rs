@@ -427,9 +427,9 @@ fn fetch_mmr_root_and_proof_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
     let utxo_hash1 = utxo1.hash();
     let utxo_hash2 = utxo2.hash();
     let utxo_hash3 = utxo3.hash();
-    let rp_hash1 = utxo1.proof.hash();
-    let rp_hash2 = utxo2.proof.hash();
-    let rp_hash3 = utxo3.proof.hash();
+    let rp_hash1 = utxo1.proof().hash();
+    let rp_hash2 = utxo2.proof().hash();
+    let rp_hash3 = utxo3.proof().hash();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1.clone());
@@ -566,8 +566,8 @@ fn fetch_future_mmr_root_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
     let utxo_hash1 = utxo1.hash();
     let utxo_hash3 = utxo3.hash();
     let utxo_hash4 = utxo4.hash();
-    let rp_hash3 = utxo3.proof.hash();
-    let rp_hash4 = utxo4.proof.hash();
+    let rp_hash3 = utxo3.proof().hash();
+    let rp_hash4 = utxo4.proof().hash();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1);
@@ -675,7 +675,7 @@ fn commit_block_and_create_fetch_checkpoint_and_rewind_mmr<T: BlockchainBackend>
     let header1 = BlockHeader::new(0);
     let utxo_hash1 = utxo1.hash();
     let kernel_hash1 = kernel1.hash();
-    let rp_hash1 = utxo1.proof.hash();
+    let rp_hash1 = utxo1.proof().hash();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1);
@@ -689,7 +689,7 @@ fn commit_block_and_create_fetch_checkpoint_and_rewind_mmr<T: BlockchainBackend>
     let header2 = BlockHeader::from_previous(&header1);
     let utxo_hash2 = utxo2.hash();
     let kernel_hash2 = kernel2.hash();
-    let rp_hash2 = utxo2.proof.hash();
+    let rp_hash2 = utxo2.proof().hash();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo2);
@@ -1117,7 +1117,7 @@ fn lmdb_mmr_reset_and_commit() {
         let utxo_hash2 = utxo2.hash();
         let kernel_hash1 = kernel1.hash();
         let kernel_hash2 = kernel2.hash();
-        let rp_hash1 = utxo1.proof.hash();
+        let rp_hash1 = utxo1.proof().hash();
         let header_hash1 = header1.hash();
 
         let mut txn = DbTransaction::new();
@@ -1215,7 +1215,7 @@ fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
     header1.height = 0;
     let utxo_hash1 = utxo1.hash();
     let kernel_hash1 = kernel1.hash();
-    let rp_hash1 = utxo1.proof.hash();
+    let rp_hash1 = utxo1.proof().hash();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1);
@@ -1229,7 +1229,7 @@ fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
     let header2 = BlockHeader::from_previous(&header1);
     let utxo_hash2 = utxo2.hash();
     let kernel_hash2 = kernel2.hash();
-    let rp_hash2 = utxo2.proof.hash();
+    let rp_hash2 = utxo2.proof().hash();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo2);
@@ -1256,13 +1256,13 @@ fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
     let header3 = BlockHeader::from_previous(&header2);
     let utxo_hash3 = utxo3.hash();
     let kernel_hash3 = kernel3.hash();
-    let rp_hash3 = utxo3.proof.hash();
+    let rp_hash3 = utxo3.proof().hash();
 
     let (utxo4, _) = create_utxo(MicroTari(20_000), &factories, None);
     let kernel4 = create_test_kernel(300.into(), 0);
     let utxo_hash4 = utxo4.hash();
     let kernel_hash4 = kernel4.hash();
-    let rp_hash4 = utxo4.proof.hash();
+    let rp_hash4 = utxo4.proof().hash();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo3);
@@ -1348,9 +1348,9 @@ fn merging_and_fetch_checkpoints_and_stxo_discard<T: BlockchainBackend>(mut db: 
     let kernel_hash1 = kernel1.hash();
     let kernel_hash2 = kernel2.hash();
     let kernel_hash3 = kernel3.hash();
-    let rp_hash1 = utxo1.proof.hash();
-    let rp_hash2 = utxo2.proof.hash();
-    let rp_hash3 = utxo3.proof.hash();
+    let rp_hash1 = utxo1.proof().hash();
+    let rp_hash2 = utxo2.proof().hash();
+    let rp_hash3 = utxo3.proof().hash();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1);
@@ -1693,12 +1693,12 @@ fn fetch_utxo_rp_mmr_nodes_and_count<T: BlockchainBackend>(mut db: T) {
         (utxo_hash6.clone(), false),
     ];
     let rp_leaf_nodes = vec![
-        (utxo1.proof.hash(), false),
-        (utxo2.proof.hash(), false),
-        (utxo3.proof.hash(), false),
-        (utxo4.proof.hash(), false),
-        (utxo5.proof.hash(), false),
-        (utxo6.proof.hash(), false),
+        (utxo1.proof().hash(), false),
+        (utxo2.proof().hash(), false),
+        (utxo3.proof().hash(), false),
+        (utxo4.proof().hash(), false),
+        (utxo5.proof().hash(), false),
+        (utxo6.proof().hash(), false),
     ];
 
     let mut txn = DbTransaction::new();
@@ -1865,10 +1865,10 @@ fn insert_mmr_node_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
     let utxo_hash2 = utxo2.hash();
     let utxo_hash3 = utxo3.hash();
     let utxo_hash4 = utxo4.hash();
-    let rp_hash1 = utxo1.proof.hash();
-    let rp_hash2 = utxo2.proof.hash();
-    let rp_hash3 = utxo3.proof.hash();
-    let rp_hash4 = utxo4.proof.hash();
+    let rp_hash1 = utxo1.proof().hash();
+    let rp_hash2 = utxo2.proof().hash();
+    let rp_hash3 = utxo3.proof().hash();
+    let rp_hash4 = utxo4.proof().hash();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1.clone());

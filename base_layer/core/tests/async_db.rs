@@ -52,7 +52,7 @@ use tari_test_utils::runtime::test_async;
 /// sorted in blocks, and so the order they were inserted in can change.
 fn find_utxo(output: &UnblindedOutput, block: &Block, factory: &CommitmentFactory) -> Option<TransactionOutput> {
     for utxo in block.body.outputs().iter() {
-        if factory.open_value(&output.spending_key, output.value.into(), &utxo.commitment) {
+        if factory.open_value(&output.spending_key, output.value.into(), utxo.commitment()) {
             return Some(utxo.clone());
         }
     }

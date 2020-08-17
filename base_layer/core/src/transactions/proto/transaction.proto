@@ -39,6 +39,8 @@ message TransactionInput {
     OutputFeatures features = 1;
     // The commitment referencing the output being spent.
     Commitment commitment = 2;
+    /// The hash of the locking script on this UTXO.
+    HashOutput script_hash = 3;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -51,6 +53,8 @@ message TransactionOutput {
     Commitment commitment = 2;
     // A proof that the commitment is in the right range
     bytes range_proof = 3;
+    /// The hash of the locking script on this UTXO.
+    HashOutput script_hash = 4;
 }
 
 // Options for UTXO's

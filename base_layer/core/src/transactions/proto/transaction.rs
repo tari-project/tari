@@ -40,7 +40,10 @@ use crate::transactions::{
     types::{BlindingFactor, Commitment},
 };
 use std::convert::{TryFrom, TryInto};
-use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
+use tari_crypto::{
+    script::DEFAULT_SCRIPT_HASH,
+    tari_utilities::{ByteArray, ByteArrayError},
+};
 
 //---------------------------------- TransactionKernel --------------------------------------------//
 
@@ -106,15 +109,21 @@ impl TryFrom<proto::TransactionInput> for TransactionInput {
             .ok_or_else(|| "Transaction output commitment not provided".to_string())?
             .map_err(|err| err.to_string())?;
 
-        Ok(Self { features, commitment })
+        let script_hash = input
+            .script_hash
+            .map(Into::into)
+            .unwrap_or_else(|| DEFAULT_SCRIPT_HASH.to_vec());
+
+        Ok(TransactionInput::new(features, commitment, &script_hash))
     }
 }
 
 impl From<TransactionInput> for proto::TransactionInput {
     fn from(output: TransactionInput) -> Self {
         Self {
-            features: Some(output.features.into()),
-            commitment: Some(output.commitment.into()),
+            features: Some(output.features().into()),
+            commitment: Some(output.commitment().into()),
+            script_hash: Some(output.script_hash().into()),
         }
     }
 }
@@ -136,20 +145,27 @@ impl TryFrom<proto::TransactionOutput> for TransactionOutput {
             .ok_or_else(|| "Transaction output commitment not provided".to_string())?
             .map_err(|err| err.to_string())?;
 
-        Ok(Self {
+        let script_hash = output
+            .script_hash
+            .map(|h| h.data)
+            .unwrap_or_else(|| DEFAULT_SCRIPT_HASH.to_vec());
+
+        Ok(TransactionOutput::new(
             features,
             commitment,
-            proof: BulletRangeProof(output.range_proof),
-        })
+            BulletRangeProof(output.range_proof),
+            &script_hash,
+        ))
     }
 }
 
 impl From<TransactionOutput> for proto::TransactionOutput {
     fn from(output: TransactionOutput) -> Self {
         Self {
-            features: Some(output.features.into()),
-            commitment: Some(output.commitment.into()),
-            range_proof: output.proof.to_vec(),
+            features: Some(output.features().into()),
+            commitment: Some(output.commitment().into()),
+            range_proof: output.proof().to_vec(),
+            script_hash: Some(output.script_hash().into()),
         }
     }
 }
@@ -170,6 +186,15 @@ impl TryFrom<proto::OutputFeatures> for OutputFeatures {
 
 impl From<OutputFeatures> for proto::OutputFeatures {
     fn from(features: OutputFeatures) -> Self {
+        Self {
+            flags: features.flags.bits() as u32,
+            maturity: features.maturity,
+        }
+    }
+}
+
+impl From<&OutputFeatures> for proto::OutputFeatures {
+    fn from(features: &OutputFeatures) -> Self {
         Self {
             flags: features.flags.bits() as u32,
             maturity: features.maturity,

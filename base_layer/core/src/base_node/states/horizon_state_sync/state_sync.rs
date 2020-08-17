@@ -595,7 +595,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
         }
 
         // Check that utxo set matches the provided RangeProof MMR Nodes
-        if (0..request_rp_hashes.len()).any(|i| &utxos[i].proof.hash() != request_rp_hashes[i]) {
+        if (0..request_rp_hashes.len()).any(|i| &utxos[i].proof().hash() != request_rp_hashes[i]) {
             return Err(HorizonSyncError::IncorrectResponse);
         }
 

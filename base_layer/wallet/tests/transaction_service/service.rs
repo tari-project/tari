@@ -61,6 +61,7 @@ use tari_core::{
         },
     },
     consensus::{ConsensusConstantsBuilder, Network},
+    crypto::script::TariScript,
     mempool::{
         proto::mempool as MempoolProto,
         service::{MempoolRequest, MempoolResponse, MempoolServiceRequest},
@@ -2642,7 +2643,12 @@ fn test_transaction_cancellation<T: TransactionBackend + Clone + 'static>(backen
 
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
+    let input = UnblindedOutput::new(
+        MicroTari::from(100_000),
+        PrivateKey::random(&mut OsRng),
+        None,
+        TariScript::default(),
+    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))

@@ -45,7 +45,8 @@ impl fmt::Display for RecipientState {
             Finalized(signed_message) => write!(
                 f,
                 "Finalized({:?}, maturity = {})",
-                signed_message.output.features.flags, signed_message.output.features.maturity
+                signed_message.output.features().flags,
+                signed_message.output.features().maturity
             ),
             Failed(err) => write!(f, "Failed({:?})", err),
         }
@@ -229,7 +230,7 @@ mod test {
         assert_eq!(data.public_spend_key, pubkey);
         assert!(factories
             .commitment
-            .open_value(&p.spend_key, 500, &data.output.commitment));
+            .open_value(&p.spend_key, 500, data.output.commitment()));
         assert!(data.output.verify_range_proof(&factories.range_proof).unwrap());
         let r_sum = &msg.public_nonce + &p.public_nonce;
         let e = build_challenge(&r_sum, &m);

@@ -22,10 +22,13 @@
 
 use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng};
 use std::{fmt::Debug, iter, thread, time::Duration};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-    types::{CommitmentFactory, PrivateKey, PublicKey},
+use tari_core::{
+    crypto::script::{TariScript, DEFAULT_SCRIPT_HASH},
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+        types::{CommitmentFactory, PrivateKey, PublicKey},
+    },
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -85,8 +88,8 @@ pub fn make_input<R: Rng + CryptoRng>(
 {
     let key = PrivateKey::random(rng);
     let commitment = factory.commit_value(&key, val.into());
-    let input = TransactionInput::new(OutputFeatures::default(), commitment);
-    (input, UnblindedOutput::new(val, key, None))
+    let input = TransactionInput::new(OutputFeatures::default(), commitment, &DEFAULT_SCRIPT_HASH);
+    (input, UnblindedOutput::new(val, key, None, TariScript::default()))
 }
 
 pub fn random_string(len: usize) -> String {

@@ -43,6 +43,7 @@ use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     base_node::proto::base_node as BaseNodeProto,
+    crypto::script::TariScript,
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
@@ -510,8 +511,8 @@ where
             pending_transaction.outputs_to_be_received[0]
                 .unblinded_output
                 .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default())
-                .commitment !=
-                received_output.commitment
+                .commitment() !=
+                received_output.commitment()
         {
             return Err(OutputManagerError::IncompleteTransaction);
         }
@@ -589,11 +590,12 @@ where
         let mut change_output = Vec::<DbUnblindedOutput>::new();
         if let Some(key) = change_key {
             change_output.push(DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput {
-                    value: stp.get_amount_to_self()?,
-                    spending_key: key,
-                    features: OutputFeatures::default(),
-                },
+                UnblindedOutput::new(
+                    stp.get_amount_to_self()?,
+                    key,
+                    Some(OutputFeatures::default()),
+                    TariScript::default(),
+                ),
                 &self.resources.factories,
             )?);
         }
@@ -641,8 +643,10 @@ where
                 .unblinded_output
                 .clone()
                 .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default());
-            inputs_confirmed =
-                inputs_confirmed && inputs.iter().any(|input| input.commitment == input_to_check.commitment);
+            inputs_confirmed = inputs_confirmed &&
+                inputs
+                    .iter()
+                    .any(|input| input.commitment() == input_to_check.commitment());
         }
 
         // Check that outputs to be received can all be found in the provided transaction outputs
@@ -655,7 +659,7 @@ where
             outputs_confirmed = outputs_confirmed &&
                 outputs
                     .iter()
-                    .any(|output| output.commitment == output_to_check.commitment);
+                    .any(|output| output.commitment() == output_to_check.commitment());
         }
 
         if !inputs_confirmed || !outputs_confirmed {
@@ -877,7 +881,7 @@ where
             }
             self.resources.db.increment_key_index().await?;
             let utxo = DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new(output_amount, spend_key, None),
+                UnblindedOutput::new(output_amount, spend_key, None, TariScript::default()),
                 &self.resources.factories,
             )?;
             outputs.push(utxo.clone());

@@ -44,6 +44,7 @@ use tari_core::{
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase, BlockchainDatabaseConfig, MmrTree},
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
+    crypto::script::TariScript,
     mempool::MempoolServiceConfig,
     transactions::{
         fee::Fee,
@@ -425,7 +426,7 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
         // Spend faucet UTXO
         {
             let fee = Fee::calculate(25 * uT, 1, 1, 2);
-            let output = UnblindedOutput::new(faucet_value, faucet_key, None);
+            let output = UnblindedOutput::new(faucet_value, faucet_key, None, TariScript::default());
             let schema = txn_schema!(from: vec![output], to: vec![faucet_value - fee], fee: 25 * uT);
             let (tx, _, _) = spend_utxos(schema);
 

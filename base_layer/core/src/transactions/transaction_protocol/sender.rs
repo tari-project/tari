@@ -575,7 +575,7 @@ mod test {
         types::CryptoFactories,
     };
     use rand::rngs::OsRng;
-    use tari_crypto::{common::Blake256, tari_utilities::hex::Hex};
+    use tari_crypto::{common::Blake256, script::TariScript, tari_utilities::hex::Hex};
 
     #[test]
     fn zero_recipients() {
@@ -590,8 +590,18 @@ mod test {
             .with_private_nonce(p.nonce.clone())
             .with_change_secret(p.change_key.clone())
             .with_input(utxo, input)
-            .with_output(UnblindedOutput::new(MicroTari(500), p.spend_key.clone(), None))
-            .with_output(UnblindedOutput::new(MicroTari(400), p.spend_key.clone(), None));
+            .with_output(UnblindedOutput::new(
+                MicroTari(500),
+                p.spend_key.clone(),
+                None,
+                TariScript::default(),
+            ))
+            .with_output(UnblindedOutput::new(
+                MicroTari(400),
+                p.spend_key.clone(),
+                None,
+                TariScript::default(),
+            ));
         let mut sender = builder.build::<Blake256>(&factories).unwrap();
         assert_eq!(sender.is_failed(), false);
         assert!(sender.is_finalizing());
@@ -712,7 +722,7 @@ mod test {
             bob_info.public_spend_key.to_hex(),
             bob_info.partial_signature.get_public_nonce().to_hex(),
             bob_info.partial_signature.get_signature().to_hex(),
-            bob_info.output.commitment.as_public_key().to_hex()
+            bob_info.output.commitment().as_public_key().to_hex()
         );
         // Alice gets message back, deserializes it, etc
         alice

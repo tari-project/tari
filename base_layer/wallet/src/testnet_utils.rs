@@ -60,8 +60,9 @@ use tari_comms::{
 use tari_comms_dht::DhtConfig;
 use tari_core::{
     consensus::Network,
+    crypto::script::{TariScript, DEFAULT_SCRIPT_HASH},
     transactions::{
-        tari_amount::MicroTari,
+        tari_amount::{MicroTari, Tari},
         transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
     },
@@ -105,8 +106,8 @@ pub fn make_input<R: Rng + CryptoRng>(
 {
     let key = PrivateKey::random(rng);
     let commitment = factories.commitment.commit_value(&key, val.into());
-    let input = TransactionInput::new(OutputFeatures::default(), commitment);
-    (input, UnblindedOutput::new(val, key, None))
+    let input = TransactionInput::new(OutputFeatures::default(), commitment, &DEFAULT_SCRIPT_HASH);
+    (input, UnblindedOutput::new(val, key, None, TariScript::default()))
 }
 
 pub fn random_string(len: usize) -> String {

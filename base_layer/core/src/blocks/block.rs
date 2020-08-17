@@ -98,9 +98,9 @@ impl Block {
     pub fn check_coinbase_output(&self, consensus_constants: &ConsensusConstants) -> Result<(), BlockValidationError> {
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase
         for utxo in self.body.outputs() {
-            if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
+            if utxo.features().flags.contains(OutputFlags::COINBASE_OUTPUT) {
                 coinbase_counter += 1;
-                if utxo.features.maturity < (self.header.height + consensus_constants.coinbase_lock_height()) {
+                if utxo.features().maturity < (self.header.height + consensus_constants.coinbase_lock_height()) {
                     warn!(
                         target: LOG_TARGET,
                         "Coinbase on {} found with maturity set too low",
@@ -125,7 +125,7 @@ impl Block {
     /// This function will check all stxo to ensure that feature flags where followed
     pub fn check_stxo_rules(&self) -> Result<(), BlockValidationError> {
         for input in self.body.inputs() {
-            if input.features.maturity > self.header.height {
+            if input.features().maturity > self.header.height {
                 warn!(
                     target: LOG_TARGET,
                     "Input found that has not yet matured to spending height: {}", input

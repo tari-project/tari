@@ -27,13 +27,16 @@ use aes_gcm::{
 };
 use chrono::Utc;
 use rand::rngs::OsRng;
-use tari_core::transactions::{
-    tari_amount::{uT, MicroTari},
-    transaction::{OutputFeatures, Transaction, UnblindedOutput},
-    transaction_protocol::sender::TransactionSenderMessage,
-    types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
-    ReceiverTransactionProtocol,
-    SenderTransactionProtocol,
+use tari_core::{
+    crypto::script::TariScript,
+    transactions::{
+        tari_amount::{uT, MicroTari},
+        transaction::{OutputFeatures, Transaction, UnblindedOutput},
+        transaction_protocol::sender::TransactionSenderMessage,
+        types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
 use tari_wallet::{
@@ -61,7 +64,12 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
+    let input = UnblindedOutput::new(
+        MicroTari::from(100_000),
+        PrivateKey::random(&mut OsRng),
+        None,
+        TariScript::default(),
+    );
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))

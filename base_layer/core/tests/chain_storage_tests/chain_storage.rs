@@ -256,9 +256,9 @@ fn utxo_and_rp_merkle_root() {
     let hash2 = utxo2.hash();
     // Calculate the Range proof MMR root as a check
     let mut rp_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
-    assert_eq!(rp_mmr_check.push(&utxo0.proof.hash()).unwrap(), 1);
-    assert_eq!(rp_mmr_check.push(&utxo1.proof.hash()).unwrap(), 2);
-    assert_eq!(rp_mmr_check.push(&utxo2.proof.hash()).unwrap(), 3);
+    assert_eq!(rp_mmr_check.push(&utxo0.proof().hash()).unwrap(), 1);
+    assert_eq!(rp_mmr_check.push(&utxo1.proof().hash()).unwrap(), 2);
+    assert_eq!(rp_mmr_check.push(&utxo2.proof().hash()).unwrap(), 3);
     // Store the UTXOs
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1);
@@ -313,7 +313,7 @@ fn utxo_and_rp_future_merkle_root() {
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
     let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
     let utxo_hash2 = utxo2.hash();
-    let rp_hash2 = utxo2.proof.hash();
+    let rp_hash2 = utxo2.proof().hash();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1);
@@ -921,8 +921,8 @@ fn store_and_retrieve_blocks_from_contents() {
         BlockAddResult::Ok
     );
     let kernel_sig = blocks[1].body.kernels()[0].clone().excess_sig;
-    let stxo_commit = blocks[1].body.inputs()[0].clone().commitment;
-    let utxo_commit = blocks[1].body.outputs()[0].clone().commitment;
+    let stxo_commit = blocks[1].body.inputs()[0].clone().commitment().clone();
+    let utxo_commit = blocks[1].body.outputs()[0].clone().commitment().clone();
     assert_eq!(
         *db.fetch_block_with_kernel(kernel_sig).unwrap().unwrap().block(),
         blocks[1]

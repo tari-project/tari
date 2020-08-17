@@ -1203,7 +1203,7 @@ fn fetch_block_with_utxo<T: BlockchainBackend>(
         let (utxo_hashes, _) = utxo_cp.into_parts();
         let utxos = fetch_outputs(db, utxo_hashes)?;
         for utxo in utxos.0 {
-            if utxo.commitment == commitment {
+            if utxo.commitment() == &commitment {
                 return Ok(Some(fetch_block(db, i)?));
             }
         }
@@ -1219,7 +1219,7 @@ fn fetch_block_with_utxo<T: BlockchainBackend>(
         let (utxo_hashes, _) = utxo_cp.into_parts();
         let utxos = fetch_outputs(db, utxo_hashes)?;
         for utxo in utxos.0 {
-            if utxo.commitment == commitment {
+            if utxo.commitment() == &commitment {
                 return Ok(None);
             }
         }
@@ -1249,7 +1249,7 @@ fn fetch_block_with_stxo<T: BlockchainBackend>(
         let (_, deleted) = utxo_cp.into_parts();
         let inputs = fetch_inputs(db, deleted)?;
         for input in inputs {
-            if input.commitment == commitment {
+            if input.commitment() == &commitment {
                 return Ok(Some(fetch_block(db, i)?));
             }
         }
@@ -1343,7 +1343,7 @@ fn fetch_outputs<T: BlockchainBackend>(
         }
         // Check the STXO set
         let stxo = fetch_stxo(db, hash)?;
-        spent.push(stxo.commitment.clone());
+        spent.push(stxo.commitment().clone());
         outputs.push(stxo);
     }
     Ok((outputs, spent))

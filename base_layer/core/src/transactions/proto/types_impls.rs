@@ -43,6 +43,14 @@ impl From<Commitment> for proto::Commitment {
     }
 }
 
+impl From<&Commitment> for proto::Commitment {
+    fn from(commitment: &Commitment) -> Self {
+        Self {
+            data: commitment.to_vec(),
+        }
+    }
+}
+
 //---------------------------------- Signature --------------------------------------------//
 
 impl TryFrom<proto::Signature> for Signature {
@@ -76,6 +84,12 @@ impl From<proto::HashOutput> for HashOutput {
 impl From<HashOutput> for proto::HashOutput {
     fn from(output: HashOutput) -> Self {
         Self { data: output }
+    }
+}
+
+impl From<&[u8]> for proto::HashOutput {
+    fn from(output: &[u8]) -> Self {
+        Self { data: output.to_vec() }
     }
 }
 

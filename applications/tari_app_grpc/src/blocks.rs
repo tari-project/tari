@@ -63,10 +63,11 @@ impl From<tari_core::blocks::Block> for grpc::Block {
                     .iter()
                     .map(|input| grpc::TransactionInput {
                         features: Some(grpc::OutputFeatures {
-                            flags: input.features.flags.bits() as u32,
-                            maturity: input.features.maturity,
+                            flags: input.features().flags.bits() as u32,
+                            maturity: input.features().maturity,
                         }),
-                        commitment: Vec::from(input.commitment.as_bytes()),
+                        commitment: Vec::from(input.commitment().as_bytes()),
+                        script_hash: input.script_hash().to_vec(),
                     })
                     .collect(),
                 outputs: block
@@ -75,11 +76,12 @@ impl From<tari_core::blocks::Block> for grpc::Block {
                     .iter()
                     .map(|output| grpc::TransactionOutput {
                         features: Some(grpc::OutputFeatures {
-                            flags: output.features.flags.bits() as u32,
-                            maturity: output.features.maturity,
+                            flags: output.features().flags.bits() as u32,
+                            maturity: output.features().maturity,
                         }),
-                        commitment: Vec::from(output.commitment.as_bytes()),
-                        range_proof: Vec::from(output.proof.as_bytes()),
+                        commitment: Vec::from(output.commitment().as_bytes()),
+                        range_proof: Vec::from(output.proof().as_bytes()),
+                        script_hash: output.script_hash().to_vec(),
                     })
                     .collect(),
                 kernels: block
@@ -158,10 +160,11 @@ impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
                     .iter()
                     .map(|input| grpc::TransactionInput {
                         features: Some(grpc::OutputFeatures {
-                            flags: input.features.flags.bits() as u32,
-                            maturity: input.features.maturity,
+                            flags: input.features().flags.bits() as u32,
+                            maturity: input.features().maturity,
                         }),
-                        commitment: Vec::from(input.commitment.as_bytes()),
+                        commitment: Vec::from(input.commitment().as_bytes()),
+                        script_hash: input.script_hash().to_vec(),
                     })
                     .collect(),
                 outputs: block
@@ -170,11 +173,12 @@ impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
                     .iter()
                     .map(|output| grpc::TransactionOutput {
                         features: Some(grpc::OutputFeatures {
-                            flags: output.features.flags.bits() as u32,
-                            maturity: output.features.maturity,
+                            flags: output.features().flags.bits() as u32,
+                            maturity: output.features().maturity,
                         }),
-                        commitment: Vec::from(output.commitment.as_bytes()),
-                        range_proof: Vec::from(output.proof.as_bytes()),
+                        commitment: Vec::from(output.commitment().as_bytes()),
+                        range_proof: Vec::from(output.proof().as_bytes()),
+                        script_hash: output.script_hash().to_vec(),
                     })
                     .collect(),
                 kernels: block

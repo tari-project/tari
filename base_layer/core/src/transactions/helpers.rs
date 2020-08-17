@@ -49,6 +49,7 @@ use tari_crypto::{
     common::Blake256,
     keys::{PublicKey as PK, SecretKey},
     range_proof::RangeProofService,
+    script::{TariScript, DEFAULT_SCRIPT_HASH},
 };
 
 pub fn make_input<R: Rng + CryptoRng>(
@@ -60,8 +61,8 @@ pub fn make_input<R: Rng + CryptoRng>(
     let key = PrivateKey::random(rng);
     let v = PrivateKey::from(val);
     let commitment = factory.commit(&key, &v);
-    let input = TransactionInput::new(OutputFeatures::default(), commitment);
-    (input, UnblindedOutput::new(val, key, None))
+    let input = TransactionInput::new(OutputFeatures::default(), commitment, &DEFAULT_SCRIPT_HASH);
+    (input, UnblindedOutput::new(val, key, None, TariScript::default()))
 }
 
 #[derive(Default)]
@@ -230,8 +231,8 @@ pub fn create_test_input(
     let spending_key = PrivateKey::random(&mut OsRng);
     let commitment = factory.commit(&spending_key, &PrivateKey::from(amount));
     let features = OutputFeatures::with_maturity(maturity);
-    let input = TransactionInput::new(features.clone(), commitment);
-    let unblinded_output = UnblindedOutput::new(amount, spending_key, Some(features));
+    let input = TransactionInput::new(features.clone(), commitment, &DEFAULT_SCRIPT_HASH);
+    let unblinded_output = UnblindedOutput::new(amount, spending_key, Some(features), TariScript::default());
     (input, unblinded_output)
 }
 
@@ -278,7 +279,12 @@ pub fn create_tx(
         } else {
             amount_for_last_output
         };
-        let utxo = UnblindedOutput::new(output_amount, test_params.spend_key.clone(), None);
+        let utxo = UnblindedOutput::new(
+            output_amount,
+            test_params.spend_key.clone(),
+            None,
+            TariScript::default(),
+        );
         unblinded_outputs.push(utxo.clone());
         stx_builder.with_output(utxo);
     }
@@ -318,18 +324,19 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     let mut outputs = Vec::with_capacity(schema.to.len());
     for val in schema.to {
         let k = PrivateKey::random(&mut OsRng);
-        let utxo = UnblindedOutput::new(val, k, Some(schema.features.clone()));
+        let utxo = UnblindedOutput::new(val, k, Some(schema.features.clone()), TariScript::default());
         outputs.push(utxo.clone());
         stx_builder.with_output(utxo);
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
     let change = stx_protocol.get_change_amount().unwrap();
-    let change_output = UnblindedOutput {
-        value: change,
-        spending_key: test_params.change_key.clone(),
-        features: schema.features,
-    };
+    let change_output = UnblindedOutput::new(
+        change,
+        test_params.change_key.clone(),
+        Some(schema.features),
+        TariScript::default(),
+    );
     outputs.push(change_output);
     match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
         Ok(true) => (),
@@ -363,7 +370,7 @@ pub fn create_utxo(
     let features = features.unwrap_or_default();
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
-    let utxo = TransactionOutput::new(features, commitment, proof.into());
+    let utxo = TransactionOutput::new(features, commitment, proof.into(), &DEFAULT_SCRIPT_HASH);
     (utxo, keys.k)
 }
 

@@ -37,7 +37,7 @@ use crate::{
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK, script::TariScript};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error, PartialEq)]
@@ -150,7 +150,7 @@ impl CoinbaseBuilder {
         let challenge = build_challenge(&public_nonce, &metadata);
         let sig = Signature::sign(key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
-        let unblinded_output = UnblindedOutput::new(total_reward, key, Some(output_features));
+        let unblinded_output = UnblindedOutput::new(total_reward, key, Some(output_features), TariScript::default());
         let output = unblinded_output
             .as_transaction_output(&self.factories)
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
@@ -189,7 +189,7 @@ mod test {
             CoinbaseBuilder,
         },
     };
-    use tari_crypto::commitment::HomomorphicCommitmentFactory;
+    use tari_crypto::{commitment::HomomorphicCommitmentFactory, script::TariScript};
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
@@ -248,12 +248,17 @@ mod test {
             .unwrap();
         let utxo = &tx.body.outputs()[0];
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
-        let unblinded_test = UnblindedOutput::new(block_reward, p.spend_key.clone(), Some(utxo.features.clone()));
+        let unblinded_test = UnblindedOutput::new(
+            block_reward,
+            p.spend_key.clone(),
+            Some(utxo.features().clone()),
+            TariScript::default(),
+        );
         assert_eq!(unblinded_output, unblinded_test);
         assert!(factories
             .commitment
             .open_value(&p.spend_key, block_reward.into(), utxo.commitment()));
         assert!(utxo.verify_range_proof(&factories.range_proof).unwrap());
-        assert!(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT));
+        assert!(utxo.features().flags.contains(OutputFlags::COINBASE_OUTPUT));
     }
 }

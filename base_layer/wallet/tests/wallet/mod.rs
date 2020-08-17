@@ -43,6 +43,7 @@ use futures::{FutureExt, StreamExt};
 use std::path::Path;
 use tari_core::{
     consensus::Network,
+    crypto::script::TariScript,
     transactions::{tari_amount::uT, transaction::UnblindedOutput, types::PrivateKey},
 };
 use tari_crypto::common::Blake256;
@@ -488,7 +489,7 @@ fn test_import_utxo() {
     )
     .unwrap();
 
-    let utxo = UnblindedOutput::new(20000 * uT, PrivateKey::default(), None);
+    let utxo = UnblindedOutput::new(20000 * uT, PrivateKey::default(), None, TariScript::default());
 
     let tx_id = alice_wallet
         .import_utxo(

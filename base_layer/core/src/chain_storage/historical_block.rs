@@ -54,7 +54,7 @@ impl HistoricalBlock {
 
     /// Determines whether the given output (presumably an output of this block) has subsequently been spent
     pub fn is_spent(&self, output: &TransactionOutput) -> bool {
-        self.spent_commitments.contains(&output.commitment)
+        self.spent_commitments.contains(&output.commitment())
     }
 
     /// Returns a reference to the block of the HistoricalBlock

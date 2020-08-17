@@ -52,6 +52,7 @@ use std::{
     time::Duration,
 };
 use tari_core::{
+    crypto::script::TariScript,
     tari_utilities::hash::Hashable,
     transactions::{
         tari_amount::MicroTari,
@@ -962,21 +963,22 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
     type Error = OutputManagerStorageError;
 
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
-        let unblinded_output = UnblindedOutput {
-            value: MicroTari::from(o.value as u64),
-            spending_key: PrivateKey::from_vec(&o.spending_key).map_err(|_| {
+        let unblinded_output = UnblindedOutput::new(
+            MicroTari::from(o.value as u64),
+            PrivateKey::from_vec(&o.spending_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might be encrypted"
                 );
                 OutputManagerStorageError::ConversionError
             })?,
-            features: OutputFeatures {
+            Some(OutputFeatures {
                 flags: OutputFlags::from_bits(o.flags as u8)
                     .ok_or_else(|| OutputManagerStorageError::ConversionError)?,
                 maturity: o.maturity as u64,
-            },
-        };
+            }),
+            TariScript::default(),
+        );
         let hash = match o.hash {
             None => {
                 // This should only happen if the database didn't migrate yet.
@@ -1347,10 +1349,13 @@ mod test {
         sync::{Arc, Mutex},
         time::Duration,
     };
-    use tari_core::transactions::{
-        tari_amount::MicroTari,
-        transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
-        types::{CommitmentFactory, CryptoFactories, PrivateKey},
+    use tari_core::{
+        crypto::script::{TariScript, DEFAULT_SCRIPT_HASH},
+        transactions::{
+            tari_amount::MicroTari,
+            transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+            types::{CommitmentFactory, CryptoFactories, PrivateKey},
+        },
     };
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
     use tempfile::tempdir;
@@ -1363,9 +1368,9 @@ mod test {
         let key = PrivateKey::random(rng);
         let factory = CommitmentFactory::default();
         let commitment = factory.commit_value(&key, val.into());
-        let input = TransactionInput::new(OutputFeatures::default(), commitment);
+        let input = TransactionInput::new(OutputFeatures::default(), commitment, &DEFAULT_SCRIPT_HASH);
 
-        (input, UnblindedOutput::new(val, key, None))
+        (input, UnblindedOutput::new(val, key, None, TariScript::default()))
     }
 
     #[test]
