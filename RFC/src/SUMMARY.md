@@ -17,6 +17,7 @@
       - [RFC-0172: Peer to Peer Messaging Protocol](RFC-0172_PeerToPeerMessagingProtocol.md)
     - [RFC-0190: Mempool](RFC-0190_Mempool.md)
     - [Tari-specific extensions to Mimblewimble](BaseLayerExtensions.md)
+      - [RFC-0201: Tari Script](RFC-0201_TariScript.md)
       - [RFC-0230: Hash time locked contracts](RFC-0230_HTLC.md)
       - [RFC-0322: Validator Node Registration](RFC-0322_VNRegistration.md)
       - [RFC-0341: Asset registration](RFC-0341_AssetRegistration.md)

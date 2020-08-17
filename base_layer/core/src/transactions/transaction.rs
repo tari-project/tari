@@ -413,17 +413,16 @@ pub struct TransactionKernel {
     /// This kernel is not valid earlier than lock_height blocks
     /// The max lock_height of all *inputs* to this transaction
     pub lock_height: u64,
-    /// This is an optional field used by committing to additional tx meta data between the two parties
+    /// This is an optional field used by committing to additional tx metadata between the two parties
     pub meta_info: Option<HashOutput>,
     /// This is an optional field and is the hash of the kernel this kernel is linked to.
     /// This field is for example for relative time-locked transactions
     pub linked_kernel: Option<HashOutput>,
-    /// Remainder of the sum of all transaction commitments. If the transaction
-    /// is well formed, amounts components should sum to zero and the excess
-    /// is hence a valid public key.
+    /// Remainder of the sum of all transaction commitments (minus an offset). If the transaction is well-formed,
+    /// amounts plus fee will sum to zero, and the excess is hence a valid public key.
     pub excess: Commitment,
-    /// The signature proving the excess is a valid public key, which signs
-    /// the transaction fee.
+    /// An aggregated signature of the metadata in this kernel, signed by the individual excess values and the offset
+    /// excess of the sender.
     pub excess_sig: Signature,
 }
 
