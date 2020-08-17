@@ -66,7 +66,7 @@ use tokio::runtime::Runtime;
 
 pub type PrivateKey = RistrettoSecretKey;
 
-pub const LOG_TARGET: &str = "base_node::conduit_app";
+pub const LOG_TARGET: &str = "tari_mm_proxy::app";
 
 // TODO: Refactor into a configuration file
 const MONEROD_URL: &str = "monero-stagenet.exan.tech:38081";
@@ -515,12 +515,9 @@ fn main() {
             e
         })
         .unwrap();
-    let _ = stream_handler(listener, transient, rules, rt)
-        .map_err(|e| {
-            error!(target: LOG_TARGET, "{}", e);
-            e
-        })
-        .unwrap();
+    if let Err(e) = stream_handler(listener, transient, rules, rt) {
+        error!(target: LOG_TARGET, "{}", e);
+    }
 }
 
 /// Sets up the base node and runs the cli_loop
@@ -584,12 +581,9 @@ fn stream_handler(
                     e
                 })
                 .unwrap();
-            let _ = handle_connection(stream, &mut tg, r, &mut kg)
-                .map_err(|e| {
-                    error!(target: LOG_TARGET, "One of the threads crashed: {}", e);
-                    e
-                })
-                .unwrap();
+            if let Err(e) = handle_connection(stream, &mut tg, r, &mut kg) {
+                error!(target: LOG_TARGET, "One of the threads crashed: {}", e);
+            };
         });
     }
     Ok(())
