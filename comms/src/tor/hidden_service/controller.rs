@@ -37,7 +37,8 @@ use crate::{
         TorControlPortClient,
         TorIdentity,
     },
-    utils::multiaddr::socketaddr_to_multiaddr,
+    transports::{SocksConfig, SocksTransport},
+    utils::multiaddr::{multiaddr_to_socketaddr, socketaddr_to_multiaddr},
 };
 use futures::{future, future::Either, pin_mut, StreamExt};
 use log::*;
@@ -65,23 +66,63 @@ pub enum HiddenServiceControllerError {
 }
 
 pub struct HiddenServiceController {
-    pub(super) client: Option<TorControlPortClient>,
-    pub(super) control_server_addr: Multiaddr,
-    pub(super) control_server_auth: Authentication,
-    pub(super) proxied_port_mapping: PortMapping,
-    pub(super) socks_address_override: Option<Multiaddr>,
-    pub(super) socks_auth: socks::Authentication,
-    pub(super) identity: Option<TorIdentity>,
-    pub(super) hs_flags: HsFlags,
+    client: Option<TorControlPortClient>,
+    control_server_addr: Multiaddr,
+    control_server_auth: Authentication,
+    proxied_port_mapping: PortMapping,
+    socks_address_override: Option<Multiaddr>,
+    socks_auth: socks::Authentication,
+    identity: Option<TorIdentity>,
+    hs_flags: HsFlags,
+    is_authenticated: bool,
 }
 
 impl HiddenServiceController {
-    pub async fn start_hidden_service(mut self) -> Result<HiddenService, HiddenServiceControllerError> {
-        self.connect().await?;
-        self.authenticate().await?;
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn new(
+        control_server_addr: Multiaddr,
+        control_server_auth: Authentication,
+        proxied_port_mapping: PortMapping,
+        socks_address_override: Option<Multiaddr>,
+        socks_auth: socks::Authentication,
+        identity: Option<TorIdentity>,
+        hs_flags: HsFlags,
+    ) -> Self
+    {
+        Self {
+            client: None,
+            control_server_addr,
+            control_server_auth,
+            socks_address_override,
+            proxied_port_mapping,
+            socks_auth,
+            hs_flags,
+            identity,
+            is_authenticated: false,
+        }
+    }
+
+    pub fn proxied_address(&self) -> Multiaddr {
+        socketaddr_to_multiaddr(self.proxied_port_mapping.proxied_address())
+    }
+
+    pub async fn get_transport(&mut self) -> Result<SocksTransport, HiddenServiceControllerError> {
+        self.connect_and_auth().await?;
+        let socks_addr = self.get_socks_address().await?;
+        Ok(SocksTransport::new(SocksConfig {
+            proxy_address: socks_addr,
+            authentication: self.socks_auth.clone(),
+        }))
+    }
+
+    /// Connects, authenticates to the Tor control port and creates a hidden service using the tor identity if provided,
+    /// otherwise a new tor identity will be created. The creation of a hidden service is idempotent i.e. if the
+    /// hidden service exists, the
+    pub async fn create_hidden_service(mut self) -> Result<HiddenService, HiddenServiceControllerError> {
+        self.connect_and_auth().await?;
         self.set_events().await?;
 
-        let hidden_service = self.create_hidden_service().await?;
+        let hidden_service = self.create_hidden_service_from_identity().await?;
         let mut shutdown_signal = hidden_service.shutdown.to_signal();
         let mut event_stream = self.client.as_ref().unwrap().get_event_stream();
 
@@ -127,6 +168,15 @@ impl HiddenServiceController {
         Ok(hidden_service)
     }
 
+    pub async fn connect_and_auth(&mut self) -> Result<(), HiddenServiceControllerError> {
+        if !self.is_authenticated {
+            self.connect().await?;
+            self.authenticate().await?;
+            self.is_authenticated = true;
+        }
+        Ok(())
+    }
+
     async fn reestablish_hidden_service(
         &mut self,
         event_tx: broadcast::Sender<TorControlEvent>,
@@ -147,7 +197,7 @@ impl HiddenServiceController {
                     self.client = Some(client);
                     self.authenticate().await?;
                     self.set_events().await?;
-                    let _ = self.create_hidden_service().await;
+                    let _ = self.create_hidden_service_from_identity().await;
                     break Ok(());
                 },
                 Either::Left((Err(err), shutdown_signal)) => {
@@ -156,8 +206,8 @@ impl HiddenServiceController {
                         target: LOG_TARGET,
                         "Failed to reestablish connection with tor control server because '{:?}'", err
                     );
-                    warn!(target: LOG_TARGET, "Will attempt again in 10 seconds...");
-                    time::delay_for(Duration::from_secs(10)).await;
+                    warn!(target: LOG_TARGET, "Will attempt again in 5 seconds...");
+                    time::delay_for(Duration::from_secs(5)).await;
                 },
 
                 Either::Right(_) => {
@@ -175,6 +225,10 @@ impl HiddenServiceController {
     }
 
     async fn connect(&mut self) -> Result<(), HiddenServiceControllerError> {
+        if self.client.is_some() {
+            return Ok(());
+        }
+
         let (event_tx, _) = broadcast::channel(20);
         let client = TorControlPortClient::connect(self.control_server_addr.clone(), event_tx)
             .await
@@ -182,6 +236,7 @@ impl HiddenServiceController {
                 error!(target: LOG_TARGET, "Tor client error: {:?}", err);
                 HiddenServiceControllerError::TorControlPortOffline
             })?;
+
         self.client = Some(client);
         Ok(())
     }
@@ -223,7 +278,7 @@ impl HiddenServiceController {
         }
     }
 
-    async fn create_hidden_service(&mut self) -> Result<HiddenService, HiddenServiceControllerError> {
+    async fn create_hidden_service_from_identity(&mut self) -> Result<HiddenService, HiddenServiceControllerError> {
         let socks_addr = self.get_socks_address().await?;
         debug!(target: LOG_TARGET, "Tor SOCKS address is '{}'", socks_addr);
 
@@ -237,7 +292,7 @@ impl HiddenServiceController {
                 });
             },
             None => {
-                let port_mapping = self.proxied_port_mapping.clone();
+                let port_mapping = self.proxied_port_mapping;
                 let resp = self.client_mut()?.add_onion(vec![], port_mapping, None).await?;
                 let private_key = resp
                     .private_key
@@ -269,6 +324,12 @@ impl HiddenServiceController {
         })
     }
 
+    pub fn set_proxied_addr(&mut self, addr: Multiaddr) {
+        self.proxied_port_mapping.set_proxied_addr(
+            multiaddr_to_socketaddr(&addr).expect("set_proxied_addr: multiaddr must be a valid TCP socket address"),
+        )
+    }
+
     async fn create_or_reuse_onion(
         &mut self,
         identity: &TorIdentity,
@@ -279,42 +340,40 @@ impl HiddenServiceController {
             flags.push(AddOnionFlag::Detach);
         }
 
-        let port_mapping = self.proxied_port_mapping.clone();
+        let port_mapping = self.proxied_port_mapping;
 
         let client = self.client_mut()?;
 
-        let result = client
-            .add_onion_from_private_key(&identity.private_key, flags, port_mapping, None)
-            .await;
+        loop {
+            let result = client
+                .add_onion_from_private_key(&identity.private_key, flags.clone(), port_mapping, None)
+                .await;
 
-        match result {
-            Ok(resp) => Ok(resp),
-            Err(TorClientError::OnionAddressCollision) => {
-                debug!(target: LOG_TARGET, "Onion address is already registered.");
+            match result {
+                Ok(resp) => break Ok(resp),
+                Err(TorClientError::OnionAddressCollision) => {
+                    debug!(target: LOG_TARGET, "Onion address is already registered.");
 
-                let detached = client.get_info("onions/detached").await?;
-                debug!(
-                    target: LOG_TARGET,
-                    "Comparing active detached service IDs '{}' to expected service id '{}'",
-                    detached.join(", "),
-                    identity.service_id
-                );
+                    let detached = client.get_info("onions/detached").await?;
+                    debug!(
+                        target: LOG_TARGET,
+                        "Checking that the active detached service IDs '{}' to expected service id '{}'",
+                        detached.join(", "),
+                        identity.service_id
+                    );
 
-                if detached.iter().all(|svc_id| **svc_id != identity.service_id) {
-                    return Err(HiddenServiceControllerError::InvalidDetachedServiceId);
-                }
-
-                Ok(AddOnionResponse {
-                    // TODO(sdbondi): This could be a different ORPort than the one requested in port mapping, I was not
-                    //                able to find a way to find the port mapping for the service.
-                    //                Setting the onion_port to be the same as the original port may cause
-                    //                confusion/break "just works"(tm)
-                    onion_port: identity.onion_port,
-                    service_id: identity.service_id.clone(),
-                    private_key: Some(identity.private_key.clone()),
-                })
-            },
-            Err(err) => Err(err.into()),
+                    if detached.iter().all(|svc_id| **svc_id != identity.service_id) {
+                        return Err(HiddenServiceControllerError::InvalidDetachedServiceId);
+                    }
+                    debug!(
+                        target: LOG_TARGET,
+                        "Deleting duplicate onion service `{}` and then recreating it.", identity.service_id
+                    );
+                    client.del_onion(&identity.service_id).await?;
+                    continue;
+                },
+                Err(err) => break Err(err.into()),
+            }
         }
     }
 }

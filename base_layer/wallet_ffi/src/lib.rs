@@ -2172,7 +2172,8 @@ pub unsafe extern "C" fn transport_tor_create(
         control_server_addr: control_address_str.parse::<Multiaddr>().unwrap(),
         control_server_auth: tor_authentication,
         identity,
-        port_mapping: tor::PortMapping::from_port(tor_port),
+        // Proxy the onion address to an OS-assigned local port
+        port_mapping: tor::PortMapping::new(tor_port, "127.0.0.1:0".parse().unwrap()),
         socks_address_override: None,
         socks_auth: authentication,
     };

@@ -24,13 +24,7 @@ use super::controller::HiddenServiceControllerError;
 use crate::{
     multiaddr::Multiaddr,
     socks,
-    tor::{
-        hidden_service::controller::HiddenServiceController,
-        Authentication,
-        HiddenService,
-        PortMapping,
-        TorIdentity,
-    },
+    tor::{hidden_service::controller::HiddenServiceController, Authentication, PortMapping, TorIdentity},
 };
 use bitflags::bitflags;
 use log::*;
@@ -112,7 +106,7 @@ impl HiddenServiceBuilder {
 
 impl HiddenServiceBuilder {
     /// Create a HiddenService with the given builder parameters.
-    pub async fn finish(self) -> Result<HiddenService, HiddenServiceBuilderError> {
+    pub async fn finish(self) -> Result<HiddenServiceController, HiddenServiceBuilderError> {
         let proxied_port_mapping = self
             .port_mapping
             .ok_or(HiddenServiceBuilderError::ProxiedPortMappingNotProvided)?;
@@ -127,19 +121,16 @@ impl HiddenServiceBuilder {
             proxied_port_mapping
         );
 
-        let controller = HiddenServiceController {
-            client: None,
+        let controller = HiddenServiceController::new(
             control_server_addr,
-            control_server_auth: self.control_server_auth,
-            socks_address_override: self.socks_addr_override,
+            self.control_server_auth,
             proxied_port_mapping,
-            socks_auth: self.socks_auth,
-            hs_flags: self.hs_flags,
-            identity: self.identity,
-        };
+            self.socks_addr_override,
+            self.socks_auth,
+            self.identity,
+            self.hs_flags,
+        );
 
-        let hidden_service = controller.start_hidden_service().await?;
-
-        Ok(hidden_service)
+        Ok(controller)
     }
 }

@@ -30,7 +30,7 @@ use crate::tor::control_client::{
 };
 use std::{borrow::Cow, fmt, num::NonZeroU16};
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum AddOnionFlag {
     /// The server should not include the newly generated private key as part of the response.
     DiscardPK,

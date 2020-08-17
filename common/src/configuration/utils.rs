@@ -197,7 +197,7 @@ fn set_transport_defaults(cfg: &mut Config) {
     cfg.set_default("base_node.mainnet.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
         .unwrap();
     cfg.set_default("base_node.mainnet.tor_control_auth", "none").unwrap();
-    cfg.set_default("base_node.mainnet.tor_forward_address", "/ip4/127.0.0.1/tcp/18141")
+    cfg.set_default("base_node.mainnet.tor_forward_address", "/ip4/127.0.0.1/tcp/0")
         .unwrap();
     cfg.set_default("base_node.mainnet.tor_onion_port", "18141").unwrap();
 
@@ -216,7 +216,7 @@ fn set_transport_defaults(cfg: &mut Config) {
     cfg.set_default("base_node.rincewind.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
         .unwrap();
     cfg.set_default("base_node.rincewind.tor_control_auth", "none").unwrap();
-    cfg.set_default("base_node.rincewind.tor_forward_address", "/ip4/127.0.0.1/tcp/18041")
+    cfg.set_default("base_node.rincewind.tor_forward_address", "/ip4/127.0.0.1/tcp/0")
         .unwrap();
     cfg.set_default("base_node.rincewind.tor_onion_port", "18141").unwrap();
 
