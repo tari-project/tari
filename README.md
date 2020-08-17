@@ -235,6 +235,10 @@ Run the base node
 
     docker run -ti -v /path/to/config/dir:/root/.tari tari_base_node
 
+Default docker builds for base x86-64 CPU. Better performing builds can be created by passing build options
+
+    docker build -t tari_base_node:performance --build-arg TBN_ARCH=skylake --build-arg TBN_FEATURES=avx2 -f ./buildtools/base_node.Dockerfile .
+
 ---
 
 ### Advanced build configurations
