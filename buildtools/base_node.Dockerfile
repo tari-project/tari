@@ -13,8 +13,10 @@ ARG TBN_ARCH=x86-64
 ARG TBN_FEATURES=safe
 ENV RUSTFLAGS="-C target_cpu=$TBN_ARCH"
 ENV ROARING_ARCH=$TBN_ARCH
-RUN cd applications/tari_base_node \
-  && cargo build --release -p tari_base_node --features $TBN_FEATURES
+# Work around for odd issue with broken Cargo.lock and builds
+RUN cargo fetch && \
+  cd applications/tari_base_node && \
+  cargo build --bin tari_base_node --release --features $TBN_FEATURES --locked
 
 # Create a base minimal image for adding our executables to
 FROM bitnami/minideb:stretch as base
