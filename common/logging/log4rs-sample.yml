@@ -68,6 +68,21 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
+  mm_proxy:
+    kind: rolling_file
+    path: "log/mm_proxy.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 60mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/mm_proxy.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 # Set the default logging level to "warn" and attach the "stdout" appender to the root
 root:
   level: warn
@@ -80,6 +95,12 @@ loggers:
     level: info
     appenders:
       - base_layer
+    additive: false
+
+  tari_mm_proxy:
+    level: debug
+    appenders:
+      - mm_proxy
     additive: false
   # Route log events sent to the "wallet" logger to the "base_layer" appender
   wallet:

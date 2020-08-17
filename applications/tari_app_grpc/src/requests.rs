@@ -68,7 +68,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             pow_algo_count: cc.get_pow_algo_count(),
             median_timestamp_count: u64::try_from(cc.get_median_timestamp_count()).unwrap_or(0),
             emission_initial: emission_initial.into(),
-            emission_decay: emission_decay.into(),
+            emission_decay,
             emission_tail: emission_tail.into(),
             min_blake_pow_difficulty: cc.min_pow_difficulty(PowAlgorithm::Blake).into(),
             block_weight_inputs: WEIGHT_PER_INPUT,
@@ -83,7 +83,7 @@ impl From<ChainMetadata> for grpc::MetaData {
         let diff = meta.accumulated_difficulty.unwrap_or_else(Difficulty::min);
         Self {
             height_of_longest_chain: meta.height_of_longest_chain.unwrap_or(0),
-            best_block: meta.best_block.unwrap_or(vec![]),
+            best_block: meta.best_block.unwrap_or_default(),
             pruning_horizon: meta.pruning_horizon,
             accumulated_difficulty: diff.as_u64(),
         }

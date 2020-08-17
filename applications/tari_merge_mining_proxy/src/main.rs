@@ -80,6 +80,8 @@ const USE_AUTH: bool = false;
 pub struct TransientData {
     tari_block: Option<grpc::GetNewBlockResult>,
     monero_seed: Option<String>,
+    tari_height: Option<u64>,
+    tari_prev_submit_height: Option<u64>,
 }
 
 // setup curl authentication
@@ -124,7 +126,7 @@ fn do_curl(curl: &mut Easy, request: &[u8]) -> Result<Vec<u8>, MmProxyError> {
         let mut transfer = curl.transfer();
         transfer
             .read_function(|buf| Ok(transfer_data.read(buf).unwrap_or(0)))
-            .map_err(|e| MmProxyError::CurlError(format!("Failure top read function: {}", e)))?;
+            .map_err(|e| MmProxyError::CurlError(format!("Failure to read function: {}", e)))?;
 
         transfer
             .write_function(|new_data| {
@@ -232,7 +234,7 @@ fn stringify_request(buffer: &[u8]) -> String {
 fn get_post_json_method(json: &[u8]) -> Result<String, MmProxyError> {
     let parsed = json::parse(&stringify_request(json))
         .map_err(|e| MmProxyError::ParseError(format!("Failure to parse json {}", e)))?;
-    debug!(target: LOG_TARGET, "{}", parsed);
+    trace!(target: LOG_TARGET, "{}", parsed);
     if !parsed["method"].is_null() {
         return Ok(parsed["method"].to_string());
     }
@@ -241,12 +243,13 @@ fn get_post_json_method(json: &[u8]) -> Result<String, MmProxyError> {
 
 fn get_monero_data(data: &[u8], seed: String) -> Result<MoneroData, MmProxyError> {
     // TODO: Params possibly can be an array, for a single miner it seems to only have one entry per block submission
+    // Levenshtein Comparison to Percentage Formula: 100 - ( ((2*Lev_distance(Q, Mi)) / (Q.length + Mi.length)) * 100 )
     let parsed = json::parse(&stringify_request(data))
         .map_err(|e| MmProxyError::ParseError(format!("Failure to parse json {}", e)))?;
     let s = format!("{}", parsed["params"][0].clone());
     let hex = hex::decode(s).map_err(|e| MmProxyError::ParseError(format!("Failure to decode hex {}", e)))?;
-    let block =
-        deserialize::<Block>(&hex).map_err(|_| MmProxyError::ParseError(format!("Failure to deserialize block ")))?;
+    let block = deserialize::<Block>(&hex)
+        .map_err(|_| MmProxyError::ParseError("Failure to deserialize block ".to_string()))?;
     let mut hashes = block.clone().tx_hashes;
     hashes.push(block.miner_tx.hash());
     let root = tree_hash(hashes);
@@ -307,19 +310,39 @@ fn add_merge_mining_tag(data: &[u8], hash: &[u8]) -> Result<Vec<u8>, MmProxyErro
     // Parse the JSON
     let mut parsed = json::parse(&stringify_request(data))
         .map_err(|e| MmProxyError::ParseError(format!("Failure to parse json {}", e)))?;
-
+    if parsed["result"]["blocktemplate_blob"].is_null() {
+        return Err(MmProxyError::ParseError(
+            "Monero response invalid, cannot add merge mining tag".to_string(),
+        ));
+    }
     // Decode and dserialize the blocktemplate_blob
     let block_template_blob = &parsed["result"]["blocktemplate_blob"];
     let s = format!("{}", block_template_blob);
     let hex = hex::decode(s).map_err(|e| MmProxyError::ParseError(format!("Failure to decode hex {}", e)))?;
     let block = deserialize::<Block>(&hex[..])
-        .map_err(|_| MmProxyError::ParseError(format!("Failure to deserialze block ")))?;
+        .map_err(|_| MmProxyError::ParseError("Failure to deserialize block ".to_string()))?;
     parsed["result"]["blocktemplate_blob"] = append_merge_mining_tag(&block, Hash(from_slice(hash)))?.into();
 
     let count = 1 + block.tx_hashes.len() as u16;
     let mut hashes = block.clone().tx_hashes;
     hashes.push(block.miner_tx.hash());
     parsed["result"]["blockhashing_blob"] = create_input_blob(&block.header, &count, &from_hashes(&hashes))?.into();
+    Ok(parsed.dump().into())
+}
+
+// Add height to response
+fn adjust_height(data: &[u8], height: u64) -> Result<Vec<u8>, MmProxyError> {
+    // Parse the JSON
+    debug!(target: LOG_TARGET, "Tari tip changed");
+    let mut parsed = json::parse(&stringify_request(data))
+        .map_err(|e| MmProxyError::ParseError(format!("Failure to parse json {}", e)))?;
+    if parsed["height"].is_null() {
+        trace!(target: LOG_TARGET, "Data: {:?}", data);
+        return Err(MmProxyError::ParseError(
+            "Monero response invalid, cannot adjust height".to_string(),
+        ));
+    }
+    parsed["height"] = height.into();
     Ok(parsed.dump().into())
 }
 
@@ -332,7 +355,7 @@ fn handle_connection(
     rt: &mut Runtime,
 ) -> Result<(), MmProxyError>
 {
-    debug!(target: LOG_TARGET, "Handling Connection");
+    info!(target: LOG_TARGET, "Handling Connection");
     let grpcclientresult = rt.block_on(grpc::base_node_client::BaseNodeClient::connect(TARI_GRPC_URL));
     let mut buffer = [0; 4096];
     stream
@@ -340,14 +363,46 @@ fn handle_connection(
         .map_err(|e| MmProxyError::OtherError(format!("Error reading from stream {}", e)))?;
     let date = Local::now();
     let request_string = stringify_request(&buffer[..]);
+    debug!(target: LOG_TARGET, "Request: {}", request_string);
     let request_type = get_request_type(&buffer[..])?;
     let url_part = get_url_part(&buffer[..])?;
     if request_type.starts_with("GET") {
-        debug!(target: LOG_TARGET, "Handling Method: {}", url_part);
+        debug!(target: LOG_TARGET, "Handling GET Method: {}", url_part);
         // GET requests
         let url = format!("{}{}", MONEROD_URL, url_part);
         let mut curl = base_curl(0, &url, false)?;
         let data = do_curl(&mut curl, b"")?;
+        match url_part.as_str() {
+            "/getheight" => match grpcclientresult {
+                Ok(mut grpcclient) => {
+                    match rt.block_on(grpcclient.get_tip_info(grpc::Empty {})) {
+                        Ok(result) => {
+                            let height = result.into_inner().metadata.unwrap().height_of_longest_chain;
+                            // Short Circuit XMRig to request a new block template
+                            // TODO: needs additional testing
+                            if let Some(current_height) = transient.tari_height {
+                                if height != current_height {
+                                    adjust_height(&data, current_height)?;
+                                } else if let Some(submit_height) = transient.tari_prev_submit_height {
+                                    if submit_height >= current_height {
+                                        adjust_height(&data, current_height)?;
+                                        debug!(target: LOG_TARGET, "Already submitted for current Tari height");
+                                    }
+                                }
+                            }
+                            transient.tari_height = Some(height);
+                        },
+                        Err(e) => {
+                            error!(target: LOG_TARGET, "{:#}", e);
+                        },
+                    }
+                },
+                Err(e) => {
+                    error!(target: LOG_TARGET, "{:#}", e);
+                },
+            },
+            _ => {},
+        }
         let response = structure_response(&data[..], 200)?;
         stream
             .write(response.as_bytes())
@@ -361,13 +416,9 @@ fn handle_connection(
         if let Some(json) = json_bytes {
             let url = format!("{}{}", MONEROD_URL, url_part);
             let mut curl = base_curl(json.len() as u64, &url, true)?;
-            debug!(target: LOG_TARGET, "Request: {}", request_string);
             let method = get_post_json_method(&json)?;
             let mut data = do_curl(&mut curl, &json)?;
-
-            // TODO: Check tari height, monero check height request is type get (/getheight)
-
-            debug!(target: LOG_TARGET, "Handling Method: {}", method.as_str());
+            debug!(target: LOG_TARGET, "Handling POST Method: {}", method.as_str());
             match method.as_str() {
                 "submitblock" => match grpcclientresult {
                     Ok(mut grpcclient) => {
@@ -392,7 +443,7 @@ fn handle_connection(
                                             .clone()
                                             .ok_or_else(|| MmProxyError::MissingDataError("Pow data".to_string()))?;
                                         powdata.pow_data = bincode::serialize(&pow_data).map_err(|_| {
-                                            MmProxyError::ParseError(format!("Failure to serialize block "))
+                                            MmProxyError::ParseError("Failure to serialize block".to_string())
                                         })?;
                                         tariheader.pow = Some(powdata);
                                         block.header = Some(tariheader);
@@ -400,23 +451,24 @@ fn handle_connection(
                                         match rt.block_on(grpcclient.submit_block(block)) {
                                             Ok(result) => {
                                                 result.into_inner();
+                                                transient.tari_prev_submit_height = transient.tari_height;
                                             },
                                             Err(e) => {
-                                                debug!(target: LOG_TARGET, "{:#}", e);
+                                                error!(target: LOG_TARGET, "{:#}", e);
                                             },
                                         }
                                     },
                                     Err(e) => {
-                                        debug!(target: LOG_TARGET, "{:#}", e);
+                                        error!(target: LOG_TARGET, "{:#}", e);
                                     },
                                 }
                             }
                         } else {
-                            debug!(target: LOG_TARGET, "{:#}", response);
+                            error!(target: LOG_TARGET, "{:#}", response);
                         }
                     },
                     Err(e) => {
-                        debug!(target: LOG_TARGET, "{:#}", e);
+                        error!(target: LOG_TARGET, "{:#}", e);
                     },
                 },
                 "getblocktemplate" => {
@@ -456,21 +508,20 @@ fn handle_connection(
                                                 target: LOG_TARGET,
                                                 "BlockHashBlob: {:#}", &parsed["result"]["blockhashing_blob"]
                                             );
-                                            debug!(target: LOG_TARGET, "Transient: {:?}", transient);
                                         },
                                         Err(e) => {
-                                            debug!(target: LOG_TARGET, "{:#}", e);
+                                            error!(target: LOG_TARGET, "{:#}", e);
                                         },
                                     }
                                 },
                                 Err(e) => {
-                                    debug!(target: LOG_TARGET, "{:#}", e);
+                                    error!(target: LOG_TARGET, "{:#}", e);
                                 },
                             }
                         },
                         Err(e) => {
-                            debug!(target: LOG_TARGET, "Tari base node unavailable, monero mining only");
-                            debug!(target: LOG_TARGET, "{:#}", e);
+                            error!(target: LOG_TARGET, "Tari base node unavailable, monero mining only");
+                            error!(target: LOG_TARGET, "{:#}", e);
                             transient.tari_block = None;
                             transient.monero_seed = None;
                         },
@@ -479,7 +530,7 @@ fn handle_connection(
                 _ => {},
             }
             let response = structure_response(&data[..], 200)?;
-            debug!(target: LOG_TARGET, "Response: {}", response);
+            trace!(target: LOG_TARGET, "Response: {}", response);
             stream
                 .write(response.as_bytes())
                 .map_err(|e| MmProxyError::OtherError(format!("Error writing to stream {}", e)))?;
@@ -508,6 +559,8 @@ fn main() {
     let transient = TransientData {
         tari_block: None,
         monero_seed: None,
+        tari_height: None,
+        tari_prev_submit_height: None,
     };
     let (rt, listener) = setup()
         .map_err(|e| {
@@ -555,7 +608,6 @@ fn stream_handler(
     // let rules_arc = Arc::new(rules_mutex);
     let runtime_mutex = Mutex::new(rt);
     let runtime_arc = Arc::new(runtime_mutex);
-    // TODO: Needs a better way to shutdown rather than killall
     for stream in listener.incoming() {
         let t = transient_arc.clone();
         let r = rules.clone();
