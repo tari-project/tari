@@ -71,6 +71,11 @@ pub struct GlobalConfig {
     pub transaction_base_node_monitoring_timeout: Duration,
     pub transaction_direct_send_timeout: Duration,
     pub transaction_broadcast_send_timeout: Duration,
+    pub monerod_url: String,
+    pub curl_username: String,
+    pub curl_password: String,
+    pub curl_use_auth: bool,
+    pub proxy_host_address: SocketAddr,
 }
 
 impl GlobalConfig {
@@ -278,6 +283,38 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         cfg.get_int(&key)
             .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
+    let key = config_string(&net_str, "monerod_url");
+    let monerod_url = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
+    let key = config_string(&net_str, "curl_use_auth");
+    let curl_use_auth_string = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
+    let curl_use_auth =
+        bool::from_str(&curl_use_auth_string).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
+    let key = config_string(&net_str, "curl_username");
+    let curl_username = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
+    let key = config_string(&net_str, "curl_password");
+    let curl_password = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
+    let key = config_string(&net_str, "proxy_host_address");
+    let proxy_host_address = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        .and_then(|addr| {
+            addr.parse::<SocketAddr>()
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        })?;
+
     Ok(GlobalConfig {
         network,
         comms_transport,
@@ -311,6 +348,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         transaction_base_node_monitoring_timeout,
         transaction_direct_send_timeout,
         transaction_broadcast_send_timeout,
+        proxy_host_address,
+        monerod_url,
+        curl_username,
+        curl_password,
+        curl_use_auth,
     })
 }
 
