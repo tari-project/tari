@@ -839,10 +839,9 @@ where B: BlockchainBackend
             usize::try_from(sync_state.initial_kernel_checkpoint_count).map_err(|_| ChainStorageError::OutOfRange)?;
         let cp_count = db.count_checkpoints(MmrTree::Kernel)?;
         for i in first_tmp_checkpoint_index..cp_count {
-            let cp = db.fetch_checkpoint_at_index(MmrTree::Kernel, i)?.expect(&format!(
-                "Database is corrupt: Failed to fetch kernel checkpoint at index {}",
-                i
-            ));
+            let cp = db
+                .fetch_checkpoint_at_index(MmrTree::Kernel, i)?
+                .unwrap_or_else(|| panic!("Database is corrupt: Failed to fetch kernel checkpoint at index {}", i));
             let (nodes_added, _) = cp.into_parts();
             for hash in nodes_added {
                 txn.delete(DbKey::TransactionKernel(hash));
@@ -856,10 +855,9 @@ where B: BlockchainBackend
             usize::try_from(sync_state.initial_utxo_checkpoint_count).map_err(|_| ChainStorageError::OutOfRange)?;
         let cp_count = db.count_checkpoints(MmrTree::Utxo)?;
         for i in first_tmp_checkpoint_index..cp_count {
-            let cp = db.fetch_checkpoint_at_index(MmrTree::Utxo, i)?.expect(&format!(
-                "Database is corrupt: Failed to fetch UTXO checkpoint at index {}",
-                i
-            ));
+            let cp = db
+                .fetch_checkpoint_at_index(MmrTree::Utxo, i)?
+                .unwrap_or_else(|| panic!("Database is corrupt: Failed to fetch UTXO checkpoint at index {}", i));
             let (nodes_added, deleted) = cp.into_parts();
             for hash in nodes_added {
                 txn.delete(DbKey::UnspentOutput(hash));
@@ -1318,7 +1316,7 @@ fn fetch_inputs<T: BlockchainBackend>(
                     assert!(deleted);
                     fetch_stxo(db, hash)
                 })
-                .and_then(|stxo| Ok(TransactionInput::from(stxo)))
+                .map(TransactionInput::from)
         })
         .collect();
     inputs

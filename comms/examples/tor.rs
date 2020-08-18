@@ -185,7 +185,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
 
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
-        tor_hidden_service.get_onion_address().clone(),
+        tor_hidden_service.get_onion_address(),
         PeerFeatures::COMMUNICATION_CLIENT,
     )?);
 
@@ -254,7 +254,7 @@ async fn start_ping_ponger(
                 id.parse::<u64>()
                     .ok()
                     .and_then(|id_num| inflight_pings.remove(&id_num))
-                    .and_then(|ts| Some((Utc::now().naive_utc().signed_duration_since(ts)).num_milliseconds()))
+                    .map(|ts| (Utc::now().naive_utc().signed_duration_since(ts)).num_milliseconds())
                     .and_then(|latency| {
                         println!("Latency: {}ms", latency);
                         Some(latency)

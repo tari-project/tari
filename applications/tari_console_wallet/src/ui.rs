@@ -264,15 +264,13 @@ where B: Backend {
     let total = app.pending_txs.len() + app.completed_txs.len();
     let (pending_constraint, completed_constaint) = if app.pending_txs.len() == 0 {
         (Constraint::Min(4), Constraint::Min(4))
+    } else if app.pending_txs.len() as f32 / total as f32 > 0.25 {
+        (
+            Constraint::Ratio(app.pending_txs.len() as u32, total as u32),
+            Constraint::Ratio(app.completed_txs.len() as u32, total as u32),
+        )
     } else {
-        if app.pending_txs.len() as f32 / total as f32 > 0.25 {
-            (
-                Constraint::Ratio(app.pending_txs.len() as u32, total as u32),
-                Constraint::Ratio(app.completed_txs.len() as u32, total as u32),
-            )
-        } else {
-            (Constraint::Max(5), Constraint::Min(4))
-        }
+        (Constraint::Max(5), Constraint::Min(4))
     };
 
     let list_areas = Layout::default()

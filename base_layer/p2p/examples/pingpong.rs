@@ -227,7 +227,7 @@ mod pingpong {
             ui_update_signal,
             liveness_handle,
             node_to_ping,
-            shutdown_signal.clone(),
+            shutdown_signal,
         ));
 
         app.add_global_callback('q', |s| s.quit());

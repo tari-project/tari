@@ -59,7 +59,7 @@ fn mining() {
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
-        .with_block(block0.clone())
+        .with_block(block0)
         .build();
     let (alice_node, mut bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
@@ -74,7 +74,7 @@ fn mining() {
 
     // Bob sends Alice a transaction, the transaction is received by the mempool service. The mempool service validates
     // it and sends it to the mempool where it is added to the unconfirmed pool.
-    let (tx1, _) = schema_to_transaction(&vec![txn_schema!(from: vec![utxos0.clone()], to: vec![1 * T, 1 * T])]);
+    let (tx1, _) = schema_to_transaction(&vec![txn_schema!(from: vec![utxos0], to: vec![1 * T, 1 * T])]);
     let tx1 = (*tx1[0]).clone();
     let tx1_excess_sig = tx1.body.kernels()[0].excess_sig.clone();
     runtime.block_on(async {

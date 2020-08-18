@@ -726,7 +726,7 @@ mod test {
         );
         // Alice gets message back, deserializes it, etc
         alice
-            .add_single_recipient_info(bob_info.clone(), &factories.range_proof)
+            .add_single_recipient_info(bob_info, &factories.range_proof)
             .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
@@ -761,8 +761,8 @@ mod test {
             .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
-            .with_change_secret(a.change_key.clone())
-            .with_input(utxo.clone(), input)
+            .with_change_secret(a.change_key)
+            .with_input(utxo, input)
             .with_amount(0, (2u64.pow(32) + 1).into());
         let mut alice = builder.build::<Blake256>(&factories).unwrap();
         assert!(alice.is_single_round_message_ready());
@@ -779,7 +779,7 @@ mod test {
         )
         .unwrap();
         // Alice gets message back, deserializes it, etc
-        match alice.add_single_recipient_info(bob_info.clone(), &factories.range_proof) {
+        match alice.add_single_recipient_info(bob_info, &factories.range_proof) {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
                 e,

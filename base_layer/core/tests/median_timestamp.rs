@@ -36,7 +36,7 @@ use tari_core::{
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 pub fn get_header_timestamps<B: BlockchainBackend>(db: &B, height: u64, timestamp_count: u64) -> Vec<EpochTime> {
-    let min_height = height.checked_sub(timestamp_count).unwrap_or(0);
+    let min_height = height.saturating_sub(timestamp_count);
     let block_nums = (min_height..=height).collect();
     fetch_headers(db, block_nums)
         .unwrap()
@@ -103,7 +103,7 @@ fn test_median_timestamp_odd_order() {
     let pow_algos = vec![PowAlgorithm::Blake];
     // lets add 1
     let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
-    append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager);
+    append_to_pow_blockchain(&store, tip, pow_algos, &consensus_manager);
     timestamps.push(timestamps[0].increase(consensus_manager.consensus_constants().get_target_block_interval()));
     let height = store.get_chain_metadata().unwrap().height_of_longest_chain.unwrap();
     median_timestamp = get_median_timestamp(get_header_timestamps(

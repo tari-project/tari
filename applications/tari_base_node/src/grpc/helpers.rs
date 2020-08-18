@@ -54,11 +54,10 @@ pub fn quartile(_list: Vec<u64>) -> Option<f64> {
 
 #[cfg(test)]
 pub mod test {
-    use super::*;
 
     #[test]
     fn median() {
-        let mut values = vec![1u64, 8u64, 3u64, 9u64];
+        let values = vec![1u64, 8u64, 3u64, 9u64];
         let median_value = super::median(values);
         assert_eq!(median_value, Some(5.5f64))
     }

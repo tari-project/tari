@@ -59,7 +59,7 @@ pub fn create_coinbase(
 ) -> (TransactionOutput, TransactionKernel, UnblindedOutput)
 {
     let features = OutputFeatures::create_coinbase(maturity_height);
-    let (mut utxo, key) = create_utxo(value, &factories, Some(features.clone()));
+    let (utxo, key) = create_utxo(value, &factories, Some(features.clone()));
     let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
     let sig = create_signature(key.clone(), 0.into(), 0);
     let kernel = KernelBuilder::new()
@@ -92,7 +92,7 @@ pub fn create_act_gen_block() {
     let mut header = BlockHeader::new(consensus_manager.consensus_constants().blockchain_version());
     let value = consensus_manager.emission_schedule().block_reward(0);
     let features = OutputFeatures::create_coinbase(1);
-    let (mut utxo, key) = create_utxo(value, &factories, Some(features));
+    let (utxo, key) = create_utxo(value, &factories, Some(features));
     let (pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
     let kernel = KernelBuilder::new()

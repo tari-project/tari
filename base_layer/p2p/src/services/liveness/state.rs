@@ -250,15 +250,13 @@ impl LivenessState {
             if best_node.is_none() || best_recent_pong.is_none() {
                 best_node = Some(k.clone());
                 best_recent_pong = v.last_pong_received;
-            } else {
-                if let Some(last_pong) = v.last_pong_received {
-                    let current_best_pong = best_recent_pong.unwrap_or_else(|| NaiveDateTime::from_timestamp(0, 0));
-                    let last_pong_duration = Utc::now().naive_utc().signed_duration_since(last_pong);
-                    let current_best_pong_duration = Utc::now().naive_utc().signed_duration_since(current_best_pong);
-                    if last_pong_duration <= current_best_pong_duration {
-                        best_node = Some(k.clone());
-                        best_recent_pong = v.last_pong_received.clone();
-                    }
+            } else if let Some(last_pong) = v.last_pong_received {
+                let current_best_pong = best_recent_pong.unwrap_or_else(|| NaiveDateTime::from_timestamp(0, 0));
+                let last_pong_duration = Utc::now().naive_utc().signed_duration_since(last_pong);
+                let current_best_pong_duration = Utc::now().naive_utc().signed_duration_since(current_best_pong);
+                if last_pong_duration <= current_best_pong_duration {
+                    best_node = Some(k.clone());
+                    best_recent_pong = v.last_pong_received.clone();
                 }
             }
         }

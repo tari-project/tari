@@ -185,7 +185,7 @@ mod test {
                 tx_ttl: Duration::from_millis(50),
             },
             mempool_validator,
-            store.clone(),
+            store,
         );
         orphan_pool
             .insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()])

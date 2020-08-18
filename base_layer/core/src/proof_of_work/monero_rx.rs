@@ -176,7 +176,7 @@ pub fn append_merge_mining_tag(block: &MoneroBlock, hash: Hash) -> Result<String
     let mm_tag = SubField::MergeMining(VarInt(0), hash);
     monero_block.miner_tx.prefix.extra.0.push(mm_tag);
     let serialized = serialize::<MoneroBlock>(&block);
-    Ok(hex::encode(&serialized).into())
+    Ok(hex::encode(&serialized))
 }
 
 /// Calculates the Monero blockhashing_blob
@@ -197,7 +197,7 @@ pub fn create_input_blob(
     let mut encode2 = header;
     encode2.append(&mut root);
     encode2.append(&mut count);
-    Ok(hex::encode(encode2).into())
+    Ok(hex::encode(encode2))
 }
 
 /// Utility function to transform array to fixed array
@@ -224,7 +224,7 @@ fn verify_root(monero_data: &MoneroData) -> Result<(), MergeMineError> {
     }
     let root = tree_hash(hashes);
 
-    if !(monero_data.transaction_root.to_vec() == root) {
+    if monero_data.transaction_root.to_vec() != root {
         return Err(MergeMineError::ValidationError(
             "Transaction root did not match".to_string(),
         ));

@@ -234,7 +234,7 @@ mod test {
         assert!(data.output.verify_range_proof(&factories.range_proof).unwrap());
         let r_sum = &msg.public_nonce + &p.public_nonce;
         let e = build_challenge(&r_sum, &m);
-        let s = Signature::sign(p.spend_key.clone(), p.nonce.clone(), &e).unwrap();
+        let s = Signature::sign(p.spend_key.clone(), p.nonce, &e).unwrap();
         assert_eq!(data.partial_signature, s);
     }
 }

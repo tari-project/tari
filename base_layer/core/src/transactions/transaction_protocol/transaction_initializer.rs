@@ -43,11 +43,7 @@ use std::{
     collections::HashMap,
     fmt::{Debug, Error, Formatter},
 };
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    script::{TariScript, DEFAULT_SCRIPT_HASH},
-    tari_utilities::fixed_set::FixedSet,
-};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, script::TariScript, tari_utilities::fixed_set::FixedSet};
 
 /// The SenderTransactionInitializer is a Builder that helps set up the initial state for the Sender party of a new
 /// transaction Typically you don't instantiate this object directly. Rather use
@@ -371,7 +367,7 @@ mod test {
         assert_eq!(err.message, "Change spending key was not provided");
         // Ok, give them a change output
         let mut builder = err.builder;
-        builder.with_change_secret(p.change_key.clone());
+        builder.with_change_secret(p.change_key);
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.state {

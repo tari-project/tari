@@ -484,7 +484,7 @@ async fn dht_propagate_dedup() {
     // Check the message flow BEFORE deduping
     let received = filter_received(collect_stream!(node_A_messaging, timeout = Duration::from_secs(20)));
     // Expected race condition: If A->(B|C)->(C|B) before A->(C|B) then (C|B)->A
-    if received.len() > 0 {
+    if !received.is_empty() {
         assert_eq!(count_messages_received(&received, &[&node_B_id, &node_C_id]), 1);
     }
 
@@ -518,10 +518,10 @@ fn filter_received(
 
 fn count_messages_received(events: &[Arc<MessagingEvent>], node_ids: &[&NodeId]) -> usize {
     events
-        .into_iter()
+        .iter()
         .filter(|event| {
             unpack_enum!(MessagingEvent::MessageReceived(recv_node_id, _tag) = &***event);
-            node_ids.into_iter().any(|n| &*recv_node_id == *n)
+            node_ids.iter().any(|n| &*recv_node_id == *n)
         })
         .count()
 }

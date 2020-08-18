@@ -413,7 +413,7 @@ fn test_orphaned_mempool_transactions() {
         &mut miner,
         &mut blocks,
         &mut outputs,
-        schemas.clone(),
+        schemas,
         &consensus_manager.consensus_constants(),
     )
     .unwrap();
@@ -423,7 +423,7 @@ fn test_orphaned_mempool_transactions() {
         txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 300*uT, lock: 1700, OutputFeatures::default()),
         txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 100*uT),
     ];
-    let (txns, _) = schema_to_transaction(&schemas.clone());
+    let (txns, _) = schema_to_transaction(&schemas);
     generate_new_block(
         &mut miner,
         &mut blocks,
@@ -438,7 +438,7 @@ fn test_orphaned_mempool_transactions() {
         txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 500*uT, lock: 1000, OutputFeatures::default()),
         txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 600*uT, lock: 5200, OutputFeatures::default()),
     ];
-    let (txns2, _) = schema_to_transaction(&schemas.clone());
+    let (txns2, _) = schema_to_transaction(&schemas);
     generate_new_block(
         &mut miner,
         &mut blocks,
@@ -484,7 +484,7 @@ fn request_response_get_stats() {
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
-        .with_block(block0.clone())
+        .with_block(block0)
         .build();
     let (mut alice, bob, _consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
@@ -505,9 +505,9 @@ fn request_response_get_stats() {
     let (orphan2, _, _) = tx!(2*T, fee: 200*uT);
     let orphan2 = Arc::new(orphan2);
 
-    bob.mempool.insert(tx1.clone()).unwrap();
-    bob.mempool.insert(orphan1.clone()).unwrap();
-    bob.mempool.insert(orphan2.clone()).unwrap();
+    bob.mempool.insert(tx1).unwrap();
+    bob.mempool.insert(orphan1).unwrap();
+    bob.mempool.insert(orphan2).unwrap();
 
     // The coinbase tx cannot be spent until maturity, so txn1 will be in the timelocked pool. The other 2 txns are
     // orphans.
@@ -547,7 +547,7 @@ fn request_response_get_tx_state_with_excess_sig() {
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
-        .with_block(block0.clone())
+        .with_block(block0)
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
         &mut runtime,
@@ -621,7 +621,7 @@ fn receive_and_propagate_transaction() {
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
-        .with_block(block0.clone())
+        .with_block(block0)
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
         &mut runtime,
@@ -760,7 +760,7 @@ fn block_event_and_reorg_event_handling() {
 
     // Bob creates Block 1 and sends it to Alice. Alice adds it to her chain and creates a block event that the Mempool
     // service will receive.
-    let (tx1, utxos1) = schema_to_transaction(&vec![txn_schema!(from: vec![utxos0.clone()], to: vec![1 * T, 1 * T])]);
+    let (tx1, utxos1) = schema_to_transaction(&vec![txn_schema!(from: vec![utxos0], to: vec![1 * T, 1 * T])]);
     let (txs2, _utxos2) = schema_to_transaction(&vec![
         txn_schema!(from: vec![utxos1[0].clone()], to: vec![400_000 * uT, 590_000 * uT]),
         txn_schema!(from: vec![utxos1[1].clone()], to: vec![750_000 * uT, 240_000 * uT]),

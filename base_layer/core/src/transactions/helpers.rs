@@ -415,7 +415,7 @@ pub fn display_currency(value: f64, precision: usize, separator: &str) -> String
     if precision > 0 {
         format!("{}.{:0>2$}", formatted_whole_value, decimal, precision)
     } else {
-        format!("{}", formatted_whole_value)
+        formatted_whole_value
     }
 }
 
@@ -427,11 +427,11 @@ mod test {
         assert_eq!(String::from("0.000000000000"), super::display_currency(0.0f64, 12, ","));
         assert_eq!(
             String::from("123,456.123456789"),
-            super::display_currency(123456.123456789012_f64, 9, ",")
+            super::display_currency(123_456.123_456_789_f64, 9, ",")
         );
         assert_eq!(
             String::from("123,456"),
-            super::display_currency(123456.123456789012_f64, 0, ",")
+            super::display_currency(123_456.123_456_789_f64, 0, ",")
         );
         assert_eq!(String::from("1,234"), super::display_currency(1234.1f64, 0, ","));
     }

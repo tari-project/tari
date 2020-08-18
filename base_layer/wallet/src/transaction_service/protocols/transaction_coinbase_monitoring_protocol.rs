@@ -412,7 +412,7 @@ where TBackend: TransactionBackend + Clone + 'static
             }
         }
 
-        return Ok(BaseNodeResponseType::FetchUtxo(false));
+        Ok(BaseNodeResponseType::FetchUtxo(false))
     }
 }
 

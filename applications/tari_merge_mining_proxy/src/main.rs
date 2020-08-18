@@ -245,8 +245,8 @@ fn get_monero_data(data: &[u8], seed: String) -> Result<MoneroData, MmProxyError
         .map_err(|e| MmProxyError::ParseError(format!("Failure to parse json {}", e)))?;
     let s = format!("{}", parsed["params"][0].clone());
     let hex = hex::decode(s).map_err(|e| MmProxyError::ParseError(format!("Failure to decode hex {}", e)))?;
-    let block =
-        deserialize::<Block>(&hex).map_err(|_| MmProxyError::ParseError(format!("Failure to deserialize block ")))?;
+    let block = deserialize::<Block>(&hex)
+        .map_err(|_| MmProxyError::ParseError("Failure to deserialize block ".to_string()))?;
     let mut hashes = block.clone().tx_hashes;
     hashes.push(block.miner_tx.hash());
     let root = tree_hash(hashes);
@@ -313,7 +313,7 @@ fn add_merge_mining_tag(data: &[u8], hash: &[u8]) -> Result<Vec<u8>, MmProxyErro
     let s = format!("{}", block_template_blob);
     let hex = hex::decode(s).map_err(|e| MmProxyError::ParseError(format!("Failure to decode hex {}", e)))?;
     let block = deserialize::<Block>(&hex[..])
-        .map_err(|_| MmProxyError::ParseError(format!("Failure to deserialze block ")))?;
+        .map_err(|_| MmProxyError::ParseError("Failure to deserialze block ".to_string()))?;
     parsed["result"]["blocktemplate_blob"] = append_merge_mining_tag(&block, Hash(from_slice(hash)))?.into();
 
     let count = 1 + block.tx_hashes.len() as u16;
@@ -392,7 +392,7 @@ fn handle_connection(
                                             .clone()
                                             .ok_or_else(|| MmProxyError::MissingDataError("Pow data".to_string()))?;
                                         powdata.pow_data = bincode::serialize(&pow_data).map_err(|_| {
-                                            MmProxyError::ParseError(format!("Failure to serialize block "))
+                                            MmProxyError::ParseError("Failure to serialize block ".to_string())
                                         })?;
                                         tariheader.pow = Some(powdata);
                                         block.header = Some(tariheader);

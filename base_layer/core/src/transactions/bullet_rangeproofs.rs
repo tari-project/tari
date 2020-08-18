@@ -65,6 +65,12 @@ impl From<Vec<u8>> for BulletRangeProof {
     }
 }
 
+impl AsRef<[u8]> for BulletRangeProof {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 impl fmt::Display for BulletRangeProof {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_hex())

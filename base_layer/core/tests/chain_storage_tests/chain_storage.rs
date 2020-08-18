@@ -31,7 +31,7 @@ use crate::helpers::{
     sample_blockchains::create_new_blockchain,
 };
 use croaring::Bitmap;
-use env_logger;
+
 use std::thread;
 use tari_core::{
     blocks::{genesis_block, Block, BlockHash, BlockHeader},
@@ -216,7 +216,7 @@ fn multiple_threads() {
         let kernel = create_test_kernel(5.into(), 0);
         let hash = kernel.hash();
         let mut txn = DbTransaction::new();
-        txn.insert_kernel(kernel.clone());
+        txn.insert_kernel(kernel);
         assert!(store_a.commit(txn).is_ok());
         hash
     });
@@ -226,7 +226,7 @@ fn multiple_threads() {
         let kernel = create_test_kernel(10.into(), 0);
         let hash = kernel.hash();
         let mut txn = DbTransaction::new();
-        txn.insert_kernel(kernel.clone());
+        txn.insert_kernel(kernel);
         assert!(store_b.commit(txn).is_ok());
         hash
     });
@@ -467,7 +467,7 @@ fn add_multiple_blocks() {
     assert_eq!(metadata.height_of_longest_chain, Some(1));
     assert_eq!(metadata.best_block.unwrap(), hash);
     // Adding blocks is idempotent
-    assert_eq!(store.add_block(block1.clone()).unwrap(), BlockAddResult::BlockExists);
+    assert_eq!(store.add_block(block1).unwrap(), BlockAddResult::BlockExists);
     // Check the metadata
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(1));
@@ -1009,7 +1009,7 @@ fn invalid_block() {
             .build();
         let (block0, output) = create_genesis_block(&factories, &consensus_constants);
         let consensus_manager = ConsensusManagerBuilder::new(network)
-            .with_consensus_constants(consensus_constants.clone())
+            .with_consensus_constants(consensus_constants)
             .with_block(block0.clone())
             .build();
         let validators = Validators::new(
@@ -1334,8 +1334,8 @@ fn orphan_cleanup_on_reorg() {
     // Fill orphan block pool
     let orphan1 = create_orphan_block(1, vec![], &consensus_manager.consensus_constants());
     let orphan2 = create_orphan_block(1, vec![], &consensus_manager.consensus_constants());
-    assert_eq!(store.add_block(orphan1.clone()).unwrap(), BlockAddResult::OrphanBlock);
-    assert_eq!(store.add_block(orphan2.clone()).unwrap(), BlockAddResult::OrphanBlock);
+    assert_eq!(store.add_block(orphan1).unwrap(), BlockAddResult::OrphanBlock);
+    assert_eq!(store.add_block(orphan2).unwrap(), BlockAddResult::OrphanBlock);
 
     // Adding B1 and B2 to the main chain will produce a reorg from GB->A1->A2->A3->A4 to GB->B1->B2->B3.
     assert_eq!(
@@ -1363,7 +1363,7 @@ fn fails_validation() {
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants.clone())
+        .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let validators = Validators::new(
@@ -1381,7 +1381,7 @@ fn fails_validation() {
     let mut blocks = vec![block0];
     let mut outputs = vec![vec![]];
 
-    let schemas = vec![txn_schema!(from: vec![output.clone()], to: vec![2 * T, 500_000 * uT])];
+    let schemas = vec![txn_schema!(from: vec![output], to: vec![2 * T, 500_000 * uT])];
     let err = generate_new_block_with_achieved_difficulty(
         &mut store,
         &mut blocks,
@@ -1470,7 +1470,7 @@ fn pruned_mode_is_stxo() {
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants.clone())
+        .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let validators = Validators::new(
@@ -1598,19 +1598,19 @@ fn pruned_mode_is_stxo() {
     let txo_hash11 = outputs[4][0].as_transaction_output(&factories).unwrap().hash();
     let txo_hash12 = outputs[4][1].as_transaction_output(&factories).unwrap().hash();
     let txo_hash13 = outputs[4][2].as_transaction_output(&factories).unwrap().hash();
-    assert!(store.is_stxo(txo_hash1.clone()).unwrap());
-    assert!(store.is_utxo(txo_hash2.clone()).unwrap());
-    assert!(store.is_stxo(txo_hash3.clone()).unwrap());
-    assert!(store.is_utxo(txo_hash4.clone()).unwrap());
-    assert!(store.is_utxo(txo_hash5.clone()).unwrap());
-    assert!(store.is_utxo(txo_hash6.clone()).unwrap());
-    assert!(store.is_stxo(txo_hash7.clone()).unwrap());
-    assert!(store.is_utxo(txo_hash8.clone()).unwrap());
-    assert!(store.is_stxo(txo_hash9.clone()).unwrap());
-    assert!(store.is_utxo(txo_hash10.clone()).unwrap());
-    assert!(store.is_utxo(txo_hash11.clone()).unwrap());
-    assert!(store.is_utxo(txo_hash12.clone()).unwrap());
-    assert!(store.is_utxo(txo_hash13.clone()).unwrap());
+    assert!(store.is_stxo(txo_hash1).unwrap());
+    assert!(store.is_utxo(txo_hash2).unwrap());
+    assert!(store.is_stxo(txo_hash3).unwrap());
+    assert!(store.is_utxo(txo_hash4).unwrap());
+    assert!(store.is_utxo(txo_hash5).unwrap());
+    assert!(store.is_utxo(txo_hash6).unwrap());
+    assert!(store.is_stxo(txo_hash7).unwrap());
+    assert!(store.is_utxo(txo_hash8).unwrap());
+    assert!(store.is_stxo(txo_hash9).unwrap());
+    assert!(store.is_utxo(txo_hash10).unwrap());
+    assert!(store.is_utxo(txo_hash11).unwrap());
+    assert!(store.is_utxo(txo_hash12).unwrap());
+    assert!(store.is_utxo(txo_hash13).unwrap());
 }
 
 #[test]

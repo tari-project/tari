@@ -23,21 +23,24 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use crate::transactions::{
-    aggregated_body::AggregateBody,
-    tari_amount::{uT, MicroTari},
-    transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{
-        BlindingFactor,
-        Commitment,
-        CommitmentFactory,
-        CryptoFactories,
-        HashDigest,
-        HashOutput,
-        MessageHash,
-        RangeProof,
-        RangeProofService,
-        Signature,
+use crate::{
+    blocks::blockheader::hash_serializer,
+    transactions::{
+        aggregated_body::AggregateBody,
+        tari_amount::{uT, MicroTari},
+        transaction_protocol::{build_challenge, TransactionMetadata},
+        types::{
+            BlindingFactor,
+            Commitment,
+            CommitmentFactory,
+            CryptoFactories,
+            HashDigest,
+            HashOutput,
+            MessageHash,
+            RangeProof,
+            RangeProofService,
+            Signature,
+        },
     },
 };
 use digest::Input;
@@ -52,7 +55,7 @@ use std::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     range_proof::{RangeProofError, RangeProofService as RangeProofServiceTrait},
-    script::{TariScript, DEFAULT_SCRIPT_HASH},
+    script::{ScriptError, TariScript, DEFAULT_SCRIPT_HASH},
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 use thiserror::Error;
@@ -165,6 +168,8 @@ pub enum TransactionError {
     NoSignatureError,
     #[error("A range proof construction or verification has produced an error: {0}")]
     RangeProofError(#[from] RangeProofError),
+    #[error("Error in the transaction script: {0}")]
+    InvalidScript(#[from] ScriptError),
 }
 
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//
@@ -215,7 +220,17 @@ impl UnblindedOutput {
                 .construct_proof(&self.spending_key, self.value.into())?,
         )
         .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?;
-        let script_hash = self.script.as_hash::<HashDigest>().unwrap().to_vec(); // TODO deal with error
+        // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
+        if !factories.range_proof.verify(&proof.as_bytes().to_vec(), &commitment) {
+            return Err(TransactionError::ValidationError(
+                "Range proof could not be verified".into(),
+            ));
+        }
+        let script_hash = self
+            .script
+            .as_hash::<HashDigest>()
+            .map_err(|e| TransactionError::InvalidScript(e))?
+            .to_vec();
         let output = TransactionOutput {
             features: self.features.clone(),
             commitment,
@@ -266,6 +281,7 @@ pub struct TransactionInput {
     /// The commitment referencing the output being spent.
     commitment: Commitment,
     /// The hash of the locking script on this input
+    #[serde(with = "hash_serializer")]
     script_hash: HashOutput,
 }
 
@@ -323,6 +339,7 @@ impl Hashable for TransactionInput {
         HashDigest::new()
             .chain(self.features.to_bytes())
             .chain(self.commitment.as_bytes())
+            .chain(&self.script_hash)
             .result()
             .to_vec()
     }
@@ -348,6 +365,7 @@ pub struct TransactionOutput {
     /// A proof the commitment is in the right range
     proof: RangeProof,
     /// The hash of the locking script on this UTXO.
+    #[serde(with = "hash_serializer")]
     script_hash: HashOutput,
 }
 
@@ -391,7 +409,7 @@ impl TransactionOutput {
 
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<bool, TransactionError> {
-        Ok(prover.verify(&self.proof.to_vec(), &self.commitment))
+        Ok(prover.verify(&self.proof().to_vec(), &self.commitment))
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.
@@ -985,8 +1003,8 @@ mod test {
 
         input.features.maturity = 2;
         kernel.lock_height = 10;
-        tx.body.add_input(input.clone());
-        tx.body.add_kernel(kernel.clone());
+        tx.body.add_input(input);
+        tx.body.add_kernel(kernel);
 
         assert_eq!(tx.max_input_maturity(), 5);
         assert_eq!(tx.max_kernel_timelock(), 10);

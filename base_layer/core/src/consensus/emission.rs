@@ -257,11 +257,7 @@ mod test {
         const EMISSION_DECAY: f64 = 0.999_999_560_409_038_5;
         const EMISSION_TAIL: u64 = 1;
 
-        let schedule = EmissionSchedule::new(
-            MicroTari::from(EMISSION_INITIAL * uT),
-            EMISSION_DECAY,
-            MicroTari::from(EMISSION_TAIL * T),
-        );
+        let schedule = EmissionSchedule::new(EMISSION_INITIAL * uT, EMISSION_DECAY, EMISSION_TAIL * T);
 
         // Block numbers in these tests represent the edge cases of the pow function.
         assert_eq!(schedule.block_reward(9182), MicroTari::from(5517534590));
@@ -287,7 +283,7 @@ mod test {
     #[test]
     fn huge_block_number() {
         let mut n = (std::i32::MAX - 1) as u64;
-        let schedule = EmissionSchedule::new(MicroTari::from(1e21 as u64), 0.999_9999, MicroTari::from(100));
+        let schedule = EmissionSchedule::new(MicroTari::from(1e21 as u64), 0.999_999_9, MicroTari::from(100));
         for _ in 0..3 {
             assert_eq!(schedule.block_reward(n), MicroTari::from(100));
             n += 1;

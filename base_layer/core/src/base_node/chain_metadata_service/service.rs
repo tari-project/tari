@@ -313,7 +313,7 @@ mod test {
 
             let mut proto_chain_metadata = create_sample_proto_chain_metadata();
             proto_chain_metadata.height_of_longest_chain = Some(123);
-            let chain_metadata = proto_chain_metadata.clone().try_into().unwrap();
+            let chain_metadata = proto_chain_metadata.try_into().unwrap();
 
             rt.spawn(async move {
                 let base_node_req = base_node_receiver.select_next_some().await;

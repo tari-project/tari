@@ -107,7 +107,7 @@ fn inbound_get_metadata() {
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
-    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
         store.clone(),

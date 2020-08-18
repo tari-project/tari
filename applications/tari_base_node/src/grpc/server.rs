@@ -42,7 +42,7 @@ use tari_crypto::tari_utilities::Hashable;
 use tokio::{runtime, sync::mpsc};
 use tonic::{Request, Response, Status};
 
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const LOG_TARGET: &str = "base_node::grpc";
 const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;
@@ -116,7 +116,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             let mut page: Vec<u64> = heights
                 .drain(..cmp::min(heights.len(), GET_DIFFICULTY_PAGE_SIZE))
                 .collect();
-            while page.len() > 0 {
+            while !page.is_empty() {
                 let mut difficulties = match handler.get_headers(page.clone()).await {
                     Err(err) => {
                         warn!(
@@ -255,7 +255,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             let mut page: Vec<u64> = headers
                 .drain(..cmp::min(headers.len(), LIST_HEADERS_PAGE_SIZE))
                 .collect();
-            while page.len() > 0 {
+            while !page.is_empty() {
                 trace!(target: LOG_TARGET, "Page: {:?}", page);
                 let result_headers = match handler.get_headers(page).await {
                     Err(err) => {
@@ -405,7 +405,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         self.executor.spawn(async move {
             let mut page: Vec<u64> = heights.drain(..cmp::min(heights.len(), GET_BLOCKS_PAGE_SIZE)).collect();
 
-            while page.len() > 0 {
+            while !page.is_empty() {
                 let blocks = match handler.get_blocks(page.clone()).await {
                     Err(err) => {
                         warn!(
@@ -551,7 +551,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .collect();
             let (initial, decay, tail) = constants.emission_amounts();
             let schedule = EmissionSchedule::new(initial, decay, tail);
-            while page.len() > 0 {
+            while !page.is_empty() {
                 let values: Vec<base_node_grpc::ValueAtHeightResponse> = page
                     .clone()
                     .into_iter()
@@ -562,7 +562,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .collect();
                 let result_size = values.len();
                 for value in values {
-                    match tx.send(Ok(value.into())).await {
+                    match tx.send(Ok(value)).await {
                         Ok(_) => (),
                         Err(err) => {
                             warn!(target: LOG_TARGET, "Error sending value via GRPC:  {}", err);
@@ -637,7 +637,7 @@ async fn get_block_group(
         CalcType::Quartile => return Err(Status::unimplemented("Quartile has not been implemented")),
         _ => median(values).map(|v| vec![v]),
     }
-    .unwrap_or(vec![]);
+    .unwrap_or_default();
     debug!(
         target: LOG_TARGET,
         "Sending GetBlockSize response to client: {:?}", value

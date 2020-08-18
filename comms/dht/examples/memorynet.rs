@@ -129,14 +129,14 @@ fn get_short_name(node_id: &NodeId) -> String {
         .lock()
         .unwrap()
         .get(node_id)
-        .map(|name| format!("{}", name))
+        .map(|name| name.to_string())
         .unwrap_or_else(|| format!("NoName ({})", node_id.short_str()))
 }
 
 fn get_next_name() -> String {
     let pos = {
         let mut i = NAME_POS.lock().unwrap();
-        *i = *i + 1;
+        *i += 1;
         *i
     };
     if pos > NAMES.len() {
@@ -484,7 +484,7 @@ async fn do_network_wide_propagation(nodes: &mut [TestNode]) {
     let start_global = Instant::now();
     // Spawn task for each peer that will read the message and propagate it on
     let tasks = nodes
-        .into_iter()
+        .iter_mut()
         .filter(|n| n.comms.node_identity().node_id() != &random_node_id)
         .enumerate()
         .map(|(idx, node)| {

@@ -56,7 +56,7 @@ fn find_utxo(output: &UnblindedOutput, block: &Block, factory: &CommitmentFactor
             return Some(utxo.clone());
         }
     }
-    return None;
+    None
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn fetch_async_kernel() {
     let (db, blocks, _, _) = create_blockchain_db_no_cut_through();
     test_async(|rt| {
         for block in blocks.into_iter() {
-            block.body.kernels().into_iter().for_each(|k| {
+            block.body.kernels().iter().for_each(|k| {
                 let db = db.clone();
                 let k = k.clone();
                 let hash = k.hash();

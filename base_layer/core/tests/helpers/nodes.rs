@@ -197,12 +197,12 @@ impl BaseNodeBuilder {
             .consensus_manager
             .unwrap_or(ConsensusManagerBuilder::new(self.network).build());
         let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-        let blockchain_db_config = self.blockchain_db_config.unwrap_or(BlockchainDatabaseConfig::default());
+        let blockchain_db_config = self.blockchain_db_config.unwrap_or_default();
         let blockchain_db = BlockchainDatabase::new(db, &consensus_manager, validators, blockchain_db_config).unwrap();
         let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
         let mempool = Mempool::new(
             blockchain_db.clone(),
-            self.mempool_config.unwrap_or(MempoolConfig::default()),
+            self.mempool_config.unwrap_or_default(),
             mempool_validator,
         );
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
@@ -218,14 +218,13 @@ impl BaseNodeBuilder {
         ) = setup_base_node_services(
             runtime,
             node_identity.clone(),
-            self.peers.unwrap_or(Vec::new()),
+            self.peers.unwrap_or_default(),
             blockchain_db.clone(),
             mempool.clone(),
             consensus_manager.clone(),
-            self.base_node_service_config
-                .unwrap_or(BaseNodeServiceConfig::default()),
-            self.mempool_service_config.unwrap_or(MempoolServiceConfig::default()),
-            self.liveness_service_config.unwrap_or(LivenessConfig::default()),
+            self.base_node_service_config.unwrap_or_default(),
+            self.mempool_service_config.unwrap_or_default(),
+            self.liveness_service_config.unwrap_or_default(),
             data_path,
         );
 
@@ -313,7 +312,7 @@ pub fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config.clone())
+        .with_liveness_service_config(liveness_service_config)
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path.as_ref().join("bob").as_os_str().to_str().unwrap());
 
@@ -386,13 +385,13 @@ pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path.as_ref().join("bob").as_os_str().to_str().unwrap());
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network)
-        .with_node_identity(alice_node_identity.clone())
-        .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
+        .with_node_identity(alice_node_identity)
+        .with_peers(vec![bob_node_identity, carol_node_identity])
         .with_blockchain_db_config(blockchain_db_config)
         .with_base_node_service_config(base_node_service_config)
         .with_mmr_cache_config(mmr_cache_config)
         .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config.clone())
+        .with_liveness_service_config(liveness_service_config)
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path.as_ref().join("alice").as_os_str().to_str().unwrap());
 

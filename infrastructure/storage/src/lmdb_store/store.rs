@@ -437,12 +437,12 @@ impl LMDBDatabase {
 
     /// Returns if the database is empty.
     pub fn is_empty(&self) -> Result<bool, LMDBError> {
-        self.get_stats().and_then(|s| Ok(s.entries > 0))
+        self.get_stats().map(|s| s.entries > 0)
     }
 
     /// Returns the total number of entries in this database.
     pub fn len(&self) -> Result<usize, LMDBError> {
-        self.get_stats().and_then(|s| Ok(s.entries))
+        self.get_stats().map(|s| s.entries)
     }
 
     /// Execute function `f` for each value in the database.

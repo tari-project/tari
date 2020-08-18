@@ -126,7 +126,7 @@ fn wallet_base_node_integration_test() {
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
-        .with_block(block0.clone())
+        .with_block(block0)
         .build();
     let (base_node, _consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(base_node_identity.clone())
@@ -180,7 +180,7 @@ fn wallet_base_node_integration_test() {
     alice_wallet
         .set_base_node_peer(
             (*base_node_identity.public_key()).clone(),
-            base_node_identity.public_address().clone().to_string(),
+            base_node_identity.public_address().to_string(),
         )
         .unwrap();
 
@@ -208,7 +208,7 @@ fn wallet_base_node_integration_test() {
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
     };
-    let bob_wallet_config = WalletConfig::new(bob_comms_config, factories.clone(), None, Network::Rincewind);
+    let bob_wallet_config = WalletConfig::new(bob_comms_config, factories, None, Network::Rincewind);
     let bob_runtime = create_runtime();
     let mut bob_wallet = Wallet::new(
         bob_wallet_config,

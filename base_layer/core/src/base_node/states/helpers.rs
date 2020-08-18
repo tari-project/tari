@@ -473,7 +473,7 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
         match shared
             .comms
             .request_txos_from_peer(
-                hashes.into_iter().map(|c| Clone::clone(&**c)).collect(),
+                hashes.iter().map(|c| Clone::clone(&**c)).collect(),
                 Some(sync_peer.node_id.clone()),
             )
             .await

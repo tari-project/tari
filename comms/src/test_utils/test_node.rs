@@ -88,7 +88,7 @@ pub fn build_connection_manager(
         ConstantBackoff::new(config.dial_backoff_duration),
         request_rx,
         config.node_identity,
-        peer_manager.into(),
+        peer_manager,
         event_tx,
         shutdown,
     );

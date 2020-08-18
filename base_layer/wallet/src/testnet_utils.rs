@@ -62,7 +62,7 @@ use tari_core::{
     consensus::Network,
     crypto::script::{TariScript, DEFAULT_SCRIPT_HASH},
     transactions::{
-        tari_amount::{MicroTari, Tari},
+        tari_amount::MicroTari,
         transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
     },
