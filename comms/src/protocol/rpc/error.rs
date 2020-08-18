@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::RpcStatus;
+use crate::{peer_manager::PeerManagerError, PeerConnectionError};
 use prost::DecodeError;
 use std::io;
 use thiserror::Error;
@@ -51,6 +52,10 @@ pub enum RpcError {
     NegotiationClientNoSupportedVersion,
     #[error("RPC negotiation failed: The server does not support any RPC protocol version supported by this node")]
     NegotiationServerNoSupportedVersion,
+    #[error("Peer connection error: {0}")]
+    PeerConnectionError(#[from] PeerConnectionError),
+    #[error("Peer manager error: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
 }
 
 impl RpcError {

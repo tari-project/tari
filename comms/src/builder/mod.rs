@@ -41,6 +41,9 @@ mod placeholder;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "rpc")]
+use crate::protocol::ProtocolExtension;
+
 use crate::{
     backoff::{Backoff, BoxedBackoff, ExponentialBackoff},
     connection_manager::{
@@ -61,7 +64,7 @@ use crate::{
     multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerManager},
-    protocol::Protocols,
+    protocol::{ProtocolExtensions, Protocols},
     tor,
     transports::{SocksTransport, TcpTransport, Transport},
     types::CommsDatabase,
@@ -85,6 +88,8 @@ pub struct CommsBuilder<TTransport> {
     hidden_service_ctl: Option<tor::HiddenServiceController>,
     connection_manager_config: ConnectionManagerConfig,
     connectivity_config: ConnectivityConfig,
+    protocol_extensions: ProtocolExtensions,
+
     shutdown: Shutdown,
 }
 
@@ -113,6 +118,7 @@ impl Default for CommsBuilder<TcpTransport> {
             hidden_service_ctl: None,
             connection_manager_config: ConnectionManagerConfig::default(),
             connectivity_config: ConnectivityConfig::default(),
+            protocol_extensions: ProtocolExtensions::new(),
             shutdown: Shutdown::new(),
         }
     }
@@ -224,6 +230,7 @@ where
             dial_backoff: self.dial_backoff,
             connection_manager_config: self.connection_manager_config,
             connectivity_config: self.connectivity_config,
+            protocol_extensions: self.protocol_extensions,
             shutdown: self.shutdown,
         })
     }
@@ -251,12 +258,29 @@ where
             dial_backoff: self.dial_backoff,
             connection_manager_config: self.connection_manager_config,
             connectivity_config: self.connectivity_config,
+            protocol_extensions: self.protocol_extensions,
             shutdown: self.shutdown,
         }
     }
 
-    pub fn with_protocols(mut self, protocols: Protocols<Substream>) -> Self {
-        self.protocols = Some(protocols);
+    /// Add an RPC server/router in this instance of Tari comms.
+    ///
+    /// ```compile_fail
+    /// # use tari_comms::CommsBuilder;
+    /// # use tari_comms::protocol::rpc::RpcServer;
+    /// let server = RpcServer::new().add_service(MyService).add_service(AnotherService);
+    /// CommsBuilder::new().add_rpc_service(server).build();
+    /// ```
+    #[cfg(feature = "rpc")]
+    pub fn add_rpc<T: ProtocolExtension + 'static>(mut self, rpc: T) -> Self {
+        // Rpc router is treated the same as any other `ProtocolExtension` however this method may make it clearer for
+        // users that this is the correct way to add the RPC server
+        self.protocol_extensions.add(rpc);
+        self
+    }
+
+    pub fn add_protocol_extensions(mut self, extensions: ProtocolExtensions) -> Self {
+        self.protocol_extensions.extend(extensions);
         self
     }
 
@@ -340,9 +364,6 @@ where
         let connection_manager_requester =
             ConnectionManagerRequester::new(conn_man_tx, connection_manager_event_tx.clone());
 
-        //---------------------------------- Protocols --------------------------------------------//
-        let protocols = self.protocols.take().unwrap_or_default();
-
         //---------------------------------- ConnectivityManager --------------------------------------------//
 
         let (connectivity_tx, connectivity_rx) = mpsc::channel(consts::CONNECTIVITY_MANAGER_REQUEST_BUFFER_SIZE);
@@ -372,7 +393,7 @@ where
             messaging_pipeline: None,
             node_identity,
             peer_manager,
-            protocols,
+            protocol_extensions: self.protocol_extensions,
             hidden_service_ctl: self.hidden_service_ctl,
             shutdown: self.shutdown,
         })

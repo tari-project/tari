@@ -20,9 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// Buffer size for inbound messages from _all_ peers. This should be large enough to buffer quite a few incoming
-/// messages before creating backpressure on peers speaking the messaging protocol.
-pub const INBOUND_MESSAGE_BUFFER_SIZE: usize = 100;
 /// Buffer size for actor requests to connectivity manager.
 pub const CONNECTIVITY_MANAGER_REQUEST_BUFFER_SIZE: usize = 10;
 /// Buffer size for connectivity events
@@ -33,14 +30,7 @@ pub const CONNECTION_MANAGER_REQUEST_BUFFER_SIZE: usize = 10;
 /// Connection manager events buffer size. The size should allow more than enough "time" for slow subscribers to read
 /// the events while not being wasteful.
 pub const CONNECTION_MANAGER_EVENTS_BUFFER_SIZE: usize = 30;
-/// Buffer size notifications that a peer wants to speak /tari/messaging. This buffer is used for all peers, but a low
-/// value is ok because this events happen once (or less) per connecting peer. For e.g. a value of 10 would allow 10
-/// peers to concurrently request to speak /tari/messaging.
-pub const MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE: usize = 10;
 /// Buffer size of the messaging event channel. The size should allow more than enough "time" for slow subscribers to
 /// read the events while not being wasteful. An MessageReceived event is published per message, which could happen
 /// quite a lot, so a little more room to buffer here is recommended.
 pub const MESSAGING_EVENTS_BUFFER_SIZE: usize = 100;
-/// Buffer size for requests to the messaging protocol. All outbound messages will be sent along this channel. Some
-/// buffering may be required if the node needs to send many messages out at the same time.
-pub const MESSAGING_REQUEST_BUFFER_SIZE: usize = 50;

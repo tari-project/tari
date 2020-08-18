@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "rpc")]
+use crate::protocol::rpc::{NamedProtocolService, RpcClient, RpcClientBuilder, RpcError, RPC_MAX_FRAME_SIZE};
+
 use super::{
     error::{ConnectionManagerError, PeerConnectionError},
     manager::ConnectionManagerEvent,
@@ -198,6 +201,21 @@ impl PeerConnection {
     {
         let substream = self.open_substream(protocol_id).await?;
         Ok(framing::canonical(substream.stream, max_frame_size))
+    }
+
+    #[cfg(feature = "rpc")]
+    pub async fn connect_rpc<T>(&mut self) -> Result<T, RpcError>
+    where T: From<RpcClient> + NamedProtocolService {
+        self.connect_rpc_builder(Default::default()).await
+    }
+
+    #[cfg(feature = "rpc")]
+    pub async fn connect_rpc_builder<T>(&mut self, builder: RpcClientBuilder<T>) -> Result<T, RpcError>
+    where T: From<RpcClient> + NamedProtocolService {
+        let framed = self
+            .open_framed_substream(&T::PROTOCOL_NAME.into(), RPC_MAX_FRAME_SIZE)
+            .await?;
+        builder.connect(framed).await
     }
 
     /// Immediately disconnects the peer connection. This can only fail if the peer connection worker

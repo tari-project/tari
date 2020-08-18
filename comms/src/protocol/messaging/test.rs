@@ -41,7 +41,7 @@ use crate::{
     runtime,
     runtime::task,
     test_utils::{
-        mocks::{create_connection_manager_mock, create_peer_connection_mock_pair, ConnectionManagerMockState},
+        mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
         node_id,
         node_identity::build_node_identity,
         transport,
@@ -67,7 +67,7 @@ const TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
 async fn spawn_messaging_protocol() -> (
     Arc<PeerManager>,
     Arc<NodeIdentity>,
-    ConnectionManagerMockState,
+    ConnectivityManagerMockState,
     mpsc::Sender<ProtocolNotification<Substream>>,
     mpsc::Sender<MessagingRequest>,
     mpsc::Receiver<InboundMessage>,
@@ -76,7 +76,7 @@ async fn spawn_messaging_protocol() -> (
 ) {
     let shutdown = Shutdown::new();
 
-    let (requester, mock) = create_connection_manager_mock();
+    let (requester, mock) = create_connectivity_mock();
     let mock_state = mock.get_shared_state();
     mock.spawn();
 

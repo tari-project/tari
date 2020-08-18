@@ -39,7 +39,7 @@ use tari_common::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuth
 use tari_comms::{
     multiaddr::{Multiaddr, Protocol},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
-    protocol::{ProtocolNotificationRx, Protocols},
+    protocol::ProtocolExtensions,
     socks,
     tor,
     tor::TorIdentity,
@@ -48,7 +48,6 @@ use tari_comms::{
     CommsNode,
     ConnectionManagerEvent,
     PeerManager,
-    Substream,
 };
 use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
 use tari_core::{
@@ -78,8 +77,8 @@ use tari_core::{
         MempoolConfig,
         MempoolServiceConfig,
         MempoolServiceInitializer,
+        MempoolSyncProtocolExtension,
         MempoolValidators,
-        MEMPOOL_SYNC_PROTOCOL,
     },
     mining::{Miner, MinerInstruction},
     tari_utilities::{hex::Hex, message_format::MessageFormat},
@@ -526,9 +525,8 @@ where
     let base_node_subscriptions = Arc::new(base_node_subscriptions);
     create_peer_db_folder(&config.peer_db_path)?;
 
-    let mut protocols = Protocols::new();
-    let (mempool_protocol_tx, mempool_protocol_notif) = mpsc::channel(10);
-    protocols.add(&[MEMPOOL_SYNC_PROTOCOL.clone()], mempool_protocol_tx);
+    let mut protocols = ProtocolExtensions::new();
+    protocols.add(MempoolSyncProtocolExtension::new(Default::default(), mempool.clone()));
 
     let (base_node_comms, base_node_dht) =
         setup_base_node_comms(base_node_identity, config, publisher, protocols).await?;
@@ -551,7 +549,6 @@ where
         base_node_subscriptions.clone(),
         mempool,
         rules.clone(),
-        mempool_protocol_notif,
     )
     .await;
     debug!(target: LOG_TARGET, "Base node service registration complete.");
@@ -1049,7 +1046,7 @@ async fn setup_base_node_comms(
     node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
     publisher: PubsubDomainConnector,
-    protocols: Protocols<Substream>,
+    protocols: ProtocolExtensions,
 ) -> Result<(CommsNode, Dht), String>
 {
     // Ensure that the node identity has the correct public address
@@ -1165,7 +1162,6 @@ async fn register_base_node_services<B>(
     subscription_factory: Arc<SubscriptionFactory>,
     mempool: Mempool<B>,
     consensus_manager: ConsensusManager,
-    mempool_protocol_notif: ProtocolNotificationRx<Substream>,
 ) -> Arc<ServiceHandles>
 where
     B: BlockchainBackend + 'static,
@@ -1185,8 +1181,6 @@ where
             subscription_factory.clone(),
             mempool,
             mempool_config,
-            mempool_protocol_notif,
-            comms.subscribe_connectivity_events(),
         ))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {

@@ -23,7 +23,7 @@
 use super::error::MessagingProtocolError;
 use crate::{
     compat::IoCompat,
-    connection_manager::ConnectionManagerRequester,
+    connectivity::ConnectivityRequester,
     framing,
     message::{InboundMessage, MessageTag, OutboundMessage},
     multiplexing::Substream,
@@ -105,7 +105,7 @@ impl fmt::Display for MessagingEvent {
 
 pub struct MessagingProtocol {
     config: MessagingConfig,
-    connection_manager_requester: ConnectionManagerRequester,
+    connectivity: ConnectivityRequester,
     proto_notification: Fuse<mpsc::Receiver<ProtocolNotification<Substream>>>,
     active_queues: HashMap<NodeId, mpsc::UnboundedSender<OutboundMessage>>,
     request_rx: Fuse<mpsc::Receiver<MessagingRequest>>,
@@ -121,7 +121,7 @@ impl MessagingProtocol {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: MessagingConfig,
-        connection_manager_requester: ConnectionManagerRequester,
+        connection_manager_requester: ConnectivityRequester,
         proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
         request_rx: mpsc::Receiver<MessagingRequest>,
         messaging_events_tx: MessagingEventSender,
@@ -133,7 +133,7 @@ impl MessagingProtocol {
             mpsc::channel(INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE);
         Self {
             config,
-            connection_manager_requester,
+            connectivity: connection_manager_requester,
             proto_notification: proto_notification.fuse(),
             request_rx: request_rx.fuse(),
             active_queues: Default::default(),
@@ -242,7 +242,7 @@ impl MessagingProtocol {
                 },
                 Entry::Vacant(entry) => {
                     let sender = Self::spawn_outbound_handler(
-                        self.connection_manager_requester.clone(),
+                        self.connectivity.clone(),
                         self.internal_messaging_event_tx.clone(),
                         peer_node_id.clone(),
                         self.config.inactivity_timeout,
@@ -270,7 +270,7 @@ impl MessagingProtocol {
     }
 
     fn spawn_outbound_handler(
-        conn_man_requester: ConnectionManagerRequester,
+        connectivity: ConnectivityRequester,
         events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
         inactivity_timeout: Option<Duration>,
@@ -278,7 +278,7 @@ impl MessagingProtocol {
     {
         let (msg_tx, msg_rx) = mpsc::unbounded();
         let outbound_messaging =
-            OutboundMessaging::new(conn_man_requester, events_tx, msg_rx, peer_node_id, inactivity_timeout);
+            OutboundMessaging::new(connectivity, events_tx, msg_rx, peer_node_id, inactivity_timeout);
         task::spawn(outbound_messaging.run());
         msg_tx
     }

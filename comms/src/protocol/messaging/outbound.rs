@@ -22,7 +22,8 @@
 
 use super::{error::MessagingProtocolError, MessagingEvent, MessagingProtocol, SendFailReason, MESSAGING_PROTOCOL};
 use crate::{
-    connection_manager::{ConnectionManagerError, ConnectionManagerRequester, NegotiatedSubstream, PeerConnection},
+    connection_manager::{NegotiatedSubstream, PeerConnection},
+    connectivity::{ConnectivityError, ConnectivityRequester},
     message::OutboundMessage,
     multiplexing::Substream,
     peer_manager::NodeId,
@@ -42,7 +43,7 @@ const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
 const MAX_SEND_RETRIES: usize = 1;
 
 pub struct OutboundMessaging {
-    conn_man_requester: ConnectionManagerRequester,
+    connectivity: ConnectivityRequester,
     request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
     messaging_events_tx: mpsc::Sender<MessagingEvent>,
     peer_node_id: NodeId,
@@ -51,7 +52,7 @@ pub struct OutboundMessaging {
 
 impl OutboundMessaging {
     pub fn new(
-        conn_man_requester: ConnectionManagerRequester,
+        connectivity: ConnectivityRequester,
         messaging_events_tx: mpsc::Sender<MessagingEvent>,
         request_rx: mpsc::UnboundedReceiver<OutboundMessage>,
         peer_node_id: NodeId,
@@ -59,7 +60,7 @@ impl OutboundMessaging {
     ) -> Self
     {
         Self {
-            conn_man_requester,
+            connectivity,
             request_rx,
             messaging_events_tx,
             peer_node_id,
@@ -157,9 +158,9 @@ impl OutboundMessaging {
 
     async fn try_dial_peer(&mut self) -> Result<PeerConnection, MessagingProtocolError> {
         loop {
-            match self.conn_man_requester.dial_peer(self.peer_node_id.clone()).await {
+            match self.connectivity.dial_peer(self.peer_node_id.clone()).await {
                 Ok(conn) => break Ok(conn),
-                Err(ConnectionManagerError::DialCancelled) => {
+                Err(ConnectivityError::DialCancelled) => {
                     debug!(
                         target: LOG_TARGET,
                         "Dial was cancelled for peer '{}'. This is probably because of connection tie-breaking. \

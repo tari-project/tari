@@ -24,40 +24,109 @@ use super::RpcError;
 use crate::{
     proto,
     proto::rpc::rpc_session_reply::SessionResult,
-    protocol::rpc::body::{Body, IntoBody},
+    protocol::rpc::{
+        body::{Body, IntoBody},
+        context::RequestContext,
+    },
 };
 use bitflags::bitflags;
 use bytes::Bytes;
 use std::{fmt, time::Duration};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Request<T> {
-    pub(super) method: MethodId,
-
-    pub message: T,
+    pub(super) context: Option<RequestContext>,
+    inner: BaseRequest<T>,
 }
 
 impl Request<Bytes> {
-    pub fn decode<T: prost::Message + Default>(&mut self) -> Result<Request<T>, RpcError> {
-        let message = T::decode(&mut self.message)?;
+    pub fn decode<T: prost::Message + Default>(mut self) -> Result<Request<T>, RpcError> {
+        let message = T::decode(&mut self.inner.message)?;
         Ok(Request {
-            method: self.method,
-            message,
+            context: self.context,
+            inner: BaseRequest::new(self.inner.method, message),
         })
     }
 }
 
 impl<T> Request<T> {
-    pub fn method(&self) -> MethodId {
+    pub(super) fn with_context(context: RequestContext, method: RpcMethod, message: T) -> Self {
+        Self {
+            context: Some(context),
+            inner: BaseRequest::new(method, message),
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn new(method: RpcMethod, message: T) -> Self {
+        Self {
+            context: None,
+            inner: BaseRequest::new(method, message),
+        }
+    }
+
+    pub fn method(&self) -> RpcMethod {
+        self.inner.method
+    }
+
+    #[inline]
+    pub fn message(&self) -> &T {
+        &self.inner.message
+    }
+
+    pub fn into_message(self) -> T {
+        self.inner.into_message()
+    }
+
+    /// Returns the request context that is provided to every service request.
+    ///
+    /// ## Panics
+    ///
+    /// This will panic if this instance was not constructed with `with_context`.
+    /// The only time this may not be the case is in tests.
+    pub fn context(&self) -> &RequestContext {
+        self.context
+            .as_ref()
+            .expect("Request::context called on request without a context")
+    }
+    // pub fn map<F, U>(self, mut f: F) -> Request<U>
+    // where F: FnMut(T) -> U {
+    //     Request {
+    //         context: self.context,
+    //         inner: self.inner.map(f),
+    //     }
+    // }
+}
+
+#[derive(Debug, Clone)]
+pub struct BaseRequest<T> {
+    pub(super) method: RpcMethod,
+    pub message: T,
+}
+
+impl<T> BaseRequest<T> {
+    pub fn new(method: RpcMethod, message: T) -> Self {
+        Self { method, message }
+    }
+
+    pub fn method(&self) -> RpcMethod {
         self.method
     }
 
     pub fn into_message(self) -> T {
         self.message
     }
+
+    pub fn map<F, U>(self, mut f: F) -> BaseRequest<U>
+    where F: FnMut(T) -> U {
+        BaseRequest {
+            method: self.method,
+            message: f(self.message),
+        }
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Response<T> {
     pub flags: RpcMessageFlags,
     pub message: T,
@@ -97,7 +166,26 @@ impl<T> Response<T> {
     }
 }
 
-pub type MethodId = u32;
+#[derive(Debug, Clone, Copy)]
+pub struct RpcMethod(u32);
+
+impl RpcMethod {
+    pub fn id(self) -> u32 {
+        self.0
+    }
+}
+
+impl From<u32> for RpcMethod {
+    fn from(m: u32) -> Self {
+        Self(m)
+    }
+}
+
+impl Into<u32> for RpcMethod {
+    fn into(self) -> u32 {
+        self.0
+    }
+}
 
 bitflags! {
     pub struct RpcMessageFlags: u8 {

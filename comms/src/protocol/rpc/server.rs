@@ -36,7 +36,11 @@ use crate::{
     peer_manager::NodeId,
     proto,
     protocol::{
-        rpc::message::RpcMessageFlags,
+        rpc::{
+            context::{RequestContext, RpcCommsContext},
+            message::RpcMessageFlags,
+            RPC_MAX_FRAME_SIZE,
+        },
         ProtocolEvent,
         ProtocolId,
         ProtocolNotification,
@@ -91,11 +95,6 @@ impl RpcServer {
         self
     }
 
-    pub fn max_frame_size(mut self, max_frame_size: usize) -> Self {
-        self.max_frame_size = max_frame_size;
-        self
-    }
-
     pub fn with_unlimited_concurrent_sessions(mut self) -> Self {
         self.maximum_concurrent_sessions = None;
         self
@@ -115,6 +114,7 @@ impl RpcServer {
         self,
         service: S,
         notifications: ProtocolNotificationRx<TSubstream>,
+        context: RpcCommsContext,
     ) -> Result<(), RpcError>
     where
         TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -126,7 +126,7 @@ impl RpcServer {
         S::Service: Send + 'static,
         <S::Service as Service<Request<Bytes>>>::Future: Send + 'static,
     {
-        PeerRpcServer::new(self, service, notifications).serve().await
+        PeerRpcServer::new(self, service, notifications, context).serve().await
     }
 }
 
@@ -134,7 +134,7 @@ impl Default for RpcServer {
     fn default() -> Self {
         Self {
             maximum_concurrent_sessions: Some(100),
-            max_frame_size: 4 * 1024 * 1024, // 4 MiB
+            max_frame_size: RPC_MAX_FRAME_SIZE,
             minimum_client_deadline: Duration::from_secs(1),
             shutdown_signal: Default::default(),
         }
@@ -146,6 +146,7 @@ struct PeerRpcServer<TSvc, TSubstream> {
     config: RpcServer,
     service: TSvc,
     protocol_notifications: Option<ProtocolNotificationRx<TSubstream>>,
+    context: RpcCommsContext,
 }
 
 impl<TSvc, TSubstream> PeerRpcServer<TSvc, TSubstream>
@@ -158,12 +159,19 @@ where
     <TSvc::Service as Service<Request<Bytes>>>::Future: Send + 'static,
     TSvc::Future: Send + 'static,
 {
-    pub fn new(config: RpcServer, service: TSvc, protocol_notifications: ProtocolNotificationRx<TSubstream>) -> Self {
+    pub fn new(
+        config: RpcServer,
+        service: TSvc,
+        protocol_notifications: ProtocolNotificationRx<TSubstream>,
+        context: RpcCommsContext,
+    ) -> Self
+    {
         Self {
             executor: OptionallyBoundedExecutor::from_current(config.maximum_concurrent_sessions),
             config,
             service,
             protocol_notifications: Some(protocol_notifications),
+            context,
         }
     }
 
@@ -250,6 +258,7 @@ where
             node_id,
             framed: Some(framed),
             service,
+            context: self.context.clone(),
             shutdown_signal: self.config.shutdown_signal.clone(),
         };
 
@@ -295,6 +304,7 @@ struct ActivePeerRpcService<TSvc, TSubstream> {
     node_id: NodeId,
     service: TSvc,
     framed: Option<CanonicalFraming<TSubstream>>,
+    context: RpcCommsContext,
     shutdown_signal: OptionalShutdownSignal,
 }
 
@@ -331,12 +341,16 @@ where
         Ok(())
     }
 
+    fn create_request_context(&self) -> RequestContext {
+        RequestContext::new(self.node_id.clone(), self.context.clone())
+    }
+
     async fn handle<W>(&mut self, sink: &mut W, mut request: Bytes) -> Result<(), RpcError>
     where W: Sink<Bytes, Error = io::Error> + Unpin + ?Sized {
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
 
         let request_id = decoded_msg.request_id;
-        let method = decoded_msg.method;
+        let method = decoded_msg.method.into();
         let deadline = Duration::from_secs(decoded_msg.deadline);
 
         // The client side deadline MUST be greater or equal to the minimum_client_deadline
@@ -365,10 +379,7 @@ where
             "[Peer=`{}`] Got request {}", self.node_id, decoded_msg
         );
 
-        let req = Request {
-            method,
-            message: decoded_msg.message.into(),
-        };
+        let req = Request::with_context(self.create_request_context(), method, decoded_msg.message.into());
 
         let service_fut = time::timeout(deadline, self.service.call(req));
         let service_result = match service_fut.await {
