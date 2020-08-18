@@ -3911,6 +3911,7 @@ dependencies = [
  "arrayref",
  "bincode",
  "chrono",
+ "config",
  "curl",
  "derive-error",
  "hex",
