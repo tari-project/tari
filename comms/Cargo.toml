@@ -6,13 +6,13 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2018"
 
 [dependencies]
 tari_crypto = { version = "^0.5" }
 tari_storage = { version = "^0.2", path = "../infrastructure/storage" }
-tari_shutdown = { version="^0.0",  path = "../infrastructure/shutdown" }
+tari_shutdown = { version="^0.2",  path = "../infrastructure/shutdown" }
 
 bitflags = "1.0.4"
 blake2 = "0.8.1"
