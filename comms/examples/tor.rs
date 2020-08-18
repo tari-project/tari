@@ -6,7 +6,7 @@ use futures::{
     StreamExt,
 };
 use rand::{rngs::OsRng, thread_rng, RngCore};
-use std::{collections::HashMap, convert::identity, env, path::Path, process, sync::Arc};
+use std::{collections::HashMap, convert::identity, env, net::SocketAddr, path::Path, process, sync::Arc};
 use tari_comms::{
     message::{InboundMessage, OutboundMessage},
     multiaddr::Multiaddr,
@@ -66,7 +66,7 @@ async fn run() -> Result<(), Error> {
     let mut args_iter = env::args().skip(1);
     let control_port_addr = args_iter
         .next()
-        .unwrap_or("/ip4/127.0.0.1/tcp/9095".to_string())
+        .unwrap_or("/ip4/127.0.0.1/tcp/9051".to_string())
         .parse::<Multiaddr>()
         .map_err(|_| Error::InvalidArgControlPortAddress)?;
 
@@ -76,12 +76,22 @@ async fn run() -> Result<(), Error> {
     println!("Starting comms nodes...",);
 
     let temp_dir1 = Builder::new().prefix("tor-example1").tempdir().unwrap();
-    let (comms_node1, inbound_rx1, mut outbound_tx1) =
-        setup_node_with_tor(control_port_addr.clone(), temp_dir1.as_ref(), 9098, tor_identity1).await?;
+    let (comms_node1, inbound_rx1, mut outbound_tx1) = setup_node_with_tor(
+        control_port_addr.clone(),
+        temp_dir1.as_ref(),
+        (9098u16, "127.0.0.1:0".parse::<SocketAddr>().unwrap()),
+        tor_identity1,
+    )
+    .await?;
 
     let temp_dir2 = Builder::new().prefix("tor-example2").tempdir().unwrap();
-    let (comms_node2, inbound_rx2, outbound_tx2) =
-        setup_node_with_tor(control_port_addr, temp_dir2.as_ref(), 9099, tor_identity2).await?;
+    let (comms_node2, inbound_rx2, outbound_tx2) = setup_node_with_tor(
+        control_port_addr,
+        temp_dir2.as_ref(),
+        (9099u16, "127.0.0.1:0".parse::<SocketAddr>().unwrap()),
+        tor_identity2,
+    )
+    .await?;
 
     let node_identity1 = comms_node1.node_identity();
     let node_identity2 = comms_node2.node_identity();
@@ -176,22 +186,19 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
         hs_builder = hs_builder.with_tor_identity(ident);
     }
 
-    let tor_hidden_service = hs_builder.finish().await?;
-
-    println!(
-        "Tor hidden service created with address '{}'",
-        tor_hidden_service.get_onion_address()
-    );
+    let hs_controller = hs_builder.finish().await?;
 
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
-        tor_hidden_service.get_onion_address().clone(),
+        "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
         PeerFeatures::COMMUNICATION_CLIENT,
     )?);
 
     let comms_node = CommsBuilder::new()
         .with_node_identity(node_identity)
-        .configure_from_hidden_service(tor_hidden_service)
+        .configure_from_hidden_service(hs_controller)
+        .await
+        .unwrap()
         .with_peer_storage(peer_database)
         .build()
         .unwrap();
@@ -208,6 +215,11 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
         )
         .spawn()
         .await?;
+
+    println!(
+        "Tor hidden service created with address '{}'",
+        comms_node.node_identity().public_address()
+    );
 
     Ok((comms_node, inbound_rx, outbound_tx))
 }

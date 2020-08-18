@@ -61,7 +61,7 @@ pub struct BuiltCommsNode<
     pub connectivity_requester: ConnectivityRequester,
     pub messaging_pipeline: Option<pipeline::Config<TInPipe, TOutPipe, TOutReq>>,
     pub node_identity: Arc<NodeIdentity>,
-    pub hidden_service: Option<tor::HiddenService>,
+    pub hidden_service_ctl: Option<tor::HiddenServiceController>,
     pub peer_manager: Arc<PeerManager>,
     pub protocols: Protocols<Substream>,
     pub shutdown: Shutdown,
@@ -102,7 +102,7 @@ where
             node_identity: self.node_identity,
             shutdown: self.shutdown,
             protocols: self.protocols,
-            hidden_service: self.hidden_service,
+            hidden_service_ctl: self.hidden_service_ctl,
             peer_manager: self.peer_manager,
         }
     }
@@ -138,25 +138,8 @@ where
             shutdown,
             peer_manager,
             mut protocols,
-            hidden_service,
+            hidden_service_ctl,
         } = self;
-
-        info!(target: LOG_TARGET, "Hello from comms!");
-        info!(
-            target: LOG_TARGET,
-            "Your node's public key is '{}'",
-            node_identity.public_key()
-        );
-        info!(
-            target: LOG_TARGET,
-            "Your node's network ID is '{}'",
-            node_identity.node_id()
-        );
-        info!(
-            target: LOG_TARGET,
-            "Your node's public address is '{}'",
-            node_identity.public_address()
-        );
 
         let mut complete_signals = Vec::new();
         let events_stream = connection_manager_event_tx.subscribe();
@@ -196,6 +179,30 @@ where
         task::spawn(connection_manager.run());
 
         let listening_addr = Self::wait_listening(events_stream).await?;
+        let mut hidden_service = None;
+        if let Some(mut ctl) = hidden_service_ctl {
+            ctl.set_proxied_addr(listening_addr.clone());
+            let hs = ctl.create_hidden_service().await?;
+            node_identity.set_public_address(hs.get_onion_address());
+            hidden_service = Some(hs);
+        }
+
+        info!(target: LOG_TARGET, "Hello from comms!");
+        info!(
+            target: LOG_TARGET,
+            "Your node's public key is '{}'",
+            node_identity.public_key()
+        );
+        info!(
+            target: LOG_TARGET,
+            "Your node's network ID is '{}'",
+            node_identity.node_id()
+        );
+        info!(
+            target: LOG_TARGET,
+            "Your node's public address is '{}'",
+            node_identity.public_address()
+        );
 
         Ok(CommsNode {
             shutdown,

@@ -46,6 +46,7 @@ pub use hidden_service::{
     HiddenService,
     HiddenServiceBuilder,
     HiddenServiceBuilderError,
+    HiddenServiceController,
     HiddenServiceControllerError,
     HsFlags,
     TorIdentity,

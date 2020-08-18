@@ -244,17 +244,10 @@ where
         },
         TransportType::Tor(tor_config) => {
             debug!(target: LOG_TARGET, "Building TOR comms stack ({})", tor_config);
-            let hidden_service = initialize_hidden_service(tor_config.clone()).await?;
-            debug!(
-                target: LOG_TARGET,
-                "Created hidden service {}",
-                hidden_service.get_onion_address()
-            );
-            let comms = builder.configure_from_hidden_service(hidden_service);
-            debug!(target: LOG_TARGET, "Comms stack configured");
-
+            let hidden_service_ctl = initialize_hidden_service(tor_config.clone()).await?;
+            let comms = builder.configure_from_hidden_service(hidden_service_ctl).await?;
             let (comms, dht) = configure_comms_and_dht(comms, config, connector, seed_peers).await?;
-            debug!(target: LOG_TARGET, "DHT configured");
+            debug!(target: LOG_TARGET, "Comms and DHT configured");
             // Set the public address to the onion address that comms is using
             comms.node_identity().set_public_address(
                 comms
@@ -277,7 +270,9 @@ where
     }
 }
 
-async fn initialize_hidden_service(config: TorConfig) -> Result<tor::HiddenService, tor::HiddenServiceBuilderError> {
+async fn initialize_hidden_service(
+    config: TorConfig,
+) -> Result<tor::HiddenServiceController, tor::HiddenServiceBuilderError> {
     let mut builder = tor::HiddenServiceBuilder::new()
         .with_hs_flags(tor::HsFlags::DETACH)
         .with_port_mapping(config.port_mapping)

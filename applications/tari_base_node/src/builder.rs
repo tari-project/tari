@@ -914,8 +914,7 @@ fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                     .unwrap()
             );
 
-            let mut forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
-            forward_addr.set_port(forward_addr.port() + 1);
+            let forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
             TransportType::Tor(TorConfig {
                 control_server_addr: control_server_address,
                 control_server_auth: {
@@ -926,7 +925,7 @@ fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                 },
                 identity: identity.map(Box::new),
 
-                port_mapping: (onion_port.get() + 1, forward_addr).into(),
+                port_mapping: (onion_port.get(), forward_addr).into(),
                 // TODO: make configurable
                 socks_address_override,
                 socks_auth: socks::Authentication::None,

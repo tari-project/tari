@@ -82,7 +82,7 @@ pub struct CommsBuilder<TTransport> {
     executor: Option<runtime::Handle>,
     protocols: Option<Protocols<Substream>>,
     dial_backoff: Option<BoxedBackoff>,
-    hidden_service: Option<tor::HiddenService>,
+    hidden_service_ctl: Option<tor::HiddenServiceController>,
     connection_manager_config: ConnectionManagerConfig,
     connectivity_config: ConnectivityConfig,
     shutdown: Shutdown,
@@ -110,7 +110,7 @@ impl Default for CommsBuilder<TcpTransport> {
             dial_backoff: Some(Box::new(ExponentialBackoff::default())),
             executor: None,
             protocols: None,
-            hidden_service: None,
+            hidden_service_ctl: None,
             connection_manager_config: ConnectionManagerConfig::default(),
             connectivity_config: ConnectivityConfig::default(),
             shutdown: Shutdown::new(),
@@ -203,15 +203,20 @@ where
     }
 
     /// Configure the `CommsBuilder` to build a node which communicates using the given `tor::HiddenService`.
-    pub fn configure_from_hidden_service(mut self, hidden_service: tor::HiddenService) -> CommsBuilder<SocksTransport> {
+    pub async fn configure_from_hidden_service(
+        mut self,
+        mut hidden_service_ctl: tor::HiddenServiceController,
+    ) -> Result<CommsBuilder<SocksTransport>, CommsBuilderError>
+    {
         // Set the listener address to be the address (usually local) to which tor will forward all traffic
-        self.connection_manager_config.listener_address = hidden_service.proxied_address().clone();
+        self.connection_manager_config.listener_address = hidden_service_ctl.proxied_address();
+        let transport = hidden_service_ctl.get_transport().await?;
 
-        CommsBuilder {
+        Ok(CommsBuilder {
             // Set the socks transport configured for this hidden service
-            transport: Some(hidden_service.get_transport()),
+            transport: Some(transport),
             // Set the hidden service.
-            hidden_service: Some(hidden_service),
+            hidden_service_ctl: Some(hidden_service_ctl),
             peer_storage: self.peer_storage,
             node_identity: self.node_identity,
             executor: self.executor,
@@ -220,7 +225,7 @@ where
             connection_manager_config: self.connection_manager_config,
             connectivity_config: self.connectivity_config,
             shutdown: self.shutdown,
-        }
+        })
     }
 
     /// Set the backoff that [ConnectionManager] uses when dialing peers. This is optional. If omitted the default
@@ -240,7 +245,7 @@ where
             transport: Some(transport),
             peer_storage: self.peer_storage,
             node_identity: self.node_identity,
-            hidden_service: self.hidden_service,
+            hidden_service_ctl: self.hidden_service_ctl,
             executor: self.executor,
             protocols: self.protocols,
             dial_backoff: self.dial_backoff,
@@ -368,7 +373,7 @@ where
             node_identity,
             peer_manager,
             protocols,
-            hidden_service: self.hidden_service,
+            hidden_service_ctl: self.hidden_service_ctl,
             shutdown: self.shutdown,
         })
     }
