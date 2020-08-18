@@ -92,7 +92,7 @@ pub async fn create(
 
     let builder = CommsBuilder::new()
         .allow_test_addresses()
-        .with_protocols(protocols)
+        .add_protocol_extensions(protocols.into())
         .with_node_identity(node_identity.clone())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_secs(0)))
         .with_peer_storage(peer_database)

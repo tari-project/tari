@@ -64,7 +64,7 @@ pub mod service;
 #[cfg(feature = "base_node")]
 mod sync_protocol;
 #[cfg(feature = "base_node")]
-pub use sync_protocol::MEMPOOL_SYNC_PROTOCOL;
+pub use sync_protocol::MempoolSyncProtocolExtension;
 
 use crate::transactions::types::Signature;
 use core::fmt::{Display, Error, Formatter};

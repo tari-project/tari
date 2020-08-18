@@ -20,32 +20,54 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError};
-use thiserror::Error;
+use super::RpcError;
+use crate::{
+    connectivity::ConnectivityRequester,
+    peer_manager::{NodeId, Peer},
+    PeerManager,
+};
+use std::sync::Arc;
 
-#[derive(Debug, Error, Clone)]
-pub enum ConnectivityError {
-    #[error("Cannot send request because ConnectivityActor disconnected")]
-    ActorDisconnected,
-    #[error("Response was unexpectedly cancelled")]
-    ActorResponseCancelled,
-    #[error("PeerManagerError: {0}")]
-    PeerManagerError(#[from] PeerManagerError),
-    #[error("ConnectionFailed: {0}")]
-    ConnectionFailed(ConnectionManagerError),
-    #[error("Connectivity event stream closed unexpectedly")]
-    ConnectivityEventStreamClosed,
-    #[error("Timeout while waiting for ONLINE connectivity")]
-    OnlineWaitTimeout,
-    #[error("Pending dial was cancelled")]
-    DialCancelled,
+#[derive(Clone, Debug)]
+pub(crate) struct RpcCommsContext {
+    connectivity: ConnectivityRequester,
+    peer_manager: Arc<PeerManager>,
 }
 
-impl From<ConnectionManagerError> for ConnectivityError {
-    fn from(err: ConnectionManagerError) -> Self {
-        match err {
-            ConnectionManagerError::DialCancelled => Self::DialCancelled,
-            err => Self::ConnectionFailed(err),
+impl RpcCommsContext {
+    pub(super) fn new(peer_manager: Arc<PeerManager>, connectivity: ConnectivityRequester) -> Self {
+        Self {
+            peer_manager,
+            connectivity,
         }
+    }
+
+    pub fn peer_manager(&self) -> &PeerManager {
+        &self.peer_manager
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RequestContext {
+    context: RpcCommsContext,
+    node_id: NodeId,
+}
+
+impl RequestContext {
+    pub(super) fn new(node_id: NodeId, context: RpcCommsContext) -> Self {
+        Self { node_id, context }
+    }
+
+    pub async fn load_peer(&self) -> Result<Peer, RpcError> {
+        let peer = self.context.peer_manager.find_by_node_id(&self.node_id).await?;
+        Ok(peer)
+    }
+
+    pub fn connectivity(&self) -> ConnectivityRequester {
+        self.context.connectivity.clone()
+    }
+
+    pub fn peer_node_id(&self) -> &NodeId {
+        &self.node_id
     }
 }

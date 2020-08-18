@@ -28,10 +28,13 @@ mod test;
 
 mod body;
 
+mod context;
+
 mod server;
-pub use server::RpcServer;
+pub use server::{NamedProtocolService, RpcServer};
 
 mod client;
+pub use client::{RpcClient, RpcClientBuilder, RpcClientConfig};
 
 mod either;
 
@@ -47,3 +50,5 @@ mod status;
 pub use status::{RpcStatus, RpcStatusCode};
 
 mod not_found;
+
+pub const RPC_MAX_FRAME_SIZE: usize = 4 * 1024 * 1024; // 4 MiB

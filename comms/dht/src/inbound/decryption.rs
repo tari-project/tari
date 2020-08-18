@@ -326,12 +326,13 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
-        test_utils::{make_dht_inbound_message, make_node_identity, service_fn},
+        test_utils::{make_dht_inbound_message, make_node_identity},
     };
     use futures::{executor::block_on, future};
     use std::sync::Mutex;
     use tari_comms::{message::MessageExt, wrap_in_envelope_body};
     use tari_test_utils::counter_context;
+    use tower::service_fn;
 
     #[test]
     fn poll_ready() {

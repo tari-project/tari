@@ -31,10 +31,17 @@ use super::{
     RpcStatus,
 };
 use crate::{
-    protocol::{ProtocolId, ProtocolNotificationRx},
+    protocol::{
+        extensions::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError},
+        rpc::context::RpcCommsContext,
+        ProtocolId,
+        ProtocolNotificationRx,
+    },
+    runtime::task,
     Bytes,
 };
 use futures::{
+    channel::mpsc,
     task::{Context, Poll},
     AsyncRead,
     AsyncWrite,
@@ -48,7 +55,7 @@ use tower_make::MakeService;
 /// Allows service factories of different types to be composed into a single service that resolves a given `ProtocolId`
 pub struct Router<A, B> {
     server: RpcServer,
-    protocols: Vec<ProtocolId>,
+    protocol_names: Vec<ProtocolId>,
     routes: Or<A, B>,
 }
 
@@ -61,7 +68,7 @@ where A: NamedProtocolService
         let protocols = vec![expected_protocol.clone()];
         let predicate = move |protocol: &ProtocolId| expected_protocol == protocol;
         Self {
-            protocols,
+            protocol_names: protocols,
             server,
             routes: Or::new(predicate, service, ProtocolServiceNotFound),
         }
@@ -73,10 +80,10 @@ impl<A, B> Router<A, B> {
     pub fn add_service<T>(mut self, service: T) -> Router<T, Or<A, B>>
     where T: NamedProtocolService {
         let expected_protocol = ProtocolId::from_static(<T as NamedProtocolService>::PROTOCOL_NAME);
-        self.protocols.push(expected_protocol.clone());
+        self.protocol_names.push(expected_protocol.clone());
         let predicate = move |protocol: &ProtocolId| expected_protocol == protocol;
         Router {
-            protocols: self.protocols,
+            protocol_names: self.protocol_names,
             server: self.server,
             routes: Or::new(predicate, service, self.routes),
         }
@@ -94,14 +101,13 @@ impl<A, B> Router<A, B> {
         self
     }
 
-    /// Sets the maximum frame size allowed for all RPC messages. Default: 4 MiB
-    pub fn max_frame_size(mut self, max_frame_size: usize) -> Self {
-        self.server = self.server.max_frame_size(max_frame_size);
-        self
+    pub fn into_boxed(self) -> Box<Self>
+    where Self: 'static {
+        Box::new(self)
     }
 
     pub(crate) fn all_protocols(&mut self) -> &[ProtocolId] {
-        &self.protocols
+        &self.protocol_names
     }
 }
 
@@ -121,14 +127,15 @@ where
     <B::Service as Service<Request<Bytes>>>::Future: Send + 'static,
 {
     /// Start all services
-    pub async fn serve<TSubstream>(
+    pub(crate) async fn serve<TSubstream>(
         self,
         protocol_notifications: ProtocolNotificationRx<TSubstream>,
+        context: RpcCommsContext,
     ) -> Result<(), RpcError>
     where
         TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
-        self.server.serve(self.routes, protocol_notifications).await
+        self.server.serve(self.routes, protocol_notifications, context).await
     }
 }
 
@@ -148,6 +155,32 @@ where
 
     fn call(&mut self, protocol: ProtocolId) -> Self::Future {
         Service::call(&mut self.routes, protocol)
+    }
+}
+
+impl<A, B> ProtocolExtension for Router<A, B>
+where
+    A: MakeService<ProtocolId, Request<Bytes>, Response = Response<Body>, Error = RpcStatus, MakeError = RpcError>
+        + Send
+        + Sync
+        + 'static,
+    A::Service: Send + 'static,
+    A::Future: Send + 'static,
+    <A::Service as Service<Request<Bytes>>>::Future: Send + 'static,
+    B: MakeService<ProtocolId, Request<Bytes>, Response = Response<Body>, Error = RpcStatus, MakeError = RpcError>
+        + Send
+        + Sync
+        + 'static,
+    B::Service: Send + 'static,
+    B::Future: Send + 'static,
+    <B::Service as Service<Request<Bytes>>>::Future: Send + 'static,
+{
+    fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
+        let (proto_notif_tx, proto_notif_rx) = mpsc::channel(10);
+        context.add_protocol(&self.protocol_names, proto_notif_tx);
+        let rpc_context = RpcCommsContext::new(context.peer_manager(), context.connectivity());
+        task::spawn(self.serve(proto_notif_rx, rpc_context));
+        Ok(())
     }
 }
 
@@ -216,7 +249,8 @@ mod test {
 
         fn call(&mut self, _: ProtocolId) -> Self::Future {
             let my_service = tower::service_fn(|req: Request<Bytes>| {
-                let str = String::from_utf8_lossy(&req.message);
+                let msg = req.into_message();
+                let str = String::from_utf8_lossy(&msg);
                 future::ready(Ok(Response::from_message(format!("Hello {}", str))))
             });
 
@@ -241,7 +275,8 @@ mod test {
 
         fn call(&mut self, _: ProtocolId) -> Self::Future {
             let my_service = tower::service_fn(|req: Request<Bytes>| {
-                let str = String::from_utf8_lossy(&req.message);
+                let msg = req.into_message();
+                let str = String::from_utf8_lossy(&msg);
                 future::ready(Ok(Response::from_message(format!("Goodbye {}", str))))
             });
 
@@ -259,10 +294,7 @@ mod test {
         ]);
 
         let mut hello_svc = router.call(HelloService::PROTOCOL_NAME.into()).await.unwrap();
-        let req = Request {
-            method: 1,
-            message: b"Kerbal".to_vec().into(),
-        };
+        let req = Request::new(1.into(), b"Kerbal".to_vec().into());
 
         let resp = hello_svc.call(req).await.unwrap();
         let resp = resp.into_message().next().await.unwrap().unwrap().into_bytes_mut();
@@ -270,10 +302,7 @@ mod test {
         assert_eq!(s, "Hello Kerbal");
 
         let mut bye_svc = router.call(GoodbyeService::PROTOCOL_NAME.into()).await.unwrap();
-        let req = Request {
-            method: 1,
-            message: b"Xel'naga".to_vec().into(),
-        };
+        let req = Request::new(1.into(), b"Xel'naga".to_vec().into());
         let resp = bye_svc.call(req).await.unwrap();
         let resp = resp.into_message().next().await.unwrap().unwrap().into_bytes_mut();
         let s = String::decode(resp).unwrap();

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{channel::mpsc, Sink};
+use futures::Sink;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{error::Error, iter, path::Path, sync::Arc, time::Duration};
 use tari_comms::{
@@ -68,7 +68,7 @@ use tari_p2p::{
     },
 };
 use tari_service_framework::StackBuilder;
-use tokio::{runtime::Runtime, sync::broadcast};
+use tokio::runtime::Runtime;
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.
 pub struct NodeInterfaces {
@@ -483,16 +483,6 @@ fn setup_base_node_services(
             subscription_factory,
             mempool,
             mempool_service_config,
-            // TODO: These should be settable from the outside - once an RPC-type protocol is available, this style of
-            //       service initialization may eventually be replaced
-            {
-                let (_, mempool_proto_rx) = mpsc::channel(0);
-                mempool_proto_rx
-            },
-            {
-                let (_, event_rx) = broadcast::channel(1);
-                event_rx
-            },
         ))
         .add_initializer(ChainMetadataServiceInitializer)
         .finish();
