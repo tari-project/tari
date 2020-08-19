@@ -215,7 +215,7 @@ tor_control_auth = "none" # or "password=xxxxxx"
 # The onion port to use.
 tor_onion_port = 18141
 # The address to which traffic on the node's onion address will be forwarded
-tor_forward_address = "/ip4/127.0.0.1/tcp/18141"
+#tor_forward_address = "/ip4/127.0.0.1/tcp/18141"
 # Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
 # use the first address returned by the tor control port (GETINFO /net/listeners/socks).
 #tor_socks_address_override=
