@@ -41,13 +41,18 @@ fi
 
 mkdir -p "$destDir/pkgRoot"
 mkdir -p "$destDir/pkgRoot/usr/local/bin/"
-# Verify signed?
-codesign --verify --deep --display --verbose=4 \
-  "$destDir/dist/$instName"
-#spctl -a -v "$destDir/dist/$instName"
-spctl -vvv --assess --type exec "$destDir/dist/$instName"
 
-cp "$destDir/dist/$instName" "$destDir/pkgRoot/usr/local/bin/"
+COPY_BIN_FILES=(
+  "tari_base_node"
+  "tari_merge_mining_proxy"
+)
+for COPY_BIN_FILE in "${COPY_BIN_FILES[@]}"; do
+  # Verify signed?
+  codesign --verify --deep --display --verbose=4 "$destDir/dist/$COPY_BIN_FILE"
+  spctl -vvv --assess --type exec "$destDir/dist/$COPY_BIN_FILE"
+
+  cp "$destDir/dist/$COPY_BIN_FILE" "$destDir/pkgRoot/usr/local/bin/"
+done
 
 mkdir -p "$destDir/pkgRoot/usr/local/share/$instName"
 COPY_SHARE_FILES=(
@@ -100,6 +105,10 @@ else
   echo $RequestUUIDR
   exit 1
 fi
+
+shaSumVal="256"
+shasum -a $shaSumVal $destDir/$instName-$pkgVersion.pkg >> "$destDir/$instName-$pkgVersion.pkg.sha${shaSumVal}sum"
+echo "$(cat $destDir/$instName-$pkgVersion.pkg.sha${shaSumVal}sum)" | shasum -a $shaSumVal --check
 
 RequestResult=$(xcrun altool --notarization-info "$RequestUUID" \
   --username "$osxUsername" --password "$osxPassword")
