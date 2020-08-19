@@ -2581,8 +2581,9 @@ pub unsafe extern "C" fn wallet_create(
             if split_str.len() <= 1 {
                 pattern = format!("{}{}", path.clone(), "{}");
             } else {
-                for i in 0..split_str.len() - 1 {
-                    pattern = format!("{}{}", pattern, split_str[i]);
+                pattern = format!("{}", split_str[0]);
+                for i in 1..split_str.len() - 1 {
+                    pattern = format!("{}.{}", pattern, split_str[i]);
                 }
 
                 pattern = format!("{}{}", pattern, ".{}.");
