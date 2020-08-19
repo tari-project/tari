@@ -43,7 +43,7 @@ use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
-use tari_core::transactions::types::Commitment;
+use tari_core::transactions::types::{Commitment, CryptoFactories};
 
 /// This structure is an In-Memory database backend that implements the `OutputManagerBackend` trait and provides all
 /// the functionality required by the trait.
@@ -73,12 +73,14 @@ impl InnerDatabase {
 #[derive(Clone, Default)]
 pub struct OutputManagerMemoryDatabase {
     db: Arc<RwLock<InnerDatabase>>,
+    factories: CryptoFactories,
 }
 
 impl OutputManagerMemoryDatabase {
     pub fn new() -> Self {
         Self {
             db: Arc::new(RwLock::new(InnerDatabase::new())),
+            factories: CryptoFactories::default(),
         }
     }
 }
@@ -90,12 +92,12 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             DbKey::SpentOutput(k) => db
                 .spent_outputs
                 .iter()
-                .find(|v| &v.output.unblinded_output.spending_key == k)
+                .find(|v| v.output.unblinded_output.blinding_factor() == k)
                 .map(|v| DbValue::SpentOutput(Box::new(DbUnblindedOutput::from((*v).clone())))),
             DbKey::UnspentOutput(k) => db
                 .unspent_outputs
                 .iter()
-                .find(|v| &v.output.unblinded_output.spending_key == k)
+                .find(|v| v.output.unblinded_output.blinding_factor() == k)
                 .map(|v| DbValue::UnspentOutput(Box::new(DbUnblindedOutput::from((*v).clone())))),
             DbKey::PendingTransactionOutputs(tx_id) => {
                 let mut result = db.pending_transactions.get(tx_id);
@@ -120,7 +122,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 db.unspent_outputs
                     .iter()
                     .filter_map(|o| {
-                        if (*o).output.unblinded_output.features.maturity > *tip {
+                        if (*o).output.unblinded_output.features().maturity > *tip {
                             Some(DbUnblindedOutput::from((*o).clone()))
                         } else {
                             None
@@ -158,10 +160,10 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                     if db
                         .spent_outputs
                         .iter()
-                        .any(|v| v.output.unblinded_output.spending_key == k) ||
+                        .any(|v| v.output.unblinded_output.blinding_factor() == &k) ||
                         db.unspent_outputs
                             .iter()
-                            .any(|v| v.output.unblinded_output.spending_key == k)
+                            .any(|v| v.output.unblinded_output.blinding_factor() == &k)
                     {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
@@ -171,10 +173,10 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                     if db
                         .unspent_outputs
                         .iter()
-                        .any(|v| v.output.unblinded_output.spending_key == k) ||
+                        .any(|v| v.output.unblinded_output.blinding_factor() == &k) ||
                         db.spent_outputs
                             .iter()
-                            .any(|v| v.output.unblinded_output.spending_key == k)
+                            .any(|v| v.output.unblinded_output.blinding_factor() == &k)
                     {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
@@ -189,7 +191,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 DbKey::SpentOutput(k) => match db
                     .spent_outputs
                     .iter()
-                    .position(|v| v.output.unblinded_output.spending_key == k)
+                    .position(|v| v.output.unblinded_output.blinding_factor() == &k)
                 {
                     None => return Err(OutputManagerStorageError::ValueNotFound(DbKey::SpentOutput(k))),
                     Some(pos) => {
@@ -201,7 +203,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 DbKey::UnspentOutput(k) => match db
                     .unspent_outputs
                     .iter()
-                    .position(|v| v.output.unblinded_output.spending_key == k)
+                    .position(|v| v.output.unblinded_output.blinding_factor() == &k)
                 {
                     None => return Err(OutputManagerStorageError::ValueNotFound(DbKey::UnspentOutput(k))),
                     Some(pos) => {
@@ -267,7 +269,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             if let Some(pos) = db
                 .unspent_outputs
                 .iter()
-                .position(|v| v.output.unblinded_output.spending_key == i.unblinded_output.spending_key)
+                .position(|v| v.output.unblinded_output.blinding_factor() == i.unblinded_output.blinding_factor())
             {
                 outputs_to_be_spent.push(DbUnblindedOutput::from(db.unspent_outputs.remove(pos)));
             } else {
@@ -378,7 +380,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         match db
             .unspent_outputs
             .iter()
-            .position(|v| v.output.unblinded_output.spending_key == output.unblinded_output.spending_key)
+            .position(|v| v.output.unblinded_output.blinding_factor() == output.unblinded_output.blinding_factor())
         {
             Some(pos) => {
                 let output = db.unspent_outputs.remove(pos);

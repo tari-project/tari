@@ -44,6 +44,7 @@ use tari_core::{
     },
 };
 
+
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
 
 /// This trait defines the required behaviour that a storage backend must provide for the Output Manager service.
@@ -214,17 +215,15 @@ where T: OutputManagerBackend + Clone + 'static
         Ok(())
     }
 
-    pub async fn add_unspent_output(&self, output: DbUnblindedOutput) -> Result<(), OutputManagerStorageError> {
+    pub async fn add_unspent_output(&self, output: DbUnblindedOutput) -> Result<(),
+        OutputManagerStorageError> {
         let db_clone = self.db.clone();
+        let key = output.unblinded_output.blinding_factor().clone();
         tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
-                output.unblinded_output.spending_key.clone(),
-                Box::new(output),
-            )))
-        })
-        .await
+            db_clone.write(WriteOperation::Insert(
+                DbKeyValuePair::UnspentOutput(key, Box::new(output))))
+        }).await
         .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
         Ok(())
     }
 
@@ -255,7 +254,7 @@ where T: OutputManagerBackend + Clone + 'static
             if let DbValue::AllPendingTransactionOutputs(pto) = pending_txs {
                 let available_balance = uo
                     .iter()
-                    .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+                    .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value());
                 let time_locked_balance = if let Some(tip) = current_chain_tip {
                     let time_locked_outputs = tokio::task::spawn_blocking(move || {
                         db_clone3.fetch(&DbKey::TimeLockedUnspentOutputs(tip))?.ok_or_else(|| {
@@ -270,7 +269,7 @@ where T: OutputManagerBackend + Clone + 'static
                         Some(
                             time_locked_uo
                                 .iter()
-                                .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value),
+                                .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value()),
                         )
                     } else {
                         None
@@ -285,11 +284,11 @@ where T: OutputManagerBackend + Clone + 'static
                     pending_incoming += v
                         .outputs_to_be_received
                         .iter()
-                        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+                        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value());
                     pending_outgoing += v
                         .outputs_to_be_spent
                         .iter()
-                        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+                        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value());
                 }
 
                 return Ok(Balance {
@@ -360,15 +359,14 @@ where T: OutputManagerBackend + Clone + 'static
     ) -> Result<(), OutputManagerStorageError>
     {
         let db_clone = self.db.clone();
-        let output = DbUnblindedOutput::from_unblinded_output(
-            UnblindedOutput::new(
-                amount,
-                spending_key.clone(),
-                Some(output_features),
-                TariScript::default(),
-            ),
-            factory,
+        let uo = UnblindedOutput::new(
+            amount,
+            spending_key.clone(),
+            Some(output_features),
+            TariScript::default(),
+            &factory.commitment,
         )?;
+        let output = DbUnblindedOutput::from_unblinded_output(uo, factory)?;
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingTransactionOutputs(
                 tx_id,

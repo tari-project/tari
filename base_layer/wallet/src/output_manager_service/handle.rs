@@ -67,7 +67,7 @@ impl fmt::Display for OutputManagerRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::GetBalance => f.write_str("GetBalance"),
-            Self::AddOutput(v) => f.write_str(&format!("AddOutput ({})", v.value)),
+            Self::AddOutput(v) => f.write_str(&format!("AddOutput ({})", v.value())),
             Self::GetRecipientKey(v) => f.write_str(&format!("GetRecipientKey ({})", v.0)),
             Self::ConfirmTransaction(v) => f.write_str(&format!("ConfirmTransaction ({})", v.0)),
             Self::ConfirmPendingTransaction(v) => f.write_str(&format!("ConfirmPendingTransaction ({})", v)),

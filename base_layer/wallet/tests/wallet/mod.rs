@@ -192,7 +192,7 @@ fn test_wallet() {
     let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
+    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None);
 
     runtime
         .block_on(alice_wallet.output_manager_service.add_output(uo1))
@@ -377,7 +377,7 @@ fn test_store_and_forward_send_tx() {
         .unwrap();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
+    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None);
 
     alice_wallet
         .runtime
@@ -489,12 +489,12 @@ fn test_import_utxo() {
     )
     .unwrap();
 
-    let utxo = UnblindedOutput::new(20000 * uT, PrivateKey::default(), None, TariScript::default());
+    let utxo = UnblindedOutput::new(20000 * uT, PrivateKey::default(), None, TariScript::default(), &factories.commitment).unwrap();
 
     let tx_id = alice_wallet
         .import_utxo(
-            utxo.value,
-            &utxo.spending_key,
+            utxo.value(),
+            utxo.blinding_factor(),
             base_node_identity.public_key(),
             "Testing".to_string(),
         )

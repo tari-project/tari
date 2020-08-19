@@ -78,21 +78,21 @@ const LOG_TARGET: &str = "wallet::output_manager_service";
 /// outputs. When the outputs are detected on the blockchain the Transaction service will call this Service to confirm
 /// them to be moved to the spent and unspent output lists respectively.
 pub struct OutputManagerService<TBackend, BNResponseStream>
-where TBackend: OutputManagerBackend + Clone + 'static
+    where TBackend: OutputManagerBackend + Clone + 'static
 {
     resources: OutputManagerResources<TBackend>,
     key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
     coinbase_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
     request_stream:
-        Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
+    Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_response_stream: Option<BNResponseStream>,
     base_node_response_publisher: broadcast::Sender<Arc<BaseNodeProto::BaseNodeServiceResponse>>,
 }
 
 impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream>
-where
-    TBackend: OutputManagerBackend + Clone + 'static,
-    BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
+    where
+        TBackend: OutputManagerBackend + Clone + 'static,
+        BNResponseStream: Stream<Item=DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
 {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
@@ -120,7 +120,7 @@ where
                 };
                 db.set_key_manager_state(starting_state.clone()).await?;
                 starting_state
-            },
+            }
             Some(km) => km,
         };
 
@@ -238,7 +238,7 @@ where
         match request {
             OutputManagerRequest::AddOutput(uo) => {
                 self.add_output(uo).await.map(|_| OutputManagerResponse::OutputAdded)
-            },
+            }
             OutputManagerRequest::GetBalance => self.get_balance(None).await.map(OutputManagerResponse::Balance),
             OutputManagerRequest::GetRecipientKey((tx_id, amount)) => self
                 .get_recipient_spending_key(tx_id, amount)
@@ -280,7 +280,7 @@ where
                     .map(|v| v.into())
                     .collect();
                 Ok(OutputManagerResponse::SpentOutputs(outputs))
-            },
+            }
             OutputManagerRequest::GetUnspentOutputs => {
                 let outputs = self
                     .fetch_unspent_outputs()
@@ -289,7 +289,7 @@ where
                     .map(|v| v.into())
                     .collect();
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
-            },
+            }
             OutputManagerRequest::GetSeedWords => self.get_seed_words().await.map(OutputManagerResponse::SeedWords),
             OutputManagerRequest::SetBaseNodePublicKey(pk) => self
                 .set_base_node_public_key(pk, utxo_validation_handles)
@@ -306,7 +306,7 @@ where
                     .map(|v| v.into())
                     .collect();
                 Ok(OutputManagerResponse::InvalidOutputs(outputs))
-            },
+            }
             OutputManagerRequest::CreateCoinSplit((amount_per_split, split_count, fee_per_gram, lock_height)) => self
                 .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
                 .await
@@ -372,7 +372,7 @@ where
                 utxo_validation_handles.push(join_handle);
 
                 Ok(id)
-            },
+            }
         }
     }
 
@@ -383,7 +383,7 @@ where
                     target: LOG_TARGET,
                     "UTXO Validation Protocol (Id: {}) completed successfully", id
                 );
-            },
+            }
             Err(OutputManagerProtocolError { id, error }) => {
                 warn!(
                     target: LOG_TARGET,
@@ -406,9 +406,9 @@ where
                                 );
                                 e
                             });
-                    },
+                    }
                 }
-            },
+            }
         }
     }
 
@@ -416,7 +416,7 @@ where
     pub async fn add_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
-            "Add output of value {} to Output Manager", output.value
+            "Add output of value {} to Output Manager", output.value()
         );
         let output = DbUnblindedOutput::from_unblinded_output(output, &self.resources.factories)?;
         Ok(self.resources.db.add_unspent_output(output).await?)
@@ -507,12 +507,7 @@ where
         let pending_transaction = self.resources.db.fetch_pending_transaction_outputs(tx_id).await?;
 
         // Assumption: We are only allowing a single output per receiver in the current transaction protocols.
-        if pending_transaction.outputs_to_be_received.len() != 1 ||
-            pending_transaction.outputs_to_be_received[0]
-                .unblinded_output
-                .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default())
-                .commitment() !=
-                received_output.commitment()
+        if pending_transaction.outputs_to_be_received.len() != 1 || pending_transaction.outputs_to_be_received[0].unblinded_output.commitment() != received_output.commitment()
         {
             return Err(OutputManagerError::IncompleteTransaction);
         }
@@ -543,7 +538,7 @@ where
         let (outputs, _) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
         let total = outputs
             .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value());
 
         let offset = PrivateKey::random(&mut OsRng);
         let nonce = PrivateKey::random(&mut OsRng);
@@ -558,13 +553,10 @@ where
             .with_message(message);
 
         for uo in outputs.iter() {
-            builder.with_input(
-                uo.unblinded_output.as_transaction_input(
-                    &self.resources.factories.commitment,
-                    uo.unblinded_output.clone().features,
-                ),
-                uo.unblinded_output.clone(),
-            );
+            let input = uo
+                .unblinded_output
+                .as_transaction_input();
+            builder.with_input(input, uo.unblinded_output.clone());
         }
 
         let fee_without_change = Fee::calculate(fee_per_gram, 1, outputs.len(), 1);
@@ -589,15 +581,18 @@ where
         // If a change output was created add it to the pending_outputs list.
         let mut change_output = Vec::<DbUnblindedOutput>::new();
         if let Some(key) = change_key {
-            change_output.push(DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new(
-                    stp.get_amount_to_self()?,
-                    key,
-                    Some(OutputFeatures::default()),
-                    TariScript::default(),
-                ),
-                &self.resources.factories,
-            )?);
+            change_output.push(
+                DbUnblindedOutput::from_unblinded_output(
+                    UnblindedOutput::new(
+                        stp.get_amount_to_self()?,
+                        key,
+                        Some(OutputFeatures::default()),
+                        TariScript::default(),
+                        &self.resources.factories.commitment,
+                    )?,
+                    &self.resources.factories,
+                )?
+            );
         }
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
@@ -641,8 +636,7 @@ where
         for output_to_spend in pending_transaction.outputs_to_be_spent.iter() {
             let input_to_check = output_to_spend
                 .unblinded_output
-                .clone()
-                .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default());
+                .as_transaction_input();
             inputs_confirmed = inputs_confirmed &&
                 inputs
                     .iter()
@@ -654,8 +648,7 @@ where
         for output_to_receive in pending_transaction.outputs_to_be_received.iter() {
             let output_to_check = output_to_receive
                 .unblinded_output
-                .clone()
-                .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default());
+                .as_transaction_input();
             outputs_confirmed = outputs_confirmed &&
                 outputs
                     .iter()
@@ -714,12 +707,12 @@ where
             (None, true) => UTXOSelectionStrategy::Smallest,
             (None, false) => {
                 let largest_utxo = &uo[uo.len() - 1];
-                if amount > largest_utxo.unblinded_output.value {
+                if amount > largest_utxo.unblinded_output.value() {
                     UTXOSelectionStrategy::Largest
                 } else {
                     UTXOSelectionStrategy::MaturityThenSmallest
                 }
-            },
+            }
         };
 
         let uo = match strategy {
@@ -731,24 +724,24 @@ where
                 new_uo.sort_by(|a, b| {
                     match a
                         .unblinded_output
-                        .features
+                        .features()
                         .maturity
-                        .cmp(&b.unblinded_output.features.maturity)
+                        .cmp(&b.unblinded_output.features().maturity)
                     {
-                        Ordering::Equal => a.unblinded_output.value.cmp(&b.unblinded_output.value),
+                        Ordering::Equal => a.unblinded_output.value().cmp(&b.unblinded_output.value()),
                         Ordering::Less => Ordering::Less,
                         Ordering::Greater => Ordering::Greater,
                     }
                 });
                 new_uo
-            },
+            }
             UTXOSelectionStrategy::Largest => uo.into_iter().rev().collect(),
         };
 
         let mut require_change_output = false;
         for o in uo.iter() {
             utxos.push(o.clone());
-            total += o.unblinded_output.value;
+            total += o.unblinded_output.value();
             // I am assuming that the only output will be the payment output and change if required
             fee_without_change = Fee::calculate(fee_per_gram, 1, utxos.len(), output_count);
             if total == amount + fee_without_change {
@@ -834,7 +827,7 @@ where
             .await?;
         let utxo_total = inputs
             .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value());
         let input_count = inputs.len();
         if require_change_output {
             output_count = split_count + 1
@@ -852,13 +845,8 @@ where
             .with_private_nonce(nonce.clone());
         trace!(target: LOG_TARGET, "Add inputs to coin split transaction.");
         for uo in inputs.iter() {
-            builder.with_input(
-                uo.unblinded_output.as_transaction_input(
-                    &self.resources.factories.commitment,
-                    uo.unblinded_output.clone().features,
-                ),
-                uo.unblinded_output.clone(),
-            );
+            let input = uo.unblinded_output.as_transaction_input();
+            builder.with_input(input, uo.unblinded_output.clone());
         }
         trace!(target: LOG_TARGET, "Add outputs to coin split transaction.");
         let mut outputs: Vec<DbUnblindedOutput> = Vec::with_capacity(output_count);
@@ -881,14 +869,14 @@ where
             }
             self.resources.db.increment_key_index().await?;
             let utxo = DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new(output_amount, spend_key, None, TariScript::default()),
+                UnblindedOutput::new(output_amount, spend_key, None, TariScript::default(), &self.resources.factories
+                    .commitment)?,
                 &self.resources.factories,
             )?;
             outputs.push(utxo.clone());
             builder.with_output(utxo.unblinded_output);
         }
         trace!(target: LOG_TARGET, "Build coin split transaction.");
-        let factories = CryptoFactories::default();
         let mut stp = builder
             .build::<HashDigest>(&self.resources.factories)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
@@ -903,7 +891,7 @@ where
         self.resources.db.encumber_outputs(tx_id, inputs, outputs).await?;
         self.confirm_encumberance(tx_id).await?;
         trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
-        stp.finalize(KernelFeatures::empty(), &factories)?;
+        stp.finalize(KernelFeatures::empty(), &self.resources.factories)?;
         let tx = stp.get_transaction().map(Clone::clone)?;
         Ok((tx_id, tx, fee, utxo_total))
     }
@@ -954,7 +942,7 @@ impl fmt::Display for Balance {
 /// This struct is a collection of the common resources that a async task in the service requires.
 #[derive(Clone)]
 pub struct OutputManagerResources<TBackend>
-where TBackend: OutputManagerBackend + Clone + 'static
+    where TBackend: OutputManagerBackend + Clone + 'static
 {
     pub config: OutputManagerServiceConfig,
     pub db: OutputManagerDatabase<TBackend>,

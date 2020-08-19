@@ -70,7 +70,6 @@ use tari_core::{
     tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable},
     transactions::{
         tari_amount::{uT, MicroTari},
-        transaction::OutputFeatures,
         types::{Commitment, PrivateKey, PublicKey, Signature},
     },
 };
@@ -549,17 +548,15 @@ impl Parser {
                             "\nYou have {} UTXOs: (value, commitment, mature in ? blocks, flags)",
                             unspent_outputs.len()
                         );
-                        let factory = PedersenCommitmentFactory::default();
+                        let _factory = PedersenCommitmentFactory::default();
                         for uo in unspent_outputs.iter() {
-                            let mature_in = std::cmp::max(uo.features.maturity as i64 - current_height, 0);
+                            let mature_in = std::cmp::max(uo.features().maturity as i64 - current_height, 0);
                             println!(
                                 "   {}, {}, {:>3}, {:?}",
-                                uo.value,
-                                uo.as_transaction_input(&factory, OutputFeatures::default())
-                                    .commitment()
-                                    .to_hex(),
+                                uo.value(),
+                                uo.commitment().to_hex(),
                                 mature_in,
-                                uo.features.flags
+                                uo.features().flags
                             );
                         }
                         println!();

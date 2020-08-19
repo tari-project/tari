@@ -59,6 +59,8 @@ pub enum WalletError {
     StoreAndForwardError(#[from] StoreAndForwardError),
     #[error("Connectivity error: `{0}`")]
     ConnectivityError(#[from] ConnectivityError),
+    #[error("Error importing data into wallet")]
+    ImportError,
 }
 
 #[derive(Debug, Error)]

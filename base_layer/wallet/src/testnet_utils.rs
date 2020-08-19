@@ -107,7 +107,8 @@ pub fn make_input<R: Rng + CryptoRng>(
     let key = PrivateKey::random(rng);
     let commitment = factories.commitment.commit_value(&key, val.into());
     let input = TransactionInput::new(OutputFeatures::default(), commitment, &DEFAULT_SCRIPT_HASH);
-    (input, UnblindedOutput::new(val, key, None, TariScript::default()))
+    let uo = UnblindedOutput::new(val, key, None, TariScript::default(), &factories.commitment).unwrap();
+    (input, uo)
 }
 
 pub fn random_string(len: usize) -> String {

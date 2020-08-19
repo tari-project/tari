@@ -57,6 +57,9 @@ pub type HashDigest = Blake256;
 /// Specify the digest type for signature challenges
 pub type Challenge = Blake256;
 
+/// Hash outputs as an Array
+pub type HashArray = [u8; 32];
+
 /// The type of output that `Challenge` produces
 pub type MessageHash = Vec<u8>;
 

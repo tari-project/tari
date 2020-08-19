@@ -68,6 +68,7 @@ use tari_crypto::{
     },
 };
 
+
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
@@ -740,10 +741,10 @@ impl NewOutputSql {
     pub fn new(output: DbUnblindedOutput, status: OutputStatus, tx_id: Option<TxId>) -> Self {
         Self {
             commitment: Some(output.commitment.to_vec()),
-            spending_key: output.unblinded_output.spending_key.to_vec(),
-            value: (u64::from(output.unblinded_output.value)) as i64,
-            flags: output.unblinded_output.features.flags.bits() as i32,
-            maturity: output.unblinded_output.features.maturity as i64,
+            spending_key: output.unblinded_output.blinding_factor().to_vec(),
+            value: (u64::from(output.unblinded_output.value())) as i64,
+            flags: output.unblinded_output.features().flags.bits() as i32,
+            maturity: output.unblinded_output.features().maturity as i64,
             status: status as i32,
             tx_id: tx_id.map(|i| i as i64),
             hash: Some(output.hash),
@@ -963,6 +964,8 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
     type Error = OutputManagerStorageError;
 
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
+        /// TODO: Would be better if this were passed in somewhere
+        let factories = CryptoFactories::default();
         let unblinded_output = UnblindedOutput::new(
             MicroTari::from(o.value as u64),
             PrivateKey::from_vec(&o.spending_key).map_err(|_| {
@@ -978,12 +981,12 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 maturity: o.maturity as u64,
             }),
             TariScript::default(),
-        );
+            &factories.commitment
+        )?;
         let hash = match o.hash {
             None => {
                 // This should only happen if the database didn't migrate yet.
                 // TODO remove this as this is temp migration code
-                let factories = CryptoFactories::default();
                 unblinded_output.as_transaction_output(&factories)?.hash()
             },
             Some(v) => v,
@@ -997,7 +1000,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 let factories = CryptoFactories::default();
                 factories
                     .commitment
-                    .commit(&unblinded_output.spending_key, &unblinded_output.value.into())
+                    .commit_value(unblinded_output.blinding_factor(), unblinded_output.value().into())
             },
             Some(c) => Commitment::from_vec(&c)?,
         };
@@ -1369,8 +1372,8 @@ mod test {
         let factory = CommitmentFactory::default();
         let commitment = factory.commit_value(&key, val.into());
         let input = TransactionInput::new(OutputFeatures::default(), commitment, &DEFAULT_SCRIPT_HASH);
-
-        (input, UnblindedOutput::new(val, key, None, TariScript::default()))
+        let uo = UnblindedOutput::new(val, key, None, TariScript::default(), &factory).unwrap();
+        (input, uo)
     }
 
     #[test]

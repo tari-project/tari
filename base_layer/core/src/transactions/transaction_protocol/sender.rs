@@ -595,13 +595,15 @@ mod test {
                 p.spend_key.clone(),
                 None,
                 TariScript::default(),
-            ))
+                &factories.commitment,
+            ).unwrap())
             .with_output(UnblindedOutput::new(
                 MicroTari(400),
                 p.spend_key.clone(),
                 None,
                 TariScript::default(),
-            ));
+                &factories.commitment,
+            ).unwrap());
         let mut sender = builder.build::<Blake256>(&factories).unwrap();
         assert_eq!(sender.is_failed(), false);
         assert!(sender.is_finalizing());

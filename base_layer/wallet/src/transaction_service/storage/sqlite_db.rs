@@ -52,7 +52,7 @@ use std::{
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, types::PublicKey};
-use tari_crypto::tari_utilities::{
+use tari_core::crypto::tari_utilities::{
     hex::{from_hex, Hex},
     ByteArray,
 };
@@ -1389,7 +1389,8 @@ mod test {
             PrivateKey::random(&mut OsRng),
             None,
             TariScript::default(),
-        );
+            &factories.commitment
+        ).unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari::from(177))
@@ -1397,10 +1398,7 @@ mod test {
             .with_private_nonce(PrivateKey::random(&mut OsRng))
             .with_amount(0, amount)
             .with_message("Yo!".to_string())
-            .with_input(
-                input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
-                input.clone(),
-            )
+            .with_input(input.as_transaction_input(), input.clone())
             .with_change_secret(PrivateKey::random(&mut OsRng));
 
         let stp = builder.build::<HashDigest>(&factories).unwrap();

@@ -34,12 +34,15 @@ use crate::{
             Commitment,
             CommitmentFactory,
             CryptoFactories,
+            HashArray,
             HashDigest,
             HashOutput,
             MessageHash,
+            PrivateKey,
             RangeProof,
             RangeProofService,
             Signature,
+            MAX_RANGE_PROOF_RANGE,
         },
     },
 };
@@ -59,6 +62,7 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 use thiserror::Error;
+use crate::crypto::script::to_hash;
 
 // Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 19,003, still well enough below block weight of 19,500
 pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
@@ -84,12 +88,12 @@ impl KernelFeatures {
     }
 }
 
-/// Options for UTXO's
+/// Options for UTXOs
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct OutputFeatures {
     /// Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
     pub flags: OutputFlags,
-    /// the maturity of the specific UTXO. This is the min lock height at which an UTXO can be spend. Coinbase UTXO
+    /// the maturity of the specific UTXO. This is the min lock height at which an UTXO can be spent. Coinbase UTXO
     /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     pub maturity: u64,
 }
@@ -178,10 +182,14 @@ pub enum TransactionError {
 /// build both inputs and outputs (every input comes from an output)
 #[derive(Debug, Clone)]
 pub struct UnblindedOutput {
-    pub value: MicroTari,
-    pub spending_key: BlindingFactor,
-    pub features: OutputFeatures,
-    pub script: TariScript,
+    value: MicroTari,
+    spending_key: BlindingFactor,
+    features: OutputFeatures,
+    script: TariScript,
+    script_hash: HashArray,
+    blinding_factor: BlindingFactor,
+    commit_hash: PrivateKey,
+    commitment: Commitment,
 }
 
 impl UnblindedOutput {
@@ -191,54 +199,120 @@ impl UnblindedOutput {
         spending_key: BlindingFactor,
         features: Option<OutputFeatures>,
         script: TariScript,
-    ) -> UnblindedOutput
+        factory: &CommitmentFactory
+    ) -> Result<UnblindedOutput, TransactionError>
     {
-        UnblindedOutput {
+        let script_hash = script.as_hash::<HashDigest>().map_err(TransactionError::InvalidScript)?;
+        let base_commitment = factory.commit(&spending_key, &value.into());
+        let commit_hash = HashDigest::new()
+            .chain(base_commitment.as_bytes())
+            .chain(&script_hash)
+            .result();
+        let commit_hash = PrivateKey::from_bytes(commit_hash.as_slice())
+            .expect("One should always be able to convert a slice to a private key");
+        let blinding_factor = &spending_key + &commit_hash;
+        let commitment = factory.commit_value(&blinding_factor, value.into());
+
+        Ok(UnblindedOutput {
             value,
             spending_key,
             features: features.unwrap_or_default(),
             script,
-        }
+            script_hash: to_hash(&script_hash),
+            commit_hash,
+            blinding_factor,
+            commitment,
+        })
+    }
+
+    /// Return the value represented by this output
+    pub fn value(&self) -> MicroTari {
+        self.value
+    }
+
+    /// Return a reference to the output features for this output instance
+    pub fn features(&self) -> &OutputFeatures {
+        &self.features
     }
 
     /// Commits an UnblindedOutput into a Transaction input
-    pub fn as_transaction_input(&self, factory: &CommitmentFactory, features: OutputFeatures) -> TransactionInput {
-        let commitment = factory.commit(&self.spending_key, &self.value.into());
-        let script_hash = self.script.as_hash::<HashDigest>().unwrap().to_vec(); // TODO deal with error
+    pub fn as_transaction_input(&self) -> TransactionInput {
+        let script_hash = self.script_hash().to_vec();
+        let commitment = self.commitment().clone();
         TransactionInput {
             commitment,
-            features,
+            features: self.features().clone(),
             script_hash,
         }
     }
 
     pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
-        let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
-        let proof = RangeProof::from_bytes(
-            &factories
-                .range_proof
-                .construct_proof(&self.spending_key, self.value.into())?,
-        )
-        .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?;
-        // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
-        if !factories.range_proof.verify(&proof.as_bytes().to_vec(), &commitment) {
+        // Check that value is in range. Rust ensures that it is >= 0, so we must check the upper bound
+        // This check is a bit weird, but it's saying that any bits to the left of the max range value must be zero
+        // (i.e. the upper bound is respected); and we split it to avoid overflow errors
+        if u64::from(self.value) >> (MAX_RANGE_PROOF_RANGE - 1) as u64 >> 1 != 0u64 {
             return Err(TransactionError::ValidationError(
-                "Range proof could not be verified".into(),
+                "Invalid transaction output: Value outside of range".into(),
             ));
         }
-        let script_hash = self
-            .script
-            .as_hash::<HashDigest>()
-            .map_err(|e| TransactionError::InvalidScript(e))?
-            .to_vec();
+        let script_hash = self.script_hash().to_vec();
+        let proof = self.generate_range_proof(factories)?;
+        let commitment = self.commitment().clone();
         let output = TransactionOutput {
             features: self.features.clone(),
             commitment,
             proof,
             script_hash,
         };
-
         Ok(output)
+    }
+
+    /// Generate and validate a range proof for the output.
+    pub fn generate_range_proof(&self, factories: &CryptoFactories) -> Result<RangeProof, TransactionError> {
+        let proof = RangeProof::from_bytes(
+            &factories
+                .range_proof
+                .construct_proof(self.blinding_factor(), self.value.into())?,
+        )
+        .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?;
+        Ok(proof)
+    }
+
+    /// Return the hash of the Tari script associated with this output.
+    pub fn script_hash(&self) -> &[u8] {
+        &self.script_hash
+    }
+
+    /// Calculate the base commitment for this output. The base commitment is defined as `k.G + v.H`
+    pub fn base_commitment(&self, factory: &CommitmentFactory) -> Commitment {
+        factory.commit_value(self.blinding_factor(), self.value().into())
+    }
+
+    /// Calculate the commitment hash -- the term(s) that are added to the spending_key to make up the output
+    /// blinding factor.
+    ///
+    /// The function takes the base commitment as a parameter to avoid unnecessary recalculations of this term.
+    ///
+    /// # Returns
+    /// The function returns the commitment hash
+    pub fn commitment_hash(&self) -> &PrivateKey {
+        &self.commit_hash
+    }
+
+    /// Calculate the effective blinding factor representing this output. In standard Mimblewimble, this is the
+    /// spending_key. With Tari script, the blinding factor is `spending_key + H(C||si)`
+    ///
+    /// # Returns
+    ///
+    /// The adjusted blinding factor for this output
+    pub fn blinding_factor(&self) -> &BlindingFactor {
+        &self.blinding_factor
+    }
+
+    /// Calculate the commitment associated with this output. For standard Mimblewimble, this would be equal to the
+    /// base commitment. With Tari script it is `base_commitment + commitment_hash.G`
+    pub fn commitment(&self) -> &Commitment {
+        &self.commitment
     }
 }
 
@@ -247,7 +321,7 @@ impl Eq for UnblindedOutput {}
 
 impl PartialEq for UnblindedOutput {
     fn eq(&self, other: &UnblindedOutput) -> bool {
-        self.value == other.value
+        self.commitment == other.commitment
     }
 }
 
@@ -313,11 +387,11 @@ impl TransactionInput {
 
     /// Checks if the given un-blinded input instance corresponds to this blinded Transaction Input
     pub fn opened_by(&self, input: &UnblindedOutput, factory: &CommitmentFactory) -> bool {
-        factory.open(&input.spending_key, &input.value.into(), &self.commitment)
+        factory.open_value(input.blinding_factor(), input.value().into(), &self.commitment)
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.
-    /// This will ignore the output rangeproof
+    /// This will ignore the output range proof
     pub fn is_equal_to(&self, output: &TransactionOutput) -> bool {
         self.commitment == output.commitment && self.features == output.features
     }
@@ -436,9 +510,9 @@ impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
             .chain(self.features.to_bytes())
+            // commitment has the script hash baked in
             .chain(self.commitment.as_bytes())
-            .chain(self.script_hash())
-            // .chain(range proof) // See docs as to why we exclude this
+// .chain(range proof) // See docs as to why we exclude this
             .result()
             .to_vec()
     }
@@ -881,8 +955,8 @@ mod test {
     fn unblinded_input() {
         let k = BlindingFactor::random(&mut OsRng);
         let factory = PedersenCommitmentFactory::default();
-        let i = UnblindedOutput::new(10.into(), k, None, TariScript::default());
-        let input = i.as_transaction_input(&factory, OutputFeatures::default());
+        let i = UnblindedOutput::new(10.into(), k, None, TariScript::default(), &factory).unwrap();
+        let input = i.as_transaction_input();
         assert_eq!(input.features, OutputFeatures::default());
         assert!(input.opened_by(&i, &factory));
     }
@@ -902,12 +976,13 @@ mod test {
         let k2 = BlindingFactor::random(&mut OsRng);
 
         // For testing the max range has been limited to 2^32 so this value is too large.
-        let unblinded_output1 = UnblindedOutput::new((2u64.pow(32) - 1u64).into(), k1, None, TariScript::default());
+        let unblinded_output1 = UnblindedOutput::new((2u64.pow(32) - 1u64).into(), k1, None, TariScript::default(),
+                                                     &factories.commitment).unwrap();
         let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
         assert!(tx_output1.verify_range_proof(&factories.range_proof).unwrap());
 
         let unblinded_output2 =
-            UnblindedOutput::new((2u64.pow(32) + 1u64).into(), k2.clone(), None, TariScript::default());
+            UnblindedOutput::new((2u64.pow(32) + 1u64).into(), k2.clone(), None, TariScript::default(), &factories.commitment).unwrap();
         let tx_output2 = unblinded_output2.as_transaction_output(&factories);
 
         match tx_output2 {

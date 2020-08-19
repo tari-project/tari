@@ -254,7 +254,7 @@ fn outbound_fetch_utxos() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
-        let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
+        let utxo = create_utxo(MicroTari(10_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
         let hash = utxo.hash();
         let utxo_response = NodeCommsResponse::TransactionOutputs(vec![utxo.clone()]);
         let (received_utxos, _) = futures::join!(
@@ -288,7 +288,7 @@ fn inbound_fetch_utxos() {
         outbound_nci,
     );
 
-    let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let utxo = create_utxo(MicroTari(10_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
     let hash = utxo.hash();
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo.clone());
@@ -317,8 +317,8 @@ fn outbound_fetch_txos() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
-        let (txo1, _) = create_utxo(MicroTari(10_000), &factories, None);
-        let (txo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+        let txo1 = create_utxo(MicroTari(10_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
+        let txo2 = create_utxo(MicroTari(15_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
         let hash1 = txo1.hash();
         let hash2 = txo2.hash();
         let txo_response = NodeCommsResponse::TransactionOutputs(vec![txo1.clone(), txo2.clone()]);
@@ -354,8 +354,8 @@ fn inbound_fetch_txos() {
         outbound_nci,
     );
 
-    let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let (stxo, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let utxo = create_utxo(MicroTari(10_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
+    let stxo = create_utxo(MicroTari(10_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
     let utxo_hash = utxo.hash();
     let stxo_hash = stxo.hash();
     let mut txn = DbTransaction::new();

@@ -69,7 +69,8 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         PrivateKey::random(&mut OsRng),
         None,
         TariScript::default(),
-    );
+        &factories.commitment
+    ).unwrap();
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -77,10 +78,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(
-            input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
-            input.clone(),
-        )
+        .with_input(input.as_transaction_input(), input.clone())
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let stp = builder.build::<HashDigest>(&factories).unwrap();

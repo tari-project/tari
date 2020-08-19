@@ -29,7 +29,7 @@ use tari_core::{
         types::{Commitment, CryptoFactories, HashOutput},
     },
 };
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
+
 
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
@@ -46,7 +46,7 @@ impl DbUnblindedOutput {
     {
         let hash = output.as_transaction_output(factory)?.hash();
         Ok(DbUnblindedOutput {
-            commitment: factory.commitment.commit(&output.spending_key, &output.value.into()),
+            commitment: output.commitment().clone(),
             unblinded_output: output,
             hash,
         })
@@ -61,19 +61,18 @@ impl From<DbUnblindedOutput> for UnblindedOutput {
 
 impl PartialEq for DbUnblindedOutput {
     fn eq(&self, other: &DbUnblindedOutput) -> bool {
-        self.unblinded_output.value == other.unblinded_output.value
-    }
+        self.unblinded_output.value()== other.unblinded_output.value()    }
 }
 
 impl PartialOrd<DbUnblindedOutput> for DbUnblindedOutput {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.unblinded_output.value.partial_cmp(&other.unblinded_output.value)
+        self.unblinded_output.value().partial_cmp(&other.unblinded_output.value())
     }
 }
 
 impl Ord for DbUnblindedOutput {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.unblinded_output.value.cmp(&other.unblinded_output.value)
+        self.unblinded_output.value().cmp(&other.unblinded_output.value())
     }
 }
 

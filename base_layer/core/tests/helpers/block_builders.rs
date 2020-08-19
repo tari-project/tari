@@ -59,7 +59,7 @@ pub fn create_coinbase(
 ) -> (TransactionOutput, TransactionKernel, UnblindedOutput)
 {
     let features = OutputFeatures::create_coinbase(maturity_height);
-    let (utxo, key) = create_utxo(value, &factories, Some(features.clone()));
+    let utxo = create_utxo(value, &factories, Some(features.clone()), None).unwrap(); let key = utxo.blinding_factor().clone(); let utxo = utxo.as_transaction_output(&factories).unwrap();
     let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
     let sig = create_signature(key.clone(), 0.into(), 0);
     let kernel = KernelBuilder::new()
@@ -68,7 +68,7 @@ pub fn create_coinbase(
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
         .unwrap();
-    let output = UnblindedOutput::new(value, key, Some(features), TariScript::default());
+    let output = UnblindedOutput::new(value, key, Some(features), TariScript::default(), &factories.commitment).unwrap();
     (utxo, kernel, output)
 }
 
@@ -92,7 +92,7 @@ pub fn create_act_gen_block() {
     let mut header = BlockHeader::new(consensus_manager.consensus_constants().blockchain_version());
     let value = consensus_manager.emission_schedule().block_reward(0);
     let features = OutputFeatures::create_coinbase(1);
-    let (utxo, key) = create_utxo(value, &factories, Some(features));
+    let utxo = create_utxo(value, &factories, Some(features), None).unwrap(); let key = utxo.blinding_factor().clone(); let utxo = utxo.as_transaction_output(&factories).unwrap();
     let (pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
     let kernel = KernelBuilder::new()
@@ -166,9 +166,10 @@ pub fn create_genesis_block_with_utxos(
 {
     let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into(), consensus_constants);
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
-        let (t, k) = create_utxo(*v, factories, None);
+        let t = create_utxo(*v, factories, None, None).unwrap(); let k = t.blinding_factor().clone(); let t = t
+            .as_transaction_output(factories).unwrap();
         template.body.add_output(t);
-        secrets.push(UnblindedOutput::new(v.clone(), k, None, TariScript::default()));
+        secrets.push(UnblindedOutput::new(v.clone(), k, None, TariScript::default(), &factories.commitment).unwrap());
         secrets
     });
     let mut block = update_genesis_block_mmr_roots(template).unwrap();

@@ -12,6 +12,7 @@ use tari_core::{
 
 use std::{fs::File, io::Write};
 use tokio::{sync::mpsc, task};
+use tari_core::transactions::transaction::UnblindedOutput;
 
 const NUM_KEYS: usize = 10;
 
@@ -34,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .fold(NUM_KEYS, |def, v| v.parse::<usize>().unwrap_or(def));
 
     // Create a channel to give the file writer output as the utxos are generated
-    let (tx, rx) = mpsc::channel::<(TransactionOutput, PrivateKey, MicroTari)>(500);
+    let (tx, rx) = mpsc::channel::<UnblindedOutput>(500);
 
     println!("Setting up output");
     let write_fut = task::spawn(write_keys(rx));
@@ -56,9 +57,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // "Go!" before, or right the beginning of any key generation output.
         task::spawn(async move {
             let result = task::spawn_blocking(move || {
-                let (utxo, key) = helpers::create_utxo(value, &fc, Some(feature));
+                let utxo = helpers::create_utxo(value, &fc, Some(feature), None).unwrap();
                 print!(".");
-                (utxo, key, value)
+                utxo
             })
             .await
             .expect("Could not create key");
@@ -73,22 +74,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, MicroTari)>) {
+async fn write_keys(mut rx: mpsc::Receiver<UnblindedOutput>) {
     let mut utxo_file = File::create("utxos.json").expect("Could not create utxos.json");
     let mut key_file = File::create("keys.json").expect("Could not create keys.json");
     let mut written: u64 = 0;
+    let factories = CryptoFactories::default();
     // The receiver channel will patiently await results until the tx is dropped.
-    while let Some((utxo, key, value)) = rx.recv().await {
+    while let Some(utxo) = rx.recv().await {
+        let output = utxo.as_transaction_output(&factories).unwrap();
         let key = Key {
-            key: key.to_hex(),
-            value: u64::from(value),
+            key: utxo.blinding_factor().to_hex(),
+            value: u64::from(utxo.value()),
             commitment: utxo.commitment().to_hex(),
-            proof: utxo.proof().to_hex(),
+            proof: output.proof().to_hex(),
         };
         let key_str = format!("{}\n", serde_json::to_string(&key).unwrap());
         let _ = key_file.write_all(key_str.as_bytes());
-
-        let utxo_s = serde_json::to_string(&utxo).unwrap();
+        let utxo_s = serde_json::to_string(&output).unwrap();
         match utxo_file.write_all(format!("{}\n", utxo_s).as_bytes()) {
             Ok(_) => {
                 written += 1;

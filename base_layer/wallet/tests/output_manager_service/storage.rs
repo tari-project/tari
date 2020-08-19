@@ -57,13 +57,14 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
     for i in 0..5 {
+        let features = OutputFeatures { maturity: i, ..OutputFeatures::default() };
         let (_ti, uo) = make_input(
             &mut OsRng,
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
+            Some(features),
         );
-        let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
-        uo.unblinded_output.features.maturity = i;
+        let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
         runtime.block_on(db.add_unspent_output(uo.clone())).unwrap();
         unspent_outputs.push(uo);
     }
@@ -73,7 +74,7 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
     assert_eq!(unspent_outputs[4], time_locked_outputs[0]);
     let time_locked_outputs = runtime.block_on(db.get_timelocked_outputs(4)).unwrap();
     assert_eq!(time_locked_outputs.len(), 0);
-    let time_locked_balance = unspent_outputs[4].unblinded_output.value;
+    let time_locked_balance = unspent_outputs[4].unblinded_output.value();
 
     unspent_outputs.sort();
     // Add some pending transactions
@@ -92,6 +93,7 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
+                None,
             );
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
             pending_tx.outputs_to_be_spent.push(uo);
@@ -101,6 +103,7 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
+                None,
             );
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
             pending_tx.outputs_to_be_received.push(uo);
@@ -130,18 +133,18 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
     // Test balance calc
     let mut available_balance = unspent_outputs
         .iter()
-        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value());
     let mut pending_incoming_balance = MicroTari(0);
     let mut pending_outgoing_balance = MicroTari(0);
     for v in pending_txs.iter() {
         pending_outgoing_balance += v
             .outputs_to_be_spent
             .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value());
         pending_incoming_balance += v
             .outputs_to_be_received
             .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value());
     }
 
     let balance = runtime.block_on(db.get_balance(None)).unwrap();
@@ -167,17 +170,17 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
     available_balance += pending_txs[0]
         .outputs_to_be_received
         .iter()
-        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value());
 
     pending_incoming_balance -= pending_txs[0]
         .outputs_to_be_received
         .iter()
-        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value());
 
     pending_outgoing_balance -= pending_txs[0]
         .outputs_to_be_spent
         .iter()
-        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value());
 
     let balance = runtime.block_on(db.get_balance(None)).unwrap();
     assert_eq!(balance, Balance {
@@ -193,28 +196,29 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
     assert_eq!(
         spent_outputs
             .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value),
+            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value()),
         pending_txs[0]
             .outputs_to_be_spent
             .iter()
-            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value)
+            .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value())
     );
 
     let (_ti, uo_change) = make_input(
         &mut OsRng.clone(),
         MicroTari::from(100 + OsRng.next_u64() % 1000),
         &factories.commitment,
+        None,
     );
     let uo_change = DbUnblindedOutput::from_unblinded_output(uo_change, &factories).unwrap();
     let outputs_to_encumber = vec![outputs[0].clone(), outputs[1].clone()];
-    let total_encumbered = outputs[0].clone().unblinded_output.value + outputs[1].clone().unblinded_output.value;
+    let total_encumbered = outputs[0].clone().unblinded_output.value() + outputs[1].clone().unblinded_output.value();
     runtime
         .block_on(db.encumber_outputs(2, outputs_to_encumber, vec![uo_change.clone()]))
         .unwrap();
     runtime.block_on(db.confirm_encumbered_outputs(2)).unwrap();
 
     available_balance -= total_encumbered;
-    pending_incoming_balance += uo_change.clone().unblinded_output.value;
+    pending_incoming_balance += uo_change.clone().unblinded_output.value();
     pending_outgoing_balance += total_encumbered;
 
     let balance = runtime.block_on(db.get_balance(None)).unwrap();
@@ -229,19 +233,20 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
         &mut OsRng.clone(),
         MicroTari::from(100 + OsRng.next_u64() % 1000),
         &factories.commitment,
+        None,
     );
     runtime
         .block_on(db.accept_incoming_pending_transaction(
             5,
-            uo_incoming.value,
-            uo_incoming.spending_key.clone(),
+            uo_incoming.value(),
+            uo_incoming.blinding_factor().clone(),
             OutputFeatures::default(),
             &factories,
             None,
         ))
         .unwrap();
 
-    pending_incoming_balance += uo_incoming.clone().value;
+    pending_incoming_balance += uo_incoming.clone().value();
 
     let balance = runtime.block_on(db.get_balance(None)).unwrap();
     assert_eq!(balance, Balance {
@@ -261,11 +266,11 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
     cancelled_outgoing += pending_txs[1]
         .outputs_to_be_spent
         .iter()
-        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value());
     cancelled_incoming += pending_txs[1]
         .outputs_to_be_received
         .iter()
-        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
+        .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value());
 
     available_balance += cancelled_outgoing;
     pending_incoming_balance -= cancelled_incoming;
@@ -334,14 +339,14 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
 
     assert!(runtime
         .block_on(db.revalidate_output(factories.commitment.commit(
-            &pending_txs[2].outputs_to_be_spent[0].unblinded_output.spending_key,
-            &pending_txs[2].outputs_to_be_spent[0].unblinded_output.value.into()
+            pending_txs[2].outputs_to_be_spent[0].unblinded_output.blinding_factor(),
+            &pending_txs[2].outputs_to_be_spent[0].unblinded_output.value().into()
         )))
         .is_err());
     runtime
         .block_on(db.revalidate_output(factories.commitment.commit(
-            &invalid_outputs[0].unblinded_output.spending_key,
-            &invalid_outputs[0].unblinded_output.value.into(),
+            invalid_outputs[0].unblinded_output.blinding_factor(),
+            &invalid_outputs[0].unblinded_output.value().into(),
         )))
         .unwrap();
     let new_invalid_outputs = runtime.block_on(db.get_invalid_outputs()).unwrap();
@@ -450,14 +455,14 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + Clone + 'sta
         coinbase_block_height: None,
     };
     for i in 1..4 {
-        let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000 * i), &factories.commitment);
-        available_balance += uo.value.clone();
+        let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000 * i), &factories.commitment, None);
+        available_balance += uo.value();
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
         db.add_unspent_output(uo.clone()).await.unwrap();
         pending_tx.outputs_to_be_spent.push(uo);
     }
 
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment);
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment, None);
     let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
     pending_tx.outputs_to_be_received.push(uo);
 
@@ -476,7 +481,7 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + Clone + 'sta
     assert_eq!(available_balance, balance.available_balance);
 
     pending_tx.outputs_to_be_received.clear();
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment);
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment, None);
     let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
     pending_tx.outputs_to_be_received.push(uo);
 
@@ -493,7 +498,7 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + Clone + 'sta
     assert_eq!(balance.available_balance, MicroTari(0));
 
     pending_tx.outputs_to_be_received.clear();
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment);
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment, None);
     let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
     pending_tx.outputs_to_be_received.push(uo);
 
@@ -510,7 +515,7 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + Clone + 'sta
     let balance = db.get_balance(None).await.unwrap();
     assert_eq!(
         balance.available_balance,
-        pending_tx.outputs_to_be_received[0].unblinded_output.value
+        pending_tx.outputs_to_be_received[0].unblinded_output.value()
     );
 }
 

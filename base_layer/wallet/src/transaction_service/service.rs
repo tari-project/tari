@@ -69,7 +69,7 @@ use tari_core::{
     mempool::{proto::mempool as MempoolProto, service::MempoolServiceResponse},
     transactions::{
         tari_amount::MicroTari,
-        transaction::Transaction,
+        transaction::{Transaction},
         transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
         types::{CryptoFactories, PrivateKey},
         CoinbaseBuilder,
@@ -1579,7 +1579,7 @@ where
     /// the outputs
     #[cfg(feature = "test_harness")]
     pub async fn mine_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        use tari_core::transactions::transaction::OutputFeatures;
+        
 
         let completed_txs = self.db.get_completed_transactions().await?;
         let _found_tx = completed_txs.get(&tx_id).ok_or_else(|| {
@@ -1598,8 +1598,7 @@ where
                     .outputs_to_be_spent
                     .iter()
                     .map(|o| {
-                        o.unblinded_output
-                            .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default())
+                        o.unblinded_output.as_transaction_input()
                     })
                     .collect(),
                 pending_tx

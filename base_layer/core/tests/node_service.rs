@@ -243,8 +243,8 @@ fn request_and_response_fetch_utxos() {
     let (mut alice_node, bob_node, carol_node, _consensus_manager) =
         create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
-    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
+    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
     let hash1 = utxo1.hash();
     let hash2 = utxo2.hash();
 
@@ -869,10 +869,10 @@ fn request_and_response_fetch_mmr_node_and_count() {
         temp_dir.path().to_str().unwrap(),
     );
 
-    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
-    let (utxo3, _) = create_utxo(MicroTari(20_000), &factories, None);
-    let (utxo4, _) = create_utxo(MicroTari(25_000), &factories, None);
+    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
+    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
+    let utxo3 = create_utxo(MicroTari(20_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
+    let utxo4 = create_utxo(MicroTari(25_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
     let kernel1 = create_test_kernel(5.into(), 0);
     let kernel2 = create_test_kernel(15.into(), 1);
     let kernel3 = create_test_kernel(20.into(), 2);

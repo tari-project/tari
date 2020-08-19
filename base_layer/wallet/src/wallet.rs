@@ -55,7 +55,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::{
     consensus::Network,
-    crypto::script::TariScript,
+    crypto::{script::TariScript, tari_utilities::hex::to_hex},
     transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, UnblindedOutput},
@@ -277,7 +277,8 @@ where
         message: String,
     ) -> Result<TxId, WalletError>
     {
-        let unblinded_output = UnblindedOutput::new(amount, spending_key.clone(), None, TariScript::default());
+        let unblinded_output = UnblindedOutput::new(amount, spending_key.clone(), None, TariScript::default(), &self
+            .factories.commitment).map_err(|_| WalletError::ImportError)?;
 
         self.runtime
             .block_on(self.output_manager_service.add_output(unblinded_output.clone()))?;
@@ -291,10 +292,7 @@ where
         info!(
             target: LOG_TARGET,
             "UTXO (Commitment: {}) imported into wallet",
-            unblinded_output
-                .as_transaction_input(&self.factories.commitment, OutputFeatures::default())
-                .commitment()
-                .to_hex()
+            unblinded_output.commitment().to_hex()
         );
 
         Ok(tx_id)

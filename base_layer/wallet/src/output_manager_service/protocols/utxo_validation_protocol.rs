@@ -403,7 +403,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
                     warn!(
                         target: LOG_TARGET,
                         "Output with value {} not returned from Base Node query ({}) and is thus being invalidated",
-                        v.unblinded_output.value,
+                        v.unblinded_output.value(),
                         request_key,
                     );
                     // If the output that is being invalidated has an associated TxId then get the kernel signature of
@@ -468,7 +468,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
                             trace!(
                                 target: LOG_TARGET,
                                 "Output with value {} has been restored to a valid spendable output",
-                                output.unblinded_output.value
+                                output.unblinded_output.value()
                             );
                         }
                     }
