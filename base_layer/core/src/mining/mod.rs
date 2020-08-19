@@ -25,3 +25,11 @@ mod error;
 mod miner;
 
 pub use miner::Miner;
+
+/// Events that can be published on state changes of the Miner
+#[derive(Debug, Clone)]
+pub enum MinerInstruction {
+    PauseMining,
+    StartMining,
+    IgnoreInstruction,
+}
