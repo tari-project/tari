@@ -26,6 +26,7 @@ use log::*;
 use rand::rngs::OsRng;
 use std::{
     fs,
+    net::SocketAddr,
     path::Path,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -892,10 +893,13 @@ fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
         CommsTransport::TorHiddenService {
             control_server_address,
             socks_address_override,
-            forward_address,
             auth,
-            onion_port,
+            ..
         } => {
+            // The wallet should always use an OS-assigned forwarding port and an onion port number of 18101
+            // to ensure that different wallet implementations cannot be differentiated by their port.
+            let port_mapping = (18101u16, "127.0.0.1:0".parse::<SocketAddr>().unwrap()).into();
+
             let tor_identity_path = Path::new(&config.wallet_tor_identity_file);
             let identity = if tor_identity_path.exists() {
                 // If this fails, we can just use another address
@@ -914,7 +918,6 @@ fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                     .unwrap()
             );
 
-            let forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
             TransportType::Tor(TorConfig {
                 control_server_addr: control_server_address,
                 control_server_auth: {
@@ -924,8 +927,7 @@ fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                     }
                 },
                 identity: identity.map(Box::new),
-
-                port_mapping: (onion_port.get(), forward_addr).into(),
+                port_mapping,
                 // TODO: make configurable
                 socks_address_override,
                 socks_auth: socks::Authentication::None,
