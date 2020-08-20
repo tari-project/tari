@@ -3,7 +3,7 @@ name = "tari_wallet_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.2.3"
+version = "0.16.2"
 edition = "2018"
 
 [dependencies]

@@ -3623,7 +3623,7 @@ dependencies = [
 
 [[package]]
 name = "tari_base_node"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "chrono",
  "chrono-english",
@@ -3802,7 +3802,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "0.2.2"
+version = "0.2.4"
 dependencies = [
  "arrayref",
  "base64 0.10.1",
@@ -4126,7 +4126,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet_ffi"
-version = "0.2.3"
+version = "0.16.2"
 dependencies = [
  "chrono",
  "env_logger 0.7.1",
