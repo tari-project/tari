@@ -164,6 +164,16 @@ pub enum TransactionError {
     NoSignatureError,
     #[error("A range proof construction or verification has produced an error: {0}")]
     RangeProofError(#[from] RangeProofError),
+    #[error("Invalid kernel in body")]
+    InvalidKernel,
+    #[error("Invalid coinbase in body")]
+    InvalidCoinbase,
+    #[error("Invalid coinbase maturity in body")]
+    InvalidCoinbaseMaturity,
+    #[error("Error more than one coinbase in body")]
+    InvalidCoinbaseCount,
+    #[error("Input maturity not reached")]
+    InputMaturity,
 }
 
 //-----------------------------------------     UnblindedOutput   ----------------------------------------------------//

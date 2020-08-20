@@ -29,20 +29,14 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{
-            OutputFlags,
-            Transaction,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
+        transaction::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        types::CryptoFactories,
     },
 };
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_crypto::tari_utilities::Hashable;
 use thiserror::Error;
 
 pub const LOG_TARGET: &str = "c::bl::block";
@@ -51,14 +45,8 @@ pub const LOG_TARGET: &str = "c::bl::block";
 pub enum BlockValidationError {
     #[error("A transaction in the block failed to validate: `{0}`")]
     TransactionError(#[from] TransactionError),
-    #[error("Invalid kernel in block")]
-    InvalidKernel,
     #[error("Invalid input in block")]
     InvalidInput,
-    #[error("Input maturity not reached")]
-    InputMaturity,
-    #[error("Invalid coinbase maturity in block or more than one coinbase")]
-    InvalidCoinbase,
     #[error("Mismatched MMR roots")]
     MismatchedMmrRoots,
     #[error("The block contains transactions that should have been cut through.")]
@@ -82,57 +70,33 @@ impl Block {
 
     /// This function will check spent kernel rules like tx lock height etc
     pub fn check_kernel_rules(&self) -> Result<(), BlockValidationError> {
-        for kernel in self.body.kernels() {
-            if kernel.lock_height > self.header.height {
-                debug!(target: LOG_TARGET, "Kernel lock height was not reached: {}", kernel);
-                return Err(BlockValidationError::InvalidKernel);
-            }
-        }
+        self.body.check_kernel_rules(self.header.height)?;
         Ok(())
     }
 
     /// Run through the outputs of the block and check that
     /// 1. There is exactly ONE coinbase output
     /// 1. The output's maturity is correctly set
-    /// NOTE this does not check the coinbase amount
-    pub fn check_coinbase_output(&self, consensus_constants: &ConsensusConstants) -> Result<(), BlockValidationError> {
-        let mut coinbase_counter = 0; // there should be exactly 1 coinbase
-        for utxo in self.body.outputs() {
-            if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
-                coinbase_counter += 1;
-                if utxo.features.maturity < (self.header.height + consensus_constants.coinbase_lock_height()) {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Coinbase on {} found with maturity set too low",
-                        self.hash().to_hex()
-                    );
-                    return Err(BlockValidationError::InvalidCoinbase);
-                }
-            }
-        }
-        if coinbase_counter != 1 {
-            warn!(
-                target: LOG_TARGET,
-                "{} coinbases found in block {}. Only a single coinbase is permitted.",
-                coinbase_counter,
-                self.hash().to_hex()
-            );
-            return Err(BlockValidationError::InvalidCoinbase);
-        }
+    /// 1. The amount is correct.
+    pub fn check_coinbase_output(
+        &self,
+        reward: MicroTari,
+        consensus_constants: &ConsensusConstants,
+        factories: &CryptoFactories,
+    ) -> Result<(), BlockValidationError>
+    {
+        self.body.check_coinbase_output(
+            reward,
+            consensus_constants.coinbase_lock_height(),
+            factories,
+            self.header.height,
+        )?;
         Ok(())
     }
 
     /// This function will check all stxo to ensure that feature flags where followed
     pub fn check_stxo_rules(&self) -> Result<(), BlockValidationError> {
-        for input in self.body.inputs() {
-            if input.features.maturity > self.header.height {
-                warn!(
-                    target: LOG_TARGET,
-                    "Input found that has not yet matured to spending height: {}", input
-                );
-                return Err(BlockValidationError::InputMaturity);
-            }
-        }
+        self.body.check_stxo_rules(self.header.height)?;
         Ok(())
     }
 
