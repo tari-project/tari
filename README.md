@@ -213,6 +213,60 @@ created in the `~/.tari` (on Linux) or `%USERPROFILE%\.tari` (on Windows) folder
 
 ---
 
+### Running the base node with a docker image
+
+Docker images can be found at https://quay.io/repository/tarilabs/tari_base_node
+
+Using ```docker-compose.yaml```
+```
+version: "3"
+
+services:
+  tari_base_node:
+    image: quay.io/tarilabs/tari_base_node:v0.5.4
+    restart: unless-stopped
+    volumes:
+      - ./data:/root/.tari
+# These 2 params are required for an interactive docker-compose session
+    stdin_open: true
+    tty: true
+    expose:
+      - 18142
+    ports:
+      - "18142:18142"
+```
+Then run ```docker-compose up -d``` to start your docker service.  
+
+Check the running state with ```docker-compose ps```
+```
+        Name           Command    State            Ports
+------------------------------------------------------------------
+tbn_tari_base_node_1   start.sh   Up      0.0.0.0:18142->18142/tcp
+```
+To connect to the console, use ```docker ps``` to get the container ID which to attach to the tari_base_node in docker
+```
+CONTAINER ID        IMAGE                                    COMMAND             CREATED             STATUS              PORTS                      NAMES
+73427509a4bb        quay.io/tarilabs/tari_base_node:v0.5.4   "start.sh"          45 minutes ago      Up 26 minutes       0.0.0.0:18142->18142/tcp   tbn_tari_base_node_1
+```
+With the container ID ```73427509a4bb```, connect to the tari_base_node console as follows ```docker attach 73427509a4bb```
+```
+>> help
+Available commands are:
+help, version, get-balance, list-utxos, list-transactions, list-completed-transactions, cancel-transaction, send-tari, get-chain-metadata, list-peers, reset-offline-peers, ban-peer, unban-peer, list-connections, list-headers, check-db, calc-timing, discover-peer, get-block, search-utxo, search-kernel, search-stxo, get-mempool-stats, get-mempool-state, whoami, toggle-mining, get-mining-state, make-it-rain, coin-split, get-state-info, quit, exit
+>> get-chain-metadata
+Height of longest chain : 5228
+Geometric mean of longest chain : 5892870
+Best block : 2c4f92854b2160324b8afebaa476b39be4004d2a7a19c69dd2d4e4da257bfee2
+Pruning horizon : 0
+Effective pruned height : 0
+>> get-state-info
+Current state machine state:
+Synchronizing blocks: Syncing from the following peers:
+510c83279adc7cb7d7dda0aa07
+Syncing 5229/5233
+```
+
+---
 ### Building a docker image
 
 If you don't want to use the docker images provided by the community, you can roll your own!
