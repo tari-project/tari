@@ -93,6 +93,10 @@ pub struct DhtConfig {
     pub connectivity_random_pool_refresh: Duration,
     /// The active Network. Default: TestNet
     pub network: Network,
+    /// The minimum period used to request SAF messages from a peer. When requesting SAF messages,
+    /// it will request messages since the DHT last went offline, but this may be a small amount of
+    /// time, so `minimum_request_period` can be used so that messages aren't missed.
+    pub minimum_request_period: Duration,
 }
 
 impl DhtConfig {
@@ -141,6 +145,7 @@ impl Default for DhtConfig {
             auto_join: false,
             join_cooldown_interval: Duration::from_secs(10 * 60),
             network: Network::TestNet,
+            minimum_request_period: SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
         }
     }
 }
