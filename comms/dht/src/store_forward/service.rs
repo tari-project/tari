@@ -42,7 +42,7 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use std::{convert::TryFrom, sync::Arc, time::Duration};
+use std::{cmp, convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
     peer_manager::{node_id::NodeDistance, NodeId, PeerFeatures},
@@ -365,7 +365,7 @@ impl StoreAndForwardService {
             .dht_requester
             .get_metadata(DhtMetadataKey::OfflineTimestamp)
             .await?
-            .map(StoredMessagesRequest::since)
+            .map(|t| StoredMessagesRequest::since(cmp::min(t, since_utc(self.config.minimum_request_period))))
             .unwrap_or_else(StoredMessagesRequest::new);
 
         // Calculate the network region threshold for our node id.
@@ -452,4 +452,8 @@ fn since(period: Duration) -> NaiveDateTime {
         .naive_utc()
         .checked_sub_signed(period)
         .expect("period overflowed when used with checked_sub_signed")
+}
+
+fn since_utc(period: Duration) -> DateTime<Utc> {
+    DateTime::<Utc>::from_utc(since(period), Utc)
 }
