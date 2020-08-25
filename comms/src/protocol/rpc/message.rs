@@ -57,8 +57,7 @@ impl<T> Request<T> {
         }
     }
 
-    #[cfg(test)]
-    pub(super) fn new(method: RpcMethod, message: T) -> Self {
+    pub fn new(method: RpcMethod, message: T) -> Self {
         Self {
             context: None,
             inner: BaseRequest::new(method, message),
@@ -89,13 +88,6 @@ impl<T> Request<T> {
             .as_ref()
             .expect("Request::context called on request without a context")
     }
-    // pub fn map<F, U>(self, mut f: F) -> Request<U>
-    // where F: FnMut(T) -> U {
-    //     Request {
-    //         context: self.context,
-    //         inner: self.inner.map(f),
-    //     }
-    // }
 }
 
 #[derive(Debug, Clone)]

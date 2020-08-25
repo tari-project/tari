@@ -39,6 +39,7 @@ use crate::{
         rpc::{
             context::{RequestContext, RpcCommsContext},
             message::RpcMessageFlags,
+            Handshake,
             RPC_MAX_FRAME_SIZE,
         },
         ProtocolEvent,
@@ -247,7 +248,8 @@ where
             },
         };
 
-        let version = self.perform_handshake(&mut framed).await?;
+        let mut handshake = Handshake::new(&mut framed);
+        let version = handshake.perform_server_handshake().await?;
         debug!(
             target: LOG_TARGET,
             "Server negotiated RPC v{} with client node `{}`", version, node_id
@@ -267,35 +269,6 @@ where
             .map_err(|_| RpcError::MaximumConcurrencyReached)?;
 
         Ok(())
-    }
-
-    async fn perform_handshake(&self, framed: &mut CanonicalFraming<TSubstream>) -> Result<u32, RpcError> {
-        // Only v0 is supported at this time
-        const SUPPORTED_VERSION: u32 = 0;
-        let result = time::timeout(Duration::from_secs(10), framed.next()).await;
-        match result {
-            Ok(Some(Ok(msg))) => {
-                let msg = proto::rpc::RpcSession::decode(&mut msg.freeze())?;
-                if msg.supported_versions.contains(&SUPPORTED_VERSION) {
-                    let reply = proto::rpc::RpcSessionReply {
-                        session_result: Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(
-                            SUPPORTED_VERSION,
-                        )),
-                    };
-                    framed.send(reply.to_encoded_bytes().into()).await?;
-                    return Ok(SUPPORTED_VERSION);
-                }
-
-                let reply = proto::rpc::RpcSessionReply {
-                    session_result: Some(proto::rpc::rpc_session_reply::SessionResult::Rejected(true)),
-                };
-                framed.send(reply.to_encoded_bytes().into()).await?;
-                Err(RpcError::NegotiationClientNoSupportedVersion)
-            },
-            Ok(Some(Err(err))) => Err(err.into()),
-            Ok(None) => Err(RpcError::ClientClosed),
-            Err(_elapsed) => Err(RpcError::NegotiationTimedOut),
-        }
     }
 }
 

@@ -71,3 +71,6 @@ pub mod multiaddr {
 }
 
 pub use bytes::{Bytes, BytesMut};
+
+#[cfg(feature = "rpc")]
+pub use async_trait::async_trait;
