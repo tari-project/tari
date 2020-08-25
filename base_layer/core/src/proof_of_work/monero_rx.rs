@@ -194,10 +194,10 @@ pub fn create_input_blob(
         hashes.push(Hash(from_slice(item.clone().as_bytes())));
     }
     let mut root = tree_hash(hashes);
-    let mut encode2 = header;
-    encode2.append(&mut root);
-    encode2.append(&mut count);
-    Ok(hex::encode(encode2).into())
+    let mut encode = header;
+    encode.append(&mut root);
+    encode.append(&mut count);
+    Ok(hex::encode(encode).into())
 }
 
 /// Utility function to transform array to fixed array
