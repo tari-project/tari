@@ -1,0 +1,27 @@
+[package]
+name = "tari_comms_rpc_macros"
+description = "RPC service proc macro"
+authors = ["The Tari Development Community"]
+repository = "https://github.com/tari-project/tari"
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
+version = "0.1.0"
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1.0.7"
+syn = {version = "1.0.38", features = ["fold"]}
+tari_comms = { version = "^0.2", path = "../", features = ["rpc"]}
+
+[dev-dependencies]
+tari_test_utils = {version="^0.2", path="../../infrastructure/test_utils"}
+
+futures = "0.3.5"
+prost = "0.6.1"
+tokio = "0.2.22"
+tokio-macros = "0.2.5"
+tower-service = "0.3.0"

@@ -23,8 +23,10 @@
 use crate::{
     peer_manager::NodeId,
     protocol::{
-        extensions::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError},
         ProtocolError,
+        ProtocolExtension,
+        ProtocolExtensionContext,
+        ProtocolExtensionError,
         ProtocolId,
         IDENTITY_PROTOCOL,
     },
