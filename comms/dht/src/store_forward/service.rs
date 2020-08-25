@@ -45,13 +45,11 @@ use log::*;
 use std::{cmp, convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
-    peer_manager::{node_id::NodeDistance, NodeId, PeerFeatures},
+    peer_manager::{NodeId, PeerFeatures},
     types::CommsPublicKey,
-    NodeIdentity,
     PeerManager,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::ByteArray;
 use tokio::{task, time};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::actor";
@@ -64,7 +62,6 @@ pub struct FetchStoredMessageQuery {
     public_key: Box<CommsPublicKey>,
     node_id: Box<NodeId>,
     since: Option<DateTime<Utc>>,
-    dist_threshold: Option<Box<NodeDistance>>,
     response_type: SafResponseType,
 }
 
@@ -75,7 +72,6 @@ impl FetchStoredMessageQuery {
             node_id,
             since: None,
             response_type: SafResponseType::Anonymous,
-            dist_threshold: None,
         }
     }
 
@@ -86,11 +82,6 @@ impl FetchStoredMessageQuery {
 
     pub fn with_response_type(&mut self, response_type: SafResponseType) -> &mut Self {
         self.response_type = response_type;
-        self
-    }
-
-    pub fn with_dist_threshold(&mut self, dist_threshold: Box<NodeDistance>) -> &mut Self {
-        self.dist_threshold = Some(dist_threshold);
         self
     }
 }
@@ -158,7 +149,6 @@ impl StoreAndForwardRequester {
 
 pub struct StoreAndForwardService {
     config: DhtConfig,
-    node_identity: Arc<NodeIdentity>,
     dht_requester: DhtRequester,
     database: StoreAndForwardDatabase,
     peer_manager: Arc<PeerManager>,
@@ -173,7 +163,6 @@ impl StoreAndForwardService {
     pub fn new(
         config: DhtConfig,
         conn: DbConnection,
-        node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         dht_requester: DhtRequester,
         connectivity: ConnectivityRequester,
@@ -185,7 +174,6 @@ impl StoreAndForwardService {
         Self {
             config,
             database: StoreAndForwardDatabase::new(conn),
-            node_identity,
             peer_manager,
             dht_requester,
             request_rx: request_rx.fuse(),
@@ -361,25 +349,12 @@ impl StoreAndForwardService {
     }
 
     async fn get_saf_request(&mut self) -> SafResult<StoredMessagesRequest> {
-        let mut request = self
+        let request = self
             .dht_requester
             .get_metadata(DhtMetadataKey::OfflineTimestamp)
             .await?
-            .map(|t| StoredMessagesRequest::since(cmp::min(t, since_utc(self.config.minimum_request_period))))
+            .map(|t| StoredMessagesRequest::since(cmp::min(t, since_utc(self.config.saf_minimum_request_period))))
             .unwrap_or_else(StoredMessagesRequest::new);
-
-        // Calculate the network region threshold for our node id.
-        // i.e. "Give me all messages that are this close to my node ID"
-        let threshold = self
-            .peer_manager
-            .calc_region_threshold(
-                self.node_identity.node_id(),
-                self.config.num_neighbouring_nodes,
-                PeerFeatures::DHT_STORE_FORWARD,
-            )
-            .await?;
-
-        request.dist_threshold = threshold.to_vec();
 
         Ok(request)
     }
@@ -402,10 +377,6 @@ impl StoreAndForwardService {
                     .await?
             },
             Anonymous => db.find_anonymous_messages(query.since, limit).await?,
-            InRegion => {
-                db.find_regional_messages(&query.node_id, query.dist_threshold, query.since, limit)
-                    .await?
-            },
         };
 
         Ok(messages)

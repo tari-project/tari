@@ -142,7 +142,7 @@ async fn setup_comms_dht(
         comms.shutdown_signal(),
     )
     .local_test()
-    .disable_auto_store_and_forward_requests()
+    .set_auto_store_and_forward_requests(false)
     .with_database_url(DbConnectionUrl::MemoryShared(random::string(8)))
     .with_discovery_timeout(Duration::from_secs(60))
     .with_num_neighbouring_nodes(8)

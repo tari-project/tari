@@ -12,7 +12,6 @@ package tari.dht.store_forward;
 message StoredMessagesRequest {
     google.protobuf.Timestamp since = 1;
     uint32 request_id = 2;
-    bytes dist_threshold = 3;
 }
 
 // Storage for a single message envelope, including the date and time when the element was stored
@@ -36,8 +35,6 @@ message StoredMessagesResponse {
         Join = 2;
         // Messages without an explicit destination and with an unidentified encrypted source
         Anonymous = 3;
-        // Messages within the requesting node's region
-        InRegion = 4;
     }
     SafResponseType response_type = 3;
 }

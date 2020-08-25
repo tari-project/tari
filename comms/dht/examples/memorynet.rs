@@ -64,6 +64,7 @@ use std::{
 use tari_comms::{
     backoff::ConstantBackoff,
     connection_manager::ConnectionDirection,
+    connectivity::ConnectivitySelection,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerStorage},
     pipeline,
     pipeline::SinkService,
@@ -184,6 +185,28 @@ async fn main() {
     )
     .await;
 
+    // Every node knows about every other node/client - uncomment this if you want to see the effect of "perfect network
+    // knowledge" on the network.
+    //
+    // for n in &nodes {
+    //     for ni in &nodes {
+    //         if n.node_identity().node_id() != ni.node_identity().node_id() {
+    //             n.comms
+    //                 .peer_manager()
+    //                 .add_peer(ni.node_identity().to_peer())
+    //                 .await
+    //                 .unwrap();
+    //         }
+    //     }
+    //     for ni in &wallets {
+    //         n.comms
+    //             .peer_manager()
+    //             .add_peer(ni.node_identity().to_peer())
+    //             .await
+    //             .unwrap();
+    //     }
+    // }
+
     log::info!("------------------------------- BASE NODE JOIN -------------------------------");
     for node in nodes.iter_mut() {
         println!(
@@ -248,7 +271,6 @@ async fn main() {
     log::info!("------------------------------- DISCOVERY -------------------------------");
     total_messages += discovery(&wallets, &mut messaging_events_rx).await;
 
-    take_a_break().await;
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
     log::info!("------------------------------- SAF/DIRECTED PROPAGATION -------------------------------");
@@ -257,6 +279,7 @@ async fn main() {
         let (num_msgs, random_wallet) = do_store_and_forward_message_propagation(
             random_wallet,
             &wallets,
+            &nodes,
             messaging_events_tx.clone(),
             &mut messaging_events_rx,
         )
@@ -566,6 +589,7 @@ async fn do_network_wide_propagation(nodes: &mut [TestNode]) {
 async fn do_store_and_forward_message_propagation(
     wallet: TestNode,
     wallets: &[TestNode],
+    nodes: &[TestNode],
     messaging_tx: MessagingEventTx,
     messaging_rx: &mut MessagingEventRx,
 ) -> (usize, TestNode)
@@ -577,6 +601,39 @@ async fn do_store_and_forward_message_propagation(
     let wallets_peers = wallet.comms.peer_manager().all().await.unwrap();
     let node_identity = wallet.comms.node_identity().clone();
 
+    let neighbours = wallet
+        .comms
+        .connectivity()
+        .select_connections(ConnectivitySelection::closest_to(
+            wallet.node_identity().node_id().clone(),
+            NUM_NEIGHBOURING_NODES,
+            vec![],
+        ))
+        .await
+        .unwrap()
+        .into_iter()
+        .filter_map(
+            // If a node is not found in the node list it must be the seed node - should probably assert that this is
+            // the case
+            |p| nodes.iter().find(|n| n.node_identity().node_id() == p.peer_node_id()),
+        )
+        .collect::<Vec<_>>();
+
+    let neighbour_subs = neighbours
+        .iter()
+        .map(|n| n.comms.subscribe_messaging_events())
+        .collect::<Vec<_>>();
+
+    banner!(
+        "{} has {} neighbours ({})",
+        wallet,
+        neighbours.len(),
+        neighbours
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     banner!("😴 {} is going offline", wallet);
     wallet.comms.shutdown().await;
 
@@ -589,7 +646,7 @@ async fn do_store_and_forward_message_propagation(
     let start = Instant::now();
     for wallet in wallets {
         let secret_message = format!("My name is wiki wiki {}", wallet);
-        wallet
+        let send_states = wallet
             .dht
             .outbound_requester()
             .broadcast(
@@ -600,6 +657,30 @@ async fn do_store_and_forward_message_propagation(
             )
             .await
             .unwrap();
+        let (success, failed) = send_states.wait_all().await;
+        println!(
+            "{} sent {}/{} messages",
+            wallet,
+            success.len(),
+            success.len() + failed.len(),
+        );
+    }
+
+    for (idx, mut s) in neighbour_subs.into_iter().enumerate() {
+        let neighbour = neighbours[idx].name.clone();
+        task::spawn(async move {
+            let msg = time::timeout(Duration::from_secs(2), s.next()).await;
+            match msg {
+                Ok(Some(Ok(evt))) => match &*evt {
+                    MessagingEvent::MessageReceived(_, tag) => {
+                        println!("{} received propagated SAF message ({})", neighbour, tag);
+                    },
+                    _ => {},
+                },
+                Ok(_) => {},
+                Err(_) => println!("{} did not receive the SAF message", neighbour),
+            }
+        });
     }
 
     banner!("⏰ Waiting a few seconds for messages to propagate around the network...");
@@ -611,18 +692,29 @@ async fn do_store_and_forward_message_propagation(
     let (tx, ims_rx) = mpsc::channel(1);
     let (comms, dht) = setup_comms_dht(node_identity, create_peer_storage(wallets_peers), tx).await;
     let mut wallet = TestNode::new(comms, dht, None, ims_rx, messaging_tx);
-    wallet
-        .comms
-        .connectivity()
+    let mut connectivity = wallet.comms.connectivity();
+
+    connectivity
         .wait_for_connectivity(Duration::from_secs(10))
         .await
         .unwrap();
-    wallet
-        .dht
-        .store_and_forward_requester()
-        .request_saf_messages_from_neighbours()
+    take_a_break().await;
+    let connections = wallet
+        .comms
+        .connection_manager()
+        .get_active_connections()
         .await
         .unwrap();
+    println!(
+        "{} has {} connections to {}",
+        wallet,
+        connections.len(),
+        connections
+            .iter()
+            .map(|p| get_name(p.peer_node_id()))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
 
     let mut num_msgs = 0;
     loop {
@@ -951,6 +1043,7 @@ async fn setup_comms_dht(
     )
     .local_test()
     .enable_auto_join()
+    .set_auto_store_and_forward_requests(true)
     .with_discovery_timeout(Duration::from_secs(15))
     .with_num_neighbouring_nodes(NUM_NEIGHBOURING_NODES)
     .with_num_random_nodes(NUM_RANDOM_NODES)
@@ -968,7 +1061,7 @@ async fn setup_comms_dht(
                 .with_outbound_pipeline(outbound_rx, |sink| {
                     ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
                 })
-                .max_concurrent_inbound_tasks(5)
+                .max_concurrent_inbound_tasks(10)
                 .with_inbound_pipeline(
                     ServiceBuilder::new()
                         .layer(dht.inbound_middleware_layer())
