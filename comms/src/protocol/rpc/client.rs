@@ -25,7 +25,15 @@ use crate::{
     framing::CanonicalFraming,
     message::MessageExt,
     proto,
-    protocol::rpc::{body::ClientStreaming, message::BaseRequest, NamedProtocolService, Response, RpcError, RpcStatus},
+    protocol::rpc::{
+        body::ClientStreaming,
+        message::BaseRequest,
+        Handshake,
+        NamedProtocolService,
+        Response,
+        RpcError,
+        RpcStatus,
+    },
     runtime::task,
 };
 use bytes::Bytes;
@@ -281,7 +289,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         debug!(target: LOG_TARGET, "RPC Client worker started");
 
         let start = Instant::now();
-        match self.perform_handshake().await {
+        let mut handshake = Handshake::new(&mut self.framed);
+        match handshake.perform_client_handshake().await {
             Ok(_) => {
                 debug!(
                     target: LOG_TARGET,
@@ -317,28 +326,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         }
 
         debug!(target: LOG_TARGET, "RpcClientWorker terminated.");
-    }
-
-    async fn perform_handshake(&mut self) -> Result<(), RpcError> {
-        let msg = proto::rpc::RpcSession {
-            // Only v0 is supported
-            supported_versions: vec![0],
-        };
-        self.framed.send(msg.to_encoded_bytes().into()).await?;
-        let result = time::timeout(Duration::from_secs(10), self.framed.next()).await;
-        match result {
-            Ok(Some(Ok(msg))) => {
-                let msg = proto::rpc::RpcSessionReply::decode(&mut msg.freeze())?;
-                let version = msg
-                    .accepted_version()
-                    .ok_or_else(|| RpcError::NegotiationServerNoSupportedVersion)?;
-                debug!(target: LOG_TARGET, "Server accepted version {}", version);
-                Ok(())
-            },
-            Ok(Some(Err(err))) => Err(err.into()),
-            Ok(None) => Err(RpcError::ServerClosedRequest),
-            Err(_) => Err(RpcError::NegotiationTimedOut),
-        }
     }
 
     async fn do_request_response(

@@ -66,8 +66,4 @@ impl RequestContext {
     pub fn connectivity(&self) -> ConnectivityRequester {
         self.context.connectivity.clone()
     }
-
-    pub fn peer_node_id(&self) -> &NodeId {
-        &self.node_id
-    }
 }

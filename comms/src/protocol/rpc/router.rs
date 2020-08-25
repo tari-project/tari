@@ -32,8 +32,10 @@ use super::{
 };
 use crate::{
     protocol::{
-        extensions::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError},
         rpc::context::RpcCommsContext,
+        ProtocolExtension,
+        ProtocolExtensionContext,
+        ProtocolExtensionError,
         ProtocolId,
         ProtocolNotificationRx,
     },
