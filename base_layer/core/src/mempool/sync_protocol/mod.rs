@@ -67,8 +67,10 @@
 mod test;
 
 mod error;
-
 use error::MempoolProtocolError;
+
+mod extension;
+pub use extension::MempoolSyncProtocolExtension;
 
 use crate::{
     chain_storage::BlockchainBackend,

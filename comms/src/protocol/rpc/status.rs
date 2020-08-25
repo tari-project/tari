@@ -28,7 +28,7 @@ use thiserror::Error;
 
 const LOG_TARGET: &str = "comms::rpc::status";
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub struct RpcStatus {
     code: RpcStatusCode,
     details: String,

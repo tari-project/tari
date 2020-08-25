@@ -36,7 +36,7 @@ use futures::{
 };
 use pin_project::pin_project;
 use prost::bytes::Buf;
-use std::{marker::PhantomData, pin::Pin};
+use std::{fmt, marker::PhantomData, pin::Pin};
 
 pub trait IntoBody {
     fn into_body(self) -> Body;
@@ -44,11 +44,12 @@ pub trait IntoBody {
 
 impl<T: prost::Message> IntoBody for T {
     fn into_body(self) -> Body {
-        Body::single(self)
+        Body::single(self.to_encoded_bytes())
     }
 }
 
 #[pin_project]
+#[derive(Debug)]
 pub struct Body {
     #[pin]
     kind: BodyKind,
@@ -57,9 +58,9 @@ pub struct Body {
 }
 
 impl Body {
-    pub fn single<T: prost::Message>(body: T) -> Self {
+    pub fn single<T: Into<Bytes>>(body: T) -> Self {
         Self {
-            kind: BodyKind::Single(Some(body.to_encoded_bytes().into())),
+            kind: BodyKind::Single(Some(body.into())),
             is_complete: false,
             is_terminated: false,
         }
@@ -135,6 +136,21 @@ impl Stream for Body {
 pub enum BodyKind {
     Single(#[pin] Option<Bytes>),
     Streaming(#[pin] BoxStream<'static, Result<Bytes, RpcStatus>>),
+}
+
+impl fmt::Debug for BodyKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BodyKind::Single(b) => write!(
+                f,
+                "BodyKind::Single({})",
+                b.as_ref()
+                    .map(|b| format!("{} byte(s)", b.len()))
+                    .unwrap_or_else(|| "<empty>".to_string())
+            ),
+            BodyKind::Streaming(_) => write!(f, "BodyKind::Streaming(BoxStream<...>)"),
+        }
+    }
 }
 
 pub struct BodyBytes(Option<Bytes>, bool);
@@ -261,14 +277,14 @@ impl<T: prost::Message + Default + Unpin> Stream for ClientStreaming<T> {
 
 #[cfg(test)]
 mod test {
-    use crate::{protocol::rpc::body::Body, runtime};
+    use crate::{message::MessageExt, protocol::rpc::body::Body, runtime};
     use bytes::Bytes;
     use futures::{stream, StreamExt};
     use prost::Message;
 
     #[runtime::test_basic]
     async fn single_body() {
-        let mut body = Body::single(123u32);
+        let mut body = Body::single(123u32.to_encoded_bytes());
         let bytes = body.next().await.unwrap().unwrap();
         assert!(bytes.is_finished());
         assert_eq!(u32::decode(bytes).unwrap(), 123u32);

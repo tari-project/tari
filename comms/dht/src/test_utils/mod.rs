@@ -47,7 +47,7 @@ mod makers;
 pub use makers::*;
 
 mod service;
-pub use service::{service_fn, service_spy};
+pub use service::service_spy;
 
 mod store_and_forward_mock;
 pub use store_and_forward_mock::{create_store_and_forward_mock, StoreAndForwardMockState};

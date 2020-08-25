@@ -20,32 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError};
-use thiserror::Error;
+/// Buffer size for inbound messages from _all_ peers. This should be large enough to buffer quite a few incoming
+/// messages before creating backpressure on peers speaking the messaging protocol.
+pub const INBOUND_MESSAGE_BUFFER_SIZE: usize = 100;
+/// Buffer size notifications that a peer wants to speak /tari/messaging. This buffer is used for all peers, but a low
+/// value is ok because this events happen once (or less) per connecting peer. For e.g. a value of 10 would allow 10
+/// peers to concurrently request to speak /tari/messaging.
+pub const MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE: usize = 10;
 
-#[derive(Debug, Error, Clone)]
-pub enum ConnectivityError {
-    #[error("Cannot send request because ConnectivityActor disconnected")]
-    ActorDisconnected,
-    #[error("Response was unexpectedly cancelled")]
-    ActorResponseCancelled,
-    #[error("PeerManagerError: {0}")]
-    PeerManagerError(#[from] PeerManagerError),
-    #[error("ConnectionFailed: {0}")]
-    ConnectionFailed(ConnectionManagerError),
-    #[error("Connectivity event stream closed unexpectedly")]
-    ConnectivityEventStreamClosed,
-    #[error("Timeout while waiting for ONLINE connectivity")]
-    OnlineWaitTimeout,
-    #[error("Pending dial was cancelled")]
-    DialCancelled,
-}
-
-impl From<ConnectionManagerError> for ConnectivityError {
-    fn from(err: ConnectionManagerError) -> Self {
-        match err {
-            ConnectionManagerError::DialCancelled => Self::DialCancelled,
-            err => Self::ConnectionFailed(err),
-        }
-    }
-}
+/// Buffer size for requests to the messaging protocol. All outbound messages will be sent along this channel. Some
+/// buffering may be required if the node needs to send many messages out at the same time.
+pub const MESSAGING_REQUEST_BUFFER_SIZE: usize = 50;

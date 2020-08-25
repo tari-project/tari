@@ -3701,6 +3701,7 @@ dependencies = [
 name = "tari_comms"
 version = "0.2.3"
 dependencies = [
+ "anyhow",
  "async-trait",
  "bitflags 1.2.1",
  "blake2",

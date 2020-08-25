@@ -23,6 +23,9 @@
 mod error;
 pub use error::ProtocolError;
 
+mod extensions;
+pub use extensions::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolExtensions};
+
 mod identity;
 pub use identity::{identity_exchange, IdentityProtocolError, IDENTITY_PROTOCOL};
 
@@ -33,9 +36,7 @@ mod protocols;
 pub use protocols::{ProtocolEvent, ProtocolNotification, ProtocolNotificationRx, ProtocolNotificationTx, Protocols};
 
 #[cfg(feature = "rpc")]
-mod rpc;
-// #[cfg(feature = "rpc")]
-// pub use rpc::RpcServer;
+pub mod rpc;
 
 pub mod messaging;
 

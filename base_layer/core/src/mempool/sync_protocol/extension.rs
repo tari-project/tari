@@ -20,32 +20,45 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError};
-use thiserror::Error;
+use crate::{
+    chain_storage::BlockchainBackend,
+    mempool::{
+        sync_protocol::{MempoolSyncProtocol, MEMPOOL_SYNC_PROTOCOL},
+        Mempool,
+        MempoolServiceConfig,
+    },
+};
+use futures::channel::mpsc;
+use tari_comms::protocol::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError};
+use tokio::task;
 
-#[derive(Debug, Error, Clone)]
-pub enum ConnectivityError {
-    #[error("Cannot send request because ConnectivityActor disconnected")]
-    ActorDisconnected,
-    #[error("Response was unexpectedly cancelled")]
-    ActorResponseCancelled,
-    #[error("PeerManagerError: {0}")]
-    PeerManagerError(#[from] PeerManagerError),
-    #[error("ConnectionFailed: {0}")]
-    ConnectionFailed(ConnectionManagerError),
-    #[error("Connectivity event stream closed unexpectedly")]
-    ConnectivityEventStreamClosed,
-    #[error("Timeout while waiting for ONLINE connectivity")]
-    OnlineWaitTimeout,
-    #[error("Pending dial was cancelled")]
-    DialCancelled,
+pub struct MempoolSyncProtocolExtension<T> {
+    config: MempoolServiceConfig,
+    mempool: Mempool<T>,
 }
 
-impl From<ConnectionManagerError> for ConnectivityError {
-    fn from(err: ConnectionManagerError) -> Self {
-        match err {
-            ConnectionManagerError::DialCancelled => Self::DialCancelled,
-            err => Self::ConnectionFailed(err),
-        }
+impl<T> MempoolSyncProtocolExtension<T> {
+    pub fn new(config: MempoolServiceConfig, mempool: Mempool<T>) -> Self {
+        Self { mempool, config }
+    }
+}
+
+impl<T: BlockchainBackend + 'static> ProtocolExtension for MempoolSyncProtocolExtension<T> {
+    fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
+        let (notif_tx, notif_rx) = mpsc::channel(3);
+
+        context.add_protocol(&[MEMPOOL_SYNC_PROTOCOL.clone()], notif_tx);
+
+        task::spawn(
+            MempoolSyncProtocol::new(
+                self.config,
+                notif_rx,
+                context.connectivity().subscribe_event_stream(),
+                self.mempool.clone(),
+            )
+            .run(),
+        );
+
+        Ok(())
     }
 }

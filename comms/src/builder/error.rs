@@ -23,6 +23,7 @@
 use crate::{
     connection_manager::ConnectionManagerError,
     peer_manager::PeerManagerError,
+    protocol::ProtocolExtensionError,
     tor::HiddenServiceControllerError,
 };
 use thiserror::Error;
@@ -43,6 +44,8 @@ pub enum CommsBuilderError {
     ConnectionManagerEventStreamClosed,
     #[error("Receiving on ConnectionManagerEvent stream lagged unexpectedly")]
     ConnectionManagerEventStreamLagged,
+    #[error("Comms protocol extension failed to install: {0}")]
+    CommsProtocolExtensionError(#[from] ProtocolExtensionError),
     #[error("Failed to initialize tor hidden service: {0}")]
     HiddenServiceControllerError(#[from] HiddenServiceControllerError),
 }
