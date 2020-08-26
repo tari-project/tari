@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::BlockHeader, proof_of_work::ProofOfWork};
+use crate::{
+    blocks::BlockHeader,
+    proof_of_work::{Difficulty, ProofOfWork},
+};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -32,6 +35,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
+
 pub const LOG_TARGET: &str = "c::m::blake_miner";
 
 /// A simple Blake2b-based proof of work. This is currently intended to be used for testing and perhaps Testnet until
@@ -50,7 +54,7 @@ impl CpuBlakePow {
         let mut nonce: u64 = OsRng.next_u64();
         let mut last_measured_nonce = nonce;
         // We're mining over here!
-        let mut difficulty = ProofOfWork::achieved_difficulty(&header);
+        let mut difficulty = ProofOfWork::achieved_difficulty(&header).unwrap_or_default();
         info!(target: LOG_TARGET, "Mining started.");
         debug!(
             target: LOG_TARGET,
@@ -83,7 +87,7 @@ impl CpuBlakePow {
             }
 
             header.nonce = nonce;
-            difficulty = ProofOfWork::achieved_difficulty(&header);
+            difficulty = ProofOfWork::achieved_difficulty(&header).unwrap_or_default();
         }
 
         debug!(target: LOG_TARGET, "Miner found nonce: {}", nonce);

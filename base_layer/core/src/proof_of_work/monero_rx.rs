@@ -145,16 +145,8 @@ impl MoneroData {
 }
 
 /// Calculate the difficulty attained for the given block deserialized the Monero header from the provided header
-pub fn monero_difficulty(header: &BlockHeader) -> Difficulty {
-    match monero_difficulty_calculation(header) {
-        Ok(v) => v,
-        Err(_) => 0.into(),
-    }
-}
-
-/// Internal function to calculate the difficulty attained for the given block Deserialized the Monero header from the
-/// provided header
-fn monero_difficulty_calculation(header: &BlockHeader) -> Result<Difficulty, MergeMineError> {
+pub fn monero_difficulty(header: &BlockHeader) -> Result<Difficulty, MergeMineError> {
+    // This is really heavy. It should probably be cached
     let monero = MoneroData::new(header)?;
     verify_header(&header, &monero)?;
     let flags = RandomXFlag::get_recommended_flags();

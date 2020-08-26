@@ -799,11 +799,11 @@ fn main() {
             },
             Err(e) => {
                 error!(target: LOG_TARGET, "{}", e);
-                println!("Exiting. Check Configuration, {:?}", e);
+                eprintln!("Exiting. Check Configuration, {:?}", e);
             },
         },
         Err(e) => {
-            println!("Exiting. Check Configuration, {:?}", e);
+            eprintln!("Exiting. Check Configuration, {:?}", e);
         },
     }
 }
