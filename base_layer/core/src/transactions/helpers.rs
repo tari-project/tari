@@ -28,9 +28,9 @@ use crate::transactions::{
         KernelFeatures,
         OutputFeatures,
         Transaction,
+        TransactionError,
         TransactionInput,
         TransactionKernel,
-        TransactionOutput,
         UnblindedOutput,
     },
     transaction_protocol::{
@@ -48,10 +48,8 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
     keys::{PublicKey as PK, SecretKey},
-    range_proof::RangeProofService,
     script::{TariScript, DEFAULT_SCRIPT_HASH},
 };
-use crate::transactions::transaction::TransactionError;
 
 pub fn make_input<R: Rng + CryptoRng>(
     rng: &mut R,
@@ -63,7 +61,7 @@ pub fn make_input<R: Rng + CryptoRng>(
     let v = PrivateKey::from(val);
     let commitment = factory.commit(&key, &v);
     let input = TransactionInput::new(OutputFeatures::default(), commitment, &DEFAULT_SCRIPT_HASH);
-    let output = UnblindedOutput::new(val, key, None, TariScript::default(),factory).unwrap();
+    let output = UnblindedOutput::new(val, key, None, TariScript::default(), factory).unwrap();
     (input, output)
 }
 
@@ -125,24 +123,36 @@ pub fn create_signature(k: PrivateKey, fee: MicroTari, lock_height: u64) -> Sign
     Signature::sign(k, r, &e).unwrap()
 }
 
-/// Generate a random transaction signature given a key, returning the public key (excess) and the signature.
-pub fn create_random_signature_from_s_key(
-    s_key: PrivateKey,
-    fee: MicroTari,
-    lock_height: u64,
-) -> (PublicKey, Signature)
-{
-    let _rng = rand::thread_rng();
-    let r = PrivateKey::random(&mut OsRng);
-    let p = PK::from_secret_key(&s_key);
-    let tx_meta = TransactionMetadata {
-        fee,
-        lock_height,
-        meta_info: None,
-        linked_kernel: None,
-    };
-    let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
-    (p, Signature::sign(s_key, r, &e).unwrap())
+/// The sign macro is a convenience utility to generate a valid signature for a transaction. The most verbose version
+/// of the macro requires an unblinded output, the nonce, and transaction metadata. If the caller omits any parameters
+/// we try to use sane defaults (including a new, random nonce).
+#[macro_export]
+macro_rules! sign {
+    ($output:expr, $metadata:expr, nonce: $nonce:expr, pub_nonce: $pub_nonce:expr) => {{
+        use $crate::transactions::{transaction_protocol::build_challenge, types::Signature};
+        let e = build_challenge(&$pub_nonce, &$metadata);
+        Signature::sign($output.blinding_factor().clone(), $nonce, &e)
+    }};
+
+    ($output:expr, $metadata:expr, nonce: $nonce:expr) => {{
+        use tari_crypto::keys::PublicKey as PK;
+        use $crate::transactions::types::PublicKey;
+        let p = PublicKey::from_secret_key(&$nonce);
+        sign!($output, $metadata, nonce: $nonce, pub_nonce: p)
+    }};
+
+    ($output:expr, $metadata:expr) => {{
+        use tari_crypto::keys::SecretKey;
+        use $crate::transactions::types::PrivateKey;
+        let nonce = PrivateKey::random(&mut rand::rngs::OsRng);
+        sign!($output, $metadata, nonce: nonce)
+    }};
+
+    ($output:expr) => {{
+        use $crate::transactions::transaction_protocol::TransactionMetadata;
+        let meta = TransactionMetadata::default();
+        sign!($output, meta)
+    }};
 }
 
 /// The tx macro is a convenience wrapper around the [create_tx] function, making the arguments optional and explicit
@@ -233,7 +243,8 @@ pub fn create_test_input(
     let commitment = factory.commit(&spending_key, &PrivateKey::from(amount));
     let features = OutputFeatures::with_maturity(maturity);
     let input = TransactionInput::new(features.clone(), commitment, &DEFAULT_SCRIPT_HASH);
-    let unblinded_output = UnblindedOutput::new(amount, spending_key, Some(features), TariScript::default(), factory).unwrap();
+    let unblinded_output =
+        UnblindedOutput::new(amount, spending_key, Some(features), TariScript::default(), factory).unwrap();
     (input, unblinded_output)
 }
 
@@ -285,7 +296,9 @@ pub fn create_tx(
             test_params.spend_key.clone(),
             None,
             TariScript::default(),
-            &factories.commitment).unwrap();
+            &factories.commitment,
+        )
+        .unwrap();
         unblinded_outputs.push(utxo.clone());
         stx_builder.with_output(utxo);
     }
@@ -325,7 +338,14 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     let mut outputs = Vec::with_capacity(schema.to.len());
     for val in schema.to {
         let k = PrivateKey::random(&mut OsRng);
-        let utxo = UnblindedOutput::new(val, k, Some(schema.features.clone()), TariScript::default(),&factories.commitment).unwrap();
+        let utxo = UnblindedOutput::new(
+            val,
+            k,
+            Some(schema.features.clone()),
+            TariScript::default(),
+            &factories.commitment,
+        )
+        .unwrap();
         outputs.push(utxo.clone());
         stx_builder.with_output(utxo);
     }
@@ -337,7 +357,9 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         test_params.change_key.clone(),
         Some(schema.features),
         TariScript::default(),
-        &factories.commitment).unwrap();
+        &factories.commitment,
+    )
+    .unwrap();
     outputs.push(change_output);
     match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
         Ok(true) => (),
@@ -379,6 +401,7 @@ pub fn create_utxo(
     )
 }
 
+/// Create a set of [Transaction]s and the associated UTXO data from the given transaction schema objects.
 pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction>>, Vec<UnblindedOutput>) {
     let mut tx = Vec::new();
     let mut utxos = Vec::new();

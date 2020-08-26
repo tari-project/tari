@@ -357,7 +357,9 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::Rincewind).build();
     let mut genesis_block = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
-    let faucet_utxo = create_utxo(faucet_value, &factories, None, None).unwrap(); let faucet_key = faucet_utxo.blinding_factor().clone(); let faucet_utxo = faucet_utxo.as_transaction_output(&factories).unwrap();
+    let faucet_utxo = create_utxo(faucet_value, &factories, None, None).unwrap();
+    let faucet_key = faucet_utxo.blinding_factor().clone();
+    let faucet_utxo = faucet_utxo.as_transaction_output(&factories).unwrap();
     genesis_block.body.add_output(faucet_utxo);
     // Create a LocalNet consensus manager that uses rincewind consensus constants and has a custom rincewind genesis
     // block that contains an extra faucet utxo
@@ -426,7 +428,14 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
         // Spend faucet UTXO
         {
             let fee = Fee::calculate(25 * uT, 1, 1, 2);
-            let output = UnblindedOutput::new(faucet_value, faucet_key, None, TariScript::default(), &factories.commitment).unwrap();
+            let output = UnblindedOutput::new(
+                faucet_value,
+                faucet_key,
+                None,
+                TariScript::default(),
+                &factories.commitment,
+            )
+            .unwrap();
             let schema = txn_schema!(from: vec![output], to: vec![faucet_value - fee], fee: 25 * uT);
             let (tx, _, _) = spend_utxos(schema);
 

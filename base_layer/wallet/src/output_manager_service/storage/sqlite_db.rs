@@ -68,7 +68,6 @@ use tari_crypto::{
     },
 };
 
-
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
@@ -964,7 +963,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
     type Error = OutputManagerStorageError;
 
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
-        /// TODO: Would be better if this were passed in somewhere
+        // TODO: Would be better if this were passed in somewhere
         let factories = CryptoFactories::default();
         let unblinded_output = UnblindedOutput::new(
             MicroTari::from(o.value as u64),
@@ -981,7 +980,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 maturity: o.maturity as u64,
             }),
             TariScript::default(),
-            &factories.commitment
+            &factories.commitment,
         )?;
         let hash = match o.hash {
             None => {

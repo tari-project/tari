@@ -30,7 +30,6 @@ use tari_core::{
     },
 };
 
-
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
     pub commitment: Commitment,
@@ -61,12 +60,15 @@ impl From<DbUnblindedOutput> for UnblindedOutput {
 
 impl PartialEq for DbUnblindedOutput {
     fn eq(&self, other: &DbUnblindedOutput) -> bool {
-        self.unblinded_output.value()== other.unblinded_output.value()    }
+        self.unblinded_output.value() == other.unblinded_output.value()
+    }
 }
 
 impl PartialOrd<DbUnblindedOutput> for DbUnblindedOutput {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.unblinded_output.value().partial_cmp(&other.unblinded_output.value())
+        self.unblinded_output
+            .value()
+            .partial_cmp(&other.unblinded_output.value())
     }
 }
 

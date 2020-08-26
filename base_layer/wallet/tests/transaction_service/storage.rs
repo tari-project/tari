@@ -69,8 +69,9 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         PrivateKey::random(&mut OsRng),
         None,
         TariScript::default(),
-        &factories.commitment
-    ).unwrap();
+        &factories.commitment,
+    )
+    .unwrap();
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))

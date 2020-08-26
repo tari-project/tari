@@ -27,9 +27,11 @@ use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
     consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
+    crypto::commitment::HomomorphicCommitmentFactory,
     proof_of_work::Difficulty,
+    sign,
     transactions::{
-        helpers::{create_random_signature_from_s_key, create_signature, create_utxo, spend_utxos, TransactionSchema},
+        helpers::{create_signature, create_utxo, spend_utxos, TransactionSchema},
         tari_amount::MicroTari,
         transaction::{
             KernelBuilder,
@@ -59,7 +61,9 @@ pub fn create_coinbase(
 ) -> (TransactionOutput, TransactionKernel, UnblindedOutput)
 {
     let features = OutputFeatures::create_coinbase(maturity_height);
-    let utxo = create_utxo(value, &factories, Some(features.clone()), None).unwrap(); let key = utxo.blinding_factor().clone(); let utxo = utxo.as_transaction_output(&factories).unwrap();
+    let utxo = create_utxo(value, &factories, Some(features.clone()), None).unwrap();
+    let key = utxo.blinding_factor().clone();
+    let utxo = utxo.as_transaction_output(&factories).unwrap();
     let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
     let sig = create_signature(key.clone(), 0.into(), 0);
     let kernel = KernelBuilder::new()
@@ -68,7 +72,8 @@ pub fn create_coinbase(
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
         .unwrap();
-    let output = UnblindedOutput::new(value, key, Some(features), TariScript::default(), &factories.commitment).unwrap();
+    let output =
+        UnblindedOutput::new(value, key, Some(features), TariScript::default(), &factories.commitment).unwrap();
     (utxo, kernel, output)
 }
 
@@ -92,9 +97,10 @@ pub fn create_act_gen_block() {
     let mut header = BlockHeader::new(consensus_manager.consensus_constants().blockchain_version());
     let value = consensus_manager.emission_schedule().block_reward(0);
     let features = OutputFeatures::create_coinbase(1);
-    let utxo = create_utxo(value, &factories, Some(features), None).unwrap(); let key = utxo.blinding_factor().clone(); let utxo = utxo.as_transaction_output(&factories).unwrap();
-    let (pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);
-    let excess = Commitment::from_public_key(&pk);
+    let utxo = create_utxo(value, &factories, Some(features), None).unwrap();
+    let key = utxo.blinding_factor().clone();
+    let sig = sign!(utxo).unwrap();
+    let excess = factories.commitment.commit_value(utxo.blinding_factor(), 0);
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
         .with_excess(&excess)
@@ -102,13 +108,14 @@ pub fn create_act_gen_block() {
         .build()
         .unwrap();
 
-    let utxo_hash = utxo.hash();
-    let rp = utxo.proof().hash();
+    let output = utxo.as_transaction_output(&factories).unwrap();
+    let utxo_hash = output.hash();
+    let rp = output.proof().hash();
     let kern = kernel.hash();
     header.kernel_mr = kern;
     header.output_mr = utxo_hash;
     header.range_proof_mr = rp;
-    let block = header.into_builder().with_coinbase_utxo(utxo, kernel).build();
+    let block = header.into_builder().with_coinbase_utxo(output, kernel).build();
     println!("{}", &block);
     dbg!(&key.to_hex());
     dbg!(&block.body.outputs()[0].proof().to_hex());
@@ -166,8 +173,9 @@ pub fn create_genesis_block_with_utxos(
 {
     let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into(), consensus_constants);
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
-        let t = create_utxo(*v, factories, None, None).unwrap(); let k = t.blinding_factor().clone(); let t = t
-            .as_transaction_output(factories).unwrap();
+        let t = create_utxo(*v, factories, None, None).unwrap();
+        let k = t.blinding_factor().clone();
+        let t = t.as_transaction_output(factories).unwrap();
         template.body.add_output(t);
         secrets.push(UnblindedOutput::new(v.clone(), k, None, TariScript::default(), &factories.commitment).unwrap());
         secrets

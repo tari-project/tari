@@ -180,7 +180,9 @@ fn insert_and_fetch_utxo() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_mem_db(&consensus_manager);
-    let utxo = create_utxo(MicroTari(10_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
+    let utxo = create_utxo(MicroTari(10_000), &factories, None, None)
+        .and_then(|o| o.as_transaction_output(&factories))
+        .unwrap();
     let hash = utxo.hash();
     assert_eq!(store.is_utxo(hash.clone()).unwrap(), false);
     assert!(store.insert_utxo(utxo.clone()).is_ok());
@@ -249,8 +251,12 @@ fn utxo_and_rp_merkle_root() {
     let block0 = store.fetch_block(0).unwrap().block().clone();
 
     let utxo0 = block0.body.outputs()[0].clone();
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
-    let utxo2 = create_utxo(MicroTari(10_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
+    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+        .and_then(|o| o.as_transaction_output(&factories))
+        .unwrap();
+    let utxo2 = create_utxo(MicroTari(10_000), &factories, None, None)
+        .and_then(|o| o.as_transaction_output(&factories))
+        .unwrap();
     let hash0 = utxo0.hash();
     let hash1 = utxo1.hash();
     let hash2 = utxo2.hash();
@@ -310,8 +316,12 @@ fn utxo_and_rp_future_merkle_root() {
     let store = create_mem_db(&consensus_manager);
     let factories = CryptoFactories::default();
 
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
-    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
+    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+        .and_then(|o| o.as_transaction_output(&factories))
+        .unwrap();
+    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+        .and_then(|o| o.as_transaction_output(&factories))
+        .unwrap();
     let utxo_hash2 = utxo2.hash();
     let rp_hash2 = utxo2.proof().hash();
 
@@ -380,9 +390,15 @@ fn utxo_and_rp_mmr_proof() {
     let store = create_mem_db(&consensus_manager);
     let factories = CryptoFactories::default();
 
-    let utxo1 = create_utxo(MicroTari(5_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
-    let utxo2 = create_utxo(MicroTari(10_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
-    let utxo3 = create_utxo(MicroTari(15_000), &factories, None, None).and_then(|o| o.as_transaction_output(&factories)).unwrap();
+    let utxo1 = create_utxo(MicroTari(5_000), &factories, None, None)
+        .and_then(|o| o.as_transaction_output(&factories))
+        .unwrap();
+    let utxo2 = create_utxo(MicroTari(10_000), &factories, None, None)
+        .and_then(|o| o.as_transaction_output(&factories))
+        .unwrap();
+    let utxo3 = create_utxo(MicroTari(15_000), &factories, None, None)
+        .and_then(|o| o.as_transaction_output(&factories))
+        .unwrap();
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1.clone());
     txn.insert_utxo(utxo2.clone());

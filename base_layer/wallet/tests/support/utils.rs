@@ -84,13 +84,16 @@ pub fn make_input<R: Rng + CryptoRng>(
     rng: &mut R,
     val: MicroTari,
     factory: &CommitmentFactory,
-    features: Option<OutputFeatures>
+    features: Option<OutputFeatures>,
 ) -> (TransactionInput, UnblindedOutput)
 {
     let key = PrivateKey::random(rng);
     let commitment = factory.commit_value(&key, val.into());
     let input = TransactionInput::new(OutputFeatures::default(), commitment, &DEFAULT_SCRIPT_HASH);
-    (input, UnblindedOutput::new(val, key, features, TariScript::default(), factory).unwrap())
+    (
+        input,
+        UnblindedOutput::new(val, key, features, TariScript::default(), factory).unwrap(),
+    )
 }
 
 pub fn random_string(len: usize) -> String {

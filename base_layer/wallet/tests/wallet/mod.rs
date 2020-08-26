@@ -489,7 +489,14 @@ fn test_import_utxo() {
     )
     .unwrap();
 
-    let utxo = UnblindedOutput::new(20000 * uT, PrivateKey::default(), None, TariScript::default(), &factories.commitment).unwrap();
+    let utxo = UnblindedOutput::new(
+        20000 * uT,
+        PrivateKey::default(),
+        None,
+        TariScript::default(),
+        &factories.commitment,
+    )
+    .unwrap();
 
     let tx_id = alice_wallet
         .import_utxo(

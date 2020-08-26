@@ -25,6 +25,7 @@
 
 use crate::{
     blocks::blockheader::hash_serializer,
+    crypto::script::to_hash,
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::{uT, MicroTari},
@@ -62,7 +63,6 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 use thiserror::Error;
-use crate::crypto::script::to_hash;
 
 // Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 19,003, still well enough below block weight of 19,500
 pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
@@ -199,10 +199,12 @@ impl UnblindedOutput {
         spending_key: BlindingFactor,
         features: Option<OutputFeatures>,
         script: TariScript,
-        factory: &CommitmentFactory
+        factory: &CommitmentFactory,
     ) -> Result<UnblindedOutput, TransactionError>
     {
-        let script_hash = script.as_hash::<HashDigest>().map_err(TransactionError::InvalidScript)?;
+        let script_hash = script
+            .as_hash::<HashDigest>()
+            .map_err(TransactionError::InvalidScript)?;
         let base_commitment = factory.commit(&spending_key, &value.into());
         let commit_hash = HashDigest::new()
             .chain(base_commitment.as_bytes())
@@ -976,13 +978,25 @@ mod test {
         let k2 = BlindingFactor::random(&mut OsRng);
 
         // For testing the max range has been limited to 2^32 so this value is too large.
-        let unblinded_output1 = UnblindedOutput::new((2u64.pow(32) - 1u64).into(), k1, None, TariScript::default(),
-                                                     &factories.commitment).unwrap();
+        let unblinded_output1 = UnblindedOutput::new(
+            (2u64.pow(32) - 1u64).into(),
+            k1,
+            None,
+            TariScript::default(),
+            &factories.commitment,
+        )
+        .unwrap();
         let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
         assert!(tx_output1.verify_range_proof(&factories.range_proof).unwrap());
 
-        let unblinded_output2 =
-            UnblindedOutput::new((2u64.pow(32) + 1u64).into(), k2.clone(), None, TariScript::default(), &factories.commitment).unwrap();
+        let unblinded_output2 = UnblindedOutput::new(
+            (2u64.pow(32) + 1u64).into(),
+            k2.clone(),
+            None,
+            TariScript::default(),
+            &factories.commitment,
+        )
+        .unwrap();
         let tx_output2 = unblinded_output2.as_transaction_output(&factories);
 
         match tx_output2 {

@@ -78,21 +78,21 @@ const LOG_TARGET: &str = "wallet::output_manager_service";
 /// outputs. When the outputs are detected on the blockchain the Transaction service will call this Service to confirm
 /// them to be moved to the spent and unspent output lists respectively.
 pub struct OutputManagerService<TBackend, BNResponseStream>
-    where TBackend: OutputManagerBackend + Clone + 'static
+where TBackend: OutputManagerBackend + Clone + 'static
 {
     resources: OutputManagerResources<TBackend>,
     key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
     coinbase_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
     request_stream:
-    Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
+        Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_response_stream: Option<BNResponseStream>,
     base_node_response_publisher: broadcast::Sender<Arc<BaseNodeProto::BaseNodeServiceResponse>>,
 }
 
 impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream>
-    where
-        TBackend: OutputManagerBackend + Clone + 'static,
-        BNResponseStream: Stream<Item=DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
+where
+    TBackend: OutputManagerBackend + Clone + 'static,
+    BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
 {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
@@ -120,7 +120,7 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
                 };
                 db.set_key_manager_state(starting_state.clone()).await?;
                 starting_state
-            }
+            },
             Some(km) => km,
         };
 
@@ -238,7 +238,7 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
         match request {
             OutputManagerRequest::AddOutput(uo) => {
                 self.add_output(uo).await.map(|_| OutputManagerResponse::OutputAdded)
-            }
+            },
             OutputManagerRequest::GetBalance => self.get_balance(None).await.map(OutputManagerResponse::Balance),
             OutputManagerRequest::GetRecipientKey((tx_id, amount)) => self
                 .get_recipient_spending_key(tx_id, amount)
@@ -280,7 +280,7 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
                     .map(|v| v.into())
                     .collect();
                 Ok(OutputManagerResponse::SpentOutputs(outputs))
-            }
+            },
             OutputManagerRequest::GetUnspentOutputs => {
                 let outputs = self
                     .fetch_unspent_outputs()
@@ -289,7 +289,7 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
                     .map(|v| v.into())
                     .collect();
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
-            }
+            },
             OutputManagerRequest::GetSeedWords => self.get_seed_words().await.map(OutputManagerResponse::SeedWords),
             OutputManagerRequest::SetBaseNodePublicKey(pk) => self
                 .set_base_node_public_key(pk, utxo_validation_handles)
@@ -306,7 +306,7 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
                     .map(|v| v.into())
                     .collect();
                 Ok(OutputManagerResponse::InvalidOutputs(outputs))
-            }
+            },
             OutputManagerRequest::CreateCoinSplit((amount_per_split, split_count, fee_per_gram, lock_height)) => self
                 .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
                 .await
@@ -372,7 +372,7 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
                 utxo_validation_handles.push(join_handle);
 
                 Ok(id)
-            }
+            },
         }
     }
 
@@ -383,7 +383,7 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
                     target: LOG_TARGET,
                     "UTXO Validation Protocol (Id: {}) completed successfully", id
                 );
-            }
+            },
             Err(OutputManagerProtocolError { id, error }) => {
                 warn!(
                     target: LOG_TARGET,
@@ -406,9 +406,9 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
                                 );
                                 e
                             });
-                    }
+                    },
                 }
-            }
+            },
         }
     }
 
@@ -416,7 +416,8 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
     pub async fn add_output(&mut self, output: UnblindedOutput) -> Result<(), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
-            "Add output of value {} to Output Manager", output.value()
+            "Add output of value {} to Output Manager",
+            output.value()
         );
         let output = DbUnblindedOutput::from_unblinded_output(output, &self.resources.factories)?;
         Ok(self.resources.db.add_unspent_output(output).await?)
@@ -507,7 +508,11 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
         let pending_transaction = self.resources.db.fetch_pending_transaction_outputs(tx_id).await?;
 
         // Assumption: We are only allowing a single output per receiver in the current transaction protocols.
-        if pending_transaction.outputs_to_be_received.len() != 1 || pending_transaction.outputs_to_be_received[0].unblinded_output.commitment() != received_output.commitment()
+        if pending_transaction.outputs_to_be_received.len() != 1 ||
+            pending_transaction.outputs_to_be_received[0]
+                .unblinded_output
+                .commitment() !=
+                received_output.commitment()
         {
             return Err(OutputManagerError::IncompleteTransaction);
         }
@@ -553,9 +558,7 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
             .with_message(message);
 
         for uo in outputs.iter() {
-            let input = uo
-                .unblinded_output
-                .as_transaction_input();
+            let input = uo.unblinded_output.as_transaction_input();
             builder.with_input(input, uo.unblinded_output.clone());
         }
 
@@ -581,18 +584,16 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
         // If a change output was created add it to the pending_outputs list.
         let mut change_output = Vec::<DbUnblindedOutput>::new();
         if let Some(key) = change_key {
-            change_output.push(
-                DbUnblindedOutput::from_unblinded_output(
-                    UnblindedOutput::new(
-                        stp.get_amount_to_self()?,
-                        key,
-                        Some(OutputFeatures::default()),
-                        TariScript::default(),
-                        &self.resources.factories.commitment,
-                    )?,
-                    &self.resources.factories,
-                )?
-            );
+            change_output.push(DbUnblindedOutput::from_unblinded_output(
+                UnblindedOutput::new(
+                    stp.get_amount_to_self()?,
+                    key,
+                    Some(OutputFeatures::default()),
+                    TariScript::default(),
+                    &self.resources.factories.commitment,
+                )?,
+                &self.resources.factories,
+            )?);
         }
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
@@ -634,9 +635,7 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
         // Check that outputs to be spent can all be found in the provided transaction inputs
         let mut inputs_confirmed = true;
         for output_to_spend in pending_transaction.outputs_to_be_spent.iter() {
-            let input_to_check = output_to_spend
-                .unblinded_output
-                .as_transaction_input();
+            let input_to_check = output_to_spend.unblinded_output.as_transaction_input();
             inputs_confirmed = inputs_confirmed &&
                 inputs
                     .iter()
@@ -646,9 +645,7 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
         // Check that outputs to be received can all be found in the provided transaction outputs
         let mut outputs_confirmed = true;
         for output_to_receive in pending_transaction.outputs_to_be_received.iter() {
-            let output_to_check = output_to_receive
-                .unblinded_output
-                .as_transaction_input();
+            let output_to_check = output_to_receive.unblinded_output.as_transaction_input();
             outputs_confirmed = outputs_confirmed &&
                 outputs
                     .iter()
@@ -712,7 +709,7 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
                 } else {
                     UTXOSelectionStrategy::MaturityThenSmallest
                 }
-            }
+            },
         };
 
         let uo = match strategy {
@@ -734,7 +731,7 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
                     }
                 });
                 new_uo
-            }
+            },
             UTXOSelectionStrategy::Largest => uo.into_iter().rev().collect(),
         };
 
@@ -869,8 +866,13 @@ impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream
             }
             self.resources.db.increment_key_index().await?;
             let utxo = DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new(output_amount, spend_key, None, TariScript::default(), &self.resources.factories
-                    .commitment)?,
+                UnblindedOutput::new(
+                    output_amount,
+                    spend_key,
+                    None,
+                    TariScript::default(),
+                    &self.resources.factories.commitment,
+                )?,
                 &self.resources.factories,
             )?;
             outputs.push(utxo.clone());
@@ -942,7 +944,7 @@ impl fmt::Display for Balance {
 /// This struct is a collection of the common resources that a async task in the service requires.
 #[derive(Clone)]
 pub struct OutputManagerResources<TBackend>
-    where TBackend: OutputManagerBackend + Clone + 'static
+where TBackend: OutputManagerBackend + Clone + 'static
 {
     pub config: OutputManagerServiceConfig,
     pub db: OutputManagerDatabase<TBackend>,

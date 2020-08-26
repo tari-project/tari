@@ -2648,8 +2648,9 @@ fn test_transaction_cancellation<T: TransactionBackend + Clone + 'static>(backen
         PrivateKey::random(&mut OsRng),
         None,
         TariScript::default(),
-        &factories.commitment
-    ).unwrap();
+        &factories.commitment,
+    )
+    .unwrap();
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -2657,7 +2658,7 @@ fn test_transaction_cancellation<T: TransactionBackend + Clone + 'static>(backen
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(input.as_transaction_input(),input.clone())
+        .with_input(input.as_transaction_input(), input.clone())
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();

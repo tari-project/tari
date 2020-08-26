@@ -44,7 +44,6 @@ use tari_core::{
     },
 };
 
-
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
 
 /// This trait defines the required behaviour that a storage backend must provide for the Output Manager service.
@@ -215,14 +214,16 @@ where T: OutputManagerBackend + Clone + 'static
         Ok(())
     }
 
-    pub async fn add_unspent_output(&self, output: DbUnblindedOutput) -> Result<(),
-        OutputManagerStorageError> {
+    pub async fn add_unspent_output(&self, output: DbUnblindedOutput) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         let key = output.unblinded_output.blinding_factor().clone();
         tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Insert(
-                DbKeyValuePair::UnspentOutput(key, Box::new(output))))
-        }).await
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
+                key,
+                Box::new(output),
+            )))
+        })
+        .await
         .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }

@@ -150,9 +150,16 @@ impl CoinbaseBuilder {
         let challenge = build_challenge(&public_nonce, &metadata);
         let sig = Signature::sign(key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
-        let unblinded_output = UnblindedOutput::new(total_reward, key, Some(output_features), TariScript::default(),
-                                                    &self.factories.commitment).unwrap();
-        let output = unblinded_output.as_transaction_output(&self.factories)
+        let unblinded_output = UnblindedOutput::new(
+            total_reward,
+            key,
+            Some(output_features),
+            TariScript::default(),
+            &self.factories.commitment,
+        )
+        .unwrap();
+        let output = unblinded_output
+            .as_transaction_output(&self.factories)
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         let kernel = KernelBuilder::new()
             .with_fee(0 * uT)
@@ -253,7 +260,9 @@ mod test {
             p.spend_key.clone(),
             Some(utxo.features().clone()),
             TariScript::default(),
-            &factories.commitment).unwrap();
+            &factories.commitment,
+        )
+        .unwrap();
         assert_eq!(unblinded_output, unblinded_test);
         assert!(factories
             .commitment

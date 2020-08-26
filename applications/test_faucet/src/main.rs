@@ -11,8 +11,8 @@ use tari_core::{
 };
 
 use std::{fs::File, io::Write};
-use tokio::{sync::mpsc, task};
 use tari_core::transactions::transaction::UnblindedOutput;
+use tokio::{sync::mpsc, task};
 
 const NUM_KEYS: usize = 10;
 

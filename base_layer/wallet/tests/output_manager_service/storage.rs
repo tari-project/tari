@@ -57,7 +57,10 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
     for i in 0..5 {
-        let features = OutputFeatures { maturity: i, ..OutputFeatures::default() };
+        let features = OutputFeatures {
+            maturity: i,
+            ..OutputFeatures::default()
+        };
         let (_ti, uo) = make_input(
             &mut OsRng,
             MicroTari::from(100 + OsRng.next_u64() % 1000),

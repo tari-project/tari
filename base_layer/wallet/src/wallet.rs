@@ -277,8 +277,14 @@ where
         message: String,
     ) -> Result<TxId, WalletError>
     {
-        let unblinded_output = UnblindedOutput::new(amount, spending_key.clone(), None, TariScript::default(), &self
-            .factories.commitment).map_err(|_| WalletError::ImportError)?;
+        let unblinded_output = UnblindedOutput::new(
+            amount,
+            spending_key.clone(),
+            None,
+            TariScript::default(),
+            &self.factories.commitment,
+        )
+        .map_err(|_| WalletError::ImportError)?;
 
         self.runtime
             .block_on(self.output_manager_service.add_output(unblinded_output.clone()))?;

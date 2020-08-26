@@ -51,10 +51,12 @@ use std::{
     sync::{Arc, Mutex, MutexGuard, RwLock},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, types::PublicKey};
-use tari_core::crypto::tari_utilities::{
-    hex::{from_hex, Hex},
-    ByteArray,
+use tari_core::{
+    crypto::tari_utilities::{
+        hex::{from_hex, Hex},
+        ByteArray,
+    },
+    transactions::{tari_amount::MicroTari, types::PublicKey},
 };
 
 const LOG_TARGET: &str = "wallet::transaction_service::database::sqlite_db";
@@ -1389,8 +1391,9 @@ mod test {
             PrivateKey::random(&mut OsRng),
             None,
             TariScript::default(),
-            &factories.commitment
-        ).unwrap();
+            &factories.commitment,
+        )
+        .unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari::from(177))
