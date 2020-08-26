@@ -32,6 +32,13 @@ jobs:
     - name: Checkout source code
       uses: actions/checkout@v2
 
+    - name: Declare Global Variables
+      id: vars
+      shell: bash
+      run: |
+        echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+        echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+
     - name: Setup Rust toolchain
       uses: actions-rs/toolchain@v1
       with:
@@ -73,6 +80,7 @@ jobs:
         overwrite: true
         CC: gcc
         TBN_EXT: ''
+        TBN_DIST: '/dist'
         S3DESTDIR: 'linux'
         SHARUN: 'shasum --algorithm 256'
 #        SHARUN: 'shasum --portable --algorithm 256'
@@ -89,6 +97,7 @@ jobs:
         overwrite: true
         SQLITE3_LIB_DIR: 'C:\vcpkg\installed\x64-windows\lib'
         TBN_EXT: '.exe'
+        TBN_DIST: '\dist'
         S3DESTDIR: 'windows'
         SHARUN: 'pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --algorithm 256'
 #        SHARUN: 'pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --portable --algorithm 256'
@@ -108,11 +117,11 @@ jobs:
     - name: Prep binaries for dist
       shell: bash
       run: |
-        mkdir -p "$GITHUB_WORKSPACE/dist/"
-        cd "$GITHUB_WORKSPACE/dist/"
+        mkdir -p "$GITHUB_WORKSPACE${{ env.TBN_DIST }}/"
+        cd "$GITHUB_WORKSPACE${{ env.TBN_DIST }}/"
         VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/[\"]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/tari_base_node/Cargo.toml")
         echo ::set-env name=VERSION::${VERSION}
-        BINFILE="${TBN_FILENAME}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-${VERSION}${TBN_EXT}"
+        BINFILE="${TBN_FILENAME}-${VERSION}-${{ steps.vars.outputs.sha_short }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}${TBN_EXT}"
         echo ::set-env name=BINFILE::${BINFILE}
         echo "Copying file ${BINFILE} too $(pwd)"
         cp -v "$GITHUB_WORKSPACE/target/release/${TBN_FILENAME}${TBN_EXT}" "./${BINFILE}"
@@ -124,22 +133,29 @@ jobs:
         echo "Verifications is "
         ${SHARUN} --check "${BINFILE}.zip.sha256"
         rm -f "${BINFILE}"
-#        printenv
 
-#    - name: Upload binary
-#      uses: actions/upload-artifact@v2
-#      with:
-#        name: ${{ env.TBN_FILENAME }} - ${{ env.VERSION }} - release - ${{ matrix.os }} ${{ matrix.target_cpu }} ${{ matrix.features }}
-#        path: '${{ github.workspace }}/dist/${{ env.BINFILE }}.zip*'
-
-    - name: Sync dist to S3
-      uses: jakejarvis/s3-sync-action@v0.5.1
+    - name: Upload binary
+      uses: actions/upload-artifact@v2
       with:
-        args: --acl public-read --follow-symlinks
+        name: ${{ env.TBN_FILENAME }}-${{ env.VERSION  }}-${{ steps.vars.outputs.sha_short }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}
+        path: '${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*'
+
+    - name: Sync dist to S3 - Bash
+      continue-on-error: true  # WARNING: only for this example, remove it!
+      shell: bash
+      run: |
+        echo "Starting upload ... ${{ env.SOURCE }}"
+        aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
+          "${{ env.SOURCE }}" \
+          s3://${{ secrets.AWS_S3_BUCKET }}/${{ env.DEST_DIR }} \
+          ${{ env.S3OPTIONS }}
+        echo "Done - $?"
       env:
-        AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: '${{ secrets.AWS_REGION }}'
-        SOURCE_DIR: '$GITHUB_WORKSPACE/dist'
-        DEST_DIR: '${{ env.S3DESTDIR }}'
+        SOURCE: '${{ github.workspace }}${{ env.TBN_DIST }}'
+        DEST_DIR: '${{ env.S3DESTDIR }}/'
+        S3CMD: 'cp'
+        S3OPTIONS: '--recursive'
+        # S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
+        # S3OPTIONS: '--acl public-read'
