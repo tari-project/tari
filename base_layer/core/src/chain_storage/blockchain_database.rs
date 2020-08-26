@@ -799,9 +799,8 @@ where B: BlockchainBackend
         let best_block = tip_header.hash();
         txn.set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(Some(best_block)));
 
-        let accumulated_difficulty =
-            ProofOfWork::new_from_difficulty(&tip_header.pow, ProofOfWork::achieved_difficulty(&tip_header))
-                .total_accumulated_difficulty();
+        let accumulated_difficulty = tip_header.total_accumulated_difficulty_inclusive()?;
+
         txn.set_metadata(
             MetadataKey::AccumulatedWork,
             MetadataValue::AccumulatedWork(Some(accumulated_difficulty)),
@@ -1100,9 +1099,7 @@ fn store_new_block<T: BlockchainBackend>(db: &mut RwLockWriteGuard<T>, block: Bl
     let (header, inputs, outputs, kernels) = block.dissolve();
     let height = header.height;
     let best_block = header.hash();
-    let accumulated_difficulty =
-        ProofOfWork::new_from_difficulty(&header.pow, ProofOfWork::achieved_difficulty(&header))
-            .total_accumulated_difficulty();
+    let accumulated_difficulty = header.total_accumulated_difficulty_inclusive()?;
     // Build all the DB queries needed to add the block and the add it atomically
     let mut txn = DbTransaction::new();
     // Update metadata
@@ -1413,9 +1410,7 @@ fn rewind_to_height<T: BlockchainBackend>(
     txn.rewind_rangeproof_mmr(steps_back);
     // Update metadata
     let last_header = fetch_header(&**db, height)?;
-    let accumulated_work =
-        ProofOfWork::new_from_difficulty(&last_header.pow, ProofOfWork::achieved_difficulty(&last_header))
-            .total_accumulated_difficulty();
+    let accumulated_work = last_header.total_accumulated_difficulty_inclusive()?;
     txn.set_metadata(
         MetadataKey::ChainHeight,
         MetadataValue::ChainHeight(Some(last_header.height)),
@@ -1509,7 +1504,7 @@ fn handle_reorg<T: BlockchainBackend>(
             fork_accum_difficulty,
             fork_tip_hash.to_hex(),
             tip_header.height,
-            tip_header.total_accumulated_difficulty_inclusive(),
+            tip_header.total_accumulated_difficulty_inclusive()?,
             tip_header.hash().to_hex()
         );
     } else {
@@ -1522,7 +1517,7 @@ fn handle_reorg<T: BlockchainBackend>(
             new_block.header.height,
             new_block_hash.to_hex(),
             tip_header.height,
-            tip_header.total_accumulated_difficulty_inclusive(),
+            tip_header.total_accumulated_difficulty_inclusive()?,
             tip_header.hash().to_hex()
         );
     }
@@ -1821,7 +1816,7 @@ fn find_strongest_orphan_tip<T: BlockchainBackend>(
     let mut best_tip_hash: Vec<u8> = vec![0; 32];
     for tip_hash in orphan_chain_tips {
         let header = fetch_orphan(db, tip_hash.clone())?.header;
-        let accum_difficulty = header.total_accumulated_difficulty_inclusive();
+        let accum_difficulty = header.total_accumulated_difficulty_inclusive()?;
         if accum_difficulty >= best_accum_difficulty {
             best_tip_hash = tip_hash;
             best_accum_difficulty = accum_difficulty;

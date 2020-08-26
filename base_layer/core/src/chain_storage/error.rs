@@ -22,6 +22,7 @@
 
 use crate::{
     chain_storage::{lmdb_db::LMDBVecError, MmrTree},
+    proof_of_work::PowError,
     validation::ValidationError,
 };
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
@@ -85,6 +86,11 @@ pub enum ChainStorageError {
     OutOfRange,
     #[error("Value not found: {0}")]
     LmdbValueNotFound(lmdb_zero::Error),
+    #[error("Invalid proof of work: {source}")]
+    ProofOfWorkError {
+        #[from]
+        source: PowError,
+    },
 }
 
 impl From<LMDBVecError> for ChainStorageError {

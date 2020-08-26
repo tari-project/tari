@@ -336,7 +336,7 @@ where T: BlockchainBackend + 'static
                     async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), best_block_hash).await?;
 
                 let constants = self.consensus_manager.consensus_constants();
-                let mut header = BlockHeader::from_previous(&best_block_header);
+                let mut header = BlockHeader::from_previous(&best_block_header)?;
                 header.version = constants.blockchain_version();
                 header.pow.target_difficulty = self.get_target_difficulty(*pow_algo).await?;
                 header.pow.pow_algo = *pow_algo;
@@ -465,7 +465,7 @@ where T: BlockchainBackend + 'static
     ) -> Result<(), CommsInterfaceError>
     {
         let block_hash = block.hash();
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Block #{} ({}) received from {}",
             block.header.height,

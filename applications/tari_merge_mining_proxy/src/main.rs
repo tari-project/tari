@@ -242,8 +242,11 @@ fn get_monero_data(data: &[u8], seed: String) -> Option<MoneroData> {
                     let block = deserialize::<Block>(&hex);
                     match block {
                         Ok(block) => {
-                            let mut hashes = block.clone().tx_hashes;
+                            let mut hashes = Vec::new();
                             hashes.push(block.miner_tx.hash());
+                            for item in block.clone().tx_hashes {
+                                hashes.push(item);
+                            }
                             let root = tree_hash(hashes);
                             let mut proof = block.clone().tx_hashes;
                             proof.push(block.miner_tx.hash());
@@ -393,13 +396,16 @@ fn add_merge_mining_tag(data: &[u8], hash: &[u8]) -> Vec<u8> {
                 Ok(hex) => {
                     let block = deserialize::<Block>(&hex[..]);
                     match block {
-                        Ok(block) => {
-                            let mm_tag = append_merge_mining_tag(&block, Hash(from_slice(hash)));
+                        Ok(mut block) => {
+                            let mm_tag = append_merge_mining_tag(&mut block, Hash::from(from_slice(hash)));
                             match mm_tag {
                                 Ok(mm_tagged_template) => {
                                     let count = 1 + block.tx_hashes.len() as u16;
-                                    let mut hashes = block.clone().tx_hashes;
+                                    let mut hashes = Vec::new();
                                     hashes.push(block.miner_tx.hash());
+                                    for item in block.clone().tx_hashes {
+                                        hashes.push(item);
+                                    }
                                     let input_blob = create_input_blob(&block.header, &count, &from_hashes(&hashes));
                                     match input_blob {
                                         Ok(input_blob) => {
@@ -799,11 +805,11 @@ fn main() {
             },
             Err(e) => {
                 error!(target: LOG_TARGET, "{}", e);
-                println!("Exiting. Check Configuration, {:?}", e);
+                eprintln!("Exiting. Check Configuration, {:?}", e);
             },
         },
         Err(e) => {
-            println!("Exiting. Check Configuration, {:?}", e);
+            eprintln!("Exiting. Check Configuration, {:?}", e);
         },
     }
 }
@@ -923,16 +929,14 @@ mod test {
                     amount: VarInt(1550800739964),
                     target: TxOutTarget::ToKey {
                         key: PublicKey::from_slice(
-                            hex::decode("e2e19d8badb15e77c8e1f441cf6acd9bcde34a07cae82bbe5ff9629bf88e6e81")
-                                .unwrap()
-                                .as_slice(),
+                            &hex::decode("e2e19d8badb15e77c8e1f441cf6acd9bcde34a07cae82bbe5ff9629bf88e6e81").unwrap(),
                         )
                         .unwrap(),
                     },
                 }],
                 extra: ExtraField {
                     0: vec![
-                        SubField::TxPublicKey(PublicKey::from_slice(pk_extra.as_slice()).unwrap()),
+                        SubField::TxPublicKey(PublicKey::from_slice(&pk_extra).unwrap()),
                         SubField::Nonce(vec![196, 37, 4, 0, 27, 37, 187, 163, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
                     ],
                 },
@@ -970,13 +974,16 @@ mod test {
         let block = deserialize::<Block>(&bytes[..]).unwrap();
         let header = serialize::<BlockHeader>(&block.header);
         let mut count = serialize::<VarInt>(&VarInt(1 + block.tx_hashes.len() as u64));
-        let mut hashes = block.clone().tx_hashes;
+        let mut hashes = Vec::new();
         hashes.push(block.miner_tx.hash());
+        for item in block.clone().tx_hashes {
+            hashes.push(item);
+        }
         let mut root = tree_hash(hashes); // tree_hash.c used by monero
-        let mut encode2 = header;
-        encode2.append(&mut root);
-        encode2.append(&mut count);
-        assert_eq!(hex::encode(encode2), hex_blockhash_blob);
+        let mut encode = header;
+        encode.append(&mut root);
+        encode.append(&mut count);
+        assert_eq!(hex::encode(encode), hex_blockhash_blob);
         let bytes2 = serialize::<Block>(&block);
         assert_eq!(bytes, bytes2);
         let hex2 = hex::encode(bytes2);
