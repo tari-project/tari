@@ -23,10 +23,7 @@ use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader},
     chain_storage::{error::ChainStorageError, InProgressHorizonSyncState},
     proof_of_work::Difficulty,
-    transactions::{
-        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-        types::HashOutput,
-    },
+    transactions::{transaction::TransactionKernel, types::HashOutput, TransactionInput, TransactionOutput},
 };
 use serde::{Deserialize, Serialize};
 use std::{

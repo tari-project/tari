@@ -59,8 +59,9 @@ use crate::{
     },
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
+        transaction::TransactionKernel,
         types::{HashDigest, HashOutput},
+        TransactionOutput,
     },
 };
 use croaring::Bitmap;

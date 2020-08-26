@@ -21,13 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::transactions::{
-    transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
         TransactionProtocolError,
     },
     types::{CryptoFactories, MessageHash, PrivateKey, PublicKey, Signature},
+    OutputFeatures,
+    TransactionOutput,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt};
@@ -186,13 +187,13 @@ mod test {
     use crate::transactions::{
         helpers::TestParams,
         tari_amount::*,
-        transaction::OutputFeatures,
         transaction_protocol::{
             build_challenge,
             sender::{SingleRoundSenderData, TransactionSenderMessage},
             TransactionMetadata,
         },
         types::{CryptoFactories, PublicKey, Signature},
+        OutputFeatures,
         ReceiverTransactionProtocol,
     };
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};

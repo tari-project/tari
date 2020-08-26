@@ -51,9 +51,10 @@ use tari_comms_dht::{
     outbound::{MessageSendStates, OutboundEncryption, SendMessageResponse},
 };
 use tari_core::transactions::{
-    transaction::{OutputFeatures, Transaction},
+    transaction::Transaction,
     transaction_protocol::{proto, recipient::RecipientState, sender::TransactionSenderMessage},
     types::PrivateKey,
+    OutputFeatures,
     ReceiverTransactionProtocol,
 };
 use tari_crypto::keys::SecretKey;

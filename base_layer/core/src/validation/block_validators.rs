@@ -29,7 +29,7 @@ use crate::{
     },
     chain_storage::{calculate_mmr_roots, BlockchainBackend, DbKey},
     consensus::{ConsensusConstants, ConsensusManager},
-    transactions::{transaction::OutputFlags, types::CryptoFactories},
+    transactions::{types::CryptoFactories, OutputFlags},
     validation::{
         helpers::{check_achieved_and_target_difficulty, check_median_timestamp, is_stxo},
         StatelessValidation,

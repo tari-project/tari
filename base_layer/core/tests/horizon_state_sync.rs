@@ -48,10 +48,11 @@ use tari_core::{
     mempool::MempoolServiceConfig,
     transactions::{
         fee::Fee,
-        helpers::{create_utxo, spend_utxos},
+        helpers::spend_utxos,
         tari_amount::uT,
-        transaction::UnblindedOutput,
         types::CryptoFactories,
+        OutputBuilder,
+        UnblindedOutput,
     },
     txn_schema,
     validation::mocks::MockValidator,
@@ -357,7 +358,10 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::Rincewind).build();
     let mut genesis_block = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
-    let faucet_utxo = create_utxo(faucet_value, &factories, None, None).unwrap();
+    let faucet_utxo = OutputBuilder::new()
+        .with_value(faucet_value)
+        .build(&factories.commitment)
+        .unwrap();
     let faucet_key = faucet_utxo.blinding_factor().clone();
     let faucet_utxo = faucet_utxo.as_transaction_output(&factories).unwrap();
     genesis_block.body.add_output(faucet_utxo);
@@ -428,14 +432,11 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
         // Spend faucet UTXO
         {
             let fee = Fee::calculate(25 * uT, 1, 1, 2);
-            let output = UnblindedOutput::new(
-                faucet_value,
-                faucet_key,
-                None,
-                TariScript::default(),
-                &factories.commitment,
-            )
-            .unwrap();
+            let output = OutputBuilder::new()
+                .with_value(faucet_value)
+                .with_spending_key(faucet_key)
+                .build(&factories.commitment)
+                .unwrap();
             let schema = txn_schema!(from: vec![output], to: vec![faucet_value - fee], fee: 25 * uT);
             let (tx, _, _) = spend_utxos(schema);
 

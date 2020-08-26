@@ -31,11 +31,14 @@ use tari_core::{
     crypto::script::TariScript,
     transactions::{
         tari_amount::{uT, MicroTari},
-        transaction::{OutputFeatures, Transaction, UnblindedOutput},
+        transaction::Transaction,
         transaction_protocol::sender::TransactionSenderMessage,
         types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
+        OutputBuilder,
+        OutputFeatures,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
+        UnblindedOutput,
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
@@ -64,14 +67,10 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(
-        MicroTari::from(100_000),
-        PrivateKey::random(&mut OsRng),
-        None,
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .unwrap();
+    let input = OutputBuilder::new()
+        .with_value(100_000)
+        .build(&factories.commitment)
+        .unwrap();
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))

@@ -24,10 +24,7 @@ use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{BlockchainBackend, ChainMetadata, ChainStorageError, DbKey, DbTransaction, DbValue, MmrTree},
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-        types::HashOutput,
-    },
+    transactions::{transaction::TransactionKernel, types::HashOutput, TransactionOutput},
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof};

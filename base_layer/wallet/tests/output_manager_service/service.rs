@@ -22,7 +22,7 @@
 
 use crate::support::{
     comms_and_services::create_dummy_message,
-    utils::{make_input, random_string, TestParams},
+    utils::{random_string, TestParams},
 };
 use futures::{
     channel::{mpsc, mpsc::Sender},
@@ -51,10 +51,14 @@ use tari_core::{
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
-        transaction::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
+        transaction::{KernelFeatures, Transaction},
         transaction_protocol::single_receiver::SingleReceiverTransactionProtocol,
         types::{CommitmentFactory, CryptoFactories, PrivateKey, RangeProof},
+        OutputBuilder,
+        OutputFeatures,
         SenderTransactionProtocol,
+        TransactionOutput,
+        UnblindedOutput,
     },
 };
 use tari_crypto::{
@@ -180,12 +184,10 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
 
     let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
 
-    let (_ti, uo) = make_input(
-        &mut OsRng.clone(),
-        MicroTari::from(100 + OsRng.next_u64() % 1000),
-        &factories.commitment,
-        None,
-    );
+    let uo = OutputBuilder::new()
+        .with_value(100 + OsRng.next_u64() % 1000)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(oms.add_output(uo.clone())).unwrap();
     match runtime.block_on(oms.add_output(uo)) {
         Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::DuplicateOutput)) => assert!(true),
@@ -193,12 +195,10 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
     };
     let num_outputs = 20;
     for _i in 0..num_outputs {
-        let (_ti, uo) = make_input(
-            &mut OsRng.clone(),
-            MicroTari::from(100 + OsRng.next_u64() % 1000),
-            &factories.commitment,
-            None,
-        );
+        let uo = OutputBuilder::new()
+            .with_value(100 + OsRng.next_u64() % 1000)
+            .build(&factories.commitment)
+            .unwrap();
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
 
@@ -261,12 +261,10 @@ fn send_not_enough_funds<T: OutputManagerBackend + Clone + 'static>(backend: T) 
     let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
     let num_outputs = 20;
     for _i in 0..num_outputs {
-        let (_ti, uo) = make_input(
-            &mut OsRng.clone(),
-            MicroTari::from(100 + OsRng.next_u64() % 1000),
-            &factories.commitment,
-            None,
-        );
+        let uo = OutputBuilder::new()
+            .with_value(100 + OsRng.next_u64() % 1000)
+            .build(&factories.commitment)
+            .unwrap();
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
 
@@ -306,35 +304,25 @@ fn send_no_change<T: OutputManagerBackend + Clone + 'static>(backend: T) {
 
     let fee_per_gram = MicroTari::from(20);
     let fee_without_change = Fee::calculate(fee_per_gram, 1, 2, 1);
-    let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
     runtime
         .block_on(
             oms.add_output(
-                UnblindedOutput::new(
-                    MicroTari::from(value1),
-                    key1,
-                    None,
-                    TariScript::default(),
-                    &factories.commitment,
-                )
-                .unwrap(),
+                OutputBuilder::new()
+                    .with_value(value1)
+                    .build(&factories.commitment)
+                    .unwrap(),
             ),
         )
         .unwrap();
-    let key2 = PrivateKey::random(&mut OsRng);
     let value2 = 800;
     runtime
         .block_on(
             oms.add_output(
-                UnblindedOutput::new(
-                    MicroTari::from(value2),
-                    key2,
-                    None,
-                    TariScript::default(),
-                    &factories.commitment,
-                )
-                .unwrap(),
+                OutputBuilder::new()
+                    .with_value(value2)
+                    .build(&factories.commitment)
+                    .unwrap(),
             ),
         )
         .unwrap();
@@ -406,16 +394,28 @@ fn send_not_enough_for_change<T: OutputManagerBackend + Clone + 'static>(backend
     let value1 = 500;
     let factory = CommitmentFactory::default();
     runtime
-        .block_on(oms.add_output(
-            UnblindedOutput::new(MicroTari::from(value1), key1, None, TariScript::default(), &factory).unwrap(),
-        ))
+        .block_on(
+            oms.add_output(
+                OutputBuilder::new()
+                    .with_value(MicroTari::from(value1))
+                    .with_spending_key(key1)
+                    .build(&factory)
+                    .unwrap(),
+            ),
+        )
         .unwrap();
     let key2 = PrivateKey::random(&mut OsRng);
     let value2 = 800;
     runtime
-        .block_on(oms.add_output(
-            UnblindedOutput::new(MicroTari::from(value2), key2, None, TariScript::default(), &factory).unwrap(),
-        ))
+        .block_on(
+            oms.add_output(
+                OutputBuilder::new()
+                    .with_value(MicroTari::from(value2))
+                    .with_spending_key(key2)
+                    .build(&factory)
+                    .unwrap(),
+            ),
+        )
         .unwrap();
 
     match runtime.block_on(oms.prepare_transaction_to_send(
@@ -457,14 +457,12 @@ fn receiving_and_confirmation<T: OutputManagerBackend + Clone + 'static>(backend
     assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 0);
     assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 1);
 
-    let uo = UnblindedOutput::new(
-        value,
-        recv_key,
-        Some(OutputFeatures::create_coinbase(1)),
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .unwrap();
+    let uo = OutputBuilder::new()
+        .with_value(value)
+        .with_spending_key(recv_key)
+        .with_features(OutputFeatures::create_coinbase(1))
+        .build(&factories.commitment)
+        .unwrap();
     let output = uo.as_transaction_output(&factories).unwrap();
 
     runtime
@@ -500,12 +498,10 @@ fn cancel_transaction<T: OutputManagerBackend + Clone + 'static>(backend: T) {
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
-        let (_ti, uo) = make_input(
-            &mut OsRng.clone(),
-            MicroTari::from(100 + OsRng.next_u64() % 1000),
-            &factories.commitment,
-            None,
-        );
+        let uo = OutputBuilder::new()
+            .with_value(100 + OsRng.next_u64() % 1000)
+            .build(&factories.commitment)
+            .unwrap();
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
     let stp = runtime
@@ -550,12 +546,10 @@ fn timeout_transaction<T: OutputManagerBackend + Clone + 'static>(backend: T) {
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
-        let (_ti, uo) = make_input(
-            &mut OsRng.clone(),
-            MicroTari::from(100 + OsRng.next_u64() % 1000),
-            &factories.commitment,
-            None,
-        );
+        let uo = OutputBuilder::new()
+            .with_value(100 + OsRng.next_u64() % 1000)
+            .build(&factories.commitment)
+            .unwrap();
         runtime.block_on(oms.add_output(uo)).unwrap();
     }
     let _stp = runtime
@@ -610,11 +604,17 @@ fn test_get_balance<T: OutputManagerBackend + Clone + 'static>(backend: T) {
 
     let mut total = MicroTari::from(0);
     let output_val = MicroTari::from(2000);
-    let (_ti, uo) = make_input(&mut OsRng.clone(), output_val.clone(), &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(output_val.clone())
+        .build(&factories.commitment)
+        .unwrap();
     total += uo.value().clone();
     runtime.block_on(oms.add_output(uo)).unwrap();
 
-    let (_ti, uo) = make_input(&mut OsRng.clone(), output_val.clone(), &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(output_val.clone())
+        .build(&factories.commitment)
+        .unwrap();
     total += uo.value().clone();
     runtime.block_on(oms.add_output(uo)).unwrap();
 
@@ -660,15 +660,13 @@ fn test_confirming_received_output<T: OutputManagerBackend + Clone + 'static>(ba
 
     let value = MicroTari::from(5000);
     let recv_key = runtime.block_on(oms.get_recipient_spending_key(1, value)).unwrap();
-    let output = UnblindedOutput::new(
-        value,
-        recv_key,
-        Some(OutputFeatures::create_coinbase(1)),
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .and_then(|o| o.as_transaction_output(&factories))
-    .unwrap();
+    let output = OutputBuilder::new()
+        .with_value(value)
+        .with_spending_key(recv_key)
+        .with_features(OutputFeatures::create_coinbase(1))
+        .build(&factories.commitment)
+        .and_then(|o| o.as_transaction_output(&factories))
+        .unwrap();
 
     runtime
         .block_on(oms.confirm_transaction(1, vec![], vec![output]))
@@ -701,14 +699,11 @@ fn test_startup_utxo_scan() {
 
     let invalid_key = PrivateKey::random(&mut OsRng);
     let invalid_value = 666;
-    let invalid_output = UnblindedOutput::new(
-        MicroTari::from(invalid_value),
-        invalid_key.clone(),
-        None,
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .unwrap();
+    let invalid_output = OutputBuilder::new()
+        .with_value(invalid_value)
+        .with_spending_key(invalid_key.clone())
+        .build(&factories.commitment)
+        .unwrap();
     let invalid_hash = invalid_output.as_transaction_output(&factories).unwrap().hash();
 
     backend
@@ -728,61 +723,41 @@ fn test_startup_utxo_scan() {
     let mut event_stream = oms.get_event_stream_fused();
 
     let mut hashes = Vec::new();
-    let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
-    let output1 = UnblindedOutput::new(
-        MicroTari::from(value1),
-        key1.clone(),
-        None,
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .unwrap();
+    let output1 = OutputBuilder::new()
+        .with_value(value1)
+        .build(&factories.commitment)
+        .unwrap();
     let tx_output1 = output1.as_transaction_output(&factories).unwrap();
     let output1_hash = tx_output1.hash();
     hashes.push(output1_hash.clone());
     runtime.block_on(oms.add_output(output1.clone())).unwrap();
 
-    let key2 = PrivateKey::random(&mut OsRng);
     let value2 = 800;
-    let output2 = UnblindedOutput::new(
-        MicroTari::from(value2),
-        key2.clone(),
-        None,
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .unwrap();
+    let output2 = OutputBuilder::new()
+        .with_value(value2)
+        .build(&factories.commitment)
+        .unwrap();
     let tx_output2 = output2.as_transaction_output(&factories).unwrap();
     hashes.push(tx_output2.hash());
 
     runtime.block_on(oms.add_output(output2.clone())).unwrap();
 
-    let key3 = PrivateKey::random(&mut OsRng);
     let value3 = 900;
-    let output3 = UnblindedOutput::new(
-        MicroTari::from(value3),
-        key3.clone(),
-        None,
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .unwrap();
+    let output3 = OutputBuilder::new()
+        .with_value(value3)
+        .build(&factories.commitment)
+        .unwrap();
     let tx_output3 = output3.as_transaction_output(&factories).unwrap();
     hashes.push(tx_output3.hash());
 
     runtime.block_on(oms.add_output(output3.clone())).unwrap();
 
-    let key4 = PrivateKey::random(&mut OsRng);
     let value4 = 901;
-    let output4 = UnblindedOutput::new(
-        MicroTari::from(value4),
-        key4.clone(),
-        None,
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .unwrap();
+    let output4 = OutputBuilder::new()
+        .with_value(value4)
+        .build(&factories.commitment)
+        .unwrap();
     let tx_output4 = output4.as_transaction_output(&factories).unwrap();
     hashes.push(tx_output4.hash());
 
@@ -978,16 +953,11 @@ fn test_startup_utxo_scan() {
     let invalid_txs = runtime.block_on(oms.get_invalid_outputs()).unwrap();
     assert_eq!(invalid_txs.len(), 0);
 
-    let key5 = PrivateKey::random(&mut OsRng);
     let value5 = 1000;
-    let output5 = UnblindedOutput::new(
-        MicroTari::from(value5),
-        key5,
-        None,
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .unwrap();
+    let output5 = OutputBuilder::new()
+        .with_value(value5)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(oms.add_output(output5.clone())).unwrap();
 
     let invalid_txs = runtime.block_on(oms.get_invalid_outputs()).unwrap();
@@ -1155,7 +1125,10 @@ fn sending_transaction_with_short_term_clear<T: Clone + OutputManagerBackend + '
     let (mut oms, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
 
     let available_balance = 10_000 * uT;
-    let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance, &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(available_balance)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(oms.add_output(uo.clone())).unwrap();
 
     // Check that funds are encumbered and then unencumbered if the pending tx is not confirmed before restart
@@ -1233,9 +1206,18 @@ fn coin_split_with_change<T: Clone + OutputManagerBackend + 'static>(backend: T)
     let val1 = 6_000 * uT;
     let val2 = 7_000 * uT;
     let val3 = 8_000 * uT;
-    let (_ti, uo1) = make_input(&mut OsRng.clone(), val1, &factories.commitment, None);
-    let (_ti, uo2) = make_input(&mut OsRng.clone(), val2, &factories.commitment, None);
-    let (_ti, uo3) = make_input(&mut OsRng.clone(), val3, &factories.commitment, None);
+    let uo1 = OutputBuilder::new()
+        .with_value(val1)
+        .build(&factories.commitment)
+        .unwrap();
+    let uo2 = OutputBuilder::new()
+        .with_value(val2)
+        .build(&factories.commitment)
+        .unwrap();
+    let uo3 = OutputBuilder::new()
+        .with_value(val3)
+        .build(&factories.commitment)
+        .unwrap();
     assert!(runtime.block_on(oms.add_output(uo1)).is_ok());
     assert!(runtime.block_on(oms.add_output(uo2)).is_ok());
     assert!(runtime.block_on(oms.add_output(uo3)).is_ok());
@@ -1278,9 +1260,18 @@ fn coin_split_no_change<T: Clone + OutputManagerBackend + 'static>(backend: T) {
     let val1 = 4_000 * uT;
     let val2 = 5_000 * uT;
     let val3 = 6_000 * uT + fee;
-    let (_ti, uo1) = make_input(&mut OsRng.clone(), val1, &factories.commitment, None);
-    let (_ti, uo2) = make_input(&mut OsRng.clone(), val2, &factories.commitment, None);
-    let (_ti, uo3) = make_input(&mut OsRng.clone(), val3, &factories.commitment, None);
+    let uo1 = OutputBuilder::new()
+        .with_value(val1)
+        .build(&factories.commitment)
+        .unwrap();
+    let uo2 = OutputBuilder::new()
+        .with_value(val2)
+        .build(&factories.commitment)
+        .unwrap();
+    let uo3 = OutputBuilder::new()
+        .with_value(val3)
+        .build(&factories.commitment)
+        .unwrap();
     assert!(runtime.block_on(oms.add_output(uo1)).is_ok());
     assert!(runtime.block_on(oms.add_output(uo2)).is_ok());
     assert!(runtime.block_on(oms.add_output(uo3)).is_ok());
@@ -1344,15 +1335,13 @@ fn handle_coinbase<T: Clone + OutputManagerBackend + 'static>(backend: T) {
 
     assert_eq!(recv_key1, recv_key2);
     assert_ne!(recv_key1, recv_key3);
-    let output = UnblindedOutput::new(
-        value3,
-        recv_key3,
-        Some(OutputFeatures::create_coinbase(3)),
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .and_then(|o| o.as_transaction_output(&factories))
-    .unwrap();
+    let output = OutputBuilder::new()
+        .with_value(value3)
+        .with_spending_key(recv_key3)
+        .with_features(OutputFeatures::create_coinbase(3))
+        .build(&factories.commitment)
+        .and_then(|o| o.as_transaction_output(&factories))
+        .unwrap();
     (&factories);
 
     runtime

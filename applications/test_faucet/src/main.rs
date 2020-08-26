@@ -5,13 +5,14 @@ use tari_core::{
     transactions::{
         helpers,
         tari_amount::{MicroTari, T},
-        transaction::{OutputFeatures, TransactionOutput},
         types::{CryptoFactories, PrivateKey},
+        OutputFeatures,
+        TransactionOutput,
     },
 };
 
 use std::{fs::File, io::Write};
-use tari_core::transactions::transaction::UnblindedOutput;
+use tari_core::transactions::{OutputBuilder, UnblindedOutput};
 use tokio::{sync::mpsc, task};
 
 const NUM_KEYS: usize = 10;
@@ -57,7 +58,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // "Go!" before, or right the beginning of any key generation output.
         task::spawn(async move {
             let result = task::spawn_blocking(move || {
-                let utxo = helpers::create_utxo(value, &fc, Some(feature), None).unwrap();
+                let utxo = OutputBuilder::new()
+                    .with_value(value)
+                    .with_features(feature)
+                    .build(&fc.commitment)
+                    .unwrap();
                 print!(".");
                 utxo
             })

@@ -32,9 +32,12 @@ use std::{collections::HashMap, fmt, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{Transaction, TransactionInput, TransactionOutput, UnblindedOutput},
+    transaction::Transaction,
     types::PrivateKey,
     SenderTransactionProtocol,
+    TransactionInput,
+    TransactionOutput,
+    UnblindedOutput,
 };
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;

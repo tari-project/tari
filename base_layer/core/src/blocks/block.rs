@@ -29,14 +29,10 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{
-            OutputFlags,
-            Transaction,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
+        transaction::{Transaction, TransactionError, TransactionKernel},
+        OutputFlags,
+        TransactionInput,
+        TransactionOutput,
     },
 };
 use log::*;
@@ -207,7 +203,7 @@ impl BlockBuilder {
         self
     }
 
-    /// This functions add the provided transactions to the block
+    /// Add the provided transactions to the block
     pub fn with_transactions(mut self, txs: Vec<Transaction>) -> Self {
         let iter = txs.into_iter();
         for tx in iter {

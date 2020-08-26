@@ -63,12 +63,15 @@ use tari_core::{
     crypto::script::{TariScript, DEFAULT_SCRIPT_HASH},
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, Transaction, TransactionInput, UnblindedOutput},
+        transaction::Transaction,
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
+        OutputBuilder,
+        OutputFeatures,
+        TransactionInput,
+        UnblindedOutput,
     },
 };
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     tari_utilities::hex::Hex,
 };
@@ -97,18 +100,6 @@ impl TestParams {
             nonce: r,
         }
     }
-}
-pub fn make_input<R: Rng + CryptoRng>(
-    rng: &mut R,
-    val: MicroTari,
-    factories: &CryptoFactories,
-) -> (TransactionInput, UnblindedOutput)
-{
-    let key = PrivateKey::random(rng);
-    let commitment = factories.commitment.commit_value(&key, val.into());
-    let input = TransactionInput::new(OutputFeatures::default(), commitment, &DEFAULT_SCRIPT_HASH);
-    let uo = UnblindedOutput::new(val, key, None, TariScript::default(), &factories.commitment).unwrap();
-    (input, uo)
 }
 
 pub fn random_string(len: usize) -> String {
@@ -234,7 +225,10 @@ pub fn generate_wallet_test_data<
     // Generate outputs
     let num_outputs = 75;
     for i in 0..num_outputs {
-        let (_ti, uo) = make_input(&mut OsRng.clone(), MicroTari::from(5_000_000 + i * 35_000), &factories);
+        let uo = OutputBuilder::new()
+            .with_value(5_000_000 + i * 35_000)
+            .build(&factories.commitment)
+            .unwrap();
         wallet.runtime.block_on(wallet.output_manager_service.add_output(uo))?;
     }
     info!(target: LOG_TARGET, "Added test outputs to wallet");
@@ -253,7 +247,10 @@ pub fn generate_wallet_test_data<
     );
     let mut alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();
     for i in 0..20 {
-        let (_ti, uo) = make_input(&mut OsRng.clone(), MicroTari::from(1_500_000 + i * 530_500), &factories);
+        let uo = OutputBuilder::new()
+            .with_value(1_500_000 + i * 530_500)
+            .build(&factories.commitment)
+            .unwrap();
         wallet_alice
             .runtime
             .block_on(wallet_alice.output_manager_service.add_output(uo))?;
@@ -274,11 +271,10 @@ pub fn generate_wallet_test_data<
     let mut bob_event_stream = wallet_bob.transaction_service.get_event_stream_fused();
 
     for i in 0..20 {
-        let (_ti, uo) = make_input(
-            &mut OsRng.clone(),
-            MicroTari::from(2_000_000 + i * i * 61_050),
-            &factories,
-        );
+        let uo = OutputBuilder::new()
+            .with_value(2_000_000 + i * i * 61_050)
+            .build(&factories.commitment)
+            .unwrap();
         wallet_bob
             .runtime
             .block_on(wallet_bob.output_manager_service.add_output(uo))?;

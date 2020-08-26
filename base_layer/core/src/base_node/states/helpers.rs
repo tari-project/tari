@@ -28,10 +28,7 @@ use crate::{
     },
     blocks::blockheader::BlockHeader,
     chain_storage::{BlockchainBackend, MmrTree},
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-        types::HashOutput,
-    },
+    transactions::{transaction::TransactionKernel, types::HashOutput, TransactionOutput},
 };
 use croaring::Bitmap;
 use log::*;

@@ -42,7 +42,7 @@ use tari_core::{
             base_node_service_response::Response as BaseNodeResponseProto,
         },
     },
-    transactions::transaction::TransactionOutput,
+    transactions::TransactionOutput,
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_p2p::tari_message::TariMessageType;

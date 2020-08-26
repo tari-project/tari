@@ -23,13 +23,16 @@
 use crate::transactions::{
     fee::Fee,
     tari_amount::*,
-    transaction::*,
+    transaction::{KernelSum, Transaction, TransactionError, TransactionKernel},
     types::{BlindingFactor, Commitment, CommitmentFactory, CryptoFactories, PrivateKey, RangeProofService},
+    TransactionInput,
+    TransactionOutput,
 };
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::pedersen::PedersenCommitment};
+
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,

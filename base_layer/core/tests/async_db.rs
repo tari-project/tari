@@ -37,8 +37,9 @@ use tari_core::{
     transactions::{
         helpers::schema_to_transaction,
         tari_amount::T,
-        transaction::{TransactionOutput, UnblindedOutput},
         types::CommitmentFactory,
+        TransactionOutput,
+        UnblindedOutput,
     },
     txn_schema,
 };

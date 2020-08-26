@@ -40,9 +40,9 @@ use tari_core::{
     helpers::create_orphan_block,
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
-        helpers::{create_test_kernel, create_utxo},
-        tari_amount::MicroTari,
+        helpers::create_test_kernel,
         types::{CryptoFactories, HashDigest},
+        OutputBuilder,
     },
     tx,
 };
@@ -105,7 +105,9 @@ fn lmdb_insert_contains_delete_and_fetch_header() {
 
 fn insert_contains_delete_and_fetch_utxo<T: BlockchainBackend>(mut db: T) {
     let factories = CryptoFactories::default();
-    let utxo = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let hash = utxo.hash();
@@ -251,10 +253,14 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
 
 fn spend_utxo_and_unspend_stxo<T: BlockchainBackend>(mut db: T) {
     let factories = CryptoFactories::default();
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo1 = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+    let utxo2 = OutputBuilder::new()
+        .with_value(15_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let hash1 = utxo1.hash();
@@ -427,13 +433,19 @@ fn fetch_mmr_root_and_proof_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
     );
     let factories = CryptoFactories::default();
 
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo1 = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+    let utxo2 = OutputBuilder::new()
+        .with_value(15_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo3 = create_utxo(MicroTari(20_000), &factories, None, None)
+    let utxo3 = OutputBuilder::new()
+        .with_value(20_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let utxo_hash1 = utxo1.hash();
@@ -571,16 +583,24 @@ fn lmdb_fetch_mmr_root_and_proof_for_kernel() {
 fn fetch_future_mmr_root_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
     let factories = CryptoFactories::default();
 
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo1 = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+    let utxo2 = OutputBuilder::new()
+        .with_value(15_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo3 = create_utxo(MicroTari(20_000), &factories, None, None)
+    let utxo3 = OutputBuilder::new()
+        .with_value(20_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo4 = create_utxo(MicroTari(24_000), &factories, None, None)
+    let utxo4 = OutputBuilder::new()
+        .with_value(24_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let utxo_hash1 = utxo1.hash();
@@ -690,7 +710,9 @@ fn lmdb_fetch_future_mmr_root_for_for_kernel() {
 
 fn commit_block_and_create_fetch_checkpoint_and_rewind_mmr<T: BlockchainBackend>(mut db: T) {
     let factories = CryptoFactories::default();
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo1 = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let kernel1 = create_test_kernel(100.into(), 0);
@@ -706,7 +728,9 @@ fn commit_block_and_create_fetch_checkpoint_and_rewind_mmr<T: BlockchainBackend>
     txn.commit_block();
     assert!(db.write(txn).is_ok());
 
-    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+    let utxo2 = OutputBuilder::new()
+        .with_value(15_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let kernel2 = create_test_kernel(200.into(), 0);
@@ -1002,13 +1026,19 @@ fn lmdb_for_each_header() {
 
 fn for_each_utxo<T: BlockchainBackend>(mut db: T) {
     let factories = CryptoFactories::default();
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo1 = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+    let utxo2 = OutputBuilder::new()
+        .with_value(15_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo3 = create_utxo(MicroTari(20_000), &factories, None, None)
+    let utxo3 = OutputBuilder::new()
+        .with_value(20_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let hash1 = utxo1.hash();
@@ -1073,10 +1103,14 @@ fn lmdb_backend_restore() {
 
     let txs = vec![(tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0];
     let orphan = create_orphan_block(10, txs, &consensus_constants);
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo1 = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+    let utxo2 = OutputBuilder::new()
+        .with_value(15_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let kernel = create_test_kernel(100.into(), 0);
@@ -1141,10 +1175,14 @@ fn lmdb_mmr_reset_and_commit() {
         let factories = CryptoFactories::default();
         let mut db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
 
-        let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+        let utxo1 = OutputBuilder::new()
+            .with_value(10_000)
+            .build(&factories.commitment)
             .and_then(|o| o.as_transaction_output(&factories))
             .unwrap();
-        let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+        let utxo2 = OutputBuilder::new()
+            .with_value(15_000)
+            .build(&factories.commitment)
             .and_then(|o| o.as_transaction_output(&factories))
             .unwrap();
         let kernel1 = create_test_kernel(100.into(), 0);
@@ -1247,7 +1285,9 @@ fn lmdb_mmr_reset_and_commit() {
 
 fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
     let factories = CryptoFactories::default();
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo1 = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let kernel1 = create_test_kernel(100.into(), 0);
@@ -1264,7 +1304,9 @@ fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
     txn.commit_block();
     assert!(db.write(txn).is_ok());
 
-    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+    let utxo2 = OutputBuilder::new()
+        .with_value(15_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let kernel2 = create_test_kernel(200.into(), 0);
@@ -1293,7 +1335,9 @@ fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
     assert!(rp_cp0.unwrap().nodes_added().contains(&rp_hash1));
     assert!(rp_cp1.unwrap().nodes_added().contains(&rp_hash2));
 
-    let utxo3 = create_utxo(MicroTari(20_000), &factories, None, None)
+    let utxo3 = OutputBuilder::new()
+        .with_value(20_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let kernel3 = create_test_kernel(300.into(), 0);
@@ -1302,7 +1346,9 @@ fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
     let kernel_hash3 = kernel3.hash();
     let rp_hash3 = utxo3.proof().hash();
 
-    let utxo4 = create_utxo(MicroTari(20_000), &factories, None, None)
+    let utxo4 = OutputBuilder::new()
+        .with_value(20_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let kernel4 = create_test_kernel(300.into(), 0);
@@ -1378,13 +1424,19 @@ fn lmdb_fetch_checkpoint() {
 
 fn merging_and_fetch_checkpoints_and_stxo_discard<T: BlockchainBackend>(mut db: T) {
     let factories = CryptoFactories::default();
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo1 = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+    let utxo2 = OutputBuilder::new()
+        .with_value(15_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo3 = create_utxo(MicroTari(20_000), &factories, None, None)
+    let utxo3 = OutputBuilder::new()
+        .with_value(20_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let kernel1 = create_test_kernel(100.into(), 0);
@@ -1531,10 +1583,14 @@ fn lmdb_merging_and_fetch_checkpoints_and_stxo_discard() {
 
 fn duplicate_utxo<T: BlockchainBackend>(mut db: T) {
     let factories = CryptoFactories::default();
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo1 = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+    let utxo2 = OutputBuilder::new()
+        .with_value(15_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let hash1 = utxo1.hash();
@@ -1728,22 +1784,34 @@ fn lmdb_fetch_target_difficulties() {
 fn fetch_utxo_rp_mmr_nodes_and_count<T: BlockchainBackend>(mut db: T) {
     let factories = CryptoFactories::default();
 
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo1 = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo2 = create_utxo(MicroTari(20_000), &factories, None, None)
+    let utxo2 = OutputBuilder::new()
+        .with_value(20_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo3 = create_utxo(MicroTari(30_000), &factories, None, None)
+    let utxo3 = OutputBuilder::new()
+        .with_value(30_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo4 = create_utxo(MicroTari(40_000), &factories, None, None)
+    let utxo4 = OutputBuilder::new()
+        .with_value(40_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo5 = create_utxo(MicroTari(50_000), &factories, None, None)
+    let utxo5 = OutputBuilder::new()
+        .with_value(50_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo6 = create_utxo(MicroTari(60_000), &factories, None, None)
+    let utxo6 = OutputBuilder::new()
+        .with_value(60_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let utxo_hash1 = utxo1.hash();
@@ -1925,16 +1993,24 @@ fn lmdb_fetch_kernel_nodes_and_count() {
 
 fn insert_mmr_node_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
     let factories = CryptoFactories::default();
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo1 = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+    let utxo2 = OutputBuilder::new()
+        .with_value(15_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo3 = create_utxo(MicroTari(20_000), &factories, None, None)
+    let utxo3 = OutputBuilder::new()
+        .with_value(20_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo4 = create_utxo(MicroTari(25_000), &factories, None, None)
+    let utxo4 = OutputBuilder::new()
+        .with_value(25_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let utxo_hash1 = utxo1.hash();

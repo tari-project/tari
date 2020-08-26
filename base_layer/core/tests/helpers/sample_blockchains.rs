@@ -30,8 +30,8 @@ use tari_core::{
     helpers::create_mem_db,
     transactions::{
         tari_amount::{uT, T},
-        transaction::UnblindedOutput,
         types::{CryptoFactories, HashDigest},
+        UnblindedOutput,
     },
     txn_schema,
 };

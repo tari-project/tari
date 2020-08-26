@@ -36,10 +36,7 @@ use crate::{
     },
     chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, ChainMetadata, MmrTree},
     iterators::NonOverlappingIntegerPairIter,
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-        types::HashOutput,
-    },
+    transactions::{transaction::TransactionKernel, types::HashOutput, TransactionOutput},
 };
 use croaring::Bitmap;
 use log::*;

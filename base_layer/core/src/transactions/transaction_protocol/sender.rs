@@ -27,8 +27,6 @@ use crate::transactions::{
         KernelFeatures,
         Transaction,
         TransactionBuilder,
-        TransactionInput,
-        TransactionOutput,
         MAX_TRANSACTION_INPUTS,
         MAX_TRANSACTION_OUTPUTS,
         MINIMUM_TRANSACTION_FEE,
@@ -41,6 +39,8 @@ use crate::transactions::{
         TransactionProtocolError as TPE,
     },
     types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, RangeProofService, Signature},
+    TransactionInput,
+    TransactionOutput,
 };
 use digest::Digest;
 use serde::{Deserialize, Serialize};
@@ -566,22 +566,24 @@ mod test {
         fee::Fee,
         helpers::{make_input, TestParams},
         tari_amount::*,
-        transaction::{KernelFeatures, OutputFeatures, UnblindedOutput},
+        transaction::KernelFeatures,
         transaction_protocol::{
             sender::SenderTransactionProtocol,
             single_receiver::SingleReceiverTransactionProtocol,
             TransactionProtocolError,
         },
         types::CryptoFactories,
+        OutputBuilder,
+        OutputFeatures,
     };
-    use rand::rngs::OsRng;
-    use tari_crypto::{common::Blake256, script::TariScript, tari_utilities::hex::Hex};
+    
+    use tari_crypto::{common::Blake256, tari_utilities::hex::Hex};
 
     #[test]
     fn zero_recipients() {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = make_input(&mut OsRng, MicroTari(1200), &factories.commitment);
+        let (utxo, input) = make_input(MicroTari(1200), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(0);
         builder
             .with_lock_height(0)
@@ -591,24 +593,18 @@ mod test {
             .with_change_secret(p.change_key.clone())
             .with_input(utxo, input)
             .with_output(
-                UnblindedOutput::new(
-                    MicroTari(500),
-                    p.spend_key.clone(),
-                    None,
-                    TariScript::default(),
-                    &factories.commitment,
-                )
-                .unwrap(),
+                OutputBuilder::new()
+                    .with_value(500)
+                    .with_spending_key(p.spend_key.clone())
+                    .build(&factories.commitment)
+                    .unwrap(),
             )
             .with_output(
-                UnblindedOutput::new(
-                    MicroTari(400),
-                    p.spend_key.clone(),
-                    None,
-                    TariScript::default(),
-                    &factories.commitment,
-                )
-                .unwrap(),
+                OutputBuilder::new()
+                    .with_value(400)
+                    .with_spending_key(p.spend_key.clone())
+                    .build(&factories.commitment)
+                    .unwrap(),
             );
         let mut sender = builder.build::<Blake256>(&factories).unwrap();
         assert_eq!(sender.is_failed(), false);
@@ -629,7 +625,7 @@ mod test {
         let a = TestParams::new();
         // Bob's parameters
         let b = TestParams::new();
-        let (utxo, input) = make_input(&mut OsRng, MicroTari(1200), &factories.commitment);
+        let (utxo, input) = make_input(MicroTari(1200), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         let fee = Fee::calculate(MicroTari(20), 1, 1, 1);
         builder
@@ -687,7 +683,7 @@ mod test {
         let a = TestParams::new();
         // Bob's parameters
         let b = TestParams::new();
-        let (utxo, input) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
+        let (utxo, input) = make_input(MicroTari(2500), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         let fee = Fee::calculate(MicroTari(20), 1, 1, 2);
         builder
@@ -761,7 +757,7 @@ mod test {
         let a = TestParams::new();
         // Bob's parameters
         let b = TestParams::new();
-        let (utxo, input) = make_input(&mut OsRng, (2u64.pow(32) + 2001).into(), &factories.commitment);
+        let (utxo, input) = make_input((2u64.pow(32) + 2001).into(), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
 
         builder

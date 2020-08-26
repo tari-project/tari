@@ -24,10 +24,7 @@ use crate::{
     blocks::{blockheader::BlockHeader, Block, NewBlockTemplate},
     chain_storage::{ChainMetadata, HistoricalBlock},
     proof_of_work::Difficulty,
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-        types::HashOutput,
-    },
+    transactions::{transaction::TransactionKernel, types::HashOutput, TransactionOutput},
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};

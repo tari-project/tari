@@ -28,16 +28,12 @@ use crate::transactions::{
     bullet_rangeproofs::BulletRangeProof,
     proto::utils::try_convert_all,
     tari_amount::MicroTari,
-    transaction::{
-        KernelFeatures,
-        OutputFeatures,
-        OutputFlags,
-        Transaction,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
-    },
+    transaction::{KernelFeatures, Transaction, TransactionKernel},
     types::{BlindingFactor, Commitment},
+    OutputFeatures,
+    OutputFlags,
+    TransactionInput,
+    TransactionOutput,
 };
 use std::convert::{TryFrom, TryInto};
 use tari_crypto::{

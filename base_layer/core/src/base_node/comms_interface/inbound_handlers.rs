@@ -41,7 +41,7 @@ use crate::{
     consensus::ConsensusManager,
     mempool::{async_mempool, Mempool},
     proof_of_work::{get_target_difficulty, Difficulty, PowAlgorithm},
-    transactions::transaction::{TransactionKernel, TransactionOutput},
+    transactions::{transaction::TransactionKernel, TransactionOutput},
 };
 use croaring::Bitmap;
 use log::*;

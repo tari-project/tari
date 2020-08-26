@@ -56,8 +56,11 @@ use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
         types::{Commitment, CryptoFactories, PrivateKey},
+        OutputBuilder,
+        OutputFeatures,
+        OutputFlags,
+        UnblindedOutput,
     },
 };
 use tari_crypto::{
@@ -965,23 +968,22 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
         // TODO: Would be better if this were passed in somewhere
         let factories = CryptoFactories::default();
-        let unblinded_output = UnblindedOutput::new(
-            MicroTari::from(o.value as u64),
-            PrivateKey::from_vec(&o.spending_key).map_err(|_| {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not create PrivateKey from stored bytes, They might be encrypted"
-                );
-                OutputManagerStorageError::ConversionError
-            })?,
-            Some(OutputFeatures {
-                flags: OutputFlags::from_bits(o.flags as u8)
-                    .ok_or_else(|| OutputManagerStorageError::ConversionError)?,
-                maturity: o.maturity as u64,
-            }),
-            TariScript::default(),
-            &factories.commitment,
-        )?;
+        let key = PrivateKey::from_vec(&o.spending_key).map_err(|_| {
+            error!(
+                target: LOG_TARGET,
+                "Could not create PrivateKey from stored bytes, They might be encrypted"
+            );
+            OutputManagerStorageError::ConversionError
+        })?;
+        let features = OutputFeatures {
+            flags: OutputFlags::from_bits(o.flags as u8).ok_or_else(|| OutputManagerStorageError::ConversionError)?,
+            maturity: o.maturity as u64,
+        };
+        let unblinded_output = OutputBuilder::new()
+            .with_value(o.value as u64)
+            .with_spending_key(key)
+            .with_features(features)
+            .build(&factories.commitment)?;
         let hash = match o.hash {
             None => {
                 // This should only happen if the database didn't migrate yet.
@@ -1344,7 +1346,7 @@ mod test {
     };
     use chrono::{Duration as ChronoDuration, Utc};
     use diesel::{Connection, SqliteConnection};
-    use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
+    use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
     use std::{
         convert::TryFrom,
         iter,
@@ -1355,8 +1357,11 @@ mod test {
         crypto::script::{TariScript, DEFAULT_SCRIPT_HASH},
         transactions::{
             tari_amount::MicroTari,
-            transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
             types::{CommitmentFactory, CryptoFactories, PrivateKey},
+            OutputBuilder,
+            OutputFeatures,
+            TransactionInput,
+            UnblindedOutput,
         },
     };
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
@@ -1364,15 +1369,6 @@ mod test {
 
     pub fn random_string(len: usize) -> String {
         iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
-    }
-
-    pub fn make_input<R: Rng + CryptoRng>(rng: &mut R, val: MicroTari) -> (TransactionInput, UnblindedOutput) {
-        let key = PrivateKey::random(rng);
-        let factory = CommitmentFactory::default();
-        let commitment = factory.commit_value(&key, val.into());
-        let input = TransactionInput::new(OutputFeatures::default(), commitment, &DEFAULT_SCRIPT_HASH);
-        let uo = UnblindedOutput::new(val, key, None, TariScript::default(), &factory).unwrap();
-        (input, uo)
     }
 
     #[test]
@@ -1396,7 +1392,10 @@ mod test {
         let factories = CryptoFactories::default();
 
         for _i in 0..2 {
-            let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+            let uo = OutputBuilder::new()
+                .with_value(100 + OsRng.next_u64() % 1000)
+                .build(&factories.commitment)
+                .unwrap();
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
             let o = NewOutputSql::new(uo, OutputStatus::Unspent, None);
             outputs.push(o.clone());
@@ -1405,7 +1404,10 @@ mod test {
         }
 
         for _i in 0..3 {
-            let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+            let uo = OutputBuilder::new()
+                .with_value(100 + OsRng.next_u64() % 1000)
+                .build(&factories.commitment)
+                .unwrap();
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
             let o = NewOutputSql::new(uo, OutputStatus::Spent, None);
             outputs.push(o.clone());
@@ -1578,7 +1580,10 @@ mod test {
         conn.execute("PRAGMA foreign_keys = ON").unwrap();
         let factories = CryptoFactories::default();
 
-        let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let uo = OutputBuilder::new()
+            .with_value(100 + OsRng.next_u64() % 1000)
+            .build(&factories.commitment)
+            .unwrap();
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
         let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
 
@@ -1686,12 +1691,18 @@ mod test {
         let state_sql = KeyManagerStateSql::from(starting_state.clone());
         state_sql.set_state(&conn).unwrap();
 
-        let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let uo = OutputBuilder::new()
+            .with_value(100 + OsRng.next_u64() % 1000)
+            .build(&factories.commitment)
+            .unwrap();
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
         let output = NewOutputSql::new(uo, OutputStatus::Unspent, None);
         output.commit(&conn).unwrap();
 
-        let (_, uo2) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
+        let uo2 = OutputBuilder::new()
+            .with_value(100 + OsRng.next_u64() % 1000)
+            .build(&factories.commitment)
+            .unwrap();
         let uo2 = DbUnblindedOutput::from_unblinded_output(uo2, &factories).unwrap();
         let output2 = NewOutputSql::new(uo2, OutputStatus::Unspent, None);
         output2.commit(&conn).unwrap();

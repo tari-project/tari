@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::{make_input, random_string};
+use crate::support::utils::random_string;
 use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
@@ -29,7 +29,7 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::DhtConfig;
-use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
+use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories, OutputBuilder};
 use tari_crypto::keys::PublicKey;
 use tari_p2p::initialization::CommsConfig;
 
@@ -44,7 +44,7 @@ use std::path::Path;
 use tari_core::{
     consensus::Network,
     crypto::script::TariScript,
-    transactions::{tari_amount::uT, transaction::UnblindedOutput, types::PrivateKey},
+    transactions::{tari_amount::uT, types::PrivateKey, UnblindedOutput},
 };
 use tari_crypto::common::Blake256;
 use tari_p2p::transport::TransportType;
@@ -192,7 +192,10 @@ fn test_wallet() {
     let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None);
+    let uo1 = OutputBuilder::new()
+        .with_value(MicroTari(2500))
+        .build(&factories.commitment)
+        .unwrap();
 
     runtime
         .block_on(alice_wallet.output_manager_service.add_output(uo1))
@@ -377,7 +380,10 @@ fn test_store_and_forward_send_tx() {
         .unwrap();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None);
+    let uo1 = OutputBuilder::new()
+        .with_value(MicroTari(2500))
+        .build(&factories.commitment)
+        .unwrap();
 
     alice_wallet
         .runtime
@@ -489,14 +495,11 @@ fn test_import_utxo() {
     )
     .unwrap();
 
-    let utxo = UnblindedOutput::new(
-        20000 * uT,
-        PrivateKey::default(),
-        None,
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .unwrap();
+    let utxo = OutputBuilder::new()
+        .with_value(20_000)
+        .with_spending_key(PrivateKey::default())
+        .build(&factories.commitment)
+        .unwrap();
 
     let tx_id = alice_wallet
         .import_utxo(

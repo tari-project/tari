@@ -31,9 +31,9 @@ use crate::{
     mining::{blake_miner::CpuBlakePow, error::MinerError},
     proof_of_work::PowAlgorithm,
     transactions::{
-        transaction::UnblindedOutput,
         types::{CryptoFactories, PrivateKey},
         CoinbaseBuilder,
+        UnblindedOutput,
     },
 };
 use core::sync::atomic::{AtomicBool, AtomicU64};

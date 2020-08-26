@@ -30,16 +30,17 @@ use crate::{
     transactions::{
         crypto::commitment::HomomorphicCommitmentFactory,
         fee::Fee,
-        helpers::{create_utxo, spend_utxos},
+        helpers::spend_utxos,
         tari_amount::uT,
-        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, UnblindedOutput},
+        transaction::{KernelBuilder, KernelFeatures},
         types::CryptoFactories,
+        OutputBuilder,
+        OutputFeatures,
     },
     txn_schema,
     validation::{StatelessValidation, ValidationError},
 };
 use tari_crypto::{
-    script::TariScript,
     tari_utilities::{epoch_time::EpochTime, Hashable},
 };
 use tari_test_utils::unpack_enum;
@@ -133,7 +134,10 @@ fn chain_balance_validation() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::Rincewind).build();
     let mut genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
-    let faucet_utxo = create_utxo(faucet_value, &factories, None, None).unwrap();
+    let faucet_utxo = OutputBuilder::new()
+        .with_value(faucet_value)
+        .build(&factories.commitment)
+        .unwrap();
     let faucet_key = faucet_utxo.blinding_factor().clone();
     let faucet_utxo = faucet_utxo.as_transaction_output(&factories).unwrap();
     let faucet_hash = faucet_utxo.hash();
@@ -154,13 +158,11 @@ fn chain_balance_validation() {
     //---------------------------------- Add a new coinbase and header --------------------------------------------//
     let mut txn = DbTransaction::new();
     let coinbase_value = consensus_manager.emission_schedule().block_reward(1);
-    let coinbase = create_utxo(
-        coinbase_value,
-        &factories,
-        Some(OutputFeatures::create_coinbase(1)),
-        None,
-    )
-    .unwrap();
+    let coinbase = OutputBuilder::new()
+        .with_value(coinbase_value)
+        .with_features(OutputFeatures::create_coinbase(1))
+        .build(&factories.commitment)
+        .unwrap();
     let sig = sign!(coinbase).unwrap();
     let excess = factories.commitment.commit_value(coinbase.blinding_factor(), 0);
     let coinbase_key = coinbase.blinding_factor().clone();
@@ -186,14 +188,11 @@ fn chain_balance_validation() {
 
     txn.spend_utxo(coinbase_hash);
 
-    let output = UnblindedOutput::new(
-        coinbase_value,
-        coinbase_key,
-        None,
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .unwrap();
+    let output = OutputBuilder::new()
+        .with_value(coinbase_value)
+        .with_spending_key(coinbase_key)
+        .build(&factories.commitment)
+        .unwrap();
     let fee = Fee::calculate(25 * uT, 1, 1, 2);
     let schema = txn_schema!(from: vec![output], to: vec![coinbase_value - fee], fee: 25 * uT);
     let (tx, _, params) = spend_utxos(schema);
@@ -205,7 +204,11 @@ fn chain_balance_validation() {
     }
 
     let v = consensus_manager.emission_schedule().block_reward(2) + fee;
-    let coinbase = create_utxo(v, &factories, Some(OutputFeatures::create_coinbase(1)), None).unwrap();
+    let coinbase = OutputBuilder::new()
+        .with_value(v)
+        .with_features(OutputFeatures::create_coinbase(1))
+        .build(&factories.commitment)
+        .unwrap();
     let sig = sign!(coinbase).unwrap();
     let excess = factories.commitment.commit_value(coinbase.blinding_factor(), 0);
     let kernel = KernelBuilder::new()
@@ -229,14 +232,11 @@ fn chain_balance_validation() {
 
     txn.spend_utxo(faucet_hash);
 
-    let output = UnblindedOutput::new(
-        faucet_value,
-        faucet_key,
-        None,
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .unwrap();
+    let output = OutputBuilder::new()
+        .with_value(faucet_value)
+        .with_spending_key(faucet_key)
+        .build(&factories.commitment)
+        .unwrap();
     let fee = Fee::calculate(25 * uT, 1, 1, 2);
     let schema = txn_schema!(from: vec![output], to: vec![faucet_value - fee], fee: 25 * uT);
     let (tx, _, params) = spend_utxos(schema);
@@ -248,7 +248,11 @@ fn chain_balance_validation() {
     }
 
     let v = consensus_manager.emission_schedule().block_reward(3) + fee;
-    let coinbase = create_utxo(v, &factories, Some(OutputFeatures::create_coinbase(1)), None).unwrap();
+    let coinbase = OutputBuilder::new()
+        .with_value(v)
+        .with_features(OutputFeatures::create_coinbase(1))
+        .build(&factories.commitment)
+        .unwrap();
     let sig = sign!(coinbase).unwrap();
     let excess = factories.commitment.commit_value(coinbase.blinding_factor(), 0);
     let kernel = KernelBuilder::new()
@@ -271,7 +275,11 @@ fn chain_balance_validation() {
     let mut txn = DbTransaction::new();
 
     let v = consensus_manager.emission_schedule().block_reward(4) + 1 * uT;
-    let coinbase = create_utxo(v, &factories, Some(OutputFeatures::create_coinbase(1)), None).unwrap();
+    let coinbase = OutputBuilder::new()
+        .with_value(v)
+        .with_features(OutputFeatures::create_coinbase(1))
+        .build(&factories.commitment)
+        .unwrap();
     let sig = sign!(coinbase).unwrap();
     let excess = factories.commitment.commit_value(coinbase.blinding_factor(), 0);
     let kernel = KernelBuilder::new()

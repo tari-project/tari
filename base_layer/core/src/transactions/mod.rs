@@ -6,6 +6,7 @@ pub mod fee;
 pub mod proto;
 pub mod tari_amount;
 pub mod transaction;
+mod transaction_outputs;
 #[allow(clippy::op_ref)]
 pub mod transaction_protocol;
 pub mod types;
@@ -15,6 +16,15 @@ pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::S
 pub use tari_crypto as crypto;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 mod coinbase_builder;
+
+pub use transaction_outputs::{
+    OutputBuilder,
+    OutputFeatures,
+    OutputFlags,
+    TransactionInput,
+    TransactionOutput,
+    UnblindedOutput,
+};
 
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 pub use crate::transactions::coinbase_builder::CoinbaseBuildError;

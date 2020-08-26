@@ -27,15 +27,12 @@ use tari_core::{
         aggregated_body::AggregateBody,
         bullet_rangeproofs::BulletRangeProof,
         tari_amount::MicroTari,
-        transaction::{
-            KernelFeatures,
-            OutputFeatures,
-            OutputFlags,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
+        transaction::{KernelFeatures, TransactionKernel},
         types::{Commitment, PrivateKey, PublicKey, Signature},
+        OutputFeatures,
+        OutputFlags,
+        TransactionInput,
+        TransactionOutput,
     },
 };
 use tari_crypto::tari_utilities::ByteArray;

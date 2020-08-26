@@ -47,7 +47,7 @@ use tari_core::{
         service::{MempoolResponse, MempoolServiceResponse},
         TxStorageResponse,
     },
-    transactions::transaction::TransactionOutput,
+    transactions::TransactionOutput,
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_p2p::tari_message::TariMessageType;

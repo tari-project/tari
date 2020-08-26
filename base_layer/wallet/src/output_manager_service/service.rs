@@ -43,20 +43,17 @@ use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     base_node::proto::base_node as BaseNodeProto,
-    crypto::script::TariScript,
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
-        transaction::{
-            KernelFeatures,
-            OutputFeatures,
-            Transaction,
-            TransactionInput,
-            TransactionOutput,
-            UnblindedOutput,
-        },
+        transaction::{KernelFeatures, Transaction},
         types::{CryptoFactories, PrivateKey},
+        OutputBuilder,
+        OutputFeatures,
         SenderTransactionProtocol,
+        TransactionInput,
+        TransactionOutput,
+        UnblindedOutput,
     },
 };
 use tari_crypto::keys::SecretKey as SecretKeyTrait;
@@ -585,13 +582,10 @@ where
         let mut change_output = Vec::<DbUnblindedOutput>::new();
         if let Some(key) = change_key {
             change_output.push(DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new(
-                    stp.get_amount_to_self()?,
-                    key,
-                    Some(OutputFeatures::default()),
-                    TariScript::default(),
-                    &self.resources.factories.commitment,
-                )?,
+                OutputBuilder::new()
+                    .with_value(stp.get_amount_to_self()?)
+                    .with_spending_key(key)
+                    .build(&self.resources.factories.commitment)?,
                 &self.resources.factories,
             )?);
         }
@@ -866,13 +860,10 @@ where
             }
             self.resources.db.increment_key_index().await?;
             let utxo = DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new(
-                    output_amount,
-                    spend_key,
-                    None,
-                    TariScript::default(),
-                    &self.resources.factories.commitment,
-                )?,
+                OutputBuilder::new()
+                    .with_value(output_amount)
+                    .with_spending_key(spend_key)
+                    .build(&self.resources.factories.commitment)?,
                 &self.resources.factories,
             )?;
             outputs.push(utxo.clone());

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::utils::{make_input, random_string};
+use crate::support::utils::random_string;
 use aes_gcm::{
     aead::{generic_array::GenericArray, NewAead},
     Aes256Gcm,
@@ -30,8 +30,9 @@ use rand::{rngs::OsRng, RngCore};
 use std::time::Duration;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::OutputFeatures,
     types::{CryptoFactories, PrivateKey},
+    OutputBuilder,
+    OutputFeatures,
 };
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
 use tari_wallet::{
@@ -61,12 +62,11 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
             maturity: i,
             ..OutputFeatures::default()
         };
-        let (_ti, uo) = make_input(
-            &mut OsRng,
-            MicroTari::from(100 + OsRng.next_u64() % 1000),
-            &factories.commitment,
-            Some(features),
-        );
+        let uo = OutputBuilder::new()
+            .with_value(100 + OsRng.next_u64() % 1000)
+            .with_features(features)
+            .build(&factories.commitment)
+            .unwrap();
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
         runtime.block_on(db.add_unspent_output(uo.clone())).unwrap();
         unspent_outputs.push(uo);
@@ -92,22 +92,18 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
             coinbase_block_height: None,
         };
         for _ in 0..(OsRng.next_u64() % 5 + 1) {
-            let (_ti, uo) = make_input(
-                &mut OsRng,
-                MicroTari::from(100 + OsRng.next_u64() % 1000),
-                &factories.commitment,
-                None,
-            );
+            let uo = OutputBuilder::new()
+                .with_value(100 + OsRng.next_u64() % 1000)
+                .build(&factories.commitment)
+                .unwrap();
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
             pending_tx.outputs_to_be_spent.push(uo);
         }
         for _ in 0..(OsRng.next_u64() % 5 + 1) {
-            let (_ti, uo) = make_input(
-                &mut OsRng,
-                MicroTari::from(100 + OsRng.next_u64() % 1000),
-                &factories.commitment,
-                None,
-            );
+            let uo = OutputBuilder::new()
+                .with_value(100 + OsRng.next_u64() % 1000)
+                .build(&factories.commitment)
+                .unwrap();
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
             pending_tx.outputs_to_be_received.push(uo);
         }
@@ -206,12 +202,10 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
             .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value())
     );
 
-    let (_ti, uo_change) = make_input(
-        &mut OsRng.clone(),
-        MicroTari::from(100 + OsRng.next_u64() % 1000),
-        &factories.commitment,
-        None,
-    );
+    let uo_change = OutputBuilder::new()
+        .with_value(100 + OsRng.next_u64() % 1000)
+        .build(&factories.commitment)
+        .unwrap();
     let uo_change = DbUnblindedOutput::from_unblinded_output(uo_change, &factories).unwrap();
     let outputs_to_encumber = vec![outputs[0].clone(), outputs[1].clone()];
     let total_encumbered = outputs[0].clone().unblinded_output.value() + outputs[1].clone().unblinded_output.value();
@@ -232,12 +226,10 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
         pending_outgoing_balance
     });
 
-    let (_ti, uo_incoming) = make_input(
-        &mut OsRng.clone(),
-        MicroTari::from(100 + OsRng.next_u64() % 1000),
-        &factories.commitment,
-        None,
-    );
+    let uo_incoming = OutputBuilder::new()
+        .with_value(100 + OsRng.next_u64() % 1000)
+        .build(&factories.commitment)
+        .unwrap();
     runtime
         .block_on(db.accept_incoming_pending_transaction(
             5,
@@ -458,14 +450,20 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + Clone + 'sta
         coinbase_block_height: None,
     };
     for i in 1..4 {
-        let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000 * i), &factories.commitment, None);
+        let uo = OutputBuilder::new()
+            .with_value(1000 * i)
+            .build(&factories.commitment)
+            .unwrap();
         available_balance += uo.value();
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
         db.add_unspent_output(uo.clone()).await.unwrap();
         pending_tx.outputs_to_be_spent.push(uo);
     }
 
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(50)
+        .build(&factories.commitment)
+        .unwrap();
     let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
     pending_tx.outputs_to_be_received.push(uo);
 
@@ -484,7 +482,10 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + Clone + 'sta
     assert_eq!(available_balance, balance.available_balance);
 
     pending_tx.outputs_to_be_received.clear();
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(50)
+        .build(&factories.commitment)
+        .unwrap();
     let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
     pending_tx.outputs_to_be_received.push(uo);
 
@@ -501,7 +502,10 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + Clone + 'sta
     assert_eq!(balance.available_balance, MicroTari(0));
 
     pending_tx.outputs_to_be_received.clear();
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(50), &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(50)
+        .build(&factories.commitment)
+        .unwrap();
     let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
     pending_tx.outputs_to_be_received.push(uo);
 

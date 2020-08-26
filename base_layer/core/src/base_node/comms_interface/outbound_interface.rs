@@ -24,10 +24,7 @@ use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
     blocks::{blockheader::BlockHeader, NewBlock},
     chain_storage::{ChainMetadata, HistoricalBlock, MmrTree},
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-        types::HashOutput,
-    },
+    transactions::{transaction::TransactionKernel, types::HashOutput, TransactionOutput},
 };
 use futures::channel::mpsc::UnboundedSender;
 use log::*;

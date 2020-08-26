@@ -39,8 +39,10 @@ use tari_core::{
     crypto::script::TariScript,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, UnblindedOutput},
         types::{BlindingFactor, Commitment, CryptoFactories, PrivateKey},
+        OutputBuilder,
+        OutputFeatures,
+        UnblindedOutput,
     },
 };
 
@@ -360,13 +362,11 @@ where T: OutputManagerBackend + Clone + 'static
     ) -> Result<(), OutputManagerStorageError>
     {
         let db_clone = self.db.clone();
-        let uo = UnblindedOutput::new(
-            amount,
-            spending_key.clone(),
-            Some(output_features),
-            TariScript::default(),
-            &factory.commitment,
-        )?;
+        let uo = OutputBuilder::new()
+            .with_value(amount)
+            .with_spending_key(spending_key.clone())
+            .with_features(output_features)
+            .build(&factory.commitment)?;
         let output = DbUnblindedOutput::from_unblinded_output(uo, factory)?;
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::PendingTransactionOutputs(

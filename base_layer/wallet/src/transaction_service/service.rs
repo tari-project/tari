@@ -73,6 +73,7 @@ use tari_core::{
         transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
         types::{CryptoFactories, PrivateKey},
         CoinbaseBuilder,
+        OutputBuilder,
     },
 };
 use tari_crypto::keys::SecretKey;
@@ -1647,7 +1648,7 @@ where
         use futures::stream;
         use tari_core::{
             consensus::{ConsensusConstantsBuilder, Network},
-            transactions::{transaction::OutputFeatures, ReceiverTransactionProtocol},
+            transactions::{OutputFeatures, ReceiverTransactionProtocol},
         };
         use tari_crypto::keys::SecretKey as SecretKeyTrait;
 
@@ -1672,8 +1673,10 @@ where
         )
         .await?;
 
-        use crate::testnet_utils::make_input;
-        let (_ti, uo) = make_input(&mut OsRng, amount + 1000 * uT, &self.resources.factories);
+        let uo = OutputBuilder::new()
+            .with_value(amount + 1000 * uT)
+            .build(&self.resources.factories.commitment)
+            .unwrap();
 
         fake_oms.add_output(uo).await?;
 

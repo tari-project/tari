@@ -58,9 +58,10 @@ use tari_core::{
     mempool::MempoolServiceConfig,
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
-        helpers::{create_test_kernel, create_utxo, schema_to_transaction},
-        tari_amount::{uT, MicroTari, T},
+        helpers::{create_test_kernel, schema_to_transaction},
+        tari_amount::{uT, T},
         types::CryptoFactories,
+        OutputBuilder,
     },
     txn_schema,
     validation::{
@@ -243,10 +244,14 @@ fn request_and_response_fetch_utxos() {
     let (mut alice_node, bob_node, carol_node, _consensus_manager) =
         create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
 
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo1 = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+    let utxo2 = OutputBuilder::new()
+        .with_value(15_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let hash1 = utxo1.hash();
@@ -873,16 +878,24 @@ fn request_and_response_fetch_mmr_node_and_count() {
         temp_dir.path().to_str().unwrap(),
     );
 
-    let utxo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo1 = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+    let utxo2 = OutputBuilder::new()
+        .with_value(15_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo3 = create_utxo(MicroTari(20_000), &factories, None, None)
+    let utxo3 = OutputBuilder::new()
+        .with_value(20_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let utxo4 = create_utxo(MicroTari(25_000), &factories, None, None)
+    let utxo4 = OutputBuilder::new()
+        .with_value(25_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let kernel1 = create_test_kernel(5.into(), 0);

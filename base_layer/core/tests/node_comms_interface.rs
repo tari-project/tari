@@ -45,9 +45,9 @@ use tari_core::{
     helpers::create_mem_db,
     mempool::{Mempool, MempoolConfig, MempoolValidators},
     transactions::{
-        helpers::{create_test_kernel, create_utxo},
-        tari_amount::MicroTari,
+        helpers::create_test_kernel,
         types::{CryptoFactories, HashDigest},
+        OutputBuilder,
     },
     validation::{
         accum_difficulty_validators::MockAccumDifficultyValidator,
@@ -254,7 +254,9 @@ fn outbound_fetch_utxos() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
-        let utxo = create_utxo(MicroTari(10_000), &factories, None, None)
+        let utxo = OutputBuilder::new()
+            .with_value(10_000)
+            .build(&factories.commitment)
             .and_then(|o| o.as_transaction_output(&factories))
             .unwrap();
         let hash = utxo.hash();
@@ -290,7 +292,9 @@ fn inbound_fetch_utxos() {
         outbound_nci,
     );
 
-    let utxo = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let hash = utxo.hash();
@@ -321,10 +325,14 @@ fn outbound_fetch_txos() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
 
     block_on(async {
-        let txo1 = create_utxo(MicroTari(10_000), &factories, None, None)
+        let txo1 = OutputBuilder::new()
+            .with_value(10_000)
+            .build(&factories.commitment)
             .and_then(|o| o.as_transaction_output(&factories))
             .unwrap();
-        let txo2 = create_utxo(MicroTari(15_000), &factories, None, None)
+        let txo2 = OutputBuilder::new()
+            .with_value(15_000)
+            .build(&factories.commitment)
             .and_then(|o| o.as_transaction_output(&factories))
             .unwrap();
         let hash1 = txo1.hash();
@@ -362,10 +370,14 @@ fn inbound_fetch_txos() {
         outbound_nci,
     );
 
-    let utxo = create_utxo(MicroTari(10_000), &factories, None, None)
+    let utxo = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    let stxo = create_utxo(MicroTari(10_000), &factories, None, None)
+    let stxo = OutputBuilder::new()
+        .with_value(10_000)
+        .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
     let utxo_hash = utxo.hash();

@@ -25,8 +25,8 @@ use std::cmp::Ordering;
 use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{
-        transaction::UnblindedOutput,
         types::{Commitment, CryptoFactories, HashOutput},
+        UnblindedOutput,
     },
 };
 

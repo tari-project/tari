@@ -25,19 +25,15 @@ use crate::{
     consensus::{emission::EmissionSchedule, ConsensusConstants},
     transactions::{
         tari_amount::{uT, MicroTari},
-        transaction::{
-            KernelBuilder,
-            KernelFeatures,
-            OutputFeatures,
-            Transaction,
-            TransactionBuilder,
-            UnblindedOutput,
-        },
+        transaction::{KernelBuilder, KernelFeatures, Transaction, TransactionBuilder},
         transaction_protocol::{build_challenge, TransactionMetadata},
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
+        OutputBuilder,
+        OutputFeatures,
+        UnblindedOutput,
     },
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK, script::TariScript};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error, PartialEq)]
@@ -150,14 +146,12 @@ impl CoinbaseBuilder {
         let challenge = build_challenge(&public_nonce, &metadata);
         let sig = Signature::sign(key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
-        let unblinded_output = UnblindedOutput::new(
-            total_reward,
-            key,
-            Some(output_features),
-            TariScript::default(),
-            &self.factories.commitment,
-        )
-        .unwrap();
+        let unblinded_output = OutputBuilder::new()
+            .with_value(total_reward)
+            .with_spending_key(key)
+            .with_features(output_features)
+            .build(&self.factories.commitment)
+            .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         let output = unblinded_output
             .as_transaction_output(&self.factories)
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
@@ -191,12 +185,13 @@ mod test {
             coinbase_builder::CoinbaseBuildError,
             helpers::TestParams,
             tari_amount::uT,
-            transaction::{OutputFlags, UnblindedOutput},
             types::CryptoFactories,
             CoinbaseBuilder,
+            OutputBuilder,
+            OutputFlags,
         },
     };
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, script::TariScript};
+    use tari_crypto::{commitment::HomomorphicCommitmentFactory};
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
@@ -255,14 +250,12 @@ mod test {
             .unwrap();
         let utxo = &tx.body.outputs()[0];
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
-        let unblinded_test = UnblindedOutput::new(
-            block_reward,
-            p.spend_key.clone(),
-            Some(utxo.features().clone()),
-            TariScript::default(),
-            &factories.commitment,
-        )
-        .unwrap();
+        let unblinded_test = OutputBuilder::new()
+            .with_value(block_reward)
+            .with_spending_key(p.spend_key.clone())
+            .with_features(utxo.features().clone())
+            .build(&factories.commitment)
+            .unwrap();
         assert_eq!(unblinded_output, unblinded_test);
         assert!(factories
             .commitment

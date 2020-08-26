@@ -33,8 +33,9 @@ use crate::{
         MmrTree,
     },
     transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
+        transaction::TransactionKernel,
         types::{Commitment, HashOutput, Signature},
+        TransactionOutput,
     },
 };
 use log::*;

@@ -23,45 +23,32 @@
 use crate::transactions::{
     fee::Fee,
     tari_amount::MicroTari,
-    transaction::{
-        KernelBuilder,
-        KernelFeatures,
-        OutputFeatures,
-        Transaction,
-        TransactionError,
-        TransactionInput,
-        TransactionKernel,
-        UnblindedOutput,
-    },
+    transaction::{KernelBuilder, KernelFeatures, Transaction, TransactionKernel},
     transaction_protocol::{
         build_challenge,
         transaction_initializer::SenderTransactionInitializer,
         TransactionMetadata,
     },
     types::{Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
+    OutputBuilder,
+    OutputFeatures,
     SenderTransactionProtocol,
+    TransactionInput,
+    UnblindedOutput,
 };
 use num::pow;
-use rand::{rngs::OsRng, CryptoRng, Rng};
+use rand::{rngs::OsRng};
 use std::sync::Arc;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
     keys::{PublicKey as PK, SecretKey},
-    script::{TariScript, DEFAULT_SCRIPT_HASH},
+    script::DEFAULT_SCRIPT_HASH,
 };
 
-pub fn make_input<R: Rng + CryptoRng>(
-    rng: &mut R,
-    val: MicroTari,
-    factory: &CommitmentFactory,
-) -> (TransactionInput, UnblindedOutput)
-{
-    let key = PrivateKey::random(rng);
-    let v = PrivateKey::from(val);
-    let commitment = factory.commit(&key, &v);
-    let input = TransactionInput::new(OutputFeatures::default(), commitment, &DEFAULT_SCRIPT_HASH);
-    let output = UnblindedOutput::new(val, key, None, TariScript::default(), factory).unwrap();
+pub fn make_input(val: MicroTari, factory: &CommitmentFactory) -> (TransactionInput, UnblindedOutput) {
+    let output = OutputBuilder::new().with_value(val).build(factory).unwrap();
+    let input = output.as_transaction_input();
     (input, output)
 }
 
@@ -206,7 +193,7 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:0,
-            $crate::transactions::transaction::OutputFeatures::default()
+            $crate::transactions::OutputFeatures::default()
         )
     };
 
@@ -240,11 +227,14 @@ pub fn create_test_input(
 ) -> (TransactionInput, UnblindedOutput)
 {
     let spending_key = PrivateKey::random(&mut OsRng);
-    let commitment = factory.commit(&spending_key, &PrivateKey::from(amount));
     let features = OutputFeatures::with_maturity(maturity);
-    let input = TransactionInput::new(features.clone(), commitment, &DEFAULT_SCRIPT_HASH);
-    let unblinded_output =
-        UnblindedOutput::new(amount, spending_key, Some(features), TariScript::default(), factory).unwrap();
+    let unblinded_output = OutputBuilder::new()
+        .with_value(amount)
+        .with_spending_key(spending_key)
+        .with_features(features)
+        .build(factory)
+        .unwrap();
+    let input = unblinded_output.as_transaction_input();
     (input, unblinded_output)
 }
 
@@ -291,14 +281,11 @@ pub fn create_tx(
         } else {
             amount_for_last_output
         };
-        let utxo = UnblindedOutput::new(
-            output_amount,
-            test_params.spend_key.clone(),
-            None,
-            TariScript::default(),
-            &factories.commitment,
-        )
-        .unwrap();
+        let utxo = OutputBuilder::new()
+            .with_value(output_amount)
+            .with_spending_key(test_params.spend_key.clone())
+            .build(&factories.commitment)
+            .unwrap();
         unblinded_outputs.push(utxo.clone());
         stx_builder.with_output(utxo);
     }
@@ -337,29 +324,23 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     }
     let mut outputs = Vec::with_capacity(schema.to.len());
     for val in schema.to {
-        let k = PrivateKey::random(&mut OsRng);
-        let utxo = UnblindedOutput::new(
-            val,
-            k,
-            Some(schema.features.clone()),
-            TariScript::default(),
-            &factories.commitment,
-        )
-        .unwrap();
+        let utxo = OutputBuilder::new()
+            .with_value(val)
+            .with_features(schema.features.clone())
+            .build(&factories.commitment)
+            .unwrap();
         outputs.push(utxo.clone());
         stx_builder.with_output(utxo);
     }
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
     let change = stx_protocol.get_change_amount().unwrap();
-    let change_output = UnblindedOutput::new(
-        change,
-        test_params.change_key.clone(),
-        Some(schema.features),
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .unwrap();
+    let change_output = OutputBuilder::new()
+        .with_value(change)
+        .with_spending_key(test_params.change_key.clone())
+        .with_features(schema.features)
+        .build(&factories.commitment)
+        .unwrap();
     outputs.push(change_output);
     match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
         Ok(true) => (),
@@ -380,25 +361,6 @@ pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel
         .with_signature(&s)
         .build()
         .unwrap()
-}
-
-/// Create a new UTXO for the specified value and return the output and spending key
-
-pub fn create_utxo(
-    value: MicroTari,
-    factories: &CryptoFactories,
-    features: Option<OutputFeatures>,
-    script: Option<TariScript>,
-) -> Result<UnblindedOutput, TransactionError>
-{
-    let spend_key = PrivateKey::random(&mut OsRng);
-    UnblindedOutput::new(
-        value,
-        spend_key,
-        features,
-        script.unwrap_or_default(),
-        &factories.commitment,
-    )
 }
 
 /// Create a set of [Transaction]s and the associated UTXO data from the given transaction schema objects.

@@ -26,12 +26,13 @@ use tari_core::{
     crypto::script::{TariScript, DEFAULT_SCRIPT_HASH},
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
         types::{CommitmentFactory, PrivateKey, PublicKey},
+        OutputFeatures,
+        TransactionInput,
+        UnblindedOutput,
     },
 };
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
 };
 
@@ -79,21 +80,6 @@ impl TestParams {
             nonce: r,
         }
     }
-}
-pub fn make_input<R: Rng + CryptoRng>(
-    rng: &mut R,
-    val: MicroTari,
-    factory: &CommitmentFactory,
-    features: Option<OutputFeatures>,
-) -> (TransactionInput, UnblindedOutput)
-{
-    let key = PrivateKey::random(rng);
-    let commitment = factory.commit_value(&key, val.into());
-    let input = TransactionInput::new(OutputFeatures::default(), commitment, &DEFAULT_SCRIPT_HASH);
-    (
-        input,
-        UnblindedOutput::new(val, key, features, TariScript::default(), factory).unwrap(),
-    )
 }
 
 pub fn random_string(len: usize) -> String {

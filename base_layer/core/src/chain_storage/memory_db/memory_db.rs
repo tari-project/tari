@@ -42,10 +42,7 @@ use crate::{
         ChainMetadata,
     },
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-        types::HashOutput,
-    },
+    transactions::{transaction::TransactionKernel, types::HashOutput, TransactionOutput},
 };
 use croaring::Bitmap;
 use digest::Digest;

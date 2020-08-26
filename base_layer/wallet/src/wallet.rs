@@ -58,8 +58,10 @@ use tari_core::{
     crypto::{script::TariScript, tari_utilities::hex::to_hex},
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, UnblindedOutput},
         types::{CryptoFactories, PrivateKey},
+        OutputBuilder,
+        OutputFeatures,
+        UnblindedOutput,
     },
 };
 use tari_crypto::{
@@ -277,14 +279,11 @@ where
         message: String,
     ) -> Result<TxId, WalletError>
     {
-        let unblinded_output = UnblindedOutput::new(
-            amount,
-            spending_key.clone(),
-            None,
-            TariScript::default(),
-            &self.factories.commitment,
-        )
-        .map_err(|_| WalletError::ImportError)?;
+        let unblinded_output = OutputBuilder::new()
+            .with_value(amount)
+            .with_spending_key(spending_key.clone())
+            .build(&self.factories.commitment)
+            .map_err(|_| WalletError::ImportError)?;
 
         self.runtime
             .block_on(self.output_manager_service.add_output(unblinded_output.clone()))?;

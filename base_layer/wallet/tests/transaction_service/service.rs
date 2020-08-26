@@ -22,7 +22,7 @@
 
 use crate::support::{
     comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
-    utils::{make_input, random_string, TestParams},
+    utils::{random_string, TestParams},
 };
 use chrono::Utc;
 use futures::{
@@ -69,13 +69,18 @@ use tari_core::{
     },
     transactions::{
         fee::Fee,
+        helpers::make_input,
         proto::types::TransactionOutput as TransactionOutputProto,
         tari_amount::*,
-        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
+        transaction::{KernelBuilder, KernelFeatures, Transaction},
         transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
         types::{CryptoFactories, PrivateKey, PublicKey, Signature},
+        OutputBuilder,
+        OutputFeatures,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
+        TransactionOutput,
+        UnblindedOutput,
     },
 };
 use tari_crypto::{
@@ -349,7 +354,10 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
     );
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None);
+    let uo1 = OutputBuilder::new()
+        .with_value(MicroTari(2500))
+        .build(&factories.commitment)
+        .unwrap();
 
     assert!(runtime
         .block_on(alice_ts.send_transaction(
@@ -549,17 +557,32 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
             .dial_peer(carol_node_identity.node_id().clone()),
     );
 
-    let (_utxo, uo2) = make_input(&mut OsRng, MicroTari(3500), &factories.commitment, None);
+    let uo2 = OutputBuilder::new()
+        .with_value(MicroTari(3500))
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(bob_oms.add_output(uo2)).unwrap();
-    let (_utxo, uo3) = make_input(&mut OsRng, MicroTari(4500), &factories.commitment, None);
+    let uo3 = OutputBuilder::new()
+        .with_value(MicroTari(4500))
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(carol_oms.add_output(uo3)).unwrap();
 
     // Add some funds to Alices wallet
-    let (_utxo, uo1a) = make_input(&mut OsRng, MicroTari(5500), &factories.commitment, None);
+    let uo1a = OutputBuilder::new()
+        .with_value(MicroTari(5500))
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
-    let (_utxo, uo1b) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment, None);
+    let uo1b = OutputBuilder::new()
+        .with_value(MicroTari(3000))
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_oms.add_output(uo1b)).unwrap();
-    let (_utxo, uo1c) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment, None);
+    let uo1c = OutputBuilder::new()
+        .with_value(MicroTari(3000))
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_oms.add_output(uo1c)).unwrap();
 
     // A series of interleaved transactions. First with Bob and Carol offline and then two with them online
@@ -756,7 +779,10 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
 
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(MicroTari(250000))
+        .build(&factories.commitment)
+        .unwrap();
 
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
@@ -866,7 +892,10 @@ fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(al
     let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend, None);
 
-    let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(MicroTari(250000))
+        .build(&factories.commitment)
+        .unwrap();
 
     runtime.block_on(bob_output_manager.add_output(uo)).unwrap();
 
@@ -980,7 +1009,10 @@ fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alic
     let (_bob_ts, mut bob_output_manager, _bob_outbound_service, _bob_tx_sender, _bob_tx_ack_sender, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), bob_backend, None);
 
-    let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(MicroTari(250000))
+        .build(&factories.commitment)
+        .unwrap();
 
     runtime.block_on(bob_output_manager.add_output(uo)).unwrap();
 
@@ -1128,11 +1160,20 @@ fn discovery_async_return_test() {
     );
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let (_utxo, uo1a) = make_input(&mut OsRng, MicroTari(5500), &factories.commitment, None);
+    let uo1a = OutputBuilder::new()
+        .with_value(MicroTari(5500))
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_oms.add_output(uo1a)).unwrap();
-    let (_utxo, uo1b) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment, None);
+    let uo1b = OutputBuilder::new()
+        .with_value(MicroTari(3000))
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_oms.add_output(uo1b)).unwrap();
-    let (_utxo, uo1c) = make_input(&mut OsRng, MicroTari(3000), &factories.commitment, None);
+    let uo1c = OutputBuilder::new()
+        .with_value(MicroTari(3000))
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_oms.add_output(uo1c)).unwrap();
 
     let initial_balance = runtime.block_on(alice_oms.get_balance()).unwrap();
@@ -1262,10 +1303,16 @@ fn transaction_mempool_broadcast() {
     let (_bob_ts, _bob_output_manager, bob_outbound_service, mut bob_tx_sender, _, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
 
-    let (_utxo, uo) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(MicroTari(250000))
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
-    let (_utxo, uo2) = make_input(&mut OsRng, MicroTari(250000), &factories.commitment, None);
+    let uo2 = OutputBuilder::new()
+        .with_value(MicroTari(250000))
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo2)).unwrap();
 
     // Send Tx1
@@ -1835,11 +1882,17 @@ fn transaction_base_node_monitoring() {
     runtime.block_on(alice_ts.set_normal_power_mode()).unwrap();
 
     let mut alice_total_available = 250000 * uT;
-    let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(alice_total_available)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
     let alice_total_available2 = 250000 * uT;
-    let (_utxo, uo) = make_input(&mut OsRng, alice_total_available2, &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(alice_total_available2)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
     alice_total_available += alice_total_available2;
 
@@ -2357,7 +2410,10 @@ fn transaction_cancellation_when_not_in_mempool() {
         .unwrap();
 
     let alice_total_available = 250000 * uT;
-    let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(alice_total_available)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
     let amount_sent = 10000 * uT;
@@ -2588,7 +2644,10 @@ fn test_transaction_cancellation<T: TransactionBackend + Clone + 'static>(backen
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     let alice_total_available = 250000 * uT;
-    let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(alice_total_available)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
     let amount_sent = 10000 * uT;
@@ -2643,14 +2702,10 @@ fn test_transaction_cancellation<T: TransactionBackend + Clone + 'static>(backen
 
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(
-        MicroTari::from(100_000),
-        PrivateKey::random(&mut OsRng),
-        None,
-        TariScript::default(),
-        &factories.commitment,
-    )
-    .unwrap();
+    let input = OutputBuilder::new()
+        .with_value(100_000)
+        .build(&factories.commitment)
+        .unwrap();
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -2746,7 +2801,10 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     );
 
     let alice_total_available = 250000 * uT;
-    let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(alice_total_available)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
     let amount_sent = 10000 * uT;
@@ -2872,7 +2930,10 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
 
     // Now to repeat sending so we can test the SAF send of the finalize message
     let alice_total_available = 250000 * uT;
-    let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(alice_total_available)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
     let amount_sent = 20000 * uT;
@@ -2965,13 +3026,25 @@ fn test_tx_direct_send_behaviour() {
     );
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(1000000 * uT)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
-    let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(1000000 * uT)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
-    let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(1000000 * uT)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
-    let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment, None);
+    let uo = OutputBuilder::new()
+        .with_value(1000000 * uT)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
     let amount_sent = 10000 * uT;
@@ -3168,7 +3241,7 @@ fn test_restarting_transaction_protocols() {
     // Bob is going to send a transaction to Alice
     let alice = TestParams::new(&mut OsRng);
     let bob = TestParams::new(&mut OsRng);
-    let (utxo, input) = make_input(&mut OsRng, MicroTari(2000), &factories.commitment, None);
+    let (utxo, input) = make_input(MicroTari(2000), &factories.commitment);
     let mut builder = SenderTransactionProtocol::builder(1);
     let fee = Fee::calculate(MicroTari(20), 1, 1, 1);
     builder

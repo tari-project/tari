@@ -36,8 +36,10 @@ use crate::{
     consensus::ConsensusManager,
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     transactions::{
-        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::TransactionKernel,
         types::{Commitment, HashOutput, PublicKey, Signature},
+        TransactionInput,
+        TransactionOutput,
     },
     validation::{StatelessValidation, StatelessValidator, Validation, ValidationError, Validator},
 };

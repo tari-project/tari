@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::Block,
-    transactions::{transaction::TransactionOutput, types::Commitment},
+    transactions::{types::Commitment, TransactionOutput},
 };
 use serde::{Deserialize, Serialize};
 

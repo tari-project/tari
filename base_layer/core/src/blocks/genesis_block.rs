@@ -30,8 +30,11 @@ use crate::transactions::{
     aggregated_body::AggregateBody,
     bullet_rangeproofs::BulletRangeProof,
     tari_amount::MicroTari,
-    transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
+    transaction::{KernelFeatures, TransactionKernel},
     types::{Commitment, PrivateKey, PublicKey, Signature},
+    OutputFeatures,
+    OutputFlags,
+    TransactionOutput,
 };
 use tari_crypto::{
     script::DEFAULT_SCRIPT_HASH,

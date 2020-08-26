@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::transactions::{
-    transaction::{OutputFeatures, TransactionOutput},
     transaction_protocol::{
         build_challenge,
         recipient::RecipientSignedMessage as RD,
@@ -29,6 +28,8 @@ use crate::transactions::{
         TransactionProtocolError as TPE,
     },
     types::{CryptoFactories, PrivateKey as SK, PublicKey, RangeProof, Signature},
+    OutputFeatures,
+    TransactionOutput,
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -105,7 +106,6 @@ impl SingleReceiverTransactionProtocol {
 mod test {
     use crate::transactions::{
         tari_amount::*,
-        transaction::OutputFeatures,
         transaction_protocol::{
             build_challenge,
             sender::SingleRoundSenderData,
@@ -114,6 +114,7 @@ mod test {
             TransactionProtocolError,
         },
         types::{CryptoFactories, PrivateKey, PublicKey},
+        OutputFeatures,
     };
     use rand::rngs::OsRng;
     use tari_crypto::{
