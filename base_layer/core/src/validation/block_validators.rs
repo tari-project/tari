@@ -229,9 +229,17 @@ fn check_accounting_balance(
 
 fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
     // The genesis block has a larger weight than other blocks may have so we have to exclude it here
-    if block.body.calculate_weight() <= consensus_constants.get_max_block_transaction_weight() ||
-        block.header.height == 0
-    {
+    let block_weight = block.body.calculate_weight();
+    if block_weight <= consensus_constants.get_max_block_transaction_weight() || block.header.height == 0 {
+        trace!(
+            target: LOG_TARGET,
+            "SV - Block contents for block #{} : inputs {}; kernels {}; outputs {}; weight {}.",
+            block.header.height,
+            block.body.inputs().len(),
+            block.body.kernels().len(),
+            block.body.outputs().len(),
+            block_weight,
+        );
         Ok(())
     } else {
         Err(BlockValidationError::BlockTooLarge).map_err(ValidationError::from)

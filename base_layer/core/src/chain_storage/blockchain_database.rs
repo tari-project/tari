@@ -609,13 +609,18 @@ where B: BlockchainBackend
             warn!(
                 target: LOG_TARGET,
                 "Block #{} ({}) failed validation - {}",
-                new_height,
+                &new_height,
                 block.hash().to_hex(),
                 e.to_string()
             );
             return Err(e.into());
         }
 
+        trace!(
+            target: LOG_TARGET,
+            "[add_block] acquired write access db lock for block #{} ",
+            &new_height
+        );
         let mut db = self.db_write_access()?;
         let block_add_result = add_block(
             &mut db,
@@ -643,6 +648,11 @@ where B: BlockchainBackend
             _ => {},
         }
 
+        trace!(
+            target: LOG_TARGET,
+            "[add_block] released write access db lock for block #{} ",
+            &new_height
+        );
         Ok(block_add_result)
     }
 
@@ -1496,6 +1506,11 @@ fn handle_reorg<T: BlockchainBackend>(
     // tips can be found then the new_block is a tip.
     let new_block_hash = new_block.hash();
     let orphan_chain_tips = find_orphan_chain_tips(&**db, new_block.header.height, new_block_hash.clone());
+    trace!(
+        target: LOG_TARGET,
+        "Search for orphan tips linked to block #{} complete.",
+        new_block.header.height
+    );
     // Check the accumulated difficulty of the best fork chain compared to the main chain.
     let (fork_accum_difficulty, fork_tip_hash) = find_strongest_orphan_tip(&**db, orphan_chain_tips)?;
     let tip_header = db
