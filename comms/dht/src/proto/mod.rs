@@ -22,8 +22,13 @@
 
 use crate::proto::{dht::JoinMessage, envelope::Network};
 use rand::{rngs::OsRng, RngCore};
-use std::fmt;
-use tari_comms::NodeIdentity;
+use std::{convert::TryInto, fmt};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    types::CommsPublicKey,
+    NodeIdentity,
+};
 use tari_utilities::{hex::Hex, ByteArray};
 
 #[path = "tari.dht.envelope.rs"]
@@ -31,6 +36,9 @@ pub mod envelope;
 
 #[path = "tari.dht.rs"]
 pub mod dht;
+
+#[path = "tari.dht.rpc.rs"]
+pub mod rpc;
 
 #[path = "tari.dht.store_forward.rs"]
 pub mod store_forward;
@@ -86,5 +94,46 @@ impl fmt::Display for dht::JoinMessage {
             self.addresses,
             self.peer_features
         )
+    }
+}
+
+//---------------------------------- Rpc Message Conversions --------------------------------------------//
+
+impl From<Peer> for rpc::Peer {
+    fn from(peer: Peer) -> Self {
+        rpc::Peer {
+            public_key: peer.public_key.to_vec(),
+            addresses: peer
+                .addresses
+                .addresses
+                .iter()
+                .map(|addr| addr.address.to_string())
+                .collect(),
+            peer_features: peer.features.bits(),
+        }
+    }
+}
+
+impl TryInto<Peer> for rpc::Peer {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<Peer, Self::Error> {
+        let pk = CommsPublicKey::from_bytes(&self.public_key)?;
+        let node_id = NodeId::from_public_key(&pk);
+        let addresses = self
+            .addresses
+            .iter()
+            .filter_map(|addr| addr.parse::<Multiaddr>().ok())
+            .collect::<Vec<_>>();
+
+        Ok(Peer::new(
+            pk,
+            node_id,
+            addresses.into(),
+            PeerFlags::NONE,
+            PeerFeatures::from_bits_truncate(self.peer_features),
+            &[],
+            "".to_string(),
+        ))
     }
 }

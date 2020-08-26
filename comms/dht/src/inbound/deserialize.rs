@@ -137,10 +137,10 @@ mod test {
     use crate::{
         envelope::DhtMessageFlags,
         test_utils::{
+            build_peer_manager,
             make_comms_inbound_message,
             make_dht_envelope,
             make_node_identity,
-            make_peer_manager,
             service_spy,
         },
     };
@@ -149,7 +149,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn deserialize() {
         let spy = service_spy();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let node_identity = make_node_identity();
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
 

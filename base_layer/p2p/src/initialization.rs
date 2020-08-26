@@ -30,10 +30,10 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{error::Error, iter, path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
     backoff::ConstantBackoff,
-    peer_manager::{NodeIdentity, Peer, PeerManagerError},
+    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerManagerError},
     pipeline,
     pipeline::SinkService,
-    protocol::ProtocolExtensions,
+    protocol::{rpc::RpcServer, ProtocolExtensions},
     tor,
     transports::{MemoryTransport, SocksTransport, TcpWithTorTransport, Transport},
     utils::cidr::parse_cidrs,
@@ -312,7 +312,7 @@ where
     let listener_liveness_allowlist_cidrs = parse_cidrs(&config.listener_liveness_allowlist_cidrs)
         .map_err(CommsInitializationError::InvalidLivenessCidrs)?;
 
-    let comms = builder
+    let mut comms = builder
         .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
         .with_listener_liveness_allowlist_cidrs(listener_liveness_allowlist_cidrs)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
@@ -336,6 +336,15 @@ where
     .await?;
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
+
+    // DHT RPC service is only available for communication nodes
+    // TODO: (sdbondi) PeerFeatures should be simplified to PeerRole
+    if comms
+        .node_identity()
+        .has_peer_features(PeerFeatures::COMMUNICATION_NODE)
+    {
+        comms = comms.add_rpc(RpcServer::new().add_service(dht.rpc_service()));
+    }
 
     let comms = comms
         .with_messaging_pipeline(

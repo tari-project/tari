@@ -352,7 +352,6 @@ mod test {
     use futures::{
         channel::{mpsc, oneshot},
         stream,
-        FutureExt,
     };
     use rand::rngs::OsRng;
     use std::time::Duration;
@@ -369,7 +368,7 @@ mod test {
     use tari_crypto::keys::PublicKey;
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
-    use tokio::{sync::broadcast, task, time::delay_for};
+    use tokio::{sync::broadcast, task};
 
     #[tokio_macros::test_basic]
     async fn get_ping_pong_count() {
@@ -595,19 +594,8 @@ mod test {
 
         // No further events (malicious_msg was ignored)
         let mut subscriber = publisher.subscribe().fuse();
-
-        let mut delay = delay_for(Duration::from_secs(10)).fuse();
-        let mut count: i32 = 0;
-        loop {
-            futures::select! {
-                _ = subscriber.select_next_some() => {
-                    count+=1;
-                },
-                () = delay => {
-                    break;
-                },
-            }
-        }
-        assert_eq!(count, 0);
+        drop(publisher);
+        let msg = subscriber.next().await;
+        assert_eq!(msg.is_none(), true);
     }
 }

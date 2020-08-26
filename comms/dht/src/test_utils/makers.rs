@@ -162,7 +162,7 @@ pub fn make_dht_envelope(
     DhtEnvelope::new(header, message.into())
 }
 
-pub fn make_peer_manager() -> Arc<PeerManager> {
+pub fn build_peer_manager() -> Arc<PeerManager> {
     let database_name = random::string(8);
     let path = create_temporary_data_path();
     let datastore = LMDBBuilder::new()

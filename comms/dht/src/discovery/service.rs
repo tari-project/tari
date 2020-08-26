@@ -392,7 +392,7 @@ mod test {
     use crate::{
         discovery::DhtDiscoveryRequester,
         outbound::mock::create_outbound_service_mock,
-        test_utils::{make_node_identity, make_peer_manager},
+        test_utils::{build_peer_manager, make_node_identity},
     };
     use std::time::Duration;
     use tari_shutdown::Shutdown;
@@ -400,7 +400,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn send_discovery() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (outbound_requester, outbound_mock) = create_outbound_service_mock(10);
         let oms_mock_state = outbound_mock.get_state();
         task::spawn(outbound_mock.run());

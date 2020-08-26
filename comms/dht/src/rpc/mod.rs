@@ -20,54 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::RpcError;
-use crate::{
-    connectivity::ConnectivityRequester,
-    peer_manager::{NodeId, Peer},
-    PeerManager,
-};
-use std::sync::Arc;
+#[cfg(test)]
+mod test;
 
-#[derive(Clone, Debug)]
-pub(crate) struct RpcCommsContext {
-    connectivity: ConnectivityRequester,
-    peer_manager: Arc<PeerManager>,
-}
+mod service;
+pub use service::DhtRpcServiceImpl;
 
-impl RpcCommsContext {
-    pub(super) fn new(peer_manager: Arc<PeerManager>, connectivity: ConnectivityRequester) -> Self {
-        Self {
-            peer_manager,
-            connectivity,
-        }
-    }
+use crate::proto::rpc::{GetPeersRequest, GetPeersResponse};
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_comms_rpc_macros::tari_rpc;
 
-    pub fn peer_manager(&self) -> &PeerManager {
-        &self.peer_manager
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RequestContext {
-    context: RpcCommsContext,
-    node_id: NodeId,
-}
-
-impl RequestContext {
-    pub(super) fn new(node_id: NodeId, context: RpcCommsContext) -> Self {
-        Self { node_id, context }
-    }
-
-    pub async fn load_peer(&self) -> Result<Peer, RpcError> {
-        let peer = self.context.peer_manager.find_by_node_id(&self.node_id).await?;
-        Ok(peer)
-    }
-
-    pub fn connectivity(&self) -> ConnectivityRequester {
-        self.context.connectivity.clone()
-    }
-
-    pub fn peer_node_id(&self) -> &NodeId {
-        &self.node_id
-    }
+#[tari_rpc(protocol_name = b"t/dht/1", server_struct = DhtService, client_struct = DhtClient)]
+pub trait DhtRpcService: Send + Sync + 'static {
+    /// Fetches and returns nodes (as in PeerFeatures::COMMUNICATION_NODE)  as per `GetPeersRequest`
+    #[rpc(method = 1)]
+    async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus>;
 }

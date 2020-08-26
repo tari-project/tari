@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::types::CommsPublicKey;
 use blake2::{
     digest::{Input, VariableOutput},
     VarBlake2b,
@@ -216,6 +217,13 @@ impl NodeId {
         hasher.input(bytes);
         let v = hasher.vec_result();
         Self::try_from(v.as_slice())
+    }
+
+    /// Derive a node id from a public key: node_id=hash(public_key)
+    /// This function uses `NodeId::from_key` internally but is infallible because `NodeId::from_key` cannot fail when
+    /// used with a `CommsPublicKey`.
+    pub fn from_public_key(key: &CommsPublicKey) -> Self {
+        Self::from_key(key).expect("NodeId::from_key is implemented incorrectly for CommsPublicKey")
     }
 
     /// Calculate the distance between the current node id and the provided node id using the XOR metric

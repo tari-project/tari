@@ -20,54 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::RpcError;
 use crate::{
-    connectivity::ConnectivityRequester,
-    peer_manager::{NodeId, Peer},
+    peer_manager::NodeId,
+    protocol::rpc::{
+        context::{RequestContext, RpcCommsContext},
+        Request,
+    },
+    test_utils::mocks::{create_connectivity_mock, ConnectivityManagerMockState},
     PeerManager,
 };
 use std::sync::Arc;
 
-#[derive(Clone, Debug)]
-pub(crate) struct RpcCommsContext {
-    connectivity: ConnectivityRequester,
-    peer_manager: Arc<PeerManager>,
+pub struct RpcRequestMock {
+    comms_context: RpcCommsContext,
+    connectivity_mock_state: ConnectivityManagerMockState,
 }
 
-impl RpcCommsContext {
-    pub(super) fn new(peer_manager: Arc<PeerManager>, connectivity: ConnectivityRequester) -> Self {
+impl RpcRequestMock {
+    pub fn new(peer_manager: Arc<PeerManager>) -> Self {
+        let (connectivity, connectivity_mock) = create_connectivity_mock();
+        let connectivity_mock_state = connectivity_mock.get_shared_state();
+        connectivity_mock.spawn();
         Self {
-            peer_manager,
-            connectivity,
+            comms_context: RpcCommsContext::new(peer_manager, connectivity),
+            connectivity_mock_state,
         }
     }
 
-    pub fn peer_manager(&self) -> &PeerManager {
-        &self.peer_manager
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RequestContext {
-    context: RpcCommsContext,
-    node_id: NodeId,
-}
-
-impl RequestContext {
-    pub(super) fn new(node_id: NodeId, context: RpcCommsContext) -> Self {
-        Self { node_id, context }
-    }
-
-    pub async fn load_peer(&self) -> Result<Peer, RpcError> {
-        let peer = self.context.peer_manager.find_by_node_id(&self.node_id).await?;
-        Ok(peer)
-    }
-
-    pub fn connectivity(&self) -> ConnectivityRequester {
-        self.context.connectivity.clone()
-    }
-
-    pub fn peer_node_id(&self) -> &NodeId {
-        &self.node_id
+    pub fn request_with_context<T>(&self, node_id: NodeId, msg: T) -> Request<T> {
+        let context = RequestContext::new(node_id, self.comms_context.clone());
+        Request::with_context(context, 0.into(), msg)
     }
 }

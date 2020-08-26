@@ -147,6 +147,7 @@ pub use dedup::DedupLayer;
 
 mod logging_middleware;
 mod proto;
+mod rpc;
 mod tower_filter;
 mod utils;
 

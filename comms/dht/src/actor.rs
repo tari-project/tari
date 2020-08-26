@@ -636,7 +636,7 @@ mod test {
     use crate::{
         broadcast_strategy::BroadcastClosestRequest,
         envelope::NodeDestination,
-        test_utils::{make_client_identity, make_node_identity, make_peer_manager},
+        test_utils::{build_peer_manager, make_client_identity, make_node_identity},
     };
     use chrono::{DateTime, Utc};
     use tari_comms::test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair};
@@ -652,7 +652,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn send_join_request() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (out_tx, mut out_rx) = mpsc::channel(1);
         let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
@@ -681,7 +681,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn insert_message_signature() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
         let (out_tx, _) = mpsc::channel(1);
@@ -714,7 +714,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn select_peers() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
 
         let client_node_identity = make_client_identity();
         peer_manager.add_peer(client_node_identity.to_peer()).await.unwrap();
@@ -805,7 +805,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn get_and_set_metadata() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (out_tx, _out_rx) = mpsc::channel(1);
         let (actor_tx, actor_rx) = mpsc::channel(1);
         let (connectivity_manager, mock) = create_connectivity_mock();
