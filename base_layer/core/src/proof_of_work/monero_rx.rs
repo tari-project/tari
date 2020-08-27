@@ -20,7 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::BlockHeader, proof_of_work::Difficulty, tari_utilities::ByteArray, U256};
+use crate::{
+    blocks::BlockHeader,
+    proof_of_work::Difficulty,
+    tari_utilities::ByteArray,
+    validation::ValidationError,
+    U256,
+};
 use monero::{
     blockdata::{
         block::{Block as MoneroBlock, BlockHeader as MoneroBlockHeader},
@@ -42,8 +48,8 @@ pub enum MergeMineError {
     SerializeError(String),
     #[error("Error deserializing Monero data")]
     DeserializeError,
-    #[error("Hashing of Monero data failed")]
-    HashingError,
+    #[error("Hashing of Monero data failed: {0}")]
+    HashingError(String),
     #[error("RandomX error: {0}")]
     RandomXError(#[from] RandomXError),
     #[error("Validation error: {0}")]
@@ -75,31 +81,46 @@ pub fn cn_fast_hash(data: &[u8]) -> Vec<u8> {
 }
 
 // Tree hash count in monero
-fn tree_hash_cnt(count: usize) -> usize {
-    assert!(count >= 3);
-    assert!(count <= 0x10000000);
+fn tree_hash_cnt(count: usize) -> Result<usize, MergeMineError> {
+    if count < 3 {
+        return Err(MergeMineError::HashingError(
+            "Cannot calculate Monero root, algorithm path error".to_string(),
+        ));
+    }
+
+    if count > 0x10000000 {
+        return Err(MergeMineError::HashingError(
+            "Cannot calculate Monero root, hash count too large".to_string(),
+        ));
+    }
 
     let mut pow: usize = 2;
     while pow < count {
         pow <<= 1;
     }
-    pow >> 1
+
+    Ok(pow >> 1)
 }
 
 /// Tree hash algorithm in monero
 #[allow(clippy::needless_range_loop)]
-pub fn tree_hash(hashes: Vec<Hash>) -> Vec<u8> {
-    assert!(!hashes.is_empty());
+pub fn tree_hash(hashes: Vec<Hash>) -> Result<Vec<u8>, MergeMineError> {
+    if hashes.is_empty() {
+        return Err(MergeMineError::HashingError(
+            "Cannot calculate Monero root, hashes is empty".to_string(),
+        ));
+    }
+
     match hashes.len() {
-        1 => hashes[0].0.to_vec(),
+        1 => Ok(hashes[0].0.to_vec()),
         2 => {
             let mut buf: [u8; 64] = [0; 64];
             buf[..32].copy_from_slice(&hashes[0].0.to_vec());
             buf[32..].copy_from_slice(&hashes[1].0.to_vec());
-            cn_fast_hash(&buf)
+            Ok(cn_fast_hash(&buf))
         },
         _ => {
-            let mut cnt = tree_hash_cnt(hashes.len());
+            let mut cnt = tree_hash_cnt(hashes.len())?;
             let mut buf: Vec<u8> = Vec::with_capacity(cnt * 32);
 
             for i in 0..(2 * cnt - hashes.len()) {
@@ -121,7 +142,12 @@ pub fn tree_hash(hashes: Vec<Hash>) -> Vec<u8> {
                 buf[(j * 32)..((j + 1) * 32)].copy_from_slice(tmp.as_slice());
                 i += 2;
             }
-            assert_eq!(i, hashes.len());
+
+            if !(i == hashes.len()) {
+                return Err(MergeMineError::HashingError(
+                    "Cannot calculate Monero root, hashes not equal to count".to_string(),
+                ));
+            }
 
             while cnt > 2 {
                 cnt >>= 1;
@@ -133,7 +159,7 @@ pub fn tree_hash(hashes: Vec<Hash>) -> Vec<u8> {
                 }
             }
 
-            cn_fast_hash(&buf[..64])
+            Ok(cn_fast_hash(&buf[..64]))
         },
     }
 }
@@ -192,7 +218,7 @@ pub fn create_input_blob(
     for item in tx_hashes {
         hashes.push(Hash::from(item.clone()));
     }
-    let mut root = tree_hash(hashes);
+    let mut root = tree_hash(hashes)?;
     let mut encode = header;
     encode.append(&mut root);
     encode.append(&mut count);
@@ -221,7 +247,7 @@ fn verify_root(monero_data: &MoneroData) -> Result<(), MergeMineError> {
     for item in &monero_data.transaction_hashes {
         hashes.push(Hash::from(item));
     }
-    let root = tree_hash(hashes);
+    let root = tree_hash(hashes)?;
 
     if !(monero_data.transaction_root.to_vec() == root) {
         return Err(MergeMineError::ValidationError(
@@ -231,25 +257,597 @@ fn verify_root(monero_data: &MoneroData) -> Result<(), MergeMineError> {
     Ok(())
 }
 
-fn merged_mining_subfield(header: &BlockHeader) -> SubField {
-    let hash = header.merged_mining_hash();
-    let depth = 0;
-    SubField::MergeMining(VarInt(depth), Hash::from(from_slice(&hash)))
-}
-
 fn verify_header(header: &BlockHeader, monero_data: &MoneroData) -> Result<(), MergeMineError> {
-    if !(monero_data
-        .coinbase_tx
-        .prefix
-        .extra
-        .0
-        .contains(&merged_mining_subfield(header)))
-    {
+    let expected_merge_mining_hash = Hash::from(from_slice(&header.merged_mining_hash()));
+
+    let is_found = monero_data.coinbase_tx.prefix.extra.0.iter().any(|item| match item {
+        SubField::MergeMining(depth, merge_mining_hash) => {
+            depth == &VarInt(0) && merge_mining_hash == &expected_merge_mining_hash
+        },
+        _ => false,
+    });
+
+    if !is_found {
         return Err(MergeMineError::ValidationError(
-            "Merge mining tag was not found in Monero coinbase transaction".to_string(),
+            "Expected merge mining tag was not found in Monero coinbase transaction".to_string(),
         ));
     }
     verify_root(monero_data)?;
+
     // TODO: add seed check here.
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        blocks::BlockHeader,
+        proof_of_work::{
+            monero_difficulty,
+            monero_rx::{
+                append_merge_mining_tag,
+                create_input_blob,
+                from_hashes,
+                from_slice,
+                tree_hash,
+                verify_header,
+                MergeMineError,
+                MoneroData,
+            },
+            PowAlgorithm,
+            ProofOfWork,
+        },
+        tari_utilities::ByteArray,
+    };
+    use chrono::DateTime;
+    use monero::{
+        blockdata::{
+            block::BlockHeader as MoneroHeader,
+            transaction::{ExtraField, SubField, TxOutTarget},
+            Block as MoneroBlock,
+            TransactionPrefix,
+            TxIn,
+        },
+        consensus::{deserialize, encode::VarInt, serialize},
+        cryptonote::hash::{Hash, Hashable},
+        util::ringct::{RctSig, RctSigBase, RctType},
+        PublicKey,
+        Transaction,
+        TxOut,
+    };
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use tari_crypto::ristretto::RistrettoSecretKey;
+    use tari_test_utils::unpack_enum;
+
+    // This tests checks the hash of monero-rs
+    #[test]
+    fn test_monero_rs_miner_tx_hash() {
+        let tx = "f8ad7c58e6fce1792dd78d764ce88a11db0e3c3bb484d868ae05a7321fb6c6b0";
+
+        let pk_extra = vec![
+            179, 155, 220, 223, 213, 23, 81, 160, 95, 232, 87, 102, 151, 63, 70, 249, 139, 40, 110, 16, 51, 193, 175,
+            208, 38, 120, 65, 191, 155, 139, 1, 4,
+        ];
+        let transaction = Transaction {
+            prefix: TransactionPrefix {
+                version: VarInt(2),
+                unlock_time: VarInt(2143845),
+                inputs: vec![TxIn::Gen {
+                    height: VarInt(2143785),
+                }],
+                outputs: vec![TxOut {
+                    amount: VarInt(1550800739964),
+                    target: TxOutTarget::ToKey {
+                        key: PublicKey::from_slice(
+                            hex::decode("e2e19d8badb15e77c8e1f441cf6acd9bcde34a07cae82bbe5ff9629bf88e6e81")
+                                .unwrap()
+                                .as_slice(),
+                        )
+                        .unwrap(),
+                    },
+                }],
+                extra: ExtraField {
+                    0: vec![
+                        SubField::TxPublicKey(PublicKey::from_slice(pk_extra.as_slice()).unwrap()),
+                        SubField::Nonce(vec![196, 37, 4, 0, 27, 37, 187, 163, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+                    ],
+                },
+            },
+            signatures: vec![],
+            rct_signatures: RctSig {
+                sig: Option::from(RctSigBase {
+                    rct_type: RctType::Null,
+                    txn_fee: Default::default(),
+                    pseudo_outs: vec![],
+                    ecdh_info: vec![],
+                    out_pk: vec![],
+                }),
+                p: None,
+            },
+        };
+        assert_eq!(
+            tx.as_bytes().to_vec(),
+            hex::encode(transaction.hash().0.to_vec()).as_bytes().to_vec()
+        );
+        println!("{:?}", tx.as_bytes().to_vec());
+        println!("{:?}", hex::encode(transaction.hash().0.to_vec()));
+        let hex = hex::encode(serialize::<Transaction>(&transaction));
+        deserialize::<Transaction>(&hex::decode(&hex).unwrap()).unwrap();
+    }
+
+    // This tests checks the blockhashing blob of monero-rs
+    #[test]
+    fn test_monero_rs_block_serialize() {
+        // block with only the miner tx and no other transactions
+        let hex = "0c0c94debaf805beb3489c722a285c092a32e7c6893abfc7d069699c8326fc3445a749c5276b6200000000029b892201ffdf882201b699d4c8b1ec020223df524af2a2ef5f870adb6e1ceb03a475c39f8b9ef76aa50b46ddd2a18349402b012839bfa19b7524ec7488917714c216ca254b38ed0424ca65ae828a7c006aeaf10208f5316a7f6b99cca60000";
+        // blockhashing blob for above block as accepted by monero
+        let hex_blockhash_blob="0c0c94debaf805beb3489c722a285c092a32e7c6893abfc7d069699c8326fc3445a749c5276b6200000000602d0d4710e2c2d38da0cce097accdf5dc18b1d34323880c1aae90ab8f6be6e201";
+        let bytes = hex::decode(hex).unwrap();
+        let block = deserialize::<MoneroBlock>(&bytes[..]).unwrap();
+        let header = serialize::<MoneroHeader>(&block.header);
+        let tx_count = 1 + block.tx_hashes.len() as u64;
+        let mut count = serialize::<VarInt>(&VarInt(tx_count));
+        let mut hashes = Vec::with_capacity(tx_count as usize);
+        hashes.push(block.miner_tx.hash());
+        for item in block.clone().tx_hashes {
+            hashes.push(item);
+        }
+        let mut root = tree_hash(hashes).unwrap(); // tree_hash.c used by monero
+        let mut encode2 = header;
+        encode2.append(&mut root);
+        encode2.append(&mut count);
+        assert_eq!(hex::encode(encode2), hex_blockhash_blob);
+        let bytes2 = serialize::<MoneroBlock>(&block);
+        assert_eq!(bytes, bytes2);
+        let hex2 = hex::encode(bytes2);
+        assert_eq!(hex, hex2);
+    }
+
+    #[test]
+    fn test_monero_data() {
+        let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+        let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+        let bytes = hex::decode(blocktemplate_blob).unwrap();
+        let mut block = deserialize::<MoneroBlock>(&bytes[..]).unwrap();
+        let mut block_header = BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: vec![0],
+            timestamp: Default::default(),
+            output_mr: vec![0],
+            range_proof_mr: vec![0],
+            kernel_mr: vec![0],
+            total_kernel_offset: RistrettoSecretKey::from(0),
+            nonce: 0,
+            pow: ProofOfWork::default(),
+        };
+        let hash = Hash::from(from_slice(&block_header.merged_mining_hash()));
+        append_merge_mining_tag(&mut block, hash).unwrap();
+        let count = 1 + (block.tx_hashes.len() as u16);
+        let mut hashes = Vec::with_capacity(count as usize);
+        let mut proof = Vec::with_capacity(count as usize);
+        hashes.push(block.miner_tx.hash());
+        proof.push(block.miner_tx.hash());
+        for item in block.clone().tx_hashes {
+            hashes.push(item);
+            proof.push(item);
+        }
+        let root = tree_hash(hashes.clone()).unwrap();
+        let monero_data = MoneroData {
+            header: block.header,
+            key: seed_hash,
+            count,
+            transaction_root: from_slice(&root),
+            transaction_hashes: from_hashes(&hashes),
+            coinbase_tx: block.miner_tx,
+        };
+        let serialized = bincode::serialize(&monero_data).unwrap();
+        let pow = ProofOfWork {
+            accumulated_monero_difficulty: Default::default(),
+            accumulated_blake_difficulty: Default::default(),
+            target_difficulty: Default::default(),
+            pow_algo: PowAlgorithm::Monero,
+            pow_data: serialized,
+        };
+        block_header.pow = pow;
+        MoneroData::new(&block_header).unwrap();
+    }
+
+    #[test]
+    fn test_tree_hash() {
+        let tx_hash = [
+            88, 176, 48, 182, 128, 13, 67, 59, 188, 178, 181, 96, 175, 226, 160, 142, 77, 193, 82, 250, 119, 234, 217,
+            109, 55, 170, 241, 72, 151, 211, 192, 150,
+        ];
+        let mut hashes = Vec::new();
+        hashes.push(Hash::from(tx_hash));
+        let mut root = tree_hash(hashes.clone()).unwrap();
+        assert_eq!(root.as_slice(), tx_hash);
+        hashes.push(Hash::from(tx_hash));
+        root = tree_hash(hashes.clone()).unwrap();
+        let mut correct_root = [
+            187, 251, 201, 6, 70, 27, 80, 117, 95, 97, 244, 143, 194, 245, 73, 174, 158, 255, 98, 175, 74, 22, 173,
+            223, 217, 17, 59, 183, 230, 39, 76, 202,
+        ];
+        assert_eq!(root.as_slice(), correct_root);
+
+        hashes.push(Hash::from(tx_hash));
+        root = tree_hash(hashes.clone()).unwrap();
+        correct_root = [
+            37, 100, 243, 131, 133, 33, 135, 169, 23, 215, 243, 10, 213, 152, 21, 10, 89, 86, 217, 49, 245, 237, 205,
+            194, 102, 162, 128, 225, 215, 192, 158, 251,
+        ];
+        assert_eq!(root.as_slice(), correct_root);
+
+        hashes.push(Hash::from(tx_hash));
+        root = tree_hash(hashes.clone()).unwrap();
+        correct_root = [
+            52, 199, 248, 213, 213, 138, 52, 0, 145, 179, 81, 247, 174, 31, 183, 196, 124, 186, 100, 21, 36, 252, 171,
+            66, 250, 247, 122, 64, 36, 127, 184, 46,
+        ];
+        assert_eq!(root.as_slice(), correct_root);
+    }
+
+    #[test]
+    fn test_tree_hash_fail() {
+        let hashes = Vec::new();
+        let err = tree_hash(hashes.clone()).unwrap_err();
+        unpack_enum!(MergeMineError::HashingError(details) = err);
+        assert!(details.contains("Cannot calculate Monero root, hashes is empty"));
+    }
+
+    #[test]
+    fn test_input_blob() {
+        let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+        let bytes = hex::decode(blocktemplate_blob).unwrap();
+        let block = deserialize::<MoneroBlock>(&bytes[..]).unwrap();
+        let count = 1 + (block.tx_hashes.len() as u16);
+        let mut hashes = Vec::with_capacity(count as usize);
+        hashes.push(block.miner_tx.hash());
+        for item in block.clone().tx_hashes {
+            hashes.push(item);
+        }
+        let input_blob = create_input_blob(&block.header, &count, &from_hashes(&hashes)).unwrap();
+        assert_eq!(input_blob, "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000058b030b6800d433bbcb2b560afe2a08e4dc152fa77ead96d37aaf14897d3c09601");
+    }
+
+    #[test]
+    fn test_append_mm_tag() {
+        let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+        let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+        let bytes = hex::decode(blocktemplate_blob).unwrap();
+        let mut block = deserialize::<MoneroBlock>(&bytes[..]).unwrap();
+        let mut block_header = BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: vec![0],
+            timestamp: Default::default(),
+            output_mr: vec![0],
+            range_proof_mr: vec![0],
+            kernel_mr: vec![0],
+            total_kernel_offset: RistrettoSecretKey::from(0),
+            nonce: 0,
+            pow: ProofOfWork::default(),
+        };
+        let hash = Hash::from(from_slice(&block_header.merged_mining_hash()));
+        append_merge_mining_tag(&mut block, hash).unwrap();
+        let count = 1 + (block.tx_hashes.len() as u16);
+        let mut hashes = Vec::with_capacity(count as usize);
+        let mut proof = Vec::with_capacity(count as usize);
+        hashes.push(block.miner_tx.hash());
+        proof.push(block.miner_tx.hash());
+        for item in block.clone().tx_hashes {
+            hashes.push(item);
+            proof.push(item);
+        }
+        let root = tree_hash(hashes.clone()).unwrap();
+        let monero_data = MoneroData {
+            header: block.header,
+            key: seed_hash,
+            count,
+            transaction_root: from_slice(&root),
+            transaction_hashes: from_hashes(&hashes),
+            coinbase_tx: block.miner_tx,
+        };
+        let serialized = bincode::serialize(&monero_data).unwrap();
+        let pow = ProofOfWork {
+            accumulated_monero_difficulty: Default::default(),
+            accumulated_blake_difficulty: Default::default(),
+            target_difficulty: Default::default(),
+            pow_algo: PowAlgorithm::Monero,
+            pow_data: serialized,
+        };
+        block_header.pow = pow;
+        let monero_data = MoneroData::new(&block_header).unwrap();
+        verify_header(&block_header, &monero_data).unwrap();
+    }
+
+    #[test]
+    fn test_append_mm_tag_no_tag() {
+        let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+        let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+        let bytes = hex::decode(blocktemplate_blob).unwrap();
+        let block = deserialize::<MoneroBlock>(&bytes[..]).unwrap();
+        let mut block_header = BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: vec![0],
+            timestamp: Default::default(),
+            output_mr: vec![0],
+            range_proof_mr: vec![0],
+            kernel_mr: vec![0],
+            total_kernel_offset: RistrettoSecretKey::from(0),
+            nonce: 0,
+            pow: ProofOfWork::default(),
+        };
+        let count = 1 + (block.tx_hashes.len() as u16);
+        let mut hashes = Vec::with_capacity(count as usize);
+        let mut proof = Vec::with_capacity(count as usize);
+        hashes.push(block.miner_tx.hash());
+        proof.push(block.miner_tx.hash());
+        for item in block.clone().tx_hashes {
+            hashes.push(item);
+            proof.push(item);
+        }
+        let root = tree_hash(hashes.clone()).unwrap();
+        let monero_data = MoneroData {
+            header: block.header,
+            key: seed_hash,
+            count,
+            transaction_root: from_slice(&root),
+            transaction_hashes: from_hashes(&hashes),
+            coinbase_tx: block.miner_tx,
+        };
+        let serialized = bincode::serialize(&monero_data).unwrap();
+        let pow = ProofOfWork {
+            accumulated_monero_difficulty: Default::default(),
+            accumulated_blake_difficulty: Default::default(),
+            target_difficulty: Default::default(),
+            pow_algo: PowAlgorithm::Monero,
+            pow_data: serialized,
+        };
+        block_header.pow = pow;
+        let monero_data = MoneroData::new(&block_header).unwrap();
+        let err = verify_header(&block_header, &monero_data).unwrap_err();
+        unpack_enum!(MergeMineError::ValidationError(details) = err);
+        assert!(details.contains("Expected merge mining tag was not found in Monero coinbase transaction"));
+    }
+
+    #[test]
+    fn test_append_mm_tag_wrong_hash() {
+        let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+        let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+        let bytes = hex::decode(blocktemplate_blob).unwrap();
+        let mut block = deserialize::<MoneroBlock>(&bytes[..]).unwrap();
+        let mut block_header = BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: vec![0],
+            timestamp: Default::default(),
+            output_mr: vec![0],
+            range_proof_mr: vec![0],
+            kernel_mr: vec![0],
+            total_kernel_offset: RistrettoSecretKey::from(0),
+            nonce: 0,
+            pow: ProofOfWork::default(),
+        };
+        let hash = Hash::null_hash();
+        append_merge_mining_tag(&mut block, hash).unwrap();
+        let count = 1 + (block.tx_hashes.len() as u16);
+        let mut hashes = Vec::with_capacity(count as usize);
+        let mut proof = Vec::with_capacity(count as usize);
+        hashes.push(block.miner_tx.hash());
+        proof.push(block.miner_tx.hash());
+        for item in block.clone().tx_hashes {
+            hashes.push(item);
+            proof.push(item);
+        }
+        let root = tree_hash(hashes.clone()).unwrap();
+        let monero_data = MoneroData {
+            header: block.header,
+            key: seed_hash,
+            count,
+            transaction_root: from_slice(&root),
+            transaction_hashes: from_hashes(&hashes),
+            coinbase_tx: block.miner_tx,
+        };
+        let serialized = bincode::serialize(&monero_data).unwrap();
+        let pow = ProofOfWork {
+            accumulated_monero_difficulty: Default::default(),
+            accumulated_blake_difficulty: Default::default(),
+            target_difficulty: Default::default(),
+            pow_algo: PowAlgorithm::Monero,
+            pow_data: serialized,
+        };
+        block_header.pow = pow;
+        let monero_data = MoneroData::new(&block_header).unwrap();
+        let err = verify_header(&block_header, &monero_data).unwrap_err();
+        unpack_enum!(MergeMineError::ValidationError(details) = err);
+        assert!(details.contains("Expected merge mining tag was not found in Monero coinbase transaction"));
+    }
+
+    #[test]
+    fn test_verify_header_no_coinbase() {
+        let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+        let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+        let bytes = hex::decode(blocktemplate_blob).unwrap();
+        let mut block = deserialize::<MoneroBlock>(&bytes[..]).unwrap();
+        let mut block_header = BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: vec![0],
+            timestamp: Default::default(),
+            output_mr: vec![0],
+            range_proof_mr: vec![0],
+            kernel_mr: vec![0],
+            total_kernel_offset: RistrettoSecretKey::from(0),
+            nonce: 0,
+            pow: ProofOfWork::default(),
+        };
+        let hash = Hash::from(from_slice(&block_header.merged_mining_hash()));
+        append_merge_mining_tag(&mut block, hash).unwrap();
+        let count = 1 + (block.tx_hashes.len() as u16);
+        let mut hashes = Vec::with_capacity(count as usize);
+        let mut proof = Vec::with_capacity(count as usize);
+        hashes.push(block.miner_tx.hash());
+        proof.push(block.miner_tx.hash());
+        for item in block.clone().tx_hashes {
+            hashes.push(item);
+            proof.push(item);
+        }
+        let root = tree_hash(hashes.clone()).unwrap();
+        let monero_data = MoneroData {
+            header: block.header,
+            key: seed_hash,
+            count,
+            transaction_root: from_slice(&root),
+            transaction_hashes: from_hashes(&hashes),
+            coinbase_tx: Default::default(),
+        };
+        let serialized = bincode::serialize(&monero_data).unwrap();
+        let pow = ProofOfWork {
+            accumulated_monero_difficulty: Default::default(),
+            accumulated_blake_difficulty: Default::default(),
+            target_difficulty: Default::default(),
+            pow_algo: PowAlgorithm::Monero,
+            pow_data: serialized,
+        };
+        block_header.pow = pow;
+        let monero_data = MoneroData::new(&block_header).unwrap();
+        let err = verify_header(&block_header, &monero_data).unwrap_err();
+        unpack_enum!(MergeMineError::ValidationError(details) = err);
+        assert!(details.contains("Expected merge mining tag was not found in Monero coinbase transaction"));
+    }
+
+    #[test]
+    fn test_verify_header_no_data() {
+        let mut block_header = BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: vec![0],
+            timestamp: Default::default(),
+            output_mr: vec![0],
+            range_proof_mr: vec![0],
+            kernel_mr: vec![0],
+            total_kernel_offset: RistrettoSecretKey::from(0),
+            nonce: 0,
+            pow: ProofOfWork::default(),
+        };
+        let monero_data = MoneroData::default();
+        let serialized = bincode::serialize(&monero_data).unwrap();
+        let pow = ProofOfWork {
+            accumulated_monero_difficulty: Default::default(),
+            accumulated_blake_difficulty: Default::default(),
+            target_difficulty: Default::default(),
+            pow_algo: PowAlgorithm::Monero,
+            pow_data: serialized,
+        };
+        block_header.pow = pow;
+        let monero_data = MoneroData::new(&block_header).unwrap();
+        let err = verify_header(&block_header, &monero_data).unwrap_err();
+        unpack_enum!(MergeMineError::ValidationError(details) = err);
+        assert!(details.contains("Expected merge mining tag was not found in Monero coinbase transaction"));
+    }
+
+    #[test]
+    fn test_varify_invalid_root() {
+        let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+        let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+        let bytes = hex::decode(blocktemplate_blob).unwrap();
+        let mut block = deserialize::<MoneroBlock>(&bytes[..]).unwrap();
+        let mut block_header = BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: vec![0],
+            timestamp: Default::default(),
+            output_mr: vec![0],
+            range_proof_mr: vec![0],
+            kernel_mr: vec![0],
+            total_kernel_offset: RistrettoSecretKey::from(0),
+            nonce: 0,
+            pow: ProofOfWork::default(),
+        };
+        let hash = Hash::from(from_slice(&block_header.merged_mining_hash()));
+        append_merge_mining_tag(&mut block, hash).unwrap();
+        let count = 1 + (block.tx_hashes.len() as u16);
+        let mut hashes = Vec::with_capacity(count as usize);
+        let mut proof = Vec::with_capacity(count as usize);
+        hashes.push(block.miner_tx.hash());
+        proof.push(block.miner_tx.hash());
+        for item in block.clone().tx_hashes {
+            hashes.push(item);
+            proof.push(item);
+        }
+        let monero_data = MoneroData {
+            header: block.header,
+            key: seed_hash,
+            count,
+            transaction_root: Hash::null_hash().0,
+            transaction_hashes: from_hashes(&hashes),
+            coinbase_tx: block.miner_tx,
+        };
+        let serialized = bincode::serialize(&monero_data).unwrap();
+        let pow = ProofOfWork {
+            accumulated_monero_difficulty: Default::default(),
+            accumulated_blake_difficulty: Default::default(),
+            target_difficulty: Default::default(),
+            pow_algo: PowAlgorithm::Monero,
+            pow_data: serialized,
+        };
+        block_header.pow = pow;
+        let monero_data = MoneroData::new(&block_header).unwrap();
+        let err = verify_header(&block_header, &monero_data).unwrap_err();
+        unpack_enum!(MergeMineError::ValidationError(details) = err);
+        assert!(details.contains("Transaction root did not match"));
+    }
+
+    #[test]
+    fn test_difficulty_calculation() {
+        let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+        let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+        let bytes = hex::decode(blocktemplate_blob).unwrap();
+        let mut block = deserialize::<MoneroBlock>(&bytes[..]).unwrap();
+        let mut block_header = BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: vec![0],
+            timestamp: Default::default(),
+            output_mr: vec![0],
+            range_proof_mr: vec![0],
+            kernel_mr: vec![0],
+            total_kernel_offset: RistrettoSecretKey::from(0),
+            nonce: 0,
+            pow: ProofOfWork::default(),
+        };
+        let hash = Hash::from(from_slice(&block_header.merged_mining_hash()));
+        append_merge_mining_tag(&mut block, hash).unwrap();
+        let count = 1 + (block.tx_hashes.len() as u16);
+        let mut hashes = Vec::with_capacity(count as usize);
+        let mut proof = Vec::with_capacity(count as usize);
+        hashes.push(block.miner_tx.hash());
+        proof.push(block.miner_tx.hash());
+        for item in block.clone().tx_hashes {
+            hashes.push(item);
+            proof.push(item);
+        }
+        let root = tree_hash(hashes.clone()).unwrap();
+        let monero_data = MoneroData {
+            header: block.header,
+            key: seed_hash,
+            count,
+            transaction_root: from_slice(&root),
+            transaction_hashes: from_hashes(&hashes),
+            coinbase_tx: block.miner_tx,
+        };
+        let serialized = bincode::serialize(&monero_data).unwrap();
+        let pow = ProofOfWork {
+            accumulated_monero_difficulty: Default::default(),
+            accumulated_blake_difficulty: Default::default(),
+            target_difficulty: Default::default(),
+            pow_algo: PowAlgorithm::Monero,
+            pow_data: serialized,
+        };
+        block_header.pow = pow;
+        assert_ne!(monero_difficulty(&block_header).as_u64(), 0);
+    }
 }
