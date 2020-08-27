@@ -183,8 +183,25 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.rincewind.num_mining_threads", 1).unwrap();
 
     set_transport_defaults(&mut cfg);
+    set_merge_mining_defaults(&mut cfg);
 
     cfg
+}
+
+fn set_merge_mining_defaults(cfg: &mut Config) {
+    cfg.set_default(
+        "merge_mining_proxy.rincewind.monerod_url",
+        "http://192.110.160.146:38081",
+    )
+    .unwrap();
+    cfg.set_default("merge_mining_proxy.rincewind.proxy_host_address", "127.0.0.1:7878")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.rincewind.curl_use_auth", "false")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.rincewind.curl_username", "")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.rincewind.curl_password", "")
+        .unwrap();
 }
 
 fn set_transport_defaults(cfg: &mut Config) {
