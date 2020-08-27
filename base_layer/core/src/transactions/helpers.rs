@@ -37,7 +37,7 @@ use crate::transactions::{
     UnblindedOutput,
 };
 use num::pow;
-use rand::{rngs::OsRng};
+use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,

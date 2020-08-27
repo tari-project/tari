@@ -328,7 +328,7 @@ impl UnblindedOutput {
         &self.commit_hash
     }
 
-    /// Calculate the effective blinding factor representing this output. In standard Mimblewimble, this is the
+    /// Return the effective blinding factor representing this output. In standard Mimblewimble, this is the
     /// spending_key. With Tari script, the blinding factor is `spending_key + H(C||si)`
     ///
     /// # Returns
@@ -336,6 +336,16 @@ impl UnblindedOutput {
     /// The adjusted blinding factor for this output
     pub fn blinding_factor(&self) -> &BlindingFactor {
         &self.blinding_factor
+    }
+
+    /// Return the spending key representing this output. In standard Mimblewimble, this is the same as the blinding
+    /// factor.
+    ///
+    /// # Returns
+    ///
+    /// The spending key associated with this output
+    pub fn spending_key(&self) -> &BlindingFactor {
+        &self.spending_key
     }
 
     /// Calculate the commitment associated with this output. For standard Mimblewimble, this would be equal to the
@@ -627,8 +637,10 @@ mod test {
 
         match tx_output2 {
             Ok(_) => panic!("Range proof should have failed to verify"),
-            Err(e) =>
-                assert_eq!(e, TransactionError::ValidationError("Invalid transaction output: Value outside of range".to_string())),
+            Err(e) => assert_eq!(
+                e,
+                TransactionError::ValidationError("Invalid transaction output: Value outside of range".to_string())
+            ),
         }
         let v = PrivateKey::from(2u64.pow(32) + 1);
         let c = factories.commitment.commit(&k2, &v);

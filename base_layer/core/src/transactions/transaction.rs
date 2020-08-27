@@ -504,7 +504,7 @@ mod test {
         txn_schema,
     };
     use rand::{self, rngs::OsRng};
-    use tari_crypto::{keys::SecretKey as SecretKeyTrait};
+    use tari_crypto::keys::SecretKey as SecretKeyTrait;
 
     #[test]
     fn kernel_hash() {

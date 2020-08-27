@@ -576,7 +576,7 @@ mod test {
         OutputBuilder,
         OutputFeatures,
     };
-    
+
     use tari_crypto::{common::Blake256, tari_utilities::hex::Hex};
 
     #[test]

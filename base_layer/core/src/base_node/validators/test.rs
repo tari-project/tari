@@ -40,9 +40,7 @@ use crate::{
     txn_schema,
     validation::{StatelessValidation, ValidationError},
 };
-use tari_crypto::{
-    tari_utilities::{epoch_time::EpochTime, Hashable},
-};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, Hashable};
 use tari_test_utils::unpack_enum;
 
 #[test]
@@ -138,7 +136,7 @@ fn chain_balance_validation() {
         .with_value(faucet_value)
         .build(&factories.commitment)
         .unwrap();
-    let faucet_key = faucet_utxo.blinding_factor().clone();
+    let faucet_key = faucet_utxo.spending_key().clone();
     let faucet_utxo = faucet_utxo.as_transaction_output(&factories).unwrap();
     let faucet_hash = faucet_utxo.hash();
     genesis.body.add_output(faucet_utxo);
@@ -165,7 +163,7 @@ fn chain_balance_validation() {
         .unwrap();
     let sig = sign!(coinbase).unwrap();
     let excess = factories.commitment.commit_value(coinbase.blinding_factor(), 0);
-    let coinbase_key = coinbase.blinding_factor().clone();
+    let coinbase_key = coinbase.spending_key().clone();
     let coinbase = coinbase.as_transaction_output(&factories).unwrap();
     let coinbase_hash = coinbase.hash();
     txn.insert_utxo(coinbase);

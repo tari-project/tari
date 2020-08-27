@@ -98,13 +98,12 @@ impl CoinbaseBuilder {
     }
 
     /// Try and construct a Coinbase Transaction. The block reward is taken from the emission curve for the current
-    /// block height. The other parameters (keys, nonces etc.) are provided by the caller. Other data is
-    /// automatically set: Coinbase transactions have an offset of zero, no fees, the `COINBASE_OUTPUT` flags are set
+    /// block height. The other parameters (keys, nonces etc.) are provided by the caller. Other data is set
+    /// automatically: Coinbase transactions have an offset of zero, no fees, the `COINBASE_OUTPUT` flags are set
     /// on the output and kernel, and the maturity schedule is set from the consensus rules.
     ///
-    /// After `build` is called, the struct is destroyed and the private keys stored are dropped and the memory zeroed
+    /// After `build` is called, the struct is destroyed, the stored private keys dropped, and the memory zeroed
     /// out (by virtue of the zero_on_drop crate).
-
     pub fn build(
         self,
         constants: &ConsensusConstants,
@@ -119,7 +118,7 @@ impl CoinbaseBuilder {
     }
 
     /// Try and construct a Coinbase Transaction while specifying the block reward. The other parameters (keys, nonces
-    /// etc.) are provided by the caller. Other data is automatically set: Coinbase transactions have an offset of
+    /// etc.) are provided by the caller. Other data is set automatically: Coinbase transactions have an offset of
     /// zero, no fees, the `COINBASE_OUTPUT` flags are set on the output and kernel, and the maturity schedule is
     /// set from the consensus rules.
     ///
@@ -140,12 +139,9 @@ impl CoinbaseBuilder {
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let key = self.spend_key.ok_or_else(|| CoinbaseBuildError::MissingSpendKey)?;
         let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
-        let excess = self.factories.commitment.commit_value(&key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::default();
         let challenge = build_challenge(&public_nonce, &metadata);
-        let sig = Signature::sign(key.clone(), nonce, &challenge)
-            .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
         let unblinded_output = OutputBuilder::new()
             .with_value(total_reward)
             .with_spending_key(key)
@@ -155,6 +151,12 @@ impl CoinbaseBuilder {
         let output = unblinded_output
             .as_transaction_output(&self.factories)
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
+        let excess = self
+            .factories
+            .commitment
+            .commit_value(unblinded_output.blinding_factor(), 0);
+        let sig = Signature::sign(unblinded_output.blinding_factor().clone(), nonce, &challenge)
+            .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
         let kernel = KernelBuilder::new()
             .with_fee(0 * uT)
             .with_features(kernel_features)
@@ -191,7 +193,7 @@ mod test {
             OutputFlags,
         },
     };
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory};
+    use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
@@ -257,9 +259,11 @@ mod test {
             .build(&factories.commitment)
             .unwrap();
         assert_eq!(unblinded_output, unblinded_test);
-        assert!(factories
-            .commitment
-            .open_value(&p.spend_key, block_reward.into(), utxo.commitment()));
+        assert!(factories.commitment.open_value(
+            unblinded_output.blinding_factor(),
+            block_reward.into(),
+            utxo.commitment()
+        ));
         assert!(utxo.verify_range_proof(&factories.range_proof).unwrap());
         assert!(utxo.features().flags.contains(OutputFlags::COINBASE_OUTPUT));
     }

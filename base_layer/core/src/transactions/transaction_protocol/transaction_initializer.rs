@@ -334,7 +334,7 @@ mod test {
             UnblindedOutput,
         },
     };
-    
+
     use tari_crypto::common::Blake256;
 
     /// One input, 2 outputs
