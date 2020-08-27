@@ -47,8 +47,6 @@ pub struct ConsensusConstants {
     difficulty_max_block_interval: u64,
     /// Maximum transaction weight used for the construction of new blocks.
     max_block_transaction_weight: u64,
-    /// The amount of PoW algorithms used by the Tari chain.
-    pow_algo_count: u64,
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward
     median_timestamp_count: usize,
     /// This is the initial emission curve amount
@@ -63,6 +61,9 @@ pub struct ConsensusConstants {
     genesis_coinbase_value_offset: MicroTari,
     /// This is the maximum age a monero merge mined seed can be reused
     max_randomx_seed_height: u64,
+    /// This keeps track of the block split targets and which algo is accepted
+    /// Ideally this should count up to 100. If this does not you will reduce your target time.
+    algo_split: [u8; 3],
 }
 
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
@@ -121,19 +122,39 @@ impl ConsensusConstants {
 
     /// The amount of PoW algorithms used by the Tari chain.
     pub fn get_pow_algo_count(&self) -> u64 {
-        self.pow_algo_count
+        let mut count = 0;
+        for percentage in self.algo_split.iter() {
+            if *percentage > 0 {
+                count += 1;
+            }
+        }
+        count
     }
 
-    /// The target time used by the difficulty adjustment algorithms, their target time is the target block interval *
-    /// PoW algorithm count.
-    pub fn get_diff_target_block_interval(&self) -> u64 {
-        self.pow_algo_count * self.target_block_interval
+    /// The target time used by the difficulty adjustment algorithms, their target time is the target block interval /
+    /// algo block percentage
+    pub fn get_diff_target_block_interval(&self, pow_algo: PowAlgorithm) -> u64 {
+        let algo = pow_algo as usize;
+        if algo >= self.algo_split.len() || self.algo_split[algo] == 0 {
+            // Algo is not allowed or
+            // Somehow the constants are not configured right, either way we dont have data for the this algo, so return
+            // 0
+            return 0;
+        }
+        ((self.target_block_interval as f64) / self.algo_split[algo] as f64 * 100.0) as u64
     }
 
     /// The maximum time a block is considered to take. Used by the difficulty adjustment algorithms
-    /// Multiplied by the PoW algorithm count.
-    pub fn get_difficulty_max_block_interval(&self) -> u64 {
-        self.pow_algo_count * self.difficulty_max_block_interval
+    /// Multiplied by the PoW algorithm block percentage.
+    pub fn get_difficulty_max_block_interval(&self, pow_algo: PowAlgorithm) -> u64 {
+        let algo = pow_algo as usize;
+        if algo >= self.algo_split.len() || self.algo_split[algo] == 0 {
+            // Algo is not allowed or
+            // Somehow the constants are not configured right, either way we dont have data for the this algo, so return
+            // 0
+            return 0;
+        }
+        ((self.difficulty_max_block_interval as f64) / self.algo_split[algo] as f64 * 100.0) as u64
     }
 
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward.
@@ -171,7 +192,6 @@ impl ConsensusConstants {
             difficulty_block_window,
             difficulty_max_block_interval: target_block_interval * 60,
             max_block_transaction_weight: 19500,
-            pow_algo_count: 1,
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,
             emission_decay: 0.999_999_560_409_038_5,
@@ -179,6 +199,7 @@ impl ConsensusConstants {
             min_pow_difficulty: (1.into(), 60_000_000.into()),
             max_randomx_seed_height: std::u64::MAX,
             genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
+            algo_split: [100, 100, 0],
         }
     }
 
@@ -193,7 +214,6 @@ impl ConsensusConstants {
             difficulty_max_block_interval: target_block_interval * 6,
             difficulty_block_window,
             max_block_transaction_weight: 19500,
-            pow_algo_count: 2,
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
             emission_decay: 0.999,
@@ -201,6 +221,7 @@ impl ConsensusConstants {
             min_pow_difficulty: (1.into(), 1.into()),
             max_randomx_seed_height: std::u64::MAX,
             genesis_coinbase_value_offset: 0.into(),
+            algo_split: [100, 100, 0],
         }
     }
 
@@ -216,7 +237,6 @@ impl ConsensusConstants {
             difficulty_max_block_interval: target_block_interval * 6,
             difficulty_block_window,
             max_block_transaction_weight: 19500,
-            pow_algo_count: 2,
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
             emission_decay: 0.999,
@@ -224,6 +244,7 @@ impl ConsensusConstants {
             min_pow_difficulty: (1.into(), 500_000_000.into()),
             max_randomx_seed_height: std::u64::MAX,
             genesis_coinbase_value_offset: 0.into(),
+            algo_split: [60, 40, 0],
         }
     }
 }
@@ -238,6 +259,11 @@ impl ConsensusConstantsBuilder {
         Self {
             consensus: network.create_consensus_constants(),
         }
+    }
+
+    pub fn with_algo_split(mut self, algo_split: [u8; 3]) -> Self {
+        self.consensus.algo_split = algo_split;
+        self
     }
 
     pub fn with_coinbase_lockheight(mut self, height: u64) -> Self {

@@ -105,9 +105,9 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
         get_target_difficulty(
             target_difficulties,
             block_window,
-            constants.get_diff_target_block_interval(),
+            constants.get_diff_target_block_interval(pow_algo),
             constants.min_pow_difficulty(pow_algo),
-            constants.get_difficulty_max_block_interval(),
+            constants.get_difficulty_max_block_interval(pow_algo),
         )
         .map_err(|e| {
             error!(target: LOG_TARGET, "Validation could not get target difficulty: {}", e);

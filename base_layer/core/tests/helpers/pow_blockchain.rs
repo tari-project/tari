@@ -72,9 +72,9 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
         new_block.header.pow.target_difficulty = get_target_difficulty(
             target_difficulties,
             constants.get_difficulty_block_window() as usize,
-            constants.get_diff_target_block_interval(),
+            constants.get_diff_target_block_interval(pow_algo),
             constants.min_pow_difficulty(pow_algo),
-            constants.get_difficulty_max_block_interval(),
+            constants.get_difficulty_max_block_interval(pow_algo),
         )
         .unwrap();
         db.add_block(new_block.clone()).unwrap();
@@ -92,9 +92,9 @@ pub fn calculate_accumulated_difficulty(
 {
     let mut lwma = LinearWeightedMovingAverage::new(
         consensus_constants.get_difficulty_block_window() as usize,
-        consensus_constants.get_diff_target_block_interval(),
+        consensus_constants.get_diff_target_block_interval(pow_algo),
         consensus_constants.min_pow_difficulty(pow_algo),
-        consensus_constants.get_difficulty_max_block_interval(),
+        consensus_constants.get_difficulty_max_block_interval(pow_algo),
     );
     for height in heights {
         let header = db.fetch_header(height).unwrap();

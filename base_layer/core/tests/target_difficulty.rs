@@ -25,7 +25,7 @@ mod helpers;
 
 use helpers::pow_blockchain::{calculate_accumulated_difficulty, create_test_pow_blockchain};
 use tari_core::{
-    consensus::{ConsensusManagerBuilder, Network},
+    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     helpers::create_mem_db,
     proof_of_work::{get_target_difficulty, PowAlgorithm},
 };
@@ -36,8 +36,8 @@ fn test_target_difficulty_at_tip() {
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let constants = consensus_manager.consensus_constants();
     let block_window = constants.get_difficulty_block_window() as usize;
-    let target_time = constants.get_diff_target_block_interval();
-    let max_block_time = constants.get_difficulty_max_block_interval();
+    let target_time = constants.get_diff_target_block_interval(PowAlgorithm::Blake);
+    let max_block_time = constants.get_difficulty_max_block_interval(PowAlgorithm::Blake);
     let store = create_mem_db(&consensus_manager);
 
     let pow_algos = vec![
@@ -90,8 +90,8 @@ fn test_target_difficulty_with_height() {
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let constants = consensus_manager.consensus_constants();
     let block_window = constants.get_difficulty_block_window() as usize;
-    let target_time = constants.get_diff_target_block_interval();
-    let max_block_time = constants.get_difficulty_max_block_interval();
+    let target_time = constants.get_diff_target_block_interval(PowAlgorithm::Blake);
+    let max_block_time = constants.get_difficulty_max_block_interval(PowAlgorithm::Blake);
     let store = create_mem_db(&consensus_manager);
 
     let pow_algos = vec![
@@ -179,5 +179,45 @@ fn test_target_difficulty_with_height() {
         )
         .unwrap(),
         calculate_accumulated_difficulty(&store, pow_algo, vec![0, 2, 3], &constants)
+    );
+}
+
+#[test]
+fn test_target_block_interval() {
+    let target_block_interval = 120;
+    let difficulty_block_window = 90;
+    let constants_2_equal = ConsensusConstantsBuilder::new(Network::LocalNet)
+        .with_algo_split([50, 50, 0])
+        .build();
+
+    let constants_2_split = ConsensusConstantsBuilder::new(Network::LocalNet)
+        .with_algo_split([60, 40, 0])
+        .build();
+
+    let constants_1 = ConsensusConstantsBuilder::new(Network::LocalNet)
+        .with_algo_split([100, 0, 0])
+        .build();
+
+    let constants_3_equal = ConsensusConstantsBuilder::new(Network::LocalNet)
+        .with_algo_split([33, 33, 33])
+        .build();
+
+    assert_eq!(
+        constants_3_equal.get_diff_target_block_interval(PowAlgorithm::Blake),
+        363
+    );
+    assert_eq!(constants_1.get_diff_target_block_interval(PowAlgorithm::Blake), 0);
+    assert_eq!(constants_1.get_diff_target_block_interval(PowAlgorithm::Monero), 120);
+    assert_eq!(
+        constants_2_equal.get_diff_target_block_interval(PowAlgorithm::Blake),
+        240
+    );
+    assert_eq!(
+        constants_2_split.get_diff_target_block_interval(PowAlgorithm::Blake),
+        300
+    );
+    assert_eq!(
+        constants_2_split.get_diff_target_block_interval(PowAlgorithm::Monero),
+        200
     );
 }
