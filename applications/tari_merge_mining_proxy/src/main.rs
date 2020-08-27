@@ -242,15 +242,20 @@ fn get_monero_data(data: &[u8], seed: String) -> Option<MoneroData> {
                     let block = deserialize::<Block>(&hex);
                     match block {
                         Ok(block) => {
-                            let mut hashes = block.clone().tx_hashes;
+                            let count = 1 + (block.tx_hashes.len() as u16);
+                            let mut hashes = Vec::with_capacity(count as usize);
+                            let mut proof = Vec::with_capacity(count as usize);
                             hashes.push(block.miner_tx.hash());
-                            let root = tree_hash(hashes);
-                            let mut proof = block.clone().tx_hashes;
                             proof.push(block.miner_tx.hash());
+                            for item in block.clone().tx_hashes {
+                                hashes.push(item);
+                                proof.push(item);
+                            }
+                            let root = tree_hash(hashes);
                             Some(MoneroData {
                                 header: block.header.clone(),
                                 key: seed,
-                                count: (block.tx_hashes.len() as u16) + 1,
+                                count,
                                 transaction_root: from_slice(root.as_slice()),
                                 transaction_hashes: from_hashes(&proof),
                                 coinbase_tx: block.miner_tx,
@@ -393,8 +398,8 @@ fn add_merge_mining_tag(data: &[u8], hash: &[u8]) -> Vec<u8> {
                 Ok(hex) => {
                     let block = deserialize::<Block>(&hex[..]);
                     match block {
-                        Ok(block) => {
-                            let mm_tag = append_merge_mining_tag(&block, Hash(from_slice(hash)));
+                        Ok(mut block) => {
+                            let mm_tag = append_merge_mining_tag(&mut block, Hash(from_slice(hash)));
                             match mm_tag {
                                 Ok(mm_tagged_template) => {
                                     let count = 1 + block.tx_hashes.len() as u16;
@@ -969,9 +974,13 @@ mod test {
         let bytes = hex::decode(hex).unwrap();
         let block = deserialize::<Block>(&bytes[..]).unwrap();
         let header = serialize::<BlockHeader>(&block.header);
-        let mut count = serialize::<VarInt>(&VarInt(1 + block.tx_hashes.len() as u64));
-        let mut hashes = block.clone().tx_hashes;
+        let tx_count = 1 + block.tx_hashes.len() as u64;
+        let mut count = serialize::<VarInt>(&VarInt(tx_count));
+        let mut hashes = Vec::with_capacity(tx_count as usize);
         hashes.push(block.miner_tx.hash());
+        for item in block.clone().tx_hashes {
+            hashes.push(item);
+        }
         let mut root = tree_hash(hashes); // tree_hash.c used by monero
         let mut encode2 = header;
         encode2.append(&mut root);
