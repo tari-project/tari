@@ -154,9 +154,11 @@ impl OutputBuilder {
     ///
     /// # Example
     ///
-    /// ```
+    /// ```edition2018
     ///  # use tari_core::transactions::OutputBuilder;
-    /// OutputBuilder::new().with_value(100).build()
+    ///  # use tari_core::transactions::types::CommitmentFactory;
+    ///  let factory = CommitmentFactory::default();
+    ///  let _output = OutputBuilder::new().with_value(100).build(&factory).unwrap();
     /// ```
     pub fn new() -> Self {
         OutputBuilder {
@@ -469,6 +471,7 @@ impl Hashable for TransactionOutput {
             .chain(self.features.to_bytes())
             // commitment has the script hash baked in
             .chain(self.commitment.as_bytes())
+            .chain(&self.script_hash)
 // .chain(range proof) // See docs as to why we exclude this
             .result()
             .to_vec()

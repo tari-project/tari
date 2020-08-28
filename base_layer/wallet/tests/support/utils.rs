@@ -32,9 +32,7 @@ use tari_core::{
         UnblindedOutput,
     },
 };
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
 
 pub fn assert_change<F, T>(mut func: F, to: T, poll_count: usize)
 where

@@ -118,7 +118,7 @@ impl DbTransaction {
         self.insert(DbKeyValuePair::OrphanBlock(hash, Box::new(orphan)));
     }
 
-    /// Moves a UTXO to the STXO set and mark it as spent on the MRR. If the UTXO is not in the UTXO set, the
+    /// Moves a UTXO to the STXO set and mark it as spent on the MMR. If the UTXO is not in the UTXO set, the
     /// transaction will fail with an `UnspendableOutput` error.
     pub fn spend_utxo(&mut self, utxo_hash: HashOutput) {
         self.operations

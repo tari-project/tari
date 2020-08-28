@@ -56,26 +56,20 @@ pub fn create_coinbase(
 ) -> (TransactionOutput, TransactionKernel, UnblindedOutput)
 {
     let features = OutputFeatures::create_coinbase(maturity_height);
-    let utxo = OutputBuilder::new()
+    let output = OutputBuilder::new()
         .with_value(value)
         .with_features(features.clone())
         .build(&factories.commitment)
         .unwrap();
-    let key = utxo.blinding_factor().clone();
-    let utxo = utxo.as_transaction_output(&factories).unwrap();
+    let key = output.blinding_factor().clone();
+    let utxo = output.as_transaction_output(&factories).unwrap();
     let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&key));
-    let sig = create_signature(key.clone(), 0.into(), 0);
+    let sig = create_signature(key, 0.into(), 0);
     let kernel = KernelBuilder::new()
         .with_signature(&sig)
         .with_excess(&excess)
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
-        .unwrap();
-    let output = OutputBuilder::new()
-        .with_value(value)
-        .with_spending_key(key)
-        .with_features(features)
-        .build(&factories.commitment)
         .unwrap();
     (utxo, kernel, output)
 }
@@ -180,20 +174,13 @@ pub fn create_genesis_block_with_utxos(
 {
     let (mut template, coinbase) = genesis_template(&factories, 100_000_000.into(), consensus_constants);
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
-        let t = OutputBuilder::new()
+        let output = OutputBuilder::new()
             .with_value(*v)
             .build(&factories.commitment)
             .unwrap();
-        let k = t.blinding_factor().clone();
-        let t = t.as_transaction_output(factories).unwrap();
+        let t = output.as_transaction_output(factories).unwrap();
         template.body.add_output(t);
-        secrets.push(
-            OutputBuilder::new()
-                .with_value(*v)
-                .with_spending_key(k)
-                .build(&factories.commitment)
-                .unwrap(),
-        );
+        secrets.push(output);
         secrets
     });
     let mut block = update_genesis_block_mmr_roots(template).unwrap();

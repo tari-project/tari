@@ -362,7 +362,7 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
         .with_value(faucet_value)
         .build(&factories.commitment)
         .unwrap();
-    let faucet_key = faucet_utxo.blinding_factor().clone();
+    let faucet_key = faucet_utxo.spending_key().clone();
     let faucet_utxo = faucet_utxo.as_transaction_output(&factories).unwrap();
     genesis_block.body.add_output(faucet_utxo);
     // Create a LocalNet consensus manager that uses rincewind consensus constants and has a custom rincewind genesis
