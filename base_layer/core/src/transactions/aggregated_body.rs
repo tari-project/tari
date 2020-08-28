@@ -144,7 +144,7 @@ impl AggregateBody {
         for input in double_inputs {
             trace!(
                 target: LOG_TARGET,
-                "removing following utxo for cut-through: {:?}",
+                "removing the following utxo for cut-through: {}",
                 input
             );
             self.outputs.retain(|x| !input.is_equal_to(x));
