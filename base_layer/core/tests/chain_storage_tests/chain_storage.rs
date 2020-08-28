@@ -835,6 +835,82 @@ fn handle_reorg() {
 }
 
 #[test]
+fn handle_reorg_with_no_removed_blocks() {
+    // GB --> A1
+    //          \--> B2 (?) --> B3)
+    // Initially, the main chain is GB->A1 with orphaned blocks B3. When B2 arrives late and is
+    // added to the blockchain then a reorg is triggered and the main chain is reorganized to GB->A1->B2->B3.
+
+    // Create Main Chain
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+
+    // Block A1
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![10 * T, 10 * T, 10 * T, 10 * T]
+    )];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        Difficulty::from(1),
+        &consensus_manager.consensus_constants()
+    )
+    .is_ok());
+
+    // Create Forked Chain 1
+    let consensus_manager_fork = ConsensusManagerBuilder::new(network)
+        .with_block(blocks[0].clone())
+        .build();
+    let mut orphan1_store = create_mem_db(&consensus_manager_fork); // GB
+    orphan1_store.add_block(blocks[1].clone()).unwrap(); // A1
+    let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
+    let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
+    // Block B2
+    let txs = vec![txn_schema!(from: vec![orphan1_outputs[1][0].clone()], to: vec![5 * T])];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut orphan1_store,
+        &mut orphan1_blocks,
+        &mut orphan1_outputs,
+        txs,
+        Difficulty::from(1),
+        &consensus_manager.consensus_constants()
+    )
+    .is_ok());
+    // Block B3
+    let txs = vec![
+        txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
+        txn_schema!(from: vec![orphan1_outputs[2][0].clone()], to: vec![3 * T]),
+    ];
+    assert!(generate_new_block_with_achieved_difficulty(
+        &mut orphan1_store,
+        &mut orphan1_blocks,
+        &mut orphan1_outputs,
+        txs,
+        Difficulty::from(1),
+        &consensus_manager.consensus_constants()
+    )
+    .is_ok());
+
+    // Now add the fork blocks B3 and B2 (out of order) to the first DB and ensure a reorg.
+    // see https://github.com/tari-project/tari/issues/2101#issuecomment-679188619
+    store.add_block(orphan1_blocks[3].clone()).unwrap(); // B3
+    let result = store.add_block(orphan1_blocks[2].clone()).unwrap(); // B2
+    match result {
+        BlockAddResult::Ok => panic!("Adding multiple blocks without removing any failed to cause a reorg!"),
+        BlockAddResult::ChainReorg((removed, added)) => {
+            assert_eq!(added.len(), 2);
+            assert_eq!(removed.len(), 0);
+        },
+        _ => assert!(false),
+    }
+
+    assert_eq!(store.fetch_tip_header().unwrap(), orphan1_blocks[3].header.clone());
+}
+
+#[test]
 fn store_and_retrieve_blocks() {
     let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 2 };
     let validators = Validators::new(

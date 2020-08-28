@@ -1582,25 +1582,38 @@ fn handle_reorg<T: BlockchainBackend>(
         .height -
         1;
     let removed_blocks = reorganize_chain(db, block_validator, fork_height, reorg_chain)?;
-    if removed_blocks.is_empty() {
-        Ok(BlockAddResult::Ok)
-    } else {
-        debug!(
+    let num_removed_blocks = removed_blocks.len();
+    let num_added_blocks = added_blocks.len();
+
+    // reorg is required when any blocks are removed or more than one are added
+    // see https://github.com/tari-project/tari/issues/2101
+    if num_removed_blocks > 0 || num_added_blocks > 1 {
+        info!(
             target: LOG_TARGET,
-            "Chain reorg processed from (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{})",
+            "Chain reorg required from {} to {} (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{}). Number of \
+             blocks to remove: {}, to add: {}.
+            ",
+            tip_header,
+            fork_tip_header,
             tip_header.pow,
             tip_header.hash().to_hex(),
             fork_tip_header.pow,
-            fork_tip_hash.to_hex()
-        );
-        info!(
-            target: LOG_TARGET,
-            "Reorg from ({}) to ({})", tip_header, fork_tip_header
+            fork_tip_hash.to_hex(),
+            num_removed_blocks,
+            num_added_blocks,
         );
         Ok(BlockAddResult::ChainReorg((
             Box::new(removed_blocks),
             Box::new(added_blocks),
         )))
+    } else {
+        trace!(
+            target: LOG_TARGET,
+            "No reorg required. Number of blocks to remove: {}, to add: {}.",
+            num_removed_blocks,
+            num_added_blocks,
+        );
+        Ok(BlockAddResult::Ok)
     }
 }
 
