@@ -41,26 +41,15 @@ use crate::{
     base_node::{comms_interface::CommsInterfaceError, LocalNodeCommsInterface},
     blocks::{BlockBuilder, NewBlockHeaderTemplate},
     proof_of_work::{Difficulty, PowError, ProofOfWork},
-    transactions::types::{BlindingFactor, HashDigest},
+    serialization::hash_serializer,
+    transactions::types::{BlindingFactor, BlockHash, HashDigest, BLOCK_HASH_LENGTH},
 };
 use chrono::{DateTime, Utc};
 use digest::Digest;
-use serde::{
-    de::{self, Visitor},
-    Deserialize,
-    Deserializer,
-    Serialize,
-    Serializer,
-};
-use std::{
-    fmt,
-    fmt::{Display, Error, Formatter},
-};
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Error, Formatter};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 use thiserror::Error;
-
-pub const BLOCK_HASH_LENGTH: usize = 32;
-pub type BlockHash = Vec<u8>;
 
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum BlockHeaderValidationError {
@@ -295,45 +284,6 @@ impl Display for BlockHeader {
             self.nonce,
             self.pow
         ))
-    }
-}
-
-pub(crate) mod hash_serializer {
-    use super::*;
-    use tari_crypto::tari_utilities::hex::Hex;
-
-    pub fn serialize<S>(bytes: &BlockHash, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer {
-        if serializer.is_human_readable() {
-            bytes.to_hex().serialize(serializer)
-        } else {
-            serializer.serialize_bytes(bytes.as_bytes())
-        }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<BlockHash, D::Error>
-    where D: Deserializer<'de> {
-        struct BlockHashVisitor;
-
-        impl<'de> Visitor<'de> for BlockHashVisitor {
-            type Value = BlockHash;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("A block header hash in binary format")
-            }
-
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<BlockHash, E>
-            where E: de::Error {
-                BlockHash::from_bytes(v).map_err(E::custom)
-            }
-        }
-
-        if deserializer.is_human_readable() {
-            let s = String::deserialize(deserializer)?;
-            BlockHash::from_hex(&s).map_err(de::Error::custom)
-        } else {
-            deserializer.deserialize_bytes(BlockHashVisitor)
-        }
     }
 }
 

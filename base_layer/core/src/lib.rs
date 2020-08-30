@@ -59,6 +59,8 @@ pub mod validation;
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod mempool;
 
+pub mod serialization;
+
 // Re-export the crypto crate to make exposing traits etc easier for clients of this crate
 pub use crypto::tari_utilities;
 pub use tari_crypto as crypto;

@@ -20,10 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    blocks::{blockheader::BlockHash, Block, BlockHeader},
+    blocks::{Block, BlockHeader},
     chain_storage::{error::ChainStorageError, InProgressHorizonSyncState},
     proof_of_work::Difficulty,
-    transactions::{transaction::TransactionKernel, types::HashOutput, TransactionInput, TransactionOutput},
+    transactions::{
+        transaction::TransactionKernel,
+        types::{BlockHash, HashOutput},
+        TransactionInput,
+        TransactionOutput,
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::{

@@ -21,10 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{
-        blockheader::{BlockHash, BlockHeader},
-        Block,
-    },
+    blocks::{blockheader::BlockHeader, Block},
     chain_storage::{
         blockchain_database::BlockchainBackend,
         checkpoint_utils,
@@ -60,7 +57,7 @@ use crate::{
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         transaction::TransactionKernel,
-        types::{HashDigest, HashOutput},
+        types::{BlockHash, HashDigest, HashOutput},
         TransactionOutput,
     },
 };

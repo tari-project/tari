@@ -21,12 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{
-        blockheader::{hash_serializer, BlockHeader},
-        BlockHash,
-    },
+    blocks::blockheader::BlockHeader,
     proof_of_work::ProofOfWork,
-    transactions::types::BlindingFactor,
+    serialization::hash_serializer,
+    transactions::types::{BlindingFactor, BlockHash},
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};

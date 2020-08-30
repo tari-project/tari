@@ -72,6 +72,12 @@ pub type RangeProof = BulletRangeProof;
 /// Define the data type that is used to store results of `HashDigest`
 pub type HashOutput = Vec<u8>;
 
+/// Define the length of the blovk header hash
+pub const BLOCK_HASH_LENGTH: usize = 32;
+
+/// Alias the type of the block hash output
+pub type BlockHash = Vec<u8>;
+
 pub const MAX_RANGE_PROOF_RANGE: usize = 64; // 2^64
 
 /// A convenience struct wrapping cryptographic factories that are used through-out the rest of the code base

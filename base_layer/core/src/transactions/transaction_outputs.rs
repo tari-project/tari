@@ -22,11 +22,11 @@
 //
 
 use crate::{
-    blocks::blockheader::hash_serializer,
     crypto::{
         commitment::HomomorphicCommitmentFactory,
         script::{to_hash, DEFAULT_SCRIPT_HASH},
     },
+    serialization::hash_serializer,
     tari_utilities::{hex::Hex, ByteArray, Hashable},
     transactions::{
         crypto::{

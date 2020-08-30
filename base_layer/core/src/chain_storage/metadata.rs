@@ -20,11 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::blockheader::BlockHash, proof_of_work::Difficulty};
+use crate::{proof_of_work::Difficulty, tari_utilities::hex::Hex, transactions::types::BlockHash};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
-
-use tari_crypto::tari_utilities::hex::Hex;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ChainMetadata {

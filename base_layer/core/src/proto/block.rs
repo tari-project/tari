@@ -22,11 +22,11 @@
 
 use super::core as proto;
 use crate::{
-    blocks::{blockheader::BLOCK_HASH_LENGTH, Block, BlockHeader, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
+    blocks::{Block, BlockHeader, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
     chain_storage::HistoricalBlock,
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     proto::utils::try_convert_all,
-    transactions::types::BlindingFactor,
+    transactions::types::{BlindingFactor, BLOCK_HASH_LENGTH},
 };
 use prost_types::Timestamp;
 use std::convert::{TryFrom, TryInto};

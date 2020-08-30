@@ -23,7 +23,7 @@
 //! This is a memory-based blockchain database, generally only useful for testing purposes
 
 use crate::{
-    blocks::{blockheader::BlockHash, Block, BlockHeader},
+    blocks::{Block, BlockHeader},
     chain_storage::{
         blockchain_database::BlockchainBackend,
         checkpoint_utils,
@@ -42,7 +42,11 @@ use crate::{
         ChainMetadata,
     },
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::{transaction::TransactionKernel, types::HashOutput, TransactionOutput},
+    transactions::{
+        transaction::TransactionKernel,
+        types::{BlockHash, HashOutput},
+        TransactionOutput,
+    },
 };
 use croaring::Bitmap;
 use digest::Digest;

@@ -200,7 +200,7 @@ fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::blocks::BlockHash;
+    use crate::transactions::types::BlockHash;
     use rand::rngs::OsRng;
     use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
     use tari_crypto::keys::PublicKey;

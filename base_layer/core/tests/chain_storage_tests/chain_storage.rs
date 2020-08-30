@@ -34,7 +34,7 @@ use croaring::Bitmap;
 
 use std::thread;
 use tari_core::{
-    blocks::{genesis_block, Block, BlockHash, BlockHeader},
+    blocks::{genesis_block, Block, BlockHeader},
     chain_storage::{
         create_lmdb_database,
         BlockAddResult,
@@ -55,7 +55,7 @@ use tari_core::{
     transactions::{
         helpers::{create_test_kernel, spend_utxos},
         tari_amount::{uT, MicroTari, T},
-        types::{CryptoFactories, HashDigest},
+        types::{BlockHash, CryptoFactories, HashDigest},
         OutputBuilder,
         TransactionOutput,
     },

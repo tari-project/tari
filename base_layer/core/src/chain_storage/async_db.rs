@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{Block, BlockHash, BlockHeader, NewBlockTemplate},
+    blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
         blockchain_database::BlockAddResult,
         metadata::ChainMetadata,
@@ -34,7 +34,7 @@ use crate::{
     },
     transactions::{
         transaction::TransactionKernel,
-        types::{Commitment, HashOutput, Signature},
+        types::{BlockHash, Commitment, HashOutput, Signature},
         TransactionOutput,
     },
 };

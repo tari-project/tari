@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    blocks::{blockheader::BlockHash, Block, BlockHeader, NewBlockTemplate},
+    blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
         consts::{
             BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
@@ -37,7 +37,7 @@ use crate::{
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     transactions::{
         transaction::TransactionKernel,
-        types::{Commitment, HashOutput, PublicKey, Signature},
+        types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
         TransactionInput,
         TransactionOutput,
     },
