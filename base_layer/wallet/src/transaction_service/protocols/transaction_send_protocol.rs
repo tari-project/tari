@@ -255,7 +255,6 @@ where TBackend: TransactionBackend + Clone + 'static
         let recipient_reply = reply.ok_or_else(|| {
             TransactionServiceProtocolError::new(self.id, TransactionServiceError::TransactionCancelled)
         })?;
-
         outbound_tx
             .sender_protocol
             .add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)

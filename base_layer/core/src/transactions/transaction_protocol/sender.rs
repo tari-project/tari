@@ -299,7 +299,7 @@ impl SenderTransactionProtocol {
                 // Consolidate transaction info
                 info.outputs.push(rec.output);
                 // nonce is in the signature, so we'll add those together later
-                info.public_excess = &info.public_excess + &rec.public_spend_key;
+                info.public_excess = &info.public_excess + &rec.public_blinding_factor;
                 info.public_nonce_sum = &info.public_nonce_sum + rec.partial_signature.get_public_nonce();
                 info.signatures.push(rec.partial_signature);
                 self.state = SenderState::Finalizing(info.clone());
@@ -723,7 +723,7 @@ mod test {
         .unwrap();
         println!(
             "Bob's key: {}, Nonce: {}, Signature: {}, Commitment: {}",
-            bob_info.public_spend_key.to_hex(),
+            bob_info.public_blinding_factor.to_hex(),
             bob_info.partial_signature.get_public_nonce().to_hex(),
             bob_info.partial_signature.get_signature().to_hex(),
             bob_info.output.commitment().as_public_key().to_hex()
@@ -774,21 +774,16 @@ mod test {
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info = SingleReceiverTransactionProtocol::create(
+        match SingleReceiverTransactionProtocol::create(
             &msg,
             b.nonce,
             b.spend_key,
             OutputFeatures::default(),
             &factories,
-        )
-        .unwrap();
-        // Alice gets message back, deserializes it, etc
-        match alice.add_single_recipient_info(bob_info, &factories.range_proof) {
+        ) {
             Ok(_) => panic!("Range proof should have failed to verify"),
-            Err(e) => assert_eq!(
-                e,
-                TransactionProtocolError::ValidationError("Recipient output range proof failed to verify".into())
-            ),
+            Err(TransactionProtocolError::TransactionBuildError(_)) => {},
+            Err(e) => panic!("Incorrect error: {:?}", e),
         }
     }
 }

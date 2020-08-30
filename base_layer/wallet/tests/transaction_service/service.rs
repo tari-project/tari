@@ -61,7 +61,6 @@ use tari_core::{
         },
     },
     consensus::{ConsensusConstantsBuilder, Network},
-    crypto::script::TariScript,
     mempool::{
         proto::mempool as MempoolProto,
         service::{MempoolRequest, MempoolResponse, MempoolServiceRequest},
@@ -80,7 +79,6 @@ use tari_core::{
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
         TransactionOutput,
-        UnblindedOutput,
     },
 };
 use tari_crypto::{
@@ -819,7 +817,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
     let mut wrong_tx_id = tx_reply.clone();
     wrong_tx_id.tx_id = 2;
     let (_p, pub_key) = PublicKey::random_keypair(&mut OsRng);
-    tx_reply.public_spend_key = pub_key;
+    tx_reply.public_blinding_factor = pub_key;
     runtime
         .block_on(alice_tx_ack_sender.send(create_dummy_message(
             wrong_tx_id.into(),

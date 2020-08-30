@@ -52,23 +52,17 @@ use std::{
     time::Duration,
 };
 use tari_core::{
-    crypto::script::TariScript,
     tari_utilities::hash::Hashable,
     transactions::{
-        tari_amount::MicroTari,
         types::{Commitment, CryptoFactories, PrivateKey},
         OutputBuilder,
         OutputFeatures,
         OutputFlags,
-        UnblindedOutput,
     },
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    tari_utilities::{
-        hex::{from_hex, Hex},
-        ByteArray,
-    },
+use tari_crypto::tari_utilities::{
+    hex::{from_hex, Hex},
+    ByteArray,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
@@ -743,7 +737,7 @@ impl NewOutputSql {
     pub fn new(output: DbUnblindedOutput, status: OutputStatus, tx_id: Option<TxId>) -> Self {
         Self {
             commitment: Some(output.commitment.to_vec()),
-            spending_key: output.unblinded_output.blinding_factor().to_vec(),
+            spending_key: output.unblinded_output.spending_key().to_vec(),
             value: (u64::from(output.unblinded_output.value())) as i64,
             flags: output.unblinded_output.features().flags.bits() as i32,
             maturity: output.unblinded_output.features().maturity as i64,
@@ -998,10 +992,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 // instantiation above but these represent two different migrations and by putting this here it will
                 // only occur if the migration has not been performed which should never happen
                 // TODO remove this as this is temp migration code
-                let factories = CryptoFactories::default();
-                factories
-                    .commitment
-                    .commit_value(unblinded_output.blinding_factor(), unblinded_output.value().into())
+                unblinded_output.commitment().clone()
             },
             Some(c) => Commitment::from_vec(&c)?,
         };
@@ -1353,18 +1344,11 @@ mod test {
         sync::{Arc, Mutex},
         time::Duration,
     };
-    use tari_core::{
-        crypto::script::{TariScript, DEFAULT_SCRIPT_HASH},
-        transactions::{
-            tari_amount::MicroTari,
-            types::{CommitmentFactory, CryptoFactories, PrivateKey},
-            OutputBuilder,
-            OutputFeatures,
-            TransactionInput,
-            UnblindedOutput,
-        },
+    use tari_core::transactions::{
+        types::{CryptoFactories, PrivateKey},
+        OutputBuilder,
     };
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
+    use tari_crypto::keys::SecretKey;
     use tempfile::tempdir;
 
     pub fn random_string(len: usize) -> String {

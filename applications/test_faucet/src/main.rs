@@ -3,11 +3,9 @@ use serde::Serialize;
 use tari_core::{
     tari_utilities::hex::Hex,
     transactions::{
-        helpers,
         tari_amount::{MicroTari, T},
-        types::{CryptoFactories, PrivateKey},
+        types::CryptoFactories,
         OutputFeatures,
-        TransactionOutput,
     },
 };
 

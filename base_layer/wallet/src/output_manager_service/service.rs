@@ -433,11 +433,10 @@ where
         amount: MicroTari,
     ) -> Result<PrivateKey, OutputManagerError>
     {
-        let mut key = PrivateKey::default();
-        {
+        let key = {
             let mut km = self.key_manager.lock().await;
-            key = km.next_key()?.k;
-        }
+            km.next_key()?.k
+        };
 
         self.resources.db.increment_key_index().await?;
         self.resources
@@ -457,8 +456,8 @@ where
     }
 
     /// Request a spending key for a coinbase transaction for a specific height. All existing pending transactions with
-    /// this blockheight will be cancelled.
-    /// The key will be derived from the coinbase specific keychain using the blockheight as an index. The coinbase
+    /// this block height will be cancelled.
+    /// The key will be derived from the coinbase specific keychain using the block height as an index. The coinbase
     /// keychain is based on the wallets master_key and the "coinbase" branch.
     async fn get_coinbase_spending_key(
         &mut self,
@@ -467,11 +466,10 @@ where
         block_height: u64,
     ) -> Result<PrivateKey, OutputManagerError>
     {
-        let mut key = PrivateKey::default();
-        {
+        let key = {
             let km = self.coinbase_key_manager.lock().await;
-            key = km.derive_key(block_height)?.k;
-        }
+            km.derive_key(block_height)?.k
+        };
 
         self.resources
             .db
@@ -564,11 +562,10 @@ where
         // If the input values > the amount to be sent + fees_without_change then we will need to include a change
         // output
         if total > amount + fee_without_change {
-            let mut key = PrivateKey::default();
-            {
+            let key = {
                 let mut km = self.key_manager.lock().await;
-                key = km.next_key()?.k;
-            }
+                km.next_key()?.k
+            };
             self.resources.db.increment_key_index().await?;
             change_key = Some(key.clone());
             builder.with_change_secret(key);
@@ -639,11 +636,10 @@ where
         // Check that outputs to be received can all be found in the provided transaction outputs
         let mut outputs_confirmed = true;
         for output_to_receive in pending_transaction.outputs_to_be_received.iter() {
-            let output_to_check = output_to_receive.unblinded_output.as_transaction_input();
             outputs_confirmed = outputs_confirmed &&
                 outputs
                     .iter()
-                    .any(|output| output.commitment() == output_to_check.commitment());
+                    .any(|output| output.commitment() == output_to_receive.unblinded_output.commitment());
         }
 
         if !inputs_confirmed || !outputs_confirmed {

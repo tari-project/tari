@@ -44,16 +44,8 @@ use tari_core::{
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase, BlockchainDatabaseConfig, MmrTree},
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
-    crypto::script::TariScript,
     mempool::MempoolServiceConfig,
-    transactions::{
-        fee::Fee,
-        helpers::spend_utxos,
-        tari_amount::uT,
-        types::CryptoFactories,
-        OutputBuilder,
-        UnblindedOutput,
-    },
+    transactions::{fee::Fee, helpers::spend_utxos, tari_amount::uT, types::CryptoFactories, OutputBuilder},
     txn_schema,
     validation::mocks::MockValidator,
 };

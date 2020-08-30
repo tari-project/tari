@@ -60,15 +60,11 @@ use tari_comms::{
 use tari_comms_dht::DhtConfig;
 use tari_core::{
     consensus::Network,
-    crypto::script::{TariScript, DEFAULT_SCRIPT_HASH},
     transactions::{
         tari_amount::MicroTari,
         transaction::Transaction,
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
         OutputBuilder,
-        OutputFeatures,
-        TransactionInput,
-        UnblindedOutput,
     },
 };
 use tari_crypto::{

@@ -43,8 +43,7 @@ use futures::{FutureExt, StreamExt};
 use std::path::Path;
 use tari_core::{
     consensus::Network,
-    crypto::script::TariScript,
-    transactions::{tari_amount::uT, types::PrivateKey, UnblindedOutput},
+    transactions::{tari_amount::uT, types::PrivateKey},
 };
 use tari_crypto::common::Blake256;
 use tari_p2p::transport::TransportType;

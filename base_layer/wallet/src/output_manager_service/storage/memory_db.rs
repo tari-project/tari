@@ -92,12 +92,12 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             DbKey::SpentOutput(k) => db
                 .spent_outputs
                 .iter()
-                .find(|v| v.output.unblinded_output.blinding_factor() == k)
+                .find(|v| v.output.unblinded_output.spending_key() == k)
                 .map(|v| DbValue::SpentOutput(Box::new(DbUnblindedOutput::from((*v).clone())))),
             DbKey::UnspentOutput(k) => db
                 .unspent_outputs
                 .iter()
-                .find(|v| v.output.unblinded_output.blinding_factor() == k)
+                .find(|v| v.output.unblinded_output.spending_key() == k)
                 .map(|v| DbValue::UnspentOutput(Box::new(DbUnblindedOutput::from((*v).clone())))),
             DbKey::PendingTransactionOutputs(tx_id) => {
                 let mut result = db.pending_transactions.get(tx_id);
@@ -160,10 +160,10 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                     if db
                         .spent_outputs
                         .iter()
-                        .any(|v| v.output.unblinded_output.blinding_factor() == &k) ||
+                        .any(|v| v.output.unblinded_output.spending_key() == &k) ||
                         db.unspent_outputs
                             .iter()
-                            .any(|v| v.output.unblinded_output.blinding_factor() == &k)
+                            .any(|v| v.output.unblinded_output.spending_key() == &k)
                     {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
@@ -173,10 +173,10 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                     if db
                         .unspent_outputs
                         .iter()
-                        .any(|v| v.output.unblinded_output.blinding_factor() == &k) ||
+                        .any(|v| v.output.unblinded_output.spending_key() == &k) ||
                         db.spent_outputs
                             .iter()
-                            .any(|v| v.output.unblinded_output.blinding_factor() == &k)
+                            .any(|v| v.output.unblinded_output.spending_key() == &k)
                     {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
@@ -191,7 +191,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 DbKey::SpentOutput(k) => match db
                     .spent_outputs
                     .iter()
-                    .position(|v| v.output.unblinded_output.blinding_factor() == &k)
+                    .position(|v| v.output.unblinded_output.spending_key() == &k)
                 {
                     None => return Err(OutputManagerStorageError::ValueNotFound(DbKey::SpentOutput(k))),
                     Some(pos) => {
@@ -203,7 +203,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
                 DbKey::UnspentOutput(k) => match db
                     .unspent_outputs
                     .iter()
-                    .position(|v| v.output.unblinded_output.blinding_factor() == &k)
+                    .position(|v| v.output.unblinded_output.spending_key() == &k)
                 {
                     None => return Err(OutputManagerStorageError::ValueNotFound(DbKey::UnspentOutput(k))),
                     Some(pos) => {
@@ -269,7 +269,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
             if let Some(pos) = db
                 .unspent_outputs
                 .iter()
-                .position(|v| v.output.unblinded_output.blinding_factor() == i.unblinded_output.blinding_factor())
+                .position(|v| v.output.unblinded_output.spending_key() == i.unblinded_output.spending_key())
             {
                 outputs_to_be_spent.push(DbUnblindedOutput::from(db.unspent_outputs.remove(pos)));
             } else {
@@ -380,7 +380,7 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         match db
             .unspent_outputs
             .iter()
-            .position(|v| v.output.unblinded_output.blinding_factor() == output.unblinded_output.blinding_factor())
+            .position(|v| v.output.unblinded_output.spending_key() == output.unblinded_output.spending_key())
         {
             Some(pos) => {
                 let output = db.unspent_outputs.remove(pos);

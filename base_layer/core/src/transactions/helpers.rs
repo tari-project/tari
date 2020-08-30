@@ -40,10 +40,8 @@ use num::pow;
 use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
     common::Blake256,
     keys::{PublicKey as PK, SecretKey},
-    script::DEFAULT_SCRIPT_HASH,
 };
 
 pub fn make_input(val: MicroTari, factory: &CommitmentFactory) -> (TransactionInput, UnblindedOutput) {

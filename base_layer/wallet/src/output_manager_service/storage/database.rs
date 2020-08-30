@@ -35,15 +35,11 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tari_core::{
-    crypto::script::TariScript,
-    transactions::{
-        tari_amount::MicroTari,
-        types::{BlindingFactor, Commitment, CryptoFactories, PrivateKey},
-        OutputBuilder,
-        OutputFeatures,
-        UnblindedOutput,
-    },
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    types::{BlindingFactor, Commitment, CryptoFactories, PrivateKey},
+    OutputBuilder,
+    OutputFeatures,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
@@ -218,7 +214,7 @@ where T: OutputManagerBackend + Clone + 'static
 
     pub async fn add_unspent_output(&self, output: DbUnblindedOutput) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
-        let key = output.unblinded_output.blinding_factor().clone();
+        let key = output.unblinded_output.spending_key().clone();
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
                 key,

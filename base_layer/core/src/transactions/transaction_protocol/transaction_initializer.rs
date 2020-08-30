@@ -137,10 +137,10 @@ impl SenderTransactionInitializer {
         self
     }
 
-    /// Provide a blinding factor for the change output. The amount of change will automatically be calculated when
+    /// Provide a spending key for the change output. The amount of change will automatically be calculated when
     /// the transaction is built.
-    pub fn with_change_secret(&mut self, blinding_factor: BlindingFactor) -> &mut Self {
-        self.change_secret = Some(blinding_factor);
+    pub fn with_change_secret(&mut self, spending_key: PrivateKey) -> &mut Self {
+        self.change_secret = Some(spending_key);
         self
     }
 
@@ -318,7 +318,6 @@ impl SenderTransactionInitializer {
 mod test {
     use crate::{
         consensus::{KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
-        crypto::script::TariScript,
         transactions::{
             fee::Fee,
             helpers::{make_input, TestParams},
@@ -331,7 +330,6 @@ mod test {
             },
             types::CryptoFactories,
             OutputBuilder,
-            UnblindedOutput,
         },
     };
 

@@ -55,13 +55,10 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::{
     consensus::Network,
-    crypto::{script::TariScript, tari_utilities::hex::to_hex},
     transactions::{
         tari_amount::MicroTari,
         types::{CryptoFactories, PrivateKey},
         OutputBuilder,
-        OutputFeatures,
-        UnblindedOutput,
     },
 };
 use tari_crypto::{

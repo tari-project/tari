@@ -155,7 +155,6 @@ where TBackend: TransactionBackend + Clone + 'static
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
             let nonce = PrivateKey::random(&mut OsRng);
-
             let rtp = ReceiverTransactionProtocol::new(
                 self.sender_message.clone(),
                 nonce,

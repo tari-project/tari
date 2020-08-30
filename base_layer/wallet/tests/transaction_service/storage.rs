@@ -27,19 +27,15 @@ use aes_gcm::{
 };
 use chrono::Utc;
 use rand::rngs::OsRng;
-use tari_core::{
-    crypto::script::TariScript,
-    transactions::{
-        tari_amount::{uT, MicroTari},
-        transaction::Transaction,
-        transaction_protocol::sender::TransactionSenderMessage,
-        types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
-        OutputBuilder,
-        OutputFeatures,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
-        UnblindedOutput,
-    },
+use tari_core::transactions::{
+    tari_amount::{uT, MicroTari},
+    transaction::Transaction,
+    transaction_protocol::sender::TransactionSenderMessage,
+    types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
+    OutputBuilder,
+    OutputFeatures,
+    ReceiverTransactionProtocol,
+    SenderTransactionProtocol,
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
 use tari_wallet::{

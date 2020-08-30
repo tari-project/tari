@@ -22,50 +22,46 @@
 
 use crate::transactions::{
     transaction_protocol::{
-        build_challenge,
         recipient::RecipientSignedMessage as RD,
         sender::SingleRoundSenderData as SD,
         TransactionProtocolError as TPE,
     },
-    types::{CryptoFactories, PrivateKey as SK, PublicKey, RangeProof, Signature},
+    types::{CryptoFactories, PrivateKey, PublicKey},
+    OutputBuilder,
     OutputFeatures,
-    TransactionOutput,
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PK,
-    range_proof::{RangeProofError, RangeProofService as RPS},
-    script::DEFAULT_SCRIPT_HASH,
-    tari_utilities::byte_array::ByteArray,
-};
+use tari_crypto::keys::PublicKey as PK;
 
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:
 /// * Checks the input for validity
 /// * Constructs his output, range proof and signature
 /// * Constructs the reply
-/// If any step fails, an error is returned.
+/// If any step fails, we return an error.
 pub struct SingleReceiverTransactionProtocol {}
 
 impl SingleReceiverTransactionProtocol {
     pub fn create(
         sender_info: &SD,
-        nonce: SK,
-        spending_key: SK,
+        nonce: PrivateKey,
+        spending_key: PrivateKey,
         features: OutputFeatures,
         factories: &CryptoFactories,
     ) -> Result<RD, TPE>
     {
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info)?;
-        let output = SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, features, factories)?;
-        let public_nonce = PublicKey::from_secret_key(&nonce);
-        let public_spending_key = PublicKey::from_secret_key(&spending_key);
-        let e = build_challenge(&(&sender_info.public_nonce + &public_nonce), &sender_info.metadata);
-        let signature = Signature::sign(spending_key, nonce, &e).map_err(TPE::SigningError)?;
+        let output = OutputBuilder::new()
+            .with_spending_key(spending_key)
+            .with_features(features)
+            .with_value(sender_info.amount)
+            .build(&factories.commitment)?;
+        let pub_nonce = PublicKey::from_secret_key(&nonce);
+        let sum_r = &pub_nonce + &sender_info.public_nonce;
+        let signature = sign!(&output, &sender_info.metadata, nonce: nonce, pub_nonce: sum_r)?;
         let data = RD {
             tx_id: sender_info.tx_id,
-            output,
-            public_spend_key: public_spending_key,
+            output: output.as_transaction_output(factories)?,
+            public_blinding_factor: output.public_blinding_factor(),
             partial_signature: signature,
         };
         Ok(data)
@@ -77,28 +73,6 @@ impl SingleReceiverTransactionProtocol {
             return Err(TPE::ValidationError("Cannot send zero microTari".into()));
         }
         Ok(())
-    }
-
-    fn build_output(
-        sender_info: &SD,
-        spending_key: &SK,
-        features: OutputFeatures,
-        factories: &CryptoFactories,
-    ) -> Result<TransactionOutput, TPE>
-    {
-        let commitment = factories
-            .commitment
-            .commit_value(&spending_key, sender_info.amount.into());
-        let proof = factories
-            .range_proof
-            .construct_proof(&spending_key, sender_info.amount.into())?;
-        Ok(TransactionOutput::new(
-            features,
-            commitment,
-            RangeProof::from_bytes(&proof)
-                .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
-            &DEFAULT_SCRIPT_HASH,
-        ))
     }
 }
 
@@ -114,6 +88,7 @@ mod test {
             TransactionProtocolError,
         },
         types::{CryptoFactories, PrivateKey, PublicKey},
+        OutputBuilder,
         OutputFeatures,
     };
     use rand::rngs::OsRng;
@@ -144,11 +119,12 @@ mod test {
     #[test]
     fn valid_request() {
         let factories = CryptoFactories::default();
-        let (_xs, pub_xs) = PublicKey::random_keypair(&mut OsRng);
-        let (_rs, pub_rs) = PublicKey::random_keypair(&mut OsRng);
-        let (r, k, of) = generate_output_parms();
-        let pubkey = PublicKey::from_secret_key(&k);
-        let pubnonce = PublicKey::from_secret_key(&r);
+        let value = 1500 * uT;
+        let output = OutputBuilder::new()
+            .with_value(value)
+            .build(&factories.commitment)
+            .unwrap();
+        let (r, r_pub) = PublicKey::random_keypair(&mut OsRng);
         let m = TransactionMetadata {
             fee: MicroTari(100),
             lock_height: 0,
@@ -157,19 +133,28 @@ mod test {
         };
         let info = SingleRoundSenderData {
             tx_id: 500,
-            amount: MicroTari(1500),
-            public_excess: pub_xs,
-            public_nonce: pub_rs.clone(),
+            amount: value,
+            public_excess: output.public_blinding_factor(),
+            public_nonce: r_pub.clone(),
             metadata: m.clone(),
             message: "".to_string(),
         };
-        let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories).unwrap();
+        let prot = SingleReceiverTransactionProtocol::create(
+            &info,
+            r,
+            output.spending_key().clone(),
+            output.features().clone(),
+            &factories,
+        )
+        .unwrap();
         assert_eq!(prot.tx_id, 500, "tx_id is incorrect");
         // Check the signature
-        assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");
-        let e = build_challenge(&(&pub_rs + &pubnonce), &m);
+        let bf2 = output.public_blinding_factor();
+        assert_eq!(prot.public_blinding_factor, bf2, "Public key is incorrect");
+        let r_pub2 = prot.partial_signature.get_public_nonce();
+        let e = build_challenge(&(&r_pub + r_pub2), &m);
         assert!(
-            prot.partial_signature.verify_challenge(&pubkey, &e),
+            prot.partial_signature.verify_challenge(&bf2, &e),
             "Partial signature is incorrect"
         );
         let out = &prot.output;
@@ -177,7 +162,7 @@ mod test {
         assert!(
             factories
                 .commitment
-                .open_value(&k, info.amount.into(), out.commitment()),
+                .open_value(output.blinding_factor(), info.amount.into(), out.commitment()),
             "Output commitment is invalid"
         );
         assert!(

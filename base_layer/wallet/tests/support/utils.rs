@@ -22,16 +22,7 @@
 
 use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng};
 use std::{fmt::Debug, iter, thread, time::Duration};
-use tari_core::{
-    crypto::script::{TariScript, DEFAULT_SCRIPT_HASH},
-    transactions::{
-        tari_amount::MicroTari,
-        types::{CommitmentFactory, PrivateKey, PublicKey},
-        OutputFeatures,
-        TransactionInput,
-        UnblindedOutput,
-    },
-};
+use tari_core::transactions::types::{PrivateKey, PublicKey};
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
 
 pub fn assert_change<F, T>(mut func: F, to: T, poll_count: usize)

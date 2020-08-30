@@ -1354,19 +1354,15 @@ mod test {
         convert::TryFrom,
         sync::{Arc, Mutex},
     };
-    use tari_core::{
-        crypto::script::TariScript,
-        transactions::{
-            tari_amount::MicroTari,
-            transaction::Transaction,
-            transaction_protocol::sender::TransactionSenderMessage,
-            types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
-            OutputBuilder,
-            OutputFeatures,
-            ReceiverTransactionProtocol,
-            SenderTransactionProtocol,
-            UnblindedOutput,
-        },
+    use tari_core::transactions::{
+        tari_amount::MicroTari,
+        transaction::Transaction,
+        transaction_protocol::sender::TransactionSenderMessage,
+        types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
+        OutputBuilder,
+        OutputFeatures,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     };
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
     use tari_test_utils::random::string;

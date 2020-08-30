@@ -46,7 +46,7 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
         Ok(Self {
             tx_id: message.tx_id,
             output,
-            public_spend_key,
+            public_blinding_factor: public_spend_key,
             partial_signature,
         })
     }
@@ -57,7 +57,7 @@ impl From<RecipientSignedMessage> for proto::RecipientSignedMessage {
         Self {
             tx_id: message.tx_id,
             output: Some(message.output.into()),
-            public_spend_key: message.public_spend_key.to_vec(),
+            public_spend_key: message.public_blinding_factor.to_vec(),
             partial_signature: Some(message.partial_signature.into()),
         }
     }

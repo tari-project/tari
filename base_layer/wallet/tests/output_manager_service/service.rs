@@ -47,26 +47,18 @@ use tari_core::{
         },
     },
     consensus::{ConsensusConstantsBuilder, Network},
-    crypto::script::{TariScript, DEFAULT_SCRIPT_HASH},
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         transaction::{KernelFeatures, Transaction},
         transaction_protocol::single_receiver::SingleReceiverTransactionProtocol,
-        types::{CommitmentFactory, CryptoFactories, PrivateKey, RangeProof},
+        types::{CommitmentFactory, CryptoFactories, PrivateKey},
         OutputBuilder,
         OutputFeatures,
         SenderTransactionProtocol,
-        TransactionOutput,
-        UnblindedOutput,
     },
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::SecretKey,
-    range_proof::RangeProofService,
-    tari_utilities::{hash::Hashable, ByteArray},
-};
+use tari_crypto::{keys::SecretKey, tari_utilities::hash::Hashable};
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
@@ -1342,7 +1334,6 @@ fn handle_coinbase<T: Clone + OutputManagerBackend + 'static>(backend: T) {
         .build(&factories.commitment)
         .and_then(|o| o.as_transaction_output(&factories))
         .unwrap();
-    (&factories);
 
     runtime
         .block_on(oms.confirm_transaction(3, vec![], vec![output]))

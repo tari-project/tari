@@ -30,7 +30,7 @@ use crate::{
     tari_utilities::{hex::Hex, ByteArray, Hashable},
     transactions::{
         crypto::{
-            keys::SecretKey,
+            keys::{PublicKey as PKTrait, SecretKey},
             range_proof::{RangeProofError, RangeProofService as RangeProofTrait},
         },
         tari_amount::MicroTari,
@@ -44,6 +44,7 @@ use crate::{
             HashDigest,
             HashOutput,
             PrivateKey,
+            PublicKey,
             RangeProof,
             RangeProofService,
         },
@@ -350,6 +351,16 @@ impl UnblindedOutput {
         &self.spending_key
     }
 
+    /// Calculate the public key from the spending key, i.e. k.G
+    pub fn public_spending_key(&self) -> PublicKey {
+        PublicKey::from_secret_key(&self.spending_key)
+    }
+
+    /// Calculate the public key associated with the blinding factor (k + H(C||s)).G
+    pub fn public_blinding_factor(&self) -> PublicKey {
+        PublicKey::from_secret_key(&self.blinding_factor)
+    }
+
     /// Calculate the commitment associated with this output. For standard Mimblewimble, this would be equal to the
     /// base commitment. With Tari script it is `base_commitment + commitment_hash.G`
     pub fn commitment(&self) -> &Commitment {
@@ -589,14 +600,9 @@ impl Display for TransactionInput {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        transactions::{
-            helpers::{create_test_kernel, create_tx, spend_utxos},
-            tari_amount::T,
-            types::{BlindingFactor, PrivateKey, PublicKey, RangeProof},
-            OutputFeatures,
-        },
-        txn_schema,
+    use crate::transactions::{
+        types::{BlindingFactor, PrivateKey, RangeProof},
+        OutputFeatures,
     };
     use rand::{self, rngs::OsRng};
     use tari_crypto::{keys::SecretKey as SecretKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
