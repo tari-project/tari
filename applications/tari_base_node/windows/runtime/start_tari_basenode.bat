@@ -23,7 +23,7 @@ echo base_path   = %base_path%
 echo.
 echo Start Tor Services
 echo ----------------------------
-call %my_exe_path%\start_tor.bat
+call "%my_exe_path%\start_tor.bat"
 if [%errorlevel%]==[10101] (
     echo.
     echo It seems Tor could not be started properly.
@@ -39,7 +39,7 @@ if [%errorlevel%]==[10101] (
 echo.
 echo Run the base node
 echo -----------------
-call %my_exe_path%\run_the_base_node.bat
+call "%my_exe_path%\run_the_base_node.bat"
 
 goto END:
 
