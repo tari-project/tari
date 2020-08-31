@@ -598,6 +598,7 @@ where
         &wallet_conn,
         wallet_subscriptions,
         factories.clone(),
+        config.base_node_query_timeout,
         config.transaction_base_node_monitoring_timeout,
         config.transaction_direct_send_timeout,
         config.transaction_broadcast_send_timeout,
@@ -1214,6 +1215,7 @@ async fn register_wallet_services(
     wallet_db_conn: &WalletDbConnection,
     subscription_factory: Arc<SubscriptionFactory>,
     factories: CryptoFactories,
+    base_node_query_timeout: Duration,
     base_node_monitoring_timeout: Duration,
     direct_send_timeout: Duration,
     broadcast_send_timeout: Duration,
@@ -1235,7 +1237,7 @@ async fn register_wallet_services(
     ))
         // Wallet services
         .add_initializer(OutputManagerServiceInitializer::new(
-            OutputManagerServiceConfig{ base_node_query_timeout: Duration::from_secs(120), ..Default::default() },
+            OutputManagerServiceConfig::new(base_node_query_timeout),
             subscription_factory.clone(),
             OutputManagerSqliteDatabase::new(wallet_db_conn.clone(),None),
             factories.clone(),
