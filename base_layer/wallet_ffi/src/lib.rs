@@ -195,6 +195,7 @@ use tari_wallet::{
     wallet::WalletConfig,
 };
 
+use futures::StreamExt;
 use log4rs::append::{
     rolling_file::{
         policy::compound::{roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy},
@@ -2537,6 +2538,9 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 /// when a Base Node Sync process is completed or times out. The request_key is used to identify which request this
 /// callback references and a result of true means it was successful and false that the process timed out and new one
 /// will be started
+/// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
+/// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
+/// for it.
 /// `error_out` - Pointer to an int which will be modified
 /// to an error code should one occur, may not be null. Functions as an out parameter.
 /// ## Returns
@@ -2561,6 +2565,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
+    callback_saf_messages_received: unsafe extern "C" fn(),
     error_out: *mut c_int,
 ) -> *mut TariWallet
 {
@@ -2576,7 +2581,7 @@ pub unsafe extern "C" fn wallet_create(
         let path = CStr::from_ptr(log_path).to_str().unwrap().to_owned();
         let encoder = PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}");
         let log_appender: Box<dyn Append> = if num_rolling_log_files != 0 && size_per_log_file_bytes != 0 {
-            let mut pattern = "".to_string();
+            let mut pattern;
             let split_str: Vec<&str> = path.split('.').collect();
             if split_str.len() <= 1 {
                 pattern = format!("{}{}", path.clone(), "{}");
@@ -2606,7 +2611,7 @@ pub unsafe extern "C" fn wallet_create(
             Box::new(
                 FileAppender::builder()
                     .encoder(Box::new(encoder))
-                    .append(false)
+                    .append(true)
                     .build(path.as_str())
                     .expect("Should be able to create Appender"),
             )
@@ -2716,6 +2721,7 @@ pub unsafe extern "C" fn wallet_create(
                         TransactionDatabase::new(transaction_backend),
                         w.transaction_service.get_event_stream_fused(),
                         w.output_manager_service.get_event_stream_fused(),
+                        w.dht_service.subscribe_dht_events().fuse(),
                         w.comms.shutdown_signal(),
                         w.comms.node_identity().public_key().clone(),
                         callback_received_transaction,
@@ -2727,6 +2733,7 @@ pub unsafe extern "C" fn wallet_create(
                         callback_store_and_forward_send_result,
                         callback_transaction_cancellation,
                         callback_base_node_sync_complete,
+                        callback_saf_messages_received,
                     );
 
                     w.runtime.spawn(callback_handler.start());
@@ -4818,6 +4825,10 @@ mod test {
         assert!(true);
     }
 
+    unsafe extern "C" fn saf_messages_received_callback() {
+        assert!(true);
+    }
+
     unsafe extern "C" fn received_tx_callback_bob(tx: *mut TariPendingInboundTransaction) {
         assert_eq!(tx.is_null(), false);
         assert_eq!(
@@ -4885,6 +4896,10 @@ mod test {
     }
 
     unsafe extern "C" fn base_node_sync_process_complete_callback_bob(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn saf_messages_received_callback_bob() {
         assert!(true);
     }
 
@@ -5197,6 +5212,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
             let secret_key_bob = private_key_generate();
@@ -5239,6 +5255,7 @@ mod test {
                 store_and_forward_send_callback_bob,
                 tx_cancellation_callback_bob,
                 base_node_sync_process_complete_callback_bob,
+                saf_messages_received_callback_bob,
                 error_ptr,
             );
 
@@ -5684,6 +5701,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
 
@@ -5779,6 +5797,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
 
@@ -5820,6 +5839,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
 
@@ -5844,6 +5864,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
             assert_eq!(error, 423);
@@ -5863,6 +5884,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
 
@@ -5901,6 +5923,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
 

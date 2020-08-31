@@ -28,7 +28,7 @@ use crate::{
     outbound::OutboundMessageRequester,
     store_forward::StoreAndForwardRequester,
 };
-use futures::{task::Context, Future};
+use futures::{channel::mpsc, task::Context, Future};
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerManager},
@@ -45,6 +45,7 @@ pub struct MessageHandlerMiddleware<S> {
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     outbound_service: OutboundMessageRequester,
+    saf_response_signal_sender: mpsc::Sender<()>,
 }
 
 impl<S> MessageHandlerMiddleware<S> {
@@ -56,6 +57,7 @@ impl<S> MessageHandlerMiddleware<S> {
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
+        saf_response_signal_sender: mpsc::Sender<()>,
     ) -> Self
     {
         Self {
@@ -66,6 +68,7 @@ impl<S> MessageHandlerMiddleware<S> {
             node_identity,
             peer_manager,
             outbound_service,
+            saf_response_signal_sender,
         }
     }
 }
@@ -92,6 +95,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
             self.outbound_service.clone(),
             Arc::clone(&self.node_identity),
             message,
+            self.saf_response_signal_sender.clone(),
         )
         .run()
     }

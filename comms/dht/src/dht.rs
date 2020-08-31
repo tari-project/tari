@@ -25,6 +25,7 @@ use crate::{
     actor::{DhtActor, DhtRequest, DhtRequester},
     connectivity::DhtConnectivity,
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
+    event::{DhtEventReceiver, DhtEventSender},
     inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     logging_middleware::MessageLoggingLayer,
@@ -50,6 +51,7 @@ use tari_comms::{
 };
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
+use tokio::sync::broadcast;
 use tower::{layer::Layer, Service, ServiceBuilder};
 
 const LOG_TARGET: &str = "comms::dht";
@@ -57,6 +59,7 @@ const LOG_TARGET: &str = "comms::dht";
 const DHT_ACTOR_CHANNEL_SIZE: usize = 100;
 const DHT_DISCOVERY_CHANNEL_SIZE: usize = 100;
 const DHT_SAF_SERVICE_CHANNEL_SIZE: usize = 100;
+const DHT_EVENT_BROADCAST_CHANNEL_SIZE: usize = 100;
 
 #[derive(Debug, Error)]
 pub enum DhtInitializationError {
@@ -83,10 +86,14 @@ pub struct Dht {
     dht_sender: mpsc::Sender<DhtRequest>,
     /// Sender for SAF requests
     saf_sender: mpsc::Sender<StoreAndForwardRequest>,
+    /// Sender for SAF repsonse signals
+    saf_response_signal_sender: mpsc::Sender<()>,
     /// Sender for DHT discovery requests
     discovery_sender: mpsc::Sender<DhtDiscoveryRequest>,
     /// Connectivity actor requester
     connectivity: ConnectivityRequester,
+    /// Event stream sender
+    event_publisher: DhtEventSender,
 }
 
 impl Dht {
@@ -102,6 +109,8 @@ impl Dht {
         let (dht_sender, dht_receiver) = mpsc::channel(DHT_ACTOR_CHANNEL_SIZE);
         let (discovery_sender, discovery_receiver) = mpsc::channel(DHT_DISCOVERY_CHANNEL_SIZE);
         let (saf_sender, saf_receiver) = mpsc::channel(DHT_SAF_SERVICE_CHANNEL_SIZE);
+        let (saf_response_signal_sender, saf_response_signal_receiver) = mpsc::channel(DHT_SAF_SERVICE_CHANNEL_SIZE);
+        let (event_publisher, _) = broadcast::channel(DHT_EVENT_BROADCAST_CHANNEL_SIZE);
 
         let dht = Self {
             node_identity,
@@ -110,8 +119,10 @@ impl Dht {
             outbound_tx,
             dht_sender,
             saf_sender,
+            saf_response_signal_sender,
             connectivity,
             discovery_sender,
+            event_publisher: event_publisher.clone(),
         };
 
         let conn = DbConnection::connect_and_migrate(dht.config.database_url.clone())
@@ -119,8 +130,13 @@ impl Dht {
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
         dht.connectivity_service(shutdown_signal.clone()).spawn();
-        dht.store_and_forward_service(conn.clone(), saf_receiver, shutdown_signal.clone())
-            .spawn();
+        dht.store_and_forward_service(
+            conn.clone(),
+            saf_receiver,
+            shutdown_signal.clone(),
+            saf_response_signal_receiver,
+        )
+        .spawn();
         dht.actor(conn, dht_receiver, shutdown_signal.clone()).spawn();
         dht.discovery_service(discovery_receiver, shutdown_signal).spawn();
 
@@ -182,6 +198,7 @@ impl Dht {
         conn: DbConnection,
         request_rx: mpsc::Receiver<StoreAndForwardRequest>,
         shutdown_signal: ShutdownSignal,
+        saf_response_signal_rx: mpsc::Receiver<()>,
     ) -> StoreAndForwardService
     {
         StoreAndForwardService::new(
@@ -194,6 +211,8 @@ impl Dht {
             self.outbound_requester(),
             request_rx,
             shutdown_signal,
+            saf_response_signal_rx,
+            self.event_publisher.clone(),
         )
     }
 
@@ -215,6 +234,11 @@ impl Dht {
     /// Returns a requester for the StoreAndForwardService associated with this instance
     pub fn store_and_forward_requester(&self) -> StoreAndForwardRequester {
         StoreAndForwardRequester::new(self.saf_sender.clone())
+    }
+
+    /// Get a subscription to `DhtEvents`
+    pub fn subscribe_dht_events(&self) -> DhtEventReceiver {
+        self.event_publisher.subscribe()
     }
 
     /// Returns an the full DHT stack as a `tower::layer::Layer`. This can be composed with
@@ -265,6 +289,7 @@ impl Dht {
                 Arc::clone(&self.node_identity),
                 Arc::clone(&self.peer_manager),
                 self.outbound_requester(),
+                self.saf_response_signal_sender.clone(),
             ))
             .layer(inbound::DhtHandlerLayer::new(
                 self.config.clone(),

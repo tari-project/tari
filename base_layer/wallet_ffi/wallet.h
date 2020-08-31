@@ -382,6 +382,9 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// when a Base Node Sync process is completed or times out. The request_key is used to identify which request this
 /// callback references and a result of true means it was successful and false that the process timed out and new one
 /// will be started
+/// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
+/// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
+/// for it.
 /// `error_out` - Pointer to an int which will be modified
 /// to an error code should one occur, may not be null. Functions as an out parameter.
 /// ## Returns
@@ -404,6 +407,7 @@ struct TariWallet *wallet_create(struct TariWalletConfig *config,
                                     void (*callback_store_and_forward_send_result)(unsigned long long, bool),
                                     void (*callback_transaction_cancellation)(struct TariCompletedTransaction*),
                                     void (*callback_base_node_sync_complete)(unsigned long long, bool),
+                                    void (*callback_saf_message_received)(),
                                     int* error_out);
 
 // Signs a message

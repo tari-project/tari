@@ -51,6 +51,7 @@
 use futures::{stream::Fuse, StreamExt};
 use log::*;
 use tari_comms::types::CommsPublicKey;
+use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::{
@@ -77,9 +78,11 @@ where TBackend: TransactionBackend + 'static
     callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_base_node_sync_complete: unsafe extern "C" fn(TxId, bool),
+    callback_saf_messages_received: unsafe extern "C" fn(),
     db: TransactionDatabase<TBackend>,
     transaction_service_event_stream: Fuse<TransactionEventReceiver>,
     output_manager_service_event_stream: Fuse<OutputManagerEventReceiver>,
+    dht_event_stream: Fuse<DhtEventReceiver>,
     shutdown_signal: Option<ShutdownSignal>,
     comms_public_key: CommsPublicKey,
 }
@@ -92,6 +95,7 @@ where TBackend: TransactionBackend + 'static
         db: TransactionDatabase<TBackend>,
         transaction_service_event_stream: Fuse<TransactionEventReceiver>,
         output_manager_service_event_stream: Fuse<OutputManagerEventReceiver>,
+        dht_event_stream: Fuse<DhtEventReceiver>,
         shutdown_signal: ShutdownSignal,
         comms_public_key: CommsPublicKey,
         callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
@@ -103,6 +107,7 @@ where TBackend: TransactionBackend + 'static
         callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
+        callback_saf_messages_received: unsafe extern "C" fn(),
     ) -> Self
     {
         info!(
@@ -141,6 +146,10 @@ where TBackend: TransactionBackend + 'static
             target: LOG_TARGET,
             "BaseNodeSyncCompleteCallback -> Assigning Fn:  {:?}", callback_base_node_sync_complete
         );
+        info!(
+            target: LOG_TARGET,
+            "SafMessagesReceivedCallback -> Assigning Fn:  {:?}", callback_saf_messages_received
+        );
 
         Self {
             callback_received_transaction,
@@ -152,9 +161,11 @@ where TBackend: TransactionBackend + 'static
             callback_store_and_forward_send_result,
             callback_transaction_cancellation,
             callback_base_node_sync_complete,
+            callback_saf_messages_received,
             db,
             transaction_service_event_stream,
             output_manager_service_event_stream,
+            dht_event_stream,
             shutdown_signal: Some(shutdown_signal),
             comms_public_key,
         }
@@ -227,6 +238,21 @@ where TBackend: TransactionBackend + 'static
                         Err(e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
                     }
                 },
+                result = self.dht_event_stream.select_next_some() => {
+                    match result {
+                        Ok(msg) => {
+                            trace!(target: LOG_TARGET, "DHT Callback Handler event {:?}", msg);
+                            match *msg {
+                                DhtEvent::StoreAndForwardMessagesReceived => {
+                                    self.saf_messages_received_event();
+                                },
+                                /// Only the above variants are mapped to callbacks
+                                _ => (),
+                            }
+                        },
+                        Err(e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
+                    }
+                }
                 complete => {
                     info!(target: LOG_TARGET, "Callback Handler is exiting because all tasks have completed");
                     break;
@@ -383,6 +409,13 @@ where TBackend: TransactionBackend + 'static
             (self.callback_base_node_sync_complete)(request_key, result);
         }
     }
+
+    fn saf_messages_received_event(&mut self) {
+        debug!(target: LOG_TARGET, "Calling SAF Messages Received callback function");
+        unsafe {
+            (self.callback_saf_messages_received)();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -396,6 +429,7 @@ mod test {
         thread,
         time::Duration,
     };
+    use tari_comms_dht::event::DhtEvent;
     use tari_core::transactions::{
         tari_amount::{uT, MicroTari},
         transaction::Transaction,
@@ -437,6 +471,7 @@ mod test {
         pub tx_cancellation_callback_called_outbound: bool,
         pub base_node_sync_callback_called_true: bool,
         pub base_node_sync_callback_called_false: bool,
+        pub saf_messages_received: bool,
     }
 
     impl CallbackState {
@@ -454,6 +489,7 @@ mod test {
                 tx_cancellation_callback_called_completed: false,
                 tx_cancellation_callback_called_inbound: false,
                 tx_cancellation_callback_called_outbound: false,
+                saf_messages_received: false,
             }
         }
     }
@@ -509,6 +545,12 @@ mod test {
     unsafe extern "C" fn store_and_forward_send_callback(_tx_id: u64, _result: bool) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.store_and_forward_send_callback_called = true;
+        drop(lock);
+    }
+
+    unsafe extern "C" fn saf_messages_received_callback() {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.saf_messages_received = true;
         drop(lock);
     }
 
@@ -606,12 +648,14 @@ mod test {
 
         let (tx_sender, tx_receiver) = broadcast::channel(20);
         let (oms_sender, oms_receiver) = broadcast::channel(20);
+        let (dht_sender, dht_receiver) = broadcast::channel(20);
 
         let shutdown_signal = Shutdown::new();
         let callback_handler = CallbackHandler::new(
             db,
             tx_receiver.fuse(),
             oms_receiver.fuse(),
+            dht_receiver.fuse(),
             shutdown_signal.to_signal(),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             received_tx_callback,
@@ -623,6 +667,7 @@ mod test {
             store_and_forward_send_callback,
             tx_cancellation_callback,
             base_node_sync_process_complete_callback,
+            saf_messages_received_callback,
         );
 
         runtime.spawn(callback_handler.start());
@@ -666,6 +711,9 @@ mod test {
         oms_sender
             .send(OutputManagerEvent::UtxoValidationTimedOut(1u64))
             .unwrap();
+        dht_sender
+            .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))
+            .unwrap();
 
         thread::sleep(Duration::from_secs(10));
 
@@ -682,6 +730,7 @@ mod test {
         assert!(lock.tx_cancellation_callback_called_outbound);
         assert!(lock.base_node_sync_callback_called_true);
         assert!(lock.base_node_sync_callback_called_false);
+        assert!(lock.saf_messages_received);
         drop(lock);
     }
 }
