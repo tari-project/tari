@@ -4128,7 +4128,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet_ffi"
-version = "0.16.3"
+version = "0.16.4"
 dependencies = [
  "chrono",
  "env_logger 0.7.1",
