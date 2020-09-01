@@ -27,6 +27,7 @@ use crate::{
     outbound::OutboundMessageRequester,
     store_forward::StoreAndForwardRequester,
 };
+use futures::channel::mpsc;
 use std::sync::Arc;
 use tari_comms::peer_manager::{NodeIdentity, PeerManager};
 use tower::layer::Layer;
@@ -38,6 +39,7 @@ pub struct MessageHandlerLayer {
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     outbound_service: OutboundMessageRequester,
+    saf_response_signal_sender: mpsc::Sender<()>,
 }
 
 impl MessageHandlerLayer {
@@ -48,6 +50,7 @@ impl MessageHandlerLayer {
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
+        saf_response_signal_sender: mpsc::Sender<()>,
     ) -> Self
     {
         Self {
@@ -57,6 +60,7 @@ impl MessageHandlerLayer {
             node_identity,
             peer_manager,
             outbound_service,
+            saf_response_signal_sender,
         }
     }
 }
@@ -73,6 +77,7 @@ impl<S> Layer<S> for MessageHandlerLayer {
             Arc::clone(&self.node_identity),
             Arc::clone(&self.peer_manager),
             self.outbound_service.clone(),
+            self.saf_response_signal_sender.clone(),
         )
     }
 }

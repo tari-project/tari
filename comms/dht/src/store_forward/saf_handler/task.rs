@@ -45,7 +45,7 @@ use crate::{
     utils::try_convert_all,
 };
 use digest::Digest;
-use futures::{future, stream, Future, StreamExt};
+use futures::{channel::mpsc, future, stream, Future, SinkExt, StreamExt};
 use log::*;
 use prost::Message;
 use std::{convert::TryInto, sync::Arc};
@@ -70,6 +70,7 @@ pub struct MessageHandlerTask<S> {
     node_identity: Arc<NodeIdentity>,
     message: Option<DecryptedDhtMessage>,
     saf_requester: StoreAndForwardRequester,
+    saf_response_signal_sender: mpsc::Sender<()>,
 }
 
 impl<S> MessageHandlerTask<S>
@@ -85,6 +86,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         outbound_service: OutboundMessageRequester,
         node_identity: Arc<NodeIdentity>,
         message: DecryptedDhtMessage,
+        saf_response_signal_sender: mpsc::Sender<()>,
     ) -> Self
     {
         Self {
@@ -96,6 +98,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             outbound_service,
             node_identity,
             message: Some(message),
+            saf_response_signal_sender,
         }
     }
 
@@ -206,16 +209,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             query.with_response_type(resp_type);
             let messages = self.saf_requester.fetch_messages(query.clone()).await?;
 
-            if messages.is_empty() {
-                debug!(
-                    target: LOG_TARGET,
-                    "No {:?} stored messages for peer '{}'",
-                    resp_type,
-                    message.source_peer.node_id.short_str()
-                );
-                continue;
-            }
-
             let message_ids = messages.iter().map(|msg| msg.id).collect::<Vec<_>>();
             let stored_messages = StoredMessagesResponse {
                 messages: try_convert_all(messages)?,
@@ -266,7 +259,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         Ok(())
     }
 
-    async fn handle_stored_messages(self, message: DecryptedDhtMessage) -> Result<(), StoreAndForwardError> {
+    async fn handle_stored_messages(mut self, message: DecryptedDhtMessage) -> Result<(), StoreAndForwardError> {
         trace!(
             target: LOG_TARGET,
             "Received stored messages from {} (Trace: {})",
@@ -353,6 +346,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             })
             .filter(Result::is_ok)
             .map(Result::unwrap);
+
+        // Let the SAF Service know we got a SAF response.
+        let _ = self
+            .saf_response_signal_sender
+            .send(())
+            .await
+            .map_err(|e| warn!(target: LOG_TARGET, "Error sending SAF response signal; {:?}", e));
 
         self.next_service
             .call_all(stream::iter(successful_msgs_iter))
@@ -548,7 +548,9 @@ mod test {
     use chrono::Utc;
     use futures::channel::mpsc;
     use prost::Message;
+    use std::time::Duration;
     use tari_comms::{message::MessageExt, wrap_in_envelope_body};
+    use tari_test_utils::collect_stream;
     use tari_utilities::hex::Hex;
     use tokio::runtime::Handle;
 
@@ -595,9 +597,6 @@ mod test {
             false,
             MessageTag::new(),
         );
-        mock_state
-            .add_message(make_stored_message(&node_identity, dht_header))
-            .await;
 
         let since = Utc::now().checked_sub_signed(chrono::Duration::seconds(60)).unwrap();
         let mut message = DecryptedDhtMessage::succeeded(
@@ -614,7 +613,41 @@ mod test {
 
         let (tx, _) = mpsc::channel(1);
         let dht_requester = DhtRequester::new(tx);
+        let (saf_response_signal_sender, _saf_response_signal_receiver) = mpsc::channel(20);
 
+        // First test that the task will respond if there are no messages to send.
+        let task = MessageHandlerTask::new(
+            Default::default(),
+            spy.to_service::<PipelineError>(),
+            requester.clone(),
+            dht_requester.clone(),
+            peer_manager.clone(),
+            OutboundMessageRequester::new(oms_tx.clone()),
+            node_identity.clone(),
+            message.clone(),
+            saf_response_signal_sender.clone(),
+        );
+
+        rt_handle.spawn(task.run());
+
+        let (_, body) = unwrap_oms_send_msg!(oms_rx.next().await.unwrap());
+        let body = body.to_vec();
+        let body = EnvelopeBody::decode(body.as_slice()).unwrap();
+        let msg = body.decode_part::<StoredMessagesResponse>(0).unwrap().unwrap();
+        assert_eq!(msg.messages().len(), 0);
+        assert!(!spy.is_called());
+
+        assert_eq!(mock_state.call_count(), 1);
+        let calls = mock_state.take_calls().await;
+        assert!(calls[0].contains("FetchMessages"));
+        assert!(calls[0].contains(node_identity.public_key().to_hex().as_str()));
+        assert!(calls[0].contains(format!("{:?}", since).as_str()));
+
+        mock_state
+            .add_message(make_stored_message(&node_identity, dht_header))
+            .await;
+
+        // Now lets test its response where there are messages to return.
         let task = MessageHandlerTask::new(
             Default::default(),
             spy.to_service::<PipelineError>(),
@@ -624,6 +657,7 @@ mod test {
             OutboundMessageRequester::new(oms_tx),
             node_identity.clone(),
             message,
+            saf_response_signal_sender,
         );
 
         rt_handle.spawn(task.run());
@@ -636,7 +670,7 @@ mod test {
         assert_eq!(msg.messages()[0].body, b"A");
         assert!(!spy.is_called());
 
-        assert_eq!(mock_state.call_count(), 1);
+        assert_eq!(mock_state.call_count(), 2);
         let calls = mock_state.take_calls().await;
         assert!(calls[0].contains("FetchMessages"));
         assert!(calls[0].contains(node_identity.public_key().to_hex().as_str()));
@@ -696,6 +730,7 @@ mod test {
 
         let (dht_requester, mock) = create_dht_actor_mock(1);
         rt_handle.spawn(mock.run());
+        let (saf_response_signal_sender, mut saf_response_signal_receiver) = mpsc::channel(20);
 
         let task = MessageHandlerTask::new(
             Default::default(),
@@ -706,6 +741,7 @@ mod test {
             OutboundMessageRequester::new(oms_tx),
             node_identity,
             message,
+            saf_response_signal_sender,
         );
 
         task.run().await.unwrap();
@@ -720,5 +756,11 @@ mod test {
         assert!(msgs.contains(&b"A".to_vec()));
         assert!(msgs.contains(&b"B".to_vec()));
         assert!(msgs.contains(&b"Clear".to_vec()));
+        let signals = collect_stream!(
+            saf_response_signal_receiver,
+            take = 1,
+            timeout = Duration::from_secs(20)
+        );
+        assert_eq!(signals.len(), 1);
     }
 }

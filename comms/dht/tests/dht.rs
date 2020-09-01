@@ -39,6 +39,7 @@ use tari_comms::{
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
+    event::DhtEvent,
     inbound::DecryptedDhtMessage,
     outbound::{OutboundEncryption, SendMessageParams},
     DbConnectionUrl,
@@ -299,6 +300,7 @@ async fn dht_discover_propagation() {
 #[tokio_macros::test]
 #[allow(non_snake_case)]
 async fn dht_store_forward() {
+    let _ = env_logger::try_init();
     let node_C_node_identity = make_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // Node B knows about Node C
     let node_B = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
@@ -351,12 +353,19 @@ async fn dht_store_forward() {
     collect_stream!(node_B_msg_events, take = 2, timeout = Duration::from_secs(20));
 
     let mut node_C = make_node_with_node_identity(node_C_node_identity, Some(node_B.to_peer())).await;
+    let mut node_C_dht_events = node_C.dht.subscribe_dht_events();
     let mut node_C_msg_events = node_C.comms.subscribe_messaging_events();
     // Ask node B for messages
     node_C
         .dht
         .store_and_forward_requester()
         .request_saf_messages_from_peer(node_B.node_identity().node_id().clone())
+        .await
+        .unwrap();
+    node_C
+        .dht
+        .store_and_forward_requester()
+        .request_saf_messages_from_peer(node_A.node_identity().node_id().clone())
         .await
         .unwrap();
     // Wait for node C to and receive a response from the SAF request
@@ -387,6 +396,10 @@ async fn dht_store_forward() {
     }
 
     assert!(msgs.is_empty());
+
+    // Check that Node C emitted the StoreAndForwardMessagesReceived event when it went Online
+    let event = collect_stream!(node_C_dht_events, take = 1, timeout = Duration::from_secs(20));
+    unpack_enum!(DhtEvent::StoreAndForwardMessagesReceived = &**event.get(0).unwrap().as_ref().unwrap());
 
     node_A.comms.shutdown().await;
     node_B.comms.shutdown().await;

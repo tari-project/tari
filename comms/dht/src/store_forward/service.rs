@@ -28,6 +28,7 @@ use super::{
 };
 use crate::{
     envelope::DhtMessageType,
+    event::{DhtEvent, DhtEventSender},
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::store_forward::{stored_messages_response::SafResponseType, StoredMessagesRequest},
     storage::{DbConnection, DhtMetadataKey},
@@ -166,6 +167,10 @@ pub struct StoreAndForwardService {
     outbound_requester: OutboundMessageRequester,
     request_rx: Fuse<mpsc::Receiver<StoreAndForwardRequest>>,
     shutdown_signal: Option<ShutdownSignal>,
+    num_received_saf_responses: Option<usize>,
+    num_online_peers: Option<usize>,
+    saf_response_signal_rx: Fuse<mpsc::Receiver<()>>,
+    event_publisher: DhtEventSender,
 }
 
 impl StoreAndForwardService {
@@ -180,6 +185,8 @@ impl StoreAndForwardService {
         outbound_requester: OutboundMessageRequester,
         request_rx: mpsc::Receiver<StoreAndForwardRequest>,
         shutdown_signal: ShutdownSignal,
+        saf_response_signal_rx: mpsc::Receiver<()>,
+        event_publisher: DhtEventSender,
     ) -> Self
     {
         Self {
@@ -192,6 +199,10 @@ impl StoreAndForwardService {
             connection_events: connectivity.subscribe_event_stream().fuse(),
             outbound_requester,
             shutdown_signal: Some(shutdown_signal),
+            num_received_saf_responses: Some(0),
+            num_online_peers: None,
+            saf_response_signal_rx: saf_response_signal_rx.fuse(),
+            event_publisher,
         }
     }
 
@@ -225,6 +236,13 @@ impl StoreAndForwardService {
                 _ = cleanup_ticker.select_next_some() => {
                     if let Err(err) = self.cleanup().await {
                         error!(target: LOG_TARGET, "Error when performing store and forward cleanup: {:?}", err);
+                    }
+                },
+
+                _ = self.saf_response_signal_rx.select_next_some() => {
+                    if let Some(n) = self.num_received_saf_responses {
+                        self.num_received_saf_responses = Some(n + 1);
+                        self.check_saf_response_threshold();
                     }
                 },
 
@@ -291,17 +309,18 @@ impl StoreAndForwardService {
 
     async fn handle_connectivity_event(&mut self, event: &ConnectivityEvent) -> SafResult<()> {
         use ConnectivityEvent::*;
-        if !self.config.saf_auto_request {
-            debug!(
-                target: LOG_TARGET,
-                "Auto store and forward request disabled. Ignoring connection manager event"
-            );
-            return Ok(());
-        }
 
         #[allow(clippy::single_match)]
         match event {
             PeerConnected(conn) => {
+                if !self.config.saf_auto_request {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Auto store and forward request disabled. Ignoring PeerConnected event"
+                    );
+                    return Ok(());
+                }
+
                 // Whenever we connect to a peer, request SAF messages
                 let features = self.peer_manager.get_peer_features(conn.peer_node_id()).await?;
                 if features.contains(PeerFeatures::DHT_STORE_FORWARD) {
@@ -312,6 +331,13 @@ impl StoreAndForwardService {
                     );
                     self.request_stored_messages_from_peer(conn.peer_node_id()).await?;
                 }
+            },
+            ConnectivityStateOnline(n) => {
+                // Capture the number of online peers when this event occurs for the first time
+                if self.num_online_peers.is_none() {
+                    self.num_online_peers = Some(*n);
+                }
+                self.check_saf_response_threshold();
             },
             _ => {},
         }
@@ -384,6 +410,32 @@ impl StoreAndForwardService {
         Ok(request)
     }
 
+    fn check_saf_response_threshold(&mut self) {
+        // This check can only be done after the `ConnectivityStateOnline` event has arrived
+        if let Some(num_peers) = self.num_online_peers {
+            // We only perform the check while we are still tracking reponses
+            if let Some(n) = self.num_received_saf_responses {
+                if n >= num_peers {
+                    // A send operation can only fail if there are no subscribers, so it is safe to ignore the error
+                    self.publish_event(DhtEvent::StoreAndForwardMessagesReceived);
+                    // Once this event is fired we stop tracking responses
+                    self.num_received_saf_responses = None;
+                    debug!(
+                        target: LOG_TARGET,
+                        "Store and Forward responses received from {} connected peers", num_peers
+                    );
+                } else {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Not enough Store and Forward responses received yet ({} out of a required {})",
+                        n,
+                        num_peers
+                    );
+                }
+            }
+        }
+    }
+
     async fn handle_fetch_message_query(&self, query: FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
         use SafResponseType::*;
         let limit = i64::try_from(self.config.saf_max_returned_messages)
@@ -442,6 +494,15 @@ impl StoreAndForwardService {
         }
 
         Ok(())
+    }
+
+    fn publish_event(&mut self, event: DhtEvent) {
+        let _ = self.event_publisher.send(Arc::new(event)).map_err(|_| {
+            trace!(
+                target: LOG_TARGET,
+                "Could not publish DhtEvent as there are no subscribers"
+            )
+        });
     }
 }
 

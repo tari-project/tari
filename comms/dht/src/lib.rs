@@ -152,6 +152,8 @@ mod utils;
 
 mod schema;
 
+pub mod event;
+
 pub mod broadcast_strategy;
 pub mod domain_message;
 pub mod envelope;
