@@ -1,33 +1,32 @@
 @echo off
-
 rem Verify arguments
-if [%config_path%]==[] (
-    echo Problem with "config_path" environment variable: %config_path%
+if ["%config_path%"]==[""] (
+    echo Problem with "config_path" environment variable: '%config_path%'
     pause
     exit /b 10101
 )
 if not exist "%config_path%" (
-    echo Path as per "config_path" environment variable not found: %config_path%
+    echo Path as per "config_path" environment variable not found: '%config_path%'
     pause
     exit /b 10101
 )
-if [%base_path%]==[] (
-    echo Problem with "base_path" environment variable: %base_path%
+if ["%base_path%"]==[""] (
+    echo Problem with "base_path" environment variable: '%base_path%'
     pause
     exit /b 10101
 )
 if not exist "%base_path%" (
-    echo Path as per "base_path" environment variable not found: %base_path%
+    echo Path as per "base_path" environment variable not found: '%base_path%'
     pause
     exit /b 10101
 )
-if [%my_exe%]==[] (
-    echo Problem with "my_exe" environment variable: %my_exe%
+if ["%my_exe%"]==[""] (
+    echo Problem with "my_exe" environment variable: '%my_exe%'
     pause
     exit /b 10101
 )
-if [%sqlite_runtime%]==[] (
-    echo Problem with "sqlite_runtime" environment variable: %sqlite_runtime%
+if ["%sqlite_runtime%"]==[""] (
+    echo Problem with "sqlite_runtime" environment variable: '%sqlite_runtime%'
     pause
     exit /b 10101
 )
@@ -35,6 +34,10 @@ if [%sqlite_runtime%]==[] (
 rem Verify SQLite's location and prepend the default location to the system path if it exist
 if exist "%TARI_SQLITE_DIR%\%sqlite_runtime%" (
     set "path=%TARI_SQLITE_DIR%;%path%"
+    echo.
+    echo Default location of "%sqlite_runtime%" prepended to the system path
+) else if exist "%USERPROFILE%\.sqlite\%sqlite_runtime%" (
+    set "path=%USERPROFILE%\.sqlite;%path%"
     echo.
     echo Default location of "%sqlite_runtime%" prepended to the system path
 ) else (
@@ -47,6 +50,11 @@ if exist "%TARI_SQLITE_DIR%\%sqlite_runtime%" (
     ) else (
         echo.
         echo Note: "%sqlite_runtime%" not found in the default location or in the system path; this may be a problem
+		if ["%TARI_SQLITE_DIR%"]==["%USERPROFILE%\.sqlite"] (
+			echo       {default location: tried "%TARI_SQLITE_DIR%"}
+		) else (
+			echo       {default location: tried "%TARI_SQLITE_DIR%" and "%USERPROFILE%\.sqlite"}
+		)
         echo.
         pause
     )
@@ -84,7 +92,7 @@ if exist "%my_exe_path%\%my_exe%" (
 )
 
 rem First time run
-if not exist %config_path%\node_id.json (
+if not exist "%config_path%\node_id.json" (
     "%base_node%" --create-id --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs.yml" --base-path "%base_path%"
     echo.
     echo.
@@ -93,7 +101,7 @@ if not exist %config_path%\node_id.json (
 ) else (
     echo.
     echo.
-    echo Using existing "%config_path%\node_id.json"
+    echo Using old "%config_path%\node_id.json"
     echo.
 )
 

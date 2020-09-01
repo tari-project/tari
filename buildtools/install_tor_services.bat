@@ -21,7 +21,7 @@ goto END:
 rem Download install file
 powershell wget  https://www.torproject.org/dist/torbrowser/%tor_version%/%tor_zip% -outfile "%TEMP%\%tor_zip%"
 rem Install 
-powershell expand-archive -Force -LiteralPath "%TEMP%\%tor_zip%" -DestinationPath "%tor_folder%"
+powershell expand-archive -Force -LiteralPath "%TEMP%\%tor_zip%" -DestinationPath '%tor_folder%'
 rem Set Tari environment variables
 set TARI_TOR_SERVICES_DIR=%tor_folder%\Tor
 setx TARI_TOR_SERVICES_DIR %TARI_TOR_SERVICES_DIR%
