@@ -22,21 +22,31 @@
 
 use super::{StatelessValidation, Validation};
 use crate::{chain_storage::BlockchainBackend, validation::error::ValidationError};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 #[derive(Clone)]
 pub struct MockValidator {
-    is_valid: bool,
+    is_valid: Arc<AtomicBool>,
 }
 
 impl MockValidator {
-    pub fn new(is_valid: bool) -> MockValidator {
-        MockValidator { is_valid }
+    pub fn new(is_valid: bool) -> Self {
+        Self {
+            is_valid: Arc::new(AtomicBool::new(is_valid)),
+        }
+    }
+
+    pub fn shared_flag(&self) -> Arc<AtomicBool> {
+        self.is_valid.clone()
     }
 }
 
 impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
     fn validate(&self, _item: &T, _db: &B) -> Result<(), ValidationError> {
-        if self.is_valid {
+        if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
             Err(ValidationError::custom_error(
@@ -48,7 +58,7 @@ impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
 
 impl<T> StatelessValidation<T> for MockValidator {
     fn validate(&self, _item: &T) -> Result<(), ValidationError> {
-        if self.is_valid {
+        if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
             Err(ValidationError::custom_error(

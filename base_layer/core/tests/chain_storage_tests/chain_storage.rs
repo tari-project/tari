@@ -23,16 +23,19 @@
 use crate::helpers::{
     block_builders::{
         append_block,
+        chain_block,
         create_genesis_block,
+        find_header_with_achieved_difficulty,
         generate_new_block,
         generate_new_block_with_achieved_difficulty,
         generate_new_block_with_coinbase,
     },
-    sample_blockchains::create_new_blockchain,
+    sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb},
 };
 use croaring::Bitmap;
 use env_logger;
-use std::thread;
+use rand::{rngs::OsRng, RngCore};
+use std::{sync::atomic::Ordering, thread};
 use tari_core::{
     blocks::{genesis_block, Block, BlockHash, BlockHeader},
     chain_storage::{
@@ -908,6 +911,172 @@ fn handle_reorg_with_no_removed_blocks() {
     }
 
     assert_eq!(store.fetch_tip_header().unwrap(), orphan1_blocks[3].header.clone());
+}
+
+#[test]
+fn handle_reorg_failure_recovery() {
+    // GB --> A1 --> A2 --> A3 -----> A4(Low PoW)     [Main Chain]
+    //          \--> B2 --> B3(double spend - rejected by db)  [Forked Chain 1]
+    //          \--> B2 --> B3'(validation failed)      [Forked Chain 1]
+    // Checks the following cases:
+    // 1. recovery from failure to commit reorged blocks, and
+    // 2. recovery from failed block validation.
+
+    let temp_path = create_temporary_data_path();
+    {
+        let block_validator = MockValidator::new(true);
+        let is_block_valid_flag = block_validator.shared_flag();
+        let validators = Validators::new(
+            block_validator,
+            MockValidator::new(true),
+            MockAccumDifficultyValidator {},
+        );
+        // Create Main Chain
+        let network = Network::LocalNet;
+        let (mut store, mut blocks, mut outputs, consensus_manager) =
+            create_new_blockchain_lmdb(network, &temp_path, validators, Default::default());
+        // Block A1
+        let txs = vec![txn_schema!(
+            from: vec![outputs[0][0].clone()],
+            to: vec![10 * T, 10 * T, 10 * T, 10 * T]
+        )];
+        generate_new_block_with_achieved_difficulty(
+            &mut store,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            Difficulty::from(1),
+            &consensus_manager.consensus_constants(),
+        )
+        .unwrap();
+        // Block A2
+        let txs = vec![txn_schema!(from: vec![outputs[1][3].clone()], to: vec![6 * T])];
+        generate_new_block_with_achieved_difficulty(
+            &mut store,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            Difficulty::from(1),
+            &consensus_manager.consensus_constants(),
+        )
+        .unwrap();
+        // Block A3
+        let txs = vec![txn_schema!(from: vec![outputs[2][0].clone()], to: vec![2 * T])];
+        generate_new_block_with_achieved_difficulty(
+            &mut store,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            Difficulty::from(2),
+            &consensus_manager.consensus_constants(),
+        )
+        .unwrap();
+        // Block A4
+        let txs = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![2 * T])];
+        generate_new_block_with_achieved_difficulty(
+            &mut store,
+            &mut blocks,
+            &mut outputs,
+            txs,
+            Difficulty::from(2),
+            &consensus_manager.consensus_constants(),
+        )
+        .unwrap();
+
+        // Create Forked Chain 1
+        let consensus_manager_fork = ConsensusManagerBuilder::new(network)
+            .with_block(blocks[0].clone())
+            .build();
+        let mut orphan1_store = create_mem_db(&consensus_manager_fork); // GB
+        orphan1_store.add_block(blocks[1].clone()).unwrap(); // A1
+        let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
+        let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
+        // Block B2
+        let txs = vec![txn_schema!(from: vec![orphan1_outputs[1][0].clone()], to: vec![5 * T])];
+        generate_new_block_with_achieved_difficulty(
+            &mut orphan1_store,
+            &mut orphan1_blocks,
+            &mut orphan1_outputs,
+            txs,
+            Difficulty::from(1),
+            &consensus_manager.consensus_constants(),
+        )
+        .unwrap();
+        // Block B3 (Double spend)
+        let double_spend_block = {
+            let schemas = vec![
+                txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
+                // Double spend
+                txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
+            ];
+            let mut txns = Vec::new();
+            let mut block_utxos = Vec::new();
+            for schema in schemas {
+                let (tx, mut utxos, _) = spend_utxos(schema);
+                txns.push(tx);
+                block_utxos.append(&mut utxos);
+            }
+            orphan1_outputs.push(block_utxos);
+
+            let template = chain_block(
+                &orphan1_blocks.last().unwrap(),
+                txns,
+                consensus_manager.consensus_constants(),
+            );
+            let mut block = orphan1_store.calculate_mmr_roots(template).unwrap();
+            block.header.nonce = OsRng.next_u64();
+            find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(2));
+            block
+        };
+
+        // Add an orphaned B2
+        let result = store.add_block(orphan1_blocks[2].clone()).unwrap(); // B2
+        unpack_enum!(BlockAddResult::OrphanBlock = result);
+
+        // Add B3 with a double spend. Our (mock) validators are doing a bad job, but still the database should recover.
+        let err = store.add_block(double_spend_block.clone()).unwrap_err(); // B3
+        unpack_enum!(ChainStorageError::UnspendableInput = err);
+        let tip_header = store.fetch_tip_header().unwrap();
+        assert_eq!(tip_header.height, 4);
+        assert_eq!(tip_header, blocks[4].header);
+
+        assert!(store.fetch_orphan(orphan1_blocks[2].hash()).is_ok()); // B2 orphaned
+        assert!(store.fetch_orphan(double_spend_block.hash()).is_ok()); // B3 orphaned
+        assert!(store.fetch_orphan(blocks[2].hash()).is_err()); // A2
+        assert!(store.fetch_orphan(blocks[3].hash()).is_err()); // A3
+        assert!(store.fetch_orphan(blocks[4].hash()).is_err()); // A4
+
+        // B3'
+        is_block_valid_flag.store(false, Ordering::SeqCst);
+        let txs = vec![txn_schema!(from: vec![orphan1_outputs[1][1].clone()], to: vec![5 * T])];
+        generate_new_block_with_achieved_difficulty(
+            &mut orphan1_store,
+            &mut orphan1_blocks,
+            &mut orphan1_outputs,
+            txs,
+            Difficulty::from(1),
+            &consensus_manager.consensus_constants(),
+        )
+        .unwrap();
+        // B3
+        let err = store.add_block(orphan1_blocks[3].clone()).unwrap_err();
+        // Mock validator error is returned. This assertions makes sure that the (mock) validator error is returned
+        // and that no other error (caused by say a bug in the rewind/restore code) happened.
+        unpack_enum!(ChainStorageError::ValidationError { .. } = err);
+
+        let tip_header = store.fetch_tip_header().unwrap();
+        assert_eq!(tip_header.height, 4);
+        assert_eq!(tip_header, blocks[4].header);
+
+        assert!(store.fetch_orphan(orphan1_blocks[3].hash()).is_ok()); // B3' orphaned
+        assert!(store.fetch_orphan(blocks[2].hash()).is_err()); // A2
+        assert!(store.fetch_orphan(blocks[3].hash()).is_err()); // A3
+        assert!(store.fetch_orphan(blocks[4].hash()).is_err()); // A4
+    }
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        std::fs::remove_dir_all(&temp_path).unwrap();
+    }
 }
 
 #[test]

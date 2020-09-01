@@ -25,6 +25,7 @@ use lmdb_zero::{
     error::{self, LmdbResultExt},
     put,
     ConstAccessor,
+    ConstTransaction,
     Cursor,
     CursorIter,
     Database,
@@ -63,7 +64,7 @@ where T: DeserializeOwned {
         .map_err(|e| error::Error::ValRejected(e.to_string()))
 }
 
-pub fn lmdb_insert<K, V>(txn: &WriteTransaction, db: &Database, key: &K, val: &V) -> Result<(), ChainStorageError>
+pub fn lmdb_insert<K, V>(txn: &WriteTransaction<'_>, db: &Database, key: &K, val: &V) -> Result<(), ChainStorageError>
 where
     K: Serialize,
     V: Serialize,
@@ -81,7 +82,7 @@ where
         })
 }
 
-pub fn lmdb_replace<K, V>(txn: &WriteTransaction, db: &Database, key: &K, val: &V) -> Result<(), ChainStorageError>
+pub fn lmdb_replace<K, V>(txn: &WriteTransaction<'_>, db: &Database, key: &K, val: &V) -> Result<(), ChainStorageError>
 where
     K: Serialize,
     V: Serialize,
@@ -100,19 +101,18 @@ where
 }
 
 /// Deletes the given key. An error is returned if the key does not exist
-pub fn lmdb_delete<K>(txn: &WriteTransaction, db: &Database, key: &K) -> Result<(), ChainStorageError>
+pub fn lmdb_delete<K>(txn: &WriteTransaction<'_>, db: &Database, key: &K) -> Result<(), ChainStorageError>
 where K: Serialize {
     let key_buf = serialize(key)?;
     txn.access().del_key(&db, &key_buf)?;
     Ok(())
 }
 
-pub fn lmdb_get<K, V>(env: &Environment, db: &Database, key: &K) -> Result<Option<V>, ChainStorageError>
+pub fn lmdb_get_txn<K, V>(txn: &ConstTransaction<'_>, db: &Database, key: &K) -> Result<Option<V>, ChainStorageError>
 where
     K: Serialize,
     V: DeserializeOwned,
 {
-    let txn = ReadTransaction::new(env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
     let access = txn.access();
     let key_buf = serialize(key)?;
     match access.get(&db, &key_buf).to_opt() {
@@ -134,9 +134,17 @@ where
     }
 }
 
-pub fn lmdb_exists<K>(env: &Environment, db: &Database, key: &K) -> Result<bool, ChainStorageError>
-where K: Serialize {
+pub fn lmdb_get<K, V>(env: &Environment, db: &Database, key: &K) -> Result<Option<V>, ChainStorageError>
+where
+    K: Serialize,
+    V: DeserializeOwned,
+{
     let txn = ReadTransaction::new(env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+    lmdb_get_txn(&txn, db, key)
+}
+
+pub fn lmdb_exists_txn<K>(txn: &ConstTransaction<'_>, db: &Database, key: &K) -> Result<bool, ChainStorageError>
+where K: Serialize {
     let access = txn.access();
     let key_buf = serialize(key)?;
     match access.get::<[u8], [u8]>(&db, &key_buf).to_opt() {
@@ -147,6 +155,12 @@ where K: Serialize {
         },
         Ok(Some(_)) => Ok(true),
     }
+}
+
+pub fn lmdb_exists<K>(env: &Environment, db: &Database, key: &K) -> Result<bool, ChainStorageError>
+where K: Serialize {
+    let txn = ReadTransaction::new(env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+    lmdb_exists_txn(&txn, db, key)
 }
 
 pub fn lmdb_len(env: &Environment, db: &Database) -> Result<usize, ChainStorageError> {
@@ -198,7 +212,7 @@ where
     Ok(())
 }
 
-pub fn lmdb_clear_db(txn: &WriteTransaction, db: &Database) -> Result<(), ChainStorageError> {
+pub fn lmdb_clear_db(txn: &WriteTransaction<'_>, db: &Database) -> Result<(), ChainStorageError> {
     txn.access()
         .clear_db(&db)
         .map_err(|e| ChainStorageError::AccessError(e.to_string()))

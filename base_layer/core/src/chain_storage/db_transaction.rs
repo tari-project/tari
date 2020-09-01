@@ -187,19 +187,40 @@ impl DbTransaction {
     }
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug)]
 pub enum WriteOperation {
     Insert(DbKeyValuePair),
     Delete(DbKey),
     Spend(DbKey),
     UnSpend(DbKey),
     CreateMmrCheckpoint(MmrTree),
+    /// Rewind the given MMR tree. The first tuple element is the MmrTree to rewind, the second is the number of steps
+    /// to go back.
     RewindMmr(MmrTree, usize),
+    /// Merge the checkpoints for a given MMR tree. The first tuple element is the `MmrTree` to merge, the second is
+    /// the number of checkpoints that should remain after the merge.
     MergeMmrCheckpoints(MmrTree, usize),
 }
 
+impl fmt::Display for WriteOperation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use WriteOperation::*;
+        match self {
+            Insert(pair) => write!(f, "Insert({})", pair),
+            Delete(key) => write!(f, "Delete({})", key),
+            Spend(key) => write!(f, "Spend({})", key),
+            UnSpend(key) => write!(f, "Unspend({})", key),
+            CreateMmrCheckpoint(tree) => write!(f, "CreateMmrCheckpoint({})", tree),
+            RewindMmr(tree, steps_back) => write!(f, "RewindMmr({}, steps_back = {})", tree, steps_back),
+            MergeMmrCheckpoints(tree, max_cp_count) => {
+                write!(f, "MergeMmrCheckpoints({}, max_cp_count = {})", tree, max_cp_count)
+            },
+        }
+    }
+}
+
 /// A list of key-value pairs that are required for each insert operation
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum DbKeyValuePair {
     Metadata(MetadataKey, MetadataValue),
     BlockHeader(u64, Box<BlockHeader>),
