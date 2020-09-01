@@ -74,7 +74,8 @@ async fn spawn_node(
         .with_peer_storage(HashmapDatabase::new())
 
         .with_node_identity(node_identity)
-        .with_protocols(protocols)
+        .add_protocol_extensions(protocols.into()
+       )
         .build()
         .unwrap();
 

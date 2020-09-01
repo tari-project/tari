@@ -3,7 +3,7 @@ name = "tari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "0.2.2"
+version = "0.2.5"
 edition = "2018"
 
 [dependencies]
@@ -13,7 +13,7 @@ tari_crypto = { version = "^0.7", path = "../../../tari_crypto" }
 tari_key_manager = { version = "^0.2", path = "../key_manager" }
 tari_p2p = { version = "^0.2", path = "../p2p" }
 tari_service_framework = { version = "^0.2", path = "../service_framework"}
-tari_shutdown = { version = "^0.0", path = "../../infrastructure/shutdown" }
+tari_shutdown = { version = "^0.2", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.2", path = "../../infrastructure/storage"}
 
 chrono = { version = "0.4.6", features = ["serde"]}

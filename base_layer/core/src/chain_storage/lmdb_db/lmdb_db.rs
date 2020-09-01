@@ -37,7 +37,17 @@ use crate::{
         },
         error::ChainStorageError,
         lmdb_db::{
-            lmdb::{lmdb_delete, lmdb_exists, lmdb_for_each, lmdb_get, lmdb_insert, lmdb_len, lmdb_replace},
+            lmdb::{
+                lmdb_delete,
+                lmdb_exists,
+                lmdb_exists_txn,
+                lmdb_for_each,
+                lmdb_get,
+                lmdb_get_txn,
+                lmdb_insert,
+                lmdb_len,
+                lmdb_replace,
+            },
             LMDBVec,
             LMDB_DB_BLOCK_HASHES,
             LMDB_DB_HEADERS,
@@ -65,7 +75,7 @@ use croaring::Bitmap;
 use digest::Digest;
 use lmdb_zero::{Database, Environment, WriteTransaction};
 use log::*;
-use std::{collections::VecDeque, path::Path, sync::Arc};
+use std::{collections::VecDeque, path::Path, sync::Arc, time::Instant};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 use tari_mmr::{
     functions::{calculate_pruned_mmr_root, prune_mutable_mmr, PrunedMutableMmr},
@@ -154,6 +164,34 @@ where D: Digest + Send + Sync
             env,
             is_mem_metadata_dirty: false,
         })
+    }
+
+    // Perform all the storage txns and all MMR transactions excluding CreateMmrCheckpoint and RewindMmr on the
+    // header_mmr, utxo_mmr, range_proof_mmr and kernel_mmr. Only when all the txns can successfully be applied is the
+    // changes committed to the backend databases. CreateMmrCheckpoint and RewindMmr txns will be performed after these
+    // txns have been successfully applied.
+    fn apply_db_transaction(&mut self, txn: &DbTransaction) -> Result<(), ChainStorageError> {
+        let write_txn =
+            WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        for op in txn.operations.iter() {
+            trace!(target: LOG_TARGET, "[apply_db_transaction] WriteOperation: {}", op);
+            match op {
+                WriteOperation::Insert(insert) => self.op_insert(&write_txn, insert)?,
+                WriteOperation::Delete(delete) => self.op_delete(&write_txn, delete)?,
+                WriteOperation::Spend(key) => self.op_spend(&write_txn, key)?,
+                WriteOperation::UnSpend(key) => self.op_unspend(&write_txn, key)?,
+                _ => {},
+            }
+        }
+        write_txn
+            .commit()
+            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+
+        if self.is_mem_metadata_dirty {
+            self.mem_metadata = fetch_metadata(&self.env, &self.metadata_db)?;
+            self.is_mem_metadata_dirty = false;
+        }
+        Ok(())
     }
 
     // Perform the RewindMmr and CreateMmrCheckpoint operations after MMR txns and storage txns have been applied.
@@ -261,35 +299,10 @@ where D: Digest + Send + Sync
 
     // Reset any mmr txns that have been applied.
     fn reset_mmrs(&mut self) -> Result<(), ChainStorageError> {
-        trace!(target: LOG_TARGET, "Reset mmrs called");
+        trace!(target: LOG_TARGET, "Resetting MMRs");
         self.kernel_mmr.reset()?;
         self.utxo_mmr.reset()?;
         self.range_proof_mmr.reset()?;
-        Ok(())
-    }
-
-    // Perform all the storage txns and all MMR transactions excluding CreateMmrCheckpoint and RewindMmr on the
-    // header_mmr, utxo_mmr, range_proof_mmr and kernel_mmr. Only when all the txns can successfully be applied is the
-    // changes committed to the backend databases. CreateMmrCheckpoint and RewindMmr txns will be performed after these
-    // txns have been successfully applied.
-    fn apply_mmr_and_storage_txs(&mut self, tx: &DbTransaction) -> Result<(), ChainStorageError> {
-        let txn = WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-        for op in tx.operations.iter() {
-            match op {
-                WriteOperation::Insert(insert) => self.op_insert(&txn, insert)?,
-                WriteOperation::Delete(delete) => self.op_delete(&txn, delete)?,
-                WriteOperation::Spend(key) => self.op_spend(&txn, key)?,
-                WriteOperation::UnSpend(key) => self.op_unspend(&txn, key)?,
-                _ => {},
-            }
-        }
-        txn.commit()
-            .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-
-        if self.is_mem_metadata_dirty {
-            self.mem_metadata = fetch_metadata(&self.env, &self.metadata_db)?;
-            self.is_mem_metadata_dirty = false;
-        }
         Ok(())
     }
 
@@ -300,7 +313,7 @@ where D: Digest + Send + Sync
                 self.is_mem_metadata_dirty = true;
             },
             DbKeyValuePair::BlockHeader(k, v) => {
-                if lmdb_exists(&self.env, &self.headers_db, &k)? {
+                if lmdb_exists_txn(txn, &self.headers_db, &k)? {
                     return Err(ChainStorageError::InvalidOperation(format!(
                         "Duplicate `BlockHeader` key `{}`",
                         k
@@ -311,7 +324,7 @@ where D: Digest + Send + Sync
                 lmdb_insert(&txn, &self.headers_db, &k, &v)?;
             },
             DbKeyValuePair::UnspentOutput(k, v) => {
-                if lmdb_exists(&self.env, &self.utxos_db, &k)? {
+                if lmdb_exists_txn(txn, &self.utxos_db, &k)? {
                     return Err(ChainStorageError::InvalidOperation(format!(
                         "Duplicate `UnspentOutput` key `{}`",
                         k.to_hex()
@@ -325,7 +338,7 @@ where D: Digest + Send + Sync
                 lmdb_insert(&txn, &self.txos_hash_to_index_db, &k, &index)?;
             },
             DbKeyValuePair::TransactionKernel(k, v) => {
-                if lmdb_exists(&self.env, &self.kernels_db, &k)? {
+                if lmdb_exists_txn(txn, &self.kernels_db, &k)? {
                     return Err(ChainStorageError::InvalidOperation(format!(
                         "Duplicate `TransactionKernel` key `{}`",
                         k.to_hex()
@@ -352,7 +365,7 @@ where D: Digest + Send + Sync
                 }
             },
             DbKey::BlockHeader(k) => {
-                let val: Option<BlockHeader> = lmdb_get(&self.env, &self.headers_db, &k)?;
+                let val: Option<BlockHeader> = lmdb_get_txn(txn, &self.headers_db, &k)?;
                 if let Some(v) = val {
                     let hash = v.hash();
                     lmdb_delete(&txn, &self.block_hashes_db, &hash)?;
@@ -360,7 +373,7 @@ where D: Digest + Send + Sync
                 }
             },
             DbKey::BlockHash(hash) => {
-                let result: Option<u64> = lmdb_get(&self.env, &self.block_hashes_db, &hash)?;
+                let result: Option<u64> = lmdb_get_txn(txn, &self.block_hashes_db, &hash)?;
                 if let Some(k) = result {
                     lmdb_delete(&txn, &self.block_hashes_db, &hash)?;
                     lmdb_delete(&txn, &self.headers_db, &k)?;
@@ -388,16 +401,16 @@ where D: Digest + Send + Sync
     fn op_spend(&mut self, txn: &WriteTransaction<'_>, key: &DbKey) -> Result<(), ChainStorageError> {
         match key {
             DbKey::UnspentOutput(hash) => {
-                let utxo: TransactionOutput = lmdb_get(&self.env, &self.utxos_db, &hash)?.ok_or_else(|| {
+                let utxo: TransactionOutput = lmdb_get_txn(txn, &self.utxos_db, &hash)?.ok_or_else(|| {
                     error!(
                         target: LOG_TARGET,
-                        "Could spend UTXO: hash `{}` not found in UTXO db",
+                        "Could not spend UTXO: hash `{}` not found in UTXO db",
                         hash.to_hex()
                     );
                     ChainStorageError::UnspendableInput
                 })?;
 
-                let index = lmdb_get(&self.env, &self.txos_hash_to_index_db, &hash)?.ok_or_else(|| {
+                let index = lmdb_get_txn(txn, &self.txos_hash_to_index_db, &hash)?.ok_or_else(|| {
                     error!(
                         target: LOG_TARGET,
                         "** Blockchain DB out of sync! ** Hash `{}` was found in utxo_db but could not be found in \
@@ -411,7 +424,12 @@ where D: Digest + Send + Sync
                 lmdb_delete(&txn, &self.utxos_db, &hash)?;
                 lmdb_insert(&txn, &self.stxos_db, &hash, &utxo)?;
             },
-            _ => return Err(ChainStorageError::InvalidOperation("Only UTXOs can be spent".into())),
+            op => {
+                return Err(ChainStorageError::InvalidOperation(format!(
+                    "Spend operation expected a UTXO but got {}",
+                    op
+                )))
+            },
         }
         Ok(())
     }
@@ -419,7 +437,7 @@ where D: Digest + Send + Sync
     fn op_unspend(&mut self, txn: &WriteTransaction<'_>, key: &DbKey) -> Result<(), ChainStorageError> {
         match key {
             DbKey::SpentOutput(hash) => {
-                let stxo: TransactionOutput = lmdb_get(&self.env, &self.stxos_db, &hash)?.ok_or_else(|| {
+                let stxo: TransactionOutput = lmdb_get_txn(txn, &self.stxos_db, &hash)?.ok_or_else(|| {
                     error!(
                         target: LOG_TARGET,
                         "STXO could not be unspent: Hash `{}` not found in the STXO db",
@@ -517,13 +535,26 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
 impl<D> BlockchainBackend for LMDBDatabase<D>
 where D: Digest + Send + Sync
 {
-    fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError> {
-        if tx.operations.is_empty() {
+    fn write(&mut self, txn: DbTransaction) -> Result<(), ChainStorageError> {
+        if txn.operations.is_empty() {
             return Ok(());
         }
-        match self.apply_mmr_and_storage_txs(&tx) {
-            Ok(_) => self.commit_mmrs(tx),
+
+        let mark = Instant::now();
+        let num_operations = txn.operations.len();
+        match self.apply_db_transaction(&txn) {
+            Ok(_) => {
+                self.commit_mmrs(txn)?;
+                debug!(
+                    target: LOG_TARGET,
+                    "Database completed {} operation(s) in {:.0?}",
+                    num_operations,
+                    mark.elapsed()
+                );
+                Ok(())
+            },
             Err(e) => {
+                debug!(target: LOG_TARGET, "Failed to apply DB transaction: {}", e);
                 self.reset_mmrs()?;
                 Err(e)
             },
@@ -957,4 +988,53 @@ fn get_database(store: &LMDBStore, name: &str) -> Result<DatabaseRef, ChainStora
         .get_handle(name)
         .ok_or_else(|| ChainStorageError::CriticalError(format!("Could not get `{}` database", name)))?;
     Ok(handle.db())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    // Keeping this here in case we want to test any assumptions we have about how LMDB works
+    #[ignore]
+    #[test]
+    fn write_txn() {
+        let path = "/tmp/tmptmp";
+        let flags = db::CREATE;
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).unwrap();
+        let lmdb_store = LMDBBuilder::new()
+            .set_path(path)
+            .set_environment_size(1_000)
+            .set_max_number_of_databases(15)
+            .add_database("1", flags)
+            .add_database("2", flags)
+            .build()
+            .unwrap();
+
+        let env = lmdb_store.env();
+        let db1 = lmdb_store.get_handle("1").unwrap().db();
+        let db2 = lmdb_store.get_handle("2").unwrap().db();
+
+        let txn2 = WriteTransaction::new(env.clone()).unwrap();
+        {
+            let txn = WriteTransaction::new(env.clone()).unwrap();
+            lmdb_insert(&txn, &db1, &123, &"here").unwrap();
+            lmdb_insert(&txn, &db2, &1, &"also here").unwrap();
+            txn.commit().unwrap();
+        }
+
+        let a = lmdb_get::<_, String>(&env, &db2, &1).unwrap();
+        assert_eq!(a.unwrap(), "also here");
+
+        {
+            let txn = WriteTransaction::new(env.clone()).unwrap();
+            lmdb_insert(&txn, &db1, &1, &"here").unwrap();
+            lmdb_insert(&txn, &db2, &2, &"also here").unwrap();
+        }
+
+        let a = lmdb_get::<_, String>(&env, &db1, &1).unwrap();
+        assert!(a.is_none());
+        let a = lmdb_get::<_, String>(&env, &db2, &2).unwrap();
+        assert!(a.is_none());
+    }
 }

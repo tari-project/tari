@@ -195,6 +195,14 @@ use tari_wallet::{
     wallet::WalletConfig,
 };
 
+use futures::StreamExt;
+use log4rs::append::{
+    rolling_file::{
+        policy::compound::{roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy},
+        RollingFileAppender,
+    },
+    Append,
+};
 use tari_core::consensus::Network;
 use tokio::runtime::Runtime;
 
@@ -2165,7 +2173,8 @@ pub unsafe extern "C" fn transport_tor_create(
         control_server_addr: control_address_str.parse::<Multiaddr>().unwrap(),
         control_server_auth: tor_authentication,
         identity,
-        port_mapping: tor::PortMapping::from_port(tor_port),
+        // Proxy the onion address to an OS-assigned local port
+        port_mapping: tor::PortMapping::new(tor_port, "127.0.0.1:0".parse().unwrap()),
         socks_address_override: None,
         socks_auth: authentication,
     };
@@ -2505,9 +2514,13 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 /// `config` - The TariCommsConfig pointer
 /// `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
 /// pointer.
-/// `passphrase` - An optional string that represents the passphrase used to encrypt/decrypt the databases for this
-/// wallet. If it is left Null no encryption is used. If the databases have been encrypted then the correct passphrase
-/// is required or this function will fail.
+/// `num_rolling_log_files` - Specifies how many rolling log files to produce, if no rolling files are wanted then set
+/// this to 0
+/// `size_per_log_file_bytes` - Specifies the size, in bytes, at which the logs files will roll over, if no
+/// rolling files are wanted then set this to 0
+/// `passphrase` - An optional string that represents the passphrase used to
+/// encrypt/decrypt the databases for this wallet. If it is left Null no encryption is used. If the databases have been
+/// encrypted then the correct passphrase is required or this function will fail.
 /// `callback_received_transaction` - The callback function pointer matching the
 /// function signature. This will be called when an inbound transaction is received.
 /// `callback_received_transaction_reply` - The callback function pointer matching the function signature. This will be
@@ -2525,6 +2538,9 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 /// when a Base Node Sync process is completed or times out. The request_key is used to identify which request this
 /// callback references and a result of true means it was successful and false that the process timed out and new one
 /// will be started
+/// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
+/// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
+/// for it.
 /// `error_out` - Pointer to an int which will be modified
 /// to an error code should one occur, may not be null. Functions as an out parameter.
 /// ## Returns
@@ -2537,6 +2553,8 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 pub unsafe extern "C" fn wallet_create(
     config: *mut TariCommsConfig,
     log_path: *const c_char,
+    num_rolling_log_files: c_uint,
+    size_per_log_file_bytes: c_uint,
     passphrase: *const c_char,
     callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
@@ -2547,6 +2565,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
+    callback_saf_messages_received: unsafe extern "C" fn(),
     error_out: *mut c_int,
 ) -> *mut TariWallet
 {
@@ -2560,16 +2579,46 @@ pub unsafe extern "C" fn wallet_create(
 
     if !log_path.is_null() {
         let path = CStr::from_ptr(log_path).to_str().unwrap().to_owned();
-        let logfile = FileAppender::builder()
-            .encoder(Box::new(PatternEncoder::new(
-                "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}",
-            )))
-            .append(false)
-            .build(path.as_str())
-            .unwrap();
+        let encoder = PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}");
+        let log_appender: Box<dyn Append> = if num_rolling_log_files != 0 && size_per_log_file_bytes != 0 {
+            let mut pattern;
+            let split_str: Vec<&str> = path.split('.').collect();
+            if split_str.len() <= 1 {
+                pattern = format!("{}{}", path.clone(), "{}");
+            } else {
+                pattern = format!("{}", split_str[0]);
+                for i in 1..split_str.len() - 1 {
+                    pattern = format!("{}.{}", pattern, split_str[i]);
+                }
+
+                pattern = format!("{}{}", pattern, ".{}.");
+                pattern = format!("{}{}", pattern, split_str[split_str.len() - 1]);
+            }
+            let roller = FixedWindowRoller::builder()
+                .build(pattern.as_str(), num_rolling_log_files)
+                .unwrap();
+            let size_trigger = SizeTrigger::new(size_per_log_file_bytes as u64);
+            let policy = CompoundPolicy::new(Box::new(size_trigger), Box::new(roller));
+
+            Box::new(
+                RollingFileAppender::builder()
+                    .encoder(Box::new(encoder))
+                    .append(true)
+                    .build(path.as_str(), Box::new(policy))
+                    .unwrap(),
+            )
+        } else {
+            Box::new(
+                FileAppender::builder()
+                    .encoder(Box::new(encoder))
+                    .append(true)
+                    .build(path.as_str())
+                    .expect("Should be able to create Appender"),
+            )
+        };
 
         let lconfig = Config::builder()
-            .appender(Appender::builder().build("logfile", Box::new(logfile)))
+            .appender(Appender::builder().build("logfile", log_appender))
             .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
             .unwrap();
 
@@ -2672,6 +2721,7 @@ pub unsafe extern "C" fn wallet_create(
                         TransactionDatabase::new(transaction_backend),
                         w.transaction_service.get_event_stream_fused(),
                         w.output_manager_service.get_event_stream_fused(),
+                        w.dht_service.subscribe_dht_events().fuse(),
                         w.comms.shutdown_signal(),
                         w.comms.node_identity().public_key().clone(),
                         callback_received_transaction,
@@ -2683,6 +2733,7 @@ pub unsafe extern "C" fn wallet_create(
                         callback_store_and_forward_send_result,
                         callback_transaction_cancellation,
                         callback_base_node_sync_complete,
+                        callback_saf_messages_received,
                     );
 
                     w.runtime.spawn(callback_handler.start());
@@ -4773,6 +4824,10 @@ mod test {
         assert!(true);
     }
 
+    unsafe extern "C" fn saf_messages_received_callback() {
+        assert!(true);
+    }
+
     unsafe extern "C" fn received_tx_callback_bob(tx: *mut TariPendingInboundTransaction) {
         assert_eq!(tx.is_null(), false);
         assert_eq!(
@@ -4840,6 +4895,10 @@ mod test {
     }
 
     unsafe extern "C" fn base_node_sync_process_complete_callback_bob(_tx_id: c_ulonglong, _result: bool) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn saf_messages_received_callback_bob() {
         assert!(true);
     }
 
@@ -5124,6 +5183,10 @@ mod test {
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
             let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
 
+            let alice_log_path =
+                CString::new(format!("{}{}", alice_temp_dir.path().to_str().unwrap(), "/test.log")).unwrap();
+            let alice_log_path_str: *const c_char = CString::into_raw(alice_log_path.clone()) as *const c_char;
+
             let alice_config = comms_config_create(
                 address_alice_str,
                 transport_type_alice,
@@ -5135,7 +5198,9 @@ mod test {
             comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
             let alice_wallet = wallet_create(
                 alice_config,
-                ptr::null(),
+                alice_log_path_str,
+                2,
+                10000,
                 ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -5146,6 +5211,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
             let secret_key_bob = private_key_generate();
@@ -5168,9 +5234,16 @@ mod test {
                 error_ptr,
             );
             comms_config_set_secret_key(bob_config, secret_key_bob, error_ptr);
+
+            let bob_log_path =
+                CString::new(format!("{}{}", bob_temp_dir.path().to_str().unwrap(), "/test.log")).unwrap();
+            let bob_log_path_str: *const c_char = CString::into_raw(bob_log_path.clone()) as *const c_char;
+
             let bob_wallet = wallet_create(
                 bob_config,
-                ptr::null(),
+                bob_log_path_str,
+                0,
+                0,
                 ptr::null(),
                 received_tx_callback_bob,
                 received_tx_reply_callback_bob,
@@ -5181,6 +5254,7 @@ mod test {
                 store_and_forward_send_callback_bob,
                 tx_cancellation_callback_bob,
                 base_node_sync_process_complete_callback_bob,
+                saf_messages_received_callback_bob,
                 error_ptr,
             );
 
@@ -5611,6 +5685,8 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
+                0,
                 ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -5621,6 +5697,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
 
@@ -5704,6 +5781,8 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
+                0,
                 ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -5714,6 +5793,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
 
@@ -5743,6 +5823,8 @@ mod test {
             let _alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
+                0,
                 ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -5753,6 +5835,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
 
@@ -5765,6 +5848,8 @@ mod test {
             let _alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
+                0,
                 wrong_passphrase_const_str,
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -5775,6 +5860,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
             assert_eq!(error, 423);
@@ -5782,6 +5868,8 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
+                0,
                 passphrase_const_str,
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -5792,6 +5880,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
 
@@ -5818,6 +5907,8 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
+                0,
                 ptr::null(),
                 received_tx_callback,
                 received_tx_reply_callback,
@@ -5828,6 +5919,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
                 error_ptr,
             );
 

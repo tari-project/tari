@@ -71,7 +71,7 @@ pub struct MoneroData {
 
 // Hash algorithm in monero
 pub fn cn_fast_hash(data: &[u8]) -> Vec<u8> {
-    Hash::hash(data).0.as_bytes().to_vec()
+    Hash::hash(data).0.to_vec()
 }
 
 // Tree hash count in monero
@@ -170,16 +170,15 @@ fn monero_difficulty_calculation(header: &BlockHeader) -> Result<Difficulty, Mer
     Ok(difficulty)
 }
 
-/// Appends merge mining hash to a Monero block and returns the Monero blocktemplate_blob
-pub fn append_merge_mining_tag(block: &MoneroBlock, hash: Hash) -> Result<String, MergeMineError> {
-    let mut monero_block = block.clone();
+/// Appends merge mining hash to a Monero block and returns the encoded Monero blocktemplate_blob
+pub fn append_merge_mining_tag(block: &mut MoneroBlock, hash: Hash) -> Result<String, MergeMineError> {
     let mm_tag = SubField::MergeMining(VarInt(0), hash);
-    monero_block.miner_tx.prefix.extra.0.push(mm_tag);
+    block.miner_tx.prefix.extra.0.push(mm_tag);
     let serialized = serialize::<MoneroBlock>(&block);
     Ok(hex::encode(&serialized))
 }
 
-/// Calculates the Monero blockhashing_blob
+/// Calculates the encoded Monero blockhashing_blob
 pub fn create_input_blob(
     header: &MoneroBlockHeader,
     tx_count: &u16,
@@ -191,13 +190,13 @@ pub fn create_input_blob(
     let mut count = serialize::<VarInt>(&VarInt(tx_count.clone() as u64));
     let mut hashes = Vec::new();
     for item in tx_hashes {
-        hashes.push(Hash(from_slice(item.clone().as_bytes())));
+        hashes.push(Hash::from(item.clone()));
     }
     let mut root = tree_hash(hashes);
-    let mut encode2 = header;
-    encode2.append(&mut root);
-    encode2.append(&mut count);
-    Ok(hex::encode(encode2))
+    let mut encode = header;
+    encode.append(&mut root);
+    encode.append(&mut count);
+    Ok(hex::encode(encode))
 }
 
 /// Utility function to transform array to fixed array
@@ -220,7 +219,7 @@ pub fn from_hashes(hashes: &[Hash]) -> Vec<[u8; 32]> {
 fn verify_root(monero_data: &MoneroData) -> Result<(), MergeMineError> {
     let mut hashes = Vec::new();
     for item in &monero_data.transaction_hashes {
-        hashes.push(Hash(from_slice(item.to_vec().as_slice())));
+        hashes.push(Hash::from(item));
     }
     let root = tree_hash(hashes);
 
@@ -235,7 +234,7 @@ fn verify_root(monero_data: &MoneroData) -> Result<(), MergeMineError> {
 fn merged_mining_subfield(header: &BlockHeader) -> SubField {
     let hash = header.merged_mining_hash();
     let depth = 0;
-    SubField::MergeMining(VarInt(depth), Hash::hash(&hash[..32]))
+    SubField::MergeMining(VarInt(depth), Hash::from(from_slice(&hash)))
 }
 
 fn verify_header(header: &BlockHeader, monero_data: &MoneroData) -> Result<(), MergeMineError> {

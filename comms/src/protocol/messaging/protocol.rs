@@ -23,7 +23,7 @@
 use super::error::MessagingProtocolError;
 use crate::{
     compat::IoCompat,
-    connection_manager::ConnectionManagerRequester,
+    connectivity::ConnectivityRequester,
     framing,
     message::{InboundMessage, MessageTag, OutboundMessage},
     multiplexing::Substream,
@@ -105,7 +105,7 @@ impl fmt::Display for MessagingEvent {
 
 pub struct MessagingProtocol {
     config: MessagingConfig,
-    connection_manager_requester: ConnectionManagerRequester,
+    connectivity: ConnectivityRequester,
     proto_notification: Fuse<mpsc::Receiver<ProtocolNotification<Substream>>>,
     active_queues: HashMap<NodeId, mpsc::UnboundedSender<OutboundMessage>>,
     request_rx: Fuse<mpsc::Receiver<MessagingRequest>>,
@@ -121,7 +121,7 @@ impl MessagingProtocol {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: MessagingConfig,
-        connection_manager_requester: ConnectionManagerRequester,
+        connection_manager_requester: ConnectivityRequester,
         proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
         request_rx: mpsc::Receiver<MessagingRequest>,
         messaging_events_tx: MessagingEventSender,
@@ -133,7 +133,7 @@ impl MessagingProtocol {
             mpsc::channel(INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE);
         Self {
             config,
-            connection_manager_requester,
+            connectivity: connection_manager_requester,
             proto_notification: proto_notification.fuse(),
             request_rx: request_rx.fuse(),
             active_queues: Default::default(),
@@ -195,9 +195,19 @@ impl MessagingProtocol {
         trace!(target: LOG_TARGET, "Internal messaging event '{}'", event);
         match event {
             OutboundProtocolExited(node_id) => {
-                self.active_queues.remove(&node_id).expect(
-                    "OutboundProtocolExited event, but MessagingProtocol has no record of the outbound protocol",
+                debug!(
+                    target: LOG_TARGET,
+                    "Outbound protocol handler exited for peer `{}`",
+                    node_id.short_str()
                 );
+                if self.active_queues.remove(&node_id).is_none() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "OutboundProtocolExited event, but MessagingProtocol has no record of the outbound protocol \
+                         for peer `{}`",
+                        node_id.short_str()
+                    );
+                }
                 let _ = self.messaging_events_tx.send(Arc::new(OutboundProtocolExited(node_id)));
             },
             evt => {
@@ -212,12 +222,7 @@ impl MessagingProtocol {
         match req {
             SendMessage(msg) => {
                 trace!(target: LOG_TARGET, "Received request to send message ({})", msg);
-                if let Err(err) = self.send_message(msg).await {
-                    debug!(
-                        target: LOG_TARGET,
-                        "MessagingProtocol encountered an error when sending a message: {}", err
-                    );
-                }
+                self.send_message(msg).await?;
             },
         }
 
@@ -237,12 +242,11 @@ impl MessagingProtocol {
                 },
                 Entry::Vacant(entry) => {
                     let sender = Self::spawn_outbound_handler(
-                        self.connection_manager_requester.clone(),
+                        self.connectivity.clone(),
                         self.internal_messaging_event_tx.clone(),
                         peer_node_id.clone(),
                         self.config.inactivity_timeout,
-                    )
-                    .await;
+                    );
                     break entry.insert(sender);
                 },
             }
@@ -265,8 +269,8 @@ impl MessagingProtocol {
         }
     }
 
-    async fn spawn_outbound_handler(
-        conn_man_requester: ConnectionManagerRequester,
+    fn spawn_outbound_handler(
+        connectivity: ConnectivityRequester,
         events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
         inactivity_timeout: Option<Duration>,
@@ -274,7 +278,7 @@ impl MessagingProtocol {
     {
         let (msg_tx, msg_rx) = mpsc::unbounded();
         let outbound_messaging =
-            OutboundMessaging::new(conn_man_requester, events_tx, msg_rx, peer_node_id, inactivity_timeout);
+            OutboundMessaging::new(connectivity, events_tx, msg_rx, peer_node_id, inactivity_timeout);
         task::spawn(outbound_messaging.run());
         msg_tx
     }

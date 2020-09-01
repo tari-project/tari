@@ -27,11 +27,15 @@
 mod test;
 
 mod body;
+pub use body::{Body, ClientStreaming, IntoBody, Streaming};
+
+mod context;
 
 mod server;
-pub use server::RpcServer;
+pub use server::{NamedProtocolService, RpcServer};
 
 mod client;
+pub use client::{RpcClient, RpcClientBuilder, RpcClientConfig};
 
 mod either;
 
@@ -43,7 +47,41 @@ pub use error::RpcError;
 
 mod router;
 
+mod handshake;
+pub use handshake::Handshake;
+
 mod status;
 pub use status::{RpcStatus, RpcStatusCode};
 
 mod not_found;
+
+pub const RPC_MAX_FRAME_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
+
+// Re-exports used to keep things orderly in the #[tari_rpc] proc macro
+pub mod __macro_reexports {
+    pub use crate::{
+        framing::CanonicalFraming,
+        protocol::{
+            rpc::{
+                message::{Request, Response},
+                server::NamedProtocolService,
+                Body,
+                ClientStreaming,
+                IntoBody,
+                RpcClient,
+                RpcClientBuilder,
+                RpcError,
+                RpcStatus,
+            },
+            ProtocolId,
+        },
+        Bytes,
+    };
+    pub use futures::{future, future::BoxFuture, AsyncRead, AsyncWrite};
+    pub use std::{
+        future::Future,
+        sync::Arc,
+        task::{Context, Poll},
+    };
+    pub use tower::Service;
+}

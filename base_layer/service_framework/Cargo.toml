@@ -1,6 +1,6 @@
 [package]
 name = "tari_service_framework"
-version = "0.2.1"
+version = "0.2.3"
 authors = ["The Tari Development Community"]
 description = "The Tari communication stack service framework"
 repository = "https://github.com/tari-project/tari"
@@ -10,7 +10,7 @@ license = "BSD-3-Clause"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_shutdown = { version = "^0.0", path="../../infrastructure/shutdown" }
+tari_shutdown = { version = "^0.2", path="../../infrastructure/shutdown" }
 thiserror = "1.0.20"
 futures = { version = "^0.3.1", features=["async-await"]}
 tower-service = { version="0.3.0" }

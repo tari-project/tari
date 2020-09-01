@@ -398,6 +398,14 @@ fn test_reorg() {
     assert_eq!(stats.unconfirmed_txs, 2);
     assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.published_txs, 3);
+
+    // "Mine" block 4
+    let template = chain_block(&blocks[3], vec![], consensus_manager.consensus_constants());
+    let reorg_block4 = db.calculate_mmr_roots(template).unwrap();
+
+    // test that process_reorg can handle the case when removed_blocks is empty
+    // see https://github.com/tari-project/tari/issues/2101#issuecomment-680726940
+    mempool.process_reorg(vec![], vec![reorg_block4]).unwrap();
 }
 
 #[test]

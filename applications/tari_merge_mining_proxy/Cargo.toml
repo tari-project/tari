@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari merge miner proxy for xmrig"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.5.0"
+version = "0.5.4"
 edition = "2018"
 
 [dependencies]
@@ -33,6 +33,7 @@ rand = "0.7.2"
 derive-error = "0.0.4"
 thiserror = "1.0.15"
 structopt = { version = "0.3.13", default_features = false }
+config = { version = "0.9.3" }
 
 [build-dependencies]
 tonic-build = "0.2"

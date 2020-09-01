@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError};
+use crate::{
+    connection_manager::ConnectionManagerError,
+    peer_manager::PeerManagerError,
+    protocol::ProtocolExtensionError,
+    tor::HiddenServiceControllerError,
+};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -39,4 +44,8 @@ pub enum CommsBuilderError {
     ConnectionManagerEventStreamClosed,
     #[error("Receiving on ConnectionManagerEvent stream lagged unexpectedly")]
     ConnectionManagerEventStreamLagged,
+    #[error("Comms protocol extension failed to install: {0}")]
+    CommsProtocolExtensionError(#[from] ProtocolExtensionError),
+    #[error("Failed to initialize tor hidden service: {0}")]
+    HiddenServiceControllerError(#[from] HiddenServiceControllerError),
 }

@@ -27,10 +27,10 @@ use crate::{
     mempool::{
         async_mempool,
         proto,
-        sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE},
+        sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
+        MempoolSyncProtocolExtension,
         MempoolValidators,
-        MEMPOOL_SYNC_PROTOCOL,
     },
     transactions::{helpers::create_tx, tari_amount::uT, transaction::Transaction, types::HashDigest},
     validation::mocks::MockValidator,

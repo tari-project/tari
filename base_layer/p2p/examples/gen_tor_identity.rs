@@ -85,14 +85,17 @@ async fn main() {
         .parse::<u16>()
         .expect("Invalid port");
 
-    let hidden_service = tor::HiddenServiceBuilder::new()
+    let hidden_service_ctl = tor::HiddenServiceBuilder::new()
         .with_port_mapping(port)
         .with_control_server_address(tor_control_addr)
         .finish()
         .await
+        .unwrap()
+        .create_hidden_service()
+        .await
         .unwrap();
 
-    let json = hidden_service.tor_identity().to_json().unwrap();
+    let json = hidden_service_ctl.tor_identity().to_json().unwrap();
     let out_path = to_abs_path(matches.value_of("output").unwrap());
     fs::write(out_path, json).unwrap();
 }

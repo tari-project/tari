@@ -101,7 +101,7 @@ impl Drop for PrivateKey {
 
 /// Represents a mapping between an onion port and a proxied address (usually 127.0.0.1:xxxx).
 /// If the proxied_address is not specified, the default `127.0.0.1:[onion_port]` will be used.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct PortMapping(u16, SocketAddr);
 
 impl PortMapping {
@@ -121,6 +121,10 @@ impl PortMapping {
 
     pub fn proxied_address(&self) -> &SocketAddr {
         &self.1
+    }
+
+    pub fn set_proxied_addr(&mut self, proxied_addr: SocketAddr) {
+        self.1 = proxied_addr
     }
 }
 

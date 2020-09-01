@@ -1,6 +1,6 @@
 [package]
 name = "tari_comms_dht"
-version = "0.2.2"
+version = "0.2.5"
 authors = ["The Tari Development Community"]
 description = "Tari comms DHT module"
 repository = "https://github.com/tari-project/tari"
@@ -13,7 +13,7 @@ edition = "2018"
 tari_comms  = { version = "^0.2", path = "../"}
 tari_crypto = { version = "^0.7", path = "../../../tari_crypto" }
 tari_utilities  = { version = "^0.3" }
-tari_shutdown = { version = "^0.0", path = "../../infrastructure/shutdown"}
+tari_shutdown = { version = "^0.2", path = "../../infrastructure/shutdown"}
 tari_storage  = { version = "^0.2", path = "../../infrastructure/storage"}
 
 bitflags = "1.2.0"

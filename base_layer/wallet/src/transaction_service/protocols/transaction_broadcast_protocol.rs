@@ -191,11 +191,21 @@ where TBackend: TransactionBackend + Clone + 'static
             let mut delay = delay_for(self.timeout).fuse();
             futures::select! {
                 mempool_response = mempool_response_receiver.select_next_some() => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Transaction monitoring event 'mempool_response' triggered ({:?})",
+                        mempool_response,
+                    );
                     if self.handle_mempool_response(mempool_response).await? {
                         break;
                     }
                 },
                 base_node_response = base_node_response_receiver.select_next_some() => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Transaction monitoring event 'base_node_response' triggered ({:?})",
+                        base_node_response,
+                    );
                     if self.handle_base_node_response(base_node_response).await? {
                         break;
                     }
@@ -205,31 +215,36 @@ where TBackend: TransactionBackend + Clone + 'static
                         self.timeout = to;
                         info!(
                             target: LOG_TARGET,
-                            "Broadcast monitoring protocol (Id: {}) timeout updated to {:?}", self.id ,self.timeout
+                            "Transaction monitoring event 'updated_timeout' triggered (Id: {}), timeout updated to {:?}", self.id ,self.timeout
+                        );
+                    } else {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Transaction monitoring event 'updated_timeout' triggered (Id: {}) ({:?})",
+                            self.id,
+                            updated_timeout,
                         );
                     }
                 },
                 () = delay => {
-                },
-            }
-
-            info!(
-                target: LOG_TARGET,
-                "Mempool broadcast timed out for Transaction with TX_ID: {}", self.id
-            );
-
-            let _ = self
-                .resources
-                .event_publisher
-                .send(Arc::new(TransactionEvent::MempoolBroadcastTimedOut(self.id)))
-                .map_err(|e| {
                     trace!(
                         target: LOG_TARGET,
-                        "Error sending event, usually because there are no subscribers: {:?}",
-                        e
+                        "Transaction monitoring event 'time_out' for Mempool broadcast (Id: {}) ", self.id
                     );
-                    e
-                });
+                    let _ = self
+                        .resources
+                        .event_publisher
+                        .send(Arc::new(TransactionEvent::MempoolBroadcastTimedOut(self.id)))
+                        .map_err(|e| {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Error sending event, usually because there are no subscribers: {:?}",
+                                e
+                            );
+                            e
+                        });
+                },
+            }
         }
 
         Ok(self.id)

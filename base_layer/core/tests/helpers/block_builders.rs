@@ -304,12 +304,10 @@ pub fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
 {
     let mut txns = Vec::new();
     let mut block_utxos = Vec::new();
-    let mut keys = Vec::new();
     for schema in schemas {
-        let (tx, mut utxos, param) = spend_utxos(schema);
+        let (tx, mut utxos, _) = spend_utxos(schema);
         txns.push(tx);
         block_utxos.append(&mut utxos);
-        keys.push(param);
     }
     outputs.push(block_utxos);
     generate_block_with_achieved_difficulty(db, blocks, txns, achieved_difficulty, consensus_constants)

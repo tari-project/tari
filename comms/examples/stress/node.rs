@@ -92,7 +92,7 @@ pub async fn create(
 
     let builder = CommsBuilder::new()
         .allow_test_addresses()
-        .with_protocols(protocols)
+        .add_protocol_extensions(protocols.into())
         .with_node_identity(node_identity.clone())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_secs(0)))
         .with_peer_storage(peer_database)
@@ -131,16 +131,11 @@ pub async fn create(
             hs_builder = hs_builder.with_tor_identity(tor_identity);
         }
 
-        let tor_hidden_service = hs_builder.finish().await?;
+        let hs_ctl = hs_builder.finish().await?;
 
-        println!(
-            "Tor hidden service created with address '{}'",
-            tor_hidden_service.get_onion_address()
-        );
-
-        node_identity.set_public_address(tor_hidden_service.get_onion_address());
         builder
-            .configure_from_hidden_service(tor_hidden_service)
+            .configure_from_hidden_service(hs_ctl)
+            .await?
             .build()?
             .with_messaging_pipeline(
                 pipeline::Builder::new()

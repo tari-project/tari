@@ -20,12 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::message::MethodId;
+use super::message::RpcMethod;
 use crate::{
     framing::CanonicalFraming,
     message::MessageExt,
     proto,
-    protocol::rpc::{body::ClientStreaming, Request, Response, RpcError, RpcStatus},
+    protocol::rpc::{
+        body::ClientStreaming,
+        message::BaseRequest,
+        Handshake,
+        NamedProtocolService,
+        Response,
+        RpcError,
+        RpcStatus,
+    },
     runtime::task,
 };
 use bytes::Bytes;
@@ -77,17 +85,18 @@ impl RpcClient {
     }
 
     /// Perform a single request and single response
-    pub async fn request_response<T: prost::Message, R: prost::Message + Default + std::fmt::Debug>(
+    pub async fn request_response<
+        T: prost::Message,
+        R: prost::Message + Default + std::fmt::Debug,
+        M: Into<RpcMethod>,
+    >(
         &mut self,
         request: T,
-        method: MethodId,
+        method: M,
     ) -> Result<R, RpcError>
     {
         let req_bytes = request.to_encoded_bytes();
-        let request = Request {
-            method,
-            message: req_bytes.into(),
-        };
+        let request = BaseRequest::new(method.into(), req_bytes.into());
 
         let mut resp = self.call_inner(request).await?;
         let resp = resp.next().await.ok_or_else(|| RpcError::ServerClosedRequest)??;
@@ -97,17 +106,14 @@ impl RpcClient {
     }
 
     /// Perform a single request and streaming response
-    pub async fn server_streaming<T: prost::Message, R: prost::Message + Default>(
+    pub async fn server_streaming<T: prost::Message, R: prost::Message + Default, M: Into<RpcMethod>>(
         &mut self,
         request: T,
-        method: MethodId,
+        method: M,
     ) -> Result<ClientStreaming<R>, RpcError>
     {
         let req_bytes = request.to_encoded_bytes();
-        let request = Request {
-            method,
-            message: req_bytes.into(),
-        };
+        let request = BaseRequest::new(method.into(), req_bytes.into());
 
         let resp = self.call_inner(request).await?;
 
@@ -122,7 +128,7 @@ impl RpcClient {
 
     async fn call_inner(
         &mut self,
-        request: Request<Bytes>,
+        request: BaseRequest<Bytes>,
     ) -> Result<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>, RpcError>
     {
         let svc = self.connector.ready_and().await?;
@@ -137,23 +143,26 @@ impl fmt::Debug for RpcClient {
     }
 }
 
-pub struct RpcClientBuilder<TClient, TSubstream> {
+#[derive(Debug, Clone)]
+pub struct RpcClientBuilder<TClient> {
     config: RpcClientConfig,
-    framed: CanonicalFraming<TSubstream>,
     _client: PhantomData<TClient>,
 }
 
-impl<TClient, TSubstream> RpcClientBuilder<TClient, TSubstream>
-where
-    TClient: From<RpcClient>,
-    TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-{
-    pub fn new(framed: CanonicalFraming<TSubstream>) -> Self {
+impl<TClient> Default for RpcClientBuilder<TClient> {
+    fn default() -> Self {
         Self {
-            framed,
-            _client: PhantomData,
             config: Default::default(),
+            _client: PhantomData,
         }
+    }
+}
+
+impl<TClient> RpcClientBuilder<TClient>
+where TClient: From<RpcClient> + NamedProtocolService
+{
+    pub fn new() -> Self {
+        Default::default()
     }
 
     /// The deadline to send to the peer when performing a request.
@@ -177,9 +186,10 @@ where
         self
     }
 
-    /// Negotiates and establishes a session to the peer's RPC service using the given substream
-    pub async fn connect(self) -> Result<TClient, RpcError> {
-        RpcClient::connect(self.config, self.framed).await.map(Into::into)
+    /// Negotiates and establishes a session to the peer's RPC service
+    pub async fn connect<TSubstream>(self, framed: CanonicalFraming<TSubstream>) -> Result<TClient, RpcError>
+    where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
+        RpcClient::connect(self.config, framed).await.map(Into::into)
     }
 }
 
@@ -222,7 +232,7 @@ impl fmt::Debug for ClientConnector {
     }
 }
 
-impl Service<Request<Bytes>> for ClientConnector {
+impl Service<BaseRequest<Bytes>> for ClientConnector {
     type Error = RpcError;
     type Response = mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>;
 
@@ -232,7 +242,7 @@ impl Service<Request<Bytes>> for ClientConnector {
         self.inner.poll_ready_unpin(cx).map_err(|_| RpcError::ClientClosed)
     }
 
-    fn call(&mut self, request: Request<Bytes>) -> Self::Future {
+    fn call(&mut self, request: BaseRequest<Bytes>) -> Self::Future {
         let (reply, reply_rx) = oneshot::channel();
         let mut inner = self.inner.clone();
         async move {
@@ -279,7 +289,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         debug!(target: LOG_TARGET, "RPC Client worker started");
 
         let start = Instant::now();
-        match self.perform_handshake().await {
+        let mut handshake = Handshake::new(&mut self.framed);
+        match handshake.perform_client_handshake().await {
             Ok(_) => {
                 debug!(
                     target: LOG_TARGET,
@@ -317,36 +328,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         debug!(target: LOG_TARGET, "RpcClientWorker terminated.");
     }
 
-    async fn perform_handshake(&mut self) -> Result<(), RpcError> {
-        let msg = proto::rpc::RpcSession {
-            // Only v0 is supported
-            supported_versions: vec![0],
-        };
-        self.framed.send(msg.to_encoded_bytes().into()).await?;
-        let result = time::timeout(Duration::from_secs(10), self.framed.next()).await;
-        match result {
-            Ok(Some(Ok(msg))) => {
-                let msg = proto::rpc::RpcSessionReply::decode(&mut msg.freeze())?;
-                let version = msg
-                    .accepted_version()
-                    .ok_or_else(|| RpcError::NegotiationServerNoSupportedVersion)?;
-                debug!(target: LOG_TARGET, "Server accepted version {}", version);
-                Ok(())
-            },
-            Ok(Some(Err(err))) => Err(err.into()),
-            Ok(None) => Err(RpcError::ServerClosedRequest),
-            Err(_) => Err(RpcError::NegotiationTimedOut),
-        }
-    }
-
     async fn do_request_response(
         &mut self,
-        request: Request<Bytes>,
+        request: BaseRequest<Bytes>,
         reply: oneshot::Sender<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>>,
     ) -> Result<(), RpcError>
     {
         let request_id = self.next_request_id();
-        let method = request.method;
+        let method = request.method.into();
         let req = proto::rpc::RpcRequest {
             request_id: request_id as u32,
             method,
@@ -453,7 +442,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
 
 pub enum ClientRequest {
     SendRequest {
-        request: Request<Bytes>,
+        request: BaseRequest<Bytes>,
         reply: oneshot::Sender<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>>,
     },
 }

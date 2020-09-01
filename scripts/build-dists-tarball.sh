@@ -35,10 +35,6 @@ if [ -f "Cargo.toml" ]; then
   if [ "$1" == "clean" ]; then
     shift
     echo "Cleaning Cargo ... "
-    if [ -f "Cargo.lock" ]; then
-      echo "Removing Cargo.lock"
-      rm -f Cargo.lock
-    fi
     cargo clean
   fi
 else
@@ -199,6 +195,7 @@ mkdir $distDir/dist
 
 COPY_FILES=(
   "target/release/tari_base_node"
+  "target/release/tari_merge_mining_proxy"
   "common/config/presets/rincewind-simple.toml"
   "common/config/tari_config_sample.toml"
 #  "log4rs.yml"
@@ -214,11 +211,14 @@ done
 
 pushd $distDir/dist
 if [ "$osname" == "osx" ]  && [ -n "${osxsign}" ]; then
-  echo "Signing OSX Binary ..."
-  codesign --options runtime --force --verify --verbose --sign "${osxsign}" "${distDir}/dist/tari_base_node"
-  echo "Verify signed OSX Binary ..."
-  codesign --verify --deep --display --verbose=4 "${distDir}/dist/tari_base_node"
-  spctl -a -v "${distDir}/dist/tari_base_node"
+  echo "Setup OSX Binaries signing ..."
+  for SIGN_FILE in $(find "${distDir}/dist" -maxdepth 1 -name "tari_*" -type f -perm +111 ); do
+    echo "Signing OSX Binary - $SIGN_FILE ..."
+    codesign --options runtime --force --verify --verbose --sign "${osxsign}" "$SIGN_FILE"
+    echo "Verify signed OSX Binary - $SIGN_FILE ..."
+    codesign --verify --deep --display --verbose=4 "$SIGN_FILE"
+    spctl -a -v "$SIGN_FILE"
+  done
 fi
 shasum -a $shaSumVal * >> "$distDir/$hashFile"
 #echo "$(cat $distDir/$hashFile)" | shasum -a $shaSumVal --check --status

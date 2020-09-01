@@ -28,6 +28,7 @@ use super::{
 };
 use crate::{
     envelope::DhtMessageType,
+    event::{DhtEvent, DhtEventSender},
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::store_forward::{stored_messages_response::SafResponseType, StoredMessagesRequest},
     storage::{DbConnection, DhtMetadataKey},
@@ -42,16 +43,14 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use std::{convert::TryFrom, sync::Arc, time::Duration};
+use std::{cmp, convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
-    peer_manager::{node_id::NodeDistance, NodeId, PeerFeatures},
+    peer_manager::{NodeId, PeerFeatures},
     types::CommsPublicKey,
-    NodeIdentity,
     PeerManager,
 };
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::ByteArray;
 use tokio::{task, time};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::actor";
@@ -64,7 +63,6 @@ pub struct FetchStoredMessageQuery {
     public_key: Box<CommsPublicKey>,
     node_id: Box<NodeId>,
     since: Option<DateTime<Utc>>,
-    dist_threshold: Option<Box<NodeDistance>>,
     response_type: SafResponseType,
 }
 
@@ -75,7 +73,6 @@ impl FetchStoredMessageQuery {
             node_id,
             since: None,
             response_type: SafResponseType::Anonymous,
-            dist_threshold: None,
         }
     }
 
@@ -86,11 +83,6 @@ impl FetchStoredMessageQuery {
 
     pub fn with_response_type(&mut self, response_type: SafResponseType) -> &mut Self {
         self.response_type = response_type;
-        self
-    }
-
-    pub fn with_dist_threshold(&mut self, dist_threshold: Box<NodeDistance>) -> &mut Self {
-        self.dist_threshold = Some(dist_threshold);
         self
     }
 }
@@ -158,7 +150,6 @@ impl StoreAndForwardRequester {
 
 pub struct StoreAndForwardService {
     config: DhtConfig,
-    node_identity: Arc<NodeIdentity>,
     dht_requester: DhtRequester,
     database: StoreAndForwardDatabase,
     peer_manager: Arc<PeerManager>,
@@ -166,6 +157,10 @@ pub struct StoreAndForwardService {
     outbound_requester: OutboundMessageRequester,
     request_rx: Fuse<mpsc::Receiver<StoreAndForwardRequest>>,
     shutdown_signal: Option<ShutdownSignal>,
+    num_received_saf_responses: Option<usize>,
+    num_online_peers: Option<usize>,
+    saf_response_signal_rx: Fuse<mpsc::Receiver<()>>,
+    event_publisher: DhtEventSender,
 }
 
 impl StoreAndForwardService {
@@ -173,25 +168,29 @@ impl StoreAndForwardService {
     pub fn new(
         config: DhtConfig,
         conn: DbConnection,
-        node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         dht_requester: DhtRequester,
         connectivity: ConnectivityRequester,
         outbound_requester: OutboundMessageRequester,
         request_rx: mpsc::Receiver<StoreAndForwardRequest>,
         shutdown_signal: ShutdownSignal,
+        saf_response_signal_rx: mpsc::Receiver<()>,
+        event_publisher: DhtEventSender,
     ) -> Self
     {
         Self {
             config,
             database: StoreAndForwardDatabase::new(conn),
-            node_identity,
             peer_manager,
             dht_requester,
             request_rx: request_rx.fuse(),
             connection_events: connectivity.subscribe_event_stream().fuse(),
             outbound_requester,
             shutdown_signal: Some(shutdown_signal),
+            num_received_saf_responses: Some(0),
+            num_online_peers: None,
+            saf_response_signal_rx: saf_response_signal_rx.fuse(),
+            event_publisher,
         }
     }
 
@@ -225,6 +224,13 @@ impl StoreAndForwardService {
                 _ = cleanup_ticker.select_next_some() => {
                     if let Err(err) = self.cleanup().await {
                         error!(target: LOG_TARGET, "Error when performing store and forward cleanup: {:?}", err);
+                    }
+                },
+
+                _ = self.saf_response_signal_rx.select_next_some() => {
+                    if let Some(n) = self.num_received_saf_responses {
+                        self.num_received_saf_responses = Some(n + 1);
+                        self.check_saf_response_threshold();
                     }
                 },
 
@@ -291,17 +297,18 @@ impl StoreAndForwardService {
 
     async fn handle_connectivity_event(&mut self, event: &ConnectivityEvent) -> SafResult<()> {
         use ConnectivityEvent::*;
-        if !self.config.saf_auto_request {
-            debug!(
-                target: LOG_TARGET,
-                "Auto store and forward request disabled. Ignoring connection manager event"
-            );
-            return Ok(());
-        }
 
         #[allow(clippy::single_match)]
         match event {
             PeerConnected(conn) => {
+                if !self.config.saf_auto_request {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Auto store and forward request disabled. Ignoring PeerConnected event"
+                    );
+                    return Ok(());
+                }
+
                 // Whenever we connect to a peer, request SAF messages
                 let features = self.peer_manager.get_peer_features(conn.peer_node_id()).await?;
                 if features.contains(PeerFeatures::DHT_STORE_FORWARD) {
@@ -312,6 +319,13 @@ impl StoreAndForwardService {
                     );
                     self.request_stored_messages_from_peer(conn.peer_node_id()).await?;
                 }
+            },
+            ConnectivityStateOnline(n) => {
+                // Capture the number of online peers when this event occurs for the first time
+                if self.num_online_peers.is_none() {
+                    self.num_online_peers = Some(*n);
+                }
+                self.check_saf_response_threshold();
             },
             _ => {},
         }
@@ -361,27 +375,40 @@ impl StoreAndForwardService {
     }
 
     async fn get_saf_request(&mut self) -> SafResult<StoredMessagesRequest> {
-        let mut request = self
+        let request = self
             .dht_requester
             .get_metadata(DhtMetadataKey::OfflineTimestamp)
             .await?
-            .map(StoredMessagesRequest::since)
+            .map(|t| StoredMessagesRequest::since(cmp::min(t, since_utc(self.config.saf_minimum_request_period))))
             .unwrap_or_else(StoredMessagesRequest::new);
 
-        // Calculate the network region threshold for our node id.
-        // i.e. "Give me all messages that are this close to my node ID"
-        let threshold = self
-            .peer_manager
-            .calc_region_threshold(
-                self.node_identity.node_id(),
-                self.config.num_neighbouring_nodes,
-                PeerFeatures::DHT_STORE_FORWARD,
-            )
-            .await?;
-
-        request.dist_threshold = threshold.to_vec();
-
         Ok(request)
+    }
+
+    fn check_saf_response_threshold(&mut self) {
+        // This check can only be done after the `ConnectivityStateOnline` event has arrived
+        if let Some(num_peers) = self.num_online_peers {
+            // We only perform the check while we are still tracking reponses
+            if let Some(n) = self.num_received_saf_responses {
+                if n >= num_peers {
+                    // A send operation can only fail if there are no subscribers, so it is safe to ignore the error
+                    self.publish_event(DhtEvent::StoreAndForwardMessagesReceived);
+                    // Once this event is fired we stop tracking responses
+                    self.num_received_saf_responses = None;
+                    debug!(
+                        target: LOG_TARGET,
+                        "Store and Forward responses received from {} connected peers", num_peers
+                    );
+                } else {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Not enough Store and Forward responses received yet ({} out of a required {})",
+                        n,
+                        num_peers
+                    );
+                }
+            }
+        }
     }
 
     async fn handle_fetch_message_query(&self, query: FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
@@ -402,10 +429,6 @@ impl StoreAndForwardService {
                     .await?
             },
             Anonymous => db.find_anonymous_messages(query.since, limit).await?,
-            InRegion => {
-                db.find_regional_messages(&query.node_id, query.dist_threshold, query.since, limit)
-                    .await?
-            },
         };
 
         Ok(messages)
@@ -443,6 +466,15 @@ impl StoreAndForwardService {
 
         Ok(())
     }
+
+    fn publish_event(&mut self, event: DhtEvent) {
+        let _ = self.event_publisher.send(Arc::new(event)).map_err(|_| {
+            trace!(
+                target: LOG_TARGET,
+                "Could not publish DhtEvent as there are no subscribers"
+            )
+        });
+    }
 }
 
 fn since(period: Duration) -> NaiveDateTime {
@@ -452,4 +484,8 @@ fn since(period: Duration) -> NaiveDateTime {
         .naive_utc()
         .checked_sub_signed(period)
         .expect("period overflowed when used with checked_sub_signed")
+}
+
+fn since_utc(period: Duration) -> DateTime<Utc> {
+    DateTime::<Utc>::from_utc(since(period), Utc)
 }

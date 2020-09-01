@@ -147,7 +147,7 @@ impl AggregateBody {
         for input in double_inputs {
             trace!(
                 target: LOG_TARGET,
-                "removing following utxo for cut-through: {:?}",
+                "removing the following utxo for cut-through: {}",
                 input
             );
             self.outputs.retain(|x| !input.is_equal_to(x));
@@ -202,15 +202,16 @@ impl AggregateBody {
     /// 1. Range proofs of the outputs are valid
     ///
     /// This function does NOT check that inputs come from the UTXO set
-    /// The reward is the amount of Tari rewarded for this block, this should be 0 for a transaction
+    /// The reward is the total amount of Tari rewarded for this block (block reward + total fees), this should be 0
+    /// for a transaction
     pub fn validate_internal_consistency(
         &self,
         offset: &BlindingFactor,
-        reward: MicroTari,
+        total_reward: MicroTari,
         factories: &CryptoFactories,
     ) -> Result<(), TransactionError>
     {
-        let total_offset = factories.commitment.commit_value(&offset, reward.0);
+        let total_offset = factories.commitment.commit_value(&offset, total_reward.0);
 
         self.verify_kernel_signatures()?;
         self.validate_kernel_sum(total_offset, &factories.commitment)?;
@@ -221,21 +222,20 @@ impl AggregateBody {
         (self.inputs, self.outputs, self.kernels)
     }
 
-    /// Calculate the sum of the inputs and outputs including fees
-    fn sum_commitments(&self, fees: u64, factory: &CommitmentFactory) -> Commitment {
-        let fee_commitment = factory.commit_value(&PrivateKey::default(), fees);
+    /// Calculate the sum of the outputs - inputs
+    fn sum_commitments(&self) -> Commitment {
         let sum_inputs = &self.inputs.iter().map(|i| i.commitment()).sum::<Commitment>();
         let sum_outputs = &self.outputs.iter().map(|o| o.commitment()).sum::<Commitment>();
-        &(sum_outputs - sum_inputs) + &fee_commitment
+        sum_outputs - sum_inputs
     }
 
     /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
-    fn sum_kernels(&self, offset: PedersenCommitment) -> KernelSum {
+    fn sum_kernels(&self, offset_with_fee: PedersenCommitment) -> KernelSum {
         // Sum all kernel excesses and fees
         self.kernels.iter().fold(
             KernelSum {
                 fees: MicroTari(0),
-                sum: offset,
+                sum: offset_with_fee,
             },
             |acc, val| KernelSum {
                 fees: acc.fees + val.fee,
@@ -245,12 +245,20 @@ impl AggregateBody {
     }
 
     /// Confirm that the (sum of the outputs) - (sum of inputs) = Kernel excess
-    fn validate_kernel_sum(&self, offset: Commitment, factory: &CommitmentFactory) -> Result<(), TransactionError> {
+    ///
+    /// The offset_and_reward commitment includes the offset & the total coinbase reward (block reward + fees for
+    /// block balances, or zero for transaction balances)
+    fn validate_kernel_sum(
+        &self,
+        offset_and_reward: Commitment,
+        factory: &CommitmentFactory,
+    ) -> Result<(), TransactionError>
+    {
         trace!(target: LOG_TARGET, "Checking kernel total");
-        let kernel_sum = self.sum_kernels(offset);
-        let sum_io = self.sum_commitments(kernel_sum.fees.into(), factory);
-
-        if kernel_sum.sum != sum_io {
+        let KernelSum { sum: excess, fees } = self.sum_kernels(offset_and_reward);
+        let sum_io = self.sum_commitments();
+        let fees = factory.commit_value(&PrivateKey::default(), fees.into());
+        if excess != &sum_io + &fees {
             return Err(TransactionError::ValidationError(
                 "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
             ));

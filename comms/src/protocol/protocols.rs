@@ -22,7 +22,15 @@
 
 use crate::{
     peer_manager::NodeId,
-    protocol::{ProtocolError, ProtocolId, IDENTITY_PROTOCOL},
+    protocol::{
+        ProtocolError,
+        ProtocolExtension,
+        ProtocolExtensionContext,
+        ProtocolExtensionError,
+        ProtocolId,
+        IDENTITY_PROTOCOL,
+    },
+    Substream,
 };
 use futures::{channel::mpsc, SinkExt};
 use std::collections::HashMap;
@@ -110,6 +118,17 @@ impl<TSubstream> Protocols<TSubstream> {
             },
             None => Err(ProtocolError::ProtocolNotRegistered),
         }
+    }
+}
+
+/// Protocols<Substream> itself is a `ProtocolExtension`. When installed the protocol names and notifiers are simply
+/// moved (drained) over to the `ExtensionContext`.
+impl ProtocolExtension for Protocols<Substream> {
+    fn install(mut self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
+        for (protocol, notifier) in self.protocols.drain() {
+            context.add_protocol(&[protocol], notifier);
+        }
+        Ok(())
     }
 }
 

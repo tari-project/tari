@@ -74,6 +74,9 @@
 #  b) know what you are doing!
 #wallet_file = "wallet/wallet.dat" # or "wallet\\wallet.dat"
 
+# This is the timeout period that will be used to monitor TXO queries to the base node (default = 30). Larger values
+# are needed for wallets with many (>1000) TXOs to be validated.
+base_node_query_timeout = 120
 # This is the timeout period that will be used for base node monitoring tasks (default = 30)
 #transaction_base_node_monitoring_timeout = 30
 # This is the timeout period that will be used for sending transactions directly (default = 20)
@@ -215,7 +218,7 @@ tor_control_auth = "none" # or "password=xxxxxx"
 # The onion port to use.
 tor_onion_port = 18141
 # The address to which traffic on the node's onion address will be forwarded
-tor_forward_address = "/ip4/127.0.0.1/tcp/18141"
+# tor_forward_address = "/ip4/127.0.0.1/tcp/0"
 # Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
 # use the first address returned by the tor control port (GETINFO /net/listeners/socks).
 #tor_socks_address_override=
@@ -301,7 +304,7 @@ peer_seeds = []
 # The onion port to use.
 #tor_onion_port = 18141
 # The address to which traffic on the node's onion address will be forwarded
-#tor_forward_address = "/ip4/127.0.0.1/tcp/18141"
+#tor_forward_address = "/ip4/127.0.0.1/tcp/0"
 # Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
 # use the first address returned by the tor control port (GETINFO /net/listeners/socks).
 #tor_socks_address_override=
@@ -441,3 +444,25 @@ peer_seeds = []
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
 #grpc_address = "tcp://127.0.0.1:18042"
+
+########################################################################################################################
+#                                                                                                                      #
+#                                             Merge Mining Configuration Options                                      #
+#                                                                                                                      #
+########################################################################################################################
+[merge_mining_proxy.rincewind]
+
+# URL to monerod, currently set to a seed node
+monerod_url = "http://192.110.160.146:38081"
+
+# Address of the tari_merge_mining_proxy application
+proxy_host_address = "127.0.0.1:7878"
+
+# If authentication is being used for curl
+curl_use_auth="false"
+
+# Username for curl
+curl_username=""
+
+# Password for curl
+curl_password=""

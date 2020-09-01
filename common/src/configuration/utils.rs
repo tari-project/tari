@@ -72,6 +72,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         default_subdir("wallet/wallet.dat", Some(&bootstrap.base_path)),
     )
     .unwrap();
+    cfg.set_default("wallet.base_node_query_timeout", 30).unwrap();
     cfg.set_default("wallet.transaction_base_node_monitoring_timeout", 30)
         .unwrap();
     cfg.set_default("wallet.transaction_direct_send_timeout", 20).unwrap();
@@ -183,8 +184,25 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.rincewind.num_mining_threads", 1).unwrap();
 
     set_transport_defaults(&mut cfg);
+    set_merge_mining_defaults(&mut cfg);
 
     cfg
+}
+
+fn set_merge_mining_defaults(cfg: &mut Config) {
+    cfg.set_default(
+        "merge_mining_proxy.rincewind.monerod_url",
+        "http://192.110.160.146:38081",
+    )
+    .unwrap();
+    cfg.set_default("merge_mining_proxy.rincewind.proxy_host_address", "127.0.0.1:7878")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.rincewind.curl_use_auth", "false")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.rincewind.curl_username", "")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.rincewind.curl_password", "")
+        .unwrap();
 }
 
 fn set_transport_defaults(cfg: &mut Config) {
@@ -197,7 +215,7 @@ fn set_transport_defaults(cfg: &mut Config) {
     cfg.set_default("base_node.mainnet.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
         .unwrap();
     cfg.set_default("base_node.mainnet.tor_control_auth", "none").unwrap();
-    cfg.set_default("base_node.mainnet.tor_forward_address", "/ip4/127.0.0.1/tcp/18141")
+    cfg.set_default("base_node.mainnet.tor_forward_address", "/ip4/127.0.0.1/tcp/0")
         .unwrap();
     cfg.set_default("base_node.mainnet.tor_onion_port", "18141").unwrap();
 
@@ -216,7 +234,7 @@ fn set_transport_defaults(cfg: &mut Config) {
     cfg.set_default("base_node.rincewind.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
         .unwrap();
     cfg.set_default("base_node.rincewind.tor_control_auth", "none").unwrap();
-    cfg.set_default("base_node.rincewind.tor_forward_address", "/ip4/127.0.0.1/tcp/18041")
+    cfg.set_default("base_node.rincewind.tor_forward_address", "/ip4/127.0.0.1/tcp/0")
         .unwrap();
     cfg.set_default("base_node.rincewind.tor_onion_port", "18141").unwrap();
 

@@ -32,9 +32,20 @@ pub enum ConnectivityError {
     #[error("PeerManagerError: {0}")]
     PeerManagerError(#[from] PeerManagerError),
     #[error("ConnectionFailed: {0}")]
-    ConnectionFailed(#[from] ConnectionManagerError),
+    ConnectionFailed(ConnectionManagerError),
     #[error("Connectivity event stream closed unexpectedly")]
     ConnectivityEventStreamClosed,
     #[error("Timeout while waiting for ONLINE connectivity")]
     OnlineWaitTimeout,
+    #[error("Pending dial was cancelled")]
+    DialCancelled,
+}
+
+impl From<ConnectionManagerError> for ConnectivityError {
+    fn from(err: ConnectionManagerError) -> Self {
+        match err {
+            ConnectionManagerError::DialCancelled => Self::DialCancelled,
+            err => Self::ConnectionFailed(err),
+        }
+    }
 }

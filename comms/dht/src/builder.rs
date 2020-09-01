@@ -70,8 +70,8 @@ impl DhtBuilder {
         self
     }
 
-    pub fn disable_auto_store_and_forward_requests(mut self) -> Self {
-        self.config.saf_auto_request = false;
+    pub fn set_auto_store_and_forward_requests(mut self, enabled: bool) -> Self {
+        self.config.saf_auto_request = enabled;
         self
     }
 

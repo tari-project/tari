@@ -95,7 +95,7 @@ pub enum ConnectivityRequest {
     BanPeer(NodeId, Duration),
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ConnectivityRequester {
     sender: mpsc::Sender<ConnectivityRequest>,
     event_tx: ConnectivityEventTx,

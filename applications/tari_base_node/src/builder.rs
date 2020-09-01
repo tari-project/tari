@@ -26,6 +26,7 @@ use log::*;
 use rand::rngs::OsRng;
 use std::{
     fs,
+    net::SocketAddr,
     path::Path,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -38,7 +39,7 @@ use tari_common::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuth
 use tari_comms::{
     multiaddr::{Multiaddr, Protocol},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
-    protocol::{ProtocolNotificationRx, Protocols},
+    protocol::ProtocolExtensions,
     socks,
     tor,
     tor::TorIdentity,
@@ -47,7 +48,6 @@ use tari_comms::{
     CommsNode,
     ConnectionManagerEvent,
     PeerManager,
-    Substream,
 };
 use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
 use tari_core::{
@@ -77,10 +77,10 @@ use tari_core::{
         MempoolConfig,
         MempoolServiceConfig,
         MempoolServiceInitializer,
+        MempoolSyncProtocolExtension,
         MempoolValidators,
-        MEMPOOL_SYNC_PROTOCOL,
     },
-    mining::Miner,
+    mining::{Miner, MinerInstruction},
     tari_utilities::{hex::Hex, message_format::MessageFormat},
     transactions::{
         crypto::keys::SecretKey as SK,
@@ -120,7 +120,13 @@ use tari_wallet::{
         TransactionServiceInitializer,
     },
 };
-use tokio::{runtime, stream::StreamExt, sync::broadcast, task, time::delay_for};
+use tokio::{
+    runtime,
+    stream::StreamExt,
+    sync::{broadcast, broadcast::Sender as syncSender},
+    task,
+    time::delay_for,
+};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
@@ -200,9 +206,19 @@ impl NodeContainer {
         using_backend!(self, ctx, ctx.miner_enabled.clone())
     }
 
+    /// Returns this node's mining status.
+    pub fn mining_status(&self) -> Arc<AtomicBool> {
+        using_backend!(self, ctx, ctx.mining_status.clone())
+    }
+
     /// Returns this node's miner atomic hash rate.
     pub fn miner_hashrate(&self) -> Arc<AtomicU64> {
         using_backend!(self, ctx, ctx.miner_hashrate.clone())
+    }
+
+    /// Returns this node's miner instruction event channel.
+    pub fn miner_instruction_events(&self) -> syncSender<MinerInstruction> {
+        using_backend!(self, ctx, ctx.miner_instruction_events.clone())
     }
 
     /// Returns a handle to the wallet transaction service. This function panics if it has not been registered
@@ -269,6 +285,8 @@ pub struct BaseNodeContext<B: BlockchainBackend> {
     node: BaseNodeStateMachine<B>,
     miner: Option<Miner>,
     miner_enabled: Arc<AtomicBool>,
+    mining_status: Arc<AtomicBool>,
+    miner_instruction_events: syncSender<MinerInstruction>,
     pub miner_hashrate: Arc<AtomicU64>,
 }
 
@@ -507,9 +525,8 @@ where
     let base_node_subscriptions = Arc::new(base_node_subscriptions);
     create_peer_db_folder(&config.peer_db_path)?;
 
-    let mut protocols = Protocols::new();
-    let (mempool_protocol_tx, mempool_protocol_notif) = mpsc::channel(10);
-    protocols.add(&[MEMPOOL_SYNC_PROTOCOL.clone()], mempool_protocol_tx);
+    let mut protocols = ProtocolExtensions::new();
+    protocols.add(MempoolSyncProtocolExtension::new(Default::default(), mempool.clone()));
 
     let (base_node_comms, base_node_dht) =
         setup_base_node_comms(base_node_identity, config, publisher, protocols).await?;
@@ -532,7 +549,6 @@ where
         base_node_subscriptions.clone(),
         mempool,
         rules.clone(),
-        mempool_protocol_notif,
     )
     .await;
     debug!(target: LOG_TARGET, "Base node service registration complete.");
@@ -582,6 +598,7 @@ where
         &wallet_conn,
         wallet_subscriptions,
         factories.clone(),
+        config.base_node_query_timeout,
         config.transaction_base_node_monitoring_timeout,
         config.transaction_direct_send_timeout,
         config.transaction_broadcast_send_timeout,
@@ -668,7 +685,9 @@ where
     };
 
     let miner_enabled = miner.enable_mining_flag();
+    let mining_status = miner.mining_status_flag();
     let miner_hashrate = miner.get_hashrate_u64();
+    let miner_instruction_events = miner.get_miner_instruction_events_sender_channel();
     Ok(BaseNodeContext {
         base_node_comms,
         base_node_dht,
@@ -678,6 +697,8 @@ where
         node,
         miner: Some(miner),
         miner_enabled,
+        mining_status,
+        miner_instruction_events,
         miner_hashrate,
     })
 }
@@ -892,10 +913,13 @@ fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
         CommsTransport::TorHiddenService {
             control_server_address,
             socks_address_override,
-            forward_address,
             auth,
-            onion_port,
+            ..
         } => {
+            // The wallet should always use an OS-assigned forwarding port and an onion port number of 18101
+            // to ensure that different wallet implementations cannot be differentiated by their port.
+            let port_mapping = (18101u16, "127.0.0.1:0".parse::<SocketAddr>().unwrap()).into();
+
             let tor_identity_path = Path::new(&config.wallet_tor_identity_file);
             let identity = if tor_identity_path.exists() {
                 // If this fails, we can just use another address
@@ -914,8 +938,6 @@ fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                     .unwrap()
             );
 
-            let mut forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
-            forward_addr.set_port(forward_addr.port() + 1);
             TransportType::Tor(TorConfig {
                 control_server_addr: control_server_address,
                 control_server_auth: {
@@ -925,8 +947,7 @@ fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                     }
                 },
                 identity: identity.map(Box::new),
-
-                port_mapping: (onion_port.get() + 1, forward_addr).into(),
+                port_mapping,
                 // TODO: make configurable
                 socks_address_override,
                 socks_auth: socks::Authentication::None,
@@ -1026,7 +1047,7 @@ async fn setup_base_node_comms(
     node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
     publisher: PubsubDomainConnector,
-    protocols: Protocols<Substream>,
+    protocols: ProtocolExtensions,
 ) -> Result<(CommsNode, Dht), String>
 {
     // Ensure that the node identity has the correct public address
@@ -1142,7 +1163,6 @@ async fn register_base_node_services<B>(
     subscription_factory: Arc<SubscriptionFactory>,
     mempool: Mempool<B>,
     consensus_manager: ConsensusManager,
-    mempool_protocol_notif: ProtocolNotificationRx<Substream>,
 ) -> Arc<ServiceHandles>
 where
     B: BlockchainBackend + 'static,
@@ -1162,8 +1182,6 @@ where
             subscription_factory.clone(),
             mempool,
             mempool_config,
-            mempool_protocol_notif,
-            comms.subscribe_connectivity_events(),
         ))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
@@ -1197,6 +1215,7 @@ async fn register_wallet_services(
     wallet_db_conn: &WalletDbConnection,
     subscription_factory: Arc<SubscriptionFactory>,
     factories: CryptoFactories,
+    base_node_query_timeout: Duration,
     base_node_monitoring_timeout: Duration,
     direct_send_timeout: Duration,
     broadcast_send_timeout: Duration,
@@ -1218,7 +1237,7 @@ async fn register_wallet_services(
     ))
         // Wallet services
         .add_initializer(OutputManagerServiceInitializer::new(
-            OutputManagerServiceConfig{ base_node_query_timeout: Duration::from_secs(120), ..Default::default() },
+            OutputManagerServiceConfig::new(base_node_query_timeout),
             subscription_factory.clone(),
             OutputManagerSqliteDatabase::new(wallet_db_conn.clone(),None),
             factories.clone(),

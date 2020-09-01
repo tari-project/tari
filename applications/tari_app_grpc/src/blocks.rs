@@ -257,7 +257,7 @@ impl TryFrom<grpc::NewBlockTemplate> for NewBlockTemplate {
     type Error = String;
 
     fn try_from(block: grpc::NewBlockTemplate) -> Result<Self, Self::Error> {
-        let header = block.header.clone().ok_or("No header provided".to_string())?;
+        let header = block.header.clone().ok_or_else(|| "No header provided".to_string())?;
         let total_kernel_offset =
             BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
         let pow = match header.pow {

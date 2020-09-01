@@ -358,6 +358,10 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// `config` - The TariCommsConfig pointer
 /// `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
 /// pointer.
+/// `num_rolling_log_files` - Specifies how many rolling log files to produce, if no rolling files are wanted then set
+/// this to 0
+/// `size_per_log_file_bytes` - Specifies the size, in bytes, at which the logs files will roll over, if no
+/// rolling files are wanted then set this to 0
 /// `passphrase` - An optional string that represents the passphrase used to encrypt/decrypt the databases for this
 /// wallet. If it is left Null no encryption is used. If the databases have been encrypted then the correct passphrase
 /// is required or this function will fail.
@@ -378,6 +382,9 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// when a Base Node Sync process is completed or times out. The request_key is used to identify which request this
 /// callback references and a result of true means it was successful and false that the process timed out and new one
 /// will be started
+/// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
+/// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
+/// for it.
 /// `error_out` - Pointer to an int which will be modified
 /// to an error code should one occur, may not be null. Functions as an out parameter.
 /// ## Returns
@@ -388,6 +395,8 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// The ```wallet_destroy``` method must be called when finished with a TariWallet to prevent a memory leak
 struct TariWallet *wallet_create(struct TariWalletConfig *config,
                                     const char *log_path,
+                                    unsigned int num_rolling_log_files,
+                                    unsigned int size_per_log_file_bytes,
                                     const char *passphrase,
                                     void (*callback_received_transaction)(struct TariPendingInboundTransaction*),
                                     void (*callback_received_transaction_reply)(struct TariCompletedTransaction*),
@@ -398,6 +407,7 @@ struct TariWallet *wallet_create(struct TariWalletConfig *config,
                                     void (*callback_store_and_forward_send_result)(unsigned long long, bool),
                                     void (*callback_transaction_cancellation)(struct TariCompletedTransaction*),
                                     void (*callback_base_node_sync_complete)(unsigned long long, bool),
+                                    void (*callback_saf_message_received)(),
                                     int* error_out);
 
 // Signs a message

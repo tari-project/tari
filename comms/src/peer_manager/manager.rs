@@ -35,7 +35,7 @@ use crate::{
     types::{CommsDatabase, CommsPublicKey},
 };
 use multiaddr::Multiaddr;
-use std::time::Duration;
+use std::{fmt, time::Duration};
 use tari_storage::{lmdb_store::LMDBDatabase, IterationResult};
 use tokio::sync::RwLock;
 
@@ -181,7 +181,7 @@ impl PeerManager {
         &self,
         node_id: &NodeId,
         n: usize,
-        excluded_peers: &[CommsPublicKey],
+        excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
     ) -> Result<Vec<Peer>, PeerManagerError>
     {
@@ -272,6 +272,12 @@ impl PeerManager {
     pub async fn get_peer_features(&self, node_id: &NodeId) -> Result<PeerFeatures, PeerManagerError> {
         let peer = self.find_by_node_id(node_id).await?;
         Ok(peer.features)
+    }
+}
+
+impl fmt::Debug for PeerManager {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("PeerManager { peer_storage: ... }")
     }
 }
 
@@ -390,9 +396,7 @@ mod test {
         }
 
         // Test Closest - With an exclusion
-        let excluded_peers = vec![
-            selected_peers[0].public_key.clone(), // ,selected_peers[1].public_key.clone()
-        ];
+        let excluded_peers = vec![selected_peers[0].node_id.clone()];
         let selected_peers = peer_manager
             .closest_peers(&unmanaged_peer.node_id, 3, &excluded_peers, None)
             .await
@@ -402,7 +406,7 @@ mod test {
         let mut unused_peers: Vec<Peer> = Vec::new();
         for peer in &test_peers {
             if !selected_peers.iter().any(|peer_identity| {
-                peer.node_id == peer_identity.node_id || peer.is_banned() || excluded_peers.contains(&peer.public_key)
+                peer.node_id == peer_identity.node_id || peer.is_banned() || excluded_peers.contains(&peer.node_id)
             }) {
                 unused_peers.push(peer.clone());
             }
@@ -414,7 +418,7 @@ mod test {
                 let unused_dist = unmanaged_peer.node_id.distance(&unused_peer.node_id);
                 assert!(unused_dist >= selected_dist);
             }
-            assert!(!excluded_peers.contains(&peer_identity.public_key));
+            assert!(!excluded_peers.contains(&peer_identity.node_id));
         }
 
         // Test Random

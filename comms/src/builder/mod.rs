@@ -41,6 +41,9 @@ mod placeholder;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "rpc")]
+use crate::protocol::ProtocolExtension;
+
 use crate::{
     backoff::{Backoff, BoxedBackoff, ExponentialBackoff},
     connection_manager::{
@@ -61,7 +64,7 @@ use crate::{
     multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerManager},
-    protocol::Protocols,
+    protocol::{ProtocolExtensions, Protocols},
     tor,
     transports::{SocksTransport, TcpTransport, Transport},
     types::CommsDatabase,
@@ -82,9 +85,11 @@ pub struct CommsBuilder<TTransport> {
     executor: Option<runtime::Handle>,
     protocols: Option<Protocols<Substream>>,
     dial_backoff: Option<BoxedBackoff>,
-    hidden_service: Option<tor::HiddenService>,
+    hidden_service_ctl: Option<tor::HiddenServiceController>,
     connection_manager_config: ConnectionManagerConfig,
     connectivity_config: ConnectivityConfig,
+    protocol_extensions: ProtocolExtensions,
+
     shutdown: Shutdown,
 }
 
@@ -110,9 +115,10 @@ impl Default for CommsBuilder<TcpTransport> {
             dial_backoff: Some(Box::new(ExponentialBackoff::default())),
             executor: None,
             protocols: None,
-            hidden_service: None,
+            hidden_service_ctl: None,
             connection_manager_config: ConnectionManagerConfig::default(),
             connectivity_config: ConnectivityConfig::default(),
+            protocol_extensions: ProtocolExtensions::new(),
             shutdown: Shutdown::new(),
         }
     }
@@ -203,15 +209,20 @@ where
     }
 
     /// Configure the `CommsBuilder` to build a node which communicates using the given `tor::HiddenService`.
-    pub fn configure_from_hidden_service(mut self, hidden_service: tor::HiddenService) -> CommsBuilder<SocksTransport> {
+    pub async fn configure_from_hidden_service(
+        mut self,
+        mut hidden_service_ctl: tor::HiddenServiceController,
+    ) -> Result<CommsBuilder<SocksTransport>, CommsBuilderError>
+    {
         // Set the listener address to be the address (usually local) to which tor will forward all traffic
-        self.connection_manager_config.listener_address = hidden_service.proxied_address().clone();
+        self.connection_manager_config.listener_address = hidden_service_ctl.proxied_address();
+        let transport = hidden_service_ctl.get_transport().await?;
 
-        CommsBuilder {
+        Ok(CommsBuilder {
             // Set the socks transport configured for this hidden service
-            transport: Some(hidden_service.get_transport()),
+            transport: Some(transport),
             // Set the hidden service.
-            hidden_service: Some(hidden_service),
+            hidden_service_ctl: Some(hidden_service_ctl),
             peer_storage: self.peer_storage,
             node_identity: self.node_identity,
             executor: self.executor,
@@ -219,8 +230,9 @@ where
             dial_backoff: self.dial_backoff,
             connection_manager_config: self.connection_manager_config,
             connectivity_config: self.connectivity_config,
+            protocol_extensions: self.protocol_extensions,
             shutdown: self.shutdown,
-        }
+        })
     }
 
     /// Set the backoff that [ConnectionManager] uses when dialing peers. This is optional. If omitted the default
@@ -240,18 +252,35 @@ where
             transport: Some(transport),
             peer_storage: self.peer_storage,
             node_identity: self.node_identity,
-            hidden_service: self.hidden_service,
+            hidden_service_ctl: self.hidden_service_ctl,
             executor: self.executor,
             protocols: self.protocols,
             dial_backoff: self.dial_backoff,
             connection_manager_config: self.connection_manager_config,
             connectivity_config: self.connectivity_config,
+            protocol_extensions: self.protocol_extensions,
             shutdown: self.shutdown,
         }
     }
 
-    pub fn with_protocols(mut self, protocols: Protocols<Substream>) -> Self {
-        self.protocols = Some(protocols);
+    /// Add an RPC server/router in this instance of Tari comms.
+    ///
+    /// ```compile_fail
+    /// # use tari_comms::CommsBuilder;
+    /// # use tari_comms::protocol::rpc::RpcServer;
+    /// let server = RpcServer::new().add_service(MyService).add_service(AnotherService);
+    /// CommsBuilder::new().add_rpc_service(server).build();
+    /// ```
+    #[cfg(feature = "rpc")]
+    pub fn add_rpc<T: ProtocolExtension + 'static>(mut self, rpc: T) -> Self {
+        // Rpc router is treated the same as any other `ProtocolExtension` however this method may make it clearer for
+        // users that this is the correct way to add the RPC server
+        self.protocol_extensions.add(rpc);
+        self
+    }
+
+    pub fn add_protocol_extensions(mut self, extensions: ProtocolExtensions) -> Self {
+        self.protocol_extensions.extend(extensions);
         self
     }
 
@@ -335,9 +364,6 @@ where
         let connection_manager_requester =
             ConnectionManagerRequester::new(conn_man_tx, connection_manager_event_tx.clone());
 
-        //---------------------------------- Protocols --------------------------------------------//
-        let protocols = self.protocols.take().unwrap_or_default();
-
         //---------------------------------- ConnectivityManager --------------------------------------------//
 
         let (connectivity_tx, connectivity_rx) = mpsc::channel(consts::CONNECTIVITY_MANAGER_REQUEST_BUFFER_SIZE);
@@ -367,8 +393,8 @@ where
             messaging_pipeline: None,
             node_identity,
             peer_manager,
-            protocols,
-            hidden_service: self.hidden_service,
+            protocol_extensions: self.protocol_extensions,
+            hidden_service_ctl: self.hidden_service_ctl,
             shutdown: self.shutdown,
         })
     }
