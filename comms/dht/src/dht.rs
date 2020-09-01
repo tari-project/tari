@@ -204,7 +204,6 @@ impl Dht {
         StoreAndForwardService::new(
             self.config.clone(),
             conn,
-            self.node_identity.clone(),
             self.peer_manager.clone(),
             self.dht_requester(),
             self.connectivity.clone(),

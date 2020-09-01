@@ -495,7 +495,7 @@ impl DhtActor {
                                     connections = connections
                                         .into_iter()
                                         .filter(|conn| conn.peer_node_id().distance(&node_id) <= dist_from_dest)
-                                        .collect();
+                                        .collect::<Vec<_>>();
 
                                     debug!(
                                         target: LOG_TARGET,

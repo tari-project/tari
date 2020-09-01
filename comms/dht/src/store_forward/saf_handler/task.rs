@@ -51,7 +51,7 @@ use prost::Message;
 use std::{convert::TryInto, sync::Arc};
 use tari_comms::{
     message::{EnvelopeBody, MessageTag},
-    peer_manager::{node_id::NodeDistance, NodeIdentity, Peer, PeerFeatures, PeerManager, PeerManagerError},
+    peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerManager, PeerManagerError},
     pipeline::PipelineError,
     types::{Challenge, CommsPublicKey},
     utils::signature,
@@ -193,14 +193,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 since
             );
             query.since(since);
-        }
-
-        if !retrieve_msgs.dist_threshold.is_empty() {
-            let dist_threshold = Box::new(
-                NodeDistance::from_bytes(&retrieve_msgs.dist_threshold)
-                    .map_err(|_| StoreAndForwardError::InvalidNodeDistanceThreshold)?,
-            );
-            query.with_dist_threshold(dist_threshold);
         }
 
         let response_types = vec![SafResponseType::ForMe];
