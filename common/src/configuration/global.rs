@@ -68,6 +68,7 @@ pub struct GlobalConfig {
     pub buffer_size_base_node_wallet: usize,
     pub buffer_rate_limit_base_node: usize,
     pub buffer_rate_limit_base_node_wallet: usize,
+    pub base_node_query_timeout: Duration,
     pub transaction_base_node_monitoring_timeout: Duration,
     pub transaction_direct_send_timeout: Duration,
     pub transaction_broadcast_send_timeout: Duration,
@@ -232,6 +233,12 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
         .into();
 
+    let key = "wallet.base_node_query_timeout";
+    let base_node_query_timeout = Duration::from_secs(
+        cfg.get_int(&key)
+            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
+    );
+
     let key = "wallet.transaction_base_node_monitoring_timeout";
     let transaction_base_node_monitoring_timeout = Duration::from_secs(
         cfg.get_int(&key)
@@ -345,6 +352,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         buffer_size_base_node_wallet,
         buffer_rate_limit_base_node,
         buffer_rate_limit_base_node_wallet,
+        base_node_query_timeout,
         transaction_base_node_monitoring_timeout,
         transaction_direct_send_timeout,
         transaction_broadcast_send_timeout,

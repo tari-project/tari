@@ -72,6 +72,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         default_subdir("wallet/wallet.dat", Some(&bootstrap.base_path)),
     )
     .unwrap();
+    cfg.set_default("wallet.base_node_query_timeout", 30).unwrap();
     cfg.set_default("wallet.transaction_base_node_monitoring_timeout", 30)
         .unwrap();
     cfg.set_default("wallet.transaction_direct_send_timeout", 20).unwrap();

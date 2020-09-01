@@ -1,3 +1,28 @@
+/// Request type for a received MempoolService request.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MempoolServiceRequest {
+    #[prost(uint64, tag = "1")]
+    pub request_key: u64,
+    #[prost(oneof = "mempool_service_request::Request", tags = "2, 3, 4, 5")]
+    pub request: ::std::option::Option<mempool_service_request::Request>,
+}
+pub mod mempool_service_request {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Request {
+        /// Indicates a GetStats request. The value of the bool should be ignored.
+        #[prost(bool, tag = "2")]
+        GetStats(bool),
+        /// Indicates a GetState request. The value of the bool should be ignored.
+        #[prost(bool, tag = "3")]
+        GetState(bool),
+        /// Indicates a GetTxStateWithExcessSig request.
+        #[prost(message, tag = "4")]
+        GetTxStateWithExcessSig(super::super::types::Signature),
+        /// Indicates a SubmitTransaction request.
+        #[prost(message, tag = "5")]
+        SubmitTransaction(super::super::types::Transaction),
+    }
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StatsResponse {
     #[prost(uint64, tag = "1")]
@@ -65,31 +90,6 @@ pub mod mempool_service_response {
         State(super::StateResponse),
         #[prost(enumeration = "super::TxStorageResponse", tag = "4")]
         TxStorage(i32),
-    }
-}
-/// Request type for a received MempoolService request.
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MempoolServiceRequest {
-    #[prost(uint64, tag = "1")]
-    pub request_key: u64,
-    #[prost(oneof = "mempool_service_request::Request", tags = "2, 3, 4, 5")]
-    pub request: ::std::option::Option<mempool_service_request::Request>,
-}
-pub mod mempool_service_request {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Request {
-        /// Indicates a GetStats request. The value of the bool should be ignored.
-        #[prost(bool, tag = "2")]
-        GetStats(bool),
-        /// Indicates a GetState request. The value of the bool should be ignored.
-        #[prost(bool, tag = "3")]
-        GetState(bool),
-        /// Indicates a GetTxStateWithExcessSig request.
-        #[prost(message, tag = "4")]
-        GetTxStateWithExcessSig(super::super::types::Signature),
-        /// Indicates a SubmitTransaction request.
-        #[prost(message, tag = "5")]
-        SubmitTransaction(super::super::types::Transaction),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
