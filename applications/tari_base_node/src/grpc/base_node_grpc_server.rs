@@ -130,7 +130,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         let mut iter = data.iter().peekable();
                         let mut result = Vec::new();
                         while let Some(next) = iter.next() {
-                            let current_difficulty = next.pow.accumulated_blake_difficulty.as_u64();
+                            let current_difficulty = next.pow.target_difficulty.as_u64();
                             let current_timestamp = next.timestamp.as_u64();
                             let current_height = next.height;
                             let estimated_hash_rate = if let Some(peek) = iter.peek() {
