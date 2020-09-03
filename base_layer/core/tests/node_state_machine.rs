@@ -68,7 +68,8 @@ use tari_core::{
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     helpers::create_mem_db,
     mempool::MempoolServiceConfig,
-    transactions::types::CryptoFactories,
+    transactions::{helpers::spend_utxos, types::CryptoFactories},
+    txn_schema,
     validation::{
         accum_difficulty_validators::MockAccumDifficultyValidator,
         block_validators::MockStatelessBlockValidator,
@@ -705,6 +706,7 @@ fn test_sync_peer_banning() {
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
     );
+    let mut last_utxo = None;
 
     runtime.block_on(async {
         // Shared chain
@@ -714,11 +716,15 @@ fn test_sync_peer_banning() {
         let bob_public_key = &bob_node.node_identity.public_key();
         for height in 1..=2 {
             let coinbase_value = consensus_manager.emission_schedule().block_reward(height);
-            let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
+            let (mut coinbase_utxo, coinbase_kernel, mut coinbase) = create_coinbase(
                 &factories,
                 coinbase_value,
                 height + consensus_manager.consensus_constants().coinbase_lock_height(),
             );
+            // we want these to fail later
+            coinbase_utxo.features.maturity = 1000;
+            coinbase.features.maturity = 1000;
+            last_utxo = Some(coinbase);
             let template = chain_block_with_coinbase(
                 &prev_block,
                 vec![],
@@ -760,13 +766,20 @@ fn test_sync_peer_banning() {
 
             alice_db.add_block(alice_prev_block.clone()).unwrap();
         }
-        // Bob fork with invalid coinbases
+        // Bob fork with invalid maturity
         let mut bob_prev_block = prev_block;
         for _ in 3..=6 {
+            let utxo = last_utxo.unwrap();
+            let mut txn = txn_schema!(from: vec![utxo.clone()]);
+            let (tx, outputs, _) = spend_utxos(txn);
+
+            // tx.body.outputs[0].features.maturity = 1000;
+
+            last_utxo = Some(outputs[0].clone());
             bob_prev_block = append_block(
                 bob_db,
                 &bob_prev_block,
-                vec![],
+                vec![tx],
                 &consensus_manager.consensus_constants(),
                 3.into(),
             )
