@@ -240,7 +240,7 @@ impl StressTestService {
                 );
 
                 task::spawn(start_responder_protocol(
-                    *node_id,
+                    node_id,
                     substream,
                     self.inbound_rx.clone(),
                     self.outbound_tx.clone(),

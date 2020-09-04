@@ -411,7 +411,7 @@ where
                 );
                 if let Err(err) = self
                     .protocols
-                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream))
+                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(*node_id, stream))
                     .await
                 {
                     error!(

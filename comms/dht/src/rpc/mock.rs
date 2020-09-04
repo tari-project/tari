@@ -20,23 +20,34 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(test)]
-mod mock;
-#[cfg(test)]
-pub(crate) use mock::DhtRpcServiceMock;
-#[cfg(test)]
-mod test;
+use crate::{
+    proto::rpc::{GetPeersRequest, GetPeersResponse},
+    rpc::DhtRpcService,
+};
+use tari_comms::protocol::rpc::{
+    mock::{RpcMock, RpcMockMethodState},
+    Request,
+    RpcStatus,
+    Streaming,
+};
 
-mod service;
-pub use service::DhtRpcServiceImpl;
-
-use crate::proto::rpc::{GetPeersRequest, GetPeersResponse};
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
-
-#[tari_rpc(protocol_name = b"t/dht/1", server_struct = DhtService, client_struct = DhtClient)]
-pub trait DhtRpcService: Send + Sync + 'static {
-    /// Fetches and returns nodes (as in PeerFeatures::COMMUNICATION_NODE)  as per `GetPeersRequest`
-    #[rpc(method = 1)]
-    async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus>;
+// TODO: This mock can be generated
+#[derive(Debug, Clone, Default)]
+pub struct DhtRpcServiceMock {
+    pub get_peers: RpcMockMethodState<GetPeersRequest, Vec<GetPeersResponse>>,
 }
+
+impl DhtRpcServiceMock {
+    pub fn new() -> Self {
+        Default::default()
+    }
+}
+
+#[tari_comms::async_trait]
+impl DhtRpcService for DhtRpcServiceMock {
+    async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
+        self.server_streaming(request, &self.get_peers).await
+    }
+}
+
+impl RpcMock for DhtRpcServiceMock {}

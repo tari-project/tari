@@ -226,7 +226,7 @@ pub struct NodeId(NodeIdArray);
 impl NodeId {
     /// Construct a new node id on the origin
     pub fn new() -> Self {
-        Self([0; NODE_ID_ARRAY_SIZE])
+        Default::default()
     }
 
     /// Derive a node id from a public key: node_id=hash(public_key)

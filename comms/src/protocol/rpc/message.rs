@@ -33,7 +33,7 @@ use bitflags::bitflags;
 use bytes::Bytes;
 use std::{fmt, time::Duration};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Request<T> {
     pub(super) context: Option<RequestContext>,
     inner: BaseRequest<T>,

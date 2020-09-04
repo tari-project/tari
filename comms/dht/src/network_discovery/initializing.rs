@@ -20,23 +20,38 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(test)]
-mod mock;
-#[cfg(test)]
-pub(crate) use mock::DhtRpcServiceMock;
-#[cfg(test)]
-mod test;
+use crate::network_discovery::state_machine::{NetworkDiscoveryContext, StateEvent};
+use log::*;
+use std::time::Duration;
+use tari_comms::connectivity::ConnectivityError;
 
-mod service;
-pub use service::DhtRpcServiceImpl;
+const LOG_TARGET: &str = "comms::dht::network_discovery";
 
-use crate::proto::rpc::{GetPeersRequest, GetPeersResponse};
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
+#[derive(Debug)]
+pub struct Initializing<'a> {
+    context: &'a mut NetworkDiscoveryContext,
+}
 
-#[tari_rpc(protocol_name = b"t/dht/1", server_struct = DhtService, client_struct = DhtClient)]
-pub trait DhtRpcService: Send + Sync + 'static {
-    /// Fetches and returns nodes (as in PeerFeatures::COMMUNICATION_NODE)  as per `GetPeersRequest`
-    #[rpc(method = 1)]
-    async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus>;
+impl<'a> Initializing<'a> {
+    pub fn new(context: &'a mut NetworkDiscoveryContext) -> Self {
+        Self { context }
+    }
+
+    pub async fn next_event(&mut self) -> StateEvent {
+        let connectivity = &mut self.context.connectivity;
+        debug!(target: LOG_TARGET, "Waiting for this node to come online...");
+        while let Err(err) = connectivity.wait_for_connectivity(Duration::from_secs(10)).await {
+            match err {
+                ConnectivityError::OnlineWaitTimeout => {
+                    debug!(target: LOG_TARGET, "Still waiting for this node to come online...");
+                },
+                _ => {
+                    return err.into();
+                },
+            }
+        }
+
+        debug!(target: LOG_TARGET, "Node is online. Starting network discovery");
+        StateEvent::Initialized
+    }
 }

@@ -725,9 +725,7 @@ mod test {
 
         let (conn_in, _, conn_out, _) =
             create_peer_connection_mock_pair(1, client_node_identity.to_peer(), node_identity.to_peer()).await;
-        connectivity_manager_mock_state
-            .add_active_connection(node_identity.node_id().clone(), conn_in)
-            .await;
+        connectivity_manager_mock_state.add_active_connection(conn_in).await;
 
         peer_manager.add_peer(make_node_identity().to_peer()).await.unwrap();
 

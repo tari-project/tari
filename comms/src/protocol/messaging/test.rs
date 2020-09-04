@@ -138,7 +138,7 @@ async fn new_inbound_substream_handling() {
     proto_tx
         .send(ProtocolNotification::new(
             MESSAGING_PROTOCOL.clone(),
-            ProtocolEvent::NewInboundSubstream(Box::new(expected_node_id.clone()), stream_ours),
+            ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_ours),
         ))
         .await
         .unwrap();
@@ -176,9 +176,7 @@ async fn send_message_request() {
         create_peer_connection_mock_pair(1, node_identity.to_peer(), peer_node_identity.to_peer()).await;
 
     // Add mock peer connection to connection manager mock for node 2
-    conn_man_mock
-        .add_active_connection(peer_node_identity.node_id().clone(), conn1)
-        .await;
+    conn_man_mock.add_active_connection(conn1).await;
 
     // Send a message to node
     let out_msg = OutboundMessage::new(peer_node_identity.node_id().clone(), TEST_MSG1);
@@ -227,9 +225,7 @@ async fn send_message_substream_bulk_failure() {
 
     let peer_node_id = peer_node_identity.node_id();
     // Add mock peer connection to connection manager mock for node 2
-    conn_manager_mock
-        .add_active_connection(peer_node_id.clone(), conn1)
-        .await;
+    conn_manager_mock.add_active_connection(conn1).await;
 
     async fn send_msg(
         request_tx: &mut mpsc::Sender<MessagingRequest>,
@@ -285,7 +281,7 @@ async fn many_concurrent_send_message_requests() {
 
     let node_id2 = node_identity2.node_id();
     // Add mock peer connection to connection manager mock for node 2
-    conn_man_mock.add_active_connection(node_id2.clone(), conn1).await;
+    conn_man_mock.add_active_connection(conn1).await;
 
     // Send many messages to node
     let mut msg_tags = Vec::with_capacity(NUM_MSGS);

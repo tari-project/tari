@@ -42,7 +42,6 @@ use crate::{
         service::FetchStoredMessageQuery,
         StoreAndForwardRequester,
     },
-    utils::try_convert_all,
 };
 use digest::Digest;
 use futures::{channel::mpsc, future, stream, Future, SinkExt, StreamExt};
@@ -56,7 +55,7 @@ use tari_comms::{
     types::{Challenge, CommsPublicKey},
     utils::signature,
 };
-use tari_utilities::ByteArray;
+use tari_utilities::{convert::try_convert_all, ByteArray};
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::handler";

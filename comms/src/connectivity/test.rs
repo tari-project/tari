@@ -113,7 +113,7 @@ async fn connecting_peers() {
     )
     .await
     .into_iter()
-    .map(|(conn, _, _, _)| conn)
+    .map(|(_, _, conn, _)| conn)
     .collect::<Vec<_>>();
 
     let mut events = collect_stream!(event_stream, take = 1, timeout = Duration::from_secs(10));
@@ -147,7 +147,7 @@ async fn add_many_managed_peers() {
     )
     .await
     .into_iter()
-    .map(|(_, _, conn, _)| conn)
+    .map(|(conn, _, _, _)| conn)
     .collect::<Vec<_>>();
 
     connectivity
@@ -218,7 +218,7 @@ async fn ban_peer() {
     let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
         setup_connectivity_manager(Default::default());
     let peer = add_test_peers(&peer_manager, 1).await.pop().unwrap();
-    let (_, _, conn, _) = create_peer_connection_mock_pair(1, node_identity.to_peer(), peer.clone()).await;
+    let (conn, _, _, _) = create_peer_connection_mock_pair(1, node_identity.to_peer(), peer.clone()).await;
 
     let mut events = collect_stream!(event_stream, take = 1, timeout = Duration::from_secs(10));
     unpack_enum!(ConnectivityEvent::ConnectivityStateInitialized = &*events.remove(0).unwrap());
@@ -272,7 +272,7 @@ async fn peer_selection() {
     )
     .await
     .into_iter()
-    .map(|(conn, _, _, _)| conn)
+    .map(|(_, _, conn, _)| conn)
     .collect::<Vec<_>>();
 
     connectivity

@@ -170,7 +170,7 @@ async fn peer_to_peer_custom_protocols() {
     let negotiation = test_protocol_rx2.next().await.unwrap();
     assert_eq!(negotiation.protocol, TEST_PROTOCOL);
     unpack_enum!(ProtocolEvent::NewInboundSubstream(node_id, substream) = negotiation.event);
-    assert_eq!(&*node_id, node_identity1.node_id());
+    assert_eq!(&node_id, node_identity1.node_id());
     let mut buf = [0u8; TEST_MSG.len()];
     substream.read_exact(&mut buf).await.unwrap();
     assert_eq!(buf, TEST_MSG);
@@ -179,7 +179,7 @@ async fn peer_to_peer_custom_protocols() {
     let negotiation = another_test_protocol_rx1.next().await.unwrap();
     assert_eq!(negotiation.protocol, ANOTHER_TEST_PROTOCOL);
     unpack_enum!(ProtocolEvent::NewInboundSubstream(node_id, substream) = negotiation.event);
-    assert_eq!(&*node_id, node_identity2.node_id());
+    assert_eq!(&node_id, node_identity2.node_id());
     let mut buf = [0u8; ANOTHER_TEST_MSG.len()];
     substream.read_exact(&mut buf).await.unwrap();
     assert_eq!(buf, ANOTHER_TEST_MSG);

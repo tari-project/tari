@@ -40,7 +40,7 @@ pub type ProtocolNotificationRx<TSubstream> = mpsc::Receiver<ProtocolNotificatio
 
 #[derive(Debug, Clone)]
 pub enum ProtocolEvent<TSubstream> {
-    NewInboundSubstream(Box<NodeId>, TSubstream),
+    NewInboundSubstream(NodeId, TSubstream),
 }
 
 #[derive(Debug, Clone)]
@@ -161,16 +161,13 @@ mod test {
         protocols.add(&protos, tx);
 
         protocols
-            .notify(
-                &protos[0],
-                ProtocolEvent::NewInboundSubstream(Box::new(NodeId::new()), ()),
-            )
+            .notify(&protos[0], ProtocolEvent::NewInboundSubstream(NodeId::new(), ()))
             .await
             .unwrap();
 
         let notification = rx.next().await.unwrap();
         unpack_enum!(ProtocolEvent::NewInboundSubstream(peer_id, _s) = notification.event);
-        assert_eq!(*peer_id, NodeId::new());
+        assert_eq!(peer_id, NodeId::new());
     }
 
     #[runtime::test_basic]
@@ -180,7 +177,7 @@ mod test {
         let err = protocols
             .notify(
                 &ProtocolId::from_static(b"/tari/test/0"),
-                ProtocolEvent::NewInboundSubstream(Box::new(NodeId::new()), ()),
+                ProtocolEvent::NewInboundSubstream(NodeId::new(), ()),
             )
             .await
             .unwrap_err();

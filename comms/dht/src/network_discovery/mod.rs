@@ -20,35 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    peer_manager::NodeId,
-    protocol::rpc::{
-        context::{RequestContext, RpcCommsContext},
-        Request,
-    },
-    test_utils::mocks::{create_connectivity_mock, ConnectivityManagerMockState},
-    PeerManager,
-};
-use std::sync::Arc;
+//! # Network Discovery
+//!
+//! A state machine that attempts to discover more about the network by fetching peers from other peers.
 
-pub struct RpcRequestMock {
-    comms_context: RpcCommsContext,
-    connectivity_mock_state: ConnectivityManagerMockState,
-}
+#[cfg(test)]
+mod test;
 
-impl RpcRequestMock {
-    pub fn new(peer_manager: Arc<PeerManager>) -> Self {
-        let (connectivity, connectivity_mock) = create_connectivity_mock();
-        let connectivity_mock_state = connectivity_mock.get_shared_state();
-        connectivity_mock.spawn();
-        Self {
-            comms_context: RpcCommsContext::new(peer_manager, connectivity),
-            connectivity_mock_state,
-        }
-    }
+mod state_machine;
+pub use state_machine::{DhtNetworkDiscovery, DhtNetworkDiscoveryRoundInfo};
 
-    pub fn request_with_context<T>(&self, node_id: NodeId, msg: T) -> Request<T> {
-        let context = RequestContext::new(node_id, self.comms_context.clone());
-        Request::with_context(context, 0.into(), msg)
-    }
-}
+mod config;
+pub use config::NetworkDiscoveryConfig;
+
+mod discovering;
+
+mod error;
+pub use error::NetworkDiscoveryError;
+
+mod initializing;
+mod ready;
+mod waiting;
