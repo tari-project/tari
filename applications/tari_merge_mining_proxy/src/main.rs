@@ -26,7 +26,6 @@ extern crate arrayref;
 extern crate chrono;
 extern crate jsonrpc;
 use chrono::Local;
-use config;
 use curl::easy::{Auth, Easy, List};
 use structopt::StructOpt;
 use tari_common::{ConfigBootstrap, ConfigError, GlobalConfig};
@@ -43,6 +42,7 @@ use monero::{
 use rand::rngs::OsRng;
 use regex::Regex;
 use std::{
+    cmp::min,
     convert::TryFrom,
     io::{prelude::*, Read},
     net::{TcpListener, TcpStream},
@@ -74,8 +74,23 @@ pub const LOG_TARGET: &str = "tari_mm_proxy::app";
 pub struct TransientData {
     tari_block: Option<grpc::GetNewBlockResult>,
     monero_seed: Option<String>,
+    monero_difficulty: Option<u64>,
     tari_height: Option<u64>,
+    tari_difficulty: Option<u64>,
     tari_prev_submit_height: Option<u64>,
+}
+
+impl Default for TransientData {
+    fn default() -> Self {
+        Self {
+            tari_block: None,
+            monero_seed: None,
+            monero_difficulty: None,
+            tari_height: None,
+            tari_difficulty: None,
+            tari_prev_submit_height: None,
+        }
+    }
 }
 
 // setup curl authentication
@@ -328,6 +343,28 @@ fn get_seed_hash(data: &[u8]) -> Option<String> {
     }
 }
 
+fn get_monero_difficulty(data: &[u8]) -> Option<u64> {
+    debug!(target: LOG_TARGET, "Data {}", &stringify_request(data));
+    let parsed = json::parse(&stringify_request(data));
+    match parsed {
+        Ok(parsed) => {
+            if parsed["result"]["difficulty"].is_null() {
+                return None;
+            }
+            let difficulty = &parsed["result"]["difficulty"].as_u64();
+            difficulty.to_owned()
+        },
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "{:#}",
+                MmProxyError::ParseError(format!("Failure to parse json to get monero difficulty, {:?}", e))
+            );
+            None
+        },
+    }
+}
+
 // TODO: Temporary till RPC call is in place
 fn add_coinbase(consensus: ConsensusManager, grpc_block: grpc::NewBlockTemplate) -> Option<grpc::NewBlockTemplate> {
     let block = NewBlockTemplate::try_from(grpc_block);
@@ -386,6 +423,39 @@ fn get_spending_key() -> (PrivateKey, PrivateKey) {
     let r = PrivateKey::random(&mut OsRng);
     let key = PrivateKey::random(&mut OsRng);
     (key, r)
+}
+
+// Select lowest difficulty
+fn select_and_update_lowest_difficulty(data: &[u8], tari_difficulty: u64) -> Vec<u8> {
+    let monero_difficulty = get_monero_difficulty(data);
+    match monero_difficulty {
+        Some(monero_difficulty) => {
+            let parsed = json::parse(&stringify_request(data));
+            match parsed {
+                Ok(mut parsed) => {
+                    let difficulty = min(monero_difficulty, tari_difficulty).to_owned();
+                    parsed["result"]["difficulty"] = difficulty.into();
+                    parsed.dump().into()
+                },
+                Err(e) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "{:#}",
+                        MmProxyError::ParseError(format!("Failure to parse json, {:?}", e))
+                    );
+                    return data.to_vec();
+                },
+            }
+        },
+        None => {
+            error!(
+                target: LOG_TARGET,
+                "{:#}",
+                MmProxyError::ParseError("Monero difficulty invalid, cannot determine difficulty to use".to_string())
+            );
+            data.to_vec()
+        },
+    }
 }
 
 // Add merge mining tag to response
@@ -617,15 +687,9 @@ fn handle_post(
                         rt.block_on(grpcclient.submit_block(block))
                             .map_err(|e| MmProxyError::OtherError(format!("GRPC Error: {}", e)))?;
                         transient.tari_prev_submit_height = transient.tari_height;
-                        // Clear data on submission
-                        transient.tari_block = None;
-                        transient.monero_seed = None;
                     } else {
-                        // Failure here means XMRig wont submit since it already succeeded to monero
-                        transient.tari_block = None;
-                        transient.monero_seed = None;
                         return Err(MmProxyError::OtherError(format!(
-                            "Response status failed: {:#}",
+                            "Result status failed: {:#}",
                             response
                         )));
                     }
@@ -658,12 +722,17 @@ fn handle_post(
                 .mining_data
                 .ok_or_else(|| MmProxyError::MissingDataError("Invalid mining data".to_string()))?;
             let hash = mining_data.mergemining_hash;
+            let current_monero_difficulty = get_monero_difficulty(&data);
+            let tari_difficulty = mining_data.target_difficulty;
+            current_data = select_and_update_lowest_difficulty(&data[..], tari_difficulty);
             current_data = add_merge_mining_tag(&current_data[..], &hash);
             let seed_hash = get_seed_hash(&data);
             let parsed = json::parse(&String::from_utf8_lossy(&current_data))
                 .map_err(|e| MmProxyError::ParseError(format!("Failure to parse json {}", e)))?;
             transient.tari_block = Some(block);
             transient.monero_seed = seed_hash;
+            transient.monero_difficulty = current_monero_difficulty;
+            transient.tari_difficulty = Some(tari_difficulty);
             debug!(
                 target: LOG_TARGET,
                 "BlockTempBlob: {:#}", &parsed["result"]["blocktemplate_blob"]
@@ -742,37 +811,83 @@ fn handle_connection(
             )
             .as_bytes()
             .to_vec();
-            match base_curl(json.len() as u64, &url, true, config) {
-                Ok(mut curl) => {
-                    match do_curl(&mut curl, &json) {
-                        // request_id
-                        Ok(response) => {
-                            data = response;
-                            debug!(target: LOG_TARGET, "Handling POST Method: {}", method);
-                            debug!(
-                                target: LOG_TARGET,
-                                "Response: {:#}",
-                                String::from_utf8_lossy(&data).to_string()
-                            );
-                            match handle_post(&method, &json, data.clone(), transient, consensus, rt, config) {
-                                Ok(result) => {
-                                    data = result;
+            if let "submitblock" = method.as_str() {
+                if transient.tari_difficulty.unwrap_or_default() < transient.monero_difficulty.unwrap_or_default() {
+                    // submit only to tari
+                    match handle_post(&method, &json, data.clone(), transient, consensus, rt, config) {
+                        Ok(result) => {
+                            data = result;
+                        },
+                        Err(e) => {
+                            error!(target: LOG_TARGET, "{}", e);
+                        },
+                    }
+                } else {
+                    // submit to monero and tari
+                    match base_curl(json.len() as u64, &url, true, config) {
+                        Ok(mut curl) => {
+                            match do_curl(&mut curl, &json) {
+                                // request_id
+                                Ok(response) => {
+                                    data = response;
+                                    debug!(target: LOG_TARGET, "Handling POST Method: {}", method);
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "Response: {:#}",
+                                        String::from_utf8_lossy(&data).to_string()
+                                    );
+                                    match handle_post(&method, &json, data.clone(), transient, consensus, rt, config) {
+                                        Ok(result) => {
+                                            data = result;
+                                        },
+                                        Err(e) => {
+                                            error!(target: LOG_TARGET, "{}", e);
+                                        },
+                                    }
                                 },
                                 Err(e) => {
-                                    error!(target: LOG_TARGET, "{}", e);
+                                    data = default_response;
+                                    error!(target: LOG_TARGET, "Failed to perform curl request, {}", e);
                                 },
                             }
                         },
                         Err(e) => {
                             data = default_response;
-                            error!(target: LOG_TARGET, "Failed to perform curl request, {}", e);
+                            error!(target: LOG_TARGET, "Failed to setup curl, {}", e);
                         },
                     }
-                },
-                Err(e) => {
-                    data = default_response;
-                    error!(target: LOG_TARGET, "Failed to setup curl, {}", e);
-                },
+                }
+                transient.tari_block = None;
+                transient.monero_seed = None;
+                transient.monero_difficulty = None;
+                transient.tari_difficulty = None;
+            } else {
+                match base_curl(json.len() as u64, &url, true, config) {
+                    Ok(mut curl) => {
+                        match do_curl(&mut curl, &json) {
+                            // request_id
+                            Ok(response) => {
+                                data = response;
+                                match handle_post(&method, &json, data.clone(), transient, consensus, rt, config) {
+                                    Ok(result) => {
+                                        data = result;
+                                    },
+                                    Err(e) => {
+                                        error!(target: LOG_TARGET, "{}", e);
+                                    },
+                                }
+                            },
+                            Err(e) => {
+                                data = default_response;
+                                error!(target: LOG_TARGET, "Failed to perform curl request, {}", e);
+                            },
+                        }
+                    },
+                    Err(e) => {
+                        data = default_response;
+                        error!(target: LOG_TARGET, "Failed to setup curl, {}", e);
+                    },
+                }
             }
         } else {
             data = default_response;
@@ -805,12 +920,7 @@ fn main() {
         .unwrap_or_default();
     let network = Network::Rincewind;
     let rules = ConsensusManagerBuilder::new(network).build();
-    let transient = TransientData {
-        tari_block: None,
-        monero_seed: None,
-        tari_height: None,
-        tari_prev_submit_height: None,
-    };
+    let transient = TransientData::default();
     match GlobalConfig::convert_from(cfg) {
         Ok(config) => match setup(config.clone()) {
             Ok((rt, listener)) => {
@@ -869,35 +979,41 @@ fn stream_handler(
     let config_arc = Arc::new(config_mutex);
     println!("Merged Mining Proxy started.");
     for stream in listener.incoming() {
-        let t = transient_arc.clone();
-        let r = rules.clone();
-        let k = runtime_arc.clone();
-        let c = config_arc.clone();
+        let transient_arc = transient_arc.clone();
+        let rules_arc = rules.clone();
+        let runtime_arc = runtime_arc.clone();
+        let config_arc = config_arc.clone();
         // TODO: Refactor into a ThreadPool
-        thread::spawn(move || match t.lock() {
-            Ok(mut tg) => match k.lock() {
-                Ok(mut kg) => match c.lock() {
-                    Ok(cg) => match stream {
+        let thread_handle = thread::spawn(move || match transient_arc.lock() {
+            Ok(mut transient_guard) => match runtime_arc.lock() {
+                Ok(mut runtime_guard) => match config_arc.lock() {
+                    Ok(config_guard) => match stream {
                         Ok(stream) => {
-                            handle_connection(stream, &mut tg, r, &mut kg, &cg);
+                            handle_connection(
+                                stream,
+                                &mut transient_guard,
+                                rules_arc,
+                                &mut runtime_guard,
+                                &config_guard,
+                            );
                             Ok(())
                         },
-                        Err(e) => {
-                            return Err(MmProxyError::OtherError(format!("Stream error, {:?}", e)));
-                        },
+                        Err(e) => Err(MmProxyError::OtherError(format!("Stream error, {:?}", e))),
                     },
-                    Err(e) => {
-                        return Err(MmProxyError::OtherError(format!("Failed to acquire lock, {:?}", e)));
-                    },
+                    Err(e) => Err(MmProxyError::OtherError(format!("Failed to acquire lock, {:?}", e))),
                 },
-                Err(e) => {
-                    return Err(MmProxyError::OtherError(format!("Failed to acquire lock, {:?}", e)));
-                },
+                Err(e) => Err(MmProxyError::OtherError(format!("Failed to acquire lock, {:?}", e))),
             },
-            Err(e) => {
-                return Err(MmProxyError::OtherError(format!("Failed to acquire lock, {:?}", e)));
-            },
+            Err(e) => Err(MmProxyError::OtherError(format!("Failed to acquire lock, {:?}", e))),
         });
+
+        if let Err(e) = thread_handle.join() {
+            error!(
+                target: LOG_TARGET,
+                "{:#}",
+                MmProxyError::OtherError(format!("Thread ran into a problem, {:?}", e))
+            );
+        }
     }
     Ok(())
 }
