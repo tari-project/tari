@@ -251,15 +251,27 @@ fn get_monero_data(data: &[u8], seed: String) -> Option<MoneroData> {
                                 hashes.push(item);
                                 proof.push(item);
                             }
-                            let root = tree_hash(hashes);
-                            Some(MoneroData {
-                                header: block.header.clone(),
-                                key: seed,
-                                count,
-                                transaction_root: from_slice(root.as_slice()),
-                                transaction_hashes: from_hashes(&proof),
-                                coinbase_tx: block.miner_tx,
-                            })
+                            match tree_hash(hashes) {
+                                Ok(root) => Some(MoneroData {
+                                    header: block.header.clone(),
+                                    key: seed,
+                                    count,
+                                    transaction_root: from_slice(root.as_slice()),
+                                    transaction_hashes: from_hashes(&proof),
+                                    coinbase_tx: block.miner_tx,
+                                }),
+                                Err(e) => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        "{:#}",
+                                        MmProxyError::ParseError(format!(
+                                            "Failure to calculate Monero root to get monero data, {:?}",
+                                            e
+                                        ))
+                                    );
+                                    None
+                                },
+                            }
                         },
                         Err(e) => {
                             error!(
@@ -605,7 +617,13 @@ fn handle_post(
                         rt.block_on(grpcclient.submit_block(block))
                             .map_err(|e| MmProxyError::OtherError(format!("GRPC Error: {}", e)))?;
                         transient.tari_prev_submit_height = transient.tari_height;
+                        // Clear data on submission
+                        transient.tari_block = None;
+                        transient.monero_seed = None;
                     } else {
+                        // Failure here means XMRig wont submit since it already succeeded to monero
+                        transient.tari_block = None;
+                        transient.monero_seed = None;
                         return Err(MmProxyError::OtherError(format!(
                             "Response status failed: {:#}",
                             response
@@ -741,8 +759,6 @@ fn handle_connection(
                                     data = result;
                                 },
                                 Err(e) => {
-                                    transient.tari_block = None;
-                                    transient.monero_seed = None;
                                     error!(target: LOG_TARGET, "{}", e);
                                 },
                             }
@@ -886,109 +902,4 @@ fn stream_handler(
     Ok(())
 }
 
-#[cfg(test)]
-mod test {
-    use crate::tree_hash;
-    use monero::{
-        blockdata::{
-            block::BlockHeader,
-            transaction::{ExtraField, SubField, TxOutTarget},
-            Block,
-            TransactionPrefix,
-            TxIn,
-        },
-        consensus::{deserialize, encode::VarInt, serialize},
-        cryptonote::hash::Hashable,
-        util::ringct::{RctSig, RctSigBase, RctType},
-        PublicKey,
-        Transaction,
-        TxOut,
-    };
-    use tari_utilities::ByteArray;
-
-    // TODO: Write integration tests
-
-    // This tests checks the hash of monero-rs
-    #[test]
-    fn test_miner_tx_hash() {
-        let tx = "f8ad7c58e6fce1792dd78d764ce88a11db0e3c3bb484d868ae05a7321fb6c6b0";
-
-        let pk_extra = vec![
-            179, 155, 220, 223, 213, 23, 81, 160, 95, 232, 87, 102, 151, 63, 70, 249, 139, 40, 110, 16, 51, 193, 175,
-            208, 38, 120, 65, 191, 155, 139, 1, 4,
-        ];
-        let transaction = Transaction {
-            prefix: TransactionPrefix {
-                version: VarInt(2),
-                unlock_time: VarInt(2143845),
-                inputs: vec![TxIn::Gen {
-                    height: VarInt(2143785),
-                }],
-                outputs: vec![TxOut {
-                    amount: VarInt(1550800739964),
-                    target: TxOutTarget::ToKey {
-                        key: PublicKey::from_slice(
-                            hex::decode("e2e19d8badb15e77c8e1f441cf6acd9bcde34a07cae82bbe5ff9629bf88e6e81")
-                                .unwrap()
-                                .as_slice(),
-                        )
-                        .unwrap(),
-                    },
-                }],
-                extra: ExtraField {
-                    0: vec![
-                        SubField::TxPublicKey(PublicKey::from_slice(pk_extra.as_slice()).unwrap()),
-                        SubField::Nonce(vec![196, 37, 4, 0, 27, 37, 187, 163, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                    ],
-                },
-            },
-            signatures: vec![],
-            rct_signatures: RctSig {
-                sig: Option::from(RctSigBase {
-                    rct_type: RctType::Null,
-                    txn_fee: Default::default(),
-                    pseudo_outs: vec![],
-                    ecdh_info: vec![],
-                    out_pk: vec![],
-                }),
-                p: None,
-            },
-        };
-        assert_eq!(
-            tx.as_bytes().to_vec(),
-            hex::encode(transaction.hash().0.to_vec()).as_bytes().to_vec()
-        );
-        println!("{:?}", tx.as_bytes().to_vec());
-        println!("{:?}", hex::encode(transaction.hash().0.to_vec()));
-        let hex = hex::encode(serialize::<Transaction>(&transaction));
-        deserialize::<Transaction>(&hex::decode(&hex).unwrap()).unwrap();
-    }
-
-    // This tests checks the blockhashing blob of monero-rs
-    #[test]
-    fn test_block_ser() {
-        // block with only the miner tx and no other transactions
-        let hex = "0c0c94debaf805beb3489c722a285c092a32e7c6893abfc7d069699c8326fc3445a749c5276b6200000000029b892201ffdf882201b699d4c8b1ec020223df524af2a2ef5f870adb6e1ceb03a475c39f8b9ef76aa50b46ddd2a18349402b012839bfa19b7524ec7488917714c216ca254b38ed0424ca65ae828a7c006aeaf10208f5316a7f6b99cca60000";
-        // blockhashing blob for above block as accepted by monero
-        let hex_blockhash_blob="0c0c94debaf805beb3489c722a285c092a32e7c6893abfc7d069699c8326fc3445a749c5276b6200000000602d0d4710e2c2d38da0cce097accdf5dc18b1d34323880c1aae90ab8f6be6e201";
-        let bytes = hex::decode(hex).unwrap();
-        let block = deserialize::<Block>(&bytes[..]).unwrap();
-        let header = serialize::<BlockHeader>(&block.header);
-        let tx_count = 1 + block.tx_hashes.len() as u64;
-        let mut count = serialize::<VarInt>(&VarInt(tx_count));
-        let mut hashes = Vec::with_capacity(tx_count as usize);
-        hashes.push(block.miner_tx.hash());
-        for item in block.clone().tx_hashes {
-            hashes.push(item);
-        }
-        let mut root = tree_hash(hashes); // tree_hash.c used by monero
-        let mut encode2 = header;
-        encode2.append(&mut root);
-        encode2.append(&mut count);
-        assert_eq!(hex::encode(encode2), hex_blockhash_blob);
-        let bytes2 = serialize::<Block>(&block);
-        assert_eq!(bytes, bytes2);
-        let hex2 = hex::encode(bytes2);
-        assert_eq!(hex, hex2);
-    }
-}
+// TODO: Write integration tests

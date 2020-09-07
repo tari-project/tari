@@ -1,4 +1,4 @@
-# Tari Conduit
+# Tari Merge Mining Proxy
 
 ## Setup (Mac)
 
@@ -30,7 +30,7 @@ You will put the resulting `config.json` file together with the built binaries f
 
 Start XMRig from the terminal using `./xmrig`
 
-### Tari Conduit
+### Tari Merge Mining Proxy
 
 In `main.rs` of the Tari merge mining proxy the following constants can be changed to reflect the above configuration:
 ```Rust
@@ -39,7 +39,7 @@ const TARI_GRPC_URL: &str = "http://127.0.0.1:18142"; // To connect to the Tari 
 const LOCALHOST: &str = "127.0.0.1:7878"; // For XMRig to connect.
 ```
 
-Then run the Tari Conduit with `cargo run --bin tari_merge_mining_proxy`.
+Then run the Tari Merge Mining Proxy with `cargo run --bin tari_merge_mining_proxy`.
 
 Blocks that have been mined for Monero Stagenet can be viewed here:
 `https://monero-stagenet.exan.tech/`
