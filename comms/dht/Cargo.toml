@@ -10,12 +10,14 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms  = { version = "^0.2", path = "../"}
+tari_comms  = { version = "^0.2", path = "../", features = ["rpc"]}
+tari_comms_rpc_macros  = { version = "^0.1", path = "../rpc_macros"}
 tari_crypto = { version = "^0.5" }
 tari_utilities  = { version = "^0.2" }
 tari_shutdown = { version = "^0.2", path = "../../infrastructure/shutdown"}
 tari_storage  = { version = "^0.2", path = "../../infrastructure/storage"}
 
+anyhow = "1.0.32"
 bitflags = "1.2.0"
 bytes = "0.4.12"
 chrono = "0.4.9"
@@ -30,13 +32,13 @@ rand = "0.7.2"
 serde = "1.0.90"
 serde_derive = "1.0.90"
 serde_repr = "0.1.5"
+thiserror = "1.0.20"
 tokio = {version="0.2.10", features=["rt-threaded", "blocking"]}
 tower= "0.3.1"
 ttl_cache = "0.5.1"
 
 # tower-filter dependencies
 pin-project = "0.4"
-thiserror = "1.0.20"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.2", path = "../../infrastructure/test_utils"}

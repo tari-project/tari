@@ -32,6 +32,7 @@ use crate::{
     outbound,
     outbound::DhtOutboundRequest,
     proto::envelope::DhtMessageType,
+    rpc,
     storage::{DbConnection, StorageError},
     store_forward,
     store_forward::{StoreAndForwardError, StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
@@ -143,6 +144,14 @@ impl Dht {
         debug!(target: LOG_TARGET, "Dht initialization complete.");
 
         Ok(dht)
+    }
+
+    /// Create a DHT RPC service
+    pub fn rpc_service(&self) -> rpc::DhtService<rpc::DhtRpcServiceImpl> {
+        rpc::DhtService::new(rpc::DhtRpcServiceImpl::new(
+            self.node_identity.clone(),
+            self.peer_manager.clone(),
+        ))
     }
 
     /// Create a DHT actor
@@ -371,11 +380,11 @@ mod test {
         outbound::mock::create_outbound_service_mock,
         proto::envelope::DhtMessageType,
         test_utils::{
+            build_peer_manager,
             make_client_identity,
             make_comms_inbound_message,
             make_dht_envelope,
             make_node_identity,
-            make_peer_manager,
         },
         DhtBuilder,
     };
@@ -394,7 +403,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn stack_unencrypted() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
 
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
@@ -444,7 +453,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn stack_encrypted() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
 
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
@@ -494,7 +503,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn stack_forward() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let shutdown = Shutdown::new();
 
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
@@ -552,7 +561,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn stack_filter_saf_message() {
         let node_identity = make_client_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
 
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();

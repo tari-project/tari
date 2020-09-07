@@ -22,7 +22,7 @@
 
 use crate::{
     connectivity::DhtConnectivity,
-    test_utils::{create_dht_actor_mock, make_node_identity, make_peer_manager, DhtMockState},
+    test_utils::{build_peer_manager, create_dht_actor_mock, make_node_identity, DhtMockState},
     DhtConfig,
 };
 use rand::{rngs::OsRng, seq::SliceRandom};
@@ -54,7 +54,7 @@ async fn setup(
     Shutdown,
 )
 {
-    let peer_manager = make_peer_manager();
+    let peer_manager = build_peer_manager();
     for peer in initial_peers {
         peer_manager.add_peer(peer).await.unwrap();
     }

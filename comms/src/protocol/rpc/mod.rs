@@ -55,6 +55,8 @@ pub use status::{RpcStatus, RpcStatusCode};
 
 mod not_found;
 
+pub mod test_utils;
+
 pub const RPC_MAX_FRAME_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
 
 // Re-exports used to keep things orderly in the #[tari_rpc] proc macro

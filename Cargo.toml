@@ -10,6 +10,7 @@ members = [
     "base_layer/wallet_ffi",
     "comms",
     "comms/dht",
+    "comms/rpc_macros",
     "infrastructure/shutdown",
     "infrastructure/storage",
     "infrastructure/test_utils",

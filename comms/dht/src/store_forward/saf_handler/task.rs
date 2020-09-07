@@ -527,13 +527,13 @@ mod test {
         proto::envelope::DhtHeader,
         store_forward::{message::StoredMessagePriority, StoredMessage},
         test_utils::{
+            build_peer_manager,
             create_dht_actor_mock,
             create_store_and_forward_mock,
             make_dht_header,
             make_dht_inbound_message,
             make_keypair,
             make_node_identity,
-            make_peer_manager,
             service_spy,
         },
     };
@@ -573,7 +573,7 @@ mod test {
         let spy = service_spy();
         let (requester, mock_state) = create_store_and_forward_mock();
 
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (oms_tx, mut oms_rx) = mpsc::channel(1);
 
         let node_identity = make_node_identity();
@@ -675,7 +675,7 @@ mod test {
         let spy = service_spy();
         let (requester, _) = create_store_and_forward_mock();
 
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (oms_tx, _) = mpsc::channel(1);
 
         let node_identity = make_node_identity();

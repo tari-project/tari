@@ -116,7 +116,7 @@ where
     /// CommsBuilder::new().add_rpc_service(server).build();
     /// ```
     #[cfg(feature = "rpc")]
-    pub async fn add_rpc<T: ProtocolExtension + 'static>(mut self, rpc: T) -> Self {
+    pub fn add_rpc<T: ProtocolExtension + 'static>(mut self, rpc: T) -> Self {
         self.protocol_extensions.add(rpc);
         self
     }

@@ -104,8 +104,8 @@ impl RpcCodeGenerator {
 
             impl<T: #trait_ident> #dep_mod::Service<#dep_mod::Request<#dep_mod::Bytes>> for #server_struct<T> {
                 type Error = #dep_mod::RpcStatus;
-                type Future = #dep_mod::BoxFuture<'static, Result<#dep_mod::Response<#dep_mod::Body>,
-        #dep_mod::RpcStatus>>;         type Response = #dep_mod::Response<#dep_mod::Body>;
+                type Future = #dep_mod::BoxFuture<'static, Result<#dep_mod::Response<#dep_mod::Body>, #dep_mod::RpcStatus>>;
+                type Response = #dep_mod::Response<#dep_mod::Body>;
 
                 fn poll_ready(&mut self, _: &mut #dep_mod::Context<'_>) -> #dep_mod::Poll<Result<(), Self::Error>> {
                     #dep_mod::Poll::Ready(Ok(()))

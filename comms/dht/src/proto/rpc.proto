@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package tari.dht.rpc;
+
+// GET peers request
+message GetPeersRequest {
+  // The number of peers to return
+  uint32 n = 1;
+}
+
+// GET peers response
+message GetPeersResponse {
+  Peer peer = 1;
+}
+
+// Minimal peer information
+message Peer {
+  bytes public_key = 1;
+  repeated string addresses = 2;
+  uint64 peer_features = 3;
+}
+
+

@@ -442,10 +442,10 @@ mod test {
         envelope::DhtMessageFlags,
         proto::{dht::JoinMessage, envelope::DhtMessageType},
         test_utils::{
+            build_peer_manager,
             create_store_and_forward_mock,
             make_dht_inbound_message,
             make_node_identity,
-            make_peer_manager,
             service_spy,
         },
     };
@@ -460,7 +460,7 @@ mod test {
         let (requester, mock_state) = create_store_and_forward_mock();
 
         let spy = service_spy();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let node_identity = make_node_identity();
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, requester)
             .layer(spy.to_service::<PipelineError>());
@@ -480,7 +480,7 @@ mod test {
         let (requester, mock_state) = create_store_and_forward_mock();
 
         let spy = service_spy();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let node_identity = make_node_identity();
         let join_msg_bytes = JoinMessage::from(&node_identity).to_encoded_bytes();
 
@@ -515,7 +515,7 @@ mod test {
         let (requester, mock_state) = create_store_and_forward_mock();
 
         let spy = service_spy();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let node_identity = make_node_identity();
         let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, requester)
             .layer(spy.to_service::<PipelineError>());
@@ -542,7 +542,7 @@ mod test {
     async fn decryption_failed_should_store() {
         let (requester, mock_state) = create_store_and_forward_mock();
         let spy = service_spy();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let origin_node_identity = make_node_identity();
         peer_manager.add_peer(origin_node_identity.to_peer()).await.unwrap();
         let node_identity = make_node_identity();
