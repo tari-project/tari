@@ -20,6 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod base_node_grpc {
-    tonic::include_proto!("tari.base_node");
+use crate::tari_rpc as grpc;
+use tari_core::{chain_storage::ChainMetadata, proof_of_work::Difficulty};
+
+impl From<ChainMetadata> for grpc::MetaData {
+    fn from(meta: ChainMetadata) -> Self {
+        let diff = meta.accumulated_difficulty.unwrap_or_else(Difficulty::min);
+        Self {
+            height_of_longest_chain: meta.height_of_longest_chain.unwrap_or(0),
+            best_block: meta.best_block.unwrap_or_default(),
+            pruning_horizon: meta.pruning_horizon,
+            accumulated_difficulty: diff.as_u64(),
+        }
+    }
 }

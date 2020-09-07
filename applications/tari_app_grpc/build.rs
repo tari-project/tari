@@ -1,4 +1,8 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tonic_build::compile_protos("../tari_app_grpc/proto/base_node.proto")?;
+    tonic_build::configure()
+        .out_dir("./src/generated")
+        .build_client(true)
+        .build_server(true)
+        .compile(&["proto/base_node.proto", "proto/wallet.proto"], &["proto"])?;
     Ok(())
 }

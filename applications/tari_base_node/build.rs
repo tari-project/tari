@@ -26,7 +26,6 @@ use std::{env, fs, path::Path, string::ToString};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     write_constants_file();
-    tonic_build::compile_protos("../tari_app_grpc/proto/base_node.proto")?;
     Ok(())
 }
 

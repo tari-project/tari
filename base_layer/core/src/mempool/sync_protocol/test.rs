@@ -29,7 +29,6 @@ use crate::{
         proto,
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
-        MempoolSyncProtocolExtension,
         MempoolValidators,
     },
     transactions::{helpers::create_tx, tari_amount::uT, transaction::Transaction, types::HashDigest},

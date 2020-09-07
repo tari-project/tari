@@ -49,7 +49,8 @@ use std::{
     sync::{Arc, Mutex},
     thread,
 };
-use tari_app_grpc::base_node_grpc as grpc;
+use tari_app_grpc::tari_rpc as grpc;
+use tari_common::configuration::bootstrap::ApplicationType;
 use tari_core::{
     blocks::NewBlockTemplate,
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
@@ -835,7 +836,7 @@ fn setup_logging() -> Result<config::Config, ConfigError> {
     let mut bootstrap = ConfigBootstrap::from_args();
 
     // Check and initialize configuration files
-    bootstrap.init_dirs()?;
+    bootstrap.init_dirs(ApplicationType::MergeMiningProxy)?;
 
     // Load and apply configuration file
     let cfg = bootstrap.load_configuration()?;
