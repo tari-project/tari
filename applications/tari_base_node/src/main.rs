@@ -89,38 +89,27 @@ mod miner;
 mod parser;
 mod utils;
 
-use crate::builder::{create_new_base_node_identity, load_identity};
 use log::*;
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::net::SocketAddr;
 use structopt::StructOpt;
-use tari_common::{ConfigBootstrap, GlobalConfig};
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
+use tari_app_utilities::{
+    identity_management::setup_node_identity,
+    utilities::{setup_runtime, ExitCodes},
+};
+use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
+use tari_comms::peer_manager::PeerFeatures;
 use tari_shutdown::Shutdown;
-use tokio::runtime::Runtime;
 use tonic::transport::Server;
 
 pub const LOG_TARGET: &str = "base_node::app";
-
-/// Enum to show failure information
-enum ExitCodes {
-    ConfigError = 101,
-    UnknownError = 102,
-}
-
-impl From<tari_common::ConfigError> for ExitCodes {
-    fn from(err: tari_common::ConfigError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        Self::ConfigError
-    }
-}
 
 /// Application entry point
 fn main() {
     match main_inner() {
         Ok(_) => std::process::exit(0),
-        Err(exit_code) => std::process::exit(exit_code as i32),
+        Err(exit_code) => std::process::exit(exit_code.as_i32()),
     }
 }
 
@@ -130,7 +119,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     let mut bootstrap = ConfigBootstrap::from_args();
 
     // Check and initialize configuration files
-    bootstrap.init_dirs()?;
+    bootstrap.init_dirs(ApplicationType::BaseNode)?;
 
     // Load and apply configuration file
     let cfg = bootstrap.load_configuration()?;
@@ -202,8 +191,11 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     cli::print_banner(parser.get_commands(), 3);
     if node_config.grpc_enabled {
-        let grpc =
-            crate::grpc::server::BaseNodeGrpcServer::new(rt.handle().clone(), ctx.local_node(), node_config.clone());
+        let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::new(
+            rt.handle().clone(),
+            ctx.local_node(),
+            node_config.clone(),
+        );
 
         rt.spawn(run_grpc(grpc, node_config.grpc_address));
     }
@@ -226,45 +218,20 @@ fn main_inner() -> Result<(), ExitCodes> {
 }
 
 /// Runs the gRPC server
-async fn run_grpc(grpc: crate::grpc::server::BaseNodeGrpcServer, grpc_address: SocketAddr) -> Result<(), String> {
+async fn run_grpc(
+    grpc: crate::grpc::base_node_grpc_server::BaseNodeGrpcServer,
+    grpc_address: SocketAddr,
+) -> Result<(), String>
+{
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     Server::builder()
-        .add_service(tari_app_grpc::base_node_grpc::base_node_server::BaseNodeServer::new(
-            grpc,
-        ))
+        .add_service(tari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc))
         .serve(grpc_address)
         .await
         .map_err(|e| format!("GRPC server returned error:{}", e))?;
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
-}
-
-/// Sets up the tokio runtime based on the configuration
-/// ## Parameters
-/// `config` - The configuration  of the base node
-///
-/// ## Returns
-/// A result containing the runtime on success, string indicating the error on failure
-fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
-    let num_core_threads = config.core_threads;
-    let num_blocking_threads = config.blocking_threads;
-    let num_mining_threads = config.num_mining_threads;
-
-    info!(
-        target: LOG_TARGET,
-        "Configuring the node to run on {} core threads, {} blocking worker threads and {} mining threads.",
-        num_core_threads,
-        num_blocking_threads,
-        num_mining_threads
-    );
-    tokio::runtime::Builder::new()
-        .threaded_scheduler()
-        .enable_all()
-        .max_threads(num_core_threads + num_blocking_threads + num_mining_threads)
-        .core_threads(num_core_threads)
-        .build()
-        .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
 }
 
 /// Runs the Base Node
@@ -312,56 +279,5 @@ fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
         if shutdown.is_triggered() {
             break;
         };
-    }
-}
-
-/// Loads the node identity, or creates a new one if the --create-id flag was specified
-/// ## Parameters
-/// `identity_file` - Reference to file path
-/// `public_address` - Network address of the base node
-/// `create_id` - Whether an identity needs to be created or not
-/// `peer_features` - Enables features of the base node
-///
-/// # Return
-/// A NodeIdentity wrapped in an atomic reference counter on success, the exit code indicating the reason on failure
-fn setup_node_identity(
-    identity_file: &PathBuf,
-    public_address: &Multiaddr,
-    create_id: bool,
-    peer_features: PeerFeatures,
-) -> Result<Arc<NodeIdentity>, ExitCodes>
-{
-    match load_identity(identity_file) {
-        Ok(id) => Ok(Arc::new(id)),
-        Err(e) => {
-            if !create_id {
-                error!(
-                    target: LOG_TARGET,
-                    "Node identity information not found. {}. You can update the configuration file to point to a \
-                     valid node identity file, or re-run the node with the --create-id flag to create a new identity.",
-                    e
-                );
-                return Err(ExitCodes::ConfigError);
-            }
-
-            debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
-
-            match create_new_base_node_identity(identity_file, public_address.clone(), peer_features) {
-                Ok(id) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "New node identity [{}] with public key {} has been created at {}.",
-                        id.node_id(),
-                        id.public_key(),
-                        identity_file.to_string_lossy(),
-                    );
-                    Ok(Arc::new(id))
-                },
-                Err(e) => {
-                    error!(target: LOG_TARGET, "Could not create new node id. {:?}.", e);
-                    Err(ExitCodes::ConfigError)
-                },
-            }
-        },
     }
 }

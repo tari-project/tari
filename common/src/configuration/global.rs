@@ -88,7 +88,7 @@ impl GlobalConfig {
 
         // Add in settings from the environment (with a prefix of TARI_NODE)
         // Eg.. `TARI_NODE_DEBUG=1 ./target/app` would set the `debug` key
-        cfg.merge(Environment::with_prefix("tari"))
+        cfg.merge(Environment::with_prefix("tari").separator("__"))
             .map_err(|e| ConfigurationError::new("environment variable", &e.to_string()))?;
         convert_node_config(network, cfg)
     }

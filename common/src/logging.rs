@@ -42,6 +42,18 @@ pub fn install_default_logfile_config(path: &Path) -> Result<(), std::io::Error>
     fs::write(path, source)
 }
 
+/// Installs a new default logfile configuration, copied from `log4rs-sample.yml` to the given path.
+pub fn install_default_wallet_logfile_config(path: &Path) -> Result<(), std::io::Error> {
+    let source = include_str!("../logging/log4rs-sample-wallet.yml");
+    fs::write(path, source)
+}
+
+/// Installs a new default logfile configuration, copied from `log4rs-sample.yml` to the given path.
+pub fn install_default_merge_mining_proxy_logfile_config(path: &Path) -> Result<(), std::io::Error> {
+    let source = include_str!("../logging/log4rs-sample.yml");
+    fs::write(path, source)
+}
+
 /// Log an error if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,
 /// `Some(v)` is returned, otherwise `None` is returned (same as `Result::ok`).
 /// Useful in cases where the error should be logged and ignored.

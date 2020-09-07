@@ -57,11 +57,12 @@
 //! # use tari_test_utils::random::string;
 //! # use tempfile::tempdir;
 //! # use structopt::StructOpt;
+//! # use tari_common::configuration::bootstrap::ApplicationType;
 //! let mut args = ConfigBootstrap::from_args();
 //! # let temp_dir = tempdir().unwrap();
 //! # args.base_path = temp_dir.path().to_path_buf();
 //! # args.init = true;
-//! args.init_dirs();
+//! args.init_dirs(ApplicationType::BaseNode);
 //! let config = args.load_configuration().unwrap();
 //! let global = GlobalConfig::convert_from(config).unwrap();
 //! assert_eq!(global.network, Network::Rincewind);
@@ -87,5 +88,7 @@ pub use logging::initialize_logging;
 
 pub const DEFAULT_CONFIG: &str = "config.toml";
 pub const DEFAULT_LOG_CONFIG: &str = "log4rs.yml";
+pub const DEFAULT_WALLET_LOG_CONFIG: &str = "log4rs_wallet.yml";
+pub const DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG: &str = "log4rs.yml";
 
 pub(crate) const LOG_TARGET: &str = "common::config";

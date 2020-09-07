@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 syntax = "proto3";
 
-package tari.base_node;
+package tari.rpc;
 
 import "google/protobuf/timestamp.proto";
 
@@ -184,6 +184,11 @@ message AggregateBody {
     repeated TransactionKernel kernels = 3;
 }
 
+// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
+message Transaction {
+    bytes offset = 1;
+    AggregateBody body = 2;
+}
 
 // Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 // employed by redefining this type.

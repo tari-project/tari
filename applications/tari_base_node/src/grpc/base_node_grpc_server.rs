@@ -35,8 +35,8 @@ use tari_core::{
 };
 
 use tari_app_grpc::{
-    base_node_grpc,
-    base_node_grpc::{CalcType, Sorting},
+    tari_rpc,
+    tari_rpc::{CalcType, Sorting},
 };
 use tari_crypto::tari_utilities::Hashable;
 use tokio::{runtime, sync::mpsc};
@@ -78,7 +78,7 @@ impl BaseNodeGrpcServer {
 }
 
 pub async fn get_heights(
-    request: &base_node_grpc::HeightRequest,
+    request: &tari_rpc::HeightRequest,
     handler: LocalNodeCommsInterface,
 ) -> Result<Vec<u64>, Status>
 {
@@ -86,15 +86,15 @@ pub async fn get_heights(
 }
 
 #[tonic::async_trait]
-impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
-    type GetBlocksStream = mpsc::Receiver<Result<base_node_grpc::HistoricalBlock, Status>>;
-    type GetNetworkDifficultyStream = mpsc::Receiver<Result<base_node_grpc::NetworkDifficultyResponse, Status>>;
-    type GetTokensInCirculationStream = mpsc::Receiver<Result<base_node_grpc::ValueAtHeightResponse, Status>>;
-    type ListHeadersStream = mpsc::Receiver<Result<base_node_grpc::BlockHeader, Status>>;
+impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
+    type GetBlocksStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
+    type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
+    type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
+    type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeader, Status>>;
 
     async fn get_network_difficulty(
         &self,
-        request: Request<base_node_grpc::HeightRequest>,
+        request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status>
     {
         let request = request.into_inner();
@@ -161,7 +161,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 for difficulty in difficulties {
                     match tx
                         .send(Ok({
-                            base_node_grpc::NetworkDifficultyResponse {
+                            tari_rpc::NetworkDifficultyResponse {
                                 height: difficulty.0,
                                 difficulty: difficulty.1,
                                 estimated_hash_rate: difficulty.2,
@@ -201,7 +201,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn list_headers(
         &self,
-        request: Request<base_node_grpc::ListHeadersRequest>,
+        request: Request<tari_rpc::ListHeadersRequest>,
     ) -> Result<Response<Self::ListHeadersStream>, Status>
     {
         let request = request.into_inner();
@@ -298,8 +298,8 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn get_new_block_template(
         &self,
-        request: Request<base_node_grpc::PowAlgo>,
-    ) -> Result<Response<base_node_grpc::NewBlockTemplateResponse>, Status>
+        request: Request<tari_rpc::PowAlgo>,
+    ) -> Result<Response<tari_rpc::NewBlockTemplateResponse>, Status>
     {
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
@@ -313,7 +313,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let response = base_node_grpc::NewBlockTemplateResponse {
+        let response = tari_rpc::NewBlockTemplateResponse {
             new_block_template: Some(new_template.into()),
         };
 
@@ -323,8 +323,8 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn get_new_block(
         &self,
-        request: Request<base_node_grpc::NewBlockTemplate>,
-    ) -> Result<Response<base_node_grpc::GetNewBlockResult>, Status>
+        request: Request<tari_rpc::NewBlockTemplate>,
+    ) -> Result<Response<tari_rpc::GetNewBlockResult>, Status>
     {
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block");
@@ -348,14 +348,14 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
         let target_difficulty = new_block.header.pow.target_difficulty;
         let reward = cm.calculate_coinbase_and_fees(&new_block);
-        let block: Option<base_node_grpc::Block> = Some(new_block.into());
-        let mining_data = Some(base_node_grpc::MinerData {
-            algo: Some(base_node_grpc::PowAlgo { pow_algo: pow }),
+        let block: Option<tari_rpc::Block> = Some(new_block.into());
+        let mining_data = Some(tari_rpc::MinerData {
+            algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
             target_difficulty: target_difficulty.as_u64(),
             reward: reward.0,
             mergemining_hash: mining_hash,
         });
-        let response = base_node_grpc::GetNewBlockResult {
+        let response = tari_rpc::GetNewBlockResult {
             block_hash,
             block,
             mining_data,
@@ -364,11 +364,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
-    async fn submit_block(
-        &self,
-        request: Request<base_node_grpc::Block>,
-    ) -> Result<Response<base_node_grpc::Empty>, Status>
-    {
+    async fn submit_block(&self, request: Request<tari_rpc::Block>) -> Result<Response<tari_rpc::Empty>, Status> {
         let request = request.into_inner();
         let block: Block = request
             .try_into()
@@ -379,7 +375,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .submit_block(block, Broadcast::from(true))
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        let response: base_node_grpc::Empty = base_node_grpc::Empty {};
+        let response: tari_rpc::Empty = tari_rpc::Empty {};
 
         debug!(target: LOG_TARGET, "Sending SubmitBlock response to client");
         Ok(Response::new(response))
@@ -387,7 +383,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn get_blocks(
         &self,
-        request: Request<base_node_grpc::GetBlocksRequest>,
+        request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetBlocksStream>, Status>
     {
         let request = request.into_inner();
@@ -445,8 +441,8 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn get_tip_info(
         &self,
-        _request: Request<base_node_grpc::Empty>,
-    ) -> Result<Response<base_node_grpc::TipInfoResponse>, Status>
+        _request: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::TipInfoResponse>, Status>
     {
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN tip data");
 
@@ -457,7 +453,7 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let response = base_node_grpc::TipInfoResponse {
+        let response = tari_rpc::TipInfoResponse {
             metadata: Some(meta.into()),
         };
 
@@ -467,8 +463,8 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn get_calc_timing(
         &self,
-        request: Request<base_node_grpc::HeightRequest>,
-    ) -> Result<Response<base_node_grpc::CalcTimingResponse>, Status>
+        request: Request<tari_rpc::HeightRequest>,
+    ) -> Result<Response<tari_rpc::CalcTimingResponse>, Status>
     {
         let request = request.into_inner();
         debug!(
@@ -491,15 +487,15 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
         let (max, min, avg) = BlockHeader::timing_stats(&headers);
 
-        let response: base_node_grpc::CalcTimingResponse = base_node_grpc::CalcTimingResponse { max, min, avg };
+        let response: tari_rpc::CalcTimingResponse = tari_rpc::CalcTimingResponse { max, min, avg };
         debug!(target: LOG_TARGET, "Sending GetCalcTiming response to client");
         Ok(Response::new(response))
     }
 
     async fn get_constants(
         &self,
-        _request: Request<base_node_grpc::Empty>,
-    ) -> Result<Response<base_node_grpc::ConsensusConstants>, Status>
+        _request: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::ConsensusConstants>, Status>
     {
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetConstants",);
         let network: Network = self.node_config.network.into();
@@ -509,31 +505,27 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn get_block_size(
         &self,
-        request: Request<base_node_grpc::BlockGroupRequest>,
-    ) -> Result<Response<base_node_grpc::BlockGroupResponse>, Status>
+        request: Request<tari_rpc::BlockGroupRequest>,
+    ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status>
     {
         get_block_group(self.node_service.clone(), request, BlockGroupType::BlockSize).await
     }
 
     async fn get_block_fees(
         &self,
-        request: Request<base_node_grpc::BlockGroupRequest>,
-    ) -> Result<Response<base_node_grpc::BlockGroupResponse>, Status>
+        request: Request<tari_rpc::BlockGroupRequest>,
+    ) -> Result<Response<tari_rpc::BlockGroupResponse>, Status>
     {
         get_block_group(self.node_service.clone(), request, BlockGroupType::BlockFees).await
     }
 
-    async fn get_version(
-        &self,
-        _request: Request<base_node_grpc::Empty>,
-    ) -> Result<Response<base_node_grpc::StringValue>, Status>
-    {
+    async fn get_version(&self, _request: Request<tari_rpc::Empty>) -> Result<Response<tari_rpc::StringValue>, Status> {
         Ok(Response::new(VERSION.to_string().into()))
     }
 
     async fn get_tokens_in_circulation(
         &self,
-        request: Request<base_node_grpc::GetBlocksRequest>,
+        request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetTokensInCirculationStream>, Status>
     {
         debug!(target: LOG_TARGET, "Incoming GRPC request for GetTokensInCirculation",);
@@ -552,10 +544,10 @@ impl base_node_grpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             let (initial, decay, tail) = constants.emission_amounts();
             let schedule = EmissionSchedule::new(initial, decay, tail);
             while page.len() > 0 {
-                let values: Vec<base_node_grpc::ValueAtHeightResponse> = page
+                let values: Vec<tari_rpc::ValueAtHeightResponse> = page
                     .clone()
                     .into_iter()
-                    .map(|height| base_node_grpc::ValueAtHeightResponse {
+                    .map(|height| tari_rpc::ValueAtHeightResponse {
                         height,
                         value: schedule.supply_at_block(height).into(),
                     })
@@ -596,14 +588,14 @@ enum BlockGroupType {
 }
 async fn get_block_group(
     mut handler: LocalNodeCommsInterface,
-    request: Request<base_node_grpc::BlockGroupRequest>,
+    request: Request<tari_rpc::BlockGroupRequest>,
     block_group_type: BlockGroupType,
-) -> Result<Response<base_node_grpc::BlockGroupResponse>, Status>
+) -> Result<Response<tari_rpc::BlockGroupResponse>, Status>
 {
     let request = request.into_inner();
     let calc_type_response = request.calc_type;
     let calc_type: CalcType = request.calc_type();
-    let height_request: base_node_grpc::HeightRequest = request.into();
+    let height_request: tari_rpc::HeightRequest = request.into();
 
     debug!(
         target: LOG_TARGET,
@@ -642,7 +634,7 @@ async fn get_block_group(
         target: LOG_TARGET,
         "Sending GetBlockSize response to client: {:?}", value
     );
-    Ok(Response::new(base_node_grpc::BlockGroupResponse {
+    Ok(Response::new(tari_rpc::BlockGroupResponse {
         value,
         calc_type: calc_type_response,
     }))

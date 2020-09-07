@@ -20,39 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// use crate::grpc::{
-//     blocks::block_heights,
-//     server::{base_node_grpc as grpc, base_node_grpc::*},
-// };
-use crate::tari_grpc::{base_node_grpc as grpc, base_node_grpc::BlockGroupRequest};
+use crate::tari_rpc as grpc;
 use std::convert::TryFrom;
 use tari_core::{
-    chain_storage::ChainMetadata,
     consensus::{ConsensusConstants, KERNEL_WEIGHT, WEIGHT_PER_INPUT, WEIGHT_PER_OUTPUT},
-    proof_of_work::{Difficulty, PowAlgorithm},
+    proof_of_work::PowAlgorithm,
 };
-
-impl From<u64> for grpc::IntegerValue {
-    fn from(value: u64) -> Self {
-        Self { value }
-    }
-}
-
-impl From<String> for grpc::StringValue {
-    fn from(value: String) -> Self {
-        Self { value }
-    }
-}
-
-impl From<grpc::BlockGroupRequest> for grpc::HeightRequest {
-    fn from(b: BlockGroupRequest) -> Self {
-        Self {
-            from_tip: b.from_tip,
-            start_height: b.start_height,
-            end_height: b.end_height,
-        }
-    }
-}
 
 impl From<ConsensusConstants> for grpc::ConsensusConstants {
     fn from(cc: ConsensusConstants) -> Self {
@@ -74,18 +47,6 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             block_weight_inputs: WEIGHT_PER_INPUT,
             block_weight_outputs: WEIGHT_PER_OUTPUT,
             block_weight_kernels: KERNEL_WEIGHT,
-        }
-    }
-}
-
-impl From<ChainMetadata> for grpc::MetaData {
-    fn from(meta: ChainMetadata) -> Self {
-        let diff = meta.accumulated_difficulty.unwrap_or_else(Difficulty::min);
-        Self {
-            height_of_longest_chain: meta.height_of_longest_chain.unwrap_or(0),
-            best_block: meta.best_block.unwrap_or_default(),
-            pruning_horizon: meta.pruning_horizon,
-            accumulated_difficulty: diff.as_u64(),
         }
     }
 }

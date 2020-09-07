@@ -379,6 +379,7 @@ where
 
     async fn listen(&mut self) -> Result<(TTransport::Listener, Multiaddr), ConnectionManagerError> {
         let listener_address = mem::replace(&mut self.config.listener_address, Multiaddr::empty());
+        debug!(target: LOG_TARGET, "Attempting to listen on {}", listener_address);
         self.transport
             .listen(listener_address)
             .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))?

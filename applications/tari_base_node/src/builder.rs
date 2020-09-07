@@ -23,7 +23,6 @@
 use crate::miner;
 use futures::{channel::mpsc, future};
 use log::*;
-use rand::rngs::OsRng;
 use std::{
     fs,
     net::SocketAddr,
@@ -34,10 +33,20 @@ use std::{
     },
     time::Duration,
 };
+use tari_app_utilities::{
+    identity_management::{load_from_json, save_as_json},
+    utilities::{
+        create_peer_db_folder,
+        create_wallet_folder,
+        into_socks_authentication,
+        parse_peer_seeds,
+        setup_wallet_transport_type,
+    },
+};
 use tari_broadcast_channel::Subscriber;
 use tari_common::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
-    multiaddr::{Multiaddr, Protocol},
+    multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     protocol::ProtocolExtensions,
     socks,
@@ -81,11 +90,8 @@ use tari_core::{
         MempoolValidators,
     },
     mining::{Miner, MinerInstruction},
-    tari_utilities::{hex::Hex, message_format::MessageFormat},
-    transactions::{
-        crypto::keys::SecretKey as SK,
-        types::{CryptoFactories, HashDigest, PrivateKey, PublicKey},
-    },
+    tari_utilities::hex::Hex,
+    transactions::types::{CryptoFactories, HashDigest, PublicKey},
     validation::{
         accum_difficulty_validators::AccumDifficultyValidator,
         block_validators::{FullConsensusValidator, StatelessBlockValidator},
@@ -325,105 +331,6 @@ where B: 'static
     pub fn get_status_event_stream(&self) -> Subscriber<StatusInfo> {
         self.node.get_status_event_stream()
     }
-}
-
-/// Tries to construct a node identity by loading the secret key and other metadata from disk and calculating the
-/// missing fields from that information.
-/// ## Parameters
-/// `path` - Reference to a path
-///
-/// ## Returns
-/// Result containing a NodeIdentity on success, string indicates the reason on failure
-pub fn load_identity(path: &Path) -> Result<NodeIdentity, String> {
-    if !path.exists() {
-        return Err(format!("Identity file, {}, does not exist.", path.to_str().unwrap()));
-    }
-
-    let id_str = std::fs::read_to_string(path).map_err(|e| {
-        format!(
-            "The node identity file, {}, could not be read. {}",
-            path.to_str().unwrap_or("?"),
-            e.to_string()
-        )
-    })?;
-    let id = NodeIdentity::from_json(&id_str).map_err(|e| {
-        format!(
-            "The node identity file, {}, has an error. {}",
-            path.to_str().unwrap_or("?"),
-            e.to_string()
-        )
-    })?;
-    info!(
-        "Node ID loaded with public key {} and Node id {}",
-        id.public_key().to_hex(),
-        id.node_id().to_hex()
-    );
-    Ok(id)
-}
-
-/// Create a new node id and save it to disk
-/// ## Parameters
-/// `path` - Reference to path to save the file
-/// `public_addr` - Network address of the base node
-/// `peer_features` - The features enabled for the base node
-///
-/// ## Returns
-/// Result containing the node identity, string will indicate reason on error
-pub fn create_new_base_node_identity<P: AsRef<Path>>(
-    path: P,
-    public_addr: Multiaddr,
-    features: PeerFeatures,
-) -> Result<NodeIdentity, String>
-{
-    let private_key = PrivateKey::random(&mut OsRng);
-    let node_identity = NodeIdentity::new(private_key, public_addr, features)
-        .map_err(|e| format!("We were unable to construct a node identity. {}", e.to_string()))?;
-    save_as_json(path, &node_identity)?;
-    Ok(node_identity)
-}
-
-/// Loads the node identity from json at the given path
-/// ## Parameters
-/// `path` - Path to file from which to load the node identity
-///
-/// ## Returns
-/// Result containing an object on success, string will indicate reason on error
-pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, String> {
-    if !path.as_ref().exists() {
-        return Err(format!(
-            "Identity file, {}, does not exist.",
-            path.as_ref().to_str().unwrap()
-        ));
-    }
-
-    let contents = fs::read_to_string(path).map_err(|err| err.to_string())?;
-    let object = T::from_json(&contents).map_err(|err| err.to_string())?;
-    Ok(object)
-}
-
-/// Saves the node identity as json at a given path, creating it if it does not already exist
-/// ## Parameters
-/// `path` - Path to save the file
-/// `object` - Data to be saved
-///
-/// ## Returns
-/// Result to check if successful or not, string will indicate reason on error
-pub fn save_as_json<P: AsRef<Path>, T: MessageFormat>(path: P, object: &T) -> Result<(), String> {
-    let json = object.to_json().unwrap();
-    if let Some(p) = path.as_ref().parent() {
-        if !p.exists() {
-            fs::create_dir_all(p).map_err(|e| format!("Could not save json to data folder. {}", e.to_string()))?;
-        }
-    }
-    fs::write(path.as_ref(), json.as_bytes()).map_err(|e| {
-        format!(
-            "Error writing json file, {}. {}",
-            path.as_ref().to_str().unwrap_or("<invalid UTF-8>"),
-            e.to_string()
-        )
-    })?;
-
-    Ok(())
 }
 
 /// Sets up and initializes the base node, creating the context and database
@@ -736,71 +643,6 @@ async fn sync_peers(
     }
 }
 
-/// Parses the seed peers from a delimited string into a list of peers
-/// ## Parameters
-/// `seeds` - A string of peers delimited by '::'
-///
-/// ## Returns
-/// A list of peers, peers which do not have a valid public key are excluded
-fn parse_peer_seeds(seeds: &[String]) -> Vec<Peer> {
-    info!("Adding {} peers to the peer database", seeds.len());
-    let mut result = Vec::with_capacity(seeds.len());
-    for s in seeds {
-        let parts: Vec<&str> = s.split("::").map(|s| s.trim()).collect();
-        if parts.len() != 2 {
-            warn!(target: LOG_TARGET, "Invalid peer seed: {}", s);
-            continue;
-        }
-        let pub_key = match PublicKey::from_hex(parts[0]) {
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "{} is not a valid peer seed. The public key is incorrect. {}",
-                    s,
-                    e.to_string()
-                );
-                continue;
-            },
-            Ok(p) => p,
-        };
-        let addr = match parts[1].parse::<Multiaddr>() {
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "{} is not a valid peer seed. The address is incorrect. {}",
-                    s,
-                    e.to_string()
-                );
-                continue;
-            },
-            Ok(a) => a,
-        };
-        let node_id = match NodeId::from_key(&pub_key) {
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "{} is not a valid peer seed. A node id couldn't be derived from the public key. {}",
-                    s,
-                    e.to_string()
-                );
-                continue;
-            },
-            Ok(id) => id,
-        };
-        let peer = Peer::new(
-            pub_key,
-            node_id,
-            addr.into(),
-            PeerFlags::default(),
-            PeerFeatures::COMMUNICATION_NODE,
-            &[],
-            Default::default(),
-        );
-        result.push(peer);
-    }
-    result
-}
-
 /// Creates a transport type from the given configuration
 /// /// ## Paramters
 /// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
@@ -874,165 +716,6 @@ fn setup_transport_type(config: &GlobalConfig) -> TransportType {
             },
             listener_address,
         },
-    }
-}
-
-/// Creates a transport type for the base node's wallet using the provided configuration
-/// ## Paramters
-/// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
-///
-/// ##Returns
-/// TransportType based on the configuration
-fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
-    debug!(
-        target: LOG_TARGET,
-        "Wallet transport is set to '{:?}'", config.comms_transport
-    );
-
-    let add_to_port = |addr: Multiaddr, n| -> Multiaddr {
-        addr.iter()
-            .map(|p| match p {
-                Protocol::Tcp(port) => Protocol::Tcp(port + n),
-                p => p,
-            })
-            .collect()
-    };
-
-    match config.comms_transport.clone() {
-        CommsTransport::Tcp {
-            listener_address,
-            tor_socks_address,
-            tor_socks_auth,
-        } => TransportType::Tcp {
-            listener_address: add_to_port(listener_address, 1),
-            tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
-                proxy_address,
-                authentication: tor_socks_auth.map(into_socks_authentication).unwrap_or_default(),
-            }),
-        },
-        CommsTransport::TorHiddenService {
-            control_server_address,
-            socks_address_override,
-            auth,
-            ..
-        } => {
-            // The wallet should always use an OS-assigned forwarding port and an onion port number of 18101
-            // to ensure that different wallet implementations cannot be differentiated by their port.
-            let port_mapping = (18101u16, "127.0.0.1:0".parse::<SocketAddr>().unwrap()).into();
-
-            let tor_identity_path = Path::new(&config.wallet_tor_identity_file);
-            let identity = if tor_identity_path.exists() {
-                // If this fails, we can just use another address
-                load_from_json::<_, TorIdentity>(&tor_identity_path).ok()
-            } else {
-                None
-            };
-            info!(
-                target: LOG_TARGET,
-                "Wallet tor identity at path '{}' {:?}",
-                tor_identity_path.to_string_lossy(),
-                identity
-                    .as_ref()
-                    .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))
-                    .or_else(|| Some("not found".to_string()))
-                    .unwrap()
-            );
-
-            TransportType::Tor(TorConfig {
-                control_server_addr: control_server_address,
-                control_server_auth: {
-                    match auth {
-                        TorControlAuthentication::None => tor::Authentication::None,
-                        TorControlAuthentication::Password(password) => tor::Authentication::HashedPassword(password),
-                    }
-                },
-                identity: identity.map(Box::new),
-                port_mapping,
-                // TODO: make configurable
-                socks_address_override,
-                socks_auth: socks::Authentication::None,
-            })
-        },
-        CommsTransport::Socks5 {
-            proxy_address,
-            listener_address,
-            auth,
-        } => TransportType::Socks {
-            socks_config: SocksConfig {
-                proxy_address,
-                authentication: into_socks_authentication(auth),
-            },
-            listener_address: add_to_port(listener_address, 1),
-        },
-    }
-}
-
-/// Converts one socks authentication struct into another
-/// ## Parameters
-/// `auth` - Socks authentication of type SocksAuthentication
-///
-/// ## Returns
-/// Socks authentication of type socks::Authentication
-fn into_socks_authentication(auth: SocksAuthentication) -> socks::Authentication {
-    match auth {
-        SocksAuthentication::None => socks::Authentication::None,
-        SocksAuthentication::UsernamePassword(username, password) => {
-            socks::Authentication::Password(username, password)
-        },
-    }
-}
-
-/// Creates the storage location for the base node's wallet
-/// ## Parameters
-/// `wallet_path` - Reference to a file path
-///
-/// ## Returns
-/// A Result to determine if it was successful or not, string will indicate the reason on error
-fn create_wallet_folder<P: AsRef<Path>>(wallet_path: P) -> Result<(), String> {
-    let path = wallet_path.as_ref();
-    match fs::create_dir_all(path) {
-        Ok(_) => {
-            info!(
-                target: LOG_TARGET,
-                "Wallet directory has been created at {}",
-                path.display()
-            );
-            Ok(())
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            info!(
-                target: LOG_TARGET,
-                "Wallet directory already exists in {}",
-                path.display()
-            );
-            Ok(())
-        },
-        Err(e) => Err(format!("Could not create wallet directory: {}", e)),
-    }
-}
-
-/// Creates the directory to store the peer database
-/// ## Parameters
-/// `peer_db_path` - Reference to a file path
-///
-/// ## Returns
-/// A Result to determine if it was successful or not, string will indicate the reason on error
-fn create_peer_db_folder<P: AsRef<Path>>(peer_db_path: P) -> Result<(), String> {
-    let path = peer_db_path.as_ref();
-    match fs::create_dir_all(path) {
-        Ok(_) => {
-            info!(
-                target: LOG_TARGET,
-                "Peer database directory has been created in {}",
-                path.display()
-            );
-            Ok(())
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            info!(target: LOG_TARGET, "Peer database already exists in {}", path.display());
-            Ok(())
-        },
-        Err(e) => Err(format!("could not create peer db path: {}", e)),
     }
 }
 

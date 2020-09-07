@@ -3627,6 +3627,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_app_utilities"
+version = "0.1.0"
+dependencies = [
+ "dirs 2.0.2",
+ "log 0.4.11",
+ "qrcode",
+ "rand 0.7.3",
+ "serde_json",
+ "tari_common",
+ "tari_comms",
+ "tari_core",
+ "tari_crypto",
+ "tari_p2p",
+ "tokio",
+]
+
+[[package]]
 name = "tari_base_node"
 version = "0.5.4"
 dependencies = [
@@ -3651,6 +3668,7 @@ dependencies = [
  "strum 0.18.0",
  "strum_macros 0.18.0",
  "tari_app_grpc",
+ "tari_app_utilities",
  "tari_broadcast_channel",
  "tari_common",
  "tari_comms",
@@ -3792,15 +3810,26 @@ name = "tari_console_wallet"
 version = "0.5.0"
 dependencies = [
  "chrono",
+ "config",
  "crossterm",
+ "dirs 2.0.2",
  "lazy_static 1.4.0",
  "log 0.4.11",
+ "qrcode",
  "rand 0.7.3",
+ "structopt",
+ "tari_app_grpc",
+ "tari_app_utilities",
  "tari_common",
  "tari_comms",
+ "tari_comms_dht",
  "tari_core",
  "tari_crypto",
+ "tari_p2p",
  "tari_wallet",
+ "thiserror",
+ "tokio",
+ "tonic",
  "tui",
  "unicode-segmentation",
  "unicode-width",
