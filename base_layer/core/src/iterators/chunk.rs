@@ -101,8 +101,11 @@ edge_chunk_impl!(usize);
 #[cfg(test)]
 mod test {
     use super::*;
+
     #[test]
     fn zero_size() {
+        let mut iter = NonOverlappingIntegerPairIter::new(0u32, 0, 10);
+        assert!(iter.next().is_none());
         let mut iter = NonOverlappingIntegerPairIter::new(10u32, 10, 0);
         assert!(iter.next().is_none());
         let mut iter = VecChunkIter::new(10u32, 10, 0);

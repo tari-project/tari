@@ -30,6 +30,7 @@ use crate::{
         db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
         error::ChainStorageError,
         ChainMetadata,
+        DbKeyValuePair,
         HistoricalBlock,
         InProgressHorizonSyncState,
     },
@@ -738,6 +739,11 @@ where B: BlockchainBackend
         self.commit(txn)
     }
 
+    pub fn count_utxos(&self) -> Result<usize, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.count_utxos()
+    }
+
     /// Rewind the blockchain state to the block height given and return the blocks that were removed and orphaned.
     ///
     /// The operation will fail if
@@ -846,12 +852,18 @@ where B: BlockchainBackend
             },
         };
 
-        let mut txn = DbTransaction::new();
+        // TODO: Implement a more discerning rollback. i.e if the UTXO set is invalid but the kernel set is valid, keep
+        //       the kernel set.
 
         // Rollback added kernels
+        let mut txn = DbTransaction::new();
         let first_tmp_checkpoint_index =
             usize::try_from(sync_state.initial_kernel_checkpoint_count).map_err(|_| ChainStorageError::OutOfRange)?;
         let cp_count = db.count_checkpoints(MmrTree::Kernel)?;
+        debug!(
+            target: LOG_TARGET,
+            "Kernel checkpoint count is {}. Initial count is {}", cp_count, first_tmp_checkpoint_index
+        );
         for i in first_tmp_checkpoint_index..cp_count {
             let cp = db.fetch_checkpoint_at_index(MmrTree::Kernel, i)?.expect(&format!(
                 "Database is corrupt: Failed to fetch kernel checkpoint at index {}",
@@ -863,7 +875,8 @@ where B: BlockchainBackend
             }
         }
 
-        txn.rewind_kernel_mmr(cp_count - first_tmp_checkpoint_index);
+        let steps_back = (cp_count - first_tmp_checkpoint_index) as usize;
+        txn.rewind_kernel_mmr(steps_back);
 
         // Rollback UTXO changes
         let first_tmp_checkpoint_index =
@@ -874,24 +887,33 @@ where B: BlockchainBackend
                 "Database is corrupt: Failed to fetch UTXO checkpoint at index {}",
                 i
             ));
+            debug!(
+                target: LOG_TARGET,
+                "Deleting checkpoint data at index {} (total accumulated nodes added = {})",
+                i,
+                cp.accumulated_nodes_added_count()
+            );
             let (nodes_added, deleted) = cp.into_parts();
-            for hash in nodes_added {
-                txn.delete(DbKey::UnspentOutput(hash));
-            }
+
             for pos in deleted.iter() {
                 let (stxo_hash, is_deleted) = db.fetch_mmr_node(MmrTree::Utxo, pos, None)?;
                 debug_assert!(is_deleted);
                 txn.unspend_stxo(stxo_hash);
             }
+            for hash in nodes_added {
+                txn.delete(DbKey::UnspentOutput(hash));
+            }
         }
 
-        txn.rewind_utxo_mmr(cp_count - first_tmp_checkpoint_index);
+        let steps_back = (cp_count - first_tmp_checkpoint_index) as usize;
+        txn.rewind_utxo_mmr(steps_back);
 
         // Rollback Rangeproof checkpoints
         let first_tmp_checkpoint_index = usize::try_from(sync_state.initial_rangeproof_checkpoint_count)
             .map_err(|_| ChainStorageError::OutOfRange)?;
-        let rp_checkpoint_count = db.count_checkpoints(MmrTree::RangeProof)?;
-        txn.rewind_rangeproof_mmr(rp_checkpoint_count - first_tmp_checkpoint_index);
+        let cp_count = db.count_checkpoints(MmrTree::RangeProof)?;
+        let steps_back = (cp_count - first_tmp_checkpoint_index) as usize;
+        txn.rewind_rangeproof_mmr(steps_back);
 
         // Rollback metadata
         let metadata = sync_state.metadata;
@@ -912,6 +934,31 @@ where B: BlockchainBackend
         // Remove pending horizon sync state
         txn.delete_metadata(MetadataKey::HorizonSyncState);
 
+        commit(&mut *db, txn)
+    }
+
+    /// Perform an ordered bulk insert of spent TXO MMR nodes and unspent TXOs
+    pub fn horizon_sync_insert_txos(&self, txos: Vec<HorizonSyncTxo>) -> Result<(), ChainStorageError> {
+        let mut txn = DbTransaction::new();
+        for txo in txos {
+            match txo {
+                HorizonSyncTxo::Spent(stxo) => {
+                    txn.insert(DbKeyValuePair::MmrNode(MmrTree::Utxo, stxo.txo_hash, true));
+                    txn.insert(DbKeyValuePair::MmrNode(
+                        MmrTree::RangeProof,
+                        stxo.range_proof_hash,
+                        false,
+                    ));
+                },
+                HorizonSyncTxo::Unspent(utxo) => {
+                    txn.insert_utxo(utxo);
+                },
+            }
+        }
+        txn.create_mmr_checkpoint(MmrTree::Utxo);
+        txn.create_mmr_checkpoint(MmrTree::RangeProof);
+
+        let mut db = self.db_write_access()?;
         commit(&mut *db, txn)
     }
 
@@ -940,6 +987,32 @@ where B: BlockchainBackend
         txn.create_mmr_checkpoint(tree);
         commit(&mut *db, txn)
     }
+}
+
+/// This enum represents either a spent or unspent transaction output.
+#[derive(Debug, Clone)]
+pub enum HorizonSyncTxo {
+    Spent(SpentTxo),
+    Unspent(TransactionOutput),
+}
+
+impl HorizonSyncTxo {
+    pub fn spent(txo_hash: HashOutput, range_proof_hash: HashOutput) -> Self {
+        Self::Spent(SpentTxo {
+            txo_hash,
+            range_proof_hash,
+        })
+    }
+
+    pub fn unspent(utxo: TransactionOutput) -> Self {
+        Self::Unspent(utxo)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SpentTxo {
+    pub txo_hash: HashOutput,
+    pub range_proof_hash: HashOutput,
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ChainStorageError> {

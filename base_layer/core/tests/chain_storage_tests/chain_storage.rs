@@ -919,6 +919,7 @@ fn handle_reorg_with_no_removed_blocks() {
 
 #[test]
 fn handle_reorg_failure_recovery() {
+    env_logger::init();
     // GB --> A1 --> A2 --> A3 -----> A4(Low PoW)     [Main Chain]
     //          \--> B2 --> B3(double spend - rejected by db)  [Forked Chain 1]
     //          \--> B2 --> B3'(validation failed)      [Forked Chain 1]
@@ -931,8 +932,8 @@ fn handle_reorg_failure_recovery() {
         let block_validator = MockValidator::new(true);
         let is_block_valid_flag = block_validator.shared_flag();
         let validators = Validators::new(
+            block_validator.clone(),
             block_validator,
-            MockValidator::new(true),
             MockAccumDifficultyValidator {},
         );
         // Create Main Chain
@@ -1006,6 +1007,10 @@ fn handle_reorg_failure_recovery() {
             &consensus_manager.consensus_constants(),
         )
         .unwrap();
+        // Add an orphaned B2
+        let result = store.add_block(orphan1_blocks[2].clone()).unwrap(); // B2
+        unpack_enum!(BlockAddResult::OrphanBlock = result);
+
         // Block B3 (Double spend)
         let double_spend_block = {
             let schemas = vec![
@@ -1020,7 +1025,6 @@ fn handle_reorg_failure_recovery() {
                 txns.push(tx);
                 block_utxos.append(&mut utxos);
             }
-            orphan1_outputs.push(block_utxos);
 
             let template = chain_block(
                 &orphan1_blocks.last().unwrap(),
@@ -1052,18 +1056,19 @@ fn handle_reorg_failure_recovery() {
 
         // B3'
         is_block_valid_flag.store(false, Ordering::SeqCst);
-        let txs = vec![txn_schema!(from: vec![orphan1_outputs[1][1].clone()], to: vec![5 * T])];
         generate_new_block_with_achieved_difficulty(
             &mut orphan1_store,
             &mut orphan1_blocks,
-            &mut orphan1_outputs,
-            txs,
+            &mut vec![],
+            vec![],
             Difficulty::from(1),
             &consensus_manager.consensus_constants(),
         )
         .unwrap();
-        // B3
-        let err = store.add_block(orphan1_blocks[3].clone().into()).unwrap_err();
+
+        let err = store
+            .add_block(orphan1_blocks.last().unwrap().clone().into())
+            .unwrap_err();
         // Mock validator error is returned. This assertions makes sure that the (mock) validator error is returned
         // and that no other error (caused by say a bug in the rewind/restore code) happened.
         unpack_enum!(ChainStorageError::ValidationError { .. } = err);
@@ -1072,7 +1077,7 @@ fn handle_reorg_failure_recovery() {
         assert_eq!(tip_header.height, 4);
         assert_eq!(tip_header, blocks[4].header);
 
-        assert!(store.fetch_orphan(orphan1_blocks[3].hash()).is_ok()); // B3' orphaned
+        assert!(store.fetch_orphan(orphan1_blocks.pop().unwrap().hash()).is_err()); // B3' not valid
         assert!(store.fetch_orphan(blocks[2].hash()).is_err()); // A2
         assert!(store.fetch_orphan(blocks[3].hash()).is_err()); // A3
         assert!(store.fetch_orphan(blocks[4].hash()).is_err()); // A4

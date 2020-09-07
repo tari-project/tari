@@ -23,7 +23,7 @@
 use crate::{
     blocks::{Block, BlockHash, BlockHeader, NewBlockTemplate},
     chain_storage::{
-        blockchain_database::BlockAddResult,
+        blockchain_database::{BlockAddResult, HorizonSyncTxo},
         metadata::ChainMetadata,
         BlockchainBackend,
         BlockchainDatabase,
@@ -102,6 +102,7 @@ make_async!(spend_utxo(hash: HashOutput) -> (), "spend_utxo");
 make_async!(insert_utxo(utxo: TransactionOutput) -> (), "insert_utxo");
 make_async!(is_stxo(hash: HashOutput) -> bool, "is_stxo");
 make_async!(is_utxo(hash: HashOutput) -> bool, "is_utxo");
+make_async!(count_utxos() -> usize, "count_utxos");
 
 //---------------------------------- Headers --------------------------------------------//
 make_async!(fetch_header(block_num: u64) -> BlockHeader, "fetch_header");
@@ -138,5 +139,6 @@ make_async!(horizon_sync_begin() -> InProgressHorizonSyncState, "horizon_sync_be
 make_async!(horizon_sync_commit() -> (), "horizon_sync_commit");
 make_async!(horizon_sync_rollback() -> (), "horizon_sync_rollback");
 make_async!(horizon_sync_insert_kernels(kernels: Vec<TransactionKernel>) -> (), "horizon_sync_insert_kernels");
+make_async!(horizon_sync_insert_txos(txos: Vec<HorizonSyncTxo>) -> (), "horizon_sync_insert_txos");
 make_async!(horizon_sync_spend_utxos(hash: Vec<HashOutput>) -> (), "horizon_sync_spend_utxos");
 make_async!(horizon_sync_create_mmr_checkpoint(tree: MmrTree) -> (), "horizon_sync_create_mmr_checkpoint");

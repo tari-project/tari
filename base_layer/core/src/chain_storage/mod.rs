@@ -36,6 +36,7 @@ pub use blockchain_database::{
     BlockchainBackend,
     BlockchainDatabase,
     BlockchainDatabaseConfig,
+    HorizonSyncTxo,
     MutableMmrState,
     Validators,
 };
@@ -53,8 +54,6 @@ pub use db_transaction::{
     MmrTree,
     WriteOperation,
 };
-
-// mod entity;
 
 mod error;
 pub use error::ChainStorageError;

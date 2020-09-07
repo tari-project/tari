@@ -228,6 +228,8 @@ pub enum DbKeyValuePair {
     UnspentOutput(HashOutput, Box<TransactionOutput>),
     TransactionKernel(HashOutput, Box<TransactionKernel>),
     OrphanBlock(HashOutput, Arc<Block>),
+    /// MMR node to insert. The tuple contains the MMR tree, the leaf hash and the "is deleted" flag (UTXOs only)
+    MmrNode(MmrTree, HashOutput, bool),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy)]

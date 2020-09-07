@@ -184,6 +184,23 @@ where D: Digest + Send + Sync
             _ => Ok(0),
         }
     }
+
+    fn add_mmr_node(&self, db: &mut InnerDatabase<D>, tree: MmrTree, hash: Hash, deleted: bool) {
+        match tree {
+            MmrTree::Kernel => db.curr_kernel_checkpoint.push_addition(hash),
+            MmrTree::Utxo => {
+                db.curr_utxo_checkpoint.push_addition(hash);
+                if deleted {
+                    let leaf_index = db
+                        .curr_utxo_checkpoint
+                        .accumulated_nodes_added_count()
+                        .saturating_sub(1);
+                    db.curr_utxo_checkpoint.push_deletion(leaf_index);
+                }
+            },
+            MmrTree::RangeProof => db.curr_range_proof_checkpoint.push_addition(hash),
+        }
+    }
 }
 
 impl<D> BlockchainBackend for MemoryDatabase<D>
@@ -245,6 +262,9 @@ where D: Digest + Send + Sync
                     },
                     DbKeyValuePair::OrphanBlock(k, v) => {
                         db.orphans.insert(k, v);
+                    },
+                    DbKeyValuePair::MmrNode(tree, hash, is_deleted) => {
+                        self.add_mmr_node(&mut db, tree, hash, is_deleted);
                     },
                 },
                 WriteOperation::Delete(delete) => match delete {
@@ -557,20 +577,7 @@ where D: Digest + Send + Sync
             .db
             .write()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-        match tree {
-            MmrTree::Kernel => db.curr_kernel_checkpoint.push_addition(hash),
-            MmrTree::Utxo => {
-                db.curr_utxo_checkpoint.push_addition(hash);
-                if deleted {
-                    let leaf_index = db
-                        .curr_utxo_checkpoint
-                        .accumulated_nodes_added_count()
-                        .saturating_sub(1);
-                    db.curr_utxo_checkpoint.push_deletion(leaf_index);
-                }
-            },
-            MmrTree::RangeProof => db.curr_range_proof_checkpoint.push_addition(hash),
-        };
+        self.add_mmr_node(&mut db, tree, hash, deleted);
         Ok(())
     }
 

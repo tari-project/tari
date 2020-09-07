@@ -31,7 +31,7 @@ use helpers::{
 use std::ops::Deref;
 use tari_core::{
     blocks::Block,
-    chain_storage::{async_db, BlockAddResult, MmrTree},
+    chain_storage::{async_db, BlockAddResult, HorizonSyncTxo, MmrTree},
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     helpers::create_orphan_block,
     transactions::{
@@ -46,6 +46,7 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     tari_utilities::{hex::Hex, Hashable},
 };
+use tari_mmr::ArrayLikeExt;
 use tari_test_utils::runtime::test_async;
 
 /// Finds the UTXO in a block corresponding to the unblinded output. We have to search for outputs because UTXOs get
@@ -68,7 +69,7 @@ fn fetch_async_kernel() {
                 let db = db.clone();
                 let k = k.clone();
                 let hash = k.hash();
-                rt.spawn(async move {
+                rt.block_on(async move {
                     let kern_db = async_db::fetch_kernel(db, hash).await;
                     assert_eq!(k, kern_db.unwrap());
                 });
@@ -85,7 +86,7 @@ fn fetch_async_headers() {
             let height = block.header.height;
             let hash = block.hash();
             let db = db.clone();
-            rt.spawn(async move {
+            rt.block_on(async move {
                 let header_height = async_db::fetch_header(db.clone(), height).await.unwrap();
                 let header_hash = async_db::fetch_header_by_block_hash(db.clone(), hash).await.unwrap();
                 assert_eq!(block.header, header_height);
@@ -100,7 +101,7 @@ fn async_rewind_to_height() {
     let (db, blocks, _, _) = create_blockchain_db_no_cut_through();
     test_async(move |rt| {
         let dbc = db.clone();
-        rt.spawn(async move {
+        rt.block_on(async move {
             async_db::rewind_to_height(dbc.clone(), 2).await.unwrap();
             let result = async_db::fetch_block(dbc.clone(), 3).await;
             assert!(result.is_err());
@@ -122,11 +123,11 @@ fn fetch_async_utxo() {
         let db = db.clone();
         let db2 = db.clone();
         let _blocks2 = blocks.clone();
-        rt.spawn(async move {
+        rt.block_on(async move {
             let utxo_check = async_db::fetch_utxo(db.clone(), utxo.hash()).await.unwrap();
             assert_eq!(utxo_check, utxo);
         });
-        rt.spawn(async move {
+        rt.block_on(async move {
             let stxo_check = async_db::fetch_stxo(db2.clone(), stxo.hash()).await.unwrap();
             assert_eq!(stxo_check, stxo);
         });
@@ -152,14 +153,14 @@ fn async_is_utxo_stxo() {
         let db = db.clone();
         let db2 = db.clone();
         let _blocks2 = blocks.clone();
-        rt.spawn(async move {
+        rt.block_on(async move {
             let is_utxo = async_db::is_utxo(db.clone(), utxo.hash()).await.unwrap();
             assert_eq!(is_utxo, true);
 
             let is_stxo = async_db::is_stxo(db.clone(), utxo.hash()).await.unwrap();
             assert_eq!(is_stxo, false);
         });
-        rt.spawn(async move {
+        rt.block_on(async move {
             let is_utxo = async_db::is_utxo(db2.clone(), stxo.hash()).await.unwrap();
             assert_eq!(is_utxo, false);
 
@@ -176,7 +177,7 @@ fn fetch_async_block() {
         for block in blocks.into_iter() {
             let height = block.header.height;
             let db = db.clone();
-            rt.spawn(async move {
+            rt.block_on(async move {
                 let block_check = async_db::fetch_block(db.clone(), height).await.unwrap();
                 assert_eq!(&block, block_check.block());
             });
@@ -198,7 +199,7 @@ fn async_add_new_block() {
     let new_block = db.calculate_mmr_roots(new_block).unwrap();
     test_async(|rt| {
         let dbc = db.clone();
-        rt.spawn(async move {
+        rt.block_on(async move {
             let result = async_db::add_block(dbc.clone(), new_block.clone().into())
                 .await
                 .unwrap();
@@ -217,7 +218,7 @@ fn fetch_async_mmr_roots() {
     let metadata = db.get_chain_metadata().unwrap();
     test_async(move |rt| {
         let dbc = db.clone();
-        rt.spawn(async move {
+        rt.block_on(async move {
             let root = futures::join!(
                 async_db::fetch_mmr_root(dbc.clone(), MmrTree::Utxo),
                 async_db::fetch_mmr_root(dbc.clone(), MmrTree::Kernel),
@@ -241,7 +242,7 @@ fn async_add_block_fetch_orphan() {
     let block_hash = orphan.hash();
     test_async(move |rt| {
         let dbc = db.clone();
-        rt.spawn(async move {
+        rt.block_on(async move {
             async_db::add_block(dbc.clone(), orphan.clone().into()).await.unwrap();
             let block = async_db::fetch_orphan(dbc.clone(), block_hash).await.unwrap();
             assert_eq!(orphan, block);

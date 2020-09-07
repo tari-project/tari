@@ -161,7 +161,7 @@ impl Display for BaseNodeState {
 pub enum StateInfo {
     StartUp,
     HeaderSync(BlockSyncInfo),
-    HorizonSync(BlockSyncInfo),
+    HorizonSync(HorizonSyncInfo),
     BlockSync(BlockSyncInfo),
     Listening(ListeningInfo),
 }
@@ -197,5 +197,77 @@ impl StatusInfo {
 impl Display for StatusInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "Bootstrapped: {}, {}", self.bootstrapped, self.state_info)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HorizonSyncInfo {
+    stage: HorizonSyncStage,
+    target: usize,
+    num: usize,
+}
+
+impl HorizonSyncInfo {
+    pub fn initializing() -> Self {
+        Default::default()
+    }
+
+    pub fn sync_kernels(num: usize, target: usize) -> Self {
+        Self {
+            stage: HorizonSyncStage::SyncKernels,
+            num,
+            target,
+        }
+    }
+
+    pub fn check_utxo_set(num: usize, target: usize) -> Self {
+        Self {
+            stage: HorizonSyncStage::CheckUtxoSet,
+            num,
+            target,
+        }
+    }
+
+    pub fn sync_utxos(num: usize, target: usize) -> Self {
+        Self {
+            stage: HorizonSyncStage::SyncUtxos,
+            num,
+            target,
+        }
+    }
+
+    pub fn validating() -> Self {
+        Self {
+            stage: HorizonSyncStage::Validating,
+            ..Default::default()
+        }
+    }
+}
+
+impl Display for HorizonSyncInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        use HorizonSyncStage::*;
+        match &self.stage {
+            Initializing => write!(f, "Initializing horizon sync"),
+            SyncKernels => write!(f, "Synchronizing kernels ({} / {})", self.num, self.target),
+            CheckUtxoSet => write!(f, "Checking UTXO set ({} / {})", self.num, self.target),
+            SyncUtxos => write!(f, "Synchronizing UTXO set ({} / {})", self.num, self.target),
+            Validating => write!(f, "Validating final horizon state"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HorizonSyncStage {
+    Initializing,
+    SyncKernels,
+    CheckUtxoSet,
+    SyncUtxos,
+    Validating,
+}
+
+impl Default for HorizonSyncStage {
+    fn default() -> Self {
+        Self::Initializing
     }
 }

@@ -24,6 +24,7 @@ use super::error::HorizonSyncError;
 use crate::{
     base_node::state_machine_service::{
         states::{
+            events_and_states::HorizonSyncInfo,
             helpers,
             helpers::exclude_sync_peer,
             sync_peers::SyncPeer,
@@ -34,7 +35,7 @@ use crate::{
         },
         BaseNodeStateMachine,
     },
-    chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, ChainMetadata, MmrTree},
+    chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, ChainMetadata, HorizonSyncTxo, MmrTree},
     iterators::NonOverlappingIntegerPairIter,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
@@ -78,11 +79,7 @@ impl HorizonStateSync {
     ) -> StateEvent
     {
         shared
-            .set_state_info(StateInfo::HorizonSync(BlockSyncInfo::new(
-                self.network_metadata.height_of_longest_chain(),
-                self.local_metadata.height_of_longest_chain(),
-                self.sync_peers.clone(),
-            )))
+            .set_state_info(StateInfo::HorizonSync(HorizonSyncInfo::initializing()))
             .await;
 
         if !self.local_metadata.is_pruned_node() {
@@ -111,7 +108,7 @@ impl HorizonStateSync {
 
         let mut horizon_header_sync = HorizonStateSynchronization {
             shared,
-            local_metadata: &self.local_metadata,
+            local_metadata: self.local_metadata.clone(),
             sync_peers: &mut self.sync_peers,
             horizon_sync_height: self.sync_height,
         };
@@ -128,14 +125,14 @@ impl HorizonStateSync {
     }
 }
 
-struct HorizonStateSynchronization<'a, 'b, 'c, B> {
+struct HorizonStateSynchronization<'a, 'b, B> {
     shared: &'a mut BaseNodeStateMachine<B>,
     sync_peers: &'b mut SyncPeers,
-    local_metadata: &'c ChainMetadata,
+    local_metadata: ChainMetadata,
     horizon_sync_height: u64,
 }
 
-impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> {
+impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, B> {
     pub async fn synchronize(&mut self) -> Result<(), HorizonSyncError> {
         debug!(target: LOG_TARGET, "Preparing database for horizon sync");
         self.prepare_for_sync().await?;
@@ -203,6 +200,12 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
             config.max_utxo_mmr_node_request_size,
         );
         for (pos, count) in chunks {
+            self.shared
+                .set_status_info(StatusInfo::HorizonSync(HorizonSyncInfo::sync_kernels(
+                    pos as usize,
+                    remote_num_kernels as usize,
+                )))
+                .await;
             let num_sync_peers = self.sync_peers.len();
             for attempt in 1..=num_sync_peers {
                 let (kernel_hashes, _, sync_peer1) = helpers::request_mmr_nodes(
@@ -227,13 +230,13 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
 
                 match self.validate_kernel_response(&kernel_hashes, &kernels) {
                     Ok(_) => {
-                        let num_kernels = kernels.len();
+                        let num_kernels = kernels.len() as u32;
                         async_db::horizon_sync_insert_kernels(self.db(), kernels).await?;
                         trace!(
                             target: LOG_TARGET,
                             "{} kernels successfully added to database ({} remaining)",
                             num_kernels,
-                            remote_num_kernels - pos,
+                            remote_num_kernels.saturating_sub(pos).saturating_sub(num_kernels),
                         );
                         break;
                     },
@@ -309,6 +312,12 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
 
         let chunks = self.chunked_count_iter(0, local_num_utxo_nodes, config.max_utxo_mmr_node_request_size);
         for (pos, count) in chunks {
+            self.shared
+                .set_status_info(StatusInfo::HorizonSync(HorizonSyncInfo::check_utxo_set(
+                    pos as usize,
+                    local_num_utxo_nodes as usize,
+                )))
+                .await;
             let num_sync_peers = self.sync_peers.len();
             for attempt in 1..=num_sync_peers {
                 let (remote_utxo_hashes, remote_utxo_deleted, sync_peer) = helpers::request_mmr_nodes(
@@ -382,7 +391,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
     async fn synchronize_utxos_and_rangeproofs(&mut self) -> Result<(), HorizonSyncError> {
         let config = self.shared.config.horizon_sync_config;
         let local_num_utxo_nodes =
-            async_db::fetch_mmr_node_count(self.shared.db.clone(), MmrTree::Utxo, self.horizon_sync_height).await?;
+            async_db::fetch_mmr_node_count(self.db(), MmrTree::Utxo, self.horizon_sync_height).await?;
         let (remote_num_utxo_nodes, _sync_peer) = helpers::request_mmr_node_count(
             LOG_TARGET,
             self.shared,
@@ -406,12 +415,28 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
             remote_num_utxo_nodes
         );
 
+        if local_num_utxo_nodes >= remote_num_utxo_nodes {
+            debug!(
+                target: LOG_TARGET,
+                "Local UTXO set already synchronized (local=#{}, remote=#{})",
+                local_num_utxo_nodes,
+                remote_num_utxo_nodes
+            );
+            return Ok(());
+        }
+
         let chunks = self.chunked_count_iter(
             local_num_utxo_nodes,
             remote_num_utxo_nodes,
             config.max_utxo_mmr_node_request_size,
         );
         for (pos, count) in chunks {
+            self.shared
+                .set_status_info(StatusInfo::HorizonSync(HorizonSyncInfo::sync_utxos(
+                    pos as usize,
+                    remote_num_utxo_nodes as usize,
+                )))
+                .await;
             let num_sync_peers = self.sync_peers.len();
             for attempt in 1..=num_sync_peers {
                 let (utxo_hashes, utxo_bitmap, sync_peer1) = helpers::request_mmr_nodes(
@@ -442,9 +467,9 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
                 let mut request_rp_hashes = Vec::new();
                 let mut is_stxos = Vec::with_capacity(utxo_hashes.len());
                 for index in 0..utxo_hashes.len() {
-                    let deleted = utxo_bitmap.contains(pos + index as u32);
-                    is_stxos.push(deleted);
-                    if !deleted {
+                    let is_deleted = utxo_bitmap.contains(pos + index as u32);
+                    is_stxos.push(is_deleted);
+                    if !is_deleted {
                         request_utxo_hashes.push(&utxo_hashes[index]);
                         request_rp_hashes.push(&rp_hashes[index]);
                     }
@@ -467,7 +492,6 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
                     is_stxos.iter().filter(|x| **x).count()
                 );
 
-                let db = &self.shared.db;
                 match self.validate_utxo_and_rangeproof_response(
                     &utxo_hashes,
                     &rp_hashes,
@@ -478,30 +502,27 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
                     Ok(_) => {
                         // The order of these inserts are important to ensure the MMRs are constructed correctly
                         // and the roots match.
-                        for (index, is_stxo) in is_stxos.into_iter().enumerate() {
-                            if is_stxo {
-                                async_db::insert_mmr_node(db.clone(), MmrTree::Utxo, utxo_hashes[index].clone(), true)
-                                    .await?;
-                                async_db::insert_mmr_node(
-                                    db.clone(),
-                                    MmrTree::RangeProof,
-                                    rp_hashes[index].clone(),
-                                    false,
-                                )
-                                .await?;
-                            } else {
-                                // Inserting the UTXO will also insert the corresponding UTXO and RangeProof MMR
-                                // Nodes.
-                                async_db::insert_utxo(db.clone(), utxos.remove(0)).await?;
-                            }
-                        }
+                        let num_utxos = utxo_hashes.len();
+                        let txos = utxo_hashes
+                            .into_iter()
+                            .enumerate()
+                            .map(|(idx, hash)| {
+                                if is_stxos[idx] {
+                                    HorizonSyncTxo::spent(hash, rp_hashes[idx].clone())
+                                } else {
+                                    // Inserting the UTXO will also insert the corresponding UTXO and RangeProof MMR
+                                    // Nodes.
+                                    HorizonSyncTxo::unspent(utxos.remove(0))
+                                }
+                            })
+                            .collect();
 
-                        async_db::horizon_sync_create_mmr_checkpoint(self.db(), MmrTree::Utxo).await?;
-                        async_db::horizon_sync_create_mmr_checkpoint(self.db(), MmrTree::RangeProof).await?;
+                        async_db::horizon_sync_insert_txos(self.db(), txos).await?;
+
                         trace!(
                             target: LOG_TARGET,
                             "{} UTXOs with MMR nodes inserted into database",
-                            utxo_hashes.len()
+                            num_utxos
                         );
 
                         break;
@@ -539,8 +560,11 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
 
     // Finalize the horizon state synchronization by setting the chain metadata to the local tip and committing
     // the horizon state to the blockchain backend.
-    async fn finalize_horizon_sync(&self) -> Result<(), HorizonSyncError> {
+    async fn finalize_horizon_sync(&mut self) -> Result<(), HorizonSyncError> {
         debug!(target: LOG_TARGET, "Validating horizon state");
+        self.shared
+            .set_status_info(StatusInfo::HorizonSync(HorizonSyncInfo::validating()))
+            .await;
         let validator = self.shared.sync_validators.final_state.clone();
         let horizon_sync_height = self.horizon_sync_height;
         let validation_result = spawn_blocking(move || {
@@ -666,7 +690,8 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
     }
 
     async fn prepare_for_sync(&mut self) -> Result<(), HorizonSyncError> {
-        async_db::horizon_sync_begin(self.db()).await?;
+        let in_progress_metadata = async_db::horizon_sync_begin(self.db()).await?;
+        self.local_metadata = in_progress_metadata.metadata.clone();
         Ok(())
     }
 

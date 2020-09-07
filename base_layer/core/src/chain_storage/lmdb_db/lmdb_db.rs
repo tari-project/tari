@@ -304,6 +304,9 @@ where D: Digest + Send + Sync
     // Reset any mmr txns that have been applied.
     fn reset_mmrs(&mut self) -> Result<(), ChainStorageError> {
         trace!(target: LOG_TARGET, "Resetting MMRs");
+        self.curr_utxo_checkpoint.clear();
+        self.curr_kernel_checkpoint.clear();
+        self.curr_range_proof_checkpoint.clear();
         self.kernel_mmr.reset()?;
         self.utxo_mmr.reset()?;
         self.range_proof_mmr.reset()?;
@@ -353,6 +356,9 @@ where D: Digest + Send + Sync
             },
             DbKeyValuePair::OrphanBlock(k, v) => {
                 lmdb_replace(&txn, &self.orphans_db, &k, &**v)?;
+            },
+            DbKeyValuePair::MmrNode(tree, hash, is_deleted) => {
+                self.insert_mmr_node(*tree, hash.clone(), *is_deleted)?;
             },
         }
         Ok(())
@@ -441,7 +447,7 @@ where D: Digest + Send + Sync
     fn op_unspend(&mut self, txn: &WriteTransaction<'_>, key: &DbKey) -> Result<(), ChainStorageError> {
         match key {
             DbKey::SpentOutput(hash) => {
-                let stxo: TransactionOutput = lmdb_get_txn(txn, &self.stxos_db, &hash)?.ok_or_else(|| {
+                let stxo: TransactionOutput = lmdb_get_txn(txn, &self.stxos_db, hash)?.ok_or_else(|| {
                     error!(
                         target: LOG_TARGET,
                         "STXO could not be unspent: Hash `{}` not found in the STXO db",
@@ -449,8 +455,8 @@ where D: Digest + Send + Sync
                     );
                     ChainStorageError::UnspendError
                 })?;
-                lmdb_delete(&txn, &self.stxos_db, &hash)?;
-                lmdb_insert(&txn, &self.utxos_db, &hash, &stxo)?;
+                lmdb_delete(&txn, &self.stxos_db, hash)?;
+                lmdb_insert(&txn, &self.utxos_db, hash, &stxo)?;
             },
             _ => return Err(ChainStorageError::InvalidOperation("Only STXOs can be unspent".into())),
         }
@@ -1023,7 +1029,6 @@ mod test {
         let db1 = lmdb_store.get_handle("1").unwrap().db();
         let db2 = lmdb_store.get_handle("2").unwrap().db();
 
-        let _txn2 = WriteTransaction::new(env.clone()).unwrap();
         {
             let txn = WriteTransaction::new(env.clone()).unwrap();
             lmdb_insert(&txn, &db1, &123, &"here").unwrap();

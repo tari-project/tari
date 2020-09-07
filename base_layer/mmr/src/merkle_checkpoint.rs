@@ -68,14 +68,18 @@ impl MerkleCheckPoint {
     /// count.
     pub fn reset(&mut self) {
         self.prev_accumulated_nodes_added_count = self.accumulated_nodes_added_count();
-        self.nodes_added.clear();
-        self.nodes_deleted = Bitmap::create();
+        self.clear();
     }
 
     /// Resets the current MerkleCheckpoint. The accumulated_nodes_added_count is set to the given `MerkleCheckpoint`s
     /// count.
     pub fn reset_to(&mut self, checkpoint: &Self) {
         self.prev_accumulated_nodes_added_count = checkpoint.accumulated_nodes_added_count();
+        self.clear();
+    }
+
+    /// Clear the contents of this checkpoint without updating the previous accumulated nodes added count.
+    pub fn clear(&mut self) {
         self.nodes_added.clear();
         self.nodes_deleted = Bitmap::create();
     }
