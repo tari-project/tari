@@ -337,8 +337,7 @@ where
         if let Err(e) = self.base_node_response_publisher.send(Arc::new(response)) {
             trace!(
                 target: LOG_TARGET,
-                "Could not publish Base Node Response, no subscribers to receive. (Err {:?})",
-                e
+                "Could not publish Base Node Response, no subscribers to receive."
             );
         }
 
