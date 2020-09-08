@@ -250,7 +250,7 @@ where TBackend: TransactionBackend + Clone + 'static
                     () = delay => {
                         trace!(
                             target: LOG_TARGET,
-                            "Transaction monitoring event 'time_out' for Mempool broadcast (Id: {}) ", self.id
+                            "Chain monitoring protocol event 'time_out' triggered (Id: {}) ", self.id
                         );
                         break;
                     },
