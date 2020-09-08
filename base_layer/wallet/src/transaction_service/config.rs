@@ -27,7 +27,8 @@ const LOG_TARGET: &str = "wallet::transaction_service::config";
 
 #[derive(Clone)]
 pub struct TransactionServiceConfig {
-    pub base_node_monitoring_timeout: Duration,
+    pub broadcast_monitoring_timeout: Duration,
+    pub chain_monitoring_timeout: Duration,
     pub direct_send_timeout: Duration,
     pub broadcast_send_timeout: Duration,
     pub low_power_polling_timeout: Duration, /* This is the timeout period that will be used when the wallet is in
@@ -37,7 +38,8 @@ pub struct TransactionServiceConfig {
 impl Default for TransactionServiceConfig {
     fn default() -> Self {
         Self {
-            base_node_monitoring_timeout: Duration::from_secs(30),
+            broadcast_monitoring_timeout: Duration::from_secs(30),
+            chain_monitoring_timeout: Duration::from_secs(30),
             direct_send_timeout: Duration::from_secs(20),
             broadcast_send_timeout: Duration::from_secs(30),
             low_power_polling_timeout: Duration::from_secs(300),
@@ -47,20 +49,23 @@ impl Default for TransactionServiceConfig {
 
 impl TransactionServiceConfig {
     pub fn new(
-        base_node_monitoring_timeout: Duration,
+        broadcast_monitoring_timeout: Duration,
+        chain_monitoring_timeout: Duration,
         direct_send_timeout: Duration,
         broadcast_send_timeout: Duration,
     ) -> Self
     {
         trace!(
             target: LOG_TARGET,
-            "Timeouts - Base node monitoring: {}s, Direct send: {}s, Broadcast send: {}s",
-            base_node_monitoring_timeout.as_secs(),
+            "Timeouts - Broadcast monitoring: {} s, Chain monitoring: {} s, Direct send: {} s, Broadcast send: {} s",
+            broadcast_monitoring_timeout.as_secs(),
+            chain_monitoring_timeout.as_secs(),
             direct_send_timeout.as_secs(),
             broadcast_send_timeout.as_secs(),
         );
         Self {
-            base_node_monitoring_timeout,
+            broadcast_monitoring_timeout,
+            chain_monitoring_timeout,
             direct_send_timeout,
             broadcast_send_timeout,
             ..Default::default()

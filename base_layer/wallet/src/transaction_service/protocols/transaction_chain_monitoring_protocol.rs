@@ -238,9 +238,20 @@ where TBackend: TransactionBackend + Clone + 'static
                                 "Chain monitoring protocol (Id: {}) timeout updated to {:?}", self.id, self.timeout
                             );
                             break;
+                        } else {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Chain monitoring protocol event 'updated_timeout' triggered (Id: {}) ({:?})",
+                                self.id,
+                                updated_timeout,
+                            );
                         }
                     },
                     () = delay => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Transaction monitoring event 'time_out' for Mempool broadcast (Id: {}) ", self.id
+                        );
                         break;
                     },
                 }

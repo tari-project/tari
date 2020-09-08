@@ -43,7 +43,7 @@ impl OutputManagerServiceConfig {
     pub fn new(base_node_query_timeout: Duration) -> Self {
         trace!(
             target: LOG_TARGET,
-            "Timeouts - Base node query: {}s",
+            "Timeouts - Base node query: {} s",
             base_node_query_timeout.as_secs()
         );
         Self {

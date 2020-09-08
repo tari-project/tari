@@ -1027,7 +1027,7 @@ where
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
         let timeout = match self.power_mode {
-            PowerMode::Normal => self.config.base_node_monitoring_timeout,
+            PowerMode::Normal => self.config.broadcast_monitoring_timeout,
             PowerMode::Low => self.config.low_power_polling_timeout,
         };
         match self.base_node_public_key.clone() {
@@ -1172,7 +1172,7 @@ where
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
         let timeout = match self.power_mode {
-            PowerMode::Normal => self.config.base_node_monitoring_timeout,
+            PowerMode::Normal => self.config.chain_monitoring_timeout,
             PowerMode::Low => self.config.low_power_polling_timeout,
         };
         match self.base_node_public_key.clone() {
@@ -1287,7 +1287,7 @@ where
         self.power_mode = mode;
         let timeout = match mode {
             PowerMode::Low => self.config.low_power_polling_timeout,
-            PowerMode::Normal => self.config.base_node_monitoring_timeout,
+            PowerMode::Normal => self.config.broadcast_monitoring_timeout,
         };
         if let Err(e) = self.timeout_update_publisher.send(timeout) {
             trace!(
@@ -1450,7 +1450,7 @@ where
         };
 
         let timeout = match self.power_mode {
-            PowerMode::Normal => self.config.base_node_monitoring_timeout,
+            PowerMode::Normal => self.config.broadcast_monitoring_timeout,
             PowerMode::Low => self.config.low_power_polling_timeout,
         };
         match self.base_node_public_key.clone() {

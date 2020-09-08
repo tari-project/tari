@@ -506,7 +506,8 @@ where
         wallet_subscriptions,
         factories.clone(),
         config.base_node_query_timeout,
-        config.transaction_base_node_monitoring_timeout,
+        config.transaction_broadcast_monitoring_timeout,
+        config.transaction_chain_monitoring_timeout,
         config.transaction_direct_send_timeout,
         config.transaction_broadcast_send_timeout,
         network,
@@ -899,7 +900,8 @@ async fn register_wallet_services(
     subscription_factory: Arc<SubscriptionFactory>,
     factories: CryptoFactories,
     base_node_query_timeout: Duration,
-    base_node_monitoring_timeout: Duration,
+    broadcast_monitoring_timeout: Duration,
+    chain_monitoring_timeout: Duration,
     direct_send_timeout: Duration,
     broadcast_send_timeout: Duration,
     network: NetworkType,
@@ -927,7 +929,8 @@ async fn register_wallet_services(
             network
         ))
         .add_initializer(TransactionServiceInitializer::new(
-            TransactionServiceConfig::new(base_node_monitoring_timeout,
+            TransactionServiceConfig::new(broadcast_monitoring_timeout,
+                                          chain_monitoring_timeout,
                                           direct_send_timeout,
                                           broadcast_send_timeout,),
             subscription_factory,
