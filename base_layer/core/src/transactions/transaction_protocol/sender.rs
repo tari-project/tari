@@ -399,13 +399,13 @@ impl SenderTransactionProtocol {
     /// formally validate the transaction terms (no inflation, signature matches etc). If any step fails,
     /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation. The function
     /// returns `Ok(false)` in this instance.
-    pub fn finalize(&mut self, features: KernelFeatures, factories: &CryptoFactories) -> Result<bool, TPE> {
+    pub fn finalize(&mut self, features: KernelFeatures, factories: &CryptoFactories) -> Result<(), TPE> {
         // Create the final aggregated signature, moving to the Failed state if anything goes wrong
         match &mut self.state {
             SenderState::Finalizing(_) => {
                 if let Err(e) = self.sign() {
-                    self.state = SenderState::Failed(e);
-                    return Ok(false);
+                    self.state = SenderState::Failed(e.clone());
+                    return Err(e);
                 }
             },
             _ => return Err(TPE::InvalidStateError),
@@ -417,19 +417,19 @@ impl SenderTransactionProtocol {
                     .validate()
                     .and_then(|_| Self::build_transaction(info, features, factories));
                 if let Err(e) = result {
-                    self.state = SenderState::Failed(e);
-                    return Ok(false);
+                    self.state = SenderState::Failed(e.clone());
+                    return Err(e);
                 }
                 let transaction = result.unwrap();
                 let result = transaction
                     .validate_internal_consistency(factories, None)
                     .map_err(TPE::TransactionBuildError);
                 if let Err(e) = result {
-                    self.state = SenderState::Failed(e);
-                    return Ok(false);
+                    self.state = SenderState::Failed(e.clone());
+                    return Err(e);
                 }
                 self.state = SenderState::FinalizedTransaction(transaction);
-                Ok(true)
+                Ok(())
             },
             _ => Err(TPE::InvalidStateError),
         }
@@ -596,8 +596,7 @@ mod test {
         assert_eq!(sender.is_failed(), false);
         assert!(sender.is_finalizing());
         match sender.finalize(KernelFeatures::empty(), &factories) {
-            Ok(true) => (),
-            Ok(false) => panic!("{:?}", sender.failure_reason()),
+            Ok(_0) => (),
             Err(e) => panic!("{:?}", e),
         }
         let tx = sender.get_transaction().unwrap();
@@ -648,8 +647,7 @@ mod test {
         // Transaction should be complete
         assert!(alice.is_finalizing());
         match alice.finalize(KernelFeatures::empty(), &factories) {
-            Ok(true) => (),
-            Ok(false) => panic!("{:?}", alice.failure_reason()),
+            Ok(_0) => (),
             Err(e) => panic!("{:?}", e),
         };
         assert!(alice.is_finalized());
@@ -721,8 +719,7 @@ mod test {
         // Transaction should be complete
         assert!(alice.is_finalizing());
         match alice.finalize(KernelFeatures::empty(), &factories) {
-            Ok(true) => (),
-            Ok(false) => panic!("{:?}", alice.failure_reason()),
+            Ok(_0) => (),
             Err(e) => panic!("{:?}", e),
         };
 
