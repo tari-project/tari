@@ -169,7 +169,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static, P: AsR
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig {
-                base_node_monitoring_timeout: Duration::from_secs(5),
+                broadcast_monitoring_timeout: Duration::from_secs(5),
                 low_power_polling_timeout: Duration::from_secs(20),
                 ..Default::default()
             },
@@ -244,7 +244,7 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
 
     let ts_service = TransactionService::new(
         TransactionServiceConfig {
-            base_node_monitoring_timeout: mined_request_timeout.unwrap_or(Duration::from_secs(5)),
+            broadcast_monitoring_timeout: mined_request_timeout.unwrap_or(Duration::from_secs(5)),
             direct_send_timeout: Duration::from_secs(5),
             broadcast_send_timeout: Duration::from_secs(5),
             low_power_polling_timeout: Duration::from_secs(15),

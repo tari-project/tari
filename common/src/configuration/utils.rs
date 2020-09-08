@@ -73,7 +73,9 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default("wallet.base_node_query_timeout", 30).unwrap();
-    cfg.set_default("wallet.transaction_base_node_monitoring_timeout", 30)
+    cfg.set_default("wallet.transaction_broadcast_monitoring_timeout", 30)
+        .unwrap();
+    cfg.set_default("wallet.transaction_chain_monitoring_timeout", 30)
         .unwrap();
     cfg.set_default("wallet.transaction_direct_send_timeout", 20).unwrap();
     cfg.set_default("wallet.transaction_broadcast_send_timeout", 30)

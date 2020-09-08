@@ -159,7 +159,7 @@ fn wallet_base_node_integration_test() {
         alice_comms_config,
         factories.clone(),
         Some(TransactionServiceConfig {
-            base_node_monitoring_timeout: Duration::from_secs(1),
+            broadcast_monitoring_timeout: Duration::from_secs(1),
             low_power_polling_timeout: Duration::from_secs(10),
             ..Default::default()
         }),
