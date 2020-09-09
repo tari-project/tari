@@ -43,6 +43,7 @@ use tari_core::{
     txn_schema,
 };
 use tari_mmr::MmrCacheConfig;
+use tari_storage::lmdb_store::LMDBConfig;
 
 /// Create a simple 6 block memory-backed database.
 /// Genesis block:
@@ -205,7 +206,7 @@ pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let db = create_lmdb_database(path, MmrCacheConfig::default()).unwrap();
+    let db = create_lmdb_database(path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
     let db = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
     (db, vec![block0], vec![vec![output]], consensus_manager)
 }

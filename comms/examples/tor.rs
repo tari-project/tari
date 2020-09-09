@@ -19,7 +19,10 @@ use tari_comms::{
     CommsNode,
 };
 use tari_crypto::tari_utilities::message_format::MessageFormat;
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use tari_storage::{
+    lmdb_store::{LMDBBuilder, LMDBConfig},
+    LMDBWrapper,
+};
 use tempfile::Builder;
 use thiserror::Error;
 use tokio::{runtime, task};
@@ -167,7 +170,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
 {
     let datastore = LMDBBuilder::new()
         .set_path(database_path.to_str().unwrap())
-        .set_environment_size(50)
+        .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(1)
         .add_database("peerdb", lmdb_zero::db::CREATE)
         .build()

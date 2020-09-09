@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum LMDBError {
     #[error("Cannot create LMDB. The path does not exist")]
     InvalidPath,
@@ -36,4 +36,6 @@ pub enum LMDBError {
         #[from]
         source: lmdb_zero::error::Error,
     },
+    #[error("An LMDB path error contained invalid UTF8: {0}")]
+    PathError(#[from] std::str::Utf8Error),
 }

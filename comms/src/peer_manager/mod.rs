@@ -39,6 +39,7 @@
 //! # use lmdb_zero::db;
 //! # use std::sync::Arc;
 //! # use tari_storage::LMDBWrapper;
+//! # use tari_storage::lmdb_store::LMDBConfig;
 //!
 //! let mut rng = rand::rngs::OsRng;
 //! let (dest_sk, pk) = CommsPublicKey::random_keypair(&mut rng);
@@ -55,7 +56,7 @@
 //! let database_name = "pm_peer_database";
 //! let datastore = LMDBBuilder::new()
 //!     .set_path("/tmp/")
-//!     .set_environment_size(10)
+//!     .set_env_config(LMDBConfig::default())
 //!     .set_max_number_of_databases(1)
 //!     .add_database(database_name, lmdb_zero::db::CREATE)
 //!     .build()

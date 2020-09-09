@@ -45,21 +45,19 @@ pub fn serialize<T>(data: &T) -> Result<Vec<u8>, ChainStorageError>
 where T: Serialize {
     let size = bincode::serialized_size(&data).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
     let mut buf = Vec::with_capacity(size as usize);
-    bincode::serialize_into(&mut buf, data)
-        .or_else(|e| {
-            error!(target: LOG_TARGET, "Could not serialize lmdb: {:?}", e);
-            Err(e)
-        })
-        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+    bincode::serialize_into(&mut buf, data).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not serialize lmdb: {:?}", e);
+        ChainStorageError::AccessError(e.to_string())
+    })?;
     Ok(buf)
 }
 
 pub fn deserialize<T>(buf_bytes: &[u8]) -> Result<T, error::Error>
 where T: DeserializeOwned {
     bincode::deserialize(buf_bytes)
-        .or_else(|e| {
+        .map_err(|e| {
             error!(target: LOG_TARGET, "Could not deserialize lmdb: {:?}", e);
-            Err(e)
+            e
         })
         .map_err(|e| error::Error::ValRejected(e.to_string()))
 }

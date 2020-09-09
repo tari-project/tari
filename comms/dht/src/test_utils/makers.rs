@@ -41,7 +41,7 @@ use tari_crypto::{
     keys::PublicKey,
     tari_utilities::{message_format::MessageFormat, ByteArray},
 };
-use tari_storage::lmdb_store::LMDBBuilder;
+use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
 use tari_test_utils::{paths::create_temporary_data_path, random};
 
 pub fn make_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
@@ -167,7 +167,7 @@ pub fn build_peer_manager() -> Arc<PeerManager> {
     let path = create_temporary_data_path();
     let datastore = LMDBBuilder::new()
         .set_path(path.to_str().unwrap())
-        .set_environment_size(50)
+        .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(1)
         .add_database(&database_name, lmdb_zero::db::CREATE)
         .build()

@@ -23,7 +23,7 @@
 //! # Global configuration of tari base layer system
 
 use super::ConfigurationError;
-use config::{Config, Environment};
+use config::{Config, ConfigError, Environment};
 use multiaddr::Multiaddr;
 use std::{
     convert::TryInto,
@@ -34,6 +34,15 @@ use std::{
     str::FromStr,
     time::Duration,
 };
+use tari_storage::lmdb_store::LMDBConfig;
+
+const DB_INIT_DEFAULT_MB: usize = 1000;
+const DB_GROW_DEFAULT_MB: usize = 500;
+const DB_RESIZE_DEFAULT_MB: usize = 100;
+
+const DB_INIT_MIN_MB: i64 = 100;
+const DB_GROW_MIN_MB: i64 = 20;
+const DB_RESIZE_MIN_MB: i64 = 10;
 
 //-------------------------------------        Main Configuration Struct      --------------------------------------//
 
@@ -45,6 +54,7 @@ pub struct GlobalConfig {
     pub listener_liveness_allowlist_cidrs: Vec<String>,
     pub data_dir: PathBuf,
     pub db_type: DatabaseType,
+    pub db_config: LMDBConfig,
     pub orphan_storage_capacity: usize,
     pub pruning_horizon: u64,
     pub pruned_mode_cleanup_interval: u64,
@@ -98,17 +108,17 @@ impl GlobalConfig {
 fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, ConfigurationError> {
     let net_str = network.to_string().to_lowercase();
 
-    let key = config_string("base_node", &net_str, "db_type");
-    let db_type = cfg
-        .get_str(&key)
-        .map(|s| s.to_lowercase())
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-
     let key = config_string("base_node", &net_str, "data_dir");
     let data_dir: PathBuf = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
         .into();
+
+    let key = config_string("base_node", &net_str, "db_type");
+    let db_type = cfg
+        .get_str(&key)
+        .map(|s| s.to_lowercase())
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     let db_type = match db_type.as_str() {
         "memory" => Ok(DatabaseType::Memory),
@@ -118,6 +128,65 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
             &format!("Invalid option: {}", invalid_opt),
         )),
     }?;
+
+    let key = config_string("base_node", &net_str, "db_init_size_mb");
+    let init_size_mb = match cfg.get_int(&key) {
+        Ok(mb) if mb < DB_INIT_MIN_MB => {
+            return Err(ConfigurationError::new(
+                &key,
+                &format!("DB initial size must be at least {} MB.", DB_INIT_MIN_MB),
+            ))
+        },
+        Ok(mb) => mb as usize,
+        Err(e) => match e {
+            ConfigError::NotFound(_) => DB_INIT_DEFAULT_MB, // default
+            other => return Err(ConfigurationError::new(&key, &other.to_string())),
+        },
+    };
+
+    let key = config_string("base_node", &net_str, "db_grow_size_mb");
+    let grow_size_mb = match cfg.get_int(&key) {
+        Ok(mb) if mb < DB_GROW_MIN_MB => {
+            return Err(ConfigurationError::new(
+                &key,
+                &format!("DB grow size must be at least {} MB.", DB_GROW_MIN_MB),
+            ))
+        },
+        Ok(mb) => mb as usize,
+        Err(e) => match e {
+            ConfigError::NotFound(_) => DB_GROW_DEFAULT_MB, // default
+            other => return Err(ConfigurationError::new(&key, &other.to_string())),
+        },
+    };
+
+    let key = config_string("base_node", &net_str, "db_resize_threshold_mb");
+    let resize_threshold_mb = match cfg.get_int(&key) {
+        Ok(mb) if mb < DB_RESIZE_MIN_MB => {
+            return Err(ConfigurationError::new(
+                &key,
+                &format!("DB resize threshold must be at least {} MB.", DB_RESIZE_MIN_MB),
+            ))
+        },
+        Ok(mb) if mb as usize >= grow_size_mb => {
+            return Err(ConfigurationError::new(
+                &key,
+                "DB resize threshold must be less than grow size.",
+            ))
+        },
+        Ok(mb) if mb as usize >= init_size_mb => {
+            return Err(ConfigurationError::new(
+                &key,
+                "DB resize threshold must be less than init size.",
+            ))
+        },
+        Ok(mb) => mb as usize,
+        Err(e) => match e {
+            ConfigError::NotFound(_) => DB_RESIZE_DEFAULT_MB, // default
+            other => return Err(ConfigurationError::new(&key, &other.to_string())),
+        },
+    };
+
+    let db_config = LMDBConfig::new_from_mb(init_size_mb, grow_size_mb, resize_threshold_mb);
 
     let key = config_string("base_node", &net_str, "orphan_storage_capacity");
     let orphan_storage_capacity = cfg
@@ -336,6 +405,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         listener_liveness_allowlist_cidrs: liveness_allowlist_cidrs,
         data_dir,
         db_type,
+        db_config,
         orphan_storage_capacity,
         pruning_horizon,
         pruned_mode_cleanup_interval,

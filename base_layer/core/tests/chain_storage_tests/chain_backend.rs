@@ -48,6 +48,7 @@ use tari_core::{
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, Hashable};
 use tari_mmr::{MmrCacheConfig, MutableMmr};
+use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 
 fn insert_contains_delete_and_fetch_header<T: BlockchainBackend>(mut db: T) {
@@ -93,7 +94,7 @@ fn lmdb_insert_contains_delete_and_fetch_header() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         insert_contains_delete_and_fetch_header(db);
     }
 
@@ -138,7 +139,7 @@ fn lmdb_insert_contains_delete_and_fetch_utxo() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         insert_contains_delete_and_fetch_utxo(db);
     }
 
@@ -184,7 +185,7 @@ fn lmdb_insert_contains_delete_and_fetch_kernel() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         insert_contains_delete_and_fetch_kernel(db);
     }
 
@@ -237,7 +238,7 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
     {
         let network = Network::LocalNet;
         let consensus_constants = network.create_consensus_constants();
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         insert_contains_delete_and_fetch_orphan(db, &consensus_constants);
     }
 
@@ -309,7 +310,7 @@ fn lmdb_spend_utxo_and_unspend_stxo() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         spend_utxo_and_unspend_stxo(db);
     }
 
@@ -399,7 +400,7 @@ fn lmdb_insert_fetch_metadata() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         insert_fetch_metadata(db);
     }
 
@@ -485,7 +486,7 @@ fn lmdb_fetch_mmr_root_and_proof_for_utxo_and_rp() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         fetch_mmr_root_and_proof_for_utxo_and_rp(db);
     }
 
@@ -546,7 +547,7 @@ fn lmdb_fetch_mmr_root_and_proof_for_kernel() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         fetch_mmr_root_and_proof_for_kernel(db);
     }
 
@@ -608,7 +609,7 @@ fn lmdb_fetch_future_mmr_root_for_utxo_and_rp() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         fetch_future_mmr_root_for_utxo_and_rp(db);
     }
 
@@ -658,7 +659,7 @@ fn lmdb_fetch_future_mmr_root_for_for_kernel() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         fetch_future_mmr_root_for_for_kernel(db);
     }
 
@@ -776,7 +777,7 @@ fn lmdb_commit_block_and_create_fetch_checkpoint_and_rewind_mmr() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         commit_block_and_create_fetch_checkpoint_and_rewind_mmr(db);
     }
 
@@ -850,7 +851,7 @@ fn lmdb_for_each_orphan() {
     {
         let network = Network::LocalNet;
         let consensus_constants = network.create_consensus_constants();
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         for_each_orphan(db, &consensus_constants);
     }
 
@@ -908,7 +909,7 @@ fn lmdb_for_each_kernel() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         for_each_kernel(db);
     }
 
@@ -966,7 +967,7 @@ fn lmdb_for_each_header() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         for_each_header(db);
     }
 
@@ -1025,7 +1026,7 @@ fn lmdb_for_each_utxo() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         for_each_utxo(db);
     }
 
@@ -1058,7 +1059,7 @@ fn lmdb_backend_restore() {
     let path = create_temporary_data_path();
     {
         {
-            let mut db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
+            let mut db = create_lmdb_database(&path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
             let mut txn = DbTransaction::new();
             txn.insert_orphan(orphan.clone());
             txn.insert_utxo(utxo1);
@@ -1082,7 +1083,7 @@ fn lmdb_backend_restore() {
             assert_eq!(db.contains(&DbKey::OrphanBlock(orphan_hash.clone())).unwrap(), true);
         }
         // Restore backend storage
-        let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         assert_eq!(db.contains(&DbKey::BlockHeader(header.height)).unwrap(), true);
         assert_eq!(db.contains(&DbKey::BlockHash(header_hash)).unwrap(), true);
         assert_eq!(db.contains(&DbKey::UnspentOutput(utxo_hash)).unwrap(), true);
@@ -1105,7 +1106,7 @@ fn lmdb_mmr_reset_and_commit() {
     // Perform test
     {
         let factories = CryptoFactories::default();
-        let mut db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let mut db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
 
         let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
         let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
@@ -1320,7 +1321,7 @@ fn lmdb_fetch_checkpoint() {
     // Perform test
     {
         let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 1 };
-        let db = create_lmdb_database(&temp_path, mmr_cache_config).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), mmr_cache_config).unwrap();
         fetch_checkpoint(db);
     }
 
@@ -1467,7 +1468,7 @@ fn lmdb_merging_and_fetch_checkpoints_and_stxo_discard() {
     // Perform test
     {
         let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 1 };
-        let db = create_lmdb_database(&temp_path, mmr_cache_config).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), mmr_cache_config).unwrap();
         merging_and_fetch_checkpoints_and_stxo_discard(db);
     }
 
@@ -1515,7 +1516,7 @@ fn lmdb_duplicate_utxo() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         duplicate_utxo(db);
     }
 
@@ -1559,7 +1560,7 @@ fn lmdb_fetch_last_header() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         fetch_last_header(db);
     }
 
@@ -1659,7 +1660,7 @@ fn lmdb_fetch_target_difficulties() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         fetch_target_difficulties(db);
     }
 
@@ -1768,7 +1769,7 @@ fn lmdb_fetch_utxo_rp_nodes_and_count() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         fetch_utxo_rp_mmr_nodes_and_count(db);
     }
 
@@ -1845,7 +1846,7 @@ fn lmdb_fetch_kernel_nodes_and_count() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         fetch_kernel_mmr_nodes_and_count(db);
     }
 
@@ -1937,7 +1938,7 @@ fn lmdb_insert_mmr_node_for_utxo_and_rp() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         insert_mmr_node_for_utxo_and_rp(db);
     }
 

@@ -3715,6 +3715,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "structopt",
+ "tari_storage",
  "tari_test_utils",
  "tempfile",
  "toml 0.5.6",

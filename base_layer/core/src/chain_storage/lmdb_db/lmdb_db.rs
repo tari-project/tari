@@ -90,7 +90,7 @@ use tari_mmr::{
     MmrCacheConfig,
     MutableMmr,
 };
-use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBStore};
+use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
 
 type DatabaseRef = Arc<Database<'static>>;
 
@@ -101,6 +101,7 @@ pub struct LMDBDatabase<D>
 where D: Digest
 {
     env: Arc<Environment>,
+    env_config: LMDBConfig,
     metadata_db: DatabaseRef,
     mem_metadata: ChainMetadata, // Memory copy of stored metadata
     headers_db: DatabaseRef,
@@ -164,6 +165,7 @@ where D: Digest + Send + Sync
             },
             range_proof_checkpoints,
             env,
+            env_config: store.env_config(),
             is_mem_metadata_dirty: false,
         })
     }
@@ -311,7 +313,7 @@ where D: Digest + Send + Sync
     fn op_insert(&mut self, txn: &WriteTransaction<'_>, kv_pair: &DbKeyValuePair) -> Result<(), ChainStorageError> {
         match kv_pair {
             DbKeyValuePair::Metadata(k, v) => {
-                lmdb_replace(&txn, &self.metadata_db, &(k.clone() as u32), &v)?;
+                lmdb_replace(&txn, &self.metadata_db, &(*k as u32), &v)?;
                 self.is_mem_metadata_dirty = true;
             },
             DbKeyValuePair::BlockHeader(k, v) => {
@@ -509,6 +511,7 @@ where D: Digest + Send + Sync
 
 pub fn create_lmdb_database<P: AsRef<Path>>(
     path: P,
+    config: LMDBConfig,
     mmr_cache_config: MmrCacheConfig,
 ) -> Result<LMDBDatabase<HashDigest>, ChainStorageError>
 {
@@ -516,7 +519,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
     let _ = std::fs::create_dir_all(&path);
     let lmdb_store = LMDBBuilder::new()
         .set_path(path)
-        .set_environment_size(1_000)
+        .set_env_config(config)
         .set_max_number_of_databases(15)
         .add_database(LMDB_DB_METADATA, flags)
         .add_database(LMDB_DB_HEADERS, flags)
@@ -542,6 +545,8 @@ where D: Digest + Send + Sync
             return Ok(());
         }
 
+        LMDBStore::resize_if_required(&self.env, &self.env_config)?;
+
         let mark = Instant::now();
         let num_operations = txn.operations.len();
         match self.apply_db_transaction(&txn) {
@@ -566,7 +571,7 @@ where D: Digest + Send + Sync
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
         Ok(match key {
             DbKey::Metadata(k) => {
-                let val: Option<MetadataValue> = lmdb_get(&self.env, &self.metadata_db, &(k.clone() as u32))?;
+                let val: Option<MetadataValue> = lmdb_get(&self.env, &self.metadata_db, &(*k as u32))?;
                 val.map(DbValue::Metadata)
             },
             DbKey::BlockHeader(k) => {
@@ -1004,9 +1009,10 @@ mod test {
         let flags = db::CREATE;
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
+        let config = LMDBConfig::new_from_mb(1000, 100, 100);
         let lmdb_store = LMDBBuilder::new()
             .set_path(path)
-            .set_environment_size(1_000)
+            .set_env_config(config)
             .set_max_number_of_databases(15)
             .add_database("1", flags)
             .add_database("2", flags)
