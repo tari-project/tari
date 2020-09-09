@@ -334,7 +334,7 @@ where
     ) -> Result<(), OutputManagerError>
     {
         // Publish this response to any protocols that are subscribed
-        if let Err(e) = self.base_node_response_publisher.send(Arc::new(response)) {
+        if let Err(_e) = self.base_node_response_publisher.send(Arc::new(response)) {
             trace!(
                 target: LOG_TARGET,
                 "Could not publish Base Node Response, no subscribers to receive."

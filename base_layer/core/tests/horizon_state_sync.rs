@@ -25,21 +25,25 @@ mod helpers;
 
 use crate::helpers::block_builders::append_block_with_coinbase;
 use helpers::{block_builders::create_genesis_block, nodes::create_network_with_2_base_nodes_with_config};
+use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 use tari_core::{
     base_node::{
         service::BaseNodeServiceConfig,
-        states::{
-            BestChainMetadataBlockSyncInfo,
-            BlockSyncConfig,
-            HeaderSync,
-            HorizonStateSync,
-            HorizonSyncConfig,
-            StateEvent,
-            SyncPeer,
-            SyncPeerConfig,
+        state_machine_service::{
+            states::{
+                BestChainMetadataBlockSyncInfo,
+                BlockSyncConfig,
+                HeaderSync,
+                HorizonStateSync,
+                HorizonSyncConfig,
+                StateEvent,
+                StatusInfo,
+                SyncPeer,
+                SyncPeerConfig,
+            },
+            BaseNodeStateMachine,
+            BaseNodeStateMachineConfig,
         },
-        BaseNodeStateMachine,
-        BaseNodeStateMachineConfig,
         SyncValidators,
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase, BlockchainDatabaseConfig, MmrTree},
@@ -104,6 +108,9 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
@@ -114,6 +121,9 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        service_shutdown,
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -224,6 +234,9 @@ fn test_pruned_mode_sync_with_spent_utxos() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
@@ -239,6 +252,9 @@ fn test_pruned_mode_sync_with_spent_utxos() {
             MockValidator::new(true),
         ),
         shutdown.to_signal(),
+        service_shutdown,
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -388,6 +404,9 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
@@ -403,6 +422,9 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
             MockValidator::new(true),
         ),
         shutdown.to_signal(),
+        service_shutdown,
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -625,6 +647,9 @@ fn test_pruned_mode_sync_fail_final_validation() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
@@ -635,6 +660,9 @@ fn test_pruned_mode_sync_fail_final_validation() {
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(false)),
         shutdown.to_signal(),
+        service_shutdown,
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -682,7 +710,10 @@ fn test_pruned_mode_sync_fail_final_validation() {
         assert!(alice_db.get_horizon_sync_state().unwrap().is_none());
         let local_metadata = alice_db.get_chain_metadata().unwrap();
         assert!(local_metadata.best_block.is_some());
-
+        let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) =
+            bounded(10, 3);
+        let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+        let service_shutdown = Shutdown::new();
         let mut alice_state_machine = BaseNodeStateMachine::new(
             &alice_node.blockchain_db,
             &alice_node.local_nci,
@@ -693,6 +724,9 @@ fn test_pruned_mode_sync_fail_final_validation() {
             state_machine_config,
             SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
             shutdown.to_signal(),
+            service_shutdown,
+            status_event_sender,
+            state_change_event_publisher,
         );
 
         // Synchronize Kernels and UTXOs

@@ -42,7 +42,7 @@ use tari_comms::{
 };
 use tari_comms_dht::DhtConfig;
 use tari_core::{
-    base_node::{service::BaseNodeServiceConfig, states::StateEvent},
+    base_node::{service::BaseNodeServiceConfig, state_machine_service::states::StateEvent},
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::{MempoolServiceConfig, TxStorageResponse},
     mining::Miner,

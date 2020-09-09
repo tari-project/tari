@@ -1,15 +1,3 @@
-/// This is the message containing the public data that the Receiver will send back to the Sender
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct RecipientSignedMessage {
-    #[prost(uint64, tag = "1")]
-    pub tx_id: u64,
-    #[prost(message, optional, tag = "2")]
-    pub output: ::std::option::Option<super::types::TransactionOutput>,
-    #[prost(bytes, tag = "3")]
-    pub public_spend_key: std::vec::Vec<u8>,
-    #[prost(message, optional, tag = "4")]
-    pub partial_signature: ::std::option::Option<super::types::Signature>,
-}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TransactionFinalizedMessage {
     /// The transaction id for the recipient
@@ -72,4 +60,16 @@ pub mod transaction_sender_message {
         #[prost(bool, tag = "3")]
         Multiple(bool),
     }
+}
+/// This is the message containing the public data that the Receiver will send back to the Sender
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RecipientSignedMessage {
+    #[prost(uint64, tag = "1")]
+    pub tx_id: u64,
+    #[prost(message, optional, tag = "2")]
+    pub output: ::std::option::Option<super::types::TransactionOutput>,
+    #[prost(bytes, tag = "3")]
+    pub public_spend_key: std::vec::Vec<u8>,
+    #[prost(message, optional, tag = "4")]
+    pub partial_signature: ::std::option::Option<super::types::Signature>,
 }

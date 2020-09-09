@@ -231,6 +231,9 @@ where TBackend: TransactionBackend + 'static
                                 OutputManagerEvent::UtxoValidationFailure(request_key) => {
                                     self.receive_sync_process_result(request_key, false);
                                 }
+                                OutputManagerEvent::UtxoValidationAborted(request_key) => {
+                                    self.receive_sync_process_result(request_key, false);
+                                }
                                 /// Only the above variants are mapped to callbacks
                                 _ => (),
                             }

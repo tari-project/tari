@@ -1516,6 +1516,7 @@ fn transaction_mempool_broadcast() {
                 outputs: completed_tx_outputs.into(),
             },
         )),
+        is_synced: false,
     };
 
     runtime
@@ -2080,6 +2081,7 @@ fn transaction_base_node_monitoring() {
                 outputs: wrong_outputs.into(),
             },
         )),
+        is_synced: false,
     };
 
     runtime
@@ -2151,6 +2153,7 @@ fn transaction_base_node_monitoring() {
                 outputs: broadcast_tx_outputs.into(),
             },
         )),
+        is_synced: false,
     };
 
     runtime
@@ -2167,6 +2170,7 @@ fn transaction_base_node_monitoring() {
                 outputs: completed_tx_outputs.into(),
             },
         )),
+        is_synced: false,
     };
 
     runtime
@@ -2508,6 +2512,7 @@ fn transaction_cancellation_when_not_in_mempool() {
         response: Some(BaseNodeResponseProto::TransactionOutputs(
             BaseNodeProto::TransactionOutputs { outputs: vec![] },
         )),
+        is_synced: false,
     };
 
     runtime.block_on(async {
@@ -3317,7 +3322,6 @@ fn test_restarting_transaction_protocols() {
 
 #[test]
 fn test_handling_coinbase_transactions() {
-    let _ = env_logger::try_init();
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
@@ -3461,6 +3465,7 @@ fn test_handling_coinbase_transactions() {
         response: Some(BaseNodeResponseProto::TransactionOutputs(
             BaseNodeProto::TransactionOutputs { outputs: vec![].into() },
         )),
+        is_synced: false,
     };
     let metadata_response1 = BaseNodeProto::BaseNodeServiceResponse {
         request_key: request_key1,
@@ -3471,6 +3476,7 @@ fn test_handling_coinbase_transactions() {
             accumulated_difficulty: None,
             effective_pruned_height: 0,
         })),
+        is_synced: false,
     };
     runtime
         .block_on(alice_base_node_response_sender.send(create_dummy_message(
@@ -3547,6 +3553,7 @@ fn test_handling_coinbase_transactions() {
                 outputs: target_tx_outputs.into(),
             },
         )),
+        is_synced: false,
     };
     let metadata_response1 = BaseNodeProto::BaseNodeServiceResponse {
         request_key: request_key2,
@@ -3557,6 +3564,7 @@ fn test_handling_coinbase_transactions() {
             accumulated_difficulty: None,
             effective_pruned_height: 0,
         })),
+        is_synced: false,
     };
     runtime
         .block_on(alice_base_node_response_sender.send(create_dummy_message(

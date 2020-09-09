@@ -330,7 +330,28 @@ where TBackend: OutputManagerBackend + Clone + 'static
     ) -> Result<bool, OutputManagerProtocolError>
     {
         let request_key = response.request_key;
-
+        if !response.is_synced {
+            warn!(
+                target: LOG_TARGET,
+                "Assigned Base Node is not synced to chain tip, aborted UTXO Validation protocol (id: {})", self.id
+            );
+            let _ = self
+                .resources
+                .event_publisher
+                .send(OutputManagerEvent::UtxoValidationAborted(self.id))
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event {:?}, because there are no subscribers.",
+                        e.0
+                    );
+                    e
+                });
+            return Err(OutputManagerProtocolError::new(
+                self.id,
+                OutputManagerError::BaseNodeNotSynced,
+            ));
+        }
         let queried_hashes = if let Some(hashes) = self.pending_queries.remove(&request_key) {
             hashes
         } else {

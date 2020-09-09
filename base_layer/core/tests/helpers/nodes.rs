@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::helpers::mock_state_machine::MockBaseNodeStateMachine;
 use futures::Sink;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{error::Error, iter, path::Path, sync::Arc, time::Duration};
@@ -83,6 +84,7 @@ pub struct NodeInterfaces {
     pub chain_metadata_handle: ChainMetadataHandle,
     pub liveness_handle: LivenessHandle,
     pub comms: CommsNode,
+    pub mock_base_node_state_machine: MockBaseNodeStateMachine,
 }
 
 /// The BaseNodeBuilder can be used to construct a test Base Node with all its relevant services and interfaces for
@@ -215,6 +217,7 @@ impl BaseNodeBuilder {
             chain_metadata_handle,
             liveness_handle,
             comms,
+            mock_base_node_state_machine,
         ) = setup_base_node_services(
             runtime,
             node_identity.clone(),
@@ -242,6 +245,7 @@ impl BaseNodeBuilder {
                 chain_metadata_handle,
                 liveness_handle,
                 comms,
+                mock_base_node_state_machine,
             },
             consensus_manager,
         )
@@ -459,11 +463,14 @@ fn setup_base_node_services(
     ChainMetadataHandle,
     LivenessHandle,
     CommsNode,
+    MockBaseNodeStateMachine,
 )
 {
     let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100, 20);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = runtime.block_on(setup_comms_services(node_identity, peers, publisher, data_path));
+
+    let mock_state_machine = MockBaseNodeStateMachine::new();
 
     let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
@@ -474,9 +481,9 @@ fn setup_base_node_services(
         ))
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory.clone(),
-            blockchain_db,
+            blockchain_db.clone(),
             mempool.clone(),
-            consensus_manager,
+            consensus_manager.clone(),
             base_node_service_config,
         ))
         .add_initializer(MempoolServiceInitializer::new(
@@ -484,6 +491,7 @@ fn setup_base_node_services(
             mempool,
             mempool_service_config,
         ))
+        .add_initializer(mock_state_machine.get_initializer())
         .add_initializer(ChainMetadataServiceInitializer)
         .finish();
 
@@ -497,5 +505,6 @@ fn setup_base_node_services(
         handles.get_handle::<ChainMetadataHandle>().unwrap(),
         handles.get_handle::<LivenessHandle>().unwrap(),
         comms,
+        mock_state_machine,
     )
 }

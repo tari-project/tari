@@ -24,8 +24,6 @@ use crate::miner;
 use futures::future;
 use log::*;
 use std::{
-    fs,
-    net::SocketAddr,
     path::Path,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -43,11 +41,9 @@ use tari_app_utilities::{
         setup_wallet_transport_type,
     },
 };
-use tari_broadcast_channel::Subscriber;
-use tari_common::{CommsTransport, DatabaseType, GlobalConfig, Network, SocksAuthentication, TorControlAuthentication};
+use tari_common::{CommsTransport, DatabaseType, GlobalConfig, Network, TorControlAuthentication};
 use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{NodeIdentity, Peer},
     protocol::ProtocolExtensions,
     socks,
     tor,
@@ -61,21 +57,20 @@ use tari_comms::{
 use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
 use tari_core::{
     base_node::{
-        chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
+        chain_metadata_service::ChainMetadataServiceInitializer,
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
-        states::StatusInfo,
-        BaseNodeStateMachine,
-        BaseNodeStateMachineConfig,
+        state_machine_service::{
+            initializer::BaseNodeStateMachineInitializer,
+            states::{BlockSyncStrategy, StatusInfo},
+        },
         LocalNodeCommsInterface,
-        OutboundNodeCommsInterface,
-        SyncValidators,
+        StateMachineHandle,
     },
     chain_storage::{
         create_lmdb_database,
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
-        LMDBDatabase,
         MemoryDatabase,
         Validators,
     },
@@ -90,8 +85,7 @@ use tari_core::{
         MempoolValidators,
     },
     mining::{Miner, MinerInstruction},
-    tari_utilities::hex::Hex,
-    transactions::types::{CryptoFactories, HashDigest, PublicKey},
+    transactions::types::{CryptoFactories, HashDigest},
     validation::{
         accum_difficulty_validators::AccumDifficultyValidator,
         block_validators::{FullConsensusValidator, StatelessBlockValidator},
@@ -129,7 +123,7 @@ use tari_wallet::{
 use tokio::{
     runtime,
     stream::StreamExt,
-    sync::{broadcast, broadcast::Sender as syncSender},
+    sync::{broadcast, broadcast::Sender as syncSender, watch},
     task,
     time::delay_for,
 };
@@ -140,108 +134,30 @@ const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
 /// The minimum buffer size for the base node wallet pubsub_connector channel
 const BASE_NODE_WALLET_BUFFER_MIN_SIZE: usize = 300;
 
-#[macro_export]
-macro_rules! using_backend {
-    ($self:expr, $i: ident, $cmd: expr) => {
-        match $self {
-            NodeContainer::LMDB($i) => $cmd,
-            NodeContainer::Memory($i) => $cmd,
-        }
-    };
+/// The base node context is a container for all the key structural pieces for the base node application, including the
+/// communications stack, the node state machine, the miner and handles to the various services that are registered
+/// on the comms stack.
+pub struct BaseNodeContext {
+    base_node_comms: CommsNode,
+    base_node_dht: Dht,
+    wallet_comms: CommsNode,
+    base_node_handles: Arc<ServiceHandles>,
+    wallet_handles: Arc<ServiceHandles>,
+    miner: Option<Miner>,
+    miner_enabled: Arc<AtomicBool>,
+    mining_status: Arc<AtomicBool>,
+    miner_instruction_events: syncSender<MinerInstruction>,
+    pub miner_hashrate: Arc<AtomicU64>,
 }
 
-/// The type of DB is configured dynamically in the config file, but the state machine struct has static dispatch;
-/// and so we have to use an enum wrapper to hold the various acceptable types.
-pub enum NodeContainer {
-    LMDB(BaseNodeContext<LMDBDatabase<HashDigest>>),
-    Memory(BaseNodeContext<MemoryDatabase<HashDigest>>),
-}
-
-impl NodeContainer {
+impl BaseNodeContext {
     /// Starts the node container. This entails starting the miner and wallet (if `mining_enabled` is true) and then
     /// starting the base node state machine. This call consumes the NodeContainer instance.
-    pub async fn run(self, rt: runtime::Handle) {
-        using_backend!(self, ctx, NodeContainer::run_impl(ctx, rt).await)
-    }
-
-    /// Returns a handle to the wallet output manager service. This function panics if it has not been registered
-    /// with the comms service
-    pub fn output_manager(&self) -> OutputManagerHandle {
-        using_backend!(self, ctx, ctx.output_manager())
-    }
-
-    /// Returns a handle to the local node communication service. This function panics if it has not been registered
-    /// with the comms service
-    pub fn local_node(&self) -> LocalNodeCommsInterface {
-        using_backend!(self, ctx, ctx.local_node())
-    }
-
-    /// Returns a handle to the local mempool service. This function panics if it has not been registered
-    /// with the comms service
-    pub fn local_mempool(&self) -> LocalMempoolService {
-        using_backend!(self, ctx, ctx.local_mempool())
-    }
-
-    /// Returns the CommsNode.
-    pub fn base_node_comms(&self) -> &CommsNode {
-        using_backend!(self, ctx, &ctx.base_node_comms)
-    }
-
-    /// Returns the wallet CommsNode.
-    pub fn wallet_comms(&self) -> &CommsNode {
-        using_backend!(self, ctx, &ctx.wallet_comms)
-    }
-
-    /// Returns this node's identity.
-    pub fn base_node_identity(&self) -> Arc<NodeIdentity> {
-        using_backend!(self, ctx, ctx.base_node_comms.node_identity())
-    }
-
-    /// Returns the base node DHT
-    pub fn base_node_dht(&self) -> &Dht {
-        using_backend!(self, ctx, &ctx.base_node_dht)
-    }
-
-    /// Returns this node's wallet identity.
-    pub fn wallet_node_identity(&self) -> Arc<NodeIdentity> {
-        using_backend!(self, ctx, ctx.wallet_comms.node_identity())
-    }
-
-    /// Returns this node's miner enabled flag.
-    pub fn miner_enabled(&self) -> Arc<AtomicBool> {
-        using_backend!(self, ctx, ctx.miner_enabled.clone())
-    }
-
-    /// Returns this node's mining status.
-    pub fn mining_status(&self) -> Arc<AtomicBool> {
-        using_backend!(self, ctx, ctx.mining_status.clone())
-    }
-
-    /// Returns this node's miner atomic hash rate.
-    pub fn miner_hashrate(&self) -> Arc<AtomicU64> {
-        using_backend!(self, ctx, ctx.miner_hashrate.clone())
-    }
-
-    /// Returns this node's miner instruction event channel.
-    pub fn miner_instruction_events(&self) -> syncSender<MinerInstruction> {
-        using_backend!(self, ctx, ctx.miner_instruction_events.clone())
-    }
-
-    /// Returns a handle to the wallet transaction service. This function panics if it has not been registered
-    /// with the comms service
-    pub fn wallet_transaction_service(&self) -> TransactionServiceHandle {
-        using_backend!(self, ctx, ctx.wallet_transaction_service())
-    }
-
-    pub fn get_state_machine_info_channel(&self) -> Subscriber<StatusInfo> {
-        using_backend!(self, ctx, ctx.get_status_event_stream())
-    }
-
-    async fn run_impl<B: BlockchainBackend + 'static>(mut ctx: BaseNodeContext<B>, rt: runtime::Handle) {
+    pub async fn run(mut self, rt: runtime::Handle) {
         info!(target: LOG_TARGET, "Tari base node has STARTED");
-        let mut wallet_output_handle = ctx.output_manager();
+        let mut wallet_output_handle = self.output_manager();
         // Start wallet & miner
-        let mut miner = ctx.miner.take().expect("Miner was not constructed");
+        let mut miner = self.miner.take().expect("Miner was not constructed");
         let mut rx = miner.get_utxo_receiver_channel();
         rt.spawn(async move {
             info!(target: LOG_TARGET, " ⚒️ Mining wallet ready to receive coins.");
@@ -268,37 +184,13 @@ impl NodeContainer {
             miner.mine().await;
             info!(target: LOG_TARGET, "⚒️ Miner has shutdown");
         });
-        info!(target: LOG_TARGET, "Starting main base node event loop");
-        ctx.node.run().await;
+        if let Err(e) = self.state_machine().shutdown_signal().await {
+            warn!(target: LOG_TARGET, "Error shutting down Base Node State Machine: {}", e);
+        }
         info!(target: LOG_TARGET, "Initiating communications stack shutdown");
-        future::join(ctx.base_node_comms.shutdown(), ctx.wallet_comms.shutdown()).await;
+        future::join(self.base_node_comms.shutdown(), self.wallet_comms.shutdown()).await;
     }
-}
 
-/// The base node context is a container for all the key structural pieces for the base node application, including the
-/// communications stack, the node state machine, the miner and handles to the various services that are registered
-/// on the comms stack.
-///
-/// `BaseNodeContext` is not intended to be ever used directly, so is a private struct. It is only ever created in the
-/// [NodeContainer] enum, which serves the purpose  of abstracting the specific `BlockchainBackend` instance away
-/// from users of the full base node stack.
-pub struct BaseNodeContext<B: BlockchainBackend> {
-    base_node_comms: CommsNode,
-    base_node_dht: Dht,
-    wallet_comms: CommsNode,
-    base_node_handles: Arc<ServiceHandles>,
-    wallet_handles: Arc<ServiceHandles>,
-    node: BaseNodeStateMachine<B>,
-    miner: Option<Miner>,
-    miner_enabled: Arc<AtomicBool>,
-    mining_status: Arc<AtomicBool>,
-    miner_instruction_events: syncSender<MinerInstruction>,
-    pub miner_hashrate: Arc<AtomicU64>,
-}
-
-impl<B: BlockchainBackend> BaseNodeContext<B>
-where B: 'static
-{
     /// Returns a handle to the Output Manager
     pub fn output_manager(&self) -> OutputManagerHandle {
         self.wallet_handles
@@ -320,6 +212,58 @@ where B: 'static
             .expect("Could not get local mempool interface handle")
     }
 
+    /// Returns the CommsNode.
+    pub fn base_node_comms(&self) -> &CommsNode {
+        &self.base_node_comms
+    }
+
+    /// Returns the wallet CommsNode.
+    pub fn wallet_comms(&self) -> &CommsNode {
+        &self.wallet_comms
+    }
+
+    /// Returns the wallet CommsNode.
+    pub fn state_machine(&self) -> StateMachineHandle {
+        self.base_node_handles
+            .get_handle::<StateMachineHandle>()
+            .expect("Could not get State Machine handle")
+    }
+
+    /// Returns this node's identity.
+    pub fn base_node_identity(&self) -> Arc<NodeIdentity> {
+        self.base_node_comms.node_identity()
+    }
+
+    /// Returns the base node DHT
+    pub fn base_node_dht(&self) -> &Dht {
+        &self.base_node_dht
+    }
+
+    /// Returns this node's wallet identity.
+    pub fn wallet_node_identity(&self) -> Arc<NodeIdentity> {
+        self.wallet_comms.node_identity()
+    }
+
+    /// Returns this node's miner enabled flag.
+    pub fn miner_enabled(&self) -> Arc<AtomicBool> {
+        self.miner_enabled.clone()
+    }
+
+    /// Returns this node's mining status.
+    pub fn mining_status(&self) -> Arc<AtomicBool> {
+        self.mining_status.clone()
+    }
+
+    /// Returns this node's miner atomic hash rate.
+    pub fn miner_hashrate(&self) -> Arc<AtomicU64> {
+        self.miner_hashrate.clone()
+    }
+
+    /// Returns this node's miner instruction event channel.
+    pub fn miner_instruction_events(&self) -> syncSender<MinerInstruction> {
+        self.miner_instruction_events.clone()
+    }
+
     /// Return the handle to the Transaction Service
     pub fn wallet_transaction_service(&self) -> TransactionServiceHandle {
         self.wallet_handles
@@ -327,9 +271,12 @@ where B: 'static
             .expect("Could not get wallet transaction service handle")
     }
 
-    // /// Return the state machine channel to provide info updates
-    pub fn get_status_event_stream(&self) -> Subscriber<StatusInfo> {
-        self.node.get_status_event_stream()
+    /// Return the state machine channel to provide info updates
+    pub fn get_state_machine_info_channel(&self) -> watch::Receiver<StatusInfo> {
+        self.base_node_handles
+            .get_handle::<StateMachineHandle>()
+            .expect("Could not get State Machine service handle")
+            .get_status_info_watch()
     }
 }
 
@@ -346,7 +293,7 @@ pub async fn configure_and_initialize_node(
     node_identity: Arc<NodeIdentity>,
     wallet_node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
-) -> Result<NodeContainer, String>
+) -> Result<BaseNodeContext, String>
 {
     let network = match &config.network {
         Network::MainNet => NetworkType::MainNet,
@@ -364,7 +311,7 @@ pub async fn configure_and_initialize_node(
                 interrupt_signal,
             )
             .await?;
-            NodeContainer::Memory(ctx)
+            ctx
         },
         DatabaseType::LMDB(p) => {
             let backend = create_lmdb_database(&p, config.db_config.clone(), MmrCacheConfig::default())
@@ -378,7 +325,7 @@ pub async fn configure_and_initialize_node(
                 interrupt_signal,
             )
             .await?;
-            NodeContainer::LMDB(ctx)
+            ctx
         },
     };
     Ok(result)
@@ -402,7 +349,7 @@ async fn build_node_context<B>(
     wallet_node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
     interrupt_signal: ShutdownSignal,
-) -> Result<BaseNodeContext<B>, String>
+) -> Result<BaseNodeContext, String>
 where
     B: BlockchainBackend + 'static,
 {
@@ -426,7 +373,8 @@ where
     let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
     let handle = runtime::Handle::current();
 
-    //---------------------------------- Base Node --------------------------------------------//
+    //---------------------------------- Base Node  --------------------------------------------//
+    debug!(target: LOG_TARGET, "Creating base node state machine.");
 
     let buf_size = std::cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
     let (publisher, base_node_subscriptions) =
@@ -458,6 +406,12 @@ where
         base_node_subscriptions.clone(),
         mempool,
         rules.clone(),
+        factories.clone(),
+        config
+            .block_sync_strategy
+            .parse()
+            .expect("Problem reading block sync strategy from config"),
+        interrupt_signal.clone(),
     )
     .await;
     debug!(target: LOG_TARGET, "Base node service registration complete.");
@@ -537,48 +491,19 @@ where
         .await
         .expect("Problem starting the Output Manager Service Utxo Valdation process");
 
-    //---------------------------------- Base Node State Machine --------------------------------------------//
-    let outbound_interface = base_node_handles
-        .get_handle::<OutboundNodeCommsInterface>()
-        .expect("Problem getting node interface handle.");
-    let chain_metadata_service = base_node_handles
-        .get_handle::<ChainMetadataHandle>()
-        .expect("Problem getting chain metadata interface handle.");
-    debug!(target: LOG_TARGET, "Creating base node state machine.");
-    let mut state_machine_config = BaseNodeStateMachineConfig::default();
-    state_machine_config.block_sync_config.sync_strategy = config
-        .block_sync_strategy
-        .parse()
-        .expect("Problem reading block sync strategy from config");
-
-    state_machine_config.horizon_sync_config.horizon_sync_height_offset =
-        rules.consensus_constants().coinbase_lock_height() + 50;
-    let node_local_interface = base_node_handles
-        .get_handle::<LocalNodeCommsInterface>()
-        .expect("Problem getting node local interface handle.");
-    let sync_validators = SyncValidators::full_consensus(db.clone(), rules.clone(), factories.clone());
-    let node = BaseNodeStateMachine::new(
-        &db,
-        &node_local_interface,
-        &outbound_interface,
-        base_node_comms.peer_manager(),
-        base_node_comms.connectivity(),
-        chain_metadata_service.get_event_stream(),
-        state_machine_config,
-        sync_validators,
-        interrupt_signal,
-    );
-
     //---------------------------------- Mining --------------------------------------------//
 
     let local_mp_interface = base_node_handles
         .get_handle::<LocalMempoolService>()
         .expect("Problem getting mempool interface handle.");
-    let node_event_stream = node.get_state_change_event_stream();
+    let node_event_stream = base_node_handles
+        .get_handle::<StateMachineHandle>()
+        .expect("Could not get State Machine handle")
+        .get_state_change_event_stream();
     let mempool_event_stream = local_mp_interface.get_mempool_state_event_stream();
     let miner = miner::build_miner(
         &base_node_handles,
-        node.get_interrupt_signal(),
+        interrupt_signal,
         node_event_stream,
         mempool_event_stream,
         rules,
@@ -604,7 +529,6 @@ where
         wallet_comms,
         base_node_handles,
         wallet_handles,
-        node,
         miner: Some(miner),
         miner_enabled,
         mining_status,
@@ -849,6 +773,9 @@ async fn register_base_node_services<B>(
     subscription_factory: Arc<SubscriptionFactory>,
     mempool: Mempool<B>,
     consensus_manager: ConsensusManager,
+    factories: CryptoFactories,
+    sync_strategy: BlockSyncStrategy,
+    interrupt_signal: ShutdownSignal,
 ) -> Arc<ServiceHandles>
 where
     B: BlockchainBackend + 'static,
@@ -859,9 +786,9 @@ where
         .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory.clone(),
-            db,
+            db.clone(),
             mempool.clone(),
-            consensus_manager,
+            consensus_manager.clone(),
             node_config,
         ))
         .add_initializer(MempoolServiceInitializer::new(
@@ -880,6 +807,15 @@ where
             dht.dht_requester(),
         ))
         .add_initializer(ChainMetadataServiceInitializer)
+        .add_initializer(BaseNodeStateMachineInitializer::new(
+            db.clone(),
+            consensus_manager.clone(),
+            factories.clone(),
+            sync_strategy,
+            comms.peer_manager(),
+            comms.connectivity(),
+            interrupt_signal,
+        ))
         .finish()
         .await
         .expect("Service initialization failed")

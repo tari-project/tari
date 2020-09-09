@@ -51,6 +51,7 @@ use tari_core::{
         comms_interface::{BlockEvent, Broadcast, CommsInterfaceError},
         consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
         service::BaseNodeServiceConfig,
+        state_machine_service::states::{ListeningInfo, StatusInfo},
     },
     blocks::{BlockHeader, NewBlock},
     chain_storage::{BlockAddResult, BlockchainDatabaseConfig, DbTransaction, MmrTree},
@@ -412,27 +413,39 @@ fn propagate_and_forward_many_valid_blocks() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let (alice_node, rules) = BaseNodeBuilder::new(network)
+    let (mut alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("alice").to_str().unwrap());
-    let (bob_node, rules) = BaseNodeBuilder::new(network)
+    let (mut bob_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("bob").to_str().unwrap());
-    let (carol_node, rules) = BaseNodeBuilder::new(network)
+    let (mut carol_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone()])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("carol").to_str().unwrap());
-    let (dan_node, rules) = BaseNodeBuilder::new(network)
+    let (mut dan_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(dan_node_identity)
         .with_peers(vec![carol_node_identity, bob_node_identity])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("dan").to_str().unwrap());
 
     wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node, &dan_node]);
+    alice_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    bob_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    carol_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    dan_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
 
     let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
     let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
@@ -502,22 +515,31 @@ fn propagate_and_forward_invalid_block_hash() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let (alice_node, rules) = BaseNodeBuilder::new(network)
+    let (mut alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("alice").to_str().unwrap());
-    let (bob_node, rules) = BaseNodeBuilder::new(network)
+    let (mut bob_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("bob").to_str().unwrap());
-    let (carol_node, rules) = BaseNodeBuilder::new(network)
+    let (mut carol_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone()])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("carol").to_str().unwrap());
 
     wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node]);
+    alice_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    bob_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    carol_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
 
     let mut block1 = append_block(
         &alice_node.blockchain_db,
@@ -595,11 +617,11 @@ fn propagate_and_forward_invalid_block() {
     let mock_accum_difficulty_validator = MockAccumDifficultyValidator {};
 
     let mock_validator = MockValidator::new(false);
-    let (dan_node, rules) = BaseNodeBuilder::new(network)
+    let (mut dan_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(dan_node_identity.clone())
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("dan").to_str().unwrap());
-    let (carol_node, rules) = BaseNodeBuilder::new(network)
+    let (mut carol_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![dan_node_identity.clone()])
         .with_consensus_manager(rules)
@@ -609,7 +631,7 @@ fn propagate_and_forward_invalid_block() {
             mock_accum_difficulty_validator.clone(),
         )
         .start(&mut runtime, temp_dir.path().join("carol").to_str().unwrap());
-    let (bob_node, rules) = BaseNodeBuilder::new(network)
+    let (mut bob_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![dan_node_identity.clone()])
         .with_consensus_manager(rules)
@@ -619,13 +641,26 @@ fn propagate_and_forward_invalid_block() {
             mock_accum_difficulty_validator.clone(),
         )
         .start(&mut runtime, temp_dir.path().join("bob").to_str().unwrap());
-    let (alice_node, rules) = BaseNodeBuilder::new(network)
+    let (mut alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity)
         .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("alice").to_str().unwrap());
 
     wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node, &dan_node]);
+
+    alice_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    bob_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    carol_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    dan_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
 
     // This is a valid block, however Bob, Carol and Dan's block validator is set to always reject the block
     // after fetching it.

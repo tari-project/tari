@@ -24,7 +24,9 @@ use crate::{
     base_node::{
         comms_interface::{BlockEvent, BlockEventReceiver},
         generate_request_key,
+        state_machine_service::states::StatusInfo,
         RequestKey,
+        StateMachineHandle,
         WaitingRequests,
     },
     chain_storage::BlockchainBackend,
@@ -109,6 +111,7 @@ pub struct MempoolService<B: BlockchainBackend + 'static> {
     timeout_sender: Sender<RequestKey>,
     timeout_receiver_stream: Option<Receiver<RequestKey>>,
     config: MempoolServiceConfig,
+    state_machine: StateMachineHandle,
 }
 
 impl<B> MempoolService<B>
@@ -118,6 +121,7 @@ where B: BlockchainBackend + 'static
         outbound_message_service: OutboundMessageRequester,
         inbound_handlers: MempoolInboundHandlers<B>,
         config: MempoolServiceConfig,
+        state_machine: StateMachineHandle,
     ) -> Self
     {
         let (timeout_sender, timeout_receiver) = channel(100);
@@ -128,6 +132,7 @@ where B: BlockchainBackend + 'static
             timeout_sender,
             timeout_receiver_stream: Some(timeout_receiver),
             config,
+            state_machine,
         }
     }
 
@@ -187,7 +192,7 @@ where B: BlockchainBackend + 'static
 
                 // Incoming transaction messages from the Comms layer
                 transaction_msg = inbound_transaction_stream.select_next_some() => {
-                    self.spawn_handle_incoming_tx(transaction_msg);
+                    self.spawn_handle_incoming_tx(transaction_msg).await;
                 }
 
                 // Incoming local request messages from the LocalMempoolServiceInterface and other local services
@@ -289,7 +294,25 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
+    async fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
+        // Determine if we are bootstrapped
+        let mut status_watch = self.state_machine.get_status_info_watch();
+        let bootstrapped = match status_watch.recv().await {
+            None => false,
+            Some(s) => match s {
+                StatusInfo::Listening(li) => li.is_bootstrapped(),
+                _ => false,
+            },
+        };
+        if !bootstrapped {
+            debug!(
+                target: LOG_TARGET,
+                "Transaction with Message {} from peer `{}` not processed while busy with initial sync.",
+                tx_msg.dht_header.message_tag,
+                tx_msg.source_peer.node_id.short_str(),
+            );
+            return;
+        }
         let inbound_handlers = self.inbound_handlers.clone();
         task::spawn(async move {
             let _ = handle_incoming_tx(inbound_handlers, tx_msg).await.or_else(|err| {

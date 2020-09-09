@@ -44,30 +44,35 @@ use helpers::{
 };
 use rand::{rngs::OsRng, RngCore};
 use std::{thread, time::Duration};
+use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 use tari_core::{
     base_node::{
         chain_metadata_service::PeerChainMetadata,
         comms_interface::Broadcast,
         service::BaseNodeServiceConfig,
-        states::{
-            BestChainMetadataBlockSyncInfo,
-            BlockSyncConfig,
-            HorizonSyncConfig,
-            Listening,
-            StateEvent,
-            SyncPeer,
-            SyncPeerConfig,
-            SyncStatus,
-            SyncStatus::Lagging,
+        state_machine_service::{
+            states::{
+                BestChainMetadataBlockSyncInfo,
+                BlockSyncConfig,
+                HorizonSyncConfig,
+                Listening,
+                StateEvent,
+                StatusInfo,
+                SyncPeer,
+                SyncPeerConfig,
+                SyncStatus,
+                SyncStatus::Lagging,
+            },
+            BaseNodeStateMachine,
+            BaseNodeStateMachineConfig,
         },
-        BaseNodeStateMachine,
-        BaseNodeStateMachineConfig,
         SyncValidators,
     },
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     helpers::create_mem_db,
     mempool::MempoolServiceConfig,
+    proof_of_work::Difficulty,
     transactions::{helpers::spend_utxos, types::CryptoFactories},
     txn_schema,
     validation::{
@@ -111,6 +116,9 @@ fn test_listening_lagging() {
         temp_dir.path().to_str().unwrap(),
     );
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
@@ -121,10 +129,14 @@ fn test_listening_lagging() {
         BaseNodeStateMachineConfig::default(),
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        service_shutdown,
+        status_event_sender,
+        state_change_event_publisher,
     );
     wait_until_online(&mut runtime, &[&alice_node, &bob_node]);
 
-    let await_event_task = runtime.spawn(async move { Listening.next_event(&mut alice_state_machine).await });
+    let await_event_task =
+        runtime.spawn(async move { Listening { is_synced: true }.next_event(&mut alice_state_machine).await });
 
     runtime.block_on(async move {
         let bob_db = bob_node.blockchain_db;
@@ -178,6 +190,9 @@ fn test_event_channel() {
     let db = create_mem_db(&consensus_manager);
     let mut shutdown = Shutdown::new();
     let mut mock = MockChainMetadata::new();
+    let (state_change_event_publisher, state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let service_shutdown = Shutdown::new();
     let state_machine = BaseNodeStateMachine::new(
         &db,
         &node.local_nci,
@@ -188,8 +203,11 @@ fn test_event_channel() {
         BaseNodeStateMachineConfig::default(),
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        service_shutdown,
+        status_event_sender,
+        state_change_event_publisher,
     );
-    let rx = state_machine.get_state_change_event_stream();
+    let rx = state_change_event_subscriber;
 
     runtime.spawn(state_machine.run());
 
@@ -257,16 +275,23 @@ fn test_block_sync() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+    let (status_event_sender, mut status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let service_shutdown = Shutdown::new();
+    let mut mock = MockChainMetadata::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
         alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
-        alice_node.chain_metadata_handle.get_event_stream(),
+        mock.subscriber(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        service_shutdown,
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -284,7 +309,7 @@ fn test_block_sync() {
         }
 
         // Sync Blocks from genesis block to tip
-        let network_tip = bob_db.get_chain_metadata().unwrap();
+        let mut network_tip = bob_db.get_chain_metadata().unwrap();
         let mut sync_peers = vec![SyncPeer {
             node_id: bob_node.node_identity.node_id().clone(),
             chain_metadata: network_tip.clone(),
@@ -301,6 +326,40 @@ fn test_block_sync() {
                 bob_db.fetch_block(height).unwrap()
             );
         }
+
+        let is_bootstrapped = match status_event_receiver.recv().await {
+            None => false,
+            Some(s) => match s {
+                StatusInfo::Listening(li) => li.is_bootstrapped(),
+                _ => false,
+            },
+        };
+
+        assert!(!is_bootstrapped);
+        // Publish on the metadata that will indicate we are synced in the Listening state
+        let _ = mock
+            .publish_chain_metadata(bob_node.node_identity.node_id(), &network_tip)
+            .await;
+        // Publish a second event saying that we are lagging again so that we will leave the Listening state
+        let higher_difficulty = Difficulty::from(u64::MAX);
+        network_tip.accumulated_difficulty = Some(higher_difficulty);
+
+        let _ = mock
+            .publish_chain_metadata(bob_node.node_identity.node_id(), &network_tip)
+            .await;
+
+        // Run the listening State
+        let _state_event = Listening { is_synced: true }.next_event(&mut alice_state_machine).await;
+
+        let is_bootstrapped = match status_event_receiver.recv().await {
+            None => false,
+            Some(s) => match s {
+                StatusInfo::Listening(li) => li.is_bootstrapped(),
+                _ => false,
+            },
+        };
+
+        assert!(is_bootstrapped);
 
         alice_node.comms.shutdown().await;
         bob_node.comms.shutdown().await;
@@ -345,6 +404,9 @@ fn test_lagging_block_sync() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
@@ -355,6 +417,9 @@ fn test_lagging_block_sync() {
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        service_shutdown,
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -447,6 +512,9 @@ fn test_block_sync_recovery() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
@@ -457,6 +525,9 @@ fn test_block_sync_recovery() {
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        service_shutdown,
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -549,6 +620,9 @@ fn test_forked_block_sync() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
@@ -559,6 +633,9 @@ fn test_forked_block_sync() {
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        service_shutdown,
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -695,6 +772,9 @@ fn test_sync_peer_banning() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
@@ -705,6 +785,9 @@ fn test_sync_peer_banning() {
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        service_shutdown,
+        status_event_sender,
+        state_change_event_publisher,
     );
     let mut last_utxo = None;
 
@@ -770,7 +853,7 @@ fn test_sync_peer_banning() {
         let mut bob_prev_block = prev_block;
         for _ in 3..=6 {
             let utxo = last_utxo.unwrap();
-            let mut txn = txn_schema!(from: vec![utxo.clone()]);
+            let txn = txn_schema!(from: vec![utxo.clone()]);
             let (tx, outputs, _) = spend_utxos(txn);
 
             // tx.body.outputs[0].features.maturity = 1000;

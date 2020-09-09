@@ -29,10 +29,10 @@ use crate::{
     },
     chain_storage::{BlockAddResult, ChainMetadata},
 };
-use chrono::{NaiveDateTime, Utc};
 use futures::{stream::StreamExt, SinkExt};
 use log::*;
 use prost::Message;
+use std::time::Instant;
 use tari_broadcast_channel::Publisher;
 use tari_common::log_if_error;
 use tari_comms::{message::MessageExt, peer_manager::NodeId};
@@ -42,7 +42,7 @@ pub(super) struct ChainMetadataService {
     liveness: LivenessHandle,
     base_node: LocalNodeCommsInterface,
     peer_chain_metadata: Vec<PeerChainMetadata>,
-    last_chainstate_flushed_at: NaiveDateTime,
+    last_chainstate_flushed_at: Option<Instant>,
     event_publisher: Publisher<ChainMetadataEvent>,
 }
 
@@ -62,7 +62,7 @@ impl ChainMetadataService {
             liveness,
             base_node,
             peer_chain_metadata: Vec::new(),
-            last_chainstate_flushed_at: Utc::now().naive_utc(),
+            last_chainstate_flushed_at: None,
             event_publisher,
         }
     }
@@ -186,7 +186,7 @@ impl ChainMetadataService {
             .await
             .map_err(|_| ChainMetadataSyncError::EventPublishFailed)?;
 
-        self.last_chainstate_flushed_at = Utc::now().naive_utc();
+        self.last_chainstate_flushed_at = Some(Instant::now());
 
         Ok(())
     }

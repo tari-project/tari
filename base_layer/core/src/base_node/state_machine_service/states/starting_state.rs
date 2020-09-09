@@ -19,26 +19,32 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+//
+use crate::{
+    base_node::state_machine_service::{
+        states::{listening::Listening, StateEvent},
+        BaseNodeStateMachine,
+    },
+    chain_storage::BlockchainBackend,
+};
 use log::*;
-use std::fmt;
 
-const LOG_TARGET: &str = "c::bn::states::shutdown_state";
+const LOG_TARGET: &str = "c::bn::state_machine_service::states::starting_state";
 
+// The data structure handling Base Node Startup
 #[derive(Clone, Debug, PartialEq)]
-pub struct Shutdown {
-    reason: String,
-}
+pub struct Starting;
 
-impl Shutdown {
-    pub fn with_reason(reason: String) -> Self {
-        info!(target: LOG_TARGET, "Node shutdown state: {}", reason);
-        Self { reason }
+impl Starting {
+    pub async fn next_event<B: BlockchainBackend>(&mut self, _shared: &BaseNodeStateMachine<B>) -> StateEvent {
+        info!(target: LOG_TARGET, "Starting node.");
+        StateEvent::Initialized
     }
 }
 
-impl fmt::Display for Shutdown {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.reason)
+/// State management for Starting -> Listening. This state change occurs every time a node is restarted.
+impl From<Starting> for Listening {
+    fn from(_old_state: Starting) -> Self {
+        Listening { is_synced: false }
     }
 }

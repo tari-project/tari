@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::{comms_interface::CommsInterfaceError, states::block_sync::BlockSyncError},
+    base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::block_sync::BlockSyncError},
     chain_storage::{ChainStorageError, MmrTree},
     transactions::transaction::TransactionError,
     validation::ValidationError,

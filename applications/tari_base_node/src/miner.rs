@@ -23,7 +23,7 @@
 
 use tari_broadcast_channel::Subscriber;
 use tari_core::{
-    base_node::{states::StateEvent, LocalNodeCommsInterface},
+    base_node::{state_machine_service::states::StateEvent, LocalNodeCommsInterface},
     consensus::ConsensusManager,
     mempool::MempoolStateEvent,
     mining::Miner,

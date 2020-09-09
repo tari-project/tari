@@ -33,7 +33,9 @@ use crate::{
         generate_request_key,
         proto,
         service::error::BaseNodeServiceError,
+        state_machine_service::states::StatusInfo,
         RequestKey,
+        StateMachineHandle,
         WaitingRequests,
     },
     blocks::{Block, NewBlock},
@@ -148,6 +150,7 @@ pub struct BaseNodeService<B> {
     timeout_sender: Sender<RequestKey>,
     timeout_receiver_stream: Option<Receiver<RequestKey>>,
     config: BaseNodeServiceConfig,
+    state_machine_handle: StateMachineHandle,
 }
 
 impl<B> BaseNodeService<B>
@@ -157,6 +160,7 @@ where B: BlockchainBackend + 'static
         outbound_message_service: OutboundMessageRequester,
         inbound_nch: InboundNodeCommsHandlers<B>,
         config: BaseNodeServiceConfig,
+        state_machine_handle: StateMachineHandle,
     ) -> Self
     {
         let (timeout_sender, timeout_receiver) = channel(100);
@@ -167,6 +171,7 @@ where B: BlockchainBackend + 'static
             timeout_sender,
             timeout_receiver_stream: Some(timeout_receiver),
             config,
+            state_machine_handle,
         }
     }
 
@@ -233,7 +238,7 @@ where B: BlockchainBackend + 'static
 
                 // Incoming block messages from the Comms layer
                 block_msg = inbound_block_stream.select_next_some() => {
-                    self.spawn_handle_incoming_block(block_msg);
+                    self.spawn_handle_incoming_block(block_msg).await;
                 }
 
                 // Incoming local request messages from the LocalNodeCommsInterface and other local services
@@ -304,8 +309,9 @@ where B: BlockchainBackend + 'static
     fn spawn_handle_incoming_request(&self, domain_msg: DomainMessage<proto::base_node::BaseNodeServiceRequest>) {
         let inbound_nch = self.inbound_nch.clone();
         let outbound_message_service = self.outbound_message_service.clone();
+        let state_machine_handle = self.state_machine_handle.clone();
         task::spawn(async move {
-            let _ = handle_incoming_request(inbound_nch, outbound_message_service, domain_msg)
+            let _ = handle_incoming_request(inbound_nch, outbound_message_service, state_machine_handle, domain_msg)
                 .await
                 .or_else(|err| {
                     error!(
@@ -344,7 +350,27 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_block(&self, new_block: DomainMessage<NewBlock>) {
+    async fn spawn_handle_incoming_block(&self, new_block: DomainMessage<NewBlock>) {
+        // Determine if we are bootstrapped
+        let mut status_watch = self.state_machine_handle.get_status_info_watch();
+
+        let bootstrapped = match status_watch.recv().await {
+            None => false,
+            Some(s) => match s {
+                StatusInfo::Listening(li) => li.is_bootstrapped(),
+                _ => false,
+            },
+        };
+
+        if !bootstrapped {
+            debug!(
+                target: LOG_TARGET,
+                "Propagated block `{}` from peer `{}` not processed while busy with initial sync.",
+                new_block.inner.block_hash.to_hex(),
+                new_block.source_peer.node_id.short_str(),
+            );
+            return;
+        }
         let inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
             let _ = handle_incoming_block(inbound_nch, new_block).await.or_else(|err| {
@@ -398,6 +424,7 @@ where B: BlockchainBackend + 'static
 async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     inbound_nch: InboundNodeCommsHandlers<B>,
     mut outbound_message_service: OutboundMessageRequester,
+    state_machine_handle: StateMachineHandle,
     domain_request_msg: DomainMessage<proto::BaseNodeServiceRequest>,
 ) -> Result<(), BaseNodeServiceError>
 {
@@ -412,9 +439,20 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         .handle_request(&request.try_into().map_err(BaseNodeServiceError::InvalidRequest)?)
         .await?;
 
+    // Determine if we are synced
+    let mut status_watch = state_machine_handle.get_status_info_watch();
+    let is_synced = match status_watch.recv().await {
+        None => false,
+        Some(s) => match s {
+            StatusInfo::Listening(li) => li.is_synced(),
+            _ => false,
+        },
+    };
+
     let message = proto::BaseNodeServiceResponse {
         request_key: inner_msg.request_key,
         response: Some(response.into()),
+        is_synced,
     };
 
     trace!(
@@ -422,6 +460,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         "Attempting outbound message in response to inbound request ({})",
         inner_msg.request_key
     );
+
     let send_message_response = outbound_message_service
         .send_direct(
             origin_public_key,
@@ -472,7 +511,11 @@ async fn handle_incoming_response(
     incoming_response: proto::BaseNodeServiceResponse,
 ) -> Result<(), BaseNodeServiceError>
 {
-    let proto::BaseNodeServiceResponse { request_key, response } = incoming_response;
+    let proto::BaseNodeServiceResponse {
+        request_key,
+        response,
+        is_synced,
+    } = incoming_response;
     let response: NodeCommsResponse = response
         .and_then(|r| r.try_into().ok())
         .ok_or_else(|| BaseNodeServiceError::InvalidResponse("Received an invalid base node response".to_string()))?;
@@ -480,10 +523,11 @@ async fn handle_incoming_response(
     if let Some((reply_tx, started)) = waiting_requests.remove(request_key).await {
         trace!(
             target: LOG_TARGET,
-            "Response for {} (request key: {}) received after {}ms",
+            "Response for {} (request key: {}) received after {}ms and is_synced: {}",
             response,
             &request_key,
-            started.elapsed().as_millis()
+            started.elapsed().as_millis(),
+            is_synced
         );
         let _ = reply_tx.send(Ok(response).or_else(|resp| {
             warn!(

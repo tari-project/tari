@@ -21,7 +21,7 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::{
+    base_node::state_machine_service::{
         states::{
             block_sync::BlockSyncError,
             helpers,
@@ -45,7 +45,7 @@ use tari_crypto::tari_utilities::Hashable;
 use thiserror::Error;
 use tokio::{task, task::spawn_blocking};
 
-const LOG_TARGET: &str = "c::bn::states::header_sync";
+const LOG_TARGET: &str = "c::bn::state_machine_service::states::header_sync";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HeaderSync {
@@ -333,7 +333,10 @@ fn calc_sync_height(network_tip: u64, local_metadata: &ChainMetadata, horizon_of
 
 #[cfg(test)]
 mod test {
-    use crate::{base_node::states::header_sync::calc_sync_height, chain_storage::ChainMetadata};
+    use crate::{
+        base_node::state_machine_service::states::header_sync::calc_sync_height,
+        chain_storage::ChainMetadata,
+    };
 
     #[test]
     fn calc_sync_height_zero_pruning_horizon() {

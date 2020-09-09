@@ -656,7 +656,7 @@ fn test_confirming_received_output_sqlite_db() {
 }
 
 #[test]
-fn test_startup_utxo_scan() {
+fn test_utxo_validation() {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
@@ -873,6 +873,7 @@ fn test_startup_utxo_scan() {
                 outputs: vec![invalid_output.clone().as_transaction_output(&factories).unwrap().into()].into(),
             },
         )),
+        is_synced: true,
     };
 
     runtime
@@ -921,6 +922,7 @@ fn test_startup_utxo_scan() {
                 outputs: vec![output1.clone().as_transaction_output(&factories).unwrap().into()].into(),
             },
         )),
+        is_synced: true,
     };
 
     runtime
@@ -940,6 +942,7 @@ fn test_startup_utxo_scan() {
                 outputs: vec![output1.clone().as_transaction_output(&factories).unwrap().into()].into(),
             },
         )),
+        is_synced: true,
     };
 
     runtime
@@ -954,6 +957,7 @@ fn test_startup_utxo_scan() {
         response: Some(BaseNodeResponseProto::TransactionOutputs(
             BaseNodeProto::TransactionOutputs { outputs: vec![].into() },
         )),
+        is_synced: true,
     };
 
     runtime
@@ -994,6 +998,60 @@ fn test_startup_utxo_scan() {
     assert!(unspent_outputs.iter().find(|uo| uo == &&output3).is_none());
     assert!(unspent_outputs.iter().find(|uo| uo == &&output4).is_none());
 
+    // test what happens if 'is_synced' is false
+    runtime
+        .block_on(oms.validate_utxos(UtxoValidationRetry::Limited(1)))
+        .unwrap();
+
+    outbound_service.wait_call_count(2, Duration::from_secs(60)).unwrap();
+
+    let (_, body) = outbound_service.pop_call().unwrap();
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
+    let bn_request: BaseNodeProto::BaseNodeServiceRequest = envelope_body
+        .decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1)
+        .unwrap()
+        .unwrap();
+
+    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+        request_key: bn_request.request_key.clone(),
+        response: Some(BaseNodeResponseProto::TransactionOutputs(
+            BaseNodeProto::TransactionOutputs { outputs: vec![].into() },
+        )),
+        is_synced: false,
+    };
+
+    runtime
+        .block_on(base_node_response_sender.send(create_dummy_message(
+            base_node_response,
+            base_node_identity.public_key(),
+        )))
+        .unwrap();
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let mut acc = 0;
+        loop {
+            futures::select! {
+                event = event_stream.select_next_some() => {
+                    if let OutputManagerEvent::UtxoValidationAborted(_r) = event.unwrap() {
+                        acc += 1;
+                        if acc >= 1 {
+                            break;
+                        }
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(acc, 1, "Did not receive enough responses3");
+    });
+
+    let invalid_txs = runtime.block_on(oms.get_invalid_outputs()).unwrap();
+    assert_eq!(invalid_txs.len(), 3);
+    let _ = outbound_service.take_calls();
+
     runtime
         .block_on(oms.validate_utxos(UtxoValidationRetry::Limited(1)))
         .unwrap();
@@ -1022,6 +1080,7 @@ fn test_startup_utxo_scan() {
         response: Some(BaseNodeResponseProto::TransactionOutputs(
             BaseNodeProto::TransactionOutputs { outputs: vec![].into() },
         )),
+        is_synced: true,
     };
 
     runtime
@@ -1036,6 +1095,7 @@ fn test_startup_utxo_scan() {
         response: Some(BaseNodeResponseProto::TransactionOutputs(
             BaseNodeProto::TransactionOutputs { outputs: vec![].into() },
         )),
+        is_synced: true,
     };
     runtime
         .block_on(base_node_response_sender.send(create_dummy_message(
@@ -1062,7 +1122,7 @@ fn test_startup_utxo_scan() {
                 },
             }
         }
-        assert_eq!(acc, 1, "Did not receive enough responses3");
+        assert_eq!(acc, 1, "Did not receive enough responses4");
     });
 
     let invalid_txs = runtime.block_on(oms.get_invalid_outputs()).unwrap();

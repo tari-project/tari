@@ -23,15 +23,17 @@ use crate::{
     base_node::{
         chain_metadata_service::ChainMetadataEvent,
         comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface},
-        states,
-        states::{
-            BaseNodeState,
-            BlockSyncConfig,
-            HorizonSyncConfig,
-            StateEvent,
-            StatusInfo,
-            SyncPeerConfig,
-            SyncStatus,
+        state_machine_service::{
+            states,
+            states::{
+                BaseNodeState,
+                BlockSyncConfig,
+                HorizonSyncConfig,
+                StateEvent,
+                StatusInfo,
+                SyncPeerConfig,
+                SyncStatus,
+            },
         },
         validators::SyncValidators,
     },
@@ -40,9 +42,10 @@ use crate::{
 use futures::{future, future::Either, SinkExt};
 use log::*;
 use std::{future::Future, sync::Arc};
-use tari_broadcast_channel::{bounded, Publisher, Subscriber};
+use tari_broadcast_channel::{Publisher, Subscriber};
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
-use tari_shutdown::ShutdownSignal;
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use tokio::sync::watch;
 
 const LOG_TARGET: &str = "c::bn::base_node";
 
@@ -66,7 +69,7 @@ impl Default for BaseNodeStateMachineConfig {
 
 /// A Tari full node, aka Base Node.
 ///
-/// The Base Node is essentially a finite state machine that synchronises its blockchain state with its peers and
+/// This service is essentially a finite state machine that synchronises its blockchain state with its peers and
 /// then listens for new blocks to add to the blockchain. See the [SynchronizationSate] documentation for more details.
 ///
 /// This struct holds fields that will be used by all the various FSM state instances, including the local blockchain
@@ -81,11 +84,11 @@ pub struct BaseNodeStateMachine<B> {
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StatusInfo,
     pub(super) sync_validators: SyncValidators,
-    status_event_publisher: Publisher<StatusInfo>,
-    status_event_subscriber: Subscriber<StatusInfo>,
-    event_sender: Publisher<StateEvent>,
-    event_receiver: Subscriber<StateEvent>,
+    pub(super) bootstrapped_sync: bool,
+    status_event_sender: watch::Sender<StatusInfo>,
+    event_publisher: Publisher<StateEvent>,
     interrupt_signal: ShutdownSignal,
+    service_shutdown: Shutdown,
 }
 
 impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
@@ -100,11 +103,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         metadata_event_stream: Subscriber<ChainMetadataEvent>,
         config: BaseNodeStateMachineConfig,
         sync_validators: SyncValidators,
-        shutdown_signal: ShutdownSignal,
+        interrupt_signal: ShutdownSignal,
+        service_shutdown: Shutdown,
+        status_event_sender: watch::Sender<StatusInfo>,
+        event_publisher: Publisher<StateEvent>,
     ) -> Self
     {
-        let (event_sender, event_receiver): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-        let (status_event_publisher, status_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(1, 4); // only latest update is important
         Self {
             db: db.clone(),
             local_node_interface: local_node_interface.clone(),
@@ -112,14 +116,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             peer_manager,
             connectivity,
             metadata_event_stream,
-            interrupt_signal: shutdown_signal,
+            interrupt_signal,
             config,
             info: StatusInfo::StartUp,
-            event_sender,
-            event_receiver,
-            status_event_publisher,
-            status_event_subscriber,
+            event_publisher,
+            status_event_sender,
             sync_validators,
+            service_shutdown,
+            bootstrapped_sync: false,
         }
     }
 
@@ -161,34 +165,22 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         }
     }
 
-    /// This clones the receiver end of the channel and gives out a copy to the caller
-    /// This allows multiple subscribers to this channel by only keeping one channel and cloning the receiver for every
-    /// caller.
-    pub fn get_state_change_event_stream(&self) -> Subscriber<StateEvent> {
-        self.event_receiver.clone()
-    }
-
-    /// This clones the receiver end of the channel and gives out a copy to the caller
-    /// This allows multiple subscribers to this channel by only keeping one channel and cloning the receiver for every
-    /// caller.
-    pub fn get_status_event_stream(&self) -> Subscriber<StatusInfo> {
-        self.status_event_subscriber.clone()
-    }
-
     /// This function will publish the current StatusInfo to the channel
-    pub async fn publish_event_info(&mut self) {
-        let _ = self.status_event_publisher.send(self.info.clone()).await;
+    pub fn publish_event_info(&mut self) {
+        if let Err(e) = self.status_event_sender.broadcast(self.info.clone()) {
+            debug!(target: LOG_TARGET, "Error broadcasting a StatusEvent update: {}", e);
+        }
     }
 
     /// Sets the StatusInfo.
     pub async fn set_status_info(&mut self, info: StatusInfo) {
         self.info = info;
-        self.publish_event_info().await;
+        self.publish_event_info();
     }
 
     /// Start the base node runtime.
     pub async fn run(mut self) {
-        use crate::base_node::states::BaseNodeState::*;
+        use crate::base_node::state_machine_service::states::BaseNodeState::*;
         let mut state = Starting(states::Starting);
         loop {
             if let Shutdown(reason) = &state {
@@ -205,7 +197,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             // Get the next `StateEvent`, returning a `UserQuit` state event if the interrupt signal is triggered
             let next_event = select_next_state_event(interrupt_signal, next_state_future).await;
             // Publish the event on the event bus
-            let _ = self.event_sender.send(next_event.clone()).await;
+            let _ = self.event_publisher.send(next_event.clone()).await;
             trace!(
                 target: LOG_TARGET,
                 "Base Node event in State [{}]:  {}",
@@ -214,6 +206,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             );
             state = self.transition(state, next_event);
         }
+        let _ = self.service_shutdown.trigger();
     }
 
     /// Processes and returns the next `StateEvent`
