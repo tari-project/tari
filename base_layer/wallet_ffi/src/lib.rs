@@ -20,6 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#![cfg_attr(not(debug_assertions), deny(unused_variables))]
+#![cfg_attr(not(debug_assertions), deny(unused_imports))]
+#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+#![deny(unused_must_use)]
+#![deny(unreachable_patterns)]
+#![deny(unknown_lints)]
+
 //! # LibWallet API Definition
 //! This module contains the Rust backend implementations of the functionality that a wallet for the Tari Base Layer
 //! will require. The module contains a number of sub-modules that are implemented as async services. These services are
@@ -110,10 +118,6 @@
 #[cfg(test)]
 #[macro_use]
 extern crate lazy_static;
-
-extern crate libc;
-extern crate tari_wallet;
-
 mod callback_handler;
 mod error;
 
@@ -4113,7 +4117,7 @@ pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_ou
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `amount` - The value of the UTXO in MicroTari
-/// `spending_key` - The private spending key  
+/// `spending_key` - The private spending key
 /// `source_public_key` - The public key of the source of the transaction
 /// `message` - The message that the transaction will have
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
@@ -4667,7 +4671,6 @@ pub unsafe extern "C" fn log_debug_message(msg: *const c_char) {
 
 #[cfg(test)]
 mod test {
-    extern crate libc;
 
     use crate::*;
     use libc::{c_char, c_uchar, c_uint};

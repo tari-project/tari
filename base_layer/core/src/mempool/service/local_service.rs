@@ -28,11 +28,10 @@ use crate::mempool::{
 };
 use futures::{stream::Fuse, StreamExt};
 use tari_broadcast_channel::Subscriber;
-use tari_service_framework::reply_channel::{Receiver, SenderService};
+use tari_service_framework::reply_channel::SenderService;
 use tower_service::Service;
 
 pub type LocalMempoolRequester = SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;
-pub type LocalMempoolRequestStream = Receiver<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;
 
 /// A local interface into the mempool service.
 ///
@@ -92,18 +91,16 @@ impl LocalMempoolService {
 #[cfg(test)]
 mod test {
     use crate::mempool::{
-        service::{
-            local_service::{LocalMempoolRequestStream, LocalMempoolService},
-            MempoolRequest,
-            MempoolResponse,
-        },
+        service::{local_service::LocalMempoolService, MempoolRequest, MempoolResponse},
         MempoolServiceError,
         StatsResponse,
     };
     use futures::StreamExt;
     use tari_broadcast_channel::bounded;
-    use tari_service_framework::reply_channel::unbounded;
+    use tari_service_framework::reply_channel::{unbounded, Receiver};
     use tokio::task;
+
+    pub type LocalMempoolRequestStream = Receiver<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;
 
     fn request_stats() -> StatsResponse {
         StatsResponse {

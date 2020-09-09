@@ -24,7 +24,6 @@ use crate::base_node::comms_interface::CommsInterfaceError;
 use prost::DecodeError;
 use tari_comms::message::MessageError;
 use tari_p2p::services::liveness::error::LivenessError;
-use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

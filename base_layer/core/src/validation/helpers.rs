@@ -84,7 +84,7 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
     let pow_algo = block_header.pow.pow_algo;
     // Monero has extra data to check.
     if pow_algo == PowAlgorithm::Monero {
-        let monero_data = MoneroData::new(&block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
+        MoneroData::new(&block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
         // TODO: We need some way of getting the seed height and or count.
         // Current proposals are to either store the height of first seed use, or count the seed use.
         let seed_height = 0;
