@@ -41,9 +41,7 @@ pub mod consts;
 #[cfg(feature = "base_node")]
 pub mod service;
 #[cfg(feature = "base_node")]
-mod state_machine;
-#[cfg(feature = "base_node")]
-pub mod states;
+pub mod state_machine_service;
 #[cfg(feature = "base_node")]
 mod validators;
 #[cfg(feature = "base_node")]
@@ -53,7 +51,7 @@ pub use validators::{ChainBalanceValidator, HeaderValidator, SyncValidators};
 #[cfg(feature = "base_node")]
 pub use comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface};
 #[cfg(feature = "base_node")]
-pub use state_machine::{BaseNodeStateMachine, BaseNodeStateMachineConfig};
+pub use state_machine_service::{BaseNodeStateMachine, BaseNodeStateMachineConfig, StateMachineHandle};
 
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod proto;

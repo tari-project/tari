@@ -78,6 +78,8 @@ pub enum OutputManagerError {
     MaximumAttemptsExceeded,
     #[error("An error has been experienced in the service: `{0}`")]
     ServiceError(String),
+    #[error("Base node is not synced")]
+    BaseNodeNotSynced,
 }
 
 #[derive(Debug, Error, PartialEq)]

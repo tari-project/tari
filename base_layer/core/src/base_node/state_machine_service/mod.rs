@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,32 +19,11 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-use crate::{
-    base_node::{
-        states::{listening::Listening, StateEvent},
-        BaseNodeStateMachine,
-    },
-    chain_storage::BlockchainBackend,
-};
-use log::*;
 
-const LOG_TARGET: &str = "c::bn::states::starting_state";
+mod handle;
+pub mod initializer;
+mod state_machine;
+pub mod states;
 
-// The data structure handling Base Node Startup
-#[derive(Clone, Debug, PartialEq)]
-pub struct Starting;
-
-impl Starting {
-    pub async fn next_event<B: BlockchainBackend>(&mut self, _shared: &BaseNodeStateMachine<B>) -> StateEvent {
-        info!(target: LOG_TARGET, "Starting node.");
-        StateEvent::Initialized
-    }
-}
-
-/// State management for Starting -> Listening. This state change occurs every time a node is restarted.
-impl From<Starting> for Listening {
-    fn from(_old_state: Starting) -> Self {
-        Listening {}
-    }
-}
+pub use handle::StateMachineHandle;
+pub use state_machine::{BaseNodeStateMachine, BaseNodeStateMachineConfig};

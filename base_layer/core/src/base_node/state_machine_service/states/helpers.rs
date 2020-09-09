@@ -23,8 +23,10 @@
 use crate::{
     base_node::{
         comms_interface::CommsInterfaceError,
-        state_machine::BaseNodeStateMachine,
-        states::{block_sync::BlockSyncError, sync_peers::SyncPeer, SyncPeers},
+        state_machine_service::{
+            states::{block_sync::BlockSyncError, sync_peers::SyncPeer, SyncPeers},
+            BaseNodeStateMachine,
+        },
     },
     blocks::blockheader::BlockHeader,
     chain_storage::{BlockchainBackend, MmrTree},

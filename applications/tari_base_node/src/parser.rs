@@ -22,14 +22,14 @@
 
 use super::LOG_TARGET;
 use crate::{
-    builder::NodeContainer,
+    builder::BaseNodeContext,
     table::Table,
     utils,
     utils::{format_duration_basic, format_naive_datetime},
 };
 use chrono::Utc;
 use chrono_english::{parse_date_string, Dialect};
-use futures::{future::Either, StreamExt};
+use futures::future::Either;
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use regex::Regex;
@@ -53,7 +53,6 @@ use std::{
 };
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_broadcast_channel::Subscriber;
 use tari_common::GlobalConfig;
 use tari_comms::{
     connection_manager::ConnectionManagerRequester,
@@ -64,7 +63,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
-    base_node::{states::StatusInfo, LocalNodeCommsInterface},
+    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface},
     blocks::BlockHeader,
     mempool::service::LocalMempoolService,
     mining::MinerInstruction,
@@ -82,7 +81,11 @@ use tari_wallet::{
     transaction_service::{error::TransactionServiceError, handle::TransactionServiceHandle},
     util::emoji::EmojiId,
 };
-use tokio::{runtime, sync::broadcast::Sender as syncSender, time};
+use tokio::{
+    runtime,
+    sync::{broadcast::Sender as syncSender, watch},
+    time,
+};
 
 /// Enum representing commands used by the basenode
 #[derive(Clone, PartialEq, Debug, Display, EnumIter, EnumString)]
@@ -145,7 +148,7 @@ pub struct Parser {
     miner_hashrate: Arc<AtomicU64>,
     miner_instructions: syncSender<MinerInstruction>,
     miner_thread_count: u64,
-    state_machine_info: Subscriber<StatusInfo>,
+    state_machine_info: watch::Receiver<StatusInfo>,
 }
 
 // Import the auto-generated const values from the Manifest and Git
@@ -184,7 +187,7 @@ impl Hinter for Parser {
 
 impl Parser {
     /// creates a new parser struct
-    pub fn new(executor: runtime::Handle, ctx: &NodeContainer, config: &GlobalConfig) -> Self {
+    pub fn new(executor: runtime::Handle, ctx: &BaseNodeContext, config: &GlobalConfig) -> Self {
         Parser {
             executor,
             wallet_node_identity: ctx.wallet_node_identity(),
@@ -511,12 +514,9 @@ impl Parser {
 
     /// Function to process the get-state-info command
     fn process_state_info(&mut self) {
-        // the channel only holds events of 1 as the channel is created bounded(1)
         let mut channel = self.state_machine_info.clone();
-        // We clone the channel so that allows as to always start to read from the beginning. Hence the channel never
-        // empties.
         self.executor.spawn(async move {
-            match channel.next().await {
+            match channel.recv().await {
                 None => {
                     info!(
                         target: LOG_TARGET,

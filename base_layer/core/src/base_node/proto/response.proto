@@ -33,6 +33,7 @@ message BaseNodeServiceResponse {
         // Indicates a MmrNodes response
         MmrNodes MmrNodes = 12;
     }
+    bool is_synced = 13;
 }
 
 message BlockHeaders {

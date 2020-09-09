@@ -303,7 +303,6 @@ async fn dht_discover_propagation() {
 #[tokio_macros::test]
 #[allow(non_snake_case)]
 async fn dht_store_forward() {
-    let _ = env_logger::try_init();
     let node_C_node_identity = make_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // Node B knows about Node C
     let node_B = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;

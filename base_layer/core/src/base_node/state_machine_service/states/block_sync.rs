@@ -22,15 +22,17 @@
 use crate::{
     base_node::{
         comms_interface::{Broadcast, CommsInterfaceError},
-        state_machine::BaseNodeStateMachine,
-        states::{
-            helpers::{ban_all_sync_peers, ban_sync_peer, request_headers, select_sync_peer},
-            sync_peers::SyncPeer,
-            ForwardBlockSyncInfo,
-            Listening,
-            StateEvent,
-            StatusInfo,
-            SyncPeers,
+        state_machine_service::{
+            states::{
+                helpers::{ban_all_sync_peers, ban_sync_peer, request_headers, select_sync_peer},
+                sync_peers::SyncPeer,
+                ForwardBlockSyncInfo,
+                Listening,
+                StateEvent,
+                StatusInfo,
+                SyncPeers,
+            },
+            BaseNodeStateMachine,
         },
     },
     blocks::{blockheader::BlockHeader, Block},
@@ -46,7 +48,7 @@ use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use thiserror::Error;
 
-const LOG_TARGET: &str = "c::bn::states::block_sync";
+const LOG_TARGET: &str = "c::bn::state_machine_service::states::block_sync";
 
 // The maximum number of retry attempts a node can perform to request a particular block from remote nodes.
 const MAX_METADATA_REQUEST_RETRY_ATTEMPTS: usize = 3;
@@ -147,7 +149,7 @@ impl BlockSyncStrategy {
         if let StatusInfo::BlockSync(ref mut info) = shared.info {
             info.sync_peers = Clone::clone(&*sync_peers);
         }
-        shared.publish_event_info().await;
+        shared.publish_event_info();
         match self {
             BlockSyncStrategy::ViaBestChainMetadata(sync) => sync.next_event(shared, network_tip, sync_peers).await,
             BlockSyncStrategy::ViaRandomPeer(sync) => sync.next_event(shared).await,
@@ -158,7 +160,7 @@ impl BlockSyncStrategy {
 /// State management for BlockSync -> Listening.
 impl From<BlockSyncStrategy> for Listening {
     fn from(_old_state: BlockSyncStrategy) -> Self {
-        Listening {}
+        Listening { is_synced: true }
     }
 }
 
@@ -220,7 +222,7 @@ impl BestChainMetadataBlockSyncInfo {
             info.sync_peers.clear();
             info.sync_peers.append(&mut sync_peers.clone());
         }
-        shared.publish_event_info().await;
+        shared.publish_event_info();
 
         info!(target: LOG_TARGET, "Synchronizing missing blocks.");
         match synchronize_blocks(shared, network_tip, sync_peers).await {
@@ -323,7 +325,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                     info.local_height = sync_height;
                 }
 
-                shared.publish_event_info().await;
+                shared.publish_event_info();
                 let max_height = min(
                     sync_height + (shared.config.block_sync_config.block_request_size - 1) as u64,
                     network_tip_height,
@@ -441,14 +443,14 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
             // assuming the numbers are ordered
             info.tip_height = block_nums[block_nums.len() - 1];
         }
-        shared.publish_event_info().await;
+        shared.publish_event_info();
         for block in blocks {
             let block_hash = block.hash();
             if let StatusInfo::BlockSync(ref mut info) = shared.info {
                 info.local_height = block.header.height;
             }
 
-            shared.publish_event_info().await;
+            shared.publish_event_info();
             match shared
                 .local_node_interface
                 .submit_block(block.clone(), Broadcast::from(false))
@@ -536,7 +538,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
             info.local_height = block_nums[0];
             info.tip_height = block_nums[block_nums.len() - 1];
         }
-        shared.publish_event_info().await;
+        shared.publish_event_info();
         match shared
             .comms
             .request_blocks_from_peer(block_nums.clone(), Some(sync_peer.node_id.clone()))

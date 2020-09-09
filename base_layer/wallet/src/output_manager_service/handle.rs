@@ -124,6 +124,7 @@ pub enum OutputManagerEvent {
     UtxoValidationTimedOut(u64),
     UtxoValidationSuccess(u64),
     UtxoValidationFailure(u64),
+    UtxoValidationAborted(u64),
     Error(String),
 }
 

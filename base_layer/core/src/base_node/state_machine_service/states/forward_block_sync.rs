@@ -22,8 +22,10 @@
 use crate::{
     base_node::{
         comms_interface::{Broadcast, CommsInterfaceError},
-        states::{sync_peers::SyncPeer, StateEvent, StatusInfo},
-        BaseNodeStateMachine,
+        state_machine_service::{
+            states::{sync_peers::SyncPeer, StateEvent, StatusInfo},
+            BaseNodeStateMachine,
+        },
     },
     blocks::BlockHeader,
     chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError},
@@ -35,7 +37,7 @@ use std::cmp;
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
-const LOG_TARGET: &str = "c::bn::states::block_sync";
+const LOG_TARGET: &str = "c::bn::state_machine_service::states::block_sync";
 
 // The maximum number of retry attempts a node can perform to request a particular block from remote nodes.
 const MAX_BLOCK_REQUEST_RETRY_ATTEMPTS: usize = 5;
@@ -79,7 +81,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
         info.tip_height = tip.height;
     }
 
-    shared.publish_event_info().await;
+    shared.publish_event_info();
     let mut from_headers = fetch_headers_to_send::<B>(&tip, &shared.db);
     let mut sync_node = next_sync_node(&mut sync_nodes);
 
@@ -106,7 +108,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             info.tip_height = from_headers.last().map(|h| h.height).unwrap();
             info.local_height = from_headers.first().map(|h| h.height).unwrap();
         }
-        shared.publish_event_info().await;
+        shared.publish_event_info();
         match shared
             .comms
             .fetch_headers_between(
@@ -250,7 +252,7 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
                     info.tip_height = blocks[blocks.len() - 1].block().header.height;
                     info.local_height = blocks[0].block().header.height;
                 }
-                shared.publish_event_info().await;
+                shared.publish_event_info();
             }
             for i in 0..blocks.len() {
                 let hist_block = &blocks[i];

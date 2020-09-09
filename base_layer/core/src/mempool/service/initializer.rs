@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::comms_interface::LocalNodeCommsInterface,
+    base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
     chain_storage::BlockchainBackend,
     mempool::{
         mempool::Mempool,
@@ -180,6 +180,10 @@ where T: BlockchainBackend + 'static
                 .get_handle::<OutboundMessageRequester>()
                 .expect("OutboundMessageRequester handle required for MempoolService");
 
+            let state_machine = handles
+                .get_handle::<StateMachineHandle>()
+                .expect("StateMachineHandle required to initialize MempoolService");
+
             let base_node = handles
                 .get_handle::<LocalNodeCommsInterface>()
                 .expect("LocalNodeCommsInterface required to initialize ChainStateSyncService");
@@ -193,7 +197,8 @@ where T: BlockchainBackend + 'static
                 local_request_stream,
                 base_node.get_block_event_stream(),
             );
-            let service = MempoolService::new(outbound_message_service, inbound_handlers, config).start(streams);
+            let service =
+                MempoolService::new(outbound_message_service, inbound_handlers, config, state_machine).start(streams);
             futures::pin_mut!(service);
             future::select(service, shutdown).await;
             info!(target: LOG_TARGET, "Mempool Service shutdown");

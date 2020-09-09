@@ -20,6 +20,84 @@ pub struct ChainMetadata {
     #[prost(uint64, tag = "6")]
     pub effective_pruned_height: u64,
 }
+/// Response type for a received BaseNodeService requests
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BaseNodeServiceResponse {
+    #[prost(uint64, tag = "1")]
+    pub request_key: u64,
+    #[prost(bool, tag = "13")]
+    pub is_synced: bool,
+    #[prost(
+        oneof = "base_node_service_response::Response",
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12"
+    )]
+    pub response: ::std::option::Option<base_node_service_response::Response>,
+}
+pub mod base_node_service_response {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Response {
+        /// Indicates a ChainMetadata response.
+        #[prost(message, tag = "2")]
+        ChainMetadata(super::ChainMetadata),
+        /// Indicates a TransactionKernels response.
+        #[prost(message, tag = "3")]
+        TransactionKernels(super::TransactionKernels),
+        /// Indicates a BlockHeaders response.
+        #[prost(message, tag = "4")]
+        BlockHeaders(super::BlockHeaders),
+        /// Indicates a TransactionOutputs response.
+        #[prost(message, tag = "5")]
+        TransactionOutputs(super::TransactionOutputs),
+        /// Indicates a HistoricalBlocks response.
+        #[prost(message, tag = "6")]
+        HistoricalBlocks(super::HistoricalBlocks),
+        /// Indicates a NewBlockTemplate response.
+        #[prost(message, tag = "7")]
+        NewBlockTemplate(super::super::core::NewBlockTemplate),
+        /// Indicates a NewBlock response.
+        #[prost(message, tag = "8")]
+        NewBlock(super::super::core::Block),
+        /// Indicates a TargetDifficulty response.
+        #[prost(uint64, tag = "9")]
+        TargetDifficulty(u64),
+        /// Block headers in range response
+        #[prost(message, tag = "10")]
+        FetchHeadersAfterResponse(super::BlockHeaders),
+        /// Indicates a MmrNodeCount response
+        #[prost(uint32, tag = "11")]
+        MmrNodeCount(u32),
+        /// Indicates a MmrNodes response
+        #[prost(message, tag = "12")]
+        MmrNodes(super::MmrNodes),
+    }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockHeaders {
+    #[prost(message, repeated, tag = "1")]
+    pub headers: ::std::vec::Vec<super::core::BlockHeader>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TransactionKernels {
+    #[prost(message, repeated, tag = "1")]
+    pub kernels: ::std::vec::Vec<super::types::TransactionKernel>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TransactionOutputs {
+    #[prost(message, repeated, tag = "1")]
+    pub outputs: ::std::vec::Vec<super::types::TransactionOutput>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HistoricalBlocks {
+    #[prost(message, repeated, tag = "1")]
+    pub blocks: ::std::vec::Vec<super::core::HistoricalBlock>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MmrNodes {
+    #[prost(bytes, repeated, tag = "1")]
+    pub added: ::std::vec::Vec<std::vec::Vec<u8>>,
+    #[prost(bytes, tag = "2")]
+    pub deleted: std::vec::Vec<u8>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum MmrTree {
@@ -139,80 +217,4 @@ pub struct FetchMmrNodes {
     pub count: u32,
     #[prost(uint64, tag = "4")]
     pub hist_height: u64,
-}
-/// Response type for a received BaseNodeService requests
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BaseNodeServiceResponse {
-    #[prost(uint64, tag = "1")]
-    pub request_key: u64,
-    #[prost(
-        oneof = "base_node_service_response::Response",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12"
-    )]
-    pub response: ::std::option::Option<base_node_service_response::Response>,
-}
-pub mod base_node_service_response {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Response {
-        /// Indicates a ChainMetadata response.
-        #[prost(message, tag = "2")]
-        ChainMetadata(super::ChainMetadata),
-        /// Indicates a TransactionKernels response.
-        #[prost(message, tag = "3")]
-        TransactionKernels(super::TransactionKernels),
-        /// Indicates a BlockHeaders response.
-        #[prost(message, tag = "4")]
-        BlockHeaders(super::BlockHeaders),
-        /// Indicates a TransactionOutputs response.
-        #[prost(message, tag = "5")]
-        TransactionOutputs(super::TransactionOutputs),
-        /// Indicates a HistoricalBlocks response.
-        #[prost(message, tag = "6")]
-        HistoricalBlocks(super::HistoricalBlocks),
-        /// Indicates a NewBlockTemplate response.
-        #[prost(message, tag = "7")]
-        NewBlockTemplate(super::super::core::NewBlockTemplate),
-        /// Indicates a NewBlock response.
-        #[prost(message, tag = "8")]
-        NewBlock(super::super::core::Block),
-        /// Indicates a TargetDifficulty response.
-        #[prost(uint64, tag = "9")]
-        TargetDifficulty(u64),
-        /// Block headers in range response
-        #[prost(message, tag = "10")]
-        FetchHeadersAfterResponse(super::BlockHeaders),
-        /// Indicates a MmrNodeCount response
-        #[prost(uint32, tag = "11")]
-        MmrNodeCount(u32),
-        /// Indicates a MmrNodes response
-        #[prost(message, tag = "12")]
-        MmrNodes(super::MmrNodes),
-    }
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BlockHeaders {
-    #[prost(message, repeated, tag = "1")]
-    pub headers: ::std::vec::Vec<super::core::BlockHeader>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct TransactionKernels {
-    #[prost(message, repeated, tag = "1")]
-    pub kernels: ::std::vec::Vec<super::types::TransactionKernel>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct TransactionOutputs {
-    #[prost(message, repeated, tag = "1")]
-    pub outputs: ::std::vec::Vec<super::types::TransactionOutput>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct HistoricalBlocks {
-    #[prost(message, repeated, tag = "1")]
-    pub blocks: ::std::vec::Vec<super::core::HistoricalBlock>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct MmrNodes {
-    #[prost(bytes, repeated, tag = "1")]
-    pub added: ::std::vec::Vec<std::vec::Vec<u8>>,
-    #[prost(bytes, tag = "2")]
-    pub deleted: std::vec::Vec<u8>,
 }

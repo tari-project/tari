@@ -23,8 +23,10 @@
 use crate::{
     base_node::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
-        states::{StateEvent, StateEvent::FatalError, StatusInfo, SyncPeers, SyncStatus, Waiting},
-        BaseNodeStateMachine,
+        state_machine_service::{
+            states::{StateEvent, StateEvent::FatalError, StatusInfo, SyncPeers, SyncStatus, Waiting},
+            BaseNodeStateMachine,
+        },
     },
     chain_storage::{async_db, BlockchainBackend, ChainMetadata},
     proof_of_work::Difficulty,
@@ -33,11 +35,15 @@ use futures::stream::StreamExt;
 use log::*;
 use std::fmt::{Display, Formatter};
 
-const LOG_TARGET: &str = "c::bn::states::listening";
+const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 /// This struct contains info that is use full for external viewing of state info
-pub struct ListeningInfo;
+pub struct ListeningInfo {
+    synced: bool,
+    // Have we synced at least once
+    bootstrapped: bool,
+}
 
 impl Display for ListeningInfo {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -47,8 +53,19 @@ impl Display for ListeningInfo {
 
 impl ListeningInfo {
     /// Creates a new ListeningInfo
-    pub const fn new() -> Self {
-        Self
+    pub const fn new(is_synced: bool, bootstrapped: bool) -> Self {
+        Self {
+            synced: is_synced,
+            bootstrapped,
+        }
+    }
+
+    pub fn is_synced(&self) -> bool {
+        self.synced
+    }
+
+    pub fn is_bootstrapped(&self) -> bool {
+        self.bootstrapped
     }
 }
 
@@ -56,7 +73,9 @@ impl ListeningInfo {
 /// received metadata, if it detects that the current node is lagging behind the network it will switch to block sync
 /// state.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Listening;
+pub struct Listening {
+    pub is_synced: bool,
+}
 
 impl Listening {
     pub async fn next_event<B: BlockchainBackend + 'static>(
@@ -66,7 +85,10 @@ impl Listening {
     {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
         shared
-            .set_status_info(StatusInfo::Listening(ListeningInfo::new()))
+            .set_status_info(StatusInfo::Listening(ListeningInfo::new(
+                self.is_synced,
+                shared.bootstrapped_sync,
+            )))
             .await;
         while let Some(metadata_event) = shared.metadata_event_stream.next().await {
             match &*metadata_event {
@@ -86,9 +108,20 @@ impl Listening {
                         let sync_peers = select_sync_peers(local_tip_height, &best_metadata, &peer_metadata_list);
 
                         let sync_mode = determine_sync_mode(&local, best_metadata, sync_peers);
+                        if !shared.bootstrapped_sync && sync_mode == SyncStatus::UpToDate {
+                            shared.bootstrapped_sync = true;
+                        }
                         if sync_mode.is_lagging() {
                             debug!(target: LOG_TARGET, "{}", sync_mode);
                             return StateEvent::FallenBehind(sync_mode);
+                        } else {
+                            self.is_synced = true;
+                            shared
+                                .set_status_info(StatusInfo::Listening(ListeningInfo::new(
+                                    true,
+                                    shared.bootstrapped_sync,
+                                )))
+                                .await;
                         }
                     }
                 },
@@ -105,7 +138,7 @@ impl Listening {
 
 impl From<Waiting> for Listening {
     fn from(_: Waiting) -> Self {
-        Listening
+        Listening { is_synced: false }
     }
 }
 
@@ -149,7 +182,7 @@ fn best_metadata(metadata_list: &[PeerChainMetadata]) -> ChainMetadata {
 
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
 fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers: SyncPeers) -> SyncStatus {
-    use crate::base_node::states::SyncStatus::*;
+    use crate::base_node::state_machine_service::states::SyncStatus::*;
     match network.accumulated_difficulty {
         None => {
             info!(

@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,13 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::{comms_interface::NodeCommsResponse, RequestKey};
-use serde::{Deserialize, Serialize};
+use log::*;
+use std::fmt;
 
-/// Response type for a received BaseNodeService requests
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BaseNodeServiceResponse {
-    pub request_key: RequestKey,
-    pub response: NodeCommsResponse,
-    pub is_synced: bool,
+const LOG_TARGET: &str = "c::bn::state_machine_service::states::shutdown_state";
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Shutdown {
+    reason: String,
+}
+
+impl Shutdown {
+    pub fn with_reason(reason: String) -> Self {
+        info!(target: LOG_TARGET, "Node shutdown state: {}", reason);
+        Self { reason }
+    }
+}
+
+impl fmt::Display for Shutdown {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.reason)
+    }
 }

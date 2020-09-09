@@ -23,7 +23,7 @@
 use crate::{
     base_node::{
         comms_interface::{Broadcast, CommsInterfaceError, LocalNodeCommsInterface},
-        states::{StateEvent, SyncStatus},
+        state_machine_service::states::{StateEvent, SyncStatus},
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
     consensus::ConsensusManager,

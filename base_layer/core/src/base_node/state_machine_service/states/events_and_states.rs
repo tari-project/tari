@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::states::{
+    base_node::state_machine_service::states::{
         BlockSyncInfo,
         BlockSyncStrategy,
         HeaderSync,

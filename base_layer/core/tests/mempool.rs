@@ -38,7 +38,11 @@ use helpers::{
 use std::{ops::Deref, sync::Arc, time::Duration};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
-    base_node::{comms_interface::Broadcast, service::BaseNodeServiceConfig},
+    base_node::{
+        comms_interface::Broadcast,
+        service::BaseNodeServiceConfig,
+        state_machine_service::states::{ListeningInfo, StatusInfo},
+    },
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     helpers::create_mem_db,
@@ -631,16 +635,26 @@ fn receive_and_propagate_transaction() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
-        &mut runtime,
-        BlockchainDatabaseConfig::default(),
-        BaseNodeServiceConfig::default(),
-        MmrCacheConfig { rewind_hist_len: 10 },
-        MempoolServiceConfig::default(),
-        LivenessConfig::default(),
-        consensus_manager,
-        temp_dir.path().to_str().unwrap(),
-    );
+    let (mut alice_node, mut bob_node, mut carol_node, _consensus_manager) =
+        create_network_with_3_base_nodes_with_config(
+            &mut runtime,
+            BlockchainDatabaseConfig::default(),
+            BaseNodeServiceConfig::default(),
+            MmrCacheConfig { rewind_hist_len: 10 },
+            MempoolServiceConfig::default(),
+            LivenessConfig::default(),
+            consensus_manager,
+            temp_dir.path().to_str().unwrap(),
+        );
+    alice_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    bob_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    carol_node
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
 
     let (tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
     let (orphan, _, _) = tx!(1*T, fee: 100*uT);
@@ -755,7 +769,7 @@ fn block_event_and_reorg_event_handling() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let (alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
+    let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
@@ -765,6 +779,9 @@ fn block_event_and_reorg_event_handling() {
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
     );
+    alice
+        .mock_base_node_state_machine
+        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
 
     // Bob creates Block 1 and sends it to Alice. Alice adds it to her chain and creates a block event that the Mempool
     // service will receive.

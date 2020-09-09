@@ -22,7 +22,7 @@
 
 use super::error::HorizonSyncError;
 use crate::{
-    base_node::{
+    base_node::state_machine_service::{
         states::{
             helpers,
             helpers::exclude_sync_peer,
@@ -46,7 +46,7 @@ use log::*;
 use tari_crypto::tari_utilities::Hashable;
 use tokio::task::spawn_blocking;
 
-const LOG_TARGET: &str = "c::bn::states::horizon_state_sync";
+const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HorizonStateSync {
