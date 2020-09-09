@@ -21,9 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::error::MmProxyError;
-use monero::blockdata::Block as MoneroBlock;
+use monero::{
+    blockdata::{Block as MoneroBlock, Block},
+    consensus::{deserialize, serialize},
+};
 use rand::rngs::OsRng;
-use serde::Serialize;
 use tari_core::{
     blocks::NewBlockTemplate,
     consensus::ConsensusManager,
@@ -36,18 +38,18 @@ use tari_core::{
 };
 use tari_crypto::keys::SecretKey;
 
-pub fn deserialize_from_hex<T, R>(data: T) -> Result<R, MmProxyError>
-where
-    T: AsRef<[u8]>,
-    R: serde::de::DeserializeOwned,
-{
+pub fn deserialize_monero_block_from_hex<T>(data: T) -> Result<Block, MmProxyError>
+where T: AsRef<[u8]> {
     let bytes = hex::decode(data)?;
-    let obj = bincode::deserialize(&bytes)?;
-    Ok(obj)
+    let obj = deserialize::<Block>(&bytes);
+    match obj {
+        Ok(obj) => Ok(obj),
+        Err(_e) => Err(MmProxyError::MissingDataError("blocktemplate blob invalid".to_string())),
+    }
 }
 
-pub fn serialize_to_hex<T: Serialize>(obj: T) -> Result<String, MmProxyError> {
-    let data = bincode::serialize(&obj)?;
+pub fn serialize_monero_block_to_hex(obj: &Block) -> Result<String, MmProxyError> {
+    let data = serialize::<Block>(obj);
     let bytes = hex::encode(data);
     Ok(bytes)
 }

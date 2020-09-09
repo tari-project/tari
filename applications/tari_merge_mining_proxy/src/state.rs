@@ -33,6 +33,9 @@ pub struct SharedState {
 pub struct TransientData {
     pub tari_block: Option<grpc::GetNewBlockResult>,
     pub monero_seed: Option<String>,
+    pub monero_difficulty: Option<u64>,
     pub tari_height: Option<u64>,
+    pub tari_difficulty: Option<u64>,
     pub tari_prev_submit_height: Option<u64>,
+    pub current_difficulty: Option<u64>,
 }
