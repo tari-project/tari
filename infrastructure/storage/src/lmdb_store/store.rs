@@ -34,22 +34,72 @@ use std::{
 };
 
 const LOG_TARGET: &str = "lmdb";
+const BYTES_PER_MB: usize = 1024 * 1024;
 
 /// An atomic pointer to an LMDB database instance
 type DatabaseRef = Arc<Database<'static>>;
 
+#[derive(Debug, Clone)]
+pub struct LMDBConfig {
+    init_size_bytes: usize,
+    grow_size_bytes: usize,
+    resize_threshold_bytes: usize,
+}
+
+impl LMDBConfig {
+    /// Specify LMDB config in bytes.
+    pub fn new(init_size_bytes: usize, grow_size_bytes: usize, resize_threshold_bytes: usize) -> Self {
+        Self {
+            init_size_bytes,
+            grow_size_bytes,
+            resize_threshold_bytes,
+        }
+    }
+
+    /// Specify LMDB config in megabytes.
+    pub fn new_from_mb(init_size_mb: usize, grow_size_mb: usize, resize_threshold_mb: usize) -> Self {
+        Self {
+            init_size_bytes: init_size_mb * BYTES_PER_MB,
+            grow_size_bytes: grow_size_mb * BYTES_PER_MB,
+            resize_threshold_bytes: resize_threshold_mb * BYTES_PER_MB,
+        }
+    }
+
+    /// Get the initial size of the LMDB environment in bytes.
+    pub fn init_size_bytes(&self) -> usize {
+        self.init_size_bytes
+    }
+
+    /// Get the grow size of the LMDB environment in bytes. The LMDB environment will be resized by this amount when
+    /// `resize_threshold_bytes` are left.
+    pub fn grow_size_bytes(&self) -> usize {
+        self.grow_size_bytes
+    }
+
+    /// Get the resize threshold in bytes. The LMDB environment will be resized when this much free space is left.
+    pub fn resize_threshold_bytes(&self) -> usize {
+        self.resize_threshold_bytes
+    }
+}
+
+impl Default for LMDBConfig {
+    fn default() -> Self {
+        Self::new_from_mb(64, 16, 4)
+    }
+}
+
 /// A builder for [LMDBStore](struct.lmdbstore.html)
 /// ## Example
 ///
-/// Create a new LMDB database of 500MB in the `db` directory with two named databases: "db1" and "db2"
+/// Create a new LMDB database of 64MB in the `db` directory with two named databases: "db1" and "db2"
 ///
 /// ```
-/// # use tari_storage::lmdb_store::LMDBBuilder;
+/// # use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
 /// # use lmdb_zero::db;
 /// # use std::env;
 /// let mut store = LMDBBuilder::new()
 ///     .set_path(env::temp_dir())
-///     .set_environment_size(500)
+///     .set_env_config(LMDBConfig::default())
 ///     .set_max_number_of_databases(10)
 ///     .add_database("db1", db::CREATE)
 ///     .add_database("db2", db::CREATE)
@@ -59,9 +109,9 @@ type DatabaseRef = Arc<Database<'static>>;
 #[derive(Default)]
 pub struct LMDBBuilder {
     path: PathBuf,
-    db_size_mb: usize,
     max_dbs: usize,
     db_names: HashMap<String, db::Flags>,
+    env_config: LMDBConfig,
 }
 
 impl LMDBBuilder {
@@ -71,14 +121,13 @@ impl LMDBBuilder {
     /// | Parameter | Default |
     /// |:----------|---------|
     /// | path      | ./store/|
-    /// | size      | 64 MB   |
     /// | named DBs | none    |
     pub fn new() -> LMDBBuilder {
         LMDBBuilder {
             path: "./store/".into(),
-            db_size_mb: 64,
             db_names: HashMap::new(),
             max_dbs: 8,
+            env_config: LMDBConfig::default(),
         }
     }
 
@@ -90,10 +139,10 @@ impl LMDBBuilder {
         self
     }
 
-    /// Sets the size of the environment, in MB.
+    /// Sets the parameters of the LMDB environment.
     /// The actual memory will only be allocated when #build() is called
-    pub fn set_environment_size(mut self, size: usize) -> LMDBBuilder {
-        self.db_size_mb = size;
+    pub fn set_env_config(mut self, config: LMDBConfig) -> LMDBBuilder {
+        self.env_config = config;
         self
     }
 
@@ -126,7 +175,7 @@ impl LMDBBuilder {
 
         let env = unsafe {
             let mut builder = EnvBuilder::new()?;
-            builder.set_mapsize(self.db_size_mb * 1024 * 1024)?;
+            builder.set_mapsize(self.env_config.init_size_bytes)?;
             builder.set_maxdbs(max_dbs)?;
             // Using open::Flags::NOTLS does not compile!?! NOTLS=0x200000
             let flags = open::Flags::from_bits(0x200_000).expect("LMDB open::Flag is correct");
@@ -135,33 +184,13 @@ impl LMDBBuilder {
         let env = Arc::new(env);
 
         // Increase map size if usage gets close to the db size
-        let mut env_info = env.info()?;
-        let env_stat = env.stat()?;
-        let size_used = env_stat.psize as usize * env_info.last_pgno;
-        let mut space_remaining = env_info.mapsize - size_used;
-        let usage = (size_used as f64 / env_info.mapsize as f64) * 100.0;
-        if space_remaining <= ((self.db_size_mb * 1024 * 1024) as f64 * 0.5) as usize {
-            unsafe {
-                env.set_mapsize(size_used + self.db_size_mb * 1024 * 1024)?;
-            }
-            env_info = env.info()?;
-            space_remaining = env_info.mapsize - size_used;
-            debug!(
-                target: LOG_TARGET,
-                "({}) LMDB environment usage factor {:.*} %., size used {:?} MB, increased by {:?} MB.",
-                path,
-                2,
-                usage,
-                size_used / (1024 * 1024),
-                self.db_size_mb
-            );
-        };
+        LMDBStore::resize_if_required(&env, &self.env_config)?;
         info!(
             target: LOG_TARGET,
             "({}) LMDB environment created with a capacity of {} MB, {} MB remaining.",
             path,
-            env_info.mapsize / (1024 * 1024),
-            space_remaining / (1024 * 1024)
+            env.info()?.mapsize / BYTES_PER_MB,
+            (env.info()?.mapsize - env.stat()?.psize as usize * env.info()?.last_pgno) / BYTES_PER_MB,
         );
 
         let mut databases: HashMap<String, LMDBDatabase> = HashMap::new();
@@ -172,13 +201,19 @@ impl LMDBBuilder {
             let db = Database::open(env.clone(), Some(name), &DatabaseOptions::new(*flags))?;
             let db = LMDBDatabase {
                 name: name.to_string(),
+                env_config: self.env_config.clone(),
                 env: env.clone(),
                 db: Arc::new(db),
             };
             databases.insert(name.to_string(), db);
             trace!(target: LOG_TARGET, "({}) LMDB database '{}' is ready", path, name);
         }
-        Ok(LMDBStore { path, env, databases })
+        Ok(LMDBStore {
+            path,
+            env_config: self.env_config,
+            env,
+            databases,
+        })
     }
 }
 
@@ -238,7 +273,7 @@ impl LMDBBuilder {
 ///
 /// ## Serialisation
 ///
-/// The ideal serialiasation format is the one that does the least "bit-twiddling" between memory and the byte array;
+/// The ideal serialisation format is the one that does the least "bit-twiddling" between memory and the byte array;
 /// as well as being as compact as possible.
 ///
 /// Candidates include: Bincode, MsgPack, and Protobuf / Cap'nProto. Without spending ages on a comparison, I just
@@ -288,14 +323,15 @@ impl LMDBBuilder {
 /// So after all this, we'll use bincode for the time being to handle serialisation to- and from- LMDB
 pub struct LMDBStore {
     path: String,
+    env_config: LMDBConfig,
     pub(crate) env: Arc<Environment>,
     pub(crate) databases: HashMap<String, LMDBDatabase>,
 }
 
-/// Close all databases and close the environment. You cannot be guaranteed that the dbs will be closed after calling
-/// this function because there still may be threads accessing / writing to a database that will block this call.
-/// However, in that case `shutdown` returns an error.
 impl LMDBStore {
+    /// Close all databases and close the environment. You cannot be guaranteed that the dbs will be closed after
+    /// calling this function because there still may be threads accessing / writing to a database that will block
+    /// this call. However, in that case `shutdown` returns an error.
     pub fn flush(&self) -> Result<(), lmdb_zero::error::Error> {
         trace!(target: LOG_TARGET, "Forcing flush of buffers to disk");
         self.env.sync(true)?;
@@ -312,7 +348,7 @@ impl LMDBStore {
                 e.to_string()
             ),
             Ok(info) => {
-                let size_mb = info.mapsize / 1024 / 1024;
+                let size_mb = info.mapsize / BYTES_PER_MB;
                 debug!(
                     target: LOG_TARGET,
                     "LMDB Environment information ({}). Map Size={} MB. Last page no={}. Last tx id={}",
@@ -356,14 +392,41 @@ impl LMDBStore {
         }
     }
 
+    pub fn env_config(&self) -> LMDBConfig {
+        self.env_config.clone()
+    }
+
     pub fn env(&self) -> Arc<Environment> {
         self.env.clone()
+    }
+
+    /// Resize the LMDB environment if the resize threshold is breached.
+    pub fn resize_if_required(env: &Environment, config: &LMDBConfig) -> Result<(), LMDBError> {
+        let env_info = env.info()?;
+        let size_used_bytes = env.stat()?.psize as usize * env_info.last_pgno;
+        let size_left_bytes = env_info.mapsize - size_used_bytes;
+
+        if size_left_bytes <= config.resize_threshold_bytes {
+            unsafe {
+                env.set_mapsize(size_used_bytes + config.grow_size_bytes)?;
+            }
+            debug!(
+                target: LOG_TARGET,
+                "({}) LMDB size used {:?} MB, environment space left {:?} MB, increased by {:?} MB.",
+                env.path()?.to_str()?,
+                size_used_bytes / BYTES_PER_MB,
+                size_left_bytes / BYTES_PER_MB,
+                config.grow_size_bytes / BYTES_PER_MB,
+            );
+        }
+        Ok(())
     }
 }
 
 #[derive(Clone)]
 pub struct LMDBDatabase {
     name: String,
+    env_config: LMDBConfig,
     env: Arc<Environment>,
     db: DatabaseRef,
 }
@@ -377,6 +440,9 @@ impl LMDBDatabase {
         V: Serialize,
     {
         let env = &(*self.db.env());
+
+        LMDBStore::resize_if_required(env, &self.env_config)?;
+
         let tx = WriteTransaction::new(env)?;
         {
             let mut accessor = tx.access();
@@ -437,12 +503,12 @@ impl LMDBDatabase {
 
     /// Returns if the database is empty.
     pub fn is_empty(&self) -> Result<bool, LMDBError> {
-        self.get_stats().and_then(|s| Ok(s.entries > 0))
+        self.get_stats().map(|s| s.entries > 0)
     }
 
     /// Returns the total number of entries in this database.
     pub fn len(&self) -> Result<usize, LMDBError> {
-        self.get_stats().and_then(|s| Ok(s.entries))
+        self.get_stats().map(|s| s.entries)
     }
 
     /// Execute function `f` for each value in the database.
@@ -643,7 +709,7 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
 
 #[cfg(test)]
 mod test {
-    use crate::lmdb_store::LMDBBuilder;
+    use crate::lmdb_store::{LMDBBuilder, LMDBConfig};
     use lmdb_zero::db;
     use std::env;
 
@@ -651,7 +717,7 @@ mod test {
     fn test_lmdb_builder() {
         let store = LMDBBuilder::new()
             .set_path(env::temp_dir())
-            .set_environment_size(500)
+            .set_env_config(LMDBConfig::default())
             .set_max_number_of_databases(10)
             .add_database("db1", db::CREATE)
             .add_database("db2", db::CREATE)

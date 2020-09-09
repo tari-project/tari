@@ -23,6 +23,7 @@ multiaddr={package="parity-multiaddr", version = "0.7.2"}
 prost-build = "0.6.1"
 sha2 = "0.8.0"
 path-clean = "0.1.0"
+tari_storage = { version = "^0.2", path = "../infrastructure/storage"}
 
 [dev-dependencies]
 tempfile = "3.1.0"

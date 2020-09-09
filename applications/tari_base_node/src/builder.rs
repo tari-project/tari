@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::miner;
-use futures::{channel::mpsc, future};
+use futures::future;
 use log::*;
 use std::{
     fs,
@@ -334,7 +334,7 @@ where B: 'static
 }
 
 /// Sets up and initializes the base node, creating the context and database
-/// ## Paramters
+/// ## Parameters
 /// `config` - The configuration for the base node
 /// `node_identity` - The node identity information of the base node
 /// `wallet_node_identity` - The node identity information of the base node's wallet
@@ -367,7 +367,8 @@ pub async fn configure_and_initialize_node(
             NodeContainer::Memory(ctx)
         },
         DatabaseType::LMDB(p) => {
-            let backend = create_lmdb_database(&p, MmrCacheConfig::default()).map_err(|e| e.to_string())?;
+            let backend = create_lmdb_database(&p, config.db_config.clone(), MmrCacheConfig::default())
+                .map_err(|e| e.to_string())?;
             let ctx = build_node_context(
                 backend,
                 network,
@@ -383,8 +384,9 @@ pub async fn configure_and_initialize_node(
     Ok(result)
 }
 
-/// Constructs the base node context, this includes settin up the consensus manager, mempool, base node, wallet, miner
-/// and state machine ## Paramters
+/// Constructs the base node context, this includes setting up the consensus manager, mempool, base node, wallet, miner
+/// and state machine
+/// ## Parameters
 /// `backend` - Backend interface
 /// `network` - The NetworkType (rincewind, mainnet, local)
 /// `base_node_identity` - The node identity information of the base node

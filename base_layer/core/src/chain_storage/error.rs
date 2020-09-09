@@ -25,6 +25,7 @@ use crate::{
     validation::ValidationError,
 };
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
+use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
 use tokio::task;
 
@@ -85,6 +86,11 @@ pub enum ChainStorageError {
     OutOfRange,
     #[error("Value not found: {0}")]
     LmdbValueNotFound(lmdb_zero::Error),
+    #[error("LMDB error: {source}")]
+    LmdbError {
+        #[from]
+        source: LMDBError,
+    },
 }
 
 impl From<LMDBVecError> for ChainStorageError {

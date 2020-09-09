@@ -46,7 +46,10 @@ use tari_comms_dht::{
     Dht,
     DhtBuilder,
 };
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use tari_storage::{
+    lmdb_store::{LMDBBuilder, LMDBConfig},
+    LMDBWrapper,
+};
 use tari_test_utils::{
     async_assert_eventually,
     collect_stream,
@@ -86,7 +89,7 @@ fn create_peer_storage() -> CommsDatabase {
     let database_name = random::string(8);
     let datastore = LMDBBuilder::new()
         .set_path(create_temporary_data_path())
-        .set_environment_size(50)
+        .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(1)
         .add_database(&database_name, lmdb_zero::db::CREATE)
         .build()

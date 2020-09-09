@@ -72,6 +72,7 @@ use tari_core::{
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_mmr::{MmrCacheConfig, MutableMmr};
+use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
 fn init_log() {
@@ -1201,7 +1202,7 @@ fn restore_metadata_and_pruning_horizon_update() {
         let pruning_horizon1: u64 = 1000;
         let pruning_horizon2: u64 = 900;
         {
-            let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
+            let db = create_lmdb_database(&path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
             config.pruning_horizon = pruning_horizon1;
             let db = BlockchainDatabase::new(db, &rules, validators.clone(), config).unwrap();
 
@@ -1216,7 +1217,7 @@ fn restore_metadata_and_pruning_horizon_update() {
         // Restore blockchain db with larger pruning horizon
         {
             config.pruning_horizon = 2000;
-            let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
+            let db = create_lmdb_database(&path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
             let db = BlockchainDatabase::new(db, &rules, validators.clone(), config).unwrap();
 
             let metadata = db.get_chain_metadata().unwrap();
@@ -1227,7 +1228,7 @@ fn restore_metadata_and_pruning_horizon_update() {
         // Restore blockchain db with smaller pruning horizon update
         {
             config.pruning_horizon = 900;
-            let db = create_lmdb_database(&path, MmrCacheConfig::default()).unwrap();
+            let db = create_lmdb_database(&path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
             let db = BlockchainDatabase::new(db, &rules, validators, config).unwrap();
 
             let metadata = db.get_chain_metadata().unwrap();
@@ -1262,7 +1263,7 @@ fn invalid_block() {
             MockStatelessBlockValidator::new(consensus_manager.clone(), factories.clone()),
             MockAccumDifficultyValidator {},
         );
-        let db = create_lmdb_database(&temp_path, MmrCacheConfig::default()).unwrap();
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         let mut store =
             BlockchainDatabase::new(db, &consensus_manager, validators, BlockchainDatabaseConfig::default()).unwrap();
         let mut blocks = vec![block0];

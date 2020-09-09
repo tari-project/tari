@@ -116,6 +116,11 @@ network = "rincewind"
 # almost all use cases.
 db_type = "lmdb"
 
+# db config defaults
+# db_init_size_mb = 1000
+# db_grow_size_mb = 500
+# db_resize_threshold_mb = 100
+
 # The maximum number of orphans that can be stored in the Orphan block pool. Default value is "720".
 #orphan_storage_capacity = 720
 # The pruning horizon that indicates how many full blocks without pruning must be kept by the base node. Default value
