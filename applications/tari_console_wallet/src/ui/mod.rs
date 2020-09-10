@@ -53,15 +53,15 @@ use tui::{backend::CrosstermBackend, Terminal};
 
 const MAX_WIDTH: u16 = 133;
 
-pub async fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
+pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
     let mut app = app;
-    app.refresh_state()
-        .await
+    Handle::current()
+        .block_on(app.refresh_state())
         .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
     crossterm_loop(app)
 }
 /// This is the main loop of the application UI using Crossterm based events
-pub fn crossterm_loop(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
+fn crossterm_loop(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
     let mut app = app;
     let events = CrosstermEvents::new();
     enable_raw_mode().map_err(|e| {

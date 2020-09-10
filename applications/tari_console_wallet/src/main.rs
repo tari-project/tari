@@ -18,15 +18,14 @@ use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_core::{consensus::Network as NetworkType, transactions::types::CryptoFactories};
 use tari_p2p::initialization::CommsConfig;
 use tari_wallet::{
-    contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
     error::WalletError,
-    output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::{sqlite_db::WalletSqliteDatabase, sqlite_utilities::initialize_sqlite_database_backends},
-    transaction_service::{config::TransactionServiceConfig, storage::sqlite_db::TransactionServiceSqliteDatabase},
+    storage::sqlite_utilities::initialize_sqlite_database_backends,
+    transaction_service::config::TransactionServiceConfig,
     wallet::WalletConfig,
     Wallet,
+    WalletSqlite,
 };
-use tokio::{runtime::Runtime, sync::RwLock};
+use tokio::sync::RwLock;
 use tonic::transport::Server;
 use tui::backend::CrosstermBackend;
 
@@ -98,29 +97,28 @@ fn main_inner() -> Result<(), ExitCodes> {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
         return Ok(());
     }
-    let runtime = tokio::runtime::Builder::new()
+    let mut runtime = tokio::runtime::Builder::new()
         .threaded_scheduler()
         .enable_all()
         .build()
         .unwrap();
 
-    let wallet = setup_wallet(&node_config, wallet_identity, runtime)?;
+    let wallet = runtime.block_on(setup_wallet(&node_config, wallet_identity))?;
     debug!(target: LOG_TARGET, "Starting app");
-    let handle = wallet.runtime.handle().clone();
 
     let node_identity = wallet.comms.node_identity().as_ref().clone();
     let wallet = Arc::new(RwLock::new(wallet));
     let grpc = crate::grpc::WalletGrpcServer::new(wallet.clone());
 
     if !bootstrap.daemon_mode {
-        handle.spawn(run_grpc(grpc, node_config.grpc_address));
+        runtime.spawn(run_grpc(grpc, node_config.grpc_address));
         let app = App::<CrosstermBackend<Stdout>>::new(
             "Tari Console Wallet".into(),
             &node_identity,
             wallet.clone(),
             node_config.network,
         );
-        handle.block_on(ui::run(app))?;
+        runtime.handle().enter(|| ui::run(app))?;
         println!("The wallet is shutting down.");
         info!(
             target: LOG_TARGET,
@@ -130,7 +128,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         Ok(())
     } else {
         println!("Starting grpc server");
-        handle
+        runtime
             .block_on(run_grpc(grpc, node_config.grpc_address))
             .map_err(|err| ExitCodes::GrpcError(err))?;
         println!("Shutting down");
@@ -139,20 +137,7 @@ fn main_inner() -> Result<(), ExitCodes> {
 }
 
 /// Setup the app environment and state for use by the UI
-fn setup_wallet(
-    config: &GlobalConfig,
-    node_identity: Arc<NodeIdentity>,
-    runtime: Runtime,
-) -> Result<
-    Wallet<
-        WalletSqliteDatabase,
-        TransactionServiceSqliteDatabase,
-        OutputManagerSqliteDatabase,
-        ContactsServiceSqliteDatabase,
-    >,
-    ExitCodes,
->
-{
+async fn setup_wallet(config: &GlobalConfig, node_identity: Arc<NodeIdentity>) -> Result<WalletSqlite, ExitCodes> {
     create_wallet_folder(
         &config
             .wallet_db_file
@@ -211,12 +196,12 @@ fn setup_wallet(
 
     let mut wallet = Wallet::new(
         wallet_config,
-        runtime,
         wallet_backend,
         transaction_backend.clone(),
         output_manager_backend,
         contacts_backend,
     )
+    .await
     .map_err(|e| {
         if let WalletError::CommsInitializationError(ce) = e {
             ExitCodes::WalletError(format!("Error initializing Comms: {}", ce.to_friendly_string()))
@@ -239,6 +224,7 @@ fn setup_wallet(
                     .expect("The seed peers should have an address")
                     .to_string(),
             )
+            .await
             .map_err(|e| ExitCodes::WalletError(format!("Error setting wallet base node peer. {}", e)))?;
     }
 
