@@ -30,7 +30,7 @@ use std::ops::Add;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// This is the inner struct used to control all consensus values.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ConsensusConstants {
     /// The min height maturity a coinbase utxo must have
     coinbase_lock_height: u64,

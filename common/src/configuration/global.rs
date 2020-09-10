@@ -84,9 +84,9 @@ pub struct GlobalConfig {
     pub transaction_direct_send_timeout: Duration,
     pub transaction_broadcast_send_timeout: Duration,
     pub monerod_url: String,
-    pub curl_username: String,
-    pub curl_password: String,
-    pub curl_use_auth: bool,
+    pub monerod_username: String,
+    pub monerod_password: String,
+    pub monerod_use_auth: bool,
     pub proxy_host_address: SocketAddr,
 }
 
@@ -371,21 +371,18 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
-    let key = config_string("merge_mining_proxy", &net_str, "curl_use_auth");
-    let curl_use_auth_string = cfg
+    let key = config_string("merge_mining_proxy", &net_str, "monerod_use_auth");
+    let monerod_use_auth = cfg
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
+    let key = config_string("merge_mining_proxy", &net_str, "monerod_username");
+    let monerod_username = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
-    let curl_use_auth =
-        bool::from_str(&curl_use_auth_string).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-
-    let key = config_string("merge_mining_proxy", &net_str, "curl_username");
-    let curl_username = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-
-    let key = config_string("merge_mining_proxy", &net_str, "curl_password");
-    let curl_password = cfg
+    let key = config_string("merge_mining_proxy", &net_str, "monerod_password");
+    let monerod_password = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
@@ -436,9 +433,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         transaction_broadcast_send_timeout,
         proxy_host_address,
         monerod_url,
-        curl_username,
-        curl_password,
-        curl_use_auth,
+        monerod_username,
+        monerod_password,
+        monerod_use_auth,
     })
 }
 
