@@ -392,11 +392,6 @@ where
         .add_peer(wallet_node_identity.to_peer())
         .await
         .map_err(|err| err.to_string())?;
-    base_node_comms
-        .connectivity()
-        .add_managed_peers(vec![wallet_node_identity.node_id().clone()])
-        .await
-        .map_err(|err| err.to_string())?;
 
     debug!(target: LOG_TARGET, "Registering base node services");
     let base_node_handles = register_base_node_services(
@@ -852,7 +847,7 @@ async fn register_wallet_services(
         .add_initializer(CommsOutboundServiceInitializer::new(wallet_dht.outbound_requester()))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig{
-                auto_ping_interval: None,
+                auto_ping_interval: Some(Duration::from_secs(60)),
                 ..Default::default()
             },
             subscription_factory.clone(),
