@@ -627,7 +627,6 @@ async fn get_block_group(
         CalcType::Mean => mean(values).map(|v| vec![v]),
         CalcType::Quantile => return Err(Status::unimplemented("Quantile has not been implemented")),
         CalcType::Quartile => return Err(Status::unimplemented("Quartile has not been implemented")),
-        _ => median(values).map(|v| vec![v]),
     }
     .unwrap_or(vec![]);
     debug!(

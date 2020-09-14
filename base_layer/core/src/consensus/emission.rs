@@ -145,7 +145,7 @@ impl<'a> Iterator for EmissionRate<'a> {
 /// NB: We don't know what the final emission schedule will be on Tari yet, so do not give any weight to values or
 /// formulae provided in this file, they will almost certainly change ahead of main-net release.
 #[derive(Clone)]
-#[deprecated(note = "Use Emission instead")]
+// #[deprecated(note = "Use Emission instead")]
 pub struct EmissionSchedule {
     initial: MicroTari,
     decay: f64,

@@ -68,11 +68,6 @@ where T: Into<Vec<ListItem<'a>>>
         self
     }
 
-    pub fn highlight_symbol(mut self, symbol: &'a str) -> Self {
-        self.highlight_symbol = Some(symbol);
-        self
-    }
-
     pub fn max_width(mut self, max_width: u16) -> Self {
         self.max_width = Some(max_width);
         self

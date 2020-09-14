@@ -94,12 +94,11 @@ impl StatelessValidation<Block> for StatelessBlockValidator {
 /// next block on the blockchain.
 pub struct FullConsensusValidator {
     rules: ConsensusManager,
-    factories: CryptoFactories,
 }
 
 impl FullConsensusValidator {
-    pub fn new(rules: ConsensusManager, factories: CryptoFactories) -> Self {
-        Self { rules, factories }
+    pub fn new(rules: ConsensusManager) -> Self {
+        Self { rules }
     }
 }
 

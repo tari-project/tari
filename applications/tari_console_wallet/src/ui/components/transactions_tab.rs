@@ -103,7 +103,6 @@ impl TransactionsTab {
         let column_list = MultiColumnList::new()
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
             .heading_style(Style::default().fg(Color::Magenta))
-            .highlight_symbol(">")
             .max_width(MAX_WIDTH)
             .add_column(Some("Source/Destination Public Key"), Some(67), column0_items)
             .add_column(Some("Amount"), Some(18), column1_items)

@@ -37,7 +37,7 @@ fn test_genesis_block() {
     let rules = ConsensusManagerBuilder::new(network).build();
     let backend = MemoryDatabase::<HashDigest>::default();
     let validators = Validators::new(
-        FullConsensusValidator::new(rules.clone(), factories.clone()),
+        FullConsensusValidator::new(rules.clone()),
         StatelessBlockValidator::new(rules.clone(), factories),
         AccumDifficultyValidator {},
     );

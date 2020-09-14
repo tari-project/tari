@@ -1023,7 +1023,7 @@ mod test {
         let db1 = lmdb_store.get_handle("1").unwrap().db();
         let db2 = lmdb_store.get_handle("2").unwrap().db();
 
-        let txn2 = WriteTransaction::new(env.clone()).unwrap();
+        let _txn2 = WriteTransaction::new(env.clone()).unwrap();
         {
             let txn = WriteTransaction::new(env.clone()).unwrap();
             lmdb_insert(&txn, &db1, &123, &"here").unwrap();

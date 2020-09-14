@@ -20,13 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    blocks::BlockHeader,
-    proof_of_work::Difficulty,
-    tari_utilities::ByteArray,
-    validation::ValidationError,
-    U256,
-};
+use crate::{blocks::BlockHeader, proof_of_work::Difficulty, tari_utilities::ByteArray, U256};
 use monero::{
     blockdata::{
         block::{Block as MoneroBlock, BlockHeader as MoneroBlockHeader},
@@ -299,7 +293,6 @@ mod test {
         },
         tari_utilities::ByteArray,
     };
-    use chrono::DateTime;
     use monero::{
         blockdata::{
             block::BlockHeader as MoneroHeader,
@@ -315,7 +308,6 @@ mod test {
         Transaction,
         TxOut,
     };
-    use std::time::{SystemTime, UNIX_EPOCH};
     use tari_crypto::ristretto::RistrettoSecretKey;
     use tari_test_utils::unpack_enum;
 

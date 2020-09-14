@@ -39,8 +39,6 @@ use std::fmt::{Display, Formatter};
 use tari_crypto::tari_utilities::Hashable;
 use thiserror::Error;
 
-pub const LOG_TARGET: &str = "c::bl::block";
-
 #[derive(Clone, Debug, PartialEq, Error)]
 pub enum BlockValidationError {
     #[error("A transaction in the block failed to validate: `{0}`")]
