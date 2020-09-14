@@ -32,6 +32,9 @@ commands:
       - run:
           name: Run tests
           command: cargo test --workspace --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+      - run:
+          name: Run clippy
+          command: cargo clippy -- -D warnings
       - save_cache:
           paths:
             - /usr/local/cargo/registry
