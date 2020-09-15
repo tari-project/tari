@@ -115,12 +115,16 @@ pub enum TransactionServiceError {
     NodeIdError(#[from] NodeIdError),
     #[error("Broadcast recv error: `{0}`")]
     BroadcastRecvError(#[from] RecvError),
+    #[error("Broadcast send error: `{0}`")]
+    BroadcastSendError(String),
     #[error("Oneshot cancelled error: `{0}`")]
     OneshotCancelled(#[from] Canceled),
     #[error("Liveness error: `{0}`")]
     LivenessError(#[from] LivenessError),
     #[error("Coinbase build error: `{0}`")]
     CoinbaseBuildError(#[from] CoinbaseBuildError),
+    #[error("Pending Transaction Timed out")]
+    Timeout,
 }
 
 #[derive(Debug, Error)]

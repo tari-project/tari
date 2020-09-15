@@ -24,7 +24,7 @@ use crate::transaction_service::{
     error::{TransactionServiceError, TransactionServiceProtocolError},
     handle::TransactionEvent,
     service::TransactionServiceResources,
-    storage::database::{TransactionBackend, TransactionStatus},
+    storage::{database::TransactionBackend, models::TransactionStatus},
 };
 use futures::{channel::mpsc::Receiver, FutureExt, StreamExt};
 use log::*;

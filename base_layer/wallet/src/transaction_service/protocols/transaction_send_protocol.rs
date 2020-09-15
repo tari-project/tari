@@ -30,12 +30,14 @@ use crate::transaction_service::{
     error::{TransactionServiceError, TransactionServiceProtocolError},
     handle::TransactionEvent,
     service::TransactionServiceResources,
-    storage::database::{
-        CompletedTransaction,
-        OutboundTransaction,
-        TransactionBackend,
-        TransactionDirection,
-        TransactionStatus,
+    storage::{
+        database::TransactionBackend,
+        models::{CompletedTransaction, OutboundTransaction, TransactionDirection, TransactionStatus},
+    },
+    tasks::{
+        send_finalized_transaction::send_finalized_transaction_message,
+        send_transaction_cancelled::send_transaction_cancelled_message,
+        wait_on_dial::wait_on_dial,
     },
 };
 use futures::channel::oneshot;
@@ -43,15 +45,16 @@ use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
-    outbound::{MessageSendStates, OutboundEncryption, SendMessageResponse},
+    outbound::{OutboundEncryption, SendMessageResponse},
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{KernelFeatures, Transaction, TransactionError},
+    transaction::{KernelFeatures, TransactionError},
     transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::SingleRoundSenderData},
     SenderTransactionProtocol,
 };
 use tari_p2p::tari_message::TariMessageType;
+use tokio::time::delay_for;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol";
 
@@ -186,6 +189,12 @@ where TBackend: TransactionBackend + Clone + 'static
             .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
+        self.resources
+            .db
+            .increment_send_count(self.id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+
         info!(
             target: LOG_TARGET,
             "Pending Outbound Transaction TxId: {:?} added. Waiting for Reply or Cancellation", self.id,
@@ -223,9 +232,76 @@ where TBackend: TransactionBackend + Clone + 'static
             ));
         }
 
+        // Determine the time remaining before this transaction times out
+        let elapsed_time = Utc::now()
+            .naive_utc()
+            .signed_duration_since(outbound_tx.timestamp)
+            .to_std()
+            .map_err(|_| {
+                TransactionServiceProtocolError::new(
+                    self.id,
+                    TransactionServiceError::ConversionError("duration::OutOfRangeError".to_string()),
+                )
+            })?;
+
+        let timeout_duration = match self
+            .resources
+            .config
+            .pending_transaction_cancellation_timeout
+            .checked_sub(elapsed_time)
+        {
+            None => {
+                // This will cancel the transaction and exit this protocol
+                return self.timeout_transaction().await;
+            },
+            Some(t) => t,
+        };
+        let mut timeout_delay = delay_for(timeout_duration).fuse();
+
+        // check to see if a resend is due
+        let resend = match outbound_tx.last_send_timestamp {
+            None => true,
+            Some(timestamp) => {
+                let elapsed_time = Utc::now()
+                    .naive_utc()
+                    .signed_duration_since(timestamp)
+                    .to_std()
+                    .map_err(|_| {
+                        TransactionServiceProtocolError::new(
+                            self.id,
+                            TransactionServiceError::ConversionError("duration::OutOfRangeError".to_string()),
+                        )
+                    })?;
+                elapsed_time > self.resources.config.transaction_resend_period
+            },
+        };
+
+        if resend {
+            if let Err(e) = self
+                .send_transaction(
+                    outbound_tx
+                        .sender_protocol
+                        .get_single_round_message()
+                        .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?,
+                )
+                .await
+            {
+                warn!(
+                    target: LOG_TARGET,
+                    "Error resending Transaction (TxId: {}): {:?}", self.id, e
+                );
+            }
+            self.resources
+                .db
+                .increment_send_count(self.id)
+                .await
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+        }
+
         #[allow(unused_assignments)]
         let mut reply = None;
         loop {
+            let mut resend_timeout = delay_for(self.resources.config.transaction_resend_period).fuse();
             futures::select! {
                 (spk, rr) = receiver.select_next_some() => {
                     let rr_tx_id = rr.tx_id;
@@ -243,11 +319,39 @@ where TBackend: TransactionBackend + Clone + 'static
                     }
                 },
                 _ = cancellation_receiver => {
-                    info!(target: LOG_TARGET, "Cancelling Transaction Send Protocol for TxId: {}", self.id);
+                    info!(target: LOG_TARGET, "Cancelling Transaction Send Protocol (TxId: {})", self.id);
+                    let _ = send_transaction_cancelled_message(self.id,self.dest_pubkey.clone(), self.resources.outbound_message_service.clone(), ).await.map_err(|e| {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error sending Transaction Cancelled (TxId: {}) message: {:?}", self.id, e
+                        )
+                    });
+                    self.resources
+                        .db
+                        .increment_send_count(self.id)
+                        .await
+                        .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
                     return Err(TransactionServiceProtocolError::new(
                         self.id,
                         TransactionServiceError::TransactionCancelled,
                     ));
+                },
+                () = resend_timeout => {
+                    if let Err(e) = self.send_transaction(outbound_tx.sender_protocol.get_single_round_message().map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?).await {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error resending Transaction (TxId: {}): {:?}", self.id, e
+                        );
+                    } else {
+                        self.resources
+                            .db
+                            .increment_send_count(self.id)
+                            .await
+                            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+                    }
+                },
+                () = timeout_delay => {
+                    return self.timeout_transaction().await;
                 }
             }
         }
@@ -310,7 +414,21 @@ where TBackend: TransactionBackend + Clone + 'static
             "Transaction Recipient Reply for TX_ID = {} received", tx_id,
         );
 
-        self.send_transaction_finalized_message(tx.clone()).await?;
+        send_finalized_transaction_message(
+            tx_id,
+            tx.clone(),
+            self.dest_pubkey.clone(),
+            self.resources.outbound_message_service.clone(),
+            self.resources.config.direct_send_timeout,
+        )
+        .await
+        .map_err(|e| TransactionServiceProtocolError::new(self.id, e))?;
+
+        self.resources
+            .db
+            .increment_send_count(tx_id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
         let _ = self
             .resources
@@ -330,7 +448,7 @@ where TBackend: TransactionBackend + Clone + 'static
 
     /// Attempt to send the transaction to the recipient both directly and via Store-and-forward. If both fail to send
     /// the transaction will be cancelled.
-    /// # Arguments
+    /// # Argumentswallet_sync_with_base_node
     /// `msg`: The transaction data message to be sent     
     async fn send_transaction(
         &mut self,
@@ -357,7 +475,15 @@ where TBackend: TransactionBackend + Clone + 'static
         {
             Ok(result) => match result {
                 SendMessageResponse::Queued(send_states) => {
-                    if self.wait_on_dial(send_states, "Transaction").await {
+                    if wait_on_dial(
+                        send_states,
+                        self.id,
+                        self.dest_pubkey.clone(),
+                        "Transaction",
+                        self.resources.config.direct_send_timeout,
+                    )
+                    .await
+                    {
                         direct_send_result = true;
                     } else {
                         store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
@@ -380,7 +506,14 @@ where TBackend: TransactionBackend + Clone + 'static
                                     target: LOG_TARGET,
                                     "Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id
                                 );
-                                direct_send_result = self.wait_on_dial(send_states, "Transaction").await;
+                                direct_send_result = wait_on_dial(
+                                    send_states,
+                                    self.id,
+                                    self.dest_pubkey.clone(),
+                                    "Transaction",
+                                    self.resources.config.direct_send_timeout,
+                                )
+                                .await;
                             }
                         },
                         Err(e) => {
@@ -431,52 +564,6 @@ where TBackend: TransactionBackend + Clone + 'static
             direct_send_result,
             store_and_forward_send_result,
         })
-    }
-
-    /// This function contains the logic to wait on a dial and send of a queued message
-    async fn wait_on_dial(&self, send_states: MessageSendStates, message: &str) -> bool {
-        if send_states.len() == 1 {
-            debug!(
-                target: LOG_TARGET,
-                "{} (TxId: {}) Direct Send to {} queued with Message {}",
-                message,
-                self.id,
-                self.dest_pubkey,
-                send_states[0].tag,
-            );
-            let (sent, failed) = send_states
-                .wait_n_timeout(self.resources.config.direct_send_timeout, 1)
-                .await;
-            if !sent.is_empty() {
-                info!(
-                    target: LOG_TARGET,
-                    "Direct Send process for {} TX_ID: {} was successful with Message: {}", message, self.id, sent[0]
-                );
-                true
-            } else {
-                if failed.is_empty() {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Direct Send process for {} TX_ID: {} timed out", message, self.id
-                    );
-                } else {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Direct Send process for {} TX_ID: {} and Message {} was unsuccessful and no message was sent",
-                        message,
-                        self.id,
-                        failed[0]
-                    );
-                }
-                false
-            }
-        } else {
-            warn!(
-                target: LOG_TARGET,
-                "{} Send Direct for TxID: {} failed", message, self.id
-            );
-            false
-        }
     }
 
     /// Contains all the logic to send the transaction to the recipient via store and forward
@@ -552,126 +639,72 @@ where TBackend: TransactionBackend + Clone + 'static
         }
     }
 
-    async fn send_transaction_finalized_message(
-        &mut self,
-        transaction: Transaction,
-    ) -> Result<(), TransactionServiceProtocolError>
-    {
-        let finalized_transaction_message = proto::TransactionFinalizedMessage {
-            tx_id: self.id,
-            transaction: Some(transaction.clone().into()),
-        };
-        let mut store_and_forward_send_result = false;
-        let mut direct_send_result = false;
-        match self
-            .resources
-            .outbound_message_service
-            .send_direct(
-                self.dest_pubkey.clone(),
-                OutboundDomainMessage::new(
-                    TariMessageType::TransactionFinalized,
-                    finalized_transaction_message.clone(),
-                ),
+    async fn timeout_transaction(&mut self) -> Result<(), TransactionServiceProtocolError> {
+        info!(
+            target: LOG_TARGET,
+            "Cancelling Transaction Send Protocol (TxId: {}) due to timeout after no counterparty response", self.id
+        );
+        let _ = send_transaction_cancelled_message(
+            self.id,
+            self.dest_pubkey.clone(),
+            self.resources.outbound_message_service.clone(),
+        )
+        .await
+        .map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Error sending Transaction Cancelled (TxId: {}) message: {:?}", self.id, e
             )
+        });
+        self.resources
+            .db
+            .increment_send_count(self.id)
             .await
-        {
-            Ok(result) => match result {
-                SendMessageResponse::Queued(send_states) => {
-                    if self.wait_on_dial(send_states, "Finalized Transaction").await {
-                        direct_send_result = true;
-                    } else {
-                        store_and_forward_send_result = self
-                            .send_transaction_finalized_message_store_and_forward(finalized_transaction_message.clone())
-                            .await?;
-                    }
-                },
-                SendMessageResponse::Failed(err) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Finalized Transaction Send Direct for TxID {} failed: {}", self.id, err
-                    );
-                    store_and_forward_send_result = self
-                        .send_transaction_finalized_message_store_and_forward(finalized_transaction_message.clone())
-                        .await?;
-                },
-                SendMessageResponse::PendingDiscovery(rx) => {
-                    store_and_forward_send_result = self
-                        .send_transaction_finalized_message_store_and_forward(finalized_transaction_message.clone())
-                        .await?;
-                    // now wait for discovery to complete
-                    match rx.await {
-                        Ok(send_msg_response) => {
-                            if let SendMessageResponse::Queued(send_states) = send_msg_response {
-                                debug!(
-                                    target: LOG_TARGET,
-                                    "Discovery of {} completed for TxID: {}", self.dest_pubkey, self.id
-                                );
-                                direct_send_result = self.wait_on_dial(send_states, "Finalized Transaction").await;
-                            }
-                        },
-                        Err(e) => {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Error waiting for Discovery while sending message to TxId: {} {:?}", self.id, e
-                            );
-                        },
-                    }
-                },
-            },
-            Err(e) => {
-                return Err(TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::from(e),
-                ))
-            },
-        }
-        if !direct_send_result && !store_and_forward_send_result {
-            return Err(TransactionServiceProtocolError::new(
-                self.id,
-                TransactionServiceError::OutboundSendFailure,
-            ));
-        }
-        Ok(())
-    }
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-    async fn send_transaction_finalized_message_store_and_forward(
-        &mut self,
-        msg: proto::TransactionFinalizedMessage,
-    ) -> Result<bool, TransactionServiceProtocolError>
-    {
-        match self
-            .resources
-            .outbound_message_service
-            .broadcast(
-                NodeDestination::NodeId(Box::new(NodeId::from_key(&self.dest_pubkey).map_err(|e| {
-                    TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
-                })?)),
-                OutboundEncryption::EncryptFor(Box::new(self.dest_pubkey.clone())),
-                vec![],
-                OutboundDomainMessage::new(TariMessageType::TransactionFinalized, msg.clone()),
-            )
+        self.resources
+            .db
+            .cancel_pending_transaction(self.id)
             .await
-        {
-            Ok(send_states) => {
-                info!(
-                    target: LOG_TARGET,
-                    "Sending Finalized Transaction (TxId: {}) to Neighbours for Store and Forward successful with \
-                     Message Tags: {:?}",
-                    self.id,
-                    send_states.to_tags(),
-                );
-            },
-            Err(e) => {
+            .map_err(|e| {
                 warn!(
                     target: LOG_TARGET,
-                    "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed: {:?}",
-                    self.id,
+                    "Pending Transaction does not exist and could not be cancelled: {:?}", e
+                );
+                TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
+            })?;
+
+        self.resources
+            .output_manager_service
+            .cancel_transaction(self.id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+
+        let _ = self
+            .resources
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCancelled(self.id)))
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event because there are no subscribers: {:?}",
                     e
                 );
-            },
-        };
+                TransactionServiceProtocolError::new(
+                    self.id,
+                    TransactionServiceError::BroadcastSendError(format!("{:?}", e)),
+                )
+            });
 
-        Ok(true)
+        info!(
+            target: LOG_TARGET,
+            "Pending Transaction (TxId: {}) timed out after no response from counterparty", self.id
+        );
+
+        Err(TransactionServiceProtocolError::new(
+            self.id,
+            TransactionServiceError::Timeout,
+        ))
     }
 }
 

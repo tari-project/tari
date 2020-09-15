@@ -8,6 +8,12 @@ pub struct TransactionFinalizedMessage {
     pub transaction: ::std::option::Option<super::types::Transaction>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TransactionCancelledMessage {
+    /// The transaction id for the cancelled transaction
+    #[prost(uint64, tag = "1")]
+    pub tx_id: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TransactionMetadata {
     /// The absolute fee for the transaction
     #[prost(uint64, tag = "1")]

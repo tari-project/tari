@@ -60,7 +60,10 @@ use tari_wallet::{
     },
     transaction_service::{
         handle::{TransactionEvent, TransactionEventReceiver},
-        storage::database::{CompletedTransaction, InboundTransaction, TransactionBackend, TransactionDatabase},
+        storage::{
+            database::{TransactionBackend, TransactionDatabase},
+            models::{CompletedTransaction, InboundTransaction},
+        },
     },
 };
 
@@ -447,15 +450,15 @@ mod test {
         transaction_service::{
             handle::TransactionEvent,
             storage::{
-                database::{
+                database::TransactionDatabase,
+                memory_db::TransactionMemoryDatabase,
+                models::{
                     CompletedTransaction,
                     InboundTransaction,
                     OutboundTransaction,
-                    TransactionDatabase,
                     TransactionDirection,
                     TransactionStatus,
                 },
-                memory_db::TransactionMemoryDatabase,
             },
         },
     };

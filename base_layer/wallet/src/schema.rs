@@ -12,6 +12,8 @@ table! {
         cancelled -> Integer,
         direction -> Nullable<Integer>,
         coinbase_block_height -> Nullable<BigInt>,
+        send_count -> Integer,
+        last_send_timestamp -> Nullable<Timestamp>,
     }
 }
 
@@ -32,6 +34,8 @@ table! {
         timestamp -> Timestamp,
         cancelled -> Integer,
         direct_send_success -> Integer,
+        send_count -> Integer,
+        last_send_timestamp -> Nullable<Timestamp>,
     }
 }
 
@@ -56,6 +60,8 @@ table! {
         timestamp -> Timestamp,
         cancelled -> Integer,
         direct_send_success -> Integer,
+        send_count -> Integer,
+        last_send_timestamp -> Nullable<Timestamp>,
     }
 }
 
