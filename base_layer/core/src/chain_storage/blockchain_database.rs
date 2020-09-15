@@ -1821,7 +1821,10 @@ fn try_construct_fork<T: BlockchainBackend>(
 fn find_orphan_chain_tips<T: BlockchainBackend>(db: &T, parent_height: u64, parent_hash: BlockHash) -> Vec<BlockHash> {
     let mut tip_hashes = Vec::<BlockHash>::new();
     let mut parents = Vec::<(BlockHash, u64)>::new();
+    let mut count = 0;
+    let start = std::time::Instant::now();
     db.for_each_orphan(|pair| {
+        count += 1;
         let (_, block) = pair.unwrap();
         if (block.header.prev_hash == parent_hash) && (block.header.height == parent_height + 1) {
             // we found a match, let save to call later
@@ -1829,6 +1832,14 @@ fn find_orphan_chain_tips<T: BlockchainBackend>(db: &T, parent_height: u64, pare
         }
     })
     .expect("Unexpected result for database query");
+
+    debug!(
+        target: LOG_TARGET,
+        "Searched {} orphan(s), found {} parent(s) in {:.0?}",
+        count,
+        parents.len(),
+        start.elapsed()
+    );
     // we need two for loops so that we ensure we release the db read lock as this iterative call can saturate all db
     // read locks. This ensures the call only uses one read lock.
     for (parent_hash, parent_height) in parents {
