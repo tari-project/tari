@@ -58,10 +58,10 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default("common.denylist_ban_period", 1440).unwrap();
-    cfg.set_default("common.buffer_size_base_node", 100).unwrap();
-    cfg.set_default("common.buffer_size_base_node_wallet", 1000).unwrap();
-    cfg.set_default("common.buffer_rate_limit_base_node", 20).unwrap();
-    cfg.set_default("common.buffer_rate_limit_base_node_wallet", 20)
+    cfg.set_default("common.buffer_size_base_node", 1_500).unwrap();
+    cfg.set_default("common.buffer_size_base_node_wallet", 50_000).unwrap();
+    cfg.set_default("common.buffer_rate_limit_base_node", 1_000).unwrap();
+    cfg.set_default("common.buffer_rate_limit_base_node_wallet", 1_000)
         .unwrap();
 
     // Wallet settings
@@ -72,13 +72,13 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         default_subdir("wallet/wallet.dat", Some(&bootstrap.base_path)),
     )
     .unwrap();
-    cfg.set_default("wallet.base_node_query_timeout", 30).unwrap();
-    cfg.set_default("wallet.transaction_broadcast_monitoring_timeout", 30)
+    cfg.set_default("wallet.base_node_query_timeout", 900).unwrap();
+    cfg.set_default("wallet.transaction_broadcast_monitoring_timeout", 600)
         .unwrap();
-    cfg.set_default("wallet.transaction_chain_monitoring_timeout", 30)
+    cfg.set_default("wallet.transaction_chain_monitoring_timeout", 15)
         .unwrap();
-    cfg.set_default("wallet.transaction_direct_send_timeout", 20).unwrap();
-    cfg.set_default("wallet.transaction_broadcast_send_timeout", 30)
+    cfg.set_default("wallet.transaction_direct_send_timeout", 600).unwrap();
+    cfg.set_default("wallet.transaction_broadcast_send_timeout", 600)
         .unwrap();
 
     //---------------------------------- Mainnet Defaults --------------------------------------------//
