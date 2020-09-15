@@ -6,7 +6,7 @@ use qrcode::{render::unicode, QrCode};
 use tari_common::Network;
 use tari_comms::NodeIdentity;
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_wallet::{transaction_service::storage::database::CompletedTransaction, util::emoji::EmojiId};
+use tari_wallet::{transaction_service::storage::models::CompletedTransaction, util::emoji::EmojiId};
 
 pub struct AppState {
     pub pending_txs: StatefulList<CompletedTransaction>,

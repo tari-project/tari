@@ -33,8 +33,9 @@ use crate::{
     transaction_service::{
         handle::TransactionEvent,
         storage::{
-            database::{CompletedTransaction, TransactionBackend, TransactionDirection, TransactionStatus},
+            database::TransactionBackend,
             memory_db::TransactionMemoryDatabase,
+            models::{CompletedTransaction, TransactionDirection, TransactionStatus},
         },
     },
     wallet::WalletConfig,

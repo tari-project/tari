@@ -5,7 +5,7 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
-#![recursion_limit = "1024"]
+#![recursion_limit = "2048"]
 #![feature(drain_filter)]
 #![feature(type_alias_impl_trait)]
 

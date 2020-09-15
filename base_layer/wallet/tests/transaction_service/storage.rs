@@ -39,16 +39,15 @@ use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::storage::{
-        database::{
+        database::{TransactionBackend, TransactionDatabase},
+        memory_db::TransactionMemoryDatabase,
+        models::{
             CompletedTransaction,
             InboundTransaction,
             OutboundTransaction,
-            TransactionBackend,
-            TransactionDatabase,
             TransactionDirection,
             TransactionStatus,
         },
-        memory_db::TransactionMemoryDatabase,
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
@@ -94,6 +93,8 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
             direct_send_success: false,
+            send_count: 0,
+            last_send_timestamp: None,
         });
         assert!(
             !runtime.block_on(db.transaction_exists((i + 10) as u64)).unwrap(),
@@ -116,12 +117,23 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             .block_on(db.get_pending_outbound_transaction(outbound_txs[i].tx_id))
             .unwrap();
         assert_eq!(retrieved_outbound_tx, outbound_txs[i]);
+        assert_eq!(retrieved_outbound_tx.send_count, 0);
+        assert!(retrieved_outbound_tx.last_send_timestamp.is_none());
 
         assert_eq!(
             retrieved_outbound_txs.get(&outbound_txs[i].tx_id).unwrap(),
             &outbound_txs[i]
         );
     }
+
+    runtime
+        .block_on(db.increment_send_count(outbound_txs[0].tx_id))
+        .unwrap();
+    let retrieved_outbound_tx = runtime
+        .block_on(db.get_pending_outbound_transaction(outbound_txs[0].tx_id))
+        .unwrap();
+    assert_eq!(retrieved_outbound_tx.send_count, 1);
+    assert!(retrieved_outbound_tx.last_send_timestamp.is_some());
 
     let rtp = ReceiverTransactionProtocol::new(
         TransactionSenderMessage::Single(Box::new(stp.clone().build_single_round_message().unwrap())),
@@ -144,6 +156,8 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
             direct_send_success: false,
+            send_count: 0,
+            last_send_timestamp: None,
         });
         assert!(
             !runtime.block_on(db.transaction_exists(i as u64)).unwrap(),
@@ -161,11 +175,18 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let retrieved_inbound_txs = runtime.block_on(db.get_pending_inbound_transactions()).unwrap();
     assert_eq!(inbound_txs.len(), messages.len());
     for i in 0..messages.len() {
-        assert_eq!(
-            retrieved_inbound_txs.get(&inbound_txs[i].tx_id).unwrap(),
-            &inbound_txs[i]
-        );
+        let retrieved_tx = retrieved_inbound_txs.get(&inbound_txs[i].tx_id).unwrap();
+        assert_eq!(retrieved_tx, &inbound_txs[i]);
+        assert_eq!(retrieved_tx.send_count, 0);
+        assert!(retrieved_tx.last_send_timestamp.is_none());
     }
+
+    runtime.block_on(db.increment_send_count(inbound_txs[0].tx_id)).unwrap();
+    let retrieved_inbound_tx = runtime
+        .block_on(db.get_pending_inbound_transaction(inbound_txs[0].tx_id))
+        .unwrap();
+    assert_eq!(retrieved_inbound_tx.send_count, 1);
+    assert!(retrieved_inbound_tx.last_send_timestamp.is_some());
 
     let inbound_pub_key = runtime
         .block_on(db.get_pending_transaction_counterparty_pub_key_by_tx_id(inbound_txs[0].tx_id))
@@ -202,6 +223,8 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             cancelled: false,
             direction: TransactionDirection::Outbound,
             coinbase_block_height: None,
+            send_count: 0,
+            last_send_timestamp: None,
         });
         runtime
             .block_on(db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone()))
@@ -232,6 +255,18 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             &completed_txs[i]
         );
     }
+
+    runtime
+        .block_on(db.increment_send_count(completed_txs[0].tx_id))
+        .unwrap();
+    runtime
+        .block_on(db.increment_send_count(completed_txs[0].tx_id))
+        .unwrap();
+    let retrieved_completed_tx = runtime
+        .block_on(db.get_completed_transaction(completed_txs[0].tx_id))
+        .unwrap();
+    assert_eq!(retrieved_completed_tx.send_count, 2);
+    assert!(retrieved_completed_tx.last_send_timestamp.is_some());
 
     if cfg!(feature = "test_harness") {
         let retrieved_completed_txs = runtime.block_on(db.get_completed_transactions()).unwrap();

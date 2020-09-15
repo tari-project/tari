@@ -24,7 +24,7 @@ use crate::{
     output_manager_service::TxId,
     transaction_service::{
         error::TransactionServiceError,
-        storage::database::{CompletedTransaction, InboundTransaction, OutboundTransaction},
+        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
     },
 };
 use aes_gcm::Aes256Gcm;

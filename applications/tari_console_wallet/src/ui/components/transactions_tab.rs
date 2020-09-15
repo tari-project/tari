@@ -5,7 +5,7 @@ use crate::ui::{
     SelectedTransactionList,
     MAX_WIDTH,
 };
-use tari_wallet::transaction_service::storage::database::{TransactionDirection, TransactionStatus};
+use tari_wallet::transaction_service::storage::models::{TransactionDirection, TransactionStatus};
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},

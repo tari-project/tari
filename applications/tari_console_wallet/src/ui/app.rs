@@ -42,7 +42,7 @@ use tari_wallet::{
     contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::sqlite_db::WalletSqliteDatabase,
-    transaction_service::storage::{database::CompletedTransaction, sqlite_db::TransactionServiceSqliteDatabase},
+    transaction_service::storage::{models::CompletedTransaction, sqlite_db::TransactionServiceSqliteDatabase},
     Wallet,
 };
 use tokio::sync::RwLock;

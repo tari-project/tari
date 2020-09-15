@@ -15,8 +15,9 @@ pub enum TariMessageType {
     BaseNodeResponse = 70,
     MempoolRequest = 71,
     MempoolResponse = 72,
-    /// -- DAN Messages --
     TransactionFinalized = 73,
+    /// -- DAN Messages --
+    TransactionCancelled = 74,
     // -- Extended --
     Text = 225,
     TextAck = 226,

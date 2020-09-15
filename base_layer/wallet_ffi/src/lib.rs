@@ -184,11 +184,11 @@ use tari_wallet::{
         config::TransactionServiceConfig,
         error::TransactionServiceError,
         storage::{
-            database::{
+            database::TransactionDatabase,
+            models::{
                 CompletedTransaction,
                 InboundTransaction,
                 OutboundTransaction,
-                TransactionDatabase,
                 TransactionDirection,
                 TransactionStatus,
             },
@@ -221,12 +221,12 @@ pub type TariCommsConfig = tari_p2p::initialization::CommsConfig;
 pub struct TariContacts(Vec<TariContact>);
 
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
-pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::database::CompletedTransaction;
+pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
 
 pub struct TariCompletedTransactions(Vec<TariCompletedTransaction>);
 
-pub type TariPendingInboundTransaction = tari_wallet::transaction_service::storage::database::InboundTransaction;
-pub type TariPendingOutboundTransaction = tari_wallet::transaction_service::storage::database::OutboundTransaction;
+pub type TariPendingInboundTransaction = tari_wallet::transaction_service::storage::models::InboundTransaction;
+pub type TariPendingOutboundTransaction = tari_wallet::transaction_service::storage::models::OutboundTransaction;
 
 pub struct TariPendingInboundTransactions(Vec<TariPendingInboundTransaction>);
 
@@ -4729,7 +4729,7 @@ mod test {
     use tari_key_manager::mnemonic::Mnemonic;
     use tari_wallet::{
         testnet_utils::random_string,
-        transaction_service::storage::database::TransactionStatus,
+        transaction_service::storage::models::TransactionStatus,
         util::emoji,
     };
     use tempfile::tempdir;
@@ -5351,7 +5351,7 @@ mod test {
 
             let inbound_transactions: std::collections::HashMap<
                 u64,
-                tari_wallet::transaction_service::storage::database::InboundTransaction,
+                tari_wallet::transaction_service::storage::models::InboundTransaction,
             > = (*alice_wallet)
                 .runtime
                 .block_on(
@@ -5372,7 +5372,7 @@ mod test {
 
             let inbound_transactions: std::collections::HashMap<
                 u64,
-                tari_wallet::transaction_service::storage::database::InboundTransaction,
+                tari_wallet::transaction_service::storage::models::InboundTransaction,
             > = (*alice_wallet)
                 .runtime
                 .block_on(
@@ -5417,7 +5417,7 @@ mod test {
 
             let completed_transactions: std::collections::HashMap<
                 u64,
-                tari_wallet::transaction_service::storage::database::CompletedTransaction,
+                tari_wallet::transaction_service::storage::models::CompletedTransaction,
             > = (*alice_wallet)
                 .runtime
                 .block_on((*alice_wallet).wallet.transaction_service.get_completed_transactions())
@@ -5433,7 +5433,7 @@ mod test {
 
             let completed_transactions: std::collections::HashMap<
                 u64,
-                tari_wallet::transaction_service::storage::database::CompletedTransaction,
+                tari_wallet::transaction_service::storage::models::CompletedTransaction,
             > = (*alice_wallet)
                 .runtime
                 .block_on((*alice_wallet).wallet.transaction_service.get_completed_transactions())
@@ -5486,7 +5486,7 @@ mod test {
             // TODO: Test transaction collection and transaction methods
             let completed_transactions: std::collections::HashMap<
                 u64,
-                tari_wallet::transaction_service::storage::database::CompletedTransaction,
+                tari_wallet::transaction_service::storage::models::CompletedTransaction,
             > = (*alice_wallet)
                 .runtime
                 .block_on((*alice_wallet).wallet.transaction_service.get_completed_transactions())

@@ -26,6 +26,7 @@ pub mod handle;
 pub mod protocols;
 pub mod service;
 pub mod storage;
+pub mod tasks;
 
 use crate::{
     output_manager_service::handle::OutputManagerHandle,
@@ -163,6 +164,19 @@ where T: TransactionBackend
             .map(map_decode::<BaseNodeProto::BaseNodeServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
+
+    fn transaction_cancelled_stream(&self) -> impl Stream<Item = DomainMessage<proto::TransactionCancelledMessage>> {
+        trace!(
+            target: LOG_TARGET,
+            "Subscription '{}' for topic '{:?}' created.",
+            SUBSCRIPTION_LABEL,
+            TariMessageType::TransactionCancelled
+        );
+        self.subscription_factory
+            .get_subscription(TariMessageType::TransactionCancelled, SUBSCRIPTION_LABEL)
+            .map(map_decode::<proto::TransactionCancelledMessage>)
+            .filter_map(ok_or_skip_result)
+    }
 }
 
 impl<T> ServiceInitializer for TransactionServiceInitializer<T>
@@ -183,6 +197,7 @@ where T: TransactionBackend + Clone + 'static
         let transaction_finalized_stream = self.transaction_finalized_stream();
         let mempool_response_stream = self.mempool_response_stream();
         let base_node_response_stream = self.base_node_response_stream();
+        let transaction_cancelled_stream = self.transaction_cancelled_stream();
 
         let (publisher, _) = broadcast::channel(200);
 
@@ -219,6 +234,7 @@ where T: TransactionBackend + Clone + 'static
                 transaction_finalized_stream,
                 mempool_response_stream,
                 base_node_response_stream,
+                transaction_cancelled_stream,
                 output_manager_service,
                 outbound_message_service,
                 publisher,
