@@ -68,9 +68,11 @@ message ProofOfWork {
 
 //This is used to request the which pow algo should be used with the block template
 message PowAlgo{
-    // 0 = Monero
-    // 1 = Blake
-    uint32 pow_algo = 1;
+    enum PowAlgo {
+        POW_ALGO_MONERO = 0;
+        POW_ALGO_BLAKE = 1;
+    }
+    PowAlgo pow_algo = 1;
 }
 
 

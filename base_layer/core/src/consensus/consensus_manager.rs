@@ -53,9 +53,8 @@ pub enum ConsensusManagerError {
     MissingDifficultyAdjustmentManager,
 }
 
-/// This is the consensus manager struct. This manages all state-full consensus code.
-/// The inside is wrapped inside of an ARC so that it can safely and cheaply be cloned.
-/// The code is multi-thread safe and so only one instance is required. Inner objects are wrapped inside of RwLocks.
+/// Container struct for consensus rules. This can be cheaply cloned.
+#[derive(Debug, Clone)]
 pub struct ConsensusManager {
     inner: Arc<ConsensusManagerInner>,
 }
@@ -106,15 +105,8 @@ impl ConsensusManager {
     }
 }
 
-impl Clone for ConsensusManager {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
 /// This is the used to control all consensus values.
+#[derive(Debug)]
 struct ConsensusManagerInner {
     /// This is the inner struct used to control all consensus values.
     pub consensus_constants: ConsensusConstants,

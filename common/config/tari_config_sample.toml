@@ -458,18 +458,13 @@ peer_seeds = []
 #                                                                                                                      #
 ########################################################################################################################
 [merge_mining_proxy.rincewind]
-
 # URL to monerod, currently set to a seed node
 monerod_url = "http://192.110.160.146:38081"
-
 # Address of the tari_merge_mining_proxy application
 proxy_host_address = "127.0.0.1:7878"
-
-# If authentication is being used for curl
-curl_use_auth="false"
-
-# Username for curl
-curl_username=""
-
-# Password for curl
-curl_password=""
+# If authentication is being used for monerod
+monerod_use_auth = false
+# Username for monerod
+monerod_username = ""
+# Password for monerod
+monerod_password = ""

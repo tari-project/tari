@@ -37,6 +37,3 @@ grpc_address = "127.0.0.1:18142"
 [merge_mining_proxy.rincewind]
 monerod_url = "http://192.110.160.146:38081"
 proxy_host_address = "127.0.0.1:7878"
-curl_use_auth="false"
-curl_username=""
-curl_password=""

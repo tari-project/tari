@@ -199,11 +199,11 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
     .unwrap();
     cfg.set_default("merge_mining_proxy.rincewind.proxy_host_address", "127.0.0.1:7878")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.rincewind.curl_use_auth", "false")
+    cfg.set_default("merge_mining_proxy.rincewind.monerod_use_auth", "false")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.rincewind.curl_username", "")
+    cfg.set_default("merge_mining_proxy.rincewind.monerod_username", "")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.rincewind.curl_password", "")
+    cfg.set_default("merge_mining_proxy.rincewind.monerod_password", "")
         .unwrap();
 }
 
