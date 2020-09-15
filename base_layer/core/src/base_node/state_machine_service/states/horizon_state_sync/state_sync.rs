@@ -392,6 +392,12 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
             config.max_sync_request_retry_attempts,
         )
         .await?;
+
+        if local_num_utxo_nodes >= remote_num_utxo_nodes {
+            debug!(target: LOG_TARGET, "UTXOs and range proofs are already synchronized.");
+            return Ok(());
+        }
+
         debug!(
             target: LOG_TARGET,
             "Synchronizing {} UTXO MMR nodes from {} to {}",

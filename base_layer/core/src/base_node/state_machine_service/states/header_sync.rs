@@ -145,22 +145,31 @@ struct HeaderSynchronisation<'a, 'b, B> {
 impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
     pub async fn synchronize(&mut self) -> Result<(), HeaderSyncError> {
         let tip_header = async_db::fetch_tip_header(self.db()).await?;
+        let tip_header_height = tip_header.height;
+        if tip_header_height >= self.sync_height {
+            debug!(
+                target: LOG_TARGET,
+                "The current tip height ({}) is greater than the requested sync height ({}). Headers already synced.",
+                tip_header_height,
+                self.sync_height
+            );
+            return Ok(());
+        }
         debug!(
             target: LOG_TARGET,
             "Syncing from height {} to sync height {}.", tip_header.height, self.sync_height
         );
 
         trace!(target: LOG_TARGET, "Synchronizing headers");
-        self.synchronize_headers(&tip_header).await?;
+        self.synchronize_headers(tip_header_height).await?;
 
         Ok(())
     }
 
-    async fn synchronize_headers(&mut self, tip_header: &BlockHeader) -> Result<(), HeaderSyncError> {
-        let tip_height = tip_header.height;
+    async fn synchronize_headers(&mut self, tip_header_height: u64) -> Result<(), HeaderSyncError> {
         let config = self.shared.config.block_sync_config;
 
-        let chunks = VecChunkIter::new(tip_height + 1, self.sync_height + 1, config.header_request_size);
+        let chunks = VecChunkIter::new(tip_header_height + 1, self.sync_height + 1, config.header_request_size);
         for block_nums in chunks {
             let num_sync_peers = self.sync_peers.len();
             for attempt in 1..=num_sync_peers {
