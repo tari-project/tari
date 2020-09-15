@@ -165,27 +165,26 @@ fn wallet_base_node_integration_test() {
         }),
         Network::Rincewind,
     );
-    let alice_runtime = create_runtime();
-    let mut alice_wallet = Wallet::new(
-        alice_wallet_config,
-        alice_runtime,
-        WalletMemoryDatabase::new(),
-        TransactionMemoryDatabase::new(),
-        OutputManagerMemoryDatabase::new(),
-        ContactsServiceMemoryDatabase::new(),
-    )
-    .unwrap();
+    let mut runtime = create_runtime();
+    let mut alice_wallet = runtime
+        .block_on(Wallet::new(
+            alice_wallet_config,
+            WalletMemoryDatabase::new(),
+            TransactionMemoryDatabase::new(),
+            OutputManagerMemoryDatabase::new(),
+            ContactsServiceMemoryDatabase::new(),
+        ))
+        .unwrap();
     let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
 
-    alice_wallet
-        .set_base_node_peer(
+    runtime
+        .block_on(alice_wallet.set_base_node_peer(
             (*base_node_identity.public_key()).clone(),
             base_node_identity.public_address().clone().to_string(),
-        )
+        ))
         .unwrap();
 
-    alice_wallet
-        .runtime
+    runtime
         .block_on(alice_wallet.comms.peer_manager().add_peer(create_peer(
             bob_node_identity.public_key().clone(),
             bob_node_identity.public_address(),
@@ -209,18 +208,18 @@ fn wallet_base_node_integration_test() {
         user_agent: "tari/test-wallet".to_string(),
     };
     let bob_wallet_config = WalletConfig::new(bob_comms_config, factories.clone(), None, Network::Rincewind);
-    let bob_runtime = create_runtime();
-    let mut bob_wallet = Wallet::new(
-        bob_wallet_config,
-        bob_runtime,
-        WalletMemoryDatabase::new(),
-        TransactionMemoryDatabase::new(),
-        OutputManagerMemoryDatabase::new(),
-        ContactsServiceMemoryDatabase::new(),
-    )
-    .unwrap();
-    bob_wallet
-        .runtime
+
+    let bob_wallet = runtime
+        .block_on(Wallet::new(
+            bob_wallet_config,
+            WalletMemoryDatabase::new(),
+            TransactionMemoryDatabase::new(),
+            OutputManagerMemoryDatabase::new(),
+            ContactsServiceMemoryDatabase::new(),
+        ))
+        .unwrap();
+
+    runtime
         .block_on(bob_wallet.comms.peer_manager().add_peer(create_peer(
             alice_node_identity.public_key().clone(),
             alice_node_identity.public_address(),
@@ -230,13 +229,10 @@ fn wallet_base_node_integration_test() {
     log::info!("Finished Starting Wallets");
 
     // Transaction
-    let mut runtime = create_runtime();
-    alice_wallet
-        .runtime
+    runtime
         .block_on(alice_wallet.output_manager_service.add_output(utxo0))
         .unwrap();
-    alice_wallet
-        .runtime
+    runtime
         .block_on(
             alice_wallet
                 .comms
@@ -246,8 +242,7 @@ fn wallet_base_node_integration_test() {
         .unwrap();
 
     let value = MicroTari::from(1000);
-    alice_wallet
-        .runtime
+    runtime
         .block_on(alice_wallet.transaction_service.send_transaction(
             bob_node_identity.public_key().clone(),
             value,
@@ -353,8 +348,8 @@ fn wallet_base_node_integration_test() {
         assert!(mined, "Transaction has not been mined before timeout");
     });
 
-    alice_wallet.shutdown();
-    bob_wallet.shutdown();
+    runtime.block_on(alice_wallet.shutdown());
+    runtime.block_on(bob_wallet.shutdown());
     let _ = shutdown.trigger();
     runtime.block_on(base_node.comms.shutdown());
 }

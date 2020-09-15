@@ -23,8 +23,6 @@ pub mod wallet;
 #[cfg(feature = "test_harness")]
 pub mod testnet_utils;
 
-pub use wallet::Wallet;
-
 #[macro_use]
 extern crate diesel;
 #[macro_use]
@@ -34,3 +32,18 @@ extern crate lazy_static;
 
 pub mod schema;
 // pub mod text_message_service;
+
+pub use wallet::Wallet;
+
+use crate::{
+    contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
+    output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
+    storage::sqlite_db::WalletSqliteDatabase,
+    transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
+};
+pub type WalletSqlite = Wallet<
+    WalletSqliteDatabase,
+    TransactionServiceSqliteDatabase,
+    OutputManagerSqliteDatabase,
+    ContactsServiceSqliteDatabase,
+>;

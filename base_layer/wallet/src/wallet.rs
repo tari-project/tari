@@ -73,7 +73,7 @@ use tari_p2p::{
     services::comms_outbound::CommsOutboundServiceInitializer,
 };
 use tari_service_framework::StackBuilder;
-use tokio::runtime::Runtime;
+use tokio::runtime;
 
 const LOG_TARGET: &str = "wallet";
 
@@ -124,7 +124,6 @@ where
     pub transaction_service: TransactionServiceHandle,
     pub contacts_service: ContactsServiceHandle,
     pub db: WalletDatabase<T>,
-    pub runtime: Runtime,
     pub factories: CryptoFactories,
     #[cfg(feature = "test_harness")]
     pub transaction_backend: U,
@@ -140,9 +139,8 @@ where
     V: OutputManagerBackend + Clone + 'static,
     W: ContactsBackend + 'static,
 {
-    pub fn new(
+    pub async fn new(
         config: WalletConfig,
-        mut runtime: Runtime,
         wallet_backend: T,
         transaction_backend: U,
         output_manager_backend: V,
@@ -152,28 +150,24 @@ where
         let db = WalletDatabase::new(wallet_backend);
 
         // Persist the Comms Private Key provided to this function
-        runtime.block_on(db.set_comms_secret_key(config.comms_config.node_identity.secret_key().clone()))?;
+        db.set_comms_secret_key(config.comms_config.node_identity.secret_key().clone())
+            .await?;
 
         #[cfg(feature = "test_harness")]
         let transaction_backend_handle = transaction_backend.clone();
 
         let factories = config.factories;
         let (publisher, subscription_factory) =
-            pubsub_connector(runtime.handle().clone(), config.buffer_size, config.rate_limit);
+            pubsub_connector(runtime::Handle::current(), config.buffer_size, config.rate_limit);
         let subscription_factory = Arc::new(subscription_factory);
 
         debug!(target: LOG_TARGET, "Initializing Wallet Comms");
 
-        let (comms, dht) = runtime.block_on(initialize_comms(
-            config.comms_config.clone(),
-            publisher,
-            vec![],
-            Default::default(),
-        ))?;
+        let (comms, dht) = initialize_comms(config.comms_config.clone(), publisher, vec![], Default::default()).await?;
 
         debug!(target: LOG_TARGET, "Wallet Comms Initialized");
 
-        let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
+        let fut = StackBuilder::new(runtime::Handle::current(), comms.shutdown_signal())
             .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
             .add_initializer(OutputManagerServiceInitializer::new(
                 OutputManagerServiceConfig::default(),
@@ -193,8 +187,8 @@ where
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .finish();
 
-        let handles = runtime
-            .block_on(fut)
+        let handles = fut
+            .await
             .map_err(|e| {
                 error!(target: LOG_TARGET, "Error creating Wallet stack: {:?}", e);
                 e
@@ -221,7 +215,6 @@ where
             transaction_service: transaction_service_handle,
             contacts_service: contacts_handle,
             db,
-            runtime,
             factories,
             #[cfg(feature = "test_harness")]
             transaction_backend: transaction_backend_handle,
@@ -233,13 +226,18 @@ where
 
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
     /// exiting.
-    pub fn shutdown(mut self) {
-        self.runtime.block_on(self.comms.shutdown());
+    pub async fn shutdown(self) {
+        self.comms.shutdown().await;
     }
 
     /// This function will set the base_node that the wallet uses to broadcast transactions and monitor the blockchain
     /// state
-    pub fn set_base_node_peer(&mut self, public_key: CommsPublicKey, net_address: String) -> Result<(), WalletError> {
+    pub async fn set_base_node_peer(
+        &mut self,
+        public_key: CommsPublicKey,
+        net_address: String,
+    ) -> Result<(), WalletError>
+    {
         let address = net_address.parse::<Multiaddr>()?;
         let peer = Peer::new(
             public_key.clone(),
@@ -251,16 +249,18 @@ where
             String::new(),
         );
 
-        self.runtime
-            .block_on(self.comms.peer_manager().add_peer(peer.clone()))?;
-        self.runtime
-            .block_on(self.comms.connectivity().add_managed_peers(vec![peer.node_id.clone()]))?;
-        self.runtime.block_on(
-            self.transaction_service
-                .set_base_node_public_key(peer.public_key.clone()),
-        )?;
-        self.runtime
-            .block_on(self.output_manager_service.set_base_node_public_key(peer.public_key))?;
+        self.comms.peer_manager().add_peer(peer.clone()).await?;
+        self.comms
+            .connectivity()
+            .add_managed_peers(vec![peer.node_id.clone()])
+            .await?;
+
+        self.transaction_service
+            .set_base_node_public_key(peer.public_key.clone())
+            .await?;
+        self.output_manager_service
+            .set_base_node_public_key(peer.public_key)
+            .await?;
 
         Ok(())
     }
@@ -268,7 +268,7 @@ where
     /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
     /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
     /// generated transaction is returned.
-    pub fn import_utxo(
+    pub async fn import_utxo(
         &mut self,
         amount: MicroTari,
         spending_key: &PrivateKey,
@@ -278,14 +278,12 @@ where
     {
         let unblinded_output = UnblindedOutput::new(amount, spending_key.clone(), None);
 
-        self.runtime
-            .block_on(self.output_manager_service.add_output(unblinded_output.clone()))?;
+        self.output_manager_service.add_output(unblinded_output.clone()).await?;
 
-        let tx_id = self.runtime.block_on(self.transaction_service.import_utxo(
-            amount,
-            source_public_key.clone(),
-            message,
-        ))?;
+        let tx_id = self
+            .transaction_service
+            .import_utxo(amount, source_public_key.clone(), message)
+            .await?;
 
         info!(
             target: LOG_TARGET,
@@ -325,18 +323,17 @@ where
 
     /// Have all the wallet components that need to start a sync process with the set base node to confirm the wallets
     /// state is accurately reflected on the blockchain
-    pub fn validate_utxos(&mut self, retries: UtxoValidationRetry) -> Result<u64, WalletError> {
-        self.runtime
-            .block_on(self.store_and_forward_requester.request_saf_messages_from_neighbours())?;
+    pub async fn validate_utxos(&mut self, retries: UtxoValidationRetry) -> Result<u64, WalletError> {
+        self.store_and_forward_requester
+            .request_saf_messages_from_neighbours()
+            .await?;
 
-        let request_key = self
-            .runtime
-            .block_on(self.output_manager_service.validate_utxos(retries))?;
+        let request_key = self.output_manager_service.validate_utxos(retries).await?;
         Ok(request_key)
     }
 
     /// Do a coin split
-    pub fn coin_split(
+    pub async fn coin_split(
         &mut self,
         amount_per_split: MicroTari,
         split_count: usize,
@@ -345,19 +342,17 @@ where
         lock_height: Option<u64>,
     ) -> Result<TxId, WalletError>
     {
-        let coin_split_tx = self.runtime.block_on(self.output_manager_service.create_coin_split(
-            amount_per_split,
-            split_count,
-            fee_per_gram,
-            lock_height,
-        ));
+        let coin_split_tx = self
+            .output_manager_service
+            .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
+            .await;
 
         match coin_split_tx {
             Ok((tx_id, split_tx, amount, fee)) => {
-                let coin_tx = self.runtime.block_on(
-                    self.transaction_service
-                        .submit_transaction(tx_id, split_tx, fee, amount, message),
-                );
+                let coin_tx = self
+                    .transaction_service
+                    .submit_transaction(tx_id, split_tx, fee, amount, message)
+                    .await;
                 match coin_tx {
                     Ok(_) => Ok(tx_id),
                     Err(e) => Err(WalletError::TransactionServiceError(e)),
@@ -369,25 +364,23 @@ where
 
     /// Apply encryption to all the Wallet db backends. The Wallet backend will test if the db's are already encrypted
     /// in which case this will fail.
-    pub fn apply_encryption(&mut self, passphrase: String) -> Result<(), WalletError> {
+    pub async fn apply_encryption(&mut self, passphrase: String) -> Result<(), WalletError> {
         let passphrase_hash = Blake256::new().chain(passphrase.as_bytes()).result().to_vec();
         let key = GenericArray::from_slice(passphrase_hash.as_slice());
         let cipher = Aes256Gcm::new(key);
 
-        self.runtime.block_on(self.db.apply_encryption(cipher.clone()))?;
-        self.runtime
-            .block_on(self.output_manager_service.apply_encryption(cipher.clone()))?;
-        self.runtime
-            .block_on(self.transaction_service.apply_encryption(cipher))?;
+        self.db.apply_encryption(cipher.clone()).await?;
+        self.output_manager_service.apply_encryption(cipher.clone()).await?;
+        self.transaction_service.apply_encryption(cipher).await?;
         Ok(())
     }
 
     /// Remove encryption from all the Wallet db backends. If any backends do not have encryption applied then this will
     /// fail
-    pub fn remove_encryption(&mut self) -> Result<(), WalletError> {
-        self.runtime.block_on(self.db.remove_encryption())?;
-        self.runtime.block_on(self.output_manager_service.remove_encryption())?;
-        self.runtime.block_on(self.transaction_service.remove_encryption())?;
+    pub async fn remove_encryption(&mut self) -> Result<(), WalletError> {
+        self.db.remove_encryption().await?;
+        self.output_manager_service.remove_encryption().await?;
+        self.transaction_service.remove_encryption().await?;
         Ok(())
     }
 }

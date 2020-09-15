@@ -197,6 +197,7 @@ use tari_wallet::{
     },
     util::emoji::{emoji_set, EmojiId},
     wallet::WalletConfig,
+    Wallet,
 };
 
 use futures::StreamExt;
@@ -211,13 +212,6 @@ use tari_core::consensus::Network;
 use tokio::runtime::Runtime;
 
 const LOG_TARGET: &str = "wallet_ffi";
-
-pub type TariWallet = tari_wallet::wallet::Wallet<
-    WalletSqliteDatabase,
-    TransactionServiceSqliteDatabase,
-    OutputManagerSqliteDatabase,
-    ContactsServiceSqliteDatabase,
->;
 
 pub type TariTransportType = tari_p2p::transport::TransportType;
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
@@ -245,6 +239,16 @@ pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exp
 pub struct EmojiSet(Vec<ByteVector>);
 
 pub struct TariSeedWords(Vec<String>);
+
+pub struct TariWallet {
+    wallet: tari_wallet::wallet::Wallet<
+        WalletSqliteDatabase,
+        TransactionServiceSqliteDatabase,
+        OutputManagerSqliteDatabase,
+        ContactsServiceSqliteDatabase,
+    >,
+    runtime: Runtime,
+}
 
 /// -------------------------------- Strings ------------------------------------------------ ///
 
@@ -2245,7 +2249,7 @@ pub unsafe extern "C" fn wallet_get_tor_identity(wallet: *const TariWallet, erro
     ptr::swap(error_out, &mut error as *mut c_int);
     let identity_bytes;
     if !wallet.is_null() {
-        let service = (*wallet).comms.hidden_service();
+        let service = (*wallet).wallet.comms.hidden_service();
         match service {
             Some(s) => {
                 let tor_identity = s.tor_identity();
@@ -2701,7 +2705,7 @@ pub unsafe extern "C" fn wallet_create(
             // TODO remove after next TestNet
             transaction_backend.migrate((*config).node_identity.public_key().clone());
 
-            w = TariWallet::new(
+            w = runtime.block_on(Wallet::new(
                 WalletConfig::new(
                     (*config).clone(),
                     factories,
@@ -2711,12 +2715,11 @@ pub unsafe extern "C" fn wallet_create(
                     }),
                     Network::Rincewind,
                 ),
-                runtime,
                 wallet_backend,
                 transaction_backend.clone(),
                 output_manager_backend,
                 contacts_backend,
-            );
+            ));
 
             match w {
                 Ok(w) => {
@@ -2740,9 +2743,11 @@ pub unsafe extern "C" fn wallet_create(
                         callback_saf_messages_received,
                     );
 
-                    w.runtime.spawn(callback_handler.start());
+                    runtime.spawn(callback_handler.start());
 
-                    Box::into_raw(Box::new(w))
+                    let tari_wallet = TariWallet { wallet: w, runtime };
+
+                    Box::into_raw(Box::new(tari_wallet))
                 },
                 Err(e) => {
                     error = LibWalletError::from(e).code;
@@ -2796,9 +2801,9 @@ pub unsafe extern "C" fn wallet_sign_message(
     }
 
     let nonce = TariPrivateKey::random(&mut OsRng);
-    let secret = (*wallet).comms.node_identity().secret_key().clone();
+    let secret = (*wallet).wallet.comms.node_identity().secret_key().clone();
     let message = CStr::from_ptr(msg).to_str().unwrap().to_owned();
-    let signature = (*wallet).sign_message(secret, nonce, &message);
+    let signature = (*wallet).wallet.sign_message(secret, nonce, &message);
 
     match signature {
         Ok(s) => {
@@ -2877,7 +2882,11 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
         Ok(p) => {
             let public_nonce = TariPublicKey::from_hex(hex_keys.get(1).unwrap());
             match public_nonce {
-                Ok(pn) => result = (*wallet).verify_message_signature((*public_key).clone(), pn, p, message),
+                Ok(pn) => {
+                    result = (*wallet)
+                        .wallet
+                        .verify_message_signature((*public_key).clone(), pn, p, message)
+                },
                 Err(e) => {
                     error = LibWalletError::from(e).code;
                     ptr::swap(error_out, &mut error as *mut c_int);
@@ -2936,11 +2945,11 @@ pub unsafe extern "C" fn wallet_test_generate_data(
         return false;
     }
 
-    match generate_wallet_test_data(
-        &mut *wallet,
+    match (*wallet).runtime.block_on(generate_wallet_test_data(
+        &mut (*wallet).wallet,
         datastore_path_string.as_str(),
-        (*wallet).transaction_backend.clone(),
-    ) {
+        (*wallet).wallet.transaction_backend.clone(),
+    )) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -2972,7 +2981,10 @@ pub unsafe extern "C" fn wallet_test_receive_transaction(wallet: *mut TariWallet
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
-    match receive_test_transaction(&mut *wallet) {
+    match (*wallet)
+        .runtime
+        .block_on(receive_test_transaction(&mut (*wallet).wallet))
+    {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -3016,7 +3028,10 @@ pub unsafe extern "C" fn wallet_test_complete_sent_transaction(
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
-    match complete_sent_transaction(&mut *wallet, (*tx).tx_id) {
+    match (*wallet)
+        .runtime
+        .block_on(complete_sent_transaction(&mut (*wallet).wallet, (*tx).tx_id))
+    {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -3055,7 +3070,10 @@ pub unsafe extern "C" fn wallet_test_finalize_received_transaction(
         return false;
     }
 
-    match finalize_received_transaction(&mut *wallet, (*tx).tx_id) {
+    match (*wallet)
+        .runtime
+        .block_on(finalize_received_transaction(&mut (*wallet).wallet, (*tx).tx_id))
+    {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -3094,7 +3112,10 @@ pub unsafe extern "C" fn wallet_test_broadcast_transaction(
         return false;
     }
 
-    match broadcast_transaction(&mut *wallet, tx_id) {
+    match (*wallet)
+        .runtime
+        .block_on(broadcast_transaction(&mut (*wallet).wallet, tx_id))
+    {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -3133,7 +3154,10 @@ pub unsafe extern "C" fn wallet_test_mine_transaction(
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
-    match mine_transaction(&mut *wallet, tx_id) {
+    match (*wallet)
+        .runtime
+        .block_on(mine_transaction(&mut (*wallet).wallet, tx_id))
+    {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -3188,7 +3212,11 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
         return false;
     }
 
-    match (*wallet).set_base_node_peer((*public_key).clone(), address_string) {
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .set_base_node_peer((*public_key).clone(), address_string),
+    ) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -3234,7 +3262,7 @@ pub unsafe extern "C" fn wallet_upsert_contact(
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).contacts_service.upsert_contact((*contact).clone()))
+        .block_on((*wallet).wallet.contacts_service.upsert_contact((*contact).clone()))
     {
         Ok(_) => true,
         Err(e) => {
@@ -3278,10 +3306,12 @@ pub unsafe extern "C" fn wallet_remove_contact(
         return false;
     }
 
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).contacts_service.remove_contact((*contact).public_key.clone()))
-    {
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .contacts_service
+            .remove_contact((*contact).public_key.clone()),
+    ) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(WalletError::ContactsServiceError(e)).code;
@@ -3315,7 +3345,7 @@ pub unsafe extern "C" fn wallet_get_available_balance(wallet: *mut TariWallet, e
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).output_manager_service.get_balance())
+        .block_on((*wallet).wallet.output_manager_service.get_balance())
     {
         Ok(b) => c_ulonglong::from(b.available_balance),
         Err(e) => {
@@ -3355,7 +3385,7 @@ pub unsafe extern "C" fn wallet_get_pending_incoming_balance(
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).output_manager_service.get_balance())
+        .block_on((*wallet).wallet.output_manager_service.get_balance())
     {
         Ok(b) => c_ulonglong::from(b.pending_incoming_balance),
         Err(e) => {
@@ -3395,7 +3425,7 @@ pub unsafe extern "C" fn wallet_get_pending_outgoing_balance(
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).output_manager_service.get_balance())
+        .block_on((*wallet).wallet.output_manager_service.get_balance())
     {
         Ok(b) => c_ulonglong::from(b.pending_outgoing_balance),
         Err(e) => {
@@ -3456,7 +3486,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).transaction_service.send_transaction(
+        .block_on((*wallet).wallet.transaction_service.send_transaction(
             (*dest_public_key).clone(),
             MicroTari::from(amount),
             MicroTari::from(fee_per_gram),
@@ -3495,7 +3525,9 @@ pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out:
         return ptr::null_mut();
     }
 
-    let retrieved_contacts = (*wallet).runtime.block_on((*wallet).contacts_service.get_contacts());
+    let retrieved_contacts = (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.contacts_service.get_contacts());
     match retrieved_contacts {
         Ok(mut retrieved_contacts) => {
             contacts.append(&mut retrieved_contacts);
@@ -3540,7 +3572,7 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
 
     let completed_transactions = (*wallet)
         .runtime
-        .block_on((*wallet).transaction_service.get_completed_transactions());
+        .block_on((*wallet).wallet.transaction_service.get_completed_transactions());
     match completed_transactions {
         Ok(completed_transactions) => {
             // The frontend specification calls for completed transactions that have not yet been mined to be
@@ -3597,7 +3629,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
 
     let pending_transactions = (*wallet)
         .runtime
-        .block_on((*wallet).transaction_service.get_pending_inbound_transactions());
+        .block_on((*wallet).wallet.transaction_service.get_pending_inbound_transactions());
 
     match pending_transactions {
         Ok(pending_transactions) => {
@@ -3607,7 +3639,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
 
             if let Ok(completed_txs) = (*wallet)
                 .runtime
-                .block_on((*wallet).transaction_service.get_completed_transactions())
+                .block_on((*wallet).wallet.transaction_service.get_completed_transactions())
             {
                 // The frontend specification calls for completed transactions that have not yet been mined to be
                 // classified as Pending Transactions. In order to support this logic without impacting the practical
@@ -3665,7 +3697,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
 
     let pending_transactions = (*wallet)
         .runtime
-        .block_on((*wallet).transaction_service.get_pending_outbound_transactions());
+        .block_on((*wallet).wallet.transaction_service.get_pending_outbound_transactions());
     match pending_transactions {
         Ok(pending_transactions) => {
             for tx in pending_transactions.values() {
@@ -3673,7 +3705,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
             }
             if let Ok(completed_txs) = (*wallet)
                 .runtime
-                .block_on((*wallet).transaction_service.get_completed_transactions())
+                .block_on((*wallet).wallet.transaction_service.get_completed_transactions())
             {
                 // The frontend specification calls for completed transactions that have not yet been mined to be
                 // classified as Pending Transactions. In order to support this logic without impacting the practical
@@ -3727,10 +3759,12 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
         return ptr::null_mut();
     }
 
-    let completed_transactions = match (*wallet)
-        .runtime
-        .block_on((*wallet).transaction_service.get_cancelled_completed_transactions())
-    {
+    let completed_transactions = match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_cancelled_completed_transactions(),
+    ) {
         Ok(txs) => txs,
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -3740,6 +3774,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
     };
     let inbound_transactions = match (*wallet).runtime.block_on(
         (*wallet)
+            .wallet
             .transaction_service
             .get_cancelled_pending_inbound_transactions(),
     ) {
@@ -3752,6 +3787,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
     };
     let outbound_transactions = match (*wallet).runtime.block_on(
         (*wallet)
+            .wallet
             .transaction_service
             .get_cancelled_pending_outbound_transactions(),
     ) {
@@ -3769,12 +3805,12 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
     }
     for tx in inbound_transactions.values() {
         let mut inbound_tx = CompletedTransaction::from(tx.clone());
-        inbound_tx.destination_public_key = (*wallet).comms.node_identity().public_key().clone();
+        inbound_tx.destination_public_key = (*wallet).wallet.comms.node_identity().public_key().clone();
         completed.push(inbound_tx);
     }
     for tx in outbound_transactions.values() {
         let mut outbound_tx = CompletedTransaction::from(tx.clone());
-        outbound_tx.source_public_key = (*wallet).comms.node_identity().public_key().clone();
+        outbound_tx.source_public_key = (*wallet).wallet.comms.node_identity().public_key().clone();
         completed.push(outbound_tx);
     }
 
@@ -3813,7 +3849,7 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 
     let completed_transactions = (*wallet)
         .runtime
-        .block_on((*wallet).transaction_service.get_completed_transactions());
+        .block_on((*wallet).wallet.transaction_service.get_completed_transactions());
 
     match completed_transactions {
         Ok(completed_transactions) => {
@@ -3867,11 +3903,11 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
 
     let pending_transactions = (*wallet)
         .runtime
-        .block_on((*wallet).transaction_service.get_pending_inbound_transactions());
+        .block_on((*wallet).wallet.transaction_service.get_pending_inbound_transactions());
 
     let completed_transactions = (*wallet)
         .runtime
-        .block_on((*wallet).transaction_service.get_completed_transactions());
+        .block_on((*wallet).wallet.transaction_service.get_completed_transactions());
 
     match completed_transactions {
         Ok(completed_transactions) => {
@@ -3941,11 +3977,11 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
 
     let pending_transactions = (*wallet)
         .runtime
-        .block_on((*wallet).transaction_service.get_pending_outbound_transactions());
+        .block_on((*wallet).wallet.transaction_service.get_pending_outbound_transactions());
 
     let completed_transactions = (*wallet)
         .runtime
-        .block_on((*wallet).transaction_service.get_completed_transactions());
+        .block_on((*wallet).wallet.transaction_service.get_completed_transactions());
 
     match completed_transactions {
         Ok(completed_transactions) => {
@@ -4016,10 +4052,12 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
 
     let mut transaction = None;
 
-    let mut completed_transactions = match (*wallet)
-        .runtime
-        .block_on((*wallet).transaction_service.get_cancelled_completed_transactions())
-    {
+    let mut completed_transactions = match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .get_cancelled_completed_transactions(),
+    ) {
         Ok(txs) => txs,
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -4033,6 +4071,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
     } else {
         let mut outbound_transactions = match (*wallet).runtime.block_on(
             (*wallet)
+                .wallet
                 .transaction_service
                 .get_cancelled_pending_outbound_transactions(),
         ) {
@@ -4046,11 +4085,12 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
 
         if let Some(tx) = outbound_transactions.remove(&transaction_id) {
             let mut outbound_tx = CompletedTransaction::from(tx);
-            outbound_tx.source_public_key = (*wallet).comms.node_identity().public_key().clone();
+            outbound_tx.source_public_key = (*wallet).wallet.comms.node_identity().public_key().clone();
             transaction = Some(outbound_tx);
         } else {
             let mut inbound_transactions = match (*wallet).runtime.block_on(
                 (*wallet)
+                    .wallet
                     .transaction_service
                     .get_cancelled_pending_inbound_transactions(),
             ) {
@@ -4063,7 +4103,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
             };
             if let Some(tx) = inbound_transactions.remove(&transaction_id) {
                 let mut inbound_tx = CompletedTransaction::from(tx);
-                inbound_tx.destination_public_key = (*wallet).comms.node_identity().public_key().clone();
+                inbound_tx.destination_public_key = (*wallet).wallet.comms.node_identity().public_key().clone();
                 transaction = Some(inbound_tx);
             }
         }
@@ -4107,7 +4147,7 @@ pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_ou
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    let pk = (*wallet).comms.node_identity().public_key().clone();
+    let pk = (*wallet).wallet.comms.node_identity().public_key().clone();
     Box::into_raw(Box::new(pk))
 }
 
@@ -4167,12 +4207,12 @@ pub unsafe extern "C" fn wallet_import_utxo(
         CString::new("Imported UTXO").unwrap().to_str().unwrap().to_owned()
     };
 
-    match (*wallet).import_utxo(
+    match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
         MicroTari::from(amount),
         &(*spending_key).clone(),
         &(*source_public_key).clone(),
         message_string,
-    ) {
+    )) {
         Ok(tx_id) => tx_id,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -4212,7 +4252,7 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).transaction_service.cancel_transaction(transaction_id))
+        .block_on((*wallet).wallet.transaction_service.cancel_transaction(transaction_id))
     {
         Ok(_) => true,
         Err(e) => {
@@ -4248,7 +4288,10 @@ pub unsafe extern "C" fn wallet_sync_with_base_node(wallet: *mut TariWallet, err
         return 0;
     }
 
-    match (*wallet).validate_utxos(UtxoValidationRetry::Limited(1)) {
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.validate_utxos(UtxoValidationRetry::Limited(1)))
+    {
         Ok(request_key) => request_key,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -4299,13 +4342,13 @@ pub unsafe extern "C" fn wallet_coin_split(
         "Coin Split".to_string()
     };
 
-    match (*wallet).coin_split(
+    match (*wallet).runtime.block_on((*wallet).wallet.coin_split(
         MicroTari(amount),
         count as usize,
         MicroTari(fee),
         message,
         Some(lock_height),
-    ) {
+    )) {
         Ok(request_key) => request_key,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -4340,7 +4383,7 @@ pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_ou
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).output_manager_service.get_seed_words())
+        .block_on((*wallet).wallet.output_manager_service.get_seed_words())
     {
         Ok(sw) => Box::into_raw(Box::new(TariSeedWords(sw))),
         Err(e) => {
@@ -4372,7 +4415,7 @@ pub unsafe extern "C" fn wallet_set_low_power_mode(wallet: *mut TariWallet, erro
 
     if let Err(e) = (*wallet)
         .runtime
-        .block_on((*wallet).transaction_service.set_low_power_mode())
+        .block_on((*wallet).wallet.transaction_service.set_low_power_mode())
     {
         error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -4399,7 +4442,7 @@ pub unsafe extern "C" fn wallet_set_normal_power_mode(wallet: *mut TariWallet, e
 
     if let Err(e) = (*wallet)
         .runtime
-        .block_on((*wallet).transaction_service.set_normal_power_mode())
+        .block_on((*wallet).wallet.transaction_service.set_normal_power_mode())
     {
         error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -4443,7 +4486,7 @@ pub unsafe extern "C" fn wallet_apply_encryption(
         .expect("A non-null passphrase should be able to be converted to string")
         .to_owned();
 
-    if let Err(e) = (*wallet).apply_encryption(pf) {
+    if let Err(e) = (*wallet).runtime.block_on((*wallet).wallet.apply_encryption(pf)) {
         error = LibWalletError::from(e).code;
         ptr::swap(error_out, &mut error as *mut c_int);
     }
@@ -4468,7 +4511,7 @@ pub unsafe extern "C" fn wallet_remove_encryption(wallet: *mut TariWallet, error
         return;
     }
 
-    if let Err(e) = (*wallet).remove_encryption() {
+    if let Err(e) = (*wallet).runtime.block_on((*wallet).wallet.remove_encryption()) {
         error = LibWalletError::from(e).code;
         ptr::swap(error_out, &mut error as *mut c_int);
     }
@@ -4648,8 +4691,8 @@ pub unsafe extern "C" fn emoji_set_destroy(emoji_set: *mut EmojiSet) {
 #[no_mangle]
 pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
     if !wallet.is_null() {
-        let m = Box::from_raw(wallet);
-        m.shutdown();
+        let mut m = Box::from_raw(wallet);
+        m.runtime.block_on(m.wallet.shutdown());
     }
 }
 
@@ -5311,7 +5354,12 @@ mod test {
                 tari_wallet::transaction_service::storage::database::InboundTransaction,
             > = (*alice_wallet)
                 .runtime
-                .block_on((*alice_wallet).transaction_service.get_pending_inbound_transactions())
+                .block_on(
+                    (*alice_wallet)
+                        .wallet
+                        .transaction_service
+                        .get_pending_inbound_transactions(),
+                )
                 .unwrap();
 
             assert_eq!(inbound_transactions.len(), 0);
@@ -5327,7 +5375,12 @@ mod test {
                 tari_wallet::transaction_service::storage::database::InboundTransaction,
             > = (*alice_wallet)
                 .runtime
-                .block_on((*alice_wallet).transaction_service.get_pending_inbound_transactions())
+                .block_on(
+                    (*alice_wallet)
+                        .wallet
+                        .transaction_service
+                        .get_pending_inbound_transactions(),
+                )
                 .unwrap();
 
             assert_eq!(inbound_transactions.len(), 1);
@@ -5367,7 +5420,7 @@ mod test {
                 tari_wallet::transaction_service::storage::database::CompletedTransaction,
             > = (*alice_wallet)
                 .runtime
-                .block_on((*alice_wallet).transaction_service.get_completed_transactions())
+                .block_on((*alice_wallet).wallet.transaction_service.get_completed_transactions())
                 .unwrap();
 
             let num_completed_tx_pre = completed_transactions.len();
@@ -5383,7 +5436,7 @@ mod test {
                 tari_wallet::transaction_service::storage::database::CompletedTransaction,
             > = (*alice_wallet)
                 .runtime
-                .block_on((*alice_wallet).transaction_service.get_completed_transactions())
+                .block_on((*alice_wallet).wallet.transaction_service.get_completed_transactions())
                 .unwrap();
 
             assert_eq!(num_completed_tx_pre + 1, completed_transactions.len());
@@ -5436,7 +5489,7 @@ mod test {
                 tari_wallet::transaction_service::storage::database::CompletedTransaction,
             > = (*alice_wallet)
                 .runtime
-                .block_on((*alice_wallet).transaction_service.get_completed_transactions())
+                .block_on((*alice_wallet).wallet.transaction_service.get_completed_transactions())
                 .unwrap();
             for (_k, v) in completed_transactions {
                 if v.status == TransactionStatus::Completed {
@@ -5458,7 +5511,7 @@ mod test {
 
             let pre_balance = (*alice_wallet)
                 .runtime
-                .block_on((*alice_wallet).output_manager_service.get_balance())
+                .block_on((*alice_wallet).wallet.output_manager_service.get_balance())
                 .unwrap();
 
             let secret_key_base_node = private_key_generate();
@@ -5477,7 +5530,7 @@ mod test {
 
             let post_balance = (*alice_wallet)
                 .runtime
-                .block_on((*alice_wallet).output_manager_service.get_balance())
+                .block_on((*alice_wallet).wallet.output_manager_service.get_balance())
                 .unwrap();
 
             assert_eq!(
@@ -5487,7 +5540,7 @@ mod test {
 
             let import_transaction = (*alice_wallet)
                 .runtime
-                .block_on((*alice_wallet).transaction_service.get_completed_transactions())
+                .block_on((*alice_wallet).wallet.transaction_service.get_completed_transactions())
                 .unwrap()
                 .remove(&utxo_tx_id)
                 .expect("Tx should be in collection");
@@ -5503,9 +5556,10 @@ mod test {
                 .runtime
                 .block_on(
                     (*alice_wallet)
+                        .wallet
                         .comms
                         .connection_manager()
-                        .dial_peer((*bob_wallet).comms.node_identity().node_id().clone()),
+                        .dial_peer((*bob_wallet).wallet.comms.node_identity().node_id().clone()),
                 )
                 .unwrap();
             assert!(wallet_sync_with_base_node(alice_wallet, error_ptr) > 0);
@@ -5522,7 +5576,12 @@ mod test {
 
             let inbound_txs = (*alice_wallet)
                 .runtime
-                .block_on((*alice_wallet).transaction_service.get_pending_inbound_transactions())
+                .block_on(
+                    (*alice_wallet)
+                        .wallet
+                        .transaction_service
+                        .get_pending_inbound_transactions(),
+                )
                 .unwrap();
 
             let mut inbound_tx_id = 0;
@@ -5535,7 +5594,7 @@ mod test {
 
                 (*alice_wallet)
                     .runtime
-                    .block_on(async { (*alice_wallet).transaction_service.cancel_transaction(k).await })
+                    .block_on(async { (*alice_wallet).wallet.transaction_service.cancel_transaction(k).await })
                     .unwrap();
 
                 let inbound_tx = wallet_get_cancelled_transaction_by_id(&mut (*alice_wallet), inbound_tx_id, error_ptr);
@@ -5561,7 +5620,9 @@ mod test {
             let cancelled_tx = completed_transactions_get_at(ffi_cancelled_txs, 0, error_ptr);
             let tx_id = completed_transaction_get_transaction_id(cancelled_tx, error_ptr);
             let dest_pubkey = completed_transaction_get_destination_public_key(cancelled_tx, error_ptr);
-            let pub_key_ptr = Box::into_raw(Box::new((*alice_wallet).comms.node_identity().public_key().clone()));
+            let pub_key_ptr = Box::into_raw(Box::new(
+                (*alice_wallet).wallet.comms.node_identity().public_key().clone(),
+            ));
             assert_eq!(tx_id, inbound_tx_id);
             assert_eq!(*dest_pubkey, *pub_key_ptr);
             public_key_destroy(pub_key_ptr);
@@ -5574,6 +5635,7 @@ mod test {
             assert_eq!(error, 0);
             let split_tx = (*alice_wallet).runtime.block_on(
                 (*alice_wallet)
+                    .wallet
                     .transaction_service
                     .get_completed_transaction(split_tx_id),
             );
