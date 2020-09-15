@@ -107,6 +107,7 @@ pub enum BaseNodeCommand {
     ListConnections,
     ListHeaders,
     CheckDb,
+    PeriodStats,
     CalcTiming,
     DiscoverPeer,
     GetBlock,
@@ -298,6 +299,9 @@ impl Parser {
             CheckDb => {
                 self.process_check_db();
             },
+            PeriodStats => {
+                self.process_period_stats(args);
+            },
             BanPeer => {
                 self.process_ban_peer(args, true);
             },
@@ -414,6 +418,15 @@ impl Parser {
             },
             CheckDb => {
                 println!("Checks the blockchain database for missing blocks and headers");
+            },
+            PeriodStats => {
+                println!(
+                    "Prints out certain stats to of the block chain in csv format for easy copy, use as follows: "
+                );
+                println!(
+                    "Period-stats [start time in unix timestamp] [end time in unix timestamp] [interval period time \
+                     in unix timestamp]"
+                );
             },
             ListConnections => {
                 println!("Lists the peer connections currently held by this node");
@@ -1480,6 +1493,130 @@ impl Parser {
             }
             for missing_header_height in missing_headers {
                 println!("Missing header at height: {}", missing_header_height)
+            }
+        });
+    }
+
+    fn process_period_stats<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
+        let command_arg = args.map(|arg| arg.to_string()).take(3).collect::<Vec<String>>();
+        if command_arg.len() != 3 {
+            println!("Prints out certain stats to of the block chain, use as follows: ");
+            println!(
+                "Period-stats [start time in unix timestamp] [end time in unix timestamp] [interval period time in \
+                 unix timestamp]"
+            );
+            return;
+        }
+        let mut node = self.node_service.clone();
+        self.executor.spawn(async move {
+            let meta = node.get_metadata().await.expect("Could not retrieve chain meta");
+
+            let mut height = meta.height_of_longest_chain.expect("Could not retrieve chain height");
+            // Currently gets the stats for: tx count, hash rate estimation, target difficulty, solvetime.
+            let mut results: Vec<(usize, f64, u64, u64, usize)> = Vec::new();
+            let period_end = match u64::from_str(&command_arg[0]) {
+                Ok(v) => v,
+                Err(_) => {
+                    println!("Not a valid number provided");
+                    return;
+                },
+            };
+            let mut period_ticker_end = match u64::from_str(&command_arg[1]) {
+                Ok(v) => v,
+                Err(_) => {
+                    println!("Not a valid number provided");
+                    return;
+                },
+            };
+            let period = match u64::from_str(&command_arg[2]) {
+                Ok(v) => v,
+                Err(_) => {
+                    println!("Not a valid number provided");
+                    return;
+                },
+            };
+            let mut period_ticker_start = period_ticker_end - period;
+            let mut period_tx_count = 0;
+            let mut period_block_count = 0;
+            let mut period_hash = 0.0;
+            let mut period_difficulty = 0;
+            let mut period_solvetime = 0;
+            print!("Searching for height: ");
+            while height > 0 {
+                print!("{}", height);
+                io::stdout().flush().unwrap();
+
+                let block = match node.get_blocks(vec![height]).await {
+                    Err(_err) => {
+                        println!("Error in db, could not get block");
+                        break;
+                    },
+                    Ok(mut data) => match data.pop() {
+                        // We need to check the data it self, as FetchBlocks will suppress any error, only logging
+                        // it.
+                        Some(historical_block) => historical_block.block,
+                        None => {
+                            println!("Error in db, could not get block");
+                            break;
+                        },
+                    },
+                };
+                let prev_block = match node.get_blocks(vec![height - 1]).await {
+                    Err(_err) => {
+                        println!("Error in db, could not get block");
+                        break;
+                    },
+                    Ok(mut data) => match data.pop() {
+                        // We need to check the data it self, as FetchBlocks will suppress any error, only logging
+                        // it.
+                        Some(historical_block) => historical_block.block,
+                        None => {
+                            println!("Error in db, could not get block");
+                            break;
+                        },
+                    },
+                };
+                height -= 1;
+                if block.header.timestamp.as_u64() > period_ticker_end {
+                    print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
+                    continue;
+                };
+                while block.header.timestamp.as_u64() < period_ticker_start {
+                    results.push((
+                        period_tx_count,
+                        period_hash,
+                        period_difficulty,
+                        period_solvetime,
+                        period_block_count,
+                    ));
+                    period_tx_count = 0;
+                    period_block_count = 0;
+                    period_hash = 0.0;
+                    period_difficulty = 0;
+                    period_solvetime = 0;
+                    period_ticker_end -= period;
+                    period_ticker_start -= period;
+                }
+                period_tx_count += block.body.kernels().len() - 1;
+                period_block_count += 1;
+                let st = if prev_block.header.timestamp.as_u64() >= block.header.timestamp.as_u64() {
+                    1.0
+                } else {
+                    (block.header.timestamp.as_u64() - prev_block.header.timestamp.as_u64()) as f64
+                };
+                let diff = block.header.pow.target_difficulty.as_u64();
+                period_difficulty += diff;
+                period_solvetime += st as u64;
+                period_hash += diff as f64 / st / 1_000_000.0;
+                if period_ticker_end <= period_end {
+                    break;
+                }
+                print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
+            }
+            println!("Complete");
+            println!("Results of tx count, hash rate estimation, target difficulty, solvetime, block count");
+            for data in results {
+                println!("{},{},{},{},{}", data.0, data.1, data.2, data.3, data.4);
             }
         });
     }
