@@ -27,7 +27,7 @@ hex = "0.4.2"
 hyper = "0.13.7"
 jsonrpc = "0.11.0"
 log = { version = "0.4.8", features = ["std"] }
-monero = {version = "0.8.1", features = ["serde_support"]}
+monero = {version = "^0.9.1", features = ["serde_support"]}
 rand = "0.7.2"
 reqwest = {version = "0.10.8", features=["json"]}
 serde = { version="1.0.106", features = ["derive"] }
