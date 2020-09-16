@@ -42,6 +42,7 @@ pub struct ConsensusConstants {
     /// This is the our target time in seconds between blocks
     target_block_interval: u64,
     /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
+    /// https://github.com/zawy12/difficulty-algorithms/issues/14
     difficulty_block_window: u64,
     /// When doing difficulty adjustments, this is the maximum block time allowed
     difficulty_max_block_interval: u64,
@@ -141,7 +142,7 @@ impl ConsensusConstants {
             // 0
             return 0;
         }
-        ((self.target_block_interval as f64) / self.algo_split[algo] as f64 * 100.0) as u64
+        self.target_block_interval * 100 / (self.algo_split[algo] as u64)
     }
 
     /// The maximum time a block is considered to take. Used by the difficulty adjustment algorithms
@@ -154,7 +155,7 @@ impl ConsensusConstants {
             // 0
             return 0;
         }
-        ((self.difficulty_max_block_interval as f64) / self.algo_split[algo] as f64 * 100.0) as u64
+        self.difficulty_max_block_interval * 100 / (self.algo_split[algo] as u64)
     }
 
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward.
