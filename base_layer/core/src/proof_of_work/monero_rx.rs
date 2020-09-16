@@ -395,7 +395,7 @@ mod test {
         for item in block.clone().tx_hashes {
             hashes.push(item);
         }
-        let mut root = tree_hash(&hashes).unwrap(); // tree_hash.c used by monero
+        let root = tree_hash(&hashes).unwrap();
         let mut encode2 = header;
         encode2.extend_from_slice(root.as_bytes());
         encode2.append(&mut count);

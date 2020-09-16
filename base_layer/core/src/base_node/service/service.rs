@@ -630,7 +630,7 @@ async fn handle_outbound_block(
 ) -> Result<(), CommsInterfaceError>
 {
     outbound_message_service
-        .propagate(
+        .flood(
             NodeDestination::Unknown,
             OutboundEncryption::None,
             exclude_peers,
