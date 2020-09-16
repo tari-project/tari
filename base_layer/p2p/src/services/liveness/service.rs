@@ -178,7 +178,7 @@ where
             },
             PingPong::Pong => {
                 if !self.state.is_inflight(ping_pong_msg.nonce) {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Received Pong that was not requested from '{}' with useragent {}. Ignoring it.",
                         node_id.short_str(),

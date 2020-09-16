@@ -615,7 +615,7 @@ impl ConnectivityManagerActor {
                 self.publish_event(ConnectivityEvent::ConnectivityStateOnline(num_peers));
             },
             (_, Degraded) => {
-                warn!(
+                info!(
                     target: LOG_TARGET,
                     "Connectivity is DEGRADED ({}/{} connections)", num_peers, required_num_peers
                 );
