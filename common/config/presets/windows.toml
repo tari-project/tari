@@ -466,10 +466,10 @@ monerod_url = "http://192.110.160.146:38081"
 proxy_host_address = "127.0.0.1:7878"
 
 # If authentication is being used for curl
-curl_use_auth="false"
+monerod_use_auth=false
 
 # Username for curl
-curl_username=""
+monerod_username=""
 
 # Password for curl
-curl_password=""
+monerod_password=""

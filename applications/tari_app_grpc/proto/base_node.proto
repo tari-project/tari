@@ -65,6 +65,7 @@ message TipInfoResponse{
 /// return type of GetNewBlockTemplate
 message NewBlockTemplateResponse{
     NewBlockTemplate new_block_template = 1;
+    uint64 block_reward = 2;
 }
 
 /// An Empty placeholder for endpoints without request parameters

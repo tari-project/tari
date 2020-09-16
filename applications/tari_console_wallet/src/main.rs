@@ -118,7 +118,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     let grpc = crate::grpc::WalletGrpcServer::new(wallet.clone());
 
     if !bootstrap.daemon_mode {
-        runtime.spawn(run_grpc(grpc, node_config.grpc_address));
+        runtime.spawn(run_grpc(grpc, node_config.grpc_wallet_address));
         let app = App::<CrosstermBackend<Stdout>>::new(
             "Tari Console Wallet".into(),
             &node_identity,
@@ -136,7 +136,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     } else {
         println!("Starting grpc server");
         runtime
-            .block_on(run_grpc(grpc, node_config.grpc_address))
+            .block_on(run_grpc(grpc, node_config.grpc_wallet_address))
             .map_err(|err| ExitCodes::GrpcError(err))?;
         println!("Shutting down");
         Ok(())

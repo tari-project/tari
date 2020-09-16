@@ -58,7 +58,7 @@ async fn main() -> Result<(), MmProxyError> {
         transient_data: Default::default(),
     };
 
-    let addr = config.proxy_host_address.clone();
+    let addr = config.proxy_host_address;
     println!("Listening on {}...", addr);
 
     let config = MergeMiningProxyConfig::from(config);

@@ -313,8 +313,13 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
+        let height = new_template.header.height;
+
+        let cm = ConsensusManagerBuilder::new(self.node_config.network.into()).build();
+
         let response = tari_rpc::NewBlockTemplateResponse {
             new_block_template: Some(new_template.into()),
+            block_reward: cm.emission_schedule().block_reward(height).0,
         };
 
         debug!(target: LOG_TARGET, "Sending GetNewBlockTemplate response to client");

@@ -182,6 +182,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.rincewind.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.rincewind.grpc_address", "127.0.0.1:18142")
         .unwrap();
+    cfg.set_default("base_node.rincewind.grpc_wallet_address", "127.0.0.1:18143")
+        .unwrap();
     cfg.set_default("base_node.rincewind.enable_mining", false).unwrap();
     cfg.set_default("base_node.rincewind.num_mining_threads", 1).unwrap();
 
