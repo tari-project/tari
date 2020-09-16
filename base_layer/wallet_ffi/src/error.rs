@@ -100,7 +100,7 @@ impl From<InterfaceError> for LibWalletError {
     }
 }
 
-/// This implementation maps the internal WalletError to a set of LibWalletErrors. The mapping is explicitly manager
+/// This implementation maps the internal WalletError to a set of LibWalletErrors. The mapping is explicitly managed
 /// here and error code 999 is a catch-all code for any errors that are not explicitly mapped
 impl From<WalletError> for LibWalletError {
     fn from(w: WalletError) -> Self {
@@ -257,8 +257,8 @@ impl From<WalletError> for LibWalletError {
     }
 }
 
-/// This implementation maps the internal HexError to a set of LibWalletErrors. The mapping is explicitly managed
-/// here and error code 999 is a catch-all code for any errors that are not explicitly mapped
+/// This implementation maps the internal HexError to a set of LibWalletErrors.
+/// The mapping is explicitly managed here.
 impl From<HexError> for LibWalletError {
     fn from(h: HexError) -> Self {
         error!(target: LOG_TARGET, "{}", format!("{:?}", h));
@@ -279,8 +279,8 @@ impl From<HexError> for LibWalletError {
     }
 }
 
-/// This implementation maps the internal ByteArrayError to a set of LibWalletErrors. The mapping is explicitly manager
-/// here and error code 999 is a catch-all code for any errors that are not explicitly mapped
+/// This implementation maps the internal ByteArrayError to a set of LibWalletErrors.
+/// The mapping is explicitly managed here.
 impl From<ByteArrayError> for LibWalletError {
     fn from(b: ByteArrayError) -> Self {
         error!(target: LOG_TARGET, "{}", format!("{:?}", b));
@@ -359,6 +359,32 @@ impl From<SchnorrSignatureError> for LibWalletError {
             SchnorrSignatureError::InvalidChallenge => Self {
                 code: 901,
                 message: format!("{:?}", err),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Error, PartialEq)]
+pub enum TransactionError {
+    #[error("The transaction has an incorrect status: `{0}`")]
+    StatusError(String),
+    #[error("The transaction has the wrong number of kernels: `{0}`")]
+    KernelError(String),
+}
+
+/// This implementation maps the internal TransactionError to a set of LibWalletErrors.
+/// The mapping is explicitly managed here.
+impl From<TransactionError> for LibWalletError {
+    fn from(v: TransactionError) -> Self {
+        error!(target: LOG_TARGET, "{}", v);
+        match v {
+            TransactionError::StatusError(_) => Self {
+                code: 640,
+                message: v.to_string(),
+            },
+            TransactionError::KernelError(_) => Self {
+                code: 650,
+                message: format!("{:?}", v),
             },
         }
     }
