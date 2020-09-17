@@ -117,7 +117,7 @@ fn test_listening_lagging() {
     );
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
@@ -191,7 +191,7 @@ fn test_event_channel() {
     let mut shutdown = Shutdown::new();
     let mut mock = MockChainMetadata::new();
     let (state_change_event_publisher, state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let state_machine = BaseNodeStateMachine::new(
         &db,
@@ -276,7 +276,7 @@ fn test_block_sync() {
     };
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-    let (status_event_sender, mut status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let (status_event_sender, mut status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut mock = MockChainMetadata::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
@@ -327,13 +327,7 @@ fn test_block_sync() {
             );
         }
 
-        let is_bootstrapped = match status_event_receiver.recv().await {
-            None => false,
-            Some(s) => match s {
-                StatusInfo::Listening(li) => li.is_bootstrapped(),
-                _ => false,
-            },
-        };
+        let is_bootstrapped = status_event_receiver.recv().await.unwrap().bootstrapped;
 
         assert!(!is_bootstrapped);
         // Publish on the metadata that will indicate we are synced in the Listening state
@@ -351,13 +345,7 @@ fn test_block_sync() {
         // Run the listening State
         let _state_event = Listening { is_synced: true }.next_event(&mut alice_state_machine).await;
 
-        let is_bootstrapped = match status_event_receiver.recv().await {
-            None => false,
-            Some(s) => match s {
-                StatusInfo::Listening(li) => li.is_bootstrapped(),
-                _ => false,
-            },
-        };
+        let is_bootstrapped = status_event_receiver.recv().await.unwrap().bootstrapped;
 
         assert!(is_bootstrapped);
 
@@ -405,7 +393,7 @@ fn test_lagging_block_sync() {
     };
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
@@ -513,7 +501,7 @@ fn test_block_sync_recovery() {
     };
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
@@ -621,7 +609,7 @@ fn test_forked_block_sync() {
     };
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
@@ -773,7 +761,7 @@ fn test_sync_peer_banning() {
     };
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,

@@ -24,7 +24,7 @@ use crate::{
     base_node::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
         state_machine_service::{
-            states::{StateEvent, StateEvent::FatalError, StatusInfo, SyncPeers, SyncStatus, Waiting},
+            states::{StateEvent, StateEvent::FatalError, StateInfo, SyncPeers, SyncStatus, Waiting},
             BaseNodeStateMachine,
         },
     },
@@ -41,8 +41,6 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
 /// This struct contains info that is use full for external viewing of state info
 pub struct ListeningInfo {
     synced: bool,
-    // Have we synced at least once
-    bootstrapped: bool,
 }
 
 impl Display for ListeningInfo {
@@ -53,19 +51,12 @@ impl Display for ListeningInfo {
 
 impl ListeningInfo {
     /// Creates a new ListeningInfo
-    pub const fn new(is_synced: bool, bootstrapped: bool) -> Self {
-        Self {
-            synced: is_synced,
-            bootstrapped,
-        }
+    pub const fn new(is_synced: bool) -> Self {
+        Self { synced: is_synced }
     }
 
     pub fn is_synced(&self) -> bool {
         self.synced
-    }
-
-    pub fn is_bootstrapped(&self) -> bool {
-        self.bootstrapped
     }
 }
 
@@ -85,10 +76,7 @@ impl Listening {
     {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
         shared
-            .set_status_info(StatusInfo::Listening(ListeningInfo::new(
-                self.is_synced,
-                shared.bootstrapped_sync,
-            )))
+            .set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)))
             .await;
         while let Some(metadata_event) = shared.metadata_event_stream.next().await {
             match &*metadata_event {
@@ -117,10 +105,7 @@ impl Listening {
                         } else {
                             self.is_synced = true;
                             shared
-                                .set_status_info(StatusInfo::Listening(ListeningInfo::new(
-                                    true,
-                                    shared.bootstrapped_sync,
-                                )))
+                                .set_state_info(StateInfo::Listening(ListeningInfo::new(true)))
                                 .await;
                         }
                     }

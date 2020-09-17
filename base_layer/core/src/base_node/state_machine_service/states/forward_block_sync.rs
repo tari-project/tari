@@ -23,7 +23,7 @@ use crate::{
     base_node::{
         comms_interface::{Broadcast, CommsInterfaceError},
         state_machine_service::{
-            states::{sync_peers::SyncPeer, StateEvent, StatusInfo},
+            states::{sync_peers::SyncPeer, StateEvent, StateInfo},
             BaseNodeStateMachine,
         },
     },
@@ -77,7 +77,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
 ) -> Result<StateEvent, String>
 {
     let tip = shared.db.fetch_tip_header().map_err(|e| e.to_string())?;
-    if let StatusInfo::BlockSync(ref mut info) = shared.info {
+    if let StateInfo::BlockSync(ref mut info) = shared.info {
         info.tip_height = tip.height;
     }
 
@@ -99,7 +99,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             from_headers.last().map(|h| h.height).unwrap(),
             from_headers.first().map(|h| h.height).unwrap(),
         );
-        if let StatusInfo::BlockSync(ref mut info) = shared.info {
+        if let StateInfo::BlockSync(ref mut info) = shared.info {
             // TODO: We don't have the peer's chainmetadata in this strategy - decide on a single block sync strategy
             info.sync_peers = vec![SyncPeer {
                 node_id: current_sync_node.clone(),
@@ -248,7 +248,7 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
         Ok(blocks) => {
             info!(target: LOG_TARGET, "Received {} blocks from peer", blocks.len());
             if !blocks.is_empty() {
-                if let StatusInfo::BlockSync(ref mut info) = shared.info {
+                if let StateInfo::BlockSync(ref mut info) = shared.info {
                     info.tip_height = blocks[blocks.len() - 1].block().header.height;
                     info.local_height = blocks[0].block().header.height;
                 }

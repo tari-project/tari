@@ -29,7 +29,7 @@ use crate::{
             BlockSyncInfo,
             HorizonStateSync,
             StateEvent,
-            StatusInfo,
+            StateInfo,
             SyncPeers,
         },
         BaseNodeStateMachine,
@@ -69,7 +69,7 @@ impl HeaderSync {
         match async_db::get_chain_metadata(shared.db.clone()).await {
             Ok(local_metadata) => {
                 shared
-                    .set_status_info(StatusInfo::HeaderSync(BlockSyncInfo::new(
+                    .set_state_info(StateInfo::HeaderSync(BlockSyncInfo::new(
                         self.network_metadata.height_of_longest_chain(),
                         local_metadata.height_of_longest_chain(),
                         self.sync_peers.clone(),
@@ -185,7 +185,7 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
                 match self.validate_and_insert_headers(&block_nums, headers).await {
                     Ok(_) => {
                         self.shared
-                            .set_status_info(StatusInfo::HeaderSync(BlockSyncInfo::new(
+                            .set_state_info(StateInfo::HeaderSync(BlockSyncInfo::new(
                                 self.sync_height,
                                 *block_nums.last().unwrap(),
                                 Clone::clone(&*self.sync_peers),

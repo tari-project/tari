@@ -34,7 +34,7 @@ pub struct MockBaseNodeStateMachine {
 
 impl MockBaseNodeStateMachine {
     pub fn new() -> Self {
-        let (status_sender, status_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+        let (status_sender, status_receiver) = tokio::sync::watch::channel(StatusInfo::new());
         Self {
             status_receiver,
             status_sender,

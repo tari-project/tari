@@ -30,6 +30,7 @@ use crate::{
                 BlockSyncConfig,
                 HorizonSyncConfig,
                 StateEvent,
+                StateInfo,
                 StatusInfo,
                 SyncPeerConfig,
                 SyncStatus,
@@ -82,7 +83,7 @@ pub struct BaseNodeStateMachine<B> {
     pub(super) connectivity: ConnectivityRequester,
     pub(super) metadata_event_stream: Subscriber<ChainMetadataEvent>,
     pub(super) config: BaseNodeStateMachineConfig,
-    pub(super) info: StatusInfo,
+    pub(super) info: StateInfo,
     pub(super) sync_validators: SyncValidators,
     pub(super) bootstrapped_sync: bool,
     status_event_sender: watch::Sender<StatusInfo>,
@@ -118,7 +119,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             metadata_event_stream,
             interrupt_signal,
             config,
-            info: StatusInfo::StartUp,
+            info: StateInfo::StartUp,
             event_publisher,
             status_event_sender,
             sync_validators,
@@ -167,13 +168,18 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
 
     /// This function will publish the current StatusInfo to the channel
     pub fn publish_event_info(&mut self) {
-        if let Err(e) = self.status_event_sender.broadcast(self.info.clone()) {
+        let status = StatusInfo {
+            bootstrapped: self.bootstrapped_sync,
+            state_info: self.info.clone(),
+        };
+
+        if let Err(e) = self.status_event_sender.broadcast(status) {
             debug!(target: LOG_TARGET, "Error broadcasting a StatusEvent update: {}", e);
         }
     }
 
     /// Sets the StatusInfo.
-    pub async fn set_status_info(&mut self, info: StatusInfo) {
+    pub async fn set_state_info(&mut self, info: StateInfo) {
         self.info = info;
         self.publish_event_info();
     }

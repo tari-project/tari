@@ -60,7 +60,7 @@ mod block_sync;
 pub use block_sync::{BestChainMetadataBlockSyncInfo, BlockSyncConfig, BlockSyncInfo, BlockSyncStrategy};
 
 mod events_and_states;
-pub use events_and_states::{BaseNodeState, StateEvent, StatusInfo, SyncStatus};
+pub use events_and_states::{BaseNodeState, StateEvent, StateInfo, StatusInfo, SyncStatus};
 
 mod forward_block_sync;
 pub use forward_block_sync::ForwardBlockSyncInfo;

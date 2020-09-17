@@ -109,7 +109,7 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
     };
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
@@ -235,7 +235,7 @@ fn test_pruned_mode_sync_with_spent_utxos() {
     };
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
@@ -405,7 +405,7 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
     };
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
@@ -648,7 +648,7 @@ fn test_pruned_mode_sync_fail_final_validation() {
     };
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
@@ -712,7 +712,7 @@ fn test_pruned_mode_sync_fail_final_validation() {
         assert!(local_metadata.best_block.is_some());
         let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) =
             bounded(10, 3);
-        let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+        let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
         let service_shutdown = Shutdown::new();
         let mut alice_state_machine = BaseNodeStateMachine::new(
             &alice_node.blockchain_db,

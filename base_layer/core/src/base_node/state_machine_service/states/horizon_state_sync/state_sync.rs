@@ -29,7 +29,7 @@ use crate::{
             sync_peers::SyncPeer,
             BlockSyncInfo,
             StateEvent,
-            StatusInfo,
+            StateInfo,
             SyncPeers,
         },
         BaseNodeStateMachine,
@@ -78,7 +78,7 @@ impl HorizonStateSync {
     ) -> StateEvent
     {
         shared
-            .set_status_info(StatusInfo::HorizonSync(BlockSyncInfo::new(
+            .set_state_info(StateInfo::HorizonSync(BlockSyncInfo::new(
                 self.network_metadata.height_of_longest_chain(),
                 self.local_metadata.height_of_longest_chain(),
                 self.sync_peers.clone(),
