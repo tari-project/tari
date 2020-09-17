@@ -97,7 +97,7 @@ where B: BlockchainBackend + 'static
     ) -> Self::Future
     {
         let (state_event_publisher, state_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-        let (status_event_sender, status_event_receiver) = tokio::sync::watch::channel(StatusInfo::StartUp);
+        let (status_event_sender, status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
 
         let shutdown = Shutdown::new();
         let handle = StateMachineHandle::new(state_event_subscriber, status_event_receiver, shutdown.to_signal());

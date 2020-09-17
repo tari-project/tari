@@ -24,7 +24,6 @@ use crate::{
     base_node::{
         comms_interface::{BlockEvent, BlockEventReceiver},
         generate_request_key,
-        state_machine_service::states::StatusInfo,
         RequestKey,
         StateMachineHandle,
         WaitingRequests,
@@ -297,11 +296,8 @@ where B: BlockchainBackend + 'static
     async fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
         // Determine if we are bootstrapped
         let status_watch = self.state_machine.get_status_info_watch();
-        let bootstrapped = match *(status_watch.borrow()) {
-            StatusInfo::Listening(li) => li.is_bootstrapped(),
-            _ => false,
-        };
-        if !bootstrapped {
+
+        if !(*status_watch.borrow()).bootstrapped {
             debug!(
                 target: LOG_TARGET,
                 "Transaction with Message {} from peer `{}` not processed while busy with initial sync.",

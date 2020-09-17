@@ -152,7 +152,7 @@ impl Display for BaseNodeState {
 
 #[derive(Debug, Clone, PartialEq)]
 /// This enum will display all info inside of the state engine
-pub enum StatusInfo {
+pub enum StateInfo {
     StartUp,
     HeaderSync(BlockSyncInfo),
     HorizonSync(BlockSyncInfo),
@@ -160,7 +160,7 @@ pub enum StatusInfo {
     Listening(ListeningInfo),
 }
 
-impl Display for StatusInfo {
+impl Display for StateInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         match self {
             Self::StartUp => write!(f, "Node starting up"),
@@ -169,5 +169,27 @@ impl Display for StatusInfo {
             Self::BlockSync(info) => write!(f, "Synchronizing blocks: {}", info),
             Self::Listening(info) => write!(f, "Listening: {}", info),
         }
+    }
+}
+
+/// This struct contains global state machine state and the info specific to the current State
+#[derive(Debug, Clone, PartialEq)]
+pub struct StatusInfo {
+    pub bootstrapped: bool,
+    pub state_info: StateInfo,
+}
+
+impl StatusInfo {
+    pub fn new() -> Self {
+        Self {
+            bootstrapped: false,
+            state_info: StateInfo::StartUp,
+        }
+    }
+}
+
+impl Display for StatusInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(f, "Bootstrapped: {}, {}", self.bootstrapped, self.state_info)
     }
 }

@@ -35,7 +35,7 @@ use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::{
         service::BaseNodeServiceConfig,
-        state_machine_service::states::{ListeningInfo, StateEvent, StatusInfo},
+        state_machine_service::states::{ListeningInfo, StateEvent, StateInfo, StatusInfo},
     },
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusManagerBuilder, Network},
@@ -74,9 +74,10 @@ fn mining() {
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
     );
-    alice_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
     // Bob sends Alice a transaction, the transaction is received by the mempool service. The mempool service validates
     // it and sends it to the mempool where it is added to the unconfirmed pool.
     let (tx1, _) = schema_to_transaction(&vec![txn_schema!(from: vec![utxos0.clone()], to: vec![1 * T, 1 * T])]);

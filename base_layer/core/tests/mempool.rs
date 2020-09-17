@@ -41,7 +41,7 @@ use tari_core::{
     base_node::{
         comms_interface::Broadcast,
         service::BaseNodeServiceConfig,
-        state_machine_service::states::{ListeningInfo, StatusInfo},
+        state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
@@ -646,15 +646,18 @@ fn receive_and_propagate_transaction() {
             consensus_manager,
             temp_dir.path().to_str().unwrap(),
         );
-    alice_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
-    bob_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
-    carol_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
 
     let (tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
     let (orphan, _, _) = tx!(1*T, fee: 100*uT);
@@ -779,9 +782,10 @@ fn block_event_and_reorg_event_handling() {
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
     );
-    alice
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    alice.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
 
     // Bob creates Block 1 and sends it to Alice. Alice adds it to her chain and creates a block event that the Mempool
     // service will receive.

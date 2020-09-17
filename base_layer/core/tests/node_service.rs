@@ -51,7 +51,7 @@ use tari_core::{
         comms_interface::{BlockEvent, Broadcast, CommsInterfaceError},
         consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
         service::BaseNodeServiceConfig,
-        state_machine_service::states::{ListeningInfo, StatusInfo},
+        state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
     blocks::{BlockHeader, NewBlock},
     chain_storage::{BlockAddResult, BlockchainDatabaseConfig, DbTransaction, MmrTree},
@@ -434,18 +434,22 @@ fn propagate_and_forward_many_valid_blocks() {
         .start(&mut runtime, temp_dir.path().join("dan").to_str().unwrap());
 
     wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node, &dan_node]);
-    alice_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
-    bob_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
-    carol_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
-    dan_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    dan_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
 
     let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
     let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
@@ -531,15 +535,18 @@ fn propagate_and_forward_invalid_block_hash() {
         .start(&mut runtime, temp_dir.path().join("carol").to_str().unwrap());
 
     wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node]);
-    alice_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
-    bob_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
-    carol_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
 
     let mut block1 = append_block(
         &alice_node.blockchain_db,
@@ -649,18 +656,22 @@ fn propagate_and_forward_invalid_block() {
 
     wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node, &dan_node]);
 
-    alice_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
-    bob_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
-    carol_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
-    dan_node
-        .mock_base_node_state_machine
-        .publish_status(StatusInfo::Listening(ListeningInfo::new(true, true)));
+    alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    dan_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
 
     // This is a valid block, however Bob, Carol and Dan's block validator is set to always reject the block
     // after fetching it.

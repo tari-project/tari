@@ -29,7 +29,7 @@ use crate::{
                 ForwardBlockSyncInfo,
                 Listening,
                 StateEvent,
-                StatusInfo,
+                StateInfo,
                 SyncPeers,
             },
             BaseNodeStateMachine,
@@ -145,8 +145,8 @@ impl BlockSyncStrategy {
         sync_peers: &mut SyncPeers,
     ) -> StateEvent
     {
-        shared.info = StatusInfo::BlockSync(BlockSyncInfo::default());
-        if let StatusInfo::BlockSync(ref mut info) = shared.info {
+        shared.info = StateInfo::BlockSync(BlockSyncInfo::default());
+        if let StateInfo::BlockSync(ref mut info) = shared.info {
             info.sync_peers = Clone::clone(&*sync_peers);
         }
         shared.publish_event_info();
@@ -218,7 +218,7 @@ impl BestChainMetadataBlockSyncInfo {
     where
         B: 'static,
     {
-        if let StatusInfo::BlockSync(ref mut info) = shared.info {
+        if let StateInfo::BlockSync(ref mut info) = shared.info {
             info.sync_peers.clear();
             info.sync_peers.append(&mut sync_peers.clone());
         }
@@ -317,11 +317,11 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                 );
             }
 
-            if let StatusInfo::BlockSync(ref mut info) = shared.info {
+            if let StateInfo::BlockSync(ref mut info) = shared.info {
                 info.tip_height = network_tip_height;
             }
             while sync_height <= network_tip_height {
-                if let StatusInfo::BlockSync(ref mut info) = shared.info {
+                if let StateInfo::BlockSync(ref mut info) = shared.info {
                     info.local_height = sync_height;
                 }
 
@@ -439,14 +439,14 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
     let config = shared.config.block_sync_config;
     for attempt in 0..config.max_add_block_retry_attempts {
         let (blocks, sync_peer) = request_blocks(shared, sync_peers, block_nums.clone()).await?;
-        if let StatusInfo::BlockSync(ref mut info) = shared.info {
+        if let StateInfo::BlockSync(ref mut info) = shared.info {
             // assuming the numbers are ordered
             info.tip_height = block_nums[block_nums.len() - 1];
         }
         shared.publish_event_info();
         for block in blocks {
             let block_hash = block.hash();
-            if let StatusInfo::BlockSync(ref mut info) = shared.info {
+            if let StateInfo::BlockSync(ref mut info) = shared.info {
                 info.local_height = block.header.height;
             }
 
@@ -534,7 +534,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
             target: LOG_TARGET,
             "Requesting blocks {:?} from {}.", block_nums, sync_peer
         );
-        if let StatusInfo::BlockSync(ref mut info) = shared.info {
+        if let StateInfo::BlockSync(ref mut info) = shared.info {
             info.local_height = block_nums[0];
             info.tip_height = block_nums[block_nums.len() - 1];
         }

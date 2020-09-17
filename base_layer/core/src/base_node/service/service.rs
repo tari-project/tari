@@ -33,7 +33,7 @@ use crate::{
         generate_request_key,
         proto,
         service::error::BaseNodeServiceError,
-        state_machine_service::states::StatusInfo,
+        state_machine_service::states::StateInfo,
         RequestKey,
         StateMachineHandle,
         WaitingRequests,
@@ -354,12 +354,7 @@ where B: BlockchainBackend + 'static
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
 
-        let bootstrapped = match *(status_watch.borrow()) {
-            StatusInfo::Listening(li) => li.is_bootstrapped(),
-            _ => false,
-        };
-
-        if !bootstrapped {
+        if !(*status_watch.borrow()).bootstrapped {
             debug!(
                 target: LOG_TARGET,
                 "Propagated block `{}` from peer `{}` not processed while busy with initial sync.",
@@ -437,13 +432,10 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         .await?;
 
     // Determine if we are synced
-    let mut status_watch = state_machine_handle.get_status_info_watch();
-    let is_synced = match status_watch.recv().await {
-        None => false,
-        Some(s) => match s {
-            StatusInfo::Listening(li) => li.is_synced(),
-            _ => false,
-        },
+    let status_watch = state_machine_handle.get_status_info_watch();
+    let is_synced = match (*status_watch.borrow()).state_info {
+        StateInfo::Listening(li) => li.is_synced(),
+        _ => false,
     };
 
     let message = proto::BaseNodeServiceResponse {
