@@ -257,7 +257,7 @@ impl LivenessState {
                     let current_best_pong_duration = Utc::now().naive_utc().signed_duration_since(current_best_pong);
                     if last_pong_duration <= current_best_pong_duration {
                         best_node = Some(k.clone());
-                        best_recent_pong = v.last_pong_received.clone();
+                        best_recent_pong = v.last_pong_received;
                     }
                 }
             }

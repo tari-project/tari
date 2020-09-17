@@ -49,7 +49,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
     peer_features: PeerFeatures,
 ) -> Result<Arc<NodeIdentity>, ExitCodes>
 {
-    match load_identity(identity_file.as_ref().clone()) {
+    match load_identity(&identity_file) {
         Ok(id) => Ok(Arc::new(id)),
         Err(e) => {
             if !create_id {
@@ -64,7 +64,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
 
             debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
 
-            match create_new_identity(identity_file.as_ref(), public_address.clone(), peer_features) {
+            match create_new_identity(&identity_file, public_address.clone(), peer_features) {
                 Ok(id) => {
                     info!(
                         target: LOG_TARGET,

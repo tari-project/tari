@@ -294,10 +294,10 @@ impl TryFrom<Destination> for NodeDestination {
         match destination {
             Destination::Unknown(_) => Ok(NodeDestination::Unknown),
             Destination::PublicKey(pk) => {
-                CommsPublicKey::from_bytes(&pk).and_then(|pk| Ok(NodeDestination::PublicKey(Box::new(pk))))
+                CommsPublicKey::from_bytes(&pk).map(|pk| NodeDestination::PublicKey(Box::new(pk)))
             },
             Destination::NodeId(node_id) => {
-                NodeId::from_bytes(&node_id).and_then(|node_id| Ok(NodeDestination::NodeId(Box::new(node_id))))
+                NodeId::from_bytes(&node_id).map(|node_id| NodeDestination::NodeId(Box::new(node_id)))
             },
         }
     }
