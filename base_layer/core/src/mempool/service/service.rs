@@ -296,13 +296,10 @@ where B: BlockchainBackend + 'static
 
     async fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
         // Determine if we are bootstrapped
-        let mut status_watch = self.state_machine.get_status_info_watch();
-        let bootstrapped = match status_watch.recv().await {
-            None => false,
-            Some(s) => match s {
-                StatusInfo::Listening(li) => li.is_bootstrapped(),
-                _ => false,
-            },
+        let status_watch = self.state_machine.get_status_info_watch();
+        let bootstrapped = match *(status_watch.borrow()) {
+            StatusInfo::Listening(li) => li.is_bootstrapped(),
+            _ => false,
         };
         if !bootstrapped {
             debug!(
