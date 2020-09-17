@@ -377,7 +377,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut handler = self.node_service.clone();
         handler
-            .submit_block(block, Broadcast::from(true))
+            .submit_block(block.into(), Broadcast::from(true))
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         let response: tari_rpc::Empty = tari_rpc::Empty {};

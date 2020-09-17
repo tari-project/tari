@@ -22,7 +22,7 @@
 
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
-use std::iter::repeat_with;
+use std::{iter::repeat_with, sync::Arc};
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
@@ -222,7 +222,7 @@ pub fn append_block<B: BlockchainBackend>(
     let mut block = db.calculate_mmr_roots(template)?;
     block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
-    db.add_block(block.clone())?;
+    db.add_block(Arc::new(block.clone()))?;
     Ok(block)
 }
 
@@ -254,7 +254,7 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
     let mut block = db.calculate_mmr_roots(template)?;
     block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
-    db.add_block(block.clone())?;
+    db.add_block(Arc::new(block.clone()))?;
     Ok((block, coinbase_output))
 }
 
@@ -348,7 +348,7 @@ pub fn generate_block<B: BlockchainBackend>(
 {
     let template = chain_block(&blocks.last().unwrap(), transactions, consensus_constants);
     let new_block = db.calculate_mmr_roots(template)?;
-    let result = db.add_block(new_block.clone());
+    let result = db.add_block(new_block.clone().into());
     if let Ok(BlockAddResult::Ok) = result {
         blocks.push(new_block);
     }
@@ -367,7 +367,7 @@ pub fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
     let mut new_block = db.calculate_mmr_roots(template)?;
     new_block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut new_block.header, achieved_difficulty);
-    let result = db.add_block(new_block.clone());
+    let result = db.add_block(new_block.clone().into());
     if let Ok(BlockAddResult::Ok) = result {
         blocks.push(new_block);
     }
@@ -393,7 +393,7 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
         consensus_constants,
     );
     let new_block = db.calculate_mmr_roots(template)?;
-    let result = db.add_block(new_block.clone());
+    let result = db.add_block(new_block.clone().into());
     if let Ok(BlockAddResult::Ok) = result {
         blocks.push(new_block);
     }

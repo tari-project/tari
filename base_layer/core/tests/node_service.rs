@@ -305,8 +305,8 @@ fn request_and_response_fetch_blocks() {
     generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
     generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
 
-    carol_node.blockchain_db.add_block(blocks[1].clone()).unwrap();
-    carol_node.blockchain_db.add_block(blocks[2].clone()).unwrap();
+    carol_node.blockchain_db.add_block(blocks[1].clone().into()).unwrap();
+    carol_node.blockchain_db.add_block(blocks[2].clone().into()).unwrap();
 
     runtime.block_on(async {
         let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0]).await.unwrap();
@@ -358,8 +358,8 @@ fn request_and_response_fetch_blocks_with_hashes() {
     let block0_hash = blocks[0].hash();
     let block1_hash = blocks[1].hash();
 
-    carol_node.blockchain_db.add_block(blocks[1].clone()).unwrap();
-    carol_node.blockchain_db.add_block(blocks[2].clone()).unwrap();
+    carol_node.blockchain_db.add_block(blocks[1].clone().into()).unwrap();
+    carol_node.blockchain_db.add_block(blocks[2].clone().into()).unwrap();
 
     runtime.block_on(async {
         let received_blocks = alice_node
@@ -472,18 +472,21 @@ fn propagate_and_forward_many_valid_blocks() {
                 join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
             let block_hash = block.hash();
 
-            if let BlockEvent::Verified((received_block, _, _)) = &*bob_block_event.unwrap().unwrap() {
+            if let BlockEvent::ValidBlockAdded(received_block, _, _) = &*bob_block_event.unwrap().unwrap() {
                 assert_eq!(received_block.hash(), block_hash);
             } else {
                 panic!("Bob's node did not receive and validate the expected block");
             }
-            if let BlockEvent::Verified((received_block, _block_add_result, _)) = &*carol_block_event.unwrap().unwrap()
+            if let BlockEvent::ValidBlockAdded(received_block, _block_add_result, _) =
+                &*carol_block_event.unwrap().unwrap()
             {
                 assert_eq!(received_block.hash(), block_hash);
             } else {
                 panic!("Carol's node did not receive and validate the expected block");
             }
-            if let BlockEvent::Verified((received_block, _block_add_result, _)) = &*dan_block_event.unwrap().unwrap() {
+            if let BlockEvent::ValidBlockAdded(received_block, _block_add_result, _) =
+                &*dan_block_event.unwrap().unwrap()
+            {
                 assert_eq!(received_block.hash(), block_hash);
             } else {
                 panic!("Dan's node did not receive and validate the expected block");
@@ -702,12 +705,12 @@ fn propagate_and_forward_invalid_block() {
         let (bob_block_event, carol_block_event, dan_block_event) =
             join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
 
-        if let BlockEvent::Invalid((received_block, _err, _)) = &*bob_block_event.unwrap().unwrap() {
+        if let BlockEvent::AddBlockFailed(received_block, _) = &*bob_block_event.unwrap().unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
         } else {
             panic!("Bob's node should have detected an invalid block");
         }
-        if let BlockEvent::Invalid((received_block, _err, _)) = &*carol_block_event.unwrap().unwrap() {
+        if let BlockEvent::AddBlockFailed(received_block, _) = &*carol_block_event.unwrap().unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
         } else {
             panic!("Carol's node should have detected an invalid block");
@@ -809,7 +812,7 @@ fn local_get_new_block_template_and_get_new_block() {
         assert_eq!(block.header.height, 1);
         assert_eq!(block.body, block_template.body);
 
-        assert!(node.blockchain_db.add_block(block.clone()).is_ok());
+        assert!(node.blockchain_db.add_block(block.clone().into()).is_ok());
 
         node.comms.shutdown().await;
     });
@@ -844,7 +847,7 @@ fn local_get_target_difficulty() {
             .timestamp
             .increase(consensus_manager.consensus_constants().get_target_block_interval());
         block1.header.pow.pow_algo = PowAlgorithm::Blake;
-        node.blockchain_db.add_block(block1).unwrap();
+        node.blockchain_db.add_block(block1.into()).unwrap();
         assert_eq!(node.blockchain_db.get_height().unwrap(), Some(1));
         let monero_target_difficulty2 = node
             .local_nci
@@ -881,7 +884,7 @@ fn local_submit_block() {
             .is_ok());
 
         let event = event_stream_next(&mut event_stream, Duration::from_millis(20000)).await;
-        if let BlockEvent::Verified((received_block, result, _)) = &*event.unwrap().unwrap() {
+        if let BlockEvent::ValidBlockAdded(received_block, result, _) = &*event.unwrap().unwrap() {
             assert_eq!(received_block.hash(), block1.hash());
             assert_eq!(*result, BlockAddResult::Ok);
         } else {

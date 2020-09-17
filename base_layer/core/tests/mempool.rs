@@ -122,7 +122,7 @@ fn test_insert_and_process_published_block() {
     mempool.insert(tx2.clone()).unwrap();
     mempool.insert(tx3.clone()).unwrap();
     mempool.insert(tx5.clone()).unwrap();
-    mempool.process_published_block(blocks[1].clone()).unwrap();
+    mempool.process_published_block(blocks[1].clone().into()).unwrap();
 
     assert_eq!(
         mempool
@@ -179,7 +179,7 @@ fn test_insert_and_process_published_block() {
         &consensus_manager.consensus_constants(),
     )
     .unwrap();
-    mempool.process_published_block(blocks[2].clone()).unwrap();
+    mempool.process_published_block(blocks[2].clone().into()).unwrap();
 
     assert_eq!(
         mempool
@@ -246,7 +246,7 @@ fn test_retrieve() {
         &consensus_manager.consensus_constants(),
     )
     .unwrap();
-    mempool.process_published_block(blocks[1].clone()).unwrap();
+    mempool.process_published_block(blocks[1].clone().into()).unwrap();
     // 1-Block, 8 UTXOs, empty mempool
     let txs = vec![
         txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT),
@@ -295,7 +295,7 @@ fn test_retrieve() {
     .unwrap();
     println!("{}", blocks[2]);
     outputs.push(utxos);
-    mempool.process_published_block(blocks[2].clone()).unwrap();
+    mempool.process_published_block(blocks[2].clone().into()).unwrap();
     // 2-blocks, 2 unconfirmed txs in mempool, 0 time locked (tx5 time-lock will expire)
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 3);
@@ -343,7 +343,7 @@ fn test_reorg() {
         &consensus_manager.consensus_constants(),
     )
     .unwrap();
-    mempool.process_published_block(blocks[1].clone()).unwrap();
+    mempool.process_published_block(blocks[1].clone().into()).unwrap();
 
     // "Mine" block 2
     let schemas = vec![
@@ -360,7 +360,7 @@ fn test_reorg() {
     assert_eq!(stats.unconfirmed_txs, 3);
     let txns2 = txns2.iter().map(|t| t.deref().clone()).collect();
     generate_block(&mut db, &mut blocks, txns2, &consensus_manager.consensus_constants()).unwrap();
-    mempool.process_published_block(blocks[2].clone()).unwrap();
+    mempool.process_published_block(blocks[2].clone().into()).unwrap();
 
     // "Mine" block 3
     let schemas = vec![
@@ -382,7 +382,7 @@ fn test_reorg() {
         &consensus_manager.consensus_constants(),
     )
     .unwrap();
-    mempool.process_published_block(blocks[3].clone()).unwrap();
+    mempool.process_published_block(blocks[3].clone().into()).unwrap();
 
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 0);
@@ -395,7 +395,7 @@ fn test_reorg() {
     let reorg_block3 = db.calculate_mmr_roots(template).unwrap();
 
     mempool
-        .process_reorg(vec![blocks[3].clone()], vec![reorg_block3])
+        .process_reorg(vec![blocks[3].clone().into()], vec![reorg_block3.into()])
         .unwrap();
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 2);
@@ -408,7 +408,7 @@ fn test_reorg() {
 
     // test that process_reorg can handle the case when removed_blocks is empty
     // see https://github.com/tari-project/tari/issues/2101#issuecomment-680726940
-    mempool.process_reorg(vec![], vec![reorg_block4]).unwrap();
+    mempool.process_reorg(vec![], vec![reorg_block4.into()]).unwrap();
 }
 
 #[test]
@@ -429,7 +429,7 @@ fn test_orphaned_mempool_transactions() {
         &consensus_manager.consensus_constants(),
     )
     .unwrap();
-    store.add_block(blocks[1].clone()).unwrap();
+    store.add_block(blocks[1].clone().into()).unwrap();
     let schemas = vec![
         txn_schema!(from: vec![outputs[1][0].clone(), outputs[1][1].clone()], to: vec![], fee: 500*uT, lock: 1100, OutputFeatures::default()),
         txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 300*uT, lock: 1700, OutputFeatures::default()),
@@ -473,10 +473,10 @@ fn test_orphaned_mempool_transactions() {
     assert_eq!(stats.unconfirmed_txs, 1);
     assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.orphan_txs, 2);
-    store.add_block(blocks[1].clone()).unwrap();
-    store.add_block(blocks[2].clone()).unwrap();
-    mempool.process_published_block(blocks[1].clone()).unwrap();
-    mempool.process_published_block(blocks[2].clone()).unwrap();
+    store.add_block(blocks[1].clone().into()).unwrap();
+    store.add_block(blocks[2].clone().into()).unwrap();
+    mempool.process_published_block(blocks[1].clone().into()).unwrap();
+    mempool.process_published_block(blocks[2].clone().into()).unwrap();
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.total_txs, 3);
     assert_eq!(stats.unconfirmed_txs, 1);

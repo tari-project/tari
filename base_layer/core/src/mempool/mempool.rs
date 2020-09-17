@@ -86,7 +86,7 @@ where T: BlockchainBackend
     }
 
     /// Update the Mempool based on the received published block.
-    pub fn process_published_block(&self, published_block: Block) -> Result<(), MempoolError> {
+    pub fn process_published_block(&self, published_block: Arc<Block>) -> Result<(), MempoolError> {
         self.pool_storage
             .write()
             .map_err(|e| MempoolError::BackendError(e.to_string()))?
@@ -95,7 +95,12 @@ where T: BlockchainBackend
 
     /// In the event of a ReOrg, resubmit all ReOrged transactions into the Mempool and process each newly introduced
     /// block from the latest longest chain.
-    pub fn process_reorg(&self, removed_blocks: Vec<Block>, new_blocks: Vec<Block>) -> Result<(), MempoolError> {
+    pub fn process_reorg(
+        &self,
+        removed_blocks: Vec<Arc<Block>>,
+        new_blocks: Vec<Arc<Block>>,
+    ) -> Result<(), MempoolError>
+    {
         self.pool_storage
             .write()
             .map_err(|e| MempoolError::BackendError(e.to_string()))?

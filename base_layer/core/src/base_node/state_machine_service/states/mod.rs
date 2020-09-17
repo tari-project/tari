@@ -57,7 +57,7 @@
 //! required, and then shutdown.
 
 mod block_sync;
-pub use block_sync::{BestChainMetadataBlockSyncInfo, BlockSyncConfig, BlockSyncInfo, BlockSyncStrategy};
+pub use block_sync::{BestChainMetadataBlockSync, BlockSyncConfig, BlockSyncInfo, BlockSyncStrategy};
 
 mod events_and_states;
 pub use events_and_states::{BaseNodeState, StateEvent, StateInfo, StatusInfo, SyncStatus};

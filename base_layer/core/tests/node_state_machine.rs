@@ -52,7 +52,7 @@ use tari_core::{
         service::BaseNodeServiceConfig,
         state_machine_service::{
             states::{
-                BestChainMetadataBlockSyncInfo,
+                BestChainMetadataBlockSync,
                 BlockSyncConfig,
                 HorizonSyncConfig,
                 Listening,
@@ -314,7 +314,7 @@ fn test_block_sync() {
             node_id: bob_node.node_identity.node_id().clone(),
             chain_metadata: network_tip.clone(),
         }];
-        let state_event = BestChainMetadataBlockSyncInfo {}
+        let state_event = BestChainMetadataBlockSync {}
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
@@ -422,7 +422,7 @@ fn test_lagging_block_sync() {
                 1.into(),
             )
             .unwrap();
-            alice_db.add_block(prev_block.clone()).unwrap();
+            alice_db.add_block(prev_block.clone().into()).unwrap();
         }
         for _ in 0..4 {
             prev_block = append_block(
@@ -443,7 +443,7 @@ fn test_lagging_block_sync() {
             node_id: bob_node.node_identity.node_id().clone(),
             chain_metadata: network_tip.clone(),
         }];
-        let state_event = BestChainMetadataBlockSyncInfo {}
+        let state_event = BestChainMetadataBlockSync {}
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
@@ -531,7 +531,7 @@ fn test_block_sync_recovery() {
             1.into(),
         )
         .unwrap();
-        carol_db.add_block(prev_block.clone()).unwrap();
+        carol_db.add_block(prev_block.clone().into()).unwrap();
         for _ in 0..2 {
             prev_block = append_block(
                 bob_db,
@@ -552,7 +552,7 @@ fn test_block_sync_recovery() {
             node_id: bob_node.node_identity.node_id().clone(),
             chain_metadata: network_tip.clone(),
         }];
-        let state_event = BestChainMetadataBlockSyncInfo
+        let state_event = BestChainMetadataBlockSync
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
@@ -639,7 +639,7 @@ fn test_forked_block_sync() {
                 1.into(),
             )
             .unwrap();
-            alice_db.add_block(prev_block.clone()).unwrap();
+            alice_db.add_block(prev_block.clone().into()).unwrap();
         }
 
         assert_eq!(alice_db.get_height().unwrap(), Some(2));
@@ -677,7 +677,7 @@ fn test_forked_block_sync() {
             node_id: bob_node.node_identity.node_id().clone(),
             chain_metadata: network_tip.clone(),
         }];
-        let state_event = BestChainMetadataBlockSyncInfo {}
+        let state_event = BestChainMetadataBlockSync {}
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
@@ -807,8 +807,8 @@ fn test_sync_peer_banning() {
             prev_block.header.nonce = OsRng.next_u64();
             find_header_with_achieved_difficulty(&mut prev_block.header, 1.into());
 
-            alice_db.add_block(prev_block.clone()).unwrap();
-            bob_db.add_block(prev_block.clone()).unwrap();
+            alice_db.add_block(prev_block.clone().into()).unwrap();
+            bob_db.add_block(prev_block.clone().into()).unwrap();
         }
         assert_eq!(alice_db.get_height().unwrap(), Some(2));
         assert_eq!(bob_db.get_height().unwrap(), Some(2));
@@ -835,7 +835,7 @@ fn test_sync_peer_banning() {
             alice_prev_block.header.nonce = OsRng.next_u64();
             find_header_with_achieved_difficulty(&mut alice_prev_block.header, 1.into());
 
-            alice_db.add_block(alice_prev_block.clone()).unwrap();
+            alice_db.add_block(alice_prev_block.clone().into()).unwrap();
         }
         // Bob fork with invalid maturity
         let mut bob_prev_block = prev_block;
@@ -866,7 +866,7 @@ fn test_sync_peer_banning() {
             node_id: bob_node.node_identity.node_id().clone(),
             chain_metadata: network_tip.clone(),
         }];
-        let state_event = BestChainMetadataBlockSyncInfo {}
+        let state_event = BestChainMetadataBlockSync {}
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlockSyncFailure);

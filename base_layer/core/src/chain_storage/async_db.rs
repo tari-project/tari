@@ -39,7 +39,7 @@ use crate::{
 };
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 use tari_mmr::{Hash, MerkleProof};
 
 const LOG_TARGET: &str = "c::bn::async_db";
@@ -119,10 +119,10 @@ make_async!(fetch_mmr_proof(tree: MmrTree, pos: usize) -> MerkleProof, "fetch_mm
 make_async!(fetch_mmr_root(tree: MmrTree) -> HashOutput, "fetch_mmr_root");
 make_async!(insert_mmr_node(tree: MmrTree, hash: Hash, deleted: bool) -> (), "insert_mmr_node");
 make_async!(validate_merkle_root(tree: MmrTree, height: u64) -> bool, "validate_merkle_root");
-make_async!(rewind_to_height(height: u64) -> Vec<Block>, "rewind_to_height");
+make_async!(rewind_to_height(height: u64) -> Vec<Arc<Block>>, "rewind_to_height");
 
 //---------------------------------- Block --------------------------------------------//
-make_async!(add_block(block: Block) -> BlockAddResult, "add_block");
+make_async!(add_block(block: Arc<Block>) -> BlockAddResult, "add_block");
 make_async!(block_exists(block_hash: BlockHash) -> bool, "block_exists");
 make_async!(fetch_block(height: u64) -> HistoricalBlock, "fetch_block");
 make_async!(fetch_orphan(hash: HashOutput) -> Block, "fetch_orphan");

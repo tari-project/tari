@@ -112,8 +112,9 @@ impl ChainMetadataService {
     /// Handle BlockEvents
     async fn handle_block_event(&mut self, event: &BlockEvent) -> Result<(), ChainMetadataSyncError> {
         match event {
-            BlockEvent::Verified((_, BlockAddResult::Ok, _)) |
-            BlockEvent::Verified((_, BlockAddResult::ChainReorg(_), _)) => {
+            BlockEvent::ValidBlockAdded(_, BlockAddResult::Ok, _) |
+            BlockEvent::ValidBlockAdded(_, BlockAddResult::ChainReorg(_, _), _) |
+            BlockEvent::BlockSyncComplete(_) => {
                 self.update_liveness_chain_metadata().await?;
             },
             _ => {},

@@ -254,14 +254,15 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
                 }
                 shared.publish_event_info();
             }
-            for i in 0..blocks.len() {
-                let hist_block = &blocks[i];
+            for (i, hist_block) in blocks.into_iter().enumerate() {
                 let header = &curr_headers[i];
-                let block_hash = hist_block.block().hash();
+                let block = hist_block.into_block();
+                let block_hash = block.hash();
+                let block_height = block.header.height;
                 if &block_hash == header {
                     match shared
                         .local_node_interface
-                        .submit_block(hist_block.block.clone(), Broadcast::from(false))
+                        .submit_block(block, Broadcast::from(false))
                         .await
                     {
                         Ok(result) => {
@@ -295,7 +296,7 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
                     warn!(
                         target: LOG_TARGET,
                         "Block at height {} from peer does not match expected hash. Expected:{} Actual:{}",
-                        hist_block.block.header.height,
+                        block_height,
                         header.to_hex(),
                         block_hash.to_hex(),
                     );

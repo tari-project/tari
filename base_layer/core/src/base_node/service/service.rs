@@ -54,7 +54,7 @@ use futures::{
 };
 use log::*;
 use rand::rngs::OsRng;
-use std::{convert::TryInto, time::Duration};
+use std::{convert::TryInto, sync::Arc, time::Duration};
 use tari_comms::peer_manager::NodeId;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -87,63 +87,29 @@ impl Default for BaseNodeServiceConfig {
 }
 
 /// A convenience struct to hold all the BaseNode streams
-pub struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock> {
+pub(super) struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock> {
     /// `NodeCommsRequest` messages to send to a remote peer. If a specific peer is not provided, a random peer is
     /// chosen.
-    outbound_request_stream: SOutReq,
+    pub outbound_request_stream: SOutReq,
     /// Blocks to be propagated out to the network. The second element of the tuple is a list of peers to exclude from
     /// this round of propagation
-    outbound_block_stream: UnboundedReceiver<(NewBlock, Vec<NodeId>)>,
+    pub outbound_block_stream: UnboundedReceiver<(NewBlock, Vec<NodeId>)>,
     /// `BaseNodeRequest` messages received from external peers
-    inbound_request_stream: SInReq,
+    pub inbound_request_stream: SInReq,
     /// `BaseNodeResponse` messages received from external peers
-    inbound_response_stream: SInRes,
+    pub inbound_response_stream: SInRes,
     /// `NewBlock` messages received from external peers
-    inbound_block_stream: SBlockIn,
+    pub inbound_block_stream: SBlockIn,
     /// Incoming local request messages from the LocalNodeCommsInterface and other local services
-    local_request_stream: SLocalReq,
+    pub local_request_stream: SLocalReq,
     /// The stream of blocks sent from local services `LocalCommsNodeInterface::submit_block` e.g. block sync and
     /// miner
-    local_block_stream: SLocalBlock,
-}
-
-impl<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock>
-    BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock>
-where
-    SOutReq: Stream<
-        Item = RequestContext<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>,
-    >,
-    SInReq: Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>>,
-    SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
-    SBlockIn: Stream<Item = DomainMessage<NewBlock>>,
-    SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
-    SLocalBlock: Stream<Item = RequestContext<(Block, Broadcast), Result<(), CommsInterfaceError>>>,
-{
-    pub fn new(
-        outbound_request_stream: SOutReq,
-        outbound_block_stream: UnboundedReceiver<(NewBlock, Vec<NodeId>)>,
-        inbound_request_stream: SInReq,
-        inbound_response_stream: SInRes,
-        inbound_block_stream: SBlockIn,
-        local_request_stream: SLocalReq,
-        local_block_stream: SLocalBlock,
-    ) -> Self
-    {
-        Self {
-            outbound_request_stream,
-            outbound_block_stream,
-            inbound_request_stream,
-            inbound_response_stream,
-            inbound_block_stream,
-            local_request_stream,
-            local_block_stream,
-        }
-    }
+    pub local_block_stream: SLocalBlock,
 }
 
 /// The Base Node Service is responsible for handling inbound requests and responses and for sending new requests to
 /// remote Base Node Services.
-pub struct BaseNodeService<B> {
+pub(super) struct BaseNodeService<B> {
     outbound_message_service: OutboundMessageRequester,
     inbound_nch: InboundNodeCommsHandlers<B>,
     waiting_requests: WaitingRequests<Result<NodeCommsResponse, CommsInterfaceError>>,
@@ -401,7 +367,7 @@ where B: BlockchainBackend + 'static
         task::spawn(async move {
             let ((block, broadcast), reply_tx) = block_context.split();
             let _ = reply_tx
-                .send(inbound_nch.handle_block(block, broadcast, None).await)
+                .send(inbound_nch.handle_block(Arc::new(block), broadcast, None).await)
                 .or_else(|err| {
                     error!(
                         target: LOG_TARGET,

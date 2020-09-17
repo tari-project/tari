@@ -52,6 +52,7 @@ use std::{
 use strum_macros::Display;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, Hashable};
 use tari_mmr::{Hash, MerkleCheckPoint, MerkleProof, MutableMmrLeafNodes};
+use uint::static_assertions::_core::convert::Infallible;
 
 const LOG_TARGET: &str = "c::cs::database";
 
@@ -78,7 +79,8 @@ pub enum BlockAddResult {
     Ok,
     BlockExists,
     OrphanBlock,
-    ChainReorg((Box<Vec<Block>>, Box<Vec<Block>>)), // Set of removed blocks and set of added blocks
+    /// Indicates the new block caused a chain reorg. This contains removed blocks followed by added blocks.
+    ChainReorg(Vec<Arc<Block>>, Vec<Arc<Block>>),
 }
 
 /// MutableMmrState provides the total number of leaf nodes in the base MMR and the requested leaf nodes.
@@ -602,7 +604,7 @@ where B: BlockchainBackend
     ///   * `ChainReorg`: The block was added, which resulted in a chain-reorg.
     ///
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
-    pub fn add_block(&self, block: Block) -> Result<BlockAddResult, ChainStorageError> {
+    pub fn add_block(&self, block: Arc<Block>) -> Result<BlockAddResult, ChainStorageError> {
         let new_height = block.header.height;
         // Perform orphan block validation.
         if let Err(e) = self.validators.orphan.validate(&block) {
@@ -631,7 +633,7 @@ where B: BlockchainBackend
 
         // Cleanup orphan block pool
         match block_add_result {
-            BlockAddResult::OrphanBlock | BlockAddResult::ChainReorg(_) => {
+            BlockAddResult::OrphanBlock | BlockAddResult::ChainReorg(_, _) => {
                 cleanup_orphans(&mut *db, self.config.orphan_storage_capacity)?
             },
             _ => {},
@@ -639,7 +641,7 @@ where B: BlockchainBackend
 
         // Cleanup of backend when in pruned mode.
         match block_add_result {
-            BlockAddResult::Ok | BlockAddResult::ChainReorg(_) => prune_database(
+            BlockAddResult::Ok | BlockAddResult::ChainReorg(_, _) => prune_database(
                 &mut *db,
                 self.config.pruning_interval,
                 self.config.pruning_horizon,
@@ -741,7 +743,7 @@ where B: BlockchainBackend
     /// The operation will fail if
     /// * The block height is in the future
     /// * The block height is before the horizon block height determined by the pruning horizon
-    pub fn rewind_to_height(&self, height: u64) -> Result<Vec<Block>, ChainStorageError> {
+    pub fn rewind_to_height(&self, height: u64) -> Result<Vec<Arc<Block>>, ChainStorageError> {
         let mut db = self.db_write_access()?;
         rewind_to_height(&mut *db, height)
     }
@@ -1085,7 +1087,7 @@ fn add_block<T: BlockchainBackend>(
     db: &mut T,
     block_validator: &Validator<Block, T>,
     accum_difficulty_validator: &Validator<Difficulty, T>,
-    block: Block,
+    block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let block_hash = block.hash();
@@ -1103,6 +1105,7 @@ fn store_new_block(txn: &mut DbTransaction, block: Block) {
         block.header.height,
         block.hash().to_hex()
     );
+    // Try to take ownership of the Block if this is the only reference, otherwise take ownership of a clone
     let (header, inputs, outputs, kernels) = block.dissolve();
     let height = header.height;
     let best_block = header.hash();
@@ -1363,7 +1366,7 @@ fn commit<T: BlockchainBackend>(db: &mut T, txn: DbTransaction) -> Result<(), Ch
     db.write(txn)
 }
 
-fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec<Block>, ChainStorageError> {
+fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec<Arc<Block>>, ChainStorageError> {
     let chain_height = check_for_valid_height(db, height)?;
     if height == chain_height {
         return Ok(Vec::new()); // Rewind unnecessary, already on correct height
@@ -1378,7 +1381,7 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
     // Rewind operation must be performed in reverse from tip to height+1.
     for rewind_height in ((height + 1)..=chain_height).rev() {
         // Reconstruct block at height and add to orphan block pool
-        let orphaned_block = fetch_block(db, rewind_height)?.block().clone();
+        let orphaned_block = Arc::new(fetch_block(db, rewind_height)?.into_block());
         removed_blocks.push(orphaned_block.clone());
         txn.insert_orphan(orphaned_block);
 
@@ -1445,7 +1448,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut T,
     block_validator: &Validator<Block, T>,
     accum_difficulty_validator: &Validator<Difficulty, T>,
-    block: Block,
+    block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let db_height = db
@@ -1459,13 +1462,12 @@ fn handle_possible_reorg<T: BlockchainBackend>(
             );
             Err(e)
         })?;
-    let block_hash = block.hash().to_hex();
     insert_orphan(db, block.clone())?;
     debug!(
         target: LOG_TARGET,
         "Added candidate block #{} ({}) to the orphan database. Best height is {}.",
         block.header.height,
-        block_hash,
+        block.hash().to_hex(),
         db_height,
     );
     // Trigger a reorg check for all blocks in the orphan block pool
@@ -1482,7 +1484,7 @@ fn handle_reorg<T: BlockchainBackend>(
     db: &mut T,
     block_validator: &Validator<Block, T>,
     accum_difficulty_validator: &Validator<Difficulty, T>,
-    new_block: Block,
+    new_block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     // We can assume that the new block is part of the reorg chain if it exists, otherwise the reorg would have
@@ -1579,7 +1581,7 @@ fn handle_reorg<T: BlockchainBackend>(
 
     // We've built the strongest orphan chain we can by going backwards and forwards from the new orphan block
     // that is linked with the main chain.
-    let fork_tip_block = fetch_orphan(db, fork_tip_hash.clone())?;
+    let fork_tip_block = fetch_orphan(db, fork_tip_hash.clone()).map(Arc::new)?;
     let fork_tip_header = fork_tip_block.header.clone();
     if fork_tip_hash != new_block_hash {
         // New block is not the tip, find complete chain from tip to main chain.
@@ -1613,10 +1615,7 @@ fn handle_reorg<T: BlockchainBackend>(
             num_removed_blocks,
             num_added_blocks,
         );
-        Ok(BlockAddResult::ChainReorg((
-            Box::new(removed_blocks),
-            Box::new(added_blocks),
-        )))
+        Ok(BlockAddResult::ChainReorg(removed_blocks, added_blocks))
     } else {
         trace!(
             target: LOG_TARGET,
@@ -1633,8 +1632,8 @@ fn reorganize_chain<T: BlockchainBackend>(
     db: &mut T,
     block_validator: &Validator<Block, T>,
     height: u64,
-    chain: VecDeque<Block>,
-) -> Result<Vec<Block>, ChainStorageError>
+    chain: VecDeque<Arc<Block>>,
+) -> Result<Vec<Arc<Block>>, ChainStorageError>
 {
     let removed_blocks = rewind_to_height(db, height)?;
     debug!(
@@ -1666,7 +1665,7 @@ fn reorganize_chain<T: BlockchainBackend>(
             return Err(e.into());
         }
 
-        store_new_block(&mut txn, block);
+        store_new_block(&mut txn, unwrap_or_clone(block));
         // Failed to store the block - this should typically never happen unless there is a bug in the validator
         // (e.g. does not catch a double spend). In any case, we still need to restore the chain to a
         // good state before returning.
@@ -1687,7 +1686,7 @@ fn reorganize_chain<T: BlockchainBackend>(
 fn restore_reorged_chain<T: BlockchainBackend>(
     db: &mut T,
     height: u64,
-    previous_chain: Vec<Block>,
+    previous_chain: Vec<Arc<Block>>,
 ) -> Result<(), ChainStorageError>
 {
     let invalid_chain = rewind_to_height(db, height)?;
@@ -1705,14 +1704,14 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     // See: https://github.com/tari-project/tari/issues/2182
     for block in previous_chain.into_iter().rev() {
         txn.delete(DbKey::OrphanBlock(block.hash()));
-        store_new_block(&mut txn, block);
+        store_new_block(&mut txn, unwrap_or_clone(block));
     }
     commit(db, txn)?;
     Ok(())
 }
 
 // Insert the provided block into the orphan pool.
-fn insert_orphan<T: BlockchainBackend>(db: &mut T, block: Block) -> Result<(), ChainStorageError> {
+fn insert_orphan<T: BlockchainBackend>(db: &mut T, block: Arc<Block>) -> Result<(), ChainStorageError> {
     let mut txn = DbTransaction::new();
     txn.insert_orphan(block);
     commit(db, txn)
@@ -1731,8 +1730,8 @@ fn remove_orphan<T: BlockchainBackend>(db: &mut T, hash: HashOutput) -> Result<(
 /// link to the main chain.
 fn try_construct_fork<T: BlockchainBackend>(
     db: &mut T,
-    new_block: Block,
-) -> Result<VecDeque<Block>, ChainStorageError>
+    new_block: Arc<Block>,
+) -> Result<VecDeque<Arc<Block>>, ChainStorageError>
 {
     let mut fork_chain = VecDeque::new();
     let new_block_hash = new_block.hash();
@@ -1771,7 +1770,7 @@ fn try_construct_fork<T: BlockchainBackend>(
             target: LOG_TARGET,
             "Not connected, checking if fork chain can be extended.",
         );
-        match fetch_orphan(db, hash.clone()) {
+        match fetch_orphan(db, hash.clone()).map(Arc::new) {
             Ok(prev_block) => {
                 debug!(
                     target: LOG_TARGET,
@@ -1826,7 +1825,7 @@ fn find_orphan_chain_tips<T: BlockchainBackend>(db: &T, parent_height: u64, pare
     db.for_each_orphan(|pair| {
         count += 1;
         let (_, block) = pair.unwrap();
-        if (block.header.prev_hash == parent_hash) && (block.header.height == parent_height + 1) {
+        if block.header.height == parent_height + 1 && block.header.prev_hash == parent_hash {
             // we found a match, let save to call later
             parents.push((block.hash(), block.header.height));
         }
@@ -1974,4 +1973,10 @@ impl<T> Clone for BlockchainDatabase<T> {
             config: self.config,
         }
     }
+}
+
+fn unwrap_or_clone<T: Clone>(arc: Arc<T>) -> T {
+    Arc::try_unwrap(arc)
+        .or_else(|t| Result::<_, Infallible>::Ok(Clone::clone(&*t)))
+        .expect("or_else with Ok")
 }

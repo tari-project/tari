@@ -122,7 +122,7 @@ fn test_median_timestamp_odd_order() {
     timestamps.push(timestamps[0].increase(&consensus_manager.consensus_constants().get_target_block_interval() / 2));
     new_block.header.timestamp = timestamps[2];
     new_block.header.pow.pow_algo = PowAlgorithm::Blake;
-    store.add_block(new_block).unwrap();
+    store.add_block(new_block.into()).unwrap();
 
     timestamps.push(timestamps[2].increase(consensus_manager.consensus_constants().get_target_block_interval() / 2));
     let height = store.get_chain_metadata().unwrap().height_of_longest_chain.unwrap();

@@ -30,14 +30,7 @@ use crate::{
         OutboundNodeCommsInterface,
     },
     blocks::{blockheader::BlockHeader, Block, NewBlock, NewBlockTemplate},
-    chain_storage::{
-        async_db,
-        BlockAddResult,
-        BlockchainBackend,
-        BlockchainDatabase,
-        ChainStorageError,
-        HistoricalBlock,
-    },
+    chain_storage::{async_db, BlockAddResult, BlockchainBackend, BlockchainDatabase, HistoricalBlock},
     consensus::ConsensusManager,
     mempool::{async_mempool, Mempool},
     proof_of_work::{get_target_difficulty, Difficulty, PowAlgorithm},
@@ -61,8 +54,9 @@ const MAX_HEADERS_PER_RESPONSE: u32 = 100;
 /// Broadcast is to notify subscribers if this is a valid propagated block event
 #[derive(Debug, Clone, Display)]
 pub enum BlockEvent {
-    Verified((Box<Block>, BlockAddResult, Broadcast)),
-    Invalid((Box<Block>, ChainStorageError, Broadcast)),
+    ValidBlockAdded(Arc<Block>, BlockAddResult, Broadcast),
+    AddBlockFailed(Arc<Block>, Broadcast),
+    BlockSyncComplete(Arc<Block>),
 }
 
 /// Used to notify if the block event is for a propagated block.
@@ -440,7 +434,10 @@ where T: BlockchainBackend + 'static
             .await?;
 
         match block.pop() {
-            Some(block) => self.handle_block(block.block, true.into(), Some(source_peer)).await,
+            Some(block) => {
+                self.handle_block(Arc::new(block.block), true.into(), Some(source_peer))
+                    .await
+            },
             None => {
                 // TODO: #banheuristic - peer propagated block hash for which it could not return the full block
                 debug!(
@@ -459,16 +456,17 @@ where T: BlockchainBackend + 'static
     /// Handle inbound blocks from remote nodes and local services.
     pub async fn handle_block(
         &self,
-        block: Block,
+        block: Arc<Block>,
         broadcast: Broadcast,
         source_peer: Option<NodeId>,
     ) -> Result<(), CommsInterfaceError>
     {
         let block_hash = block.hash();
+        let block_height = block.header.height;
         debug!(
             target: LOG_TARGET,
             "Block #{} ({}) received from {}",
-            block.header.height,
+            block_height,
             block_hash.to_hex(),
             source_peer
                 .as_ref()
@@ -486,10 +484,10 @@ where T: BlockchainBackend + 'static
                     BlockAddResult::Ok => true,
                     BlockAddResult::BlockExists => false,
                     BlockAddResult::OrphanBlock => false,
-                    BlockAddResult::ChainReorg(_) => true,
+                    BlockAddResult::ChainReorg(_, _) => true,
                 };
 
-                self.publish_block_event(BlockEvent::Verified((Box::new(block), block_add_result, broadcast)));
+                self.publish_block_event(BlockEvent::ValidBlockAdded(block, block_add_result, broadcast));
 
                 if should_propagate && broadcast.is_true() {
                     info!(
@@ -507,11 +505,11 @@ where T: BlockchainBackend + 'static
                 warn!(
                     target: LOG_TARGET,
                     "Block #{} ({}) validation failed: {:?}",
-                    block.header.height,
+                    block_height,
                     block_hash.to_hex(),
                     e
                 );
-                self.publish_block_event(BlockEvent::Invalid((Box::new(block), e.clone(), broadcast)));
+                self.publish_block_event(BlockEvent::AddBlockFailed(block, broadcast));
                 Err(CommsInterfaceError::ChainStorageError(e))
             },
         }

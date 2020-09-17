@@ -155,6 +155,11 @@ impl LocalNodeCommsInterface {
         self.block_sender.call((block, propagate)).await?
     }
 
+    pub fn publish_block_event(&mut self, event: BlockEvent) -> usize {
+        // If event send fails, that means that there are no receivers (i.e. it was sent to zero receivers)
+        self.block_event_sender.send(Arc::new(event)).unwrap_or(0)
+    }
+
     /// Fetches the set of leaf node hashes and their deletion status' for the nth to nth+count leaf node index in the
     /// given MMR tree.
     pub async fn fetch_mmr_nodes(

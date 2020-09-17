@@ -68,6 +68,12 @@ pub enum StateEvent {
     UserQuit,
 }
 
+impl<E: std::error::Error> From<E> for StateEvent {
+    fn from(err: E) -> Self {
+        Self::FatalError(err.to_string())
+    }
+}
+
 /// Some state transition functions must return `SyncStatus`. The sync status indicates how far behind the network's
 /// blockchain the local node is. It can either be very far behind (`LaggingBehindHorizon`), in which case we will just
 /// synchronise against the pruning horizon; we're somewhat behind (`Lagging`) and need to download the missing

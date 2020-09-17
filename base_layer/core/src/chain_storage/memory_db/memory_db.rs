@@ -87,7 +87,7 @@ where D: Digest
     utxos: HashMap<HashOutput, MerkleNode<TransactionOutput>>,
     stxos: HashMap<HashOutput, MerkleNode<TransactionOutput>>,
     kernels: HashMap<HashOutput, TransactionKernel>,
-    orphans: HashMap<HashOutput, Block>,
+    orphans: HashMap<HashOutput, Arc<Block>>,
     // Define MMRs to use both a memory-backed base and a memory-backed pruned MMR
     utxo_mmr: MmrCache<D, MemDbVec<MmrHash>, MemDbVec<MerkleCheckPoint>>,
     utxo_checkpoints: MemDbVec<MerkleCheckPoint>,
@@ -244,7 +244,7 @@ where D: Digest + Send + Sync
                         db.kernels.insert(k, *v);
                     },
                     DbKeyValuePair::OrphanBlock(k, v) => {
-                        db.orphans.insert(k, *v);
+                        db.orphans.insert(k, v);
                     },
                 },
                 WriteOperation::Delete(delete) => match delete {
@@ -402,7 +402,10 @@ where D: Digest + Send + Sync
                 .kernels
                 .get(k)
                 .map(|v| DbValue::TransactionKernel(Box::new(v.clone()))),
-            DbKey::OrphanBlock(k) => db.orphans.get(k).map(|v| DbValue::OrphanBlock(Box::new(v.clone()))),
+            DbKey::OrphanBlock(k) => db
+                .orphans
+                .get(k)
+                .map(|v| DbValue::OrphanBlock(Box::new(Clone::clone(&**v)))),
         };
         Ok(result)
     }
@@ -592,7 +595,7 @@ where D: Digest + Send + Sync
     where F: FnMut(Result<(HashOutput, Block), ChainStorageError>) {
         let db = self.db_access()?;
         for (key, val) in db.orphans.iter() {
-            f(Ok((key.clone(), val.clone())));
+            f(Ok((key.clone(), Clone::clone(&**val))));
         }
         Ok(())
     }

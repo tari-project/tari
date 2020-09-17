@@ -104,8 +104,8 @@ impl ReorgPool {
     /// resubmitted to the Unconfirmed Pool.
     pub fn remove_reorged_txs_and_discard_double_spends(
         &self,
-        removed_blocks: Vec<Block>,
-        new_blocks: &Vec<Block>,
+        removed_blocks: Vec<Arc<Block>>,
+        new_blocks: &[Arc<Block>],
     ) -> Result<Vec<Arc<Transaction>>, ReorgPoolError>
     {
         Ok(self
@@ -306,8 +306,8 @@ mod test {
         );
 
         let reorg_blocks = vec![
-            create_orphan_block(3000, vec![(*tx3).clone(), (*tx4).clone()], &consensus_constants),
-            create_orphan_block(4000, vec![(*tx1).clone(), (*tx2).clone()], &consensus_constants),
+            create_orphan_block(3000, vec![(*tx3).clone(), (*tx4).clone()], &consensus_constants).into(),
+            create_orphan_block(4000, vec![(*tx1).clone(), (*tx2).clone()], &consensus_constants).into(),
         ];
 
         let removed_txs = reorg_pool
