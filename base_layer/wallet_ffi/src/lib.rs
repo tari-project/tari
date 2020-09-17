@@ -2594,7 +2594,7 @@ pub unsafe extern "C" fn wallet_create(
             if split_str.len() <= 1 {
                 pattern = format!("{}{}", path.clone(), "{}");
             } else {
-                pattern = format!("{}", split_str[0]);
+                pattern = split_str[0].to_string();
                 for i in 1..split_str.len() - 1 {
                     pattern = format!("{}.{}", pattern, split_str[i]);
                 }
@@ -4573,7 +4573,6 @@ pub unsafe extern "C" fn file_partial_backup(
         Err(e) => {
             error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            return;
         },
     }
 }

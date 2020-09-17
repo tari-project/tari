@@ -424,10 +424,9 @@ impl PeerConnectionActor {
 
         self.shutdown = true;
         // Shut down the incoming substream task
-        self.substream_shutdown.as_mut().and_then(|shutdown| {
+        if let Some(shutdown) = self.substream_shutdown.as_mut() {
             let _ = shutdown.trigger();
-            Some(())
-        });
+        }
 
         if !silent {
             self.notify_event(ConnectionManagerEvent::PeerDisconnected(Box::new(

@@ -150,7 +150,7 @@ pub fn is_stxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, V
     match db.fetch_mmr_leaf_index(MmrTree::Utxo, &hash)? {
         Some(leaf_index) => {
             let (_, deleted) = db.fetch_mmr_node(MmrTree::Utxo, leaf_index, None)?;
-            return Ok(deleted);
+            Ok(deleted)
         },
         None => Ok(false),
     }

@@ -107,15 +107,14 @@ impl fmt::Display for PeerConnectionState {
     }
 }
 
+#[derive(Debug, Clone, Default)]
 pub struct ConnectionPool {
     connections: HashMap<NodeId, PeerConnectionState>,
 }
 
 impl ConnectionPool {
     pub fn new() -> Self {
-        Self {
-            connections: HashMap::new(),
-        }
+        Default::default()
     }
 
     pub fn insert(&mut self, node_id: NodeId) -> ConnectionStatus {

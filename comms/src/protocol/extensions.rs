@@ -50,6 +50,10 @@ impl ProtocolExtensions {
         self.inner.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
     pub fn add<T: ProtocolExtension + 'static>(&mut self, ext: T) -> &mut Self {
         self.inner.push(Box::new(ext));
         self

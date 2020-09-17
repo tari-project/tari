@@ -55,7 +55,7 @@ pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
                             format!("Invalid domain '{}'", domain),
                         ))
                     },
-                    |h| Ok(h),
+                    Ok,
                 )
         },
         (Protocol::Ip4(host), Protocol::Tcp(port)) => Ok((host, port).into()),
