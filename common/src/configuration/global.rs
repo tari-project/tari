@@ -64,6 +64,7 @@ pub struct GlobalConfig {
     pub public_address: Multiaddr,
     pub grpc_enabled: bool,
     pub grpc_address: SocketAddr,
+    pub grpc_wallet_address: SocketAddr,
     pub peer_seeds: Vec<String>,
     pub peer_db_path: PathBuf,
     pub block_sync_strategy: String,
@@ -269,6 +270,15 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
 
+    let key = config_string("base_node", &net_str, "grpc_wallet_address");
+    let grpc_wallet_address = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        .and_then(|addr| {
+            addr.parse::<SocketAddr>()
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        })?;
+
     // Peer seeds
     let key = config_string("base_node", &net_str, "peer_seeds");
     let peer_seeds = cfg
@@ -412,6 +422,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         public_address,
         grpc_enabled,
         grpc_address,
+        grpc_wallet_address,
         peer_seeds,
         peer_db_path,
         block_sync_strategy,

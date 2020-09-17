@@ -289,6 +289,8 @@ pub struct TipInfoResponse {
 pub struct NewBlockTemplateResponse {
     #[prost(message, optional, tag = "1")]
     pub new_block_template: ::std::option::Option<NewBlockTemplate>,
+    #[prost(uint64, tag = "2")]
+    pub block_reward: u64,
 }
 //// An Empty placeholder for endpoints without request parameters
 #[derive(Clone, PartialEq, ::prost::Message)]

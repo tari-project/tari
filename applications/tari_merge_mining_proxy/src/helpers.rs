@@ -25,18 +25,13 @@ use monero::{
     blockdata::{Block as MoneroBlock, Block},
     consensus::{deserialize, serialize},
 };
-use rand::rngs::OsRng;
+use std::convert::TryFrom;
+use tari_app_grpc::tari_rpc as grpc;
 use tari_core::{
     blocks::NewBlockTemplate,
-    consensus::ConsensusManager,
     proof_of_work::{monero_rx, monero_rx::MoneroData},
-    transactions::{
-        transaction::UnblindedOutput,
-        types::{CryptoFactories, PrivateKey},
-        CoinbaseBuilder,
-    },
+    transactions::transaction::{TransactionKernel, TransactionOutput},
 };
-use tari_crypto::keys::SecretKey;
 
 pub fn deserialize_monero_block_from_hex<T>(data: T) -> Result<Block, MmProxyError>
 where T: AsRef<[u8]> {
@@ -67,29 +62,24 @@ pub fn construct_monero_data(block: MoneroBlock, seed: String) -> Result<MoneroD
     })
 }
 
-// TODO: Temporary until RPC call is in place
 pub fn add_coinbase(
-    consensus: &ConsensusManager,
-    block: &mut NewBlockTemplate,
-) -> Result<UnblindedOutput, MmProxyError>
+    coinbase: Option<grpc::Transaction>,
+    mut block: NewBlockTemplate,
+) -> Result<grpc::NewBlockTemplate, MmProxyError>
 {
-    let fees = block.body.get_total_fee();
-    let (key, r) = new_spending_key();
-    let factories = CryptoFactories::default();
-    let builder = CoinbaseBuilder::new(factories);
-    let builder = builder
-        .with_block_height(block.header.height)
-        .with_fees(fees)
-        .with_nonce(r)
-        .with_spend_key(key);
-    let (tx, unblinded_output) = builder.build(consensus.consensus_constants(), consensus.emission_schedule())?;
-    block.body.add_output(tx.body.outputs()[0].clone());
-    block.body.add_kernel(tx.body.kernels()[0].clone());
-    Ok(unblinded_output)
-}
-
-fn new_spending_key() -> (PrivateKey, PrivateKey) {
-    let r = PrivateKey::random(&mut OsRng);
-    let key = PrivateKey::random(&mut OsRng);
-    (key, r)
+    if let Some(tx) = coinbase {
+        let output = TransactionOutput::try_from(tx.clone().body.unwrap().outputs[0].clone())
+            .map_err(MmProxyError::MissingDataError)?;
+        let kernel =
+            TransactionKernel::try_from(tx.body.unwrap().kernels[0].clone()).map_err(MmProxyError::MissingDataError)?;
+        block.body.add_output(output);
+        block.body.add_kernel(kernel);
+        let template = grpc::NewBlockTemplate::try_from(block);
+        match template {
+            Ok(template) => Ok(template),
+            Err(_e) => Err(MmProxyError::MissingDataError("Template Invalid".to_string())),
+        }
+    } else {
+        Err(MmProxyError::MissingDataError("Coinbase Invalid".to_string()))
+    }
 }

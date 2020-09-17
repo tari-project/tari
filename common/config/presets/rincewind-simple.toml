@@ -33,7 +33,16 @@ peer_seeds = [
 enable_mining = false
 grpc_enabled = true
 grpc_address = "127.0.0.1:18142"
+grpc_wallet_address = "127.0.0.1:18143"
 
 [merge_mining_proxy.rincewind]
 monerod_url = "http://192.110.160.146:38081"
 proxy_host_address = "127.0.0.1:7878"
+# If authentication is being used for curl
+monerod_use_auth=false
+
+# Username for curl
+monerod_username=""
+
+# Password for curl
+monerod_password=""

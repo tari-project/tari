@@ -42,17 +42,14 @@ use serde_json as json;
 use serde_json::Value;
 use std::{
     cmp::min,
-    convert::TryInto,
+    convert::TryFrom,
     future::Future,
     net::SocketAddr,
     task::{Context, Poll},
 };
-use tari_app_grpc::tari_rpc as grpc;
+use tari_app_grpc::{tari_rpc as grpc, tari_rpc::GetCoinbaseRequest};
 use tari_common::{GlobalConfig, Network};
-use tari_core::{
-    consensus::{ConsensusManager, ConsensusManagerBuilder},
-    proof_of_work::monero_rx,
-};
+use tari_core::{blocks::NewBlockTemplate, proof_of_work::monero_rx};
 
 pub const LOG_TARGET: &str = "tari_mm_proxy::xmrig";
 
@@ -64,6 +61,7 @@ pub struct MergeMiningProxyConfig {
     pub monerod_password: String,
     pub monerod_use_auth: bool,
     pub grpc_address: SocketAddr,
+    pub grpc_wallet_address: SocketAddr,
 }
 
 impl From<GlobalConfig> for MergeMiningProxyConfig {
@@ -75,6 +73,7 @@ impl From<GlobalConfig> for MergeMiningProxyConfig {
             monerod_password: config.monerod_password,
             monerod_use_auth: config.monerod_use_auth,
             grpc_address: config.grpc_address,
+            grpc_wallet_address: config.grpc_wallet_address,
         }
     }
 }
@@ -86,13 +85,8 @@ pub struct MergeMiningProxyService {
 
 impl MergeMiningProxyService {
     pub fn new(config: MergeMiningProxyConfig, state: SharedState) -> Self {
-        let consensus = ConsensusManagerBuilder::new(config.network.into()).build();
         Self {
-            inner: InnerService {
-                config,
-                consensus,
-                state,
-            },
+            inner: InnerService { config, state },
         }
     }
 }
@@ -128,7 +122,6 @@ impl Service<Request<Body>> for MergeMiningProxyService {
 #[derive(Debug, Clone)]
 struct InnerService {
     config: MergeMiningProxyConfig,
-    consensus: ConsensusManager,
     state: SharedState,
 }
 
@@ -290,7 +283,7 @@ impl InnerService {
 
         // Add merge mining tag on blocktemplate request
         debug!(target: LOG_TARGET, "Requested new block template from Tari base node");
-        let new_block_template = grpc_client
+        let new_block_template_response = grpc_client
             .get_new_block_template(grpc::PowAlgo {
                 pow_algo: grpc::pow_algo::PowAlgo::Monero.into(),
             })
@@ -299,8 +292,11 @@ impl InnerService {
                 status,
                 details: "failed to get new block template".to_string(),
             })?;
-        let new_block_template = new_block_template
-            .into_inner()
+
+        let new_block_template_response = new_block_template_response.into_inner();
+
+        let new_block_template_reward = new_block_template_response.block_reward;
+        let new_block_template = new_block_template_response
             .new_block_template
             .ok_or_else(|| MmProxyError::GrpcResponseMissingField("new_block_template"))?;
         debug!(
@@ -309,17 +305,27 @@ impl InnerService {
             new_block_template.header.as_ref().map(|h| h.height).unwrap_or_default(),
         );
 
-        let mut new_block_template =
-            new_block_template
-                .try_into()
-                .map_err(|err| MmProxyError::ProtobufConversionError {
-                    name: "NewBlockTemplate",
-                    details: err,
-                })?;
-        helpers::add_coinbase(&self.consensus, &mut new_block_template)?;
-        debug!(target: LOG_TARGET, "Added coinbase to new block template",);
+        let template_block = NewBlockTemplate::try_from(new_block_template.clone())
+            .map_err(|e| MmProxyError::MissingDataError(format!("GRPC Conversion Error: {}", e)))?;
+
+        let mut grpc_wallet_client = self.connect_grpc_wallet_client().await?;
+        let coinbase_response = grpc_wallet_client
+            .get_coinbase(GetCoinbaseRequest {
+                reward: new_block_template_reward,
+                fee: u64::from(template_block.body.get_total_fee()),
+                height: template_block.header.height,
+            })
+            .await
+            .map_err(|status| MmProxyError::GrpcRequestError {
+                status,
+                details: "failed to get new block template".to_string(),
+            })?;
+        let coinbase_transaction = coinbase_response.into_inner().transaction;
+
+        let coinbased_block = helpers::add_coinbase(coinbase_transaction, template_block)?;
+        debug!(target: LOG_TARGET, "Added coinbase to new block template");
         let block = grpc_client
-            .get_new_block(grpc::NewBlockTemplate::from(new_block_template))
+            .get_new_block(coinbased_block)
             .await
             .map_err(|status| MmProxyError::GrpcRequestError {
                 status,
@@ -389,6 +395,14 @@ impl InnerService {
     ) -> Result<grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>, MmProxyError> {
         let client =
             grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", self.config.grpc_address)).await?;
+        Ok(client)
+    }
+
+    async fn connect_grpc_wallet_client(
+        &self,
+    ) -> Result<grpc::wallet_client::WalletClient<tonic::transport::Channel>, MmProxyError> {
+        let client =
+            grpc::wallet_client::WalletClient::connect(format!("http://{}", self.config.grpc_wallet_address)).await?;
         Ok(client)
     }
 
@@ -568,10 +582,7 @@ async fn convert_json_to_hyper_json_response(
         .expect("headers_mut errors only when the builder has an error (e.g invalid header value)");
     headers.append("Content-Type", HeaderValue::from_str("application/json").unwrap());
 
-    builder = builder
-        .version(Version::HTTP_11)
-        .status(StatusCode::OK)
-        .url(url.clone());
+    builder = builder.version(Version::HTTP_11).status(StatusCode::OK).url(url);
 
     let body = resp;
     let resp = builder.body(body)?;

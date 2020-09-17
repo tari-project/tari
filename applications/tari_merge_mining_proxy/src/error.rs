@@ -58,8 +58,6 @@ pub enum MmProxyError {
         status: tonic::Status,
         details: String,
     },
-    #[error("Failed to convert `{name}`: {details}")]
-    ProtobufConversionError { name: &'static str, details: String },
     #[error("HTTP error: {0}")]
     HttpError(#[from] hyper::http::Error),
     #[error("Could not parse URL: {0}")]
