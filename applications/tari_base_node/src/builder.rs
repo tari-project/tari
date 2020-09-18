@@ -467,12 +467,59 @@ where
 
     // Set the base node for the wallet to the 'local' base node
     let base_node_public_key = base_node_comms.node_identity().public_key().clone();
-    wallet_handles
+    let mut transaction_service_handle = wallet_handles
         .get_handle::<TransactionServiceHandle>()
-        .expect("TransactionService is not registered")
+        .expect("TransactionService is not registered");
+    transaction_service_handle
         .set_base_node_public_key(base_node_public_key.clone())
         .await
         .expect("Problem setting local base node public key for transaction service.");
+    transaction_service_handle
+        .restart_transaction_protocols()
+        .await
+        .expect("Problem restarting transaction protocols in the Transaction Service");
+    // Only start the transaction broadcast protocols once the local node is synced
+    let state_machine = base_node_handles
+        .get_handle::<StateMachineHandle>()
+        .expect("Could not get State Machine handle");
+    task::spawn(async move {
+        let mut status_watch = state_machine.get_status_info_watch();
+        debug!(
+            target: LOG_TARGET,
+            "Waiting for initial sync before restarting transaction protocols."
+        );
+        loop {
+            let bootstrapped = match status_watch.recv().await {
+                None => false,
+                Some(s) => s.bootstrapped,
+            };
+
+            if bootstrapped {
+                let _ = transaction_service_handle
+                    .restart_broadcast_protocols()
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Problem restarting broadcast protocols in the Transaction Service"
+                        );
+                        e
+                    });
+
+                let _ = transaction_service_handle
+                    .restart_transaction_protocols()
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Problem restarting transaction negotiation protocols in the Transaction Service"
+                        );
+                        e
+                    });
+                break;
+            }
+        }
+    });
     let mut oms_handle = wallet_handles
         .get_handle::<OutputManagerHandle>()
         .expect("OutputManagerService is not registered");
