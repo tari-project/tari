@@ -88,7 +88,6 @@ use tari_core::{
     mining::{Miner, MinerInstruction},
     transactions::types::{CryptoFactories, HashDigest},
     validation::{
-        accum_difficulty_validators::AccumDifficultyValidator,
         block_validators::{FullConsensusValidator, StatelessBlockValidator},
         transaction_validators::{TxInputAndMaturityValidator, TxInternalConsistencyValidator},
         ValidationExt,
@@ -359,7 +358,6 @@ where
     let validators = Validators::new(
         FullConsensusValidator::new(rules.clone()),
         StatelessBlockValidator::new(rules.clone(), factories.clone()),
-        AccumDifficultyValidator {},
     );
     let db_config = BlockchainDatabaseConfig {
         orphan_storage_capacity: config.orphan_storage_capacity,

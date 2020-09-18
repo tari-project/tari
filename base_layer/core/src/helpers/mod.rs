@@ -30,7 +30,7 @@ use crate::{
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
     consensus::ConsensusManager,
     transactions::{transaction::Transaction, types::HashDigest},
-    validation::{accum_difficulty_validators::MockAccumDifficultyValidator, mocks::MockValidator},
+    validation::mocks::MockValidator,
 };
 
 pub use mock_backend::MockBackend;
@@ -44,11 +44,7 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
 }
 
 pub fn create_mem_db(consensus_manager: &ConsensusManager) -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockAccumDifficultyValidator {},
-    );
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::default();
     BlockchainDatabase::new(db, consensus_manager, validators, BlockchainDatabaseConfig::default()).unwrap()
 }

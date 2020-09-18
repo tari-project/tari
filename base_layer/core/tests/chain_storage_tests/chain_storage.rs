@@ -31,6 +31,7 @@ use crate::helpers::{
         generate_new_block_with_coinbase,
     },
     sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb},
+    test_blockchain::TestBlockchain,
 };
 use croaring::Bitmap;
 use env_logger;
@@ -63,12 +64,7 @@ use tari_core::{
     },
     tx,
     txn_schema,
-    validation::{
-        accum_difficulty_validators::MockAccumDifficultyValidator,
-        block_validators::MockStatelessBlockValidator,
-        mocks::MockValidator,
-        ValidationError,
-    },
+    validation::{block_validators::MockStatelessBlockValidator, mocks::MockValidator, ValidationError},
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_mmr::{MmrCacheConfig, MutableMmr};
@@ -557,11 +553,7 @@ fn rewind_past_horizon_height() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_rincewind_genesis_block_raw();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockAccumDifficultyValidator {},
-    );
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::default();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -649,6 +641,34 @@ fn handle_tip_reorg() {
     // Check that B2 was removed from the block orphans and A2 has been orphaned.
     assert!(store.fetch_orphan(orphan_blocks[2].hash()).is_err());
     assert!(store.fetch_orphan(blocks[2].hash()).is_ok());
+}
+
+#[test]
+fn blockchain_reorgs_to_stronger_chain() {
+    let _ = env_logger::try_init();
+    let mut blockchain = TestBlockchain::with_genesis("GB");
+    let blocks = blockchain.builder();
+    blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
+    blockchain.add_block(blocks.new_block("A2").child_of("A1").difficulty(3));
+    blockchain.add_block(blocks.new_block("A3").child_of("A2").difficulty(1));
+    blockchain.add_block(blocks.new_block("A4").child_of("A3").difficulty(1));
+
+    assert_eq!(Some(blockchain.tip()), blockchain.get_block("A4"));
+    assert!(blockchain.orphan_pool().is_empty());
+
+    blockchain.add_block(blocks.new_block("B2").child_of("A1").difficulty(1));
+    assert_eq!(Some(blockchain.tip()), blockchain.get_block("A4"));
+    blockchain.add_block(blocks.new_block("B3").child_of("B2").difficulty(1));
+    assert_eq!(Some(blockchain.tip()), blockchain.get_block("A4"));
+    assert_eq!(blockchain.chain(), ["GB", "A1", "A2", "A3", "A4"]);
+    blockchain.add_block(blocks.new_block("B4").child_of("B3").difficulty(5));
+    // Should reorg
+    assert_eq!(Some(blockchain.tip()), blockchain.get_block("B4"));
+
+    blockchain.add_block(blocks.new_block("C4").child_of("B3").difficulty(20));
+    assert_eq!(Some(blockchain.tip()), blockchain.get_block("C4"));
+
+    assert_eq!(blockchain.chain(), ["GB", "A1", "B2", "B3", "C4"]);
 }
 
 #[test]
@@ -894,11 +914,7 @@ fn handle_reorg_failure_recovery() {
     {
         let block_validator = MockValidator::new(true);
         let is_block_valid_flag = block_validator.shared_flag();
-        let validators = Validators::new(
-            block_validator,
-            MockValidator::new(true),
-            MockAccumDifficultyValidator {},
-        );
+        let validators = Validators::new(block_validator, MockValidator::new(true));
         // Create Main Chain
         let network = Network::LocalNet;
         let (mut store, mut blocks, mut outputs, consensus_manager) =
@@ -970,12 +986,12 @@ fn handle_reorg_failure_recovery() {
             &consensus_manager,
         )
         .unwrap();
-        // Block B3 (Double spend)
+        // Block B3 (Incorrect height)
         let double_spend_block = {
             let schemas = vec![
                 txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
                 // Double spend
-                txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
+                //txn_schema!(from: vec![orphan1_outputs[1][3].clone()], to: vec![3 * T]),
             ];
             let mut txns = Vec::new();
             let mut block_utxos = Vec::new();
@@ -989,6 +1005,7 @@ fn handle_reorg_failure_recovery() {
             let template = chain_block(&orphan1_blocks.last().unwrap(), txns, &consensus_manager);
             let mut block = orphan1_store.calculate_mmr_roots(template).unwrap();
             block.header.nonce = OsRng.next_u64();
+            block.header.height = block.header.height + 1;
             find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(2));
             block
         };
@@ -997,42 +1014,13 @@ fn handle_reorg_failure_recovery() {
         let result = store.add_block(orphan1_blocks[2].clone().into()).unwrap(); // B2
         unpack_enum!(BlockAddResult::OrphanBlock = result);
 
-        // Add B3 with a double spend. Our (mock) validators are doing a bad job, but still the database should recover.
+        // Add invalid block B3. Our database should recover
         let err = store.add_block(double_spend_block.clone().into()).unwrap_err(); // B3
-        unpack_enum!(ChainStorageError::UnspendableInput = err);
+        unpack_enum!(ChainStorageError::InvalidBlock = err);
         let tip_header = store.fetch_tip_header().unwrap();
         assert_eq!(tip_header.height, 4);
         assert_eq!(tip_header, blocks[4].header);
 
-        assert!(store.fetch_orphan(orphan1_blocks[2].hash()).is_ok()); // B2 orphaned
-        assert!(store.fetch_orphan(double_spend_block.hash()).is_ok()); // B3 orphaned
-        assert!(store.fetch_orphan(blocks[2].hash()).is_err()); // A2
-        assert!(store.fetch_orphan(blocks[3].hash()).is_err()); // A3
-        assert!(store.fetch_orphan(blocks[4].hash()).is_err()); // A4
-
-        // B3'
-        is_block_valid_flag.store(false, Ordering::SeqCst);
-        let txs = vec![txn_schema!(from: vec![orphan1_outputs[1][1].clone()], to: vec![5 * T])];
-        generate_new_block_with_achieved_difficulty(
-            &mut orphan1_store,
-            &mut orphan1_blocks,
-            &mut orphan1_outputs,
-            txs,
-            Difficulty::from(1),
-            &consensus_manager,
-        )
-        .unwrap();
-        // B3
-        let err = store.add_block(orphan1_blocks[3].clone().into()).unwrap_err();
-        // Mock validator error is returned. This assertions makes sure that the (mock) validator error is returned
-        // and that no other error (caused by say a bug in the rewind/restore code) happened.
-        unpack_enum!(ChainStorageError::ValidationError { .. } = err);
-
-        let tip_header = store.fetch_tip_header().unwrap();
-        assert_eq!(tip_header.height, 4);
-        assert_eq!(tip_header, blocks[4].header);
-
-        assert!(store.fetch_orphan(orphan1_blocks[3].hash()).is_ok()); // B3' orphaned
         assert!(store.fetch_orphan(blocks[2].hash()).is_err()); // A2
         assert!(store.fetch_orphan(blocks[3].hash()).is_err()); // A3
         assert!(store.fetch_orphan(blocks[4].hash()).is_err()); // A4
@@ -1046,11 +1034,7 @@ fn handle_reorg_failure_recovery() {
 #[test]
 fn store_and_retrieve_blocks() {
     let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 2 };
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockAccumDifficultyValidator {},
-    );
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
@@ -1073,11 +1057,7 @@ fn store_and_retrieve_blocks() {
 #[test]
 fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
     let mmr_cache_config = MmrCacheConfig { rewind_hist_len: 2 };
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockAccumDifficultyValidator {},
-    );
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
@@ -1138,11 +1118,7 @@ fn restore_metadata_and_pruning_horizon_update() {
 
     // Perform test
     {
-        let validators = Validators::new(
-            MockValidator::new(true),
-            MockValidator::new(true),
-            MockAccumDifficultyValidator {},
-        );
+        let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
         let network = Network::LocalNet;
         let block0 = genesis_block::get_rincewind_genesis_block_raw();
         let rules = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
@@ -1210,7 +1186,6 @@ fn invalid_block() {
         let validators = Validators::new(
             MockValidator::new(true),
             MockStatelessBlockValidator::new(consensus_manager.clone(), factories.clone()),
-            MockAccumDifficultyValidator {},
         );
         let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         let mut store =
@@ -1330,11 +1305,7 @@ fn invalid_block() {
 fn orphan_cleanup_on_block_add() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockAccumDifficultyValidator {},
-    );
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::default();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -1389,11 +1360,7 @@ fn horizon_height_orphan_cleanup() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_rincewind_genesis_block_raw();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockAccumDifficultyValidator {},
-    );
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::default();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -1446,11 +1413,7 @@ fn orphan_cleanup_on_reorg() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockAccumDifficultyValidator {},
-    );
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::default();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -1581,11 +1544,7 @@ fn fails_validation() {
         .with_consensus_constants(consensus_constants.clone())
         .with_block(block0.clone())
         .build();
-    let validators = Validators::new(
-        MockValidator::new(false),
-        MockValidator::new(true),
-        MockAccumDifficultyValidator,
-    );
+    let validators = Validators::new(MockValidator::new(false), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::default();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -1618,11 +1577,7 @@ fn pruned_mode_cleanup_and_fetch_block() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_rincewind_genesis_block_raw();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockAccumDifficultyValidator {},
-    );
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::default();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -1660,11 +1615,7 @@ fn pruned_mode_is_stxo() {
         .with_consensus_constants(consensus_constants.clone())
         .with_block(block0.clone())
         .build();
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockAccumDifficultyValidator {},
-    );
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::default();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -1823,11 +1774,7 @@ fn pruned_mode_fetch_insert_and_commit() {
     assert!(generate_new_block(&mut alice_store, &mut blocks, &mut outputs, txs, &consensus_manager).is_ok());
 
     // Perform a manual horizon state sync between Alice and Bob
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockAccumDifficultyValidator {},
-    );
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
         pruning_horizon: 2,
@@ -1964,10 +1911,7 @@ fn pruned_mode_fetch_insert_and_commit() {
     let sync_height_header = blocks[sync_horizon_height as usize].header.clone();
     assert_eq!(bob_metadata.height_of_longest_chain, Some(sync_horizon_height));
     assert_eq!(bob_metadata.best_block, Some(sync_height_header.hash()));
-    assert_eq!(
-        bob_metadata.accumulated_difficulty,
-        Some(sync_height_header.total_accumulated_difficulty_inclusive().unwrap())
-    );
+
     // Check headers
     let block_nums = (0..=bob_metadata.height_of_longest_chain.unwrap()).collect::<Vec<u64>>();
     let alice_headers = alice_store.fetch_headers(block_nums.clone()).unwrap();

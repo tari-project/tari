@@ -37,7 +37,6 @@ mod helpers;
 mod traits;
 pub use traits::{StatefulValidation, StatefulValidator, Validation, ValidationExt, Validator};
 
-pub mod accum_difficulty_validators;
 pub mod block_validators;
 pub mod mocks;
 pub mod transaction_validators;

@@ -31,7 +31,12 @@ use crate::{
         Block,
     },
     chain_storage::ChainStorageError,
-    consensus::{emission::EmissionSchedule, network::Network, ConsensusConstants},
+    consensus::{
+        chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
+        emission::EmissionSchedule,
+        network::Network,
+        ConsensusConstants,
+    },
     proof_of_work::DifficultyAdjustmentError,
     transactions::tari_amount::MicroTari,
 };
@@ -106,6 +111,10 @@ impl ConsensusManager {
         coinbase + block.calculate_fees()
     }
 
+    pub fn chain_strength_comparer(&self) -> &dyn ChainStrengthComparer {
+        self.inner.chain_strength_comparer.as_ref()
+    }
+
     /// This is the currently configured chain network.
     pub fn network(&self) -> Network {
         self.inner.network
@@ -123,16 +132,16 @@ struct ConsensusManagerInner {
     pub emission: EmissionSchedule,
     /// This allows the user to set a custom Genesis block
     pub gen_block: Option<Block>,
+    /// The comparer used to determine which chain is stronger for reorgs.
+    pub chain_strength_comparer: Box<dyn ChainStrengthComparer + Send + Sync>,
 }
 
 /// Constructor for the consensus manager struct
 pub struct ConsensusManagerBuilder {
-    /// This is the inner struct used to control all consensus values.
-    pub consensus_constants: Vec<ConsensusConstants>,
-    /// The configured chain network.
-    pub network: Network,
-    /// This allows the user to set a custom Genesis block
-    pub gen_block: Option<Block>,
+    consensus_constants: Vec<ConsensusConstants>,
+    network: Network,
+    gen_block: Option<Block>,
+    chain_strength_comparer: Option<Box<dyn ChainStrengthComparer + Send + Sync>>,
 }
 
 impl ConsensusManagerBuilder {
@@ -142,6 +151,7 @@ impl ConsensusManagerBuilder {
             consensus_constants: vec![],
             network,
             gen_block: None,
+            chain_strength_comparer: None,
         }
     }
 
@@ -154,6 +164,11 @@ impl ConsensusManagerBuilder {
     /// Adds in a custom block to be used. This will be overwritten if the network is anything else than localnet
     pub fn with_block(mut self, block: Block) -> Self {
         self.gen_block = Some(block);
+        self
+    }
+
+    pub fn on_ties(mut self, chain_strength_comparer: Box<dyn ChainStrengthComparer + Send + Sync>) -> Self {
+        self.chain_strength_comparer = Some(chain_strength_comparer);
         self
     }
 
@@ -175,6 +190,17 @@ impl ConsensusManagerBuilder {
             network: self.network,
             emission,
             gen_block: self.gen_block,
+            chain_strength_comparer: self.chain_strength_comparer.unwrap_or_else(|| {
+                strongest_chain()
+                    .by_accumulated_difficulty()
+                    .then()
+                    .by_height()
+                    .then()
+                    .by_monero_difficulty()
+                    .then()
+                    .by_blake_difficulty()
+                    .build()
+            }),
         };
         ConsensusManager { inner: Arc::new(inner) }
     }

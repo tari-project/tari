@@ -64,11 +64,7 @@ use tari_core::{
         types::CryptoFactories,
     },
     txn_schema,
-    validation::{
-        accum_difficulty_validators::MockAccumDifficultyValidator,
-        block_validators::StatelessBlockValidator,
-        mocks::MockValidator,
-    },
+    validation::{block_validators::StatelessBlockValidator, mocks::MockValidator},
 };
 use tari_crypto::tari_utilities::hash::Hashable;
 use tari_mmr::MmrCacheConfig;
@@ -617,7 +613,6 @@ fn propagate_and_forward_invalid_block() {
         .with_block(block0.clone())
         .build();
     let stateless_block_validator = StatelessBlockValidator::new(rules.clone(), factories.clone());
-    let mock_accum_difficulty_validator = MockAccumDifficultyValidator {};
 
     let mock_validator = MockValidator::new(false);
     let (mut dan_node, rules) = BaseNodeBuilder::new(network)
@@ -628,21 +623,13 @@ fn propagate_and_forward_invalid_block() {
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![dan_node_identity.clone()])
         .with_consensus_manager(rules)
-        .with_validators(
-            mock_validator.clone(),
-            stateless_block_validator.clone(),
-            mock_accum_difficulty_validator.clone(),
-        )
+        .with_validators(mock_validator.clone(), stateless_block_validator.clone())
         .start(&mut runtime, temp_dir.path().join("carol").to_str().unwrap());
     let (mut bob_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![dan_node_identity.clone()])
         .with_consensus_manager(rules)
-        .with_validators(
-            mock_validator.clone(),
-            stateless_block_validator.clone(),
-            mock_accum_difficulty_validator.clone(),
-        )
+        .with_validators(mock_validator.clone(), stateless_block_validator.clone())
         .start(&mut runtime, temp_dir.path().join("bob").to_str().unwrap());
     let (mut alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity)
