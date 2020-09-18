@@ -564,7 +564,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                             &mut shared.connectivity,
                             sync_peers,
                             sync_peer.clone(),
-                            config.peer_ban_duration,
+                            config.short_term_peer_ban_duration,
                         )
                         .await?;
                     }
@@ -585,7 +585,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                         &mut shared.connectivity,
                         sync_peers,
                         sync_peer.clone(),
-                        config.peer_ban_duration,
+                        config.short_term_peer_ban_duration,
                     )
                     .await?;
                 }
