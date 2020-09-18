@@ -3724,7 +3724,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_grpc"
-version = "0.5.2"
+version = "0.5.5"
 dependencies = [
  "prost",
  "prost-types",
@@ -3736,7 +3736,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_utilities"
-version = "0.1.0"
+version = "0.5.5"
 dependencies = [
  "dirs 2.0.2",
  "log 0.4.11",
@@ -3753,7 +3753,7 @@ dependencies = [
 
 [[package]]
 name = "tari_base_node"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "chrono",
  "chrono-english",
@@ -3933,7 +3933,7 @@ dependencies = [
 
 [[package]]
 name = "tari_console_wallet"
-version = "0.5.0"
+version = "0.5.5"
 dependencies = [
  "chrono",
  "config",
@@ -3963,7 +3963,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "arrayref",
  "base64 0.10.1",
@@ -4053,7 +4053,7 @@ dependencies = [
 
 [[package]]
 name = "tari_key_manager"
-version = "0.2.1"
+version = "0.2.6"
 dependencies = [
  "digest",
  "rand 0.7.3",
@@ -4067,7 +4067,7 @@ dependencies = [
 
 [[package]]
 name = "tari_merge_mining_proxy"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "bincode",
  "bytes 0.5.6",
@@ -4101,7 +4101,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "0.2.1"
+version = "0.2.6"
 dependencies = [
  "bincode",
  "blake2",
@@ -4120,7 +4120,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "0.2.3"
+version = "0.2.6"
 dependencies = [
  "bytes 0.4.12",
  "chrono",
@@ -4160,7 +4160,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "0.2.3"
+version = "0.2.6"
 dependencies = [
  "futures 0.3.5",
  "futures-test",
@@ -4250,7 +4250,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "aes-gcm",
  "blake2",
@@ -4289,7 +4289,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet_ffi"
-version = "0.16.4"
+version = "0.16.5"
 dependencies = [
  "chrono",
  "env_logger 0.7.1",
@@ -4359,7 +4359,7 @@ dependencies = [
 
 [[package]]
 name = "test_faucet"
-version = "0.0.1"
+version = "0.5.5"
 dependencies = [
  "rand 0.7.3",
  "serde 1.0.115",
