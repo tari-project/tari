@@ -404,7 +404,7 @@ async fn find_chain_split_height<B: BlockchainBackend + 'static>(
                         &mut shared.connectivity,
                         sync_peers,
                         sync_peer.clone(),
-                        shared.config.sync_peer_config.peer_ban_duration,
+                        shared.config.sync_peer_config.short_term_peer_ban_duration,
                     )
                     .await?;
                     Err(BlockSyncError::InvalidChainLink)

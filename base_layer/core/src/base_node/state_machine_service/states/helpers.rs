@@ -187,7 +187,7 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
                             &mut shared.connectivity,
                             sync_peers,
                             sync_peer.clone(),
-                            config.peer_ban_duration,
+                            config.short_term_peer_ban_duration,
                         )
                         .await?;
                     }
@@ -208,7 +208,7 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
                         &mut shared.connectivity,
                         sync_peers,
                         sync_peer.clone(),
-                        config.peer_ban_duration,
+                        config.short_term_peer_ban_duration,
                     )
                     .await?;
                 }
@@ -224,7 +224,7 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
                     &mut shared.connectivity,
                     sync_peers,
                     sync_peer.clone(),
-                    config.peer_ban_duration,
+                    config.short_term_peer_ban_duration,
                 )
                 .await?;
             },
@@ -287,7 +287,7 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
                     &mut shared.connectivity,
                     sync_peers,
                     sync_peer.clone(),
-                    config.peer_ban_duration,
+                    config.short_term_peer_ban_duration,
                 )
                 .await?;
             },
@@ -359,7 +359,7 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
                     &mut shared.connectivity,
                     sync_peers,
                     sync_peer.clone(),
-                    config.peer_ban_duration,
+                    config.short_term_peer_ban_duration,
                 )
                 .await?;
             },
