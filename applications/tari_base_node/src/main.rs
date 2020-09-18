@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the

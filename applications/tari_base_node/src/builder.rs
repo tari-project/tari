@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::miner;
-use futures::future;
+use futures::{future, stream::Fuse, FutureExt, StreamExt};
 use log::*;
 use std::{
     path::Path,
@@ -49,6 +49,7 @@ use tari_comms::{
     tor,
     tor::TorIdentity,
     transports::SocksConfig,
+    types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
     CommsNode,
     ConnectionManagerEvent,
@@ -108,7 +109,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
-        handle::OutputManagerHandle,
+        handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
         protocols::utxo_validation_protocol::UtxoValidationRetry,
         storage::sqlite_db::OutputManagerSqliteDatabase,
         OutputManagerServiceInitializer,
@@ -123,7 +124,6 @@ use tari_wallet::{
 };
 use tokio::{
     runtime,
-    stream::StreamExt,
     sync::{broadcast, broadcast::Sender as syncSender, watch},
     task,
     time::delay_for,
@@ -162,7 +162,7 @@ impl BaseNodeContext {
         let mut rx = miner.get_utxo_receiver_channel();
         rt.spawn(async move {
             info!(target: LOG_TARGET, " ⚒️ Mining wallet ready to receive coins.");
-            while let Some(utxo) = rx.next().await {
+            while let Some(utxo) = StreamExt::next(&mut rx).await {
                 match wallet_output_handle.add_output(utxo).await {
                     Ok(_) => {
                         info!(
@@ -303,7 +303,7 @@ pub async fn configure_and_initialize_node(
     let result = match &config.db_type {
         DatabaseType::Memory => {
             let backend = MemoryDatabase::<HashDigest>::default();
-            let ctx = build_node_context(
+            build_node_context(
                 backend,
                 network,
                 node_identity,
@@ -311,13 +311,12 @@ pub async fn configure_and_initialize_node(
                 config,
                 interrupt_signal,
             )
-            .await?;
-            ctx
+            .await?
         },
         DatabaseType::LMDB(p) => {
             let backend = create_lmdb_database(&p, config.db_config.clone(), MmrCacheConfig::default())
                 .map_err(|e| e.to_string())?;
-            let ctx = build_node_context(
+            build_node_context(
                 backend,
                 network,
                 node_identity,
@@ -325,8 +324,7 @@ pub async fn configure_and_initialize_node(
                 config,
                 interrupt_signal,
             )
-            .await?;
-            ctx
+            .await?
         },
     };
     Ok(result)
@@ -477,64 +475,20 @@ where
         .set_base_node_public_key(base_node_public_key.clone())
         .await
         .expect("Problem setting local base node public key for transaction service.");
-    transaction_service_handle
-        .restart_transaction_protocols()
-        .await
-        .expect("Problem restarting transaction protocols in the Transaction Service");
-    // Only start the transaction broadcast protocols once the local node is synced
+    let oms_handle = wallet_handles
+        .get_handle::<OutputManagerHandle>()
+        .expect("OutputManagerService is not registered");
+    // Only start the transaction broadcast and UTXO validartion protocols once the local node is synced
     let state_machine = base_node_handles
         .get_handle::<StateMachineHandle>()
         .expect("Could not get State Machine handle");
-    task::spawn(async move {
-        let mut status_watch = state_machine.get_status_info_watch();
-        debug!(
-            target: LOG_TARGET,
-            "Waiting for initial sync before restarting transaction protocols."
-        );
-        loop {
-            let bootstrapped = match status_watch.recv().await {
-                None => false,
-                Some(s) => s.bootstrapped,
-            };
-
-            if bootstrapped {
-                let _ = transaction_service_handle
-                    .restart_broadcast_protocols()
-                    .await
-                    .map_err(|e| {
-                        error!(
-                            target: LOG_TARGET,
-                            "Problem restarting broadcast protocols in the Transaction Service"
-                        );
-                        e
-                    });
-
-                let _ = transaction_service_handle
-                    .restart_transaction_protocols()
-                    .await
-                    .map_err(|e| {
-                        error!(
-                            target: LOG_TARGET,
-                            "Problem restarting transaction negotiation protocols in the Transaction Service"
-                        );
-                        e
-                    });
-                break;
-            }
-        }
-    });
-    let mut oms_handle = wallet_handles
-        .get_handle::<OutputManagerHandle>()
-        .expect("OutputManagerService is not registered");
-    oms_handle
-        .set_base_node_public_key(base_node_public_key)
-        .await
-        .expect("Problem setting local base node public key for output manager service.");
-    // Start the Output Manager UTXO Validation
-    oms_handle
-        .validate_utxos(UtxoValidationRetry::UntilSuccess)
-        .await
-        .expect("Problem starting the Output Manager Service Utxo Valdation process");
+    task::spawn(start_transaction_protocols_and_utxo_validation(
+        state_machine,
+        transaction_service_handle,
+        oms_handle,
+        config.base_node_query_timeout.clone(),
+        base_node_public_key.clone(),
+    ));
 
     //---------------------------------- Mining --------------------------------------------//
 
@@ -596,7 +550,7 @@ async fn sync_peers(
     wallet_peer_manager: Arc<PeerManager>,
 )
 {
-    while let Some(Ok(event)) = events_rx.next().await {
+    while let Some(Ok(event)) = StreamExt::next(&mut events_rx).await {
         if let ConnectionManagerEvent::PeerConnected(conn) = &*event {
             if !wallet_peer_manager.exists_node_id(conn.peer_node_id()).await {
                 match base_node_peer_manager.find_by_node_id(conn.peer_node_id()).await {
@@ -613,6 +567,190 @@ async fn sync_peers(
             }
         }
     }
+}
+
+/// Asynchronously start transaction protocols and TXO validation
+/// ## Parameters
+/// `state_machine` - A handle to the state machine
+/// `transaction_service_handle` - A handle to the transaction service
+/// `oms_handle` - A handle to the output manager service
+/// `base_node_query_timeout` - A time after which queries to the base node times out
+/// `base_node_public_key` - The base node's public key
+///
+/// ## Returns
+/// Nothing is returned
+async fn start_transaction_protocols_and_utxo_validation(
+    state_machine: StateMachineHandle,
+    mut transaction_service_handle: TransactionServiceHandle,
+    oms_handle: OutputManagerHandle,
+    base_node_query_timeout: Duration,
+    base_node_public_key: CommsPublicKey,
+)
+{
+    let mut status_watch = state_machine.get_status_info_watch();
+    debug!(
+        target: LOG_TARGET,
+        "Waiting for initial sync before restarting transaction protocols and performing UTXO validation."
+    );
+    loop {
+        let bootstrapped = match status_watch.recv().await {
+            None => false,
+            Some(s) => s.bootstrapped,
+        };
+
+        if bootstrapped {
+            debug!(
+                target: LOG_TARGET,
+                "Initial sync achieved and starting with transaction and UTXO validation protocols.",
+            );
+            let _ = transaction_service_handle
+                .restart_broadcast_protocols()
+                .await
+                .map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Problem restarting broadcast protocols in the Transaction Service: {}", e
+                    );
+                    e
+                });
+
+            let _ = transaction_service_handle
+                .restart_transaction_protocols()
+                .await
+                .map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Problem restarting transaction negotiation protocols in the Transaction Service: {}", e
+                    );
+                    e
+                });
+
+            loop {
+                // Setting the base node public key starts the protocol
+                let _ = oms_handle
+                    .clone()
+                    .set_base_node_public_key(base_node_public_key.clone())
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Problem with Output Manager Service setting the base node public key: {}", e
+                        );
+                        e
+                    });
+                trace!(target: LOG_TARGET, "Attempting UTXO validation for Invalid Outputs.",);
+                if monitor_validation_protocol(base_node_query_timeout * 2, oms_handle.get_event_stream_fused()).await {
+                    break;
+                }
+            }
+
+            loop {
+                let _ = oms_handle
+                    .clone()
+                    .validate_utxos(UtxoValidationRetry::UntilSuccess)
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Problem starting UTXO validation protocols in the Output Manager Service: {}", e
+                        );
+                        e
+                    });
+                trace!(target: LOG_TARGET, "Attempting UTXO validation for Unspent Outputs.",);
+                if monitor_validation_protocol(base_node_query_timeout * 2, oms_handle.get_event_stream_fused()).await {
+                    break;
+                }
+            }
+
+            break;
+        }
+    }
+    debug!(
+        target: LOG_TARGET,
+        "Restarting of transaction protocols and performing UTXO validation concluded."
+    );
+}
+
+/// Monitors the TXO validation protocol events
+/// /// ## Paramters
+/// `event_timeout` - A time after which waiting for the next event from the output manager service times out
+/// `event_stream` - The TXO validation protocol subscriber event stream
+///
+/// ##Returns
+/// bool indicating success or failure
+async fn monitor_validation_protocol(
+    event_timeout: Duration,
+    mut event_stream: Fuse<OutputManagerEventReceiver>,
+) -> bool
+{
+    let mut success = false;
+    loop {
+        let mut delay = delay_for(event_timeout).fuse();
+        futures::select! {
+            event = event_stream.select_next_some() => {
+                match event.unwrap() {
+                    // Restart the protocol if aborted (due to 'BaseNodeNotSynced')
+                    OutputManagerEvent::UtxoValidationAborted(s) => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "UTXO validation event 'UtxoValidationAborted' ({}), restarting.", s,
+                        );
+                        break;
+                    },
+                    // Restart the protocol if failure
+                    OutputManagerEvent::UtxoValidationFailure(s) => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "UTXO validation event 'UtxoValidationFailure' ({}), restarting.", s,
+                        );
+                        break;
+                    },
+                    // Exit upon success
+                    OutputManagerEvent::UtxoValidationSuccess(s) => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "UTXO validation event 'UtxoValidationSuccess' ({}), success.", s,
+                        );
+                        success = true;
+                        break;
+                    },
+                    // Wait for the next event if timed out (several can be attempted)
+                    OutputManagerEvent::UtxoValidationTimedOut(s) => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "UTXO validation event 'UtxoValidationTimedOut' ({}), waiting.", s,
+                        );
+                        continue;
+                    }
+                    // Wait for the next event upon an error
+                    OutputManagerEvent::Error(s) => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "UTXO validation event 'Error({})', waiting.", s,
+                        );
+                        continue;
+                    },
+                    // Wait for the next event upon anything else
+                    _ => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "UTXO validation unknown event, waiting.",
+                        );
+                        continue;
+                    },
+                }
+            },
+            // Restart the protocol if it timed out
+            () = delay => {
+                trace!(
+                    target: LOG_TARGET,
+                    "UTXO validation protocol timed out, restarting.",
+                );
+                break;
+            },
+        }
+    }
+    success
 }
 
 /// Creates a transport type from the given configuration
