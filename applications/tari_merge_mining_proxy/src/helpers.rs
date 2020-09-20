@@ -20,11 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::error::MmProxyError;
+use crate::{error::MmProxyError, proxy::LOG_TARGET, state::TransientData};
+use json::Value;
+use log::*;
 use monero::{
-    blockdata::{Block as MoneroBlock, Block},
-    consensus::{deserialize, serialize},
+    blockdata::{transaction::SubField, Block as MoneroBlock, Block},
+    consensus::{deserialize, encode::VarInt, serialize},
 };
+use serde_json as json;
 use std::convert::TryFrom;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_core::{
@@ -49,7 +52,7 @@ pub fn serialize_monero_block_to_hex(obj: &Block) -> Result<String, MmProxyError
     Ok(bytes)
 }
 
-pub fn construct_monero_data(block: MoneroBlock, seed: String) -> Result<MoneroData, MmProxyError> {
+pub fn construct_monero_data(block: MoneroBlock, seed: String, difficulty: u64) -> Result<MoneroData, MmProxyError> {
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&block);
     let root = monero_rx::tree_hash(&hashes)?;
     Ok(MoneroData {
@@ -59,6 +62,7 @@ pub fn construct_monero_data(block: MoneroBlock, seed: String) -> Result<MoneroD
         transaction_root: root.to_fixed_bytes(),
         transaction_hashes: hashes.into_iter().map(|h| h.to_fixed_bytes()).collect(),
         coinbase_tx: block.miner_tx,
+        difficulty,
     })
 }
 
@@ -82,4 +86,61 @@ pub fn add_coinbase(
     } else {
         Err(MmProxyError::MissingDataError("Coinbase Invalid".to_string()))
     }
+}
+
+pub fn default_accept(json: &Value) -> Value {
+    let id = json["id"].as_i64().unwrap_or_else(|| -1);
+    let accept_response = format!(
+        "{} \"id\": {}, \"jsonrpc\": \"2.0\", \"result\": {} \"status\": \"OK\",\"untrusted\": false {}{}",
+        "{", id, "{", "}", "}",
+    );
+    json::from_str(&accept_response).unwrap_or_default()
+}
+
+#[allow(dead_code)]
+pub fn default_error(json: &Value, code: i64, message: &str) -> Value {
+    let id = json["id"].as_i64().unwrap_or_else(|| -1);
+    let error_response = format!(
+        "{} \"id\": {}, \"jsonrpc\": \"2.0\", \"error\": {} \"code\": {},\"message\": \"{}\" {}{}",
+        "{", id, "{", code, message, "}", "}",
+    );
+    json::from_str(&error_response).unwrap_or_default()
+}
+
+pub fn check_tari_height(height: u64, transient: &TransientData) -> bool {
+    if let Some(current_height) = transient.tari_height {
+        if height != current_height {
+            debug!(target: LOG_TARGET, "Tari tip changed");
+            return false;
+        } else if let Some(submit_height) = transient.tari_prev_submit_height {
+            if submit_height >= current_height {
+                debug!(target: LOG_TARGET, "Already submitted for current Tari height");
+                return false;
+            }
+        }
+    }
+    true
+}
+
+#[allow(dead_code)]
+pub fn validate_merge_mining_tag(transient: &TransientData, json: &Value) -> bool {
+    if json["params"][0].is_null() {
+        return false;
+    }
+
+    if let Some(tari) = transient.tari_block.clone() {
+        if let Some(data) = tari.mining_data {
+            let mm_hash = data.mergemining_hash;
+            let params = json["params"][0].clone().to_string();
+            let monero = deserialize_monero_block_from_hex(params).unwrap_or_default();
+            let is_found = monero.miner_tx.prefix.extra.0.iter().any(|item| match item {
+                SubField::MergeMining(depth, merge_mining_hash) => {
+                    depth == &VarInt(0) && merge_mining_hash.0 == mm_hash.as_slice()
+                },
+                _ => false,
+            });
+            return is_found;
+        }
+    }
+    false
 }

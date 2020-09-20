@@ -20,7 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{error::MmProxyError, helpers, state::SharedState};
+use crate::{
+    error::MmProxyError,
+    helpers,
+    helpers::{check_tari_height, default_accept},
+    state::SharedState,
+};
 use bytes::BytesMut;
 use futures::StreamExt;
 use hyper::{
@@ -39,7 +44,6 @@ use jsonrpc::error::StandardError;
 use log::*;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
-use serde_json::Value;
 use std::{
     cmp::min,
     convert::TryFrom,
@@ -159,26 +163,17 @@ impl InnerService {
             height
         );
 
+        let mut transient = self.state.transient_data.write().await;
+
         // Short Circuit XMRig to request a new block template
         // TODO: needs additional testing
-        {
-            let mut transient = self.state.transient_data.write().await;
-
+        if !check_tari_height(height, &transient) {
             if let Some(current_height) = transient.tari_height {
-                if height != current_height {
-                    json["height"] = current_height.into();
-                    debug!(target: LOG_TARGET, "Tari tip changed.");
-                } else if let Some(submit_height) = transient.tari_prev_submit_height {
-                    if submit_height >= current_height {
-                        debug!(target: LOG_TARGET, "Already submitted for current Tari height");
-                        json["height"] = current_height.into();
-                        // perhaps change parsed["hash"] here too.
-                    }
-                }
+                json["height"] = current_height.into();
             }
-
-            transient.tari_height = Some(height);
         }
+
+        transient.tari_height = Some(height);
 
         Ok(into_body(parts, json))
     }
@@ -235,7 +230,11 @@ impl InnerService {
 
         let params_string = params.to_string().replace("\"", "");
         let monero_block = helpers::deserialize_monero_block_from_hex(params_string)?;
-        let monero_data = helpers::construct_monero_data(monero_block, monero_seed)?;
+        let monero_data = helpers::construct_monero_data(
+            monero_block,
+            monero_seed,
+            transient.current_difficulty.unwrap_or_default(),
+        )?;
         let pow_data = bincode::serialize(&monero_data)?;
         pow.pow_data = pow_data;
         tari_header.pow = Some(pow);
@@ -276,6 +275,18 @@ impl InnerService {
         if monerod_resp["result"]["blocktemplate_blob"].is_null() {
             return Err(MmProxyError::InvalidMonerodResponse(
                 "Expected `get_block_template` to include `result.blocktemplate_blob` but it was `null`".to_string(),
+            ));
+        }
+
+        if monerod_resp["result"]["blockhashing_blob"].is_null() {
+            return Err(MmProxyError::InvalidMonerodResponse(
+                "Expected `get_block_template` to include `result.blockhashing_blob` but it was `null`".to_string(),
+            ));
+        }
+
+        if monerod_resp["result"]["seed_hash"].is_null() {
+            return Err(MmProxyError::InvalidMonerodResponse(
+                "Expected `get_block_template` to include `result.seed_hash` but it was `null`".to_string(),
             ));
         }
 
@@ -356,7 +367,6 @@ impl InnerService {
             .replace("\"", "");
         debug!(target: LOG_TARGET, "Deserializing Blocktemplate Blob into Monero Block",);
         let mut block = helpers::deserialize_monero_block_from_hex(block_template_blob)?;
-        // helpers::deserialize_from_hex::<_, blockdata::Block>(block_template_blob)?;
 
         debug!(target: LOG_TARGET, "Appending Merged Mining Tag",);
         // Add the Tari merge mining tag to the retrieved block template
@@ -371,22 +381,26 @@ impl InnerService {
         let blocktemplate_blob = helpers::serialize_monero_block_to_hex(&block)?;
         monerod_resp["result"]["blocktemplate_blob"] = blocktemplate_blob.into();
 
-        transient.monero_seed = Some(&monerod_resp["result"]["seed_hash"])
-            .filter(|v| !v.is_null())
-            .map(|v| v.to_string());
+        let seed = monerod_resp["result"]["seed_hash"].to_string().replace("\"", "");
+
+        transient.monero_seed = Some(seed).filter(|v| !v.is_empty()).map(|v| v.to_string());
 
         let monero_difficulty: u64 = monerod_resp["result"]["difficulty"].as_u64().unwrap_or_default();
         let tari_difficulty = mining_data.target_difficulty;
+
+        let mut mining_difficulty = min(monero_difficulty, tari_difficulty);
+        if mining_difficulty == 1 {
+            mining_difficulty = monero_difficulty;
+        }
         transient.monero_difficulty = Some(monero_difficulty);
         transient.tari_difficulty = Some(tari_difficulty);
-        let mining_difficulty = min(monero_difficulty, tari_difficulty);
         transient.current_difficulty = Some(mining_difficulty);
+
         debug!(
             target: LOG_TARGET,
             "Difficulties: Tari ({}), Monero({}),Selected({})", tari_difficulty, monero_difficulty, mining_difficulty
         );
         monerod_resp["result"]["difficulty"] = mining_difficulty.into();
-
         Ok(into_body(parts, monerod_resp))
     }
 
@@ -417,19 +431,33 @@ impl InnerService {
         mut req: Request<Body>,
     ) -> Result<(Request<Bytes>, Response<json::Value>), MmProxyError>
     {
-        let transient = self.state.transient_data.read().await;
+        let mut transient = self.state.transient_data.write().await;
         let monerod_uri = self.get_fully_qualified_monerod_url(req.uri())?;
         let bytes = read_body_until_end(req.body_mut()).await?;
         let request = req.map(|_| bytes.freeze());
 
         let mut should_proxy = true;
+        let mut submit_block = false;
         let body: Bytes = request.body().clone();
         let json = json::from_slice::<json::Value>(&body[..]).unwrap_or_default();
 
         if transient.current_difficulty.unwrap_or_default() < transient.monero_difficulty.unwrap_or_default() &&
             (json["method"] == "submitblock" || json["method"] == "submit_block")
         {
+            debug!(target: LOG_TARGET, "json: {:#}", json);
+
+            let params = &json["params"][0];
+            let params_string = params.to_string().replace("\"", "");
+
+            debug!(target: LOG_TARGET, "param_string: {:#}", params_string);
+
+            let monero_block = helpers::deserialize_monero_block_from_hex(params_string);
+            debug!(target: LOG_TARGET, "monero_block: {:?}", monero_block);
+
             should_proxy = false;
+            submit_block = true;
+        } else if json["method"] == "submitblock" || json["method"] == "submit_block" {
+            submit_block = true;
         }
 
         if should_proxy {
@@ -457,7 +485,7 @@ impl InnerService {
                 .map_err(MmProxyError::MonerodRequestFailed)?;
             let json_response = convert_reqwest_response_to_hyper_json_response(resp).await?;
 
-            if json["method"] == "submitblock" || json["method"] == "submit_block" {
+            if submit_block {
                 debug!(target: LOG_TARGET, "Submit response {}", json_response.body());
             } else {
                 debug!(target: LOG_TARGET, "Received response {}", json_response.body());
@@ -471,16 +499,10 @@ impl InnerService {
                 monerod_uri,
                 json["method"]
             );
-            let id = json["id"].as_i64().unwrap_or_else(|| -1);
-            // Todo: This needs further testing to ensure it is the correct accept response in all cases
-            let monero_accept_response = format!(
-                "{} \"id\": {}, \"jsonrpc\": \"2.0\", \"result\": {} \"status\": \"OK\",\"untrusted\": false {}{}",
-                "{", id, "{", "}", "}",
-            );
-            let json_accept: Value = json::from_str(&monero_accept_response).unwrap_or_default();
-            let json_response = convert_json_to_hyper_json_response(json_accept, monerod_uri).await?;
+            let json_response = convert_json_to_hyper_json_response(default_accept(&json), monerod_uri).await?;
             debug!(target: LOG_TARGET, "Received response: {}", json);
-            if json["method"] == "submitblock" || json["method"] == "submit_block" {
+            if submit_block {
+                transient.tari_prev_submit_height = transient.tari_height;
                 debug!(target: LOG_TARGET, "Submit response {}", json_response.body());
             } else {
                 debug!(target: LOG_TARGET, "Received response {}", json_response.body());
@@ -540,11 +562,11 @@ impl InnerService {
     }
 }
 
-fn standard_rpc_error(err: jsonrpc::error::StandardError, data: Option<serde_json::Value>) -> Body {
+fn standard_rpc_error(err: jsonrpc::error::StandardError, data: Option<json::Value>) -> Body {
     // TODO: jsonrpc's API is not particularly ergonomic
-    serde_json::to_string(&jsonrpc::error::result_to_response(
+    json::to_string(&jsonrpc::error::result_to_response(
         Err(jsonrpc::error::standard_error(err, data)),
-        serde_json::Value::from(-1i32),
+        json::Value::from(-1i32),
     ))
     .expect("jsonrpc's serialization implementation is expected to always succeed")
     .into()
