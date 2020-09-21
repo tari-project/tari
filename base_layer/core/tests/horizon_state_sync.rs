@@ -26,7 +26,6 @@ mod helpers;
 use crate::helpers::block_builders::append_block_with_coinbase;
 use futures::StreamExt;
 use helpers::{block_builders::create_genesis_block, nodes::create_network_with_2_base_nodes_with_config};
-use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 use tari_core::{
     base_node::{
         comms_interface::BlockEvent,
@@ -67,7 +66,10 @@ use tari_p2p::services::liveness::LivenessConfig;
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
 use tempfile::tempdir;
-use tokio::{runtime::Runtime, sync::watch};
+use tokio::{
+    runtime::Runtime,
+    sync::{broadcast, watch},
+};
 
 #[test]
 fn test_pruned_mode_sync_with_future_horizon_sync_height() {
@@ -110,7 +112,7 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
-    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+    let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
@@ -236,7 +238,7 @@ fn test_pruned_mode_sync_with_spent_utxos() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
-    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+    let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
@@ -406,8 +408,8 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
-    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
@@ -649,8 +651,8 @@ fn test_pruned_mode_sync_fail_final_validation() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
-    let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, _) = watch::channel(StatusInfo::new());
     let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
@@ -712,7 +714,7 @@ fn test_pruned_mode_sync_fail_final_validation() {
         assert!(alice_db.get_horizon_sync_state().unwrap().is_none());
         let local_metadata = alice_db.get_chain_metadata().unwrap();
         assert!(local_metadata.best_block.is_some());
-        let (state_change_event_publisher, _) = bounded(10, 3);
+        let (state_change_event_publisher, _) = broadcast::channel(10);
         let (status_event_sender, _) = watch::channel(StatusInfo::new());
         let service_shutdown = Shutdown::new();
         let mut alice_state_machine = BaseNodeStateMachine::new(

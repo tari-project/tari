@@ -33,7 +33,11 @@ use crate::{
 };
 use futures::stream::StreamExt;
 use log::*;
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt::{Display, Formatter},
+    ops::Deref,
+};
+use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
 
@@ -79,8 +83,8 @@ impl Listening {
             .set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)))
             .await;
         while let Some(metadata_event) = shared.metadata_event_stream.next().await {
-            match &*metadata_event {
-                ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata_list) => {
+            match metadata_event.as_ref().map(|v| v.deref()) {
+                Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata_list)) => {
                     if !peer_metadata_list.is_empty() {
                         debug!(target: LOG_TARGET, "Loading local blockchain metadata.");
                         let local = match async_db::get_chain_metadata(shared.db.clone()).await {
@@ -109,6 +113,13 @@ impl Listening {
                                 .await;
                         }
                     }
+                },
+                Err(broadcast::RecvError::Lagged(n)) => {
+                    debug!(target: LOG_TARGET, "Metadata event subscriber lagged by {} item(s)", n);
+                },
+                Err(broadcast::RecvError::Closed) => {
+                    // This should never happen because the while loop exits when the stream ends
+                    debug!(target: LOG_TARGET, "Metadata event subscriber closed");
                 },
             }
         }

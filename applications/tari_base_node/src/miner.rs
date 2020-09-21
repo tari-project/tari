@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use tari_broadcast_channel::Subscriber;
+use std::sync::Arc;
 use tari_core::{
     base_node::{state_machine_service::states::StateEvent, LocalNodeCommsInterface},
     consensus::ConsensusManager,
@@ -30,19 +30,20 @@ use tari_core::{
 };
 use tari_service_framework::handles::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
+use tokio::sync::broadcast;
 
 /// Builds the miner for the base node
 /// ## Parameters
 /// `handles` - Handles to the base node services
 /// `kill_signal` - Signal to stop the miner
-/// `event_stream` - Message stream of the publish-subscribe message system
+/// `mempool_event_stream` - Event stream for mempool events
 /// `consensus_manager`- The rules for the blockchain
 /// `num_threads` - The number of threads on which to run the miner
 pub fn build_miner<H: AsRef<ServiceHandles>>(
     handles: H,
     kill_signal: ShutdownSignal,
-    node_event_stream: Subscriber<StateEvent>,
-    mempool_event_stream: Subscriber<MempoolStateEvent>,
+    node_event_stream: broadcast::Receiver<Arc<StateEvent>>,
+    mempool_event_stream: broadcast::Receiver<MempoolStateEvent>,
     consensus_manager: ConsensusManager,
     num_threads: usize,
 ) -> Miner

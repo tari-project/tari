@@ -29,21 +29,21 @@ use crate::{
     },
     chain_storage::{BlockAddResult, ChainMetadata},
 };
-use futures::{stream::StreamExt, SinkExt};
+use futures::stream::StreamExt;
 use log::*;
 use prost::Message;
-use std::time::Instant;
-use tari_broadcast_channel::Publisher;
+use std::{sync::Arc, time::Instant};
 use tari_common::log_if_error;
 use tari_comms::{message::MessageExt, peer_manager::NodeId};
 use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle, Metadata, MetadataKey};
+use tokio::sync::broadcast;
 
 pub(super) struct ChainMetadataService {
     liveness: LivenessHandle,
     base_node: LocalNodeCommsInterface,
     peer_chain_metadata: Vec<PeerChainMetadata>,
     last_chainstate_flushed_at: Option<Instant>,
-    event_publisher: Publisher<ChainMetadataEvent>,
+    event_publisher: broadcast::Sender<Arc<ChainMetadataEvent>>,
 }
 
 impl ChainMetadataService {
@@ -55,7 +55,7 @@ impl ChainMetadataService {
     pub fn new(
         liveness: LivenessHandle,
         base_node: LocalNodeCommsInterface,
-        event_publisher: Publisher<ChainMetadataEvent>,
+        event_publisher: broadcast::Sender<Arc<ChainMetadataEvent>>,
     ) -> Self
     {
         Self {
@@ -182,10 +182,10 @@ impl ChainMetadataService {
     async fn flush_chain_metadata_to_event_publisher(&mut self) -> Result<(), ChainMetadataSyncError> {
         let chain_metadata = self.peer_chain_metadata.drain(..).collect::<Vec<_>>();
 
-        self.event_publisher
-            .send(ChainMetadataEvent::PeerChainMetadataReceived(chain_metadata))
-            .await
-            .map_err(|_| ChainMetadataSyncError::EventPublishFailed)?;
+        // send only fails if there are no subscribers.
+        let _ = self
+            .event_publisher
+            .send(Arc::new(ChainMetadataEvent::PeerChainMetadataReceived(chain_metadata)));
 
         self.last_chainstate_flushed_at = Some(Instant::now());
 
@@ -272,7 +272,6 @@ mod test {
     use super::*;
     use crate::base_node::comms_interface::{CommsInterfaceError, NodeCommsRequest, NodeCommsResponse};
     use std::convert::TryInto;
-    use tari_broadcast_channel as broadcast_channel;
     use tari_p2p::services::liveness::{mock::create_p2p_liveness_mock, LivenessRequest, PingPongEvent};
     use tari_service_framework::reply_channel;
     use tari_test_utils::{runtime, unpack_enum};
@@ -309,7 +308,7 @@ mod test {
 
             let (base_node, mut base_node_receiver) = create_base_node_nci();
 
-            let (publisher, _subscriber) = broadcast_channel::bounded(1, 106);
+            let (publisher, _) = broadcast::channel(1);
             let mut service = ChainMetadataService::new(liveness_handle, base_node, publisher);
 
             let mut proto_chain_metadata = create_sample_proto_chain_metadata();
@@ -353,7 +352,7 @@ mod test {
 
         let (base_node, _) = create_base_node_nci();
 
-        let (publisher, _subscriber) = broadcast_channel::bounded(1, 107);
+        let (publisher, _) = broadcast::channel(1);
         let mut service = ChainMetadataService::new(liveness_handle, base_node, publisher);
 
         // To prevent the chain metadata buffer being flushed after receiving a single pong event,
@@ -383,7 +382,7 @@ mod test {
         };
 
         let (base_node, _) = create_base_node_nci();
-        let (publisher, _subscriber) = broadcast_channel::bounded(1, 108);
+        let (publisher, _) = broadcast::channel(1);
         let mut service = ChainMetadataService::new(liveness_handle, base_node, publisher);
 
         let sample_event = LivenessEvent::ReceivedPong(Box::new(pong_event));
@@ -406,7 +405,7 @@ mod test {
         };
 
         let (base_node, _) = create_base_node_nci();
-        let (publisher, _subscriber) = broadcast_channel::bounded(1, 109);
+        let (publisher, _) = broadcast::channel(1);
         let mut service = ChainMetadataService::new(liveness_handle, base_node, publisher);
 
         let sample_event = LivenessEvent::ReceivedPong(Box::new(pong_event));

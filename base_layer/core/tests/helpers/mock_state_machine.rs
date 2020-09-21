@@ -21,11 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use futures::{future, future::BoxFuture};
-use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 use tari_core::base_node::{state_machine_service::states::StatusInfo, StateMachineHandle};
 use tari_service_framework::{handles::ServiceHandlesFuture, ServiceInitializationError, ServiceInitializer};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime, sync::watch};
+use tokio::{
+    runtime,
+    sync::{broadcast, watch},
+};
 
 pub struct MockBaseNodeStateMachine {
     status_receiver: watch::Receiver<StatusInfo>,
@@ -66,11 +68,11 @@ impl ServiceInitializer for MockBaseNodeStateMachineInitializer {
         _shutdown: ShutdownSignal,
     ) -> Self::Future
     {
-        let (_state_event_publisher, state_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
+        let (state_event_publisher, _) = broadcast::channel(10);
 
         let shutdown = Shutdown::new();
         let handle = StateMachineHandle::new(
-            state_event_subscriber,
+            state_event_publisher,
             self.status_receiver.clone(),
             shutdown.to_signal(),
         );

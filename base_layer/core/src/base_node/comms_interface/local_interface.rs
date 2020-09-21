@@ -35,9 +35,8 @@ use crate::{
 };
 use futures::{stream::Fuse, StreamExt};
 use std::sync::Arc;
-use tari_service_framework::reply_channel::SenderService;
+use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
-use tower_service::Service;
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;

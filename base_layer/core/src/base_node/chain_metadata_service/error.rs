@@ -38,6 +38,4 @@ pub enum ChainMetadataSyncError {
     CommsInterfaceError(#[from] CommsInterfaceError),
     #[error("Message error: {0}")]
     MessageError(#[from] MessageError),
-    #[error("Failed to publish `ChainMetadataEvent`")]
-    EventPublishFailed,
 }
