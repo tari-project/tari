@@ -389,9 +389,7 @@ impl InnerService {
         let tari_difficulty = mining_data.target_difficulty;
 
         let mut mining_difficulty = min(monero_difficulty, tari_difficulty);
-        if mining_difficulty == 1 {
-            mining_difficulty = monero_difficulty;
-        }
+
         transient.monero_difficulty = Some(monero_difficulty);
         transient.tari_difficulty = Some(tari_difficulty);
         transient.current_difficulty = Some(mining_difficulty);

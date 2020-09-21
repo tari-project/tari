@@ -176,7 +176,7 @@ impl ConsensusConstants {
             emission_initial: 5_538_846_115 * uT,
             emission_decay: 0.999_999_560_409_038_5,
             emission_tail: 1 * T,
-            min_pow_difficulty: (1.into(), 60_000_000.into()),
+            min_pow_difficulty: (10_000.into(), 60_000_000.into()),
             max_randomx_seed_height: std::u64::MAX,
             genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
         }
