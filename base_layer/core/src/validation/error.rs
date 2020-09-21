@@ -23,10 +23,10 @@
 use crate::{
     blocks::{blockheader::BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
+    proof_of_work::PowError,
     transactions::transaction::TransactionError,
 };
 use thiserror::Error;
-use crate::proof_of_work::PowError;
 
 #[derive(Clone, Debug, Error)]
 pub enum ValidationError {

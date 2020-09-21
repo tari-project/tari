@@ -165,7 +165,7 @@ fn request_and_response_fetch_headers_with_hashes() {
 
     let mut header1 = BlockHeader::new(0);
     header1.height = 1;
-    let header2 = BlockHeader::from_previous(&header1);
+    let header2 = BlockHeader::from_previous(&header1).unwrap();
     let hash1 = header1.hash();
     let hash2 = header2.hash();
     let mut txn = DbTransaction::new();

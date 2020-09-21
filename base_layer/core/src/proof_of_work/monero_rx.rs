@@ -853,6 +853,6 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        assert_eq!(monero_difficulty(&block_header).as_u64(), 0);
+        assert_eq!(monero_difficulty(&block_header).unwrap().as_u64(), 0);
     }
 }

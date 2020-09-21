@@ -20,11 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{chain_storage::ChainStorageError, consensus::ConsensusManagerError, mempool::MempoolError};
+use crate::{
+    blocks::BlockHeaderValidationError,
+    chain_storage::ChainStorageError,
+    consensus::ConsensusManagerError,
+    mempool::MempoolError,
+};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
-use crate::blocks::BlockHeaderValidationError;
 
 #[derive(Debug, Error)]
 pub enum CommsInterfaceError {

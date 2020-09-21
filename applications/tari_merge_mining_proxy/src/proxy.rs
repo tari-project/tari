@@ -154,9 +154,7 @@ impl InnerService {
             .ok_or_else(|| MmProxyError::GrpcResponseMissingField("metadata"))?;
         debug!(
             target: LOG_TARGET,
-            "Monero height = {}, Tari base node height = {}",
-            json["height"],
-            height
+            "Monero height = {}, Tari base node height = {}", json["height"], height
         );
 
         json["height"] = json::json!(cmp::max(json["height"].as_i64().unwrap_or_default(), height as i64));
@@ -354,7 +352,7 @@ impl InnerService {
         let monero_difficulty: u64 = monerod_resp["result"]["difficulty"].as_u64().unwrap_or_default();
         let tari_difficulty = mining_data.target_difficulty;
 
-        let mut mining_difficulty = min(monero_difficulty, tari_difficulty);
+        let mining_difficulty = min(monero_difficulty, tari_difficulty);
 
         let block_data = block_data.monero_difficulty(monero_difficulty).tari_difficulty(tari_difficulty);
 

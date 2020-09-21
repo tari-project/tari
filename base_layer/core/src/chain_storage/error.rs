@@ -22,13 +22,13 @@
 
 use crate::{
     chain_storage::{lmdb_db::LMDBVecError, MmrTree},
+    proof_of_work::PowError,
     validation::ValidationError,
 };
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
 use tokio::task;
-use crate::proof_of_work::PowError;
 
 #[derive(Debug, Clone, Error)]
 pub enum ChainStorageError {

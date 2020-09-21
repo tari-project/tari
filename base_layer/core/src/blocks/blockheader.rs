@@ -62,7 +62,7 @@ use thiserror::Error;
 pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
 
-#[derive(Clone, Debug,  Error)]
+#[derive(Clone, Debug, Error)]
 pub enum BlockHeaderValidationError {
     #[error("The Genesis block header is incorrectly chained")]
     ChainedGenesisBlockHeader,
@@ -347,9 +347,9 @@ mod test {
         h1.nonce = 7600; // Achieved difficulty is 18,138;
         assert_eq!(h1.height, 0, "Default block height");
         let hash1 = h1.hash();
-        let diff1 = h1.achieved_difficulty();
+        let diff1 = h1.achieved_difficulty().unwrap();
         assert_eq!(diff1, 18138.into());
-        let h2 = BlockHeader::from_previous(&h1);
+        let h2 = BlockHeader::from_previous(&h1).unwrap();
         assert_eq!(h2.height, h1.height + 1, "Incrementing block height");
         assert!(h2.timestamp > h1.timestamp, "Timestamp");
         assert_eq!(h2.prev_hash, hash1, "Previous hash");

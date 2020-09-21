@@ -163,7 +163,7 @@ fn insert_and_fetch_header() {
     let store = create_mem_db(&consensus_manager);
     let mut header1 = BlockHeader::new(0);
     header1.height = 42;
-    let header2 = BlockHeader::from_previous(&header1);
+    let header2 = BlockHeader::from_previous(&header1).unwrap();
 
     store
         .insert_valid_headers(vec![header1.clone(), header2.clone()])
@@ -2077,7 +2077,7 @@ fn pruned_mode_fetch_insert_and_commit() {
     assert_eq!(bob_metadata.best_block, Some(sync_height_header.hash()));
     assert_eq!(
         bob_metadata.accumulated_difficulty,
-        Some(sync_height_header.total_accumulated_difficulty_inclusive())
+        Some(sync_height_header.total_accumulated_difficulty_inclusive().unwrap())
     );
     // Check headers
     let block_nums = (0..=bob_metadata.height_of_longest_chain.unwrap()).collect::<Vec<u64>>();

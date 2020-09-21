@@ -183,7 +183,7 @@ pub fn chain_block(
     constants: &ConsensusConstants,
 ) -> NewBlockTemplate
 {
-    let mut header = BlockHeader::from_previous(&prev_block.header);
+    let mut header = BlockHeader::from_previous(&prev_block.header).unwrap();
     header.version = constants.blockchain_version();
     NewBlockTemplate::from(header.into_builder().with_transactions(transactions).build())
 }
@@ -197,7 +197,7 @@ pub fn chain_block_with_coinbase(
     constants: &ConsensusConstants,
 ) -> NewBlockTemplate
 {
-    let mut header = BlockHeader::from_previous(&prev_block.header);
+    let mut header = BlockHeader::from_previous(&prev_block.header).unwrap();
     header.version = constants.blockchain_version();
     NewBlockTemplate::from(
         header
@@ -330,7 +330,7 @@ pub fn generate_new_block_with_coinbase<B: BlockchainBackend>(
 }
 
 pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
-    while header.achieved_difficulty() != achieved_difficulty {
+    while header.achieved_difficulty().unwrap() != achieved_difficulty {
         header.nonce += 1;
     }
 }

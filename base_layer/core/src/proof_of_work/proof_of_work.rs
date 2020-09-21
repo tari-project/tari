@@ -21,18 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{
-        blake_pow::blake_difficulty,
-        monero_rx::{monero_difficulty, MoneroData},
-        Difficulty,
-        PowAlgorithm,
-    },
+    proof_of_work::{blake_pow::blake_difficulty, monero_rx::monero_difficulty, Difficulty, PowAlgorithm, PowError},
 };
 use bytes::{self, BufMut};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::tari_utilities::hex::Hex;
-use crate::proof_of_work::PowError;
 
 pub trait AchievedDifficulty {}
 
@@ -99,7 +93,7 @@ impl ProofOfWork {
     ///
     /// If there are any problems with calculating a difficulty (e.g. an invalid header), then the function returns a
     /// difficulty of one.
-    pub fn achieved_difficulty(header: &BlockHeader) -> Result<Difficulty, PowError>  {
+    pub fn achieved_difficulty(header: &BlockHeader) -> Result<Difficulty, PowError> {
         match header.pow.pow_algo {
             PowAlgorithm::Monero => Ok(monero_difficulty(header)?),
             PowAlgorithm::Blake => Ok(blake_difficulty(header)),

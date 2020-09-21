@@ -91,14 +91,14 @@ fn headers_validation() {
     let genesis = rules.get_genesis_block();
     validator.validate(&genesis.header).unwrap();
 
-    let header = BlockHeader::from_previous(&genesis.header);
+    let header = BlockHeader::from_previous(&genesis.header).unwrap();
     validator.validate(&header).unwrap();
     db.insert_valid_headers(vec![header.clone()]).unwrap();
 
     let header1 = header.clone();
     let mut prev_header = header;
     for _ in 0..3 {
-        let header = BlockHeader::from_previous(&prev_header);
+        let header = BlockHeader::from_previous(&prev_header).unwrap();
         validator.validate(&header).unwrap();
         db.insert_valid_headers(vec![header.clone()]).unwrap();
         prev_header = header;
@@ -107,7 +107,7 @@ fn headers_validation() {
     validator.validate(&header1).unwrap();
     validator.validate(&genesis.header).unwrap();
 
-    let mut header = BlockHeader::from_previous(&prev_header);
+    let mut header = BlockHeader::from_previous(&prev_header).unwrap();
     header.timestamp = EpochTime::now();
     header.pow.target_difficulty = 123456.into();
     let err = validator.validate(&header).unwrap_err();
@@ -116,7 +116,7 @@ fn headers_validation() {
     unpack_enum!(PowError::InvalidTargetDifficulty = err);
     db.insert_valid_headers(vec![header.clone()]).unwrap();
 
-    let mut header = BlockHeader::from_previous(&header);
+    let mut header = BlockHeader::from_previous(&header).unwrap();
     header.timestamp = genesis.header.timestamp;
     let err = validator.validate(&header).unwrap_err();
     unpack_enum!(ValidationError::BlockHeaderError(err) = err);
@@ -161,7 +161,7 @@ fn chain_balance_validation() {
         .unwrap();
     txn.insert_kernel(kernel);
 
-    let header1 = BlockHeader::from_previous(&genesis.header);
+    let header1 = BlockHeader::from_previous(&genesis.header).unwrap();
     txn.insert_header(header1.clone());
     db.commit(txn).unwrap();
 
@@ -196,7 +196,7 @@ fn chain_balance_validation() {
         .unwrap();
     txn.insert_kernel(kernel);
 
-    let mut header2 = BlockHeader::from_previous(&header1);
+    let mut header2 = BlockHeader::from_previous(&header1).unwrap();
     header2.total_kernel_offset = params.offset;
     txn.insert_header(header2.clone());
     db.commit(txn).unwrap();
@@ -232,7 +232,7 @@ fn chain_balance_validation() {
         .unwrap();
     txn.insert_kernel(kernel);
 
-    let mut header3 = BlockHeader::from_previous(&header2);
+    let mut header3 = BlockHeader::from_previous(&header2).unwrap();
     header3.total_kernel_offset = params.offset;
     txn.insert_header(header3.clone());
     db.commit(txn).unwrap();
@@ -255,7 +255,7 @@ fn chain_balance_validation() {
         .unwrap();
     txn.insert_kernel(kernel);
 
-    let header4 = BlockHeader::from_previous(&header3);
+    let header4 = BlockHeader::from_previous(&header3).unwrap();
     txn.insert_header(header4);
     db.commit(txn).unwrap();
 
