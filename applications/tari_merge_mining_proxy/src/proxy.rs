@@ -111,7 +111,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
             match inner.handle(req).await {
                 Ok(resp) => Ok(resp),
                 Err(err) => {
-                    debug!(target: LOG_TARGET, "Error handling request: {}", err);
+                    error!(target: LOG_TARGET, "Error handling request: {}", err);
 
                     Ok(Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -156,7 +156,7 @@ impl InnerService {
             .metadata
             .map(|meta| meta.height_of_longest_chain)
             .ok_or_else(|| MmProxyError::GrpcResponseMissingField("metadata"))?;
-        trace!(
+        debug!(
             target: LOG_TARGET,
             "Monero height = {}, Tari base node height = {}",
             json["height"],
@@ -310,7 +310,7 @@ impl InnerService {
         let new_block_template = new_block_template_response
             .new_block_template
             .ok_or_else(|| MmProxyError::GrpcResponseMissingField("new_block_template"))?;
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Received new block template from Tari base node for height #{}",
             new_block_template.header.as_ref().map(|h| h.height).unwrap_or_default(),
@@ -394,7 +394,7 @@ impl InnerService {
         transient.tari_difficulty = Some(tari_difficulty);
         transient.current_difficulty = Some(mining_difficulty);
 
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Difficulties: Tari ({}), Monero({}),Selected({})", tari_difficulty, monero_difficulty, mining_difficulty
         );
@@ -547,7 +547,7 @@ impl InnerService {
         let (request, monerod_resp) = self.proxy_request_to_monerod(request).await?;
         // Any failed (!= 200 OK) responses from Monero are immediately returned to the requester
         if !monerod_resp.status().is_success() {
-            debug!(
+            warn!(
                 target: LOG_TARGET,
                 "Monerod returned an error: {}",
                 monerod_resp.status()
