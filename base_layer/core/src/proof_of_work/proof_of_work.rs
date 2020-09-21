@@ -32,6 +32,7 @@ use bytes::{self, BufMut};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::tari_utilities::hex::Hex;
+use crate::proof_of_work::PowError;
 
 pub trait AchievedDifficulty {}
 
@@ -98,10 +99,10 @@ impl ProofOfWork {
     ///
     /// If there are any problems with calculating a difficulty (e.g. an invalid header), then the function returns a
     /// difficulty of one.
-    pub fn achieved_difficulty(header: &BlockHeader) -> Difficulty {
+    pub fn achieved_difficulty(header: &BlockHeader) -> Result<Difficulty, PowError>  {
         match header.pow.pow_algo {
-            PowAlgorithm::Monero => monero_difficulty(header),
-            PowAlgorithm::Blake => blake_difficulty(header),
+            PowAlgorithm::Monero => Ok(monero_difficulty(header)?),
+            PowAlgorithm::Blake => Ok(blake_difficulty(header)),
         }
     }
 

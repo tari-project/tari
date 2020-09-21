@@ -111,7 +111,7 @@ impl<B: BlockchainBackend> HeaderValidator<B> {
             ));
         }
 
-        let achieved = block_header.achieved_difficulty();
+        let achieved = block_header.achieved_difficulty()?;
         if achieved < target {
             warn!(
                 target: LOG_TARGET,

@@ -96,7 +96,7 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
             ));
         }
     }
-    let achieved = block_header.achieved_difficulty();
+    let achieved = block_header.achieved_difficulty()?;
     // This tests the target diff.
     let target = if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
         let constants = rules.consensus_constants();

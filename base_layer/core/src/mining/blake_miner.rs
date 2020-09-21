@@ -50,7 +50,7 @@ impl CpuBlakePow {
         let mut nonce: u64 = OsRng.next_u64();
         let mut last_measured_nonce = nonce;
         // We're mining over here!
-        let mut difficulty = ProofOfWork::achieved_difficulty(&header);
+        let mut difficulty = ProofOfWork::achieved_difficulty(&header).unwrap_or_default();
         info!(target: LOG_TARGET, "Mining started.");
         debug!(
             target: LOG_TARGET,
@@ -83,7 +83,7 @@ impl CpuBlakePow {
             }
 
             header.nonce = nonce;
-            difficulty = ProofOfWork::achieved_difficulty(&header);
+            difficulty = ProofOfWork::achieved_difficulty(&header).unwrap_or_default();
         }
 
         debug!(target: LOG_TARGET, "Miner found nonce: {}", nonce);

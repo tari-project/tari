@@ -28,6 +28,7 @@ use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
 use tokio::task;
+use crate::proof_of_work::PowError;
 
 #[derive(Debug, Clone, Error)]
 pub enum ChainStorageError {
@@ -90,6 +91,11 @@ pub enum ChainStorageError {
     LmdbError {
         #[from]
         source: LMDBError,
+    },
+    #[error("Invalid proof of work: {source}")]
+    ProofOfWorkError {
+        #[from]
+        source: PowError,
     },
 }
 

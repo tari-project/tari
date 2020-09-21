@@ -330,7 +330,7 @@ where T: BlockchainBackend + 'static
                     async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), best_block_hash).await?;
 
                 let constants = self.consensus_manager.consensus_constants();
-                let mut header = BlockHeader::from_previous(&best_block_header);
+                let mut header = BlockHeader::from_previous(&best_block_header)?;
                 header.version = constants.blockchain_version();
                 header.pow.target_difficulty = self.get_target_difficulty(*pow_algo).await?;
                 header.pow.pow_algo = *pow_algo;
@@ -537,6 +537,7 @@ where T: BlockchainBackend + 'static
         let target_difficulties =
             self.blockchain_db
                 .fetch_target_difficulties(pow_algo, height_of_longest_chain, block_window)?;
+
         let target = get_target_difficulty(
             target_difficulties,
             block_window,

@@ -24,6 +24,7 @@ use crate::{chain_storage::ChainStorageError, consensus::ConsensusManagerError, 
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
+use crate::blocks::BlockHeaderValidationError;
 
 #[derive(Debug, Error)]
 pub enum CommsInterfaceError {
@@ -49,4 +50,6 @@ pub enum CommsInterfaceError {
     DifficultyAdjustmentManagerError(#[from] ConsensusManagerError),
     #[error("Invalid peer response: {0}")]
     InvalidPeerResponse(String),
+    #[error("Invalid Block Header: {0}")]
+    InvalidBlockHeader(#[from] BlockHeaderValidationError),
 }
