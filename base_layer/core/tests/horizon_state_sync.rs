@@ -24,14 +24,16 @@
 mod helpers;
 
 use crate::helpers::block_builders::append_block_with_coinbase;
+use futures::StreamExt;
 use helpers::{block_builders::create_genesis_block, nodes::create_network_with_2_base_nodes_with_config};
 use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 use tari_core::{
     base_node::{
+        comms_interface::BlockEvent,
         service::BaseNodeServiceConfig,
         state_machine_service::{
             states::{
-                BestChainMetadataBlockSyncInfo,
+                BestChainMetadataBlockSync,
                 BlockSyncConfig,
                 HeaderSync,
                 HorizonStateSync,
@@ -65,7 +67,7 @@ use tari_p2p::services::liveness::LivenessConfig;
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
 use tempfile::tempdir;
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, sync::watch};
 
 #[test]
 fn test_pruned_mode_sync_with_future_horizon_sync_height() {
@@ -179,7 +181,7 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         assert_eq!(alice_kernel_nodes, bob_kernel_nodes);
 
         // Synchronize full blocks
-        let state_event = BestChainMetadataBlockSyncInfo
+        let state_event = BestChainMetadataBlockSync
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
@@ -351,7 +353,7 @@ fn test_pruned_mode_sync_with_spent_utxos() {
             .next_event(&mut alice_state_machine)
             .await;
         assert_eq!(state_event, StateEvent::HorizonStateSynchronized);
-        let state_event = BestChainMetadataBlockSyncInfo
+        let state_event = BestChainMetadataBlockSync
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
@@ -498,7 +500,7 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
             .next_event(&mut alice_state_machine)
             .await;
         assert_eq!(state_event, StateEvent::HorizonStateSynchronized);
-        let state_event = BestChainMetadataBlockSyncInfo
+        let state_event = BestChainMetadataBlockSync
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
@@ -710,9 +712,8 @@ fn test_pruned_mode_sync_fail_final_validation() {
         assert!(alice_db.get_horizon_sync_state().unwrap().is_none());
         let local_metadata = alice_db.get_chain_metadata().unwrap();
         assert!(local_metadata.best_block.is_some());
-        let (state_change_event_publisher, _state_change_event_subscriber): (Publisher<_>, Subscriber<_>) =
-            bounded(10, 3);
-        let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
+        let (state_change_event_publisher, _) = bounded(10, 3);
+        let (status_event_sender, _) = watch::channel(StatusInfo::new());
         let service_shutdown = Shutdown::new();
         let mut alice_state_machine = BaseNodeStateMachine::new(
             &alice_node.blockchain_db,
@@ -754,10 +755,14 @@ fn test_pruned_mode_sync_fail_final_validation() {
         assert_eq!(alice_kernel_nodes, bob_kernel_nodes);
 
         // Synchronize full blocks
-        let state_event = BestChainMetadataBlockSyncInfo
+        let mut block_events = alice_node.local_nci.get_block_event_stream();
+        let state_event = BestChainMetadataBlockSync
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
+        let next_event = block_events.next().await.unwrap().unwrap();
+        unpack_enum!(BlockEvent::BlockSyncComplete(block) = &*next_event);
+        assert_eq!(block.header.height, network_tip.height_of_longest_chain());
         let alice_metadata = alice_db.get_chain_metadata().unwrap();
         // Local height should now be at the horizon sync height
         assert_eq!(

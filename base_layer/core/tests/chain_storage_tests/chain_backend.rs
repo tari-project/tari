@@ -205,7 +205,7 @@ fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(mut db: T, cons
     assert_eq!(db.contains(&DbKey::OrphanBlock(hash.clone())).unwrap(), false);
 
     let mut txn = DbTransaction::new();
-    txn.insert_orphan(orphan.clone());
+    txn.insert_orphan(orphan.clone().into());
     assert!(db.write(txn).is_ok());
 
     assert_eq!(db.contains(&DbKey::OrphanBlock(hash.clone())).unwrap(), true);
@@ -808,9 +808,9 @@ fn for_each_orphan<T: BlockchainBackend>(mut db: T, consensus_constants: &Consen
     let hash3 = orphan3.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_orphan(orphan1.clone());
-    txn.insert_orphan(orphan2.clone());
-    txn.insert_orphan(orphan3.clone());
+    txn.insert_orphan(orphan1.clone().into());
+    txn.insert_orphan(orphan2.clone().into());
+    txn.insert_orphan(orphan3.clone().into());
     assert!(db.write(txn).is_ok());
     assert_eq!(db.contains(&DbKey::OrphanBlock(hash1.clone())).unwrap(), true);
     assert_eq!(db.contains(&DbKey::OrphanBlock(hash2.clone())).unwrap(), true);
@@ -1061,7 +1061,7 @@ fn lmdb_backend_restore() {
         {
             let mut db = create_lmdb_database(&path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
             let mut txn = DbTransaction::new();
-            txn.insert_orphan(orphan.clone());
+            txn.insert_orphan(orphan.clone().into());
             txn.insert_utxo(utxo1);
             txn.insert_utxo(utxo2);
             txn.insert_kernel(kernel);

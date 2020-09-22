@@ -63,8 +63,8 @@ macro_rules! make_async {
 }
 
 make_async!(insert(tx: Arc<Transaction>) -> TxStorageResponse);
-make_async!(process_published_block(published_block: Block) -> ());
-make_async!(process_reorg(removed_blocks: Vec<Block>, new_blocks: Vec<Block>) -> ());
+make_async!(process_published_block(published_block: Arc<Block>) -> ());
+make_async!(process_reorg(removed_blocks: Vec<Arc<Block>>, new_blocks: Vec<Arc<Block>>) -> ());
 make_async!(snapshot() -> Vec<Arc<Transaction>>);
 make_async!(retrieve(total_weight: u64) -> Vec<Arc<Transaction>>);
 make_async!(has_tx_with_excess_sig(excess_sig: Signature) -> TxStorageResponse);

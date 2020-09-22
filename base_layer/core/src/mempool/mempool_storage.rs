@@ -113,7 +113,7 @@ where T: BlockchainBackend
     }
 
     /// Update the Mempool based on the received published block.
-    pub fn process_published_block(&mut self, published_block: Block) -> Result<(), MempoolError> {
+    pub fn process_published_block(&mut self, published_block: Arc<Block>) -> Result<(), MempoolError> {
         trace!(target: LOG_TARGET, "Mempool processing new block: {}", published_block);
         // Move published txs to ReOrgPool and discard double spends
         self.reorg_pool.insert_txs(
@@ -138,7 +138,7 @@ where T: BlockchainBackend
     }
 
     // Update the Mempool based on the received set of published blocks.
-    fn process_published_blocks(&mut self, published_blocks: Vec<Block>) -> Result<(), MempoolError> {
+    fn process_published_blocks(&mut self, published_blocks: Vec<Arc<Block>>) -> Result<(), MempoolError> {
         for published_block in published_blocks {
             self.process_published_block(published_block)?;
         }
@@ -147,7 +147,12 @@ where T: BlockchainBackend
 
     /// In the event of a ReOrg, resubmit all ReOrged transactions into the Mempool and process each newly introduced
     /// block from the latest longest chain.
-    pub fn process_reorg(&mut self, removed_blocks: Vec<Block>, new_blocks: Vec<Block>) -> Result<(), MempoolError> {
+    pub fn process_reorg(
+        &mut self,
+        removed_blocks: Vec<Arc<Block>>,
+        new_blocks: Vec<Arc<Block>>,
+    ) -> Result<(), MempoolError>
+    {
         debug!(target: LOG_TARGET, "Mempool processing reorg");
         for block in &removed_blocks {
             debug!(

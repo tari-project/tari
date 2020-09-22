@@ -199,7 +199,9 @@ fn async_add_new_block() {
     test_async(|rt| {
         let dbc = db.clone();
         rt.spawn(async move {
-            let result = async_db::add_block(dbc.clone(), new_block.clone()).await.unwrap();
+            let result = async_db::add_block(dbc.clone(), new_block.clone().into())
+                .await
+                .unwrap();
             let block = async_db::fetch_block(dbc.clone(), 1).await.unwrap();
             match result {
                 BlockAddResult::Ok => assert_eq!(Block::from(block).hash(), new_block.hash()),
@@ -240,7 +242,7 @@ fn async_add_block_fetch_orphan() {
     test_async(move |rt| {
         let dbc = db.clone();
         rt.spawn(async move {
-            async_db::add_block(dbc.clone(), orphan.clone()).await.unwrap();
+            async_db::add_block(dbc.clone(), orphan.clone().into()).await.unwrap();
             let block = async_db::fetch_orphan(dbc.clone(), block_hash).await.unwrap();
             assert_eq!(orphan, block);
         });

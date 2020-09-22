@@ -235,6 +235,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     pub fn get_interrupt_signal(&self) -> ShutdownSignal {
         self.interrupt_signal.clone()
     }
+
+    pub fn db(&self) -> BlockchainDatabase<B> {
+        self.db.clone()
+    }
 }
 
 /// Polls both the interrupt signal and the given future. If the given future `state_fut` is ready first it's value is

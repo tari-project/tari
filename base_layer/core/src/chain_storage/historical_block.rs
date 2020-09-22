@@ -61,6 +61,10 @@ impl HistoricalBlock {
     pub fn block(&self) -> &Block {
         &self.block
     }
+
+    pub fn into_block(self) -> Block {
+        self.block
+    }
 }
 
 impl From<HistoricalBlock> for Block {

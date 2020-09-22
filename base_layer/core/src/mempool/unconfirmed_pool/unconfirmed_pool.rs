@@ -176,7 +176,7 @@ impl UnconfirmedPool {
     /// Remove all published transactions from the UnconfirmedPool and discard all double spend transactions.
     /// Returns a list of all transactions that were removed the unconfirmed pool as a result of appearing in the block.
     fn discard_double_spends(&mut self, published_block: &Block) {
-        let mut removed_tx_keys: Vec<Signature> = Vec::new();
+        let mut removed_tx_keys = Vec::new();
         for (tx_key, ptx) in self.txs_by_signature.iter() {
             for input in ptx.transaction.body.inputs() {
                 if published_block.body.inputs().contains(input) {
@@ -198,7 +198,7 @@ impl UnconfirmedPool {
 
     /// Remove all published transactions from the UnconfirmedPoolStorage and discard double spends
     pub fn remove_published_and_discard_double_spends(&mut self, published_block: &Block) -> Vec<Arc<Transaction>> {
-        let mut removed_txs: Vec<Arc<Transaction>> = Vec::new();
+        let mut removed_txs = Vec::new();
         published_block.body.kernels().iter().for_each(|kernel| {
             if let Some(ptx) = self.txs_by_signature.get(&kernel.excess_sig) {
                 self.txs_by_priority.remove(&ptx.priority);

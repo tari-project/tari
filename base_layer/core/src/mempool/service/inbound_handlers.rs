@@ -173,9 +173,10 @@ where T: BlockchainBackend + 'static
 
     /// Handle inbound block events from the local base node service.
     pub async fn handle_block_event(&mut self, block_event: &BlockEvent) -> Result<(), MempoolServiceError> {
+        use BlockEvent::*;
         match block_event {
-            BlockEvent::Verified((block, BlockAddResult::Ok, broadcast)) => {
-                async_mempool::process_published_block(self.mempool.clone(), *block.clone()).await?;
+            ValidBlockAdded(block, BlockAddResult::Ok, broadcast) => {
+                async_mempool::process_published_block(self.mempool.clone(), block.clone()).await?;
                 if bool::from(*broadcast) {
                     self.event_publisher
                         .write()
@@ -185,8 +186,8 @@ where T: BlockchainBackend + 'static
                         .map_err(|_| MempoolServiceError::EventStreamError)?;
                 }
             },
-            BlockEvent::Verified((_, BlockAddResult::ChainReorg((removed_blocks, added_blocks)), broadcast)) => {
-                async_mempool::process_reorg(self.mempool.clone(), removed_blocks.to_vec(), added_blocks.to_vec())
+            ValidBlockAdded(_, BlockAddResult::ChainReorg(removed_blocks, added_blocks), broadcast) => {
+                async_mempool::process_reorg(self.mempool.clone(), removed_blocks.clone(), added_blocks.clone())
                     .await?;
                 if bool::from(*broadcast) {
                     self.event_publisher
@@ -197,7 +198,16 @@ where T: BlockchainBackend + 'static
                         .map_err(|_| MempoolServiceError::EventStreamError)?;
                 }
             },
-            BlockEvent::Verified(_) | BlockEvent::Invalid(_) => {},
+            BlockSyncComplete(tip_block) => {
+                async_mempool::process_published_block(self.mempool.clone(), tip_block.clone()).await?;
+                self.event_publisher
+                    .write()
+                    .await
+                    .send(MempoolStateEvent::Updated)
+                    .await
+                    .map_err(|_| MempoolServiceError::EventStreamError)?;
+            },
+            _ => {},
         }
 
         Ok(())

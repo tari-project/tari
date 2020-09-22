@@ -352,7 +352,7 @@ where D: Digest + Send + Sync
                 lmdb_insert(&txn, &self.kernels_db, &k, &v)?;
             },
             DbKeyValuePair::OrphanBlock(k, v) => {
-                lmdb_replace(&txn, &self.orphans_db, &k, &v)?;
+                lmdb_replace(&txn, &self.orphans_db, &k, &**v)?;
             },
         }
         Ok(())

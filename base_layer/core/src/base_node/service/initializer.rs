@@ -194,7 +194,7 @@ where T: BlockchainBackend + 'static
                 .get_handle::<StateMachineHandle>()
                 .expect("StateMachineHandle required to initialize MempoolService");
 
-            let streams = BaseNodeStreams::new(
+            let streams = BaseNodeStreams {
                 outbound_request_stream,
                 outbound_block_stream,
                 inbound_request_stream,
@@ -202,7 +202,7 @@ where T: BlockchainBackend + 'static
                 inbound_block_stream,
                 local_request_stream,
                 local_block_stream,
-            );
+            };
             let service =
                 BaseNodeService::new(outbound_message_service, inbound_nch, config, state_machine).start(streams);
             futures::pin_mut!(service);

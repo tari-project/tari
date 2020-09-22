@@ -77,7 +77,7 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
             constants.get_difficulty_max_block_interval(),
         )
         .unwrap();
-        db.add_block(new_block.clone()).unwrap();
+        db.add_block(new_block.clone().into()).unwrap();
         prev_block = new_block;
     }
 }

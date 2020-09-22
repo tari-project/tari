@@ -33,6 +33,7 @@ use std::{
     convert::TryFrom,
     fmt,
     fmt::{Display, Error, Formatter},
+    sync::Arc,
 };
 use strum_macros::Display;
 use tari_crypto::tari_utilities::{
@@ -116,9 +117,9 @@ impl DbTransaction {
 
     /// Stores an orphan block. No checks are made as to whether this is actually an orphan. That responsibility lies
     /// with the calling function.
-    pub fn insert_orphan(&mut self, orphan: Block) {
+    pub fn insert_orphan(&mut self, orphan: Arc<Block>) {
         let hash = orphan.hash();
-        self.insert(DbKeyValuePair::OrphanBlock(hash, Box::new(orphan)));
+        self.insert(DbKeyValuePair::OrphanBlock(hash, orphan));
     }
 
     /// Moves a UTXO to the STXO set and mark it as spent on the MRR. If the UTXO is not in the UTXO set, the
@@ -226,7 +227,7 @@ pub enum DbKeyValuePair {
     BlockHeader(u64, Box<BlockHeader>),
     UnspentOutput(HashOutput, Box<TransactionOutput>),
     TransactionKernel(HashOutput, Box<TransactionKernel>),
-    OrphanBlock(HashOutput, Box<Block>),
+    OrphanBlock(HashOutput, Arc<Block>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy)]
