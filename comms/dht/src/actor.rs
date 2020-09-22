@@ -393,11 +393,11 @@ impl DhtActor {
                     .map(|peer| peer.map(|p| vec![p.node_id]).unwrap_or_default())
                     .map_err(Into::into)
             },
-            Flood => {
-                // Send to all known peers
-                // TODO: This should never be needed, remove
-                let peers = peer_manager.flood_peers().await?;
-                Ok(peers.into_iter().map(|p| p.node_id).collect())
+            Flood(exclude) => {
+                let peers = connectivity
+                    .select_connections(ConnectivitySelection::all_nodes(exclude))
+                    .await?;
+                Ok(peers.into_iter().map(|p| p.peer_node_id().clone()).collect())
             },
             Closest(closest_request) => {
                 let candidates = if closest_request.connected_only {

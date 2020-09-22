@@ -271,7 +271,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     is_discovery_enabled,
                 );
 
-                let is_broadcast = broadcast_strategy.is_broadcast();
+                let is_broadcast = broadcast_strategy.is_multi_message();
 
                 // Discovery is required if:
                 //  - Discovery is enabled for this request
@@ -585,7 +585,7 @@ mod test {
 
         service
             .call(DhtOutboundRequest::SendMessage(
-                Box::new(SendMessageParams::new().flood().finish()),
+                Box::new(SendMessageParams::new().flood(vec![]).finish()),
                 "custom_msg".as_bytes().into(),
                 reply_tx,
             ))

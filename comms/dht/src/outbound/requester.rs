@@ -150,14 +150,12 @@ impl OutboundMessageRequester {
         .map_err(Into::into)
     }
 
-    /// Send to _ALL_ known peers.
-    ///
-    /// This should be used with caution as, depending on the number of known peers, a lot of network
-    /// traffic could be generated from this node.
-    pub async fn send_flood<T>(
+    /// Send to all _connected_ peers.
+    pub async fn flood<T>(
         &mut self,
         destination: NodeDestination,
         encryption: OutboundEncryption,
+        exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
     ) -> Result<MessageSendStates, DhtOutboundError>
     where
@@ -165,7 +163,7 @@ impl OutboundMessageRequester {
     {
         self.send_message(
             SendMessageParams::new()
-                .flood()
+                .flood(exclude_peers)
                 .with_destination(destination)
                 .with_encryption(encryption)
                 .finish(),

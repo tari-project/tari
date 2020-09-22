@@ -71,7 +71,7 @@ pub struct FinalSendMessageParams {
 impl Default for FinalSendMessageParams {
     fn default() -> Self {
         Self {
-            broadcast_strategy: BroadcastStrategy::Flood,
+            broadcast_strategy: BroadcastStrategy::Flood(Default::default()),
             destination: Default::default(),
             encryption: Default::default(),
             dht_message_type: Default::default(),
@@ -146,8 +146,8 @@ impl SendMessageParams {
     }
 
     /// Set broadcast_strategy to Flood
-    pub fn flood(&mut self) -> &mut Self {
-        self.params_mut().broadcast_strategy = BroadcastStrategy::Flood;
+    pub fn flood(&mut self, excluded: Vec<NodeId>) -> &mut Self {
+        self.params_mut().broadcast_strategy = BroadcastStrategy::Flood(excluded);
         self
     }
 
