@@ -23,9 +23,11 @@
 use crate::{
     error::MmProxyError,
     helpers,
-    helpers::{check_tari_height, default_accept},
+    helpers::{default_accept},
     state::SharedState,
 };
+use crate::block_template_data::BlockTemplateRepository;
+use crate::block_template_data::BlockTemplateDataBuilder;
 use bytes::BytesMut;
 use futures::StreamExt;
 use hyper::{
@@ -44,13 +46,7 @@ use jsonrpc::error::StandardError;
 use log::*;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
-use std::{
-    cmp::min,
-    convert::TryFrom,
-    future::Future,
-    net::SocketAddr,
-    task::{Context, Poll},
-};
+use std::{cmp::min, convert::TryFrom, future::Future, net::SocketAddr, task::{Context, Poll}, cmp};
 use tari_app_grpc::{tari_rpc as grpc, tari_rpc::GetCoinbaseRequest};
 use tari_common::{GlobalConfig, Network};
 use tari_core::{blocks::NewBlockTemplate, proof_of_work::monero_rx};
@@ -88,9 +84,9 @@ pub struct MergeMiningProxyService {
 }
 
 impl MergeMiningProxyService {
-    pub fn new(config: MergeMiningProxyConfig, state: SharedState) -> Self {
+    pub fn new(config: MergeMiningProxyConfig, block_templates: BlockTemplateRepository) -> Self {
         Self {
-            inner: InnerService { config, state },
+            inner: InnerService { config, block_templates},
         }
     }
 }
@@ -126,7 +122,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
 #[derive(Debug, Clone)]
 struct InnerService {
     config: MergeMiningProxyConfig,
-    state: SharedState,
+    block_templates: BlockTemplateRepository
 }
 
 impl InnerService {
@@ -163,17 +159,7 @@ impl InnerService {
             height
         );
 
-        let mut transient = self.state.transient_data.write().await;
-
-        // Short Circuit XMRig to request a new block template
-        // TODO: needs additional testing
-        if !check_tari_height(height, &transient) {
-            if let Some(current_height) = transient.tari_height {
-                json["height"] = current_height.into();
-            }
-        }
-
-        transient.tari_height = Some(height);
+        json["height"] = json::json!(cmp::max(json["height"].as_i64().unwrap_or_default(), height as i64));
 
         Ok(into_body(parts, json))
     }
@@ -184,7 +170,6 @@ impl InnerService {
         monerod_resp: Response<json::Value>,
     ) -> Result<Response<Body>, MmProxyError>
     {
-        let mut transient = self.state.transient_data.write().await;
         let resp = monerod_resp.body();
         if resp["result"]["status"] != "OK" {
             return Err(MmProxyError::InvalidMonerodResponse(format!(
@@ -193,12 +178,9 @@ impl InnerService {
             )));
         }
 
-        // TODO: Params is defined as a "list of block blobs that have been mined" (https://web.getmonero.org/resources/developer-guides/daemon-rpc.html#submit_block).
-        //       The ordering and number do not seem to be guaranteed - we may need to search through the data to find
-        //       what we need.
-        let params = &request.body()["params"][0];
-        if params.is_null() {
-            return Ok(Response::builder()
+        let params = match request.body()["params"].as_array() {
+            Some(v) => v,
+            None => return Ok(Response::builder()
                 .body(standard_rpc_error(
                     StandardError::InvalidParams,
                     Some(
@@ -206,50 +188,43 @@ impl InnerService {
                             .into(),
                     ),
                 ))
-                .unwrap());
+                .unwrap())
+        };
+
+        for param in params.iter().map(|p| p.as_str()).filter_map(|p| p) {
+
+            let monero_block = helpers::deserialize_monero_block_from_hex(param)?;
+            let hash = match helpers::extract_tari_hash(&monero_block) {
+                Some(h) => h.clone(),
+                None => return Err(MmProxyError::MissingDataError("Could not find Tari header in coinbase".to_string()))
+            };
+
+            if let Some(mut block_data) = self.block_templates.get(&hash).await {
+                let monero_data = helpers::construct_monero_data(
+                    monero_block,
+                    block_data.monero_seed,
+                )?;
+
+                let pow_data = bincode::serialize(&monero_data)?;
+                let h = block_data.tari_block.header.as_mut().unwrap();
+                let p = h.pow.as_mut().unwrap();
+                p.pow_data = pow_data;
+
+                let mut base_node_client = self.connect_grpc_client().await?;
+                base_node_client
+                    .submit_block(block_data.tari_block)
+                    .await
+                    .map_err(|status| MmProxyError::GrpcRequestError {
+                        status,
+                        details: "failed to submit block".to_string(),
+                    })?;
+
+                self.block_templates.remove(&hash).await;
+            }
+            else {
+                info!(target: LOG_TARGET, "Block submitted but no matching block template was found");
+            }
         }
-
-        let tari_block = transient
-            .tari_block
-            .clone()
-            .ok_or_else(|| MmProxyError::TransientStateError("No transient block".to_string()))?;
-        let monero_seed = transient
-            .monero_seed
-            .clone()
-            .ok_or_else(|| MmProxyError::TransientStateError("No transient monero seed".to_string()))?;
-        let mut block = tari_block
-            .block
-            .ok_or_else(|| MmProxyError::MissingDataError("Invalid transient block".to_string()))?;
-        let mut tari_header = block
-            .header
-            .ok_or_else(|| MmProxyError::MissingDataError("Invalid transient header".to_string()))?;
-        let mut pow = tari_header
-            .pow
-            .clone()
-            .ok_or_else(|| MmProxyError::MissingDataError("Invalid transient proof of work".to_string()))?;
-
-        let params_string = params.to_string().replace("\"", "");
-        let monero_block = helpers::deserialize_monero_block_from_hex(params_string)?;
-        let monero_data = helpers::construct_monero_data(
-            monero_block,
-            monero_seed,
-            transient.current_difficulty.unwrap_or_default(),
-        )?;
-        let pow_data = bincode::serialize(&monero_data)?;
-        pow.pow_data = pow_data;
-        tari_header.pow = Some(pow);
-        block.header = Some(tari_header);
-
-        let mut base_node_client = self.connect_grpc_client().await?;
-        base_node_client
-            .submit_block(block)
-            .await
-            .map_err(|status| MmProxyError::GrpcRequestError {
-                status,
-                details: "failed to submit block".to_string(),
-            })?;
-
-        transient.tari_prev_submit_height = transient.tari_height;
         // Return the Monero response as is
         let (parts, json) = monerod_resp.into_parts();
         Ok(into_body(parts, json))
@@ -343,57 +318,47 @@ impl InnerService {
                 details: "failed to get new block".to_string(),
             })?
             .into_inner();
-        debug!(
-            target: LOG_TARGET,
-            "Received new block from Tari base node #{}",
-            block
-                .block
-                .as_ref()
-                .and_then(|b| b.header.as_ref())
-                .map(|h| h.height)
-                .unwrap_or_default()
-        );
+
         let mining_data = block
             .clone()
-            .mining_data
+            .miner_data
             .ok_or_else(|| MmProxyError::GrpcResponseMissingField("mining_data"))?;
 
-        let mut transient = self.state.transient_data.write().await;
-        transient.tari_block = Some(block);
+        let block_data = BlockTemplateDataBuilder::default();
+        let block_data = block_data.tari_block(block.block.ok_or_else(|| MmProxyError::GrpcResponseMissingField("block"))?).tari_miner_data(mining_data.clone());
 
         // Deserialize the block template blob
         let block_template_blob = &monerod_resp["result"]["blocktemplate_blob"]
             .to_string()
             .replace("\"", "");
         debug!(target: LOG_TARGET, "Deserializing Blocktemplate Blob into Monero Block",);
-        let mut block = helpers::deserialize_monero_block_from_hex(block_template_blob)?;
+        let mut monero_block = helpers::deserialize_monero_block_from_hex(block_template_blob)?;
 
         debug!(target: LOG_TARGET, "Appending Merged Mining Tag",);
         // Add the Tari merge mining tag to the retrieved block template
-        monero_rx::append_merge_mining_tag(&mut block, mining_data.mergemining_hash.as_slice())?;
+        monero_rx::append_merge_mining_tag(&mut monero_block, mining_data.merge_mining_hash.as_slice())?;
 
-        debug!(target: LOG_TARGET, "Creating Input blob from Blocktemplate Blob",);
+        debug!(target: LOG_TARGET, "Creating blockhashing blob from blocktemplate blob",);
         // Must be done after the tag is inserted since it will affect the hash of the miner tx
-        let input_blob = monero_rx::create_input_blob(&block)?;
+        let blockhashing_blob = monero_rx::create_blockhashing_blob(&monero_block)?;
 
-        monerod_resp["result"]["blockhashing_blob"] = input_blob.into();
+        monerod_resp["result"]["blockhashing_blob"] = blockhashing_blob.into();
 
-        let blocktemplate_blob = helpers::serialize_monero_block_to_hex(&block)?;
+        let blocktemplate_blob = helpers::serialize_monero_block_to_hex(&monero_block)?;
         monerod_resp["result"]["blocktemplate_blob"] = blocktemplate_blob.into();
 
         let seed = monerod_resp["result"]["seed_hash"].to_string().replace("\"", "");
 
-        transient.monero_seed = Some(seed).filter(|v| !v.is_empty()).map(|v| v.to_string());
+        let block_data = block_data.monero_seed(seed);
 
         let monero_difficulty: u64 = monerod_resp["result"]["difficulty"].as_u64().unwrap_or_default();
         let tari_difficulty = mining_data.target_difficulty;
 
         let mut mining_difficulty = min(monero_difficulty, tari_difficulty);
 
-        transient.monero_difficulty = Some(monero_difficulty);
-        transient.tari_difficulty = Some(tari_difficulty);
-        transient.current_difficulty = Some(mining_difficulty);
+        let block_data = block_data.monero_difficulty(monero_difficulty).tari_difficulty(tari_difficulty);
 
+        self.block_templates.save(mining_data.merge_mining_hash, block_data.build()?).await;
         info!(
             target: LOG_TARGET,
             "Difficulties: Tari ({}), Monero({}),Selected({})", tari_difficulty, monero_difficulty, mining_difficulty
@@ -429,7 +394,6 @@ impl InnerService {
         mut req: Request<Body>,
     ) -> Result<(Request<Bytes>, Response<json::Value>), MmProxyError>
     {
-        let mut transient = self.state.transient_data.write().await;
         let monerod_uri = self.get_fully_qualified_monerod_url(req.uri())?;
         let bytes = read_body_until_end(req.body_mut()).await?;
         let request = req.map(|_| bytes.freeze());
@@ -439,23 +403,27 @@ impl InnerService {
         let body: Bytes = request.body().clone();
         let json = json::from_slice::<json::Value>(&body[..]).unwrap_or_default();
 
-        if transient.current_difficulty.unwrap_or_default() < transient.monero_difficulty.unwrap_or_default() &&
-            (json["method"] == "submitblock" || json["method"] == "submit_block")
-        {
-            debug!(target: LOG_TARGET, "json: {:#}", json);
-
-            let params = &json["params"][0];
-            let params_string = params.to_string().replace("\"", "");
-
-            debug!(target: LOG_TARGET, "param_string: {:#}", params_string);
-
-            let monero_block = helpers::deserialize_monero_block_from_hex(params_string);
-            debug!(target: LOG_TARGET, "monero_block: {:?}", monero_block);
-
-            should_proxy = false;
+        if json["method"] == "submitblock" || json["method"] == "submit_block" {
             submit_block = true;
-        } else if json["method"] == "submitblock" || json["method"] == "submit_block" {
-            submit_block = true;
+
+            // TODO: determine if achieved difficulty from solution matches monero's difficulty and submit it
+
+            // if transient.current_difficulty.unwrap_or_default() < transient.monero_difficulty.unwrap_or_default()
+            // {
+            //      debug!(target: LOG_TARGET, "json: {:#}", json);
+            //
+            //      let params = &json["params"][0];
+            //      let params_string = params.to_string().replace("\"", "");
+            //
+            //      debug!(target: LOG_TARGET, "param_string: {:#}", params_string);
+            //
+            //     let monero_block = helpers::deserialize_monero_block_from_hex(params_string)?;
+            //     debug!(target: LOG_TARGET, "monero_block: {:?}", monero_block);
+            //
+            //     let hash = helpers::extract_tari_hash(&monero_block).ok_or_else(|| MmProxyError::MissingDataError("Could not find Tari hash in Monero block".to_string()))?;
+            //
+                should_proxy = false;
+            // }
         }
 
         if should_proxy {
@@ -500,7 +468,6 @@ impl InnerService {
             let json_response = convert_json_to_hyper_json_response(default_accept(&json), monerod_uri).await?;
             debug!(target: LOG_TARGET, "Received response: {}", json);
             if submit_block {
-                transient.tari_prev_submit_height = transient.tari_height;
                 debug!(target: LOG_TARGET, "Submit response {}", json_response.body());
             } else {
                 debug!(target: LOG_TARGET, "Received response {}", json_response.body());

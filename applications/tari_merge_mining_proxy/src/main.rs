@@ -30,25 +30,21 @@
 
 #[cfg(test)]
 mod test;
-
 mod error;
-
 mod helpers;
-
+mod block_template_data;
 mod proxy;
-use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
-
 mod state;
+
 use state::SharedState;
-
-//---------------------------------- Imports --------------------------------------------//
-
+use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
 use crate::error::MmProxyError;
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use std::convert::Infallible;
 use structopt::StructOpt;
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
+use crate::block_template_data::BlockTemplateRepository;
 
 #[tokio_macros::main]
 async fn main() -> Result<(), MmProxyError> {
@@ -62,7 +58,7 @@ async fn main() -> Result<(), MmProxyError> {
     println!("Listening on {}...", addr);
 
     let config = MergeMiningProxyConfig::from(config);
-    let xmrig_service = MergeMiningProxyService::new(config, state);
+    let xmrig_service = MergeMiningProxyService::new(config, BlockTemplateRepository::new());
     let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(xmrig_service.clone())));
 
     Server::bind(&addr).serve(service).await?;

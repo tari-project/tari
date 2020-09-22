@@ -27,6 +27,7 @@ use monero::{
     blockdata::{transaction::SubField, Block as MoneroBlock, Block},
     consensus::{deserialize, encode::VarInt, serialize},
 };
+use monero::cryptonote::hash::Hash;
 use serde_json as json;
 use std::convert::TryFrom;
 use tari_app_grpc::tari_rpc as grpc;
@@ -52,7 +53,7 @@ pub fn serialize_monero_block_to_hex(obj: &Block) -> Result<String, MmProxyError
     Ok(bytes)
 }
 
-pub fn construct_monero_data(block: MoneroBlock, seed: String, difficulty: u64) -> Result<MoneroData, MmProxyError> {
+pub fn construct_monero_data(block: MoneroBlock, seed: String) -> Result<MoneroData, MmProxyError> {
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&block);
     let root = monero_rx::tree_hash(&hashes)?;
     Ok(MoneroData {
@@ -62,7 +63,6 @@ pub fn construct_monero_data(block: MoneroBlock, seed: String, difficulty: u64) 
         transaction_root: root.to_fixed_bytes(),
         transaction_hashes: hashes.into_iter().map(|h| h.to_fixed_bytes()).collect(),
         coinbase_tx: block.miner_tx,
-        difficulty,
     })
 }
 
@@ -107,21 +107,6 @@ pub fn default_error(json: &Value, code: i64, message: &str) -> Value {
     json::from_str(&error_response).unwrap_or_default()
 }
 
-pub fn check_tari_height(height: u64, transient: &TransientData) -> bool {
-    if let Some(current_height) = transient.tari_height {
-        if height != current_height {
-            debug!(target: LOG_TARGET, "Tari tip changed");
-            return false;
-        } else if let Some(submit_height) = transient.tari_prev_submit_height {
-            if submit_height >= current_height {
-                debug!(target: LOG_TARGET, "Already submitted for current Tari height");
-                return false;
-            }
-        }
-    }
-    true
-}
-
 #[allow(dead_code)]
 pub fn validate_merge_mining_tag(transient: &TransientData, json: &Value) -> bool {
     if json["params"][0].is_null() {
@@ -129,8 +114,8 @@ pub fn validate_merge_mining_tag(transient: &TransientData, json: &Value) -> boo
     }
 
     if let Some(tari) = transient.tari_block.clone() {
-        if let Some(data) = tari.mining_data {
-            let mm_hash = data.mergemining_hash;
+        if let Some(data) = tari.miner_data {
+            let mm_hash = data.merge_mining_hash;
             let params = json["params"][0].clone().to_string();
             let monero = deserialize_monero_block_from_hex(params).unwrap_or_default();
             let is_found = monero.miner_tx.prefix.extra.0.iter().any(|item| match item {
@@ -143,4 +128,16 @@ pub fn validate_merge_mining_tag(transient: &TransientData, json: &Value) -> boo
         }
     }
     false
+}
+
+pub fn extract_tari_hash(monero: &Block) -> Option<&Hash> {
+    for item in monero.miner_tx.prefix.extra.0.iter() {
+        match item {
+            SubField::MergeMining(depth, merge_mining_hash) => {
+                return Some(merge_mining_hash);
+            },
+            _ => ()
+        }
+    }
+    None
 }
