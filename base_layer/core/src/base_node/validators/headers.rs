@@ -25,7 +25,7 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
     proof_of_work::{get_median_timestamp, get_target_difficulty, Difficulty, PowError},
-    validation::{StatelessValidation, ValidationError},
+    validation::{Validation, ValidationError},
 };
 use log::*;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, Hashable};
@@ -43,7 +43,7 @@ impl<B: BlockchainBackend> HeaderValidator<B> {
     }
 }
 
-impl<B: BlockchainBackend> StatelessValidation<BlockHeader> for HeaderValidator<B> {
+impl<B: BlockchainBackend> Validation<BlockHeader> for HeaderValidator<B> {
     fn validate(&self, header: &BlockHeader) -> Result<(), ValidationError> {
         let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
         self.check_median_timestamp(header)?;

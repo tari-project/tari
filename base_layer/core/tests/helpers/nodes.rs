@@ -55,7 +55,7 @@ use tari_core::{
         accum_difficulty_validators::MockAccumDifficultyValidator,
         mocks::MockValidator,
         transaction_validators::TxInputAndMaturityValidator,
-        StatelessValidation,
+        StatefulValidation,
         Validation,
     },
 };
@@ -79,7 +79,7 @@ pub struct NodeInterfaces {
     pub outbound_mp_interface: OutboundMempoolServiceInterface,
     pub outbound_message_service: OutboundMessageRequester,
     pub blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
-    pub mempool: Mempool<MemoryDatabase<HashDigest>>,
+    pub mempool: Mempool,
     pub local_mp_interface: LocalMempoolService,
     pub chain_metadata_handle: ChainMetadataHandle,
     pub liveness_handle: LivenessHandle,
@@ -171,9 +171,9 @@ impl BaseNodeBuilder {
 
     pub fn with_validators(
         mut self,
-        block: impl Validation<Block, MemoryDatabase<HashDigest>> + 'static,
-        orphan: impl StatelessValidation<Block> + 'static,
-        accum_difficulty: impl Validation<Difficulty, MemoryDatabase<HashDigest>> + 'static,
+        block: impl StatefulValidation<Block, MemoryDatabase<HashDigest>> + 'static,
+        orphan: impl Validation<Block> + 'static,
+        accum_difficulty: impl StatefulValidation<Difficulty, MemoryDatabase<HashDigest>> + 'static,
     ) -> Self
     {
         let validators = Validators::new(block, orphan, accum_difficulty);
@@ -201,9 +201,11 @@ impl BaseNodeBuilder {
         let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
         let blockchain_db_config = self.blockchain_db_config.unwrap_or(BlockchainDatabaseConfig::default());
         let blockchain_db = BlockchainDatabase::new(db, &consensus_manager, validators, blockchain_db_config).unwrap();
-        let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
+        let mempool_validator = MempoolValidators::new(
+            TxInputAndMaturityValidator::new(blockchain_db.clone()),
+            TxInputAndMaturityValidator::new(blockchain_db.clone()),
+        );
         let mempool = Mempool::new(
-            blockchain_db.clone(),
             self.mempool_config.unwrap_or(MempoolConfig::default()),
             mempool_validator,
         );
@@ -448,7 +450,7 @@ fn setup_base_node_services(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
-    mempool: Mempool<MemoryDatabase<HashDigest>>,
+    mempool: Mempool,
     consensus_manager: ConsensusManager,
     base_node_service_config: BaseNodeServiceConfig,
     mempool_service_config: MempoolServiceConfig,

@@ -20,30 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    chain_storage::BlockchainBackend,
-    mempool::{
-        sync_protocol::{MempoolSyncProtocol, MEMPOOL_SYNC_PROTOCOL},
-        Mempool,
-        MempoolServiceConfig,
-    },
+use crate::mempool::{
+    sync_protocol::{MempoolSyncProtocol, MEMPOOL_SYNC_PROTOCOL},
+    Mempool,
+    MempoolServiceConfig,
 };
 use futures::channel::mpsc;
 use tari_comms::protocol::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError};
 use tokio::task;
 
-pub struct MempoolSyncProtocolExtension<T> {
+pub struct MempoolSyncProtocolExtension {
     config: MempoolServiceConfig,
-    mempool: Mempool<T>,
+    mempool: Mempool,
 }
 
-impl<T> MempoolSyncProtocolExtension<T> {
-    pub fn new(config: MempoolServiceConfig, mempool: Mempool<T>) -> Self {
+impl MempoolSyncProtocolExtension {
+    pub fn new(config: MempoolServiceConfig, mempool: Mempool) -> Self {
         Self { mempool, config }
     }
 }
 
-impl<T: BlockchainBackend + 'static> ProtocolExtension for MempoolSyncProtocolExtension<T> {
+impl ProtocolExtension for MempoolSyncProtocolExtension {
     fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
         let (notif_tx, notif_rx) = mpsc::channel(3);
 

@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::comms_interface::BlockEvent,
-    chain_storage::{BlockAddResult, BlockchainBackend},
+    chain_storage::BlockAddResult,
     mempool::{
         async_mempool,
         service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
@@ -44,19 +44,18 @@ pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 
 /// The MempoolInboundHandlers is used to handle all received inbound mempool requests and transactions from remote
 /// nodes.
-pub struct MempoolInboundHandlers<T> {
+#[derive(Clone)]
+pub struct MempoolInboundHandlers {
     event_publisher: Arc<RwLock<Publisher<MempoolStateEvent>>>,
-    mempool: Mempool<T>,
+    mempool: Mempool,
     outbound_nmi: OutboundMempoolServiceInterface,
 }
 
-impl<T> MempoolInboundHandlers<T>
-where T: BlockchainBackend + 'static
-{
+impl MempoolInboundHandlers {
     /// Construct the MempoolInboundHandlers.
     pub fn new(
         event_publisher: Publisher<MempoolStateEvent>,
-        mempool: Mempool<T>,
+        mempool: Mempool,
         outbound_nmi: OutboundMempoolServiceInterface,
     ) -> Self
     {
@@ -211,18 +210,5 @@ where T: BlockchainBackend + 'static
         }
 
         Ok(())
-    }
-}
-
-impl<T> Clone for MempoolInboundHandlers<T>
-where T: BlockchainBackend + 'static
-{
-    fn clone(&self) -> Self {
-        // All members use Arc's internally so calling clone should be cheap.
-        Self {
-            event_publisher: self.event_publisher.clone(),
-            mempool: self.mempool.clone(),
-            outbound_nmi: self.outbound_nmi.clone(),
-        }
     }
 }

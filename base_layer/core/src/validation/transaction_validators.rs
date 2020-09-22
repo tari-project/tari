@@ -21,11 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::BlockchainBackend,
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::{transaction::Transaction, types::CryptoFactories},
     validation::{
         helpers::{is_stxo, is_utxo},
-        StatelessValidation,
         Validation,
         ValidationError,
     },
@@ -35,89 +34,53 @@ use tari_crypto::tari_utilities::hash::Hashable;
 
 pub const LOG_TARGET: &str = "c::val::transaction_validators";
 
-/// This validator will only check that a transaction is internally consistent. It requires no state information.
-pub struct StatelessTxValidator {
+/// This validator will check the internal consistency of the transaction.
+///
+/// 1. The sum of inputs, outputs and fees equal the (public excess value + offset)
+/// 1. The signature signs the canonical message with the private excess
+/// 1. Range proofs of the outputs are valid
+///
+/// This function does NOT check that inputs come from the UTXO set
+pub struct TxInternalConsistencyValidator {
     factories: CryptoFactories,
 }
 
-impl StatelessTxValidator {
+impl TxInternalConsistencyValidator {
     pub fn new(factories: CryptoFactories) -> Self {
         Self { factories }
     }
 }
 
-impl StatelessValidation<Transaction> for StatelessTxValidator {
+impl Validation<Transaction> for TxInternalConsistencyValidator {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        verify_tx(tx, &self.factories)?;
-        Ok(())
-    }
-}
-
-/// This validator will perform a full verification of the transaction. In order the following will be checked:
-/// Transaction integrity, All inputs exist in the backend, All timelocks (kernel lock heights and output maturities)
-/// have passed
-pub struct FullTxValidator {
-    factories: CryptoFactories,
-}
-
-impl FullTxValidator {
-    pub fn new(factories: CryptoFactories) -> Self {
-        Self { factories }
-    }
-}
-
-impl<B: BlockchainBackend> Validation<Transaction, B> for FullTxValidator {
-    fn validate(&self, tx: &Transaction, db: &B) -> Result<(), ValidationError> {
-        verify_tx(tx, &self.factories)?;
-        verify_not_stxos(tx, db)?;
-        verify_inputs_are_utxos(tx, db)?;
-        let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain.unwrap_or(0);
-        verify_timelocks(tx, tip_height)?;
+        tx.validate_internal_consistency(&self.factories, None)
+            .map_err(ValidationError::TransactionError)?;
         Ok(())
     }
 }
 
 /// This validator assumes that the transaction was already validated and it will skip this step. It will only check, in
 /// order,: All inputs exist in the backend, All timelocks (kernel lock heights and output maturities) have passed
-pub struct TxInputAndMaturityValidator {}
+#[derive(Clone)]
+pub struct TxInputAndMaturityValidator<B> {
+    db: BlockchainDatabase<B>,
+}
 
-impl<B: BlockchainBackend> Validation<Transaction, B> for TxInputAndMaturityValidator {
-    fn validate(&self, tx: &Transaction, db: &B) -> Result<(), ValidationError> {
-        verify_not_stxos(tx, db)?;
-        verify_inputs_are_utxos(tx, db)?;
-        let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain.unwrap_or(0);
-        verify_timelocks(tx, tip_height)?;
-        Ok(())
+impl<B: BlockchainBackend> TxInputAndMaturityValidator<B> {
+    pub fn new(db: BlockchainDatabase<B>) -> Self {
+        Self { db }
     }
 }
 
-/// This validator will only check that inputs exists in the backend.
-pub struct InputTxValidator {}
-
-impl<B: BlockchainBackend> Validation<Transaction, B> for InputTxValidator {
-    fn validate(&self, tx: &Transaction, db: &B) -> Result<(), ValidationError> {
-        verify_not_stxos(tx, db)?;
-        verify_inputs_are_utxos(tx, db)?;
-        Ok(())
-    }
-}
-
-/// This validator will only check timelocks, it will check that kernel lock heights and output maturities have passed.
-pub struct TimeLockTxValidator {}
-
-impl<B: BlockchainBackend> Validation<Transaction, B> for TimeLockTxValidator {
-    fn validate(&self, tx: &Transaction, db: &B) -> Result<(), ValidationError> {
+impl<B: BlockchainBackend> Validation<Transaction> for TxInputAndMaturityValidator<B> {
+    fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        let db = self.db.db_read_access()?;
+        verify_not_stxos(tx, &*db)?;
+        verify_inputs_are_utxos(tx, &*db)?;
         let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
         verify_timelocks(tx, tip_height)?;
         Ok(())
     }
-}
-
-// This function verifies that the provided transaction is internally sound and that no funds were created in the
-// transaction.
-fn verify_tx(tx: &Transaction, factories: &CryptoFactories) -> Result<(), ValidationError> {
-    tx.validate_internal_consistency(factories, None)
-        .map_err(ValidationError::TransactionError)
 }
 
 // This function checks that all the timelocks in the provided transaction pass. It checks kernel lock heights and

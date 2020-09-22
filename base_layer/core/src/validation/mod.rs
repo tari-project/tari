@@ -35,7 +35,7 @@ pub use error::ValidationError;
 mod helpers;
 
 mod traits;
-pub use traits::{StatelessValidation, StatelessValidationExt, StatelessValidator, Validation, Validator};
+pub use traits::{StatefulValidation, StatefulValidator, Validation, ValidationExt, Validator};
 
 pub mod accum_difficulty_validators;
 pub mod block_validators;

@@ -89,7 +89,8 @@ use tari_core::{
     validation::{
         accum_difficulty_validators::AccumDifficultyValidator,
         block_validators::{FullConsensusValidator, StatelessBlockValidator},
-        transaction_validators::{FullTxValidator, TxInputAndMaturityValidator},
+        transaction_validators::{TxInputAndMaturityValidator, TxInternalConsistencyValidator},
+        ValidationExt,
     },
 };
 use tari_mmr::MmrCacheConfig;
@@ -368,9 +369,11 @@ where
         pruning_interval: config.pruned_mode_cleanup_interval,
     };
     let db = BlockchainDatabase::new(backend, &rules, validators, db_config).map_err(|e| e.to_string())?;
-    let mempool_validator =
-        MempoolValidators::new(FullTxValidator::new(factories.clone()), TxInputAndMaturityValidator {});
-    let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
+    let mempool_validator = MempoolValidators::new(
+        TxInternalConsistencyValidator::new(factories.clone()).and_then(TxInputAndMaturityValidator::new(db.clone())),
+        TxInputAndMaturityValidator::new(db.clone()),
+    );
+    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
     let handle = runtime::Handle::current();
 
     //---------------------------------- Base Node  --------------------------------------------//
@@ -813,7 +816,7 @@ async fn register_base_node_services<B>(
     dht: &Dht,
     db: BlockchainDatabase<B>,
     subscription_factory: Arc<SubscriptionFactory>,
-    mempool: Mempool<B>,
+    mempool: Mempool,
     consensus_manager: ConsensusManager,
     factories: CryptoFactories,
     sync_strategy: BlockSyncStrategy,

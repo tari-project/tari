@@ -28,7 +28,7 @@ use crate::{
         tari_amount::MicroTari,
         types::{BlindingFactor, Commitment, CryptoFactories, PrivateKey},
     },
-    validation::{StatelessValidation, ValidationError},
+    validation::{Validation, ValidationError},
 };
 use log::*;
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
@@ -48,7 +48,7 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
     }
 }
 
-impl<B: BlockchainBackend> StatelessValidation<u64> for ChainBalanceValidator<B> {
+impl<B: BlockchainBackend> Validation<u64> for ChainBalanceValidator<B> {
     fn validate(&self, horizon_height: &u64) -> Result<(), ValidationError> {
         let total_offset = self.fetch_total_offset_commitment(*horizon_height)?;
         let emission_h = self.get_emission_commitment_at(*horizon_height);

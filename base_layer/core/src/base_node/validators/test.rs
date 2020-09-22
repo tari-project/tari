@@ -35,7 +35,7 @@ use crate::{
         types::{Commitment, CryptoFactories},
     },
     txn_schema,
-    validation::{StatelessValidation, ValidationError},
+    validation::{Validation, ValidationError},
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, Hashable};
 use tari_test_utils::unpack_enum;

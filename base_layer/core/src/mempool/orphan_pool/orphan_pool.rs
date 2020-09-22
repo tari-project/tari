@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
     mempool::{
         consts::{MEMPOOL_ORPHAN_POOL_CACHE_TTL, MEMPOOL_ORPHAN_POOL_STORAGE_CAPACITY},
         orphan_pool::{error::OrphanPoolError, orphan_pool_storage::OrphanPoolStorage},
@@ -37,7 +36,7 @@ use std::{
 use tari_common::configuration::seconds;
 
 /// Configuration for the OrphanPool
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct OrphanPoolConfig {
     /// The maximum number of transactions that can be stored in the Orphan pool
     pub storage_capacity: usize,
@@ -58,22 +57,16 @@ impl Default for OrphanPoolConfig {
 /// The Orphan Pool contains all the received transactions that attempt to spend UTXOs that don't exist. These UTXOs
 /// might exist in the future if these transactions are from a series or set of transactions that need to be processed
 /// in a specific order. Some of these transactions might still be constrained by pending time-locks.
-pub struct OrphanPool<T> {
-    pool_storage: Arc<RwLock<OrphanPoolStorage<T>>>,
+#[derive(Clone)]
+pub struct OrphanPool {
+    pool_storage: Arc<RwLock<OrphanPoolStorage>>,
 }
 
-impl<T> OrphanPool<T>
-where T: BlockchainBackend
-{
+impl OrphanPool {
     /// Create a new OrphanPool with the specified configuration
-    pub fn new(
-        config: OrphanPoolConfig,
-        validator: Validator<Transaction, T>,
-        blockchain_db: BlockchainDatabase<T>,
-    ) -> Self
-    {
+    pub fn new(config: OrphanPoolConfig, validator: Validator<Transaction>) -> Self {
         Self {
-            pool_storage: Arc::new(RwLock::new(OrphanPoolStorage::new(config, validator, blockchain_db))),
+            pool_storage: Arc::new(RwLock::new(OrphanPoolStorage::new(config, validator))),
         }
     }
 
@@ -83,17 +76,7 @@ where T: BlockchainBackend
         self.pool_storage
             .write()
             .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
-            .insert(transaction);
-        Ok(())
-    }
-
-    #[cfg(test)]
-    /// Insert a set of new transactions into the OrphanPool
-    pub fn insert_txs(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), OrphanPoolError> {
-        self.pool_storage
-            .write()
-            .map_err(|e| OrphanPoolError::BackendError(e.to_string()))?
-            .insert_txs(transactions);
+            .insert(transaction)?;
         Ok(())
     }
 
@@ -145,25 +128,13 @@ where T: BlockchainBackend
     }
 }
 
-impl<T> Clone for OrphanPool<T>
-where T: BlockchainBackend
-{
-    fn clone(&self) -> Self {
-        OrphanPool {
-            pool_storage: self.pool_storage.clone(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use crate::{
-        consensus::{ConsensusManagerBuilder, Network},
-        helpers::create_mem_db,
         mempool::orphan_pool::{OrphanPool, OrphanPoolConfig},
         transactions::tari_amount::MicroTari,
         tx,
-        validation::transaction_validators::TxInputAndMaturityValidator,
+        validation::mocks::MockValidator,
     };
     use std::{sync::Arc, thread, time::Duration};
 
@@ -175,21 +146,18 @@ mod test {
         let tx4 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(200), lock: 1000, inputs: 2, outputs: 1).0);
         let tx5 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(500), lock: 2000, inputs: 2, outputs: 1).0);
         let tx6 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(600), lock: 5500, inputs: 2, outputs: 1).0);
-        let network = Network::LocalNet;
-        let consensus_manager = ConsensusManagerBuilder::new(network).build();
-        let store = create_mem_db(&consensus_manager);
-        let mempool_validator = Box::new(TxInputAndMaturityValidator {});
+        let mempool_validator = Box::new(MockValidator::new(true));
         let orphan_pool = OrphanPool::new(
             OrphanPoolConfig {
                 storage_capacity: 3,
                 tx_ttl: Duration::from_millis(50),
             },
             mempool_validator,
-            store.clone(),
         );
-        orphan_pool
-            .insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()])
-            .unwrap();
+
+        for tx in vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()] {
+            orphan_pool.insert(tx).unwrap();
+        }
         // Check that oldest utx was removed to make room for new incoming transaction
         assert_eq!(
             orphan_pool
@@ -224,7 +192,9 @@ mod test {
 
         // Check that transactions that have been in the pool for longer than their Time-to-live have been removed
         thread::sleep(Duration::from_millis(51));
-        orphan_pool.insert_txs(vec![tx5.clone(), tx6.clone()]).unwrap();
+        for tx in vec![tx5.clone(), tx6.clone()] {
+            orphan_pool.insert(tx).unwrap();
+        }
         assert_eq!(orphan_pool.len().unwrap(), 2);
         assert_eq!(
             orphan_pool

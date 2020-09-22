@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
     mempool::orphan_pool::{error::OrphanPoolError, orphan_pool::OrphanPoolConfig},
     transactions::{transaction::Transaction, types::Signature},
     validation::{ValidationError, Validator},
@@ -37,35 +36,32 @@ pub const LOG_TARGET: &str = "c::mp::orphan_pool::orphan_pool_storage";
 /// The Orphan Pool contains all the received transactions that attempt to spend UTXOs that don't exist. These UTXOs
 /// might exist in the future if these transactions are from a series or set of transactions that need to be processed
 /// in a specific order. Some of these transactions might still be constrained by pending time-locks.
-pub struct OrphanPoolStorage<T> {
+pub struct OrphanPoolStorage {
     config: OrphanPoolConfig,
     txs_by_signature: TtlCache<Signature, Arc<Transaction>>,
-    validator: Validator<Transaction, T>,
-    blockchain_db: BlockchainDatabase<T>,
+    validator: Validator<Transaction>,
 }
 
-impl<T> OrphanPoolStorage<T>
-where T: BlockchainBackend
-{
+impl OrphanPoolStorage {
     /// Create a new OrphanPoolStorage with the specified configuration
-    pub fn new(
-        config: OrphanPoolConfig,
-        validator: Validator<Transaction, T>,
-        blockchain_db: BlockchainDatabase<T>,
-    ) -> Self
-    {
+    pub fn new(config: OrphanPoolConfig, validator: Validator<Transaction>) -> Self {
         Self {
             config,
             txs_by_signature: TtlCache::new(config.storage_capacity),
             validator,
-            blockchain_db,
         }
     }
 
     /// Insert a new transaction into the OrphanPoolStorage. Orphaned transactions will have a limited Time-to-live and
     /// will be discarded if the UTXOs they require are not created before the Time-to-live threshold is reached.
-    pub fn insert(&mut self, tx: Arc<Transaction>) {
-        let tx_key = tx.body.kernels()[0].excess_sig.clone();
+    pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), OrphanPoolError> {
+        let tx_key = tx
+            .body
+            .kernels()
+            .first()
+            .ok_or_else(|| OrphanPoolError::InsertFailedNoKernels)?
+            .excess_sig
+            .clone();
         debug!(
             target: LOG_TARGET,
             "Inserting tx into orphan pool: {}",
@@ -73,14 +69,7 @@ where T: BlockchainBackend
         );
         trace!(target: LOG_TARGET, "Transaction inserted: {}", tx);
         let _ = self.txs_by_signature.insert(tx_key, tx, self.config.tx_ttl);
-    }
-
-    /// Insert a set of new transactions into the OrphanPoolStorage
-    #[allow(dead_code)]
-    pub fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) {
-        for tx in txs.into_iter() {
-            self.insert(tx);
-        }
+        Ok(())
     }
 
     /// Check if a transaction is stored in the OrphanPoolStorage
@@ -100,9 +89,7 @@ where T: BlockchainBackend
         // We dont care about tx's that appeared in valid blocks. Those tx's will time out in orphan pool and remove
         // them selves.
         for (tx_key, tx) in self.txs_by_signature.iter() {
-            let db = self.blockchain_db.db_read_access()?;
-
-            match self.validator.validate(&tx, &db) {
+            match self.validator.validate(&tx) {
                 Ok(()) => {
                     trace!(
                         target: LOG_TARGET,

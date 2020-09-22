@@ -59,7 +59,7 @@ const SUBSCRIPTION_LABEL: &str = "Base Node";
 pub struct BaseNodeServiceInitializer<T> {
     inbound_message_subscription_factory: Arc<SubscriptionFactory>,
     blockchain_db: BlockchainDatabase<T>,
-    mempool: Mempool<T>,
+    mempool: Mempool,
     consensus_manager: ConsensusManager,
     config: BaseNodeServiceConfig,
 }
@@ -71,7 +71,7 @@ where T: BlockchainBackend
     pub fn new(
         inbound_message_subscription_factory: Arc<SubscriptionFactory>,
         blockchain_db: BlockchainDatabase<T>,
-        mempool: Mempool<T>,
+        mempool: Mempool,
         consensus_manager: ConsensusManager,
         config: BaseNodeServiceConfig,
     ) -> Self
