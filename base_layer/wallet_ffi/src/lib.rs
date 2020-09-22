@@ -121,7 +121,10 @@ extern crate lazy_static;
 mod callback_handler;
 mod error;
 
-use crate::{callback_handler::CallbackHandler, error::InterfaceError};
+use crate::{
+    callback_handler::CallbackHandler,
+    error::{InterfaceError, TransactionError},
+};
 use core::ptr;
 use error::LibWalletError;
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong, c_ushort};
@@ -217,6 +220,9 @@ pub type TariTransportType = tari_p2p::transport::TransportType;
 pub type TariPublicKey = tari_comms::types::CommsPublicKey;
 pub type TariPrivateKey = tari_comms::types::CommsSecretKey;
 pub type TariCommsConfig = tari_p2p::initialization::CommsConfig;
+pub type TariExcess = tari_core::transactions::types::Commitment;
+pub type TariExcessPublicNonce = tari_crypto::ristretto::RistrettoPublicKey;
+pub type TariExcessSignature = tari_crypto::ristretto::RistrettoSecretKey;
 
 pub struct TariContacts(Vec<TariContact>);
 
@@ -442,6 +448,57 @@ pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *m
 pub unsafe extern "C" fn public_key_destroy(pk: *mut TariPublicKey) {
     if !pk.is_null() {
         Box::from_raw(pk);
+    }
+}
+
+/// Frees memory for a TariExcess
+///
+/// ## Arguments
+/// `x` - The pointer to a TariExcess
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn excess_destroy(x: *mut TariExcess) {
+    if !x.is_null() {
+        Box::from_raw(x);
+    }
+}
+
+/// Frees memory for a TariExcessPublicNonce
+///
+/// ## Arguments
+/// `r` - The pointer to a TariExcessPublicNonce
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn nonce_destroy(r: *mut TariExcessPublicNonce) {
+    if !r.is_null() {
+        Box::from_raw(r);
+    }
+}
+
+/// Frees memory for a TariExcessSignature
+///
+/// ## Arguments
+/// `s` - The pointer to a TariExcessSignature
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn signature_destroy(s: *mut TariExcessSignature) {
+    if !s.is_null() {
+        Box::from_raw(s);
     }
 }
 
@@ -1343,7 +1400,7 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_id(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TairPublicKey` - Returns the destination TariPublicKey, note that it will be
+/// `*mut TariPublicKey` - Returns the destination TariPublicKey, note that it will be
 /// ptr::null_mut() if transaction is null
 ///
 /// # Safety
@@ -1365,6 +1422,168 @@ pub unsafe extern "C" fn completed_transaction_get_destination_public_key(
     Box::into_raw(Box::new(m))
 }
 
+/// Gets the TariExcess of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariExcess` - Returns the transaction excess, note that it will be
+/// ptr::null_mut() if transaction is null, if the transaction status is Pending, or if the number of kernels is not
+/// exactly one.
+///
+/// # Safety
+/// The ```excess_destroy``` method must be called when finished with a TariExcess to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_excess(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> *mut TariExcess
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    // check the tx is not in pending state
+    if matches!(
+        (*transaction).status,
+        TransactionStatus::Pending | TransactionStatus::Imported
+    ) {
+        let msg = format!("Incorrect transaction status: {}", (*transaction).status);
+        error = LibWalletError::from(TransactionError::StatusError(msg)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let kernels = (*transaction).transaction.get_body().kernels();
+
+    // currently we presume that each CompletedTransaction only has 1 kernel
+    // if that changes this will need to be accounted for
+    if kernels.len() != 1 {
+        let msg = format!("Expected 1 kernel, got {}", kernels.len());
+        error = LibWalletError::from(TransactionError::KernelError(msg)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let x = kernels[0].excess.clone();
+    Box::into_raw(Box::new(x))
+}
+
+/// Gets the TariExcessPublicNonce of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariExcessPublicNonce` - Returns the transaction excess public nonce, note that it will be
+/// ptr::null_mut() if transaction is null, if the transaction status is Pending, or if the number of kernels is not
+/// exactly one.
+///
+/// # Safety
+/// The ```nonce_destroy``` method must be called when finished with a TariExcessPublicNonce to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_public_nonce(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> *mut TariExcessPublicNonce
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    // check the tx is not in pending state
+    if matches!(
+        (*transaction).status,
+        TransactionStatus::Pending | TransactionStatus::Imported
+    ) {
+        let msg = format!("Incorrect transaction status: {}", (*transaction).status);
+        error = LibWalletError::from(TransactionError::StatusError(msg)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let kernels = (*transaction).transaction.get_body().kernels();
+
+    // currently we presume that each CompletedTransaction only has 1 kernel
+    // if that changes this will need to be accounted for
+    if kernels.len() != 1 {
+        let msg = format!("Expected 1 kernel, got {}", kernels.len());
+        error = LibWalletError::from(TransactionError::KernelError(msg)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let r = kernels[0].excess_sig.get_public_nonce().clone();
+    Box::into_raw(Box::new(r))
+}
+
+/// Gets the TariExcessSignature of a TariCompletedTransaction
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariExcessSignature` - Returns the transaction excess signature, note that it will be
+/// ptr::null_mut() if transaction is null, if the transaction status is Pending, or if the number of kernels is not
+/// exactly one.
+///
+/// # Safety
+/// The ```signature_destroy``` method must be called when finished with a TariExcessSignature to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_signature(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> *mut TariExcessSignature
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    // check the tx is not in pending state
+    if matches!(
+        (*transaction).status,
+        TransactionStatus::Pending | TransactionStatus::Imported
+    ) {
+        let msg = format!("Incorrect transaction status: {}", (*transaction).status);
+        error = LibWalletError::from(TransactionError::StatusError(msg)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let kernels = (*transaction).transaction.get_body().kernels();
+
+    // currently we presume that each CompletedTransaction only has 1 kernel
+    // if that changes this will need to be accounted for
+    if kernels.len() != 1 {
+        let msg = format!("Expected 1 kernel, got {}", kernels.len());
+        error = LibWalletError::from(TransactionError::KernelError(msg)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let s = kernels[0].excess_sig.get_signature().clone();
+    Box::into_raw(Box::new(s))
+}
+
 /// Gets the source TariPublicKey of a TariCompletedTransaction
 ///
 /// ## Arguments
@@ -1373,7 +1592,7 @@ pub unsafe extern "C" fn completed_transaction_get_destination_public_key(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TairPublicKey` - Returns the source TariPublicKey, note that it will be
+/// `*mut TariPublicKey` - Returns the source TariPublicKey, note that it will be
 /// ptr::null_mut() if transaction is null
 ///
 /// # Safety
@@ -5497,18 +5716,43 @@ mod test {
             }
 
             // TODO: Test transaction collection and transaction methods
-            let completed_transactions: std::collections::HashMap<
-                u64,
-                tari_wallet::transaction_service::storage::models::CompletedTransaction,
-            > = (*alice_wallet)
+            let completed_transactions = (*alice_wallet)
                 .runtime
                 .block_on((*alice_wallet).wallet.transaction_service.get_completed_transactions())
                 .unwrap();
+
             for (_k, v) in completed_transactions {
                 if v.status == TransactionStatus::Completed {
                     let tx_ptr = Box::into_raw(Box::new(v.clone()));
                     wallet_test_broadcast_transaction(alice_wallet, (*tx_ptr).tx_id, error_ptr);
                     wallet_test_mine_transaction(alice_wallet, (*tx_ptr).tx_id, error_ptr);
+                    // test ffi calls for excess, public nonce, and signature
+                    let kernels = v.transaction.get_body().kernels();
+                    if !kernels.is_empty() {
+                        for k in kernels {
+                            let x = completed_transaction_get_excess(tx_ptr, error_ptr);
+                            assert_eq!(k.excess, *x);
+                            excess_destroy(x);
+                            let nonce = k.excess_sig.get_public_nonce().clone();
+                            let r = completed_transaction_get_public_nonce(tx_ptr, error_ptr);
+                            assert_eq!(nonce, *r);
+                            nonce_destroy(r);
+                            let sig = k.excess_sig.get_signature().clone();
+                            let s = completed_transaction_get_signature(tx_ptr, error_ptr);
+                            assert_eq!(sig, *s);
+                            signature_destroy(s);
+                        }
+                    } else {
+                        let x = completed_transaction_get_excess(tx_ptr, error_ptr);
+                        assert!(x.is_null());
+                        excess_destroy(x);
+                        let r = completed_transaction_get_public_nonce(tx_ptr, error_ptr);
+                        assert!(r.is_null());
+                        nonce_destroy(r);
+                        let s = completed_transaction_get_signature(tx_ptr, error_ptr);
+                        assert!(s.is_null());
+                        signature_destroy(s);
+                    }
                 }
             }
 
@@ -5598,7 +5842,19 @@ mod test {
                 .unwrap();
 
             let mut inbound_tx_id = 0;
-            for (k, _) in inbound_txs {
+            for (k, v) in inbound_txs {
+                // test ffi calls for excess, public nonce, and signature when given a pending tx
+                let tx_ptr = Box::into_raw(Box::new(CompletedTransaction::from(v.clone())));
+                let x = completed_transaction_get_excess(tx_ptr, error_ptr);
+                assert!(x.is_null());
+                excess_destroy(x);
+                let r = completed_transaction_get_public_nonce(tx_ptr, error_ptr);
+                assert!(r.is_null());
+                nonce_destroy(r);
+                let s = completed_transaction_get_signature(tx_ptr, error_ptr);
+                assert!(s.is_null());
+                signature_destroy(s);
+
                 inbound_tx_id = k;
 
                 let inbound_tx = wallet_get_cancelled_transaction_by_id(&mut (*alice_wallet), inbound_tx_id, error_ptr);

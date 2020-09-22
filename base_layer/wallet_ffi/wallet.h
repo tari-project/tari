@@ -75,6 +75,12 @@ struct TariSeedWords;
 
 struct EmojiSet;
 
+struct TariExcess;
+
+struct TariExcessPublicNonce;
+
+struct TariExcessSignature;
+
 /// -------------------------------- Transport Types ----------------------------------------------- ///
 
 // Creates a memory transport type
@@ -236,6 +242,24 @@ bool completed_transaction_is_outbound(struct TariCompletedTransaction *tx,int* 
 
 // Frees memory for a TariCompletedTransaction
 void completed_transaction_destroy(struct TariCompletedTransaction *transaction);
+
+// Gets the TariExcess of a TariCompletedTransaction
+struct TariExcess *completed_transaction_get_excess(struct TariCompletedTransaction *transaction,int* error_out);
+
+// Gets the TariExcessPublicNonce of a TariCompletedTransaction
+struct TariExcessPublicNonce *completed_transaction_get_public_nonce(struct TariCompletedTransaction *transaction,int* error_out);
+
+// Gets the TariExcessSignature of a TariCompletedTransaction
+struct TariExcessSignature *completed_transaction_get_signature(struct TariCompletedTransaction *transaction,int* error_out);
+
+// Frees memory for a TariExcess
+void excess_destroy(struct TariExcess *excess);
+
+// Frees memory for a TariExcessPublicNonce
+void nonce_destroy(struct TariExcessPublicNonce *nonce);
+
+// Frees memory for a TariExcessSignature
+void signature_destroy(struct TariExcessSignature *signature);
 
 /// -------------------------------- CompletedTransactions ------------------------------------------------------ ///
 
