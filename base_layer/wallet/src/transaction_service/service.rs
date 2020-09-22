@@ -523,17 +523,10 @@ where
                     self.db.get_completed_transaction(tx_id).await?,
                 )))
             },
-            TransactionServiceRequest::SetBaseNodePublicKey(public_key) => self
-                .set_base_node_public_key(
-                    public_key,
-                    transaction_broadcast_join_handles,
-                    chain_monitoring_join_handles,
-                    send_transaction_join_handles,
-                    receive_transaction_join_handles,
-                    coinbase_monitoring_join_handles,
-                )
-                .await
-                .map(|_| TransactionServiceResponse::BaseNodePublicKeySet),
+            TransactionServiceRequest::SetBaseNodePublicKey(public_key) => {
+                self.set_base_node_public_key(public_key);
+                Ok(TransactionServiceResponse::BaseNodePublicKeySet)
+            },
             TransactionServiceRequest::ImportUtxo(value, source_public_key, message) => self
                 .add_utxo_import_transaction(value, source_public_key, message)
                 .await
@@ -592,6 +585,22 @@ where
                 .await
                 .map(|_| TransactionServiceResponse::EncryptionRemoved)
                 .map_err(TransactionServiceError::TransactionStorageError),
+            TransactionServiceRequest::RestartTransactionProtocols => self
+                .restart_transaction_negotiation_protocols(
+                    send_transaction_join_handles,
+                    receive_transaction_join_handles,
+                )
+                .await
+                .map(|_| TransactionServiceResponse::ProtocolsRestarted),
+
+            TransactionServiceRequest::RestartBroadcastProtocols => self
+                .restart_broadcast_protocols(
+                    transaction_broadcast_join_handles,
+                    chain_monitoring_join_handles,
+                    coinbase_monitoring_join_handles,
+                )
+                .await
+                .map(|_| TransactionServiceResponse::ProtocolsRestarted),
         }
     }
 
@@ -1096,10 +1105,19 @@ where
             Err(TransactionServiceProtocolError { id, error }) => {
                 let _ = self.finalized_transaction_senders.remove(&id);
                 let _ = self.receiver_transaction_cancellation_senders.remove(&id);
-                warn!(
-                    target: LOG_TARGET,
-                    "Error completing Receive Transaction Protocol (Id: {}): {:?}", id, error
-                );
+                match error {
+                    TransactionServiceError::RepeatedMessageError => debug!(
+                        target: LOG_TARGET,
+                        "Receive Transaction Protocol (Id: {}) aborted as it is a repeated transaction that has \
+                         already been processed",
+                        id
+                    ),
+                    _ => warn!(
+                        target: LOG_TARGET,
+                        "Error completing Receive Transaction Protocol (Id: {}): {}", id, error
+                    ),
+                }
+
                 let _ = self
                     .event_publisher
                     .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
@@ -1145,80 +1163,84 @@ where
     /// Add a base node public key to the list that will be used to broadcast transactions and monitor the base chain
     /// for the presence of spendable outputs. If this is the first time the base node public key is set do the initial
     /// mempool broadcast
-    async fn set_base_node_public_key(
+    fn set_base_node_public_key(&mut self, base_node_public_key: CommsPublicKey) {
+        self.base_node_public_key = Some(base_node_public_key);
+    }
+
+    async fn restart_transaction_negotiation_protocols(
         &mut self,
-        base_node_public_key: CommsPublicKey,
-        broadcast_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
-        chain_monitoring_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
         send_transaction_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
         receive_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
+    ) -> Result<(), TransactionServiceError>
+    {
+        trace!(target: LOG_TARGET, "Restarting transaction negotiation protocols");
+        self.restart_all_send_transaction_protocols(send_transaction_join_handles)
+            .await
+            .map_err(|resp| {
+                error!(
+                    target: LOG_TARGET,
+                    "Error restarting protocols for all pending outbound transactions: {:?}", resp
+                );
+                resp
+            })?;
+
+        self.restart_all_receive_transaction_protocols(receive_transaction_join_handles)
+            .await
+            .map_err(|resp| {
+                error!(
+                    target: LOG_TARGET,
+                    "Error restarting protocols for all coinbase transactions: {:?}", resp
+                );
+                resp
+            })?;
+
+        Ok(())
+    }
+
+    async fn restart_broadcast_protocols(
+        &mut self,
+        broadcast_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+        chain_monitoring_join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
         coinbase_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
         >,
     ) -> Result<(), TransactionServiceError>
     {
-        let startup_broadcast = self.base_node_public_key.is_none();
-
-        self.base_node_public_key = Some(base_node_public_key);
-
-        if startup_broadcast {
-            let _ = self
-                .broadcast_all_completed_transactions_to_mempool(broadcast_join_handles)
-                .await
-                .map_err(|resp| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Error broadcasting all completed transactions: {:?}", resp
-                    );
-                    resp
-                });
-
-            let _ = self
-                .start_chain_monitoring_for_all_broadcast_transactions(chain_monitoring_join_handles)
-                .await
-                .map_err(|resp| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Error querying base_node for all completed transactions: {:?}", resp
-                    );
-                    resp
-                });
-
-            let _ = self
-                .restart_all_send_transaction_protocols(send_transaction_join_handles)
-                .await
-                .map_err(|resp| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Error restarting protocols for all pending outbound transactions: {:?}", resp
-                    );
-                    resp
-                });
-
-            let _ = self
-                .restart_all_receive_transaction_protocols(receive_transaction_join_handles)
-                .await
-                .map_err(|resp| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Error restarting protocols for all pending inbound transactions: {:?}", resp
-                    );
-                    resp
-                });
-
-            let _ = self
-                .restart_chain_monitoring_for_all_coinbase_transactions(coinbase_transaction_join_handles)
-                .await
-                .map_err(|resp| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Error restarting protocols for all coinbase transactions: {:?}", resp
-                    );
-                    resp
-                });
+        if self.base_node_public_key.is_none() {
+            return Err(TransactionServiceError::NoBaseNodeKeysProvided);
         }
+        trace!(target: LOG_TARGET, "Restarting transaction broadcast protocols");
+        self.broadcast_all_completed_transactions_to_mempool(broadcast_join_handles)
+            .await
+            .map_err(|resp| {
+                error!(
+                    target: LOG_TARGET,
+                    "Error broadcasting all completed transactions: {:?}", resp
+                );
+                resp
+            })?;
+
+        self.start_chain_monitoring_for_all_broadcast_transactions(chain_monitoring_join_handles)
+            .await
+            .map_err(|resp| {
+                error!(
+                    target: LOG_TARGET,
+                    "Error querying base_node for all completed transactions: {:?}", resp
+                );
+                resp
+            })?;
+
+        self.restart_chain_monitoring_for_all_coinbase_transactions(coinbase_transaction_join_handles)
+            .await
+            .map_err(|resp| {
+                error!(
+                    target: LOG_TARGET,
+                    "Error restarting protocols for all coinbase transactions: {:?}", resp
+                );
+                resp
+            })?;
         Ok(())
     }
 

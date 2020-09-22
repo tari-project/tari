@@ -2722,7 +2722,7 @@ pub unsafe extern "C" fn wallet_create(
             ));
 
             match w {
-                Ok(w) => {
+                Ok(mut w) => {
                     // Start Callback Handler
                     let callback_handler = CallbackHandler::new(
                         TransactionDatabase::new(transaction_backend),
@@ -2744,6 +2744,13 @@ pub unsafe extern "C" fn wallet_create(
                     );
 
                     runtime.spawn(callback_handler.start());
+
+                    if let Err(e) = runtime.block_on(w.transaction_service.restart_transaction_protocols()) {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Could not restart transaction negotiation protocols: {}", e
+                        );
+                    }
 
                     let tari_wallet = TariWallet { wallet: w, runtime };
 
@@ -3212,18 +3219,25 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
         return false;
     }
 
-    match (*wallet).runtime.block_on(
+    if let Err(e) = (*wallet).runtime.block_on(
         (*wallet)
             .wallet
             .set_base_node_peer((*public_key).clone(), address_string),
     ) {
-        Ok(_) => true,
-        Err(e) => {
-            error = LibWalletError::from(e).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            false
-        },
+        error = LibWalletError::from(e).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
     }
+    if let Err(e) = (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.transaction_service.restart_broadcast_protocols())
+    {
+        error = LibWalletError::from(WalletError::from(e)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    return true;
 }
 
 /// Upserts a TariContact to the TariWallet. If the contact does not exist it will be Inserted. If it does exist the

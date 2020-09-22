@@ -1768,6 +1768,8 @@ fn test_power_mode_updates() {
     runtime
         .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
         .unwrap();
+
+    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
     // Wait for first 4 messages
     alice_outbound_service
         .wait_call_count(4, Duration::from_secs(30))
@@ -1851,9 +1853,13 @@ fn broadcast_all_completed_transactions_on_startup() {
     let (mut alice_ts, _, _, _, _, _, _, _, _) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), db, None);
 
+    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_err());
+
     runtime
         .block_on(alice_ts.set_base_node_public_key(PublicKey::default()))
         .unwrap();
+
+    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
 
     let mut event_stream = alice_ts.get_event_stream_fused();
     runtime.block_on(async {
@@ -2085,6 +2091,7 @@ fn transaction_base_node_monitoring() {
     runtime
         .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
         .unwrap();
+    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
 
     // Wait for 2 pairs of BN and Mempool requests from the two transactions and burn them
     let _ = alice_outbound_service.wait_call_count(4, Duration::from_secs(60));
@@ -2165,7 +2172,7 @@ fn transaction_base_node_monitoring() {
                 outputs: wrong_outputs.into(),
             },
         )),
-        is_synced: false,
+        is_synced: true,
     };
 
     runtime
@@ -2237,7 +2244,7 @@ fn transaction_base_node_monitoring() {
                 outputs: broadcast_tx_outputs.into(),
             },
         )),
-        is_synced: false,
+        is_synced: true,
     };
 
     runtime
@@ -2254,7 +2261,7 @@ fn transaction_base_node_monitoring() {
                 outputs: completed_tx_outputs.into(),
             },
         )),
-        is_synced: false,
+        is_synced: true,
     };
 
     runtime
@@ -2378,6 +2385,8 @@ fn query_all_completed_transactions_on_startup() {
     runtime
         .block_on(alice_ts.set_base_node_public_key(PublicKey::default()))
         .unwrap();
+
+    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
 
     runtime.block_on(async {
         let mut delay = delay_for(Duration::from_secs(60)).fuse();
@@ -2538,6 +2547,8 @@ fn transaction_cancellation_when_not_in_mempool() {
     runtime
         .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
         .unwrap();
+
+    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
 
     let mempool_response = MempoolProto::MempoolServiceResponse {
         request_key: tx_id,
@@ -3469,6 +3480,7 @@ fn test_restarting_transaction_protocols() {
     runtime
         .block_on(bob_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
         .unwrap();
+    assert!(runtime.block_on(bob_ts.restart_transaction_protocols()).is_ok());
 
     runtime
         .block_on(bob_tx_reply.send(create_dummy_message(alice_reply.into(), &alice_identity.public_key())))
@@ -3502,6 +3514,7 @@ fn test_restarting_transaction_protocols() {
     runtime
         .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
         .unwrap();
+    assert!(runtime.block_on(alice_ts.restart_transaction_protocols()).is_ok());
 
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
         tx_id,
@@ -3636,6 +3649,8 @@ fn test_handling_coinbase_transactions() {
     runtime
         .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
         .unwrap();
+
+    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
 
     // Two Coinbase Monitoring Protocols should be started at this stage.
     alice_outbound_service
@@ -4116,6 +4131,9 @@ fn test_resend_on_startup() {
     runtime
         .block_on(alice_ts.set_base_node_public_key(alice_node_identity.public_key().clone()))
         .unwrap();
+    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
+    assert!(runtime.block_on(alice_ts.restart_transaction_protocols()).is_ok());
+
     // Check that if the cooldown is not done that a message will not be sent.
     assert!(alice_outbound_service
         .wait_call_count(1, Duration::from_secs(5))
@@ -4150,6 +4168,9 @@ fn test_resend_on_startup() {
     runtime
         .block_on(alice_ts2.set_base_node_public_key(alice_node_identity.public_key().clone()))
         .unwrap();
+    assert!(runtime.block_on(alice_ts2.restart_broadcast_protocols()).is_ok());
+    assert!(runtime.block_on(alice_ts2.restart_transaction_protocols()).is_ok());
+
     // Check for resend on startup
     alice_outbound_service2
         .wait_call_count(1, Duration::from_secs(30))
@@ -4210,6 +4231,9 @@ fn test_resend_on_startup() {
     runtime
         .block_on(bob_ts.set_base_node_public_key(alice_node_identity.public_key().clone()))
         .unwrap();
+    assert!(runtime.block_on(bob_ts.restart_broadcast_protocols()).is_ok());
+    assert!(runtime.block_on(bob_ts.restart_transaction_protocols()).is_ok());
+
     // Check that if the cooldown is not done that a message will not be sent.
     assert!(bob_outbound_service.wait_call_count(1, Duration::from_secs(5)).is_err());
     drop(bob_ts);
@@ -4242,6 +4266,9 @@ fn test_resend_on_startup() {
     runtime
         .block_on(bob_ts2.set_base_node_public_key(alice_node_identity.public_key().clone()))
         .unwrap();
+
+    assert!(runtime.block_on(bob_ts2.restart_broadcast_protocols()).is_ok());
+    assert!(runtime.block_on(bob_ts2.restart_transaction_protocols()).is_ok());
     // Check for resend on startup
 
     bob_outbound_service2
@@ -4520,6 +4547,8 @@ fn test_transaction_timeout_cancellation() {
     runtime
         .block_on(bob_ts.set_base_node_public_key(bob_node_identity.public_key().clone()))
         .unwrap();
+    assert!(runtime.block_on(bob_ts.restart_broadcast_protocols()).is_ok());
+    assert!(runtime.block_on(bob_ts.restart_transaction_protocols()).is_ok());
 
     // Make sure we receive this before the timeout as it should be sent immideately on startup
     bob_outbound_service
