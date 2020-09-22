@@ -29,7 +29,7 @@ use crate::{
     },
     chain_storage::{calculate_mmr_roots, BlockchainBackend, DbKey},
     consensus::{ConsensusConstants, ConsensusManager},
-    transactions::{transaction::OutputFlags, types::CryptoFactories},
+    transactions::types::CryptoFactories,
     validation::{
         helpers::{check_achieved_and_target_difficulty, check_median_timestamp, is_stxo},
         StatelessValidation,
@@ -284,10 +284,6 @@ fn check_duplicate_transactions_inputs(block: &Block) -> Result<(), ValidationEr
 /// This function checks that all inputs in the blocks are valid UTXO's to be spend
 fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     for utxo in block.body.inputs() {
-        if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
-            continue;
-        }
-
         if !db.contains(&DbKey::UnspentOutput(utxo.hash()))? {
             warn!(
                 target: LOG_TARGET,
