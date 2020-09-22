@@ -56,6 +56,8 @@ service BaseNode {
     rpc SubmitBlock(Block) returns (Empty);
     // Get the base node tip information
     rpc GetTipInfo(Empty) returns (TipInfoResponse);
+    // Search for blocks containing the specified kernels
+    rpc SearchKernels(SearchKernelsRequest) returns (stream HistoricalBlock);
 }
 
 /// return type of GetTipInfo
@@ -158,7 +160,7 @@ message ListHeadersRequest {
 
 // The request used for querying blocks in the base node's current best chain. Currently only querying by height is
 // available. Multiple blocks may be queried.e.g. [189092,100023,122424]. The order in which they are returned is not
-// guarenteed.
+// guaranteed.
 message GetBlocksRequest {
   repeated uint64 heights = 1;
 }
@@ -189,7 +191,7 @@ message MetaData {
 
 // This is the message that is returned for a miner after it asks for a new block.
 message GetNewBlockResult{
-    // This is the header hash of the complated block
+    // This is the header hash of the completed block
     bytes block_hash = 1;
     // This is the completed block
     Block block = 2;
@@ -203,4 +205,9 @@ message MinerData{
     uint64 target_difficulty = 2;
     uint64 reward = 3;
     bytes mergemining_hash =4;
+}
+
+// This is the request type for the Search Kernels rpc
+message SearchKernelsRequest{
+    repeated Signature signatures = 1;
 }
