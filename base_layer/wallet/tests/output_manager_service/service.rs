@@ -119,6 +119,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + Clone + 'static>(
             OutputManagerServiceConfig {
                 base_node_query_timeout: Duration::from_secs(10),
                 max_utxo_query_size: 2,
+                ..Default::default()
             },
             outbound_message_requester.clone(),
             ts_handle.clone(),
