@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{blocks::BlockHeader, proof_of_work::Difficulty, tari_utilities::ByteArray, U256};
+use log::*;
 use monero::{
     blockdata::{
         block::{Block as MoneroBlock, BlockHeader as MoneroBlockHeader},
@@ -32,17 +33,22 @@ use monero::{
 };
 use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
 use serde::{Deserialize, Serialize};
-use std::iter;
+use std::{
+    fmt::{Display, Error, Formatter},
+    iter,
+};
+use tari_crypto::tari_utilities::hex::Hex;
 use thiserror::Error;
 
 const MAX_TARGET: U256 = U256::MAX;
+pub const LOG_TARGET: &str = "c::pow::monero_rx";
 
-#[derive(Debug, Error, Clone)]
+#[derive(Debug, Error)]
 pub enum MergeMineError {
     #[error("Serialization error: {0}")]
     SerializeError(String),
-    #[error("Error deserializing Monero data")]
-    DeserializeError,
+    #[error("Error deserializing Monero data: {0}")]
+    DeserializeError(String),
     #[error("Hashing of Monero data failed: {0}")]
     HashingError(String),
     #[error("RandomX error: {0}")]
@@ -68,6 +74,16 @@ pub struct MoneroData {
     pub transaction_hashes: Vec<[u8; 32]>,
     // Coinbase tx from Monero
     pub coinbase_tx: MoneroTransaction,
+}
+
+impl Display for MoneroData {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        writeln!(fmt, "MoneroBlockHeader: {} ", self.header)?;
+        writeln!(fmt, "RandomX vm key: {}", self.key)?;
+        writeln!(fmt, "Monero tx count: {}", self.count.to_string())?;
+        writeln!(fmt, "Monero tx root: {}", self.transaction_root.to_hex())?;
+        writeln!(fmt, "Monero coinbase tx: {}", self.coinbase_tx)
+    }
 }
 
 // Hash algorithm in monero
@@ -161,7 +177,11 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
 
 impl MoneroData {
     pub fn new(tari_header: &BlockHeader) -> Result<MoneroData, MergeMineError> {
-        bincode::deserialize(&tari_header.pow.pow_data).map_err(|_| MergeMineError::DeserializeError)
+        bincode::deserialize(&tari_header.pow.pow_data).map_err(|e| MergeMineError::DeserializeError(e.to_string()))
+    }
+
+    pub fn new_from_pow(pow_data: &Vec<u8>) -> Result<MoneroData, MergeMineError> {
+        bincode::deserialize(pow_data).map_err(|e| MergeMineError::DeserializeError(e.to_string()))
     }
 }
 
