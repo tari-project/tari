@@ -399,7 +399,7 @@ pub struct ListHeadersRequest {
 }
 /// The request used for querying blocks in the base node's current best chain. Currently only querying by height is
 /// available. Multiple blocks may be queried.e.g. [189092,100023,122424]. The order in which they are returned is not
-/// guarenteed.
+/// guaranteed.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetBlocksRequest {
     #[prost(uint64, repeated, tag = "1")]
@@ -430,7 +430,7 @@ pub struct MetaData {
 /// This is the message that is returned for a miner after it asks for a new block.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct GetNewBlockResult {
-    /// This is the header hash of the complated block
+    /// This is the header hash of the completed block
     #[prost(bytes, tag = "1")]
     pub block_hash: std::vec::Vec<u8>,
     /// This is the completed block
@@ -451,6 +451,12 @@ pub struct MinerData {
     pub reward: u64,
     #[prost(bytes, tag = "4")]
     pub mergemining_hash: std::vec::Vec<u8>,
+}
+/// This is the request type for the Search Kernels rpc
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SearchKernelsRequest {
+    #[prost(message, repeated, tag = "1")]
+    pub signatures: ::std::vec::Vec<Signature>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -683,6 +689,20 @@ pub mod base_node_client {
             let path = http::uri::PathAndQuery::from_static("/tari.rpc.BaseNode/GetTipInfo");
             self.inner.unary(request.into_request(), path, codec).await
         }
+
+        #[doc = " Search for blocks containing the specified kernels"]
+        pub async fn search_kernels(
+            &mut self,
+            request: impl tonic::IntoRequest<super::SearchKernelsRequest>,
+        ) -> Result<tonic::Response<tonic::codec::Streaming<super::HistoricalBlock>>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(tonic::Code::Unknown, format!("Service was not ready: {}", e.into()))
+            })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/tari.rpc.BaseNode/SearchKernels");
+            self.inner.server_streaming(request.into_request(), path, codec).await
+        }
     }
     impl<T: Clone> Clone for BaseNodeClient<T> {
         fn clone(&self) -> Self {
@@ -783,6 +803,13 @@ pub mod base_node_server {
             &self,
             request: tonic::Request<super::Empty>,
         ) -> Result<tonic::Response<super::TipInfoResponse>, tonic::Status>;
+        #[doc = "Server streaming response type for the SearchKernels method."]
+        type SearchKernelsStream: Stream<Item = Result<super::HistoricalBlock, tonic::Status>> + Send + Sync + 'static;
+        #[doc = " Search for blocks containing the specified kernels"]
+        async fn search_kernels(
+            &self,
+            request: tonic::Request<super::SearchKernelsRequest>,
+        ) -> Result<tonic::Response<Self::SearchKernelsStream>, tonic::Status>;
     }
     #[doc = " The gRPC interface for interacting with the base node."]
     #[derive(Debug)]
@@ -1198,6 +1225,36 @@ pub mod base_node_server {
                             tonic::server::Grpc::new(codec)
                         };
                         let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                },
+                "/tari.rpc.BaseNode/SearchKernels" => {
+                    #[allow(non_camel_case_types)]
+                    struct SearchKernelsSvc<T: BaseNode>(pub Arc<T>);
+                    impl<T: BaseNode> tonic::server::ServerStreamingService<super::SearchKernelsRequest> for SearchKernelsSvc<T> {
+                        type Future = BoxFuture<tonic::Response<Self::ResponseStream>, tonic::Status>;
+                        type Response = super::HistoricalBlock;
+                        type ResponseStream = T::SearchKernelsStream;
+
+                        fn call(&mut self, request: tonic::Request<super::SearchKernelsRequest>) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move { inner.search_kernels(request).await };
+                            Box::pin(fut)
+                        }
+                    }
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let interceptor = inner.1;
+                        let inner = inner.0;
+                        let method = SearchKernelsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = if let Some(interceptor) = interceptor {
+                            tonic::server::Grpc::with_interceptor(codec, interceptor)
+                        } else {
+                            tonic::server::Grpc::new(codec)
+                        };
+                        let res = grpc.server_streaming(method, req).await;
                         Ok(res)
                     };
                     Box::pin(fut)

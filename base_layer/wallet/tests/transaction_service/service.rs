@@ -930,7 +930,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clon
             futures::select! {
                 event = alice_event_stream.select_next_some() => {
                     if let TransactionEvent::Error(s) = &*event.unwrap() {
-                        if s == &"TransactionError(ValidationError(\"Transaction could not be finalized\"))".to_string() {
+                        if s == &"TransactionProtocolError(TransactionBuildError(InvalidSignatureError))".to_string() {
                             errors+=1;
                         }
                         if errors >= 2 {
@@ -3425,7 +3425,7 @@ fn test_restarting_transaction_protocols() {
         .unwrap();
 
     match bob_stp.finalize(KernelFeatures::empty(), &factories) {
-        Ok(true) => (),
+        Ok(_0) => (),
         _ => assert!(false, "Should be able to finalize tx"),
     };
     let tx = bob_stp.clone().get_transaction().unwrap().clone();

@@ -32,6 +32,28 @@ commands:
       - run:
           name: Run tests
           command: cargo test --workspace --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+      - save_cache:
+          paths:
+            - /usr/local/cargo/registry
+            - target
+          key: v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
+  clippy:
+    description: cargo clippy
+    steps:
+      - run:
+          name: Calculate dependencies
+          command: |
+            rustc --version >rust-version
+            test -e Cargo.lock || cargo generate-lockfile
+      - restore_cache:
+          keys:
+            - v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-{{checksum "Cargo.lock"}}
+      - run:
+          name: Cargo fmt
+          command: |
+            TOOLCHAIN=$(cat rust-toolchain)
+            rustup component add --toolchain $TOOLCHAIN rustfmt
+            cargo fmt --all -- --check
       - run:
           name: Run clippy
           command: cargo clippy -- -D warnings
@@ -39,7 +61,8 @@ commands:
           paths:
             - /usr/local/cargo/registry
             - target
-          key: v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
+          key: v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-{{checksum "Cargo.lock"}}
+
 
 jobs:
   test-docs:
@@ -66,6 +89,14 @@ jobs:
       - checkout
       - test:
           release: true
+
+  clippy:
+    docker:
+      - image: *rust_image
+    resource_class: medium
+    steps:
+      - checkout
+      - clippy
 
   deploy-docs:
     docker:
@@ -126,6 +157,10 @@ workflows:
             branches:
               only: development
       - test-tari-release:
+          filters:
+            branches:
+              ignore: gh-pages
+      - clippy:
           filters:
             branches:
               ignore: gh-pages

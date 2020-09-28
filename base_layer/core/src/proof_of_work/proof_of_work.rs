@@ -19,10 +19,14 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{blake_pow::blake_difficulty, monero_rx::monero_difficulty, Difficulty, PowAlgorithm},
+    proof_of_work::{
+        blake_pow::blake_difficulty,
+        monero_rx::{monero_difficulty, MoneroData},
+        Difficulty,
+        PowAlgorithm,
+    },
 };
 use bytes::{self, BufMut};
 use serde::{Deserialize, Serialize};
@@ -198,7 +202,13 @@ impl Display for ProofOfWork {
             "Total accumulated difficulty:\nMonero={}, Blake={}",
             self.accumulated_monero_difficulty, self.accumulated_blake_difficulty
         )?;
-        writeln!(fmt, "Pow data: {}", self.pow_data.to_hex())
+        match self.pow_algo {
+            PowAlgorithm::Blake => writeln!(fmt, "Pow data: {}", self.pow_data.to_hex()),
+            PowAlgorithm::Monero => match MoneroData::new_from_pow(&self.pow_data) {
+                Ok(v) => writeln!(fmt, "Pow data: {}", v),
+                Err(_) => writeln!(fmt, "Pow data: MALFORMED DATA"),
+            },
+        }
     }
 }
 

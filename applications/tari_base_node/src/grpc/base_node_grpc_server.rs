@@ -91,6 +91,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeader, Status>>;
+    type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
 
     async fn get_network_difficulty(
         &self,
@@ -464,6 +465,52 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         debug!(target: LOG_TARGET, "Sending MetaData response to client");
         Ok(Response::new(response))
+    }
+
+    async fn search_kernels(
+        &self,
+        request: Request<tari_rpc::SearchKernelsRequest>,
+    ) -> Result<Response<Self::SearchKernelsStream>, Status>
+    {
+        debug!(target: LOG_TARGET, "Incoming GRPC request for SearchKernels");
+        let request = request.into_inner();
+
+        let converted: Result<Vec<_>, _> = request.signatures.into_iter().map(|s| s.try_into()).collect();
+        let kernels = converted.map_err(|_| Status::internal("Failed to convert one or more arguments."))?;
+
+        let mut handler = self.node_service.clone();
+
+        let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        self.executor.spawn(async move {
+            let blocks = match handler.get_blocks_with_kernels(kernels).await {
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error communicating with local base node: {:?}", err,
+                    );
+                    return;
+                },
+                Ok(data) => data,
+            };
+            for block in blocks {
+                match tx.send(Ok(block.into())).await {
+                    Ok(_) => (),
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Error sending header via GRPC:  {}", err);
+                        match tx.send(Err(Status::unknown("Error sending data"))).await {
+                            Ok(_) => (),
+                            Err(send_err) => {
+                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                            },
+                        }
+                        return;
+                    },
+                }
+            }
+        });
+
+        debug!(target: LOG_TARGET, "Sending SearchKernels response stream to client");
+        Ok(Response::new(rx))
     }
 
     async fn get_calc_timing(

@@ -49,7 +49,7 @@ use tari_comms_dht::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{KernelFeatures, TransactionError},
+    transaction::KernelFeatures,
     transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::SingleRoundSenderData},
     SenderTransactionProtocol,
 };
@@ -365,25 +365,16 @@ where TBackend: TransactionBackend + Clone + 'static
             .add_single_recipient_info(recipient_reply, &self.resources.factories.range_proof)
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-        let finalize_result = outbound_tx
+        outbound_tx
             .sender_protocol
             .finalize(KernelFeatures::empty(), &self.resources.factories)
-            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-
-        if !finalize_result {
-            error!(
-                target: LOG_TARGET,
-                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}",
-                self.id,
-                self.sender_protocol.failure_reason()
-            );
-            return Err(TransactionServiceProtocolError::new(
-                self.id,
-                TransactionServiceError::TransactionError(TransactionError::ValidationError(
-                    "Transaction could not be finalized".to_string(),
-                )),
-            ));
-        }
+            .map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", self.id, e,
+                );
+                TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
+            })?;
 
         let tx = outbound_tx
             .sender_protocol
