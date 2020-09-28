@@ -301,7 +301,7 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
             &mut self.shared.connectivity,
             self.sync_peers,
             sync_peer,
-            self.shared.config.sync_peer_config.peer_ban_duration,
+            self.shared.config.sync_peer_config.short_term_peer_ban_duration,
         )
         .await?;
         Ok(())
