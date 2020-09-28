@@ -57,13 +57,13 @@ pub struct ProofOfWork {
 /// This is used to request the which pow algo should be used with the block template
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PowAlgo {
-    #[prost(enumeration = "pow_algo::PowAlgo", tag = "1")]
+    #[prost(enumeration = "pow_algo::PowAlgos", tag = "1")]
     pub pow_algo: i32,
 }
 pub mod pow_algo {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
     #[repr(i32)]
-    pub enum PowAlgo {
+    pub enum PowAlgos {
         Monero = 0,
         Blake = 1,
     }
