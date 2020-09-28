@@ -54,7 +54,6 @@ pub enum NodeCommsRequest {
     FetchBlocksWithUtxos(Vec<Commitment>),
     GetNewBlockTemplate(PowAlgorithm),
     GetNewBlock(NewBlockTemplate),
-    GetTargetDifficulty(PowAlgorithm),
     FetchMmrNodeCount(MmrTree, u64),
     FetchMmrNodes(MmrTree, u32, u32, u64),
 }
@@ -78,7 +77,6 @@ impl Display for NodeCommsRequest {
             NodeCommsRequest::FetchBlocksWithUtxos(v) => f.write_str(&format!("FetchBlocksWithUtxos (n={})", v.len())),
             NodeCommsRequest::GetNewBlockTemplate(algo) => f.write_str(&format!("GetNewBlockTemplate ({})", algo)),
             NodeCommsRequest::GetNewBlock(b) => f.write_str(&format!("GetNewBlock (Block Height={})", b.header.height)),
-            NodeCommsRequest::GetTargetDifficulty(algo) => f.write_str(&format!("GetTargetDifficulty ({})", algo)),
             NodeCommsRequest::FetchMmrNodeCount(tree, height) => {
                 f.write_str(&format!("FetchMmrNodeCount (tree={},Block Height={})", tree, height))
             },

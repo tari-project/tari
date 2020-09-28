@@ -21,7 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{blake_pow::blake_difficulty, monero_rx::monero_difficulty, Difficulty, PowAlgorithm, PowError},
+    proof_of_work::{
+        blake_pow::blake_difficulty,
+        monero_rx::{monero_difficulty, MoneroData},
+        Difficulty,
+        PowAlgorithm,
+        PowError,
+    },
 };
 use bytes::{self, BufMut};
 use serde::{Deserialize, Serialize};

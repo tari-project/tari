@@ -85,7 +85,9 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
 
     fn get_emission_commitment_at(&self, height: u64) -> Commitment {
         let total_supply = self.rules.emission_schedule().supply_at_block(height) -
-            self.rules.consensus_constants().get_genesis_coinbase_value_offset();
+            self.rules
+                .consensus_constants(height)
+                .get_genesis_coinbase_value_offset();
         trace!(
             target: LOG_TARGET,
             "Expected emission at height {} is {}",

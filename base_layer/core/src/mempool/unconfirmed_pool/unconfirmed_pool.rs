@@ -272,7 +272,12 @@ impl UnconfirmedPool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{consensus::Network, helpers::create_orphan_block, transactions::tari_amount::MicroTari, tx};
+    use crate::{
+        consensus::{ConsensusManagerBuilder, Network},
+        helpers::create_orphan_block,
+        transactions::tari_amount::MicroTari,
+        tx,
+    };
 
     #[test]
     fn test_insert_and_retrieve_highest_priority_txs() {
@@ -326,7 +331,7 @@ mod test {
     #[test]
     fn test_remove_published_txs() {
         let network = Network::LocalNet;
-        let consensus_constants = network.create_consensus_constants();
+        let consensus = ConsensusManagerBuilder::new(network).build();
         let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:2, outputs: 1).0);
         let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), inputs:3, outputs: 1).0);
         let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), inputs:2, outputs: 1).0);
@@ -352,11 +357,7 @@ mod test {
         assert!(snapshot_txs.contains(&tx4));
         assert!(snapshot_txs.contains(&tx5));
 
-        let published_block = create_orphan_block(
-            0,
-            vec![(*tx1).clone(), (*tx3).clone(), (*tx5).clone()],
-            &consensus_constants,
-        );
+        let published_block = create_orphan_block(0, vec![(*tx1).clone(), (*tx3).clone(), (*tx5).clone()], &consensus);
         let _ = unconfirmed_pool.remove_published_and_discard_double_spends(&published_block);
 
         assert_eq!(
@@ -390,7 +391,7 @@ mod test {
     #[test]
     fn test_discard_double_spend_txs() {
         let network = Network::LocalNet;
-        let consensus_constants = network.create_consensus_constants();
+        let consensus = ConsensusManagerBuilder::new(network).build();
         let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(50), inputs:2, outputs:1).0);
         let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs:3, outputs:1).0);
         let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(100), inputs:2, outputs:1).0);
@@ -419,11 +420,7 @@ mod test {
             .unwrap();
 
         // The publishing of tx1 and tx3 will be double-spends and orphan tx5 and tx6
-        let published_block = create_orphan_block(
-            0,
-            vec![(*tx1).clone(), (*tx2).clone(), (*tx3).clone()],
-            &consensus_constants,
-        );
+        let published_block = create_orphan_block(0, vec![(*tx1).clone(), (*tx2).clone(), (*tx3).clone()], &consensus);
 
         let _ = unconfirmed_pool.remove_published_and_discard_double_spends(&published_block); // Double spends are discarded
 

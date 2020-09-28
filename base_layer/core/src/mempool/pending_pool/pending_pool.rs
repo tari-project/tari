@@ -245,7 +245,7 @@ impl PendingPool {
 #[cfg(test)]
 mod test {
     use crate::{
-        consensus::Network,
+        consensus::{ConsensusManagerBuilder, Network},
         helpers::create_orphan_block,
         mempool::pending_pool::{PendingPool, PendingPoolConfig},
         transactions::tari_amount::MicroTari,
@@ -306,7 +306,7 @@ mod test {
     #[test]
     fn test_remove_unlocked_and_discard_double_spends() {
         let network = Network::LocalNet;
-        let consensus_constants = network.create_consensus_constants();
+        let consensus = ConsensusManagerBuilder::new(network).build();
         let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 500, inputs: 2, outputs: 1).0);
         let tx2 =
             Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), lock: 0, inputs: 1, maturity: 2150, outputs: 2).0);
@@ -342,7 +342,7 @@ mod test {
         assert!(snapshot_txs.contains(&tx5));
         assert!(snapshot_txs.contains(&tx6));
 
-        let published_block = create_orphan_block(1500, vec![(*tx6).clone()], &consensus_constants);
+        let published_block = create_orphan_block(1500, vec![(*tx6).clone()], &consensus);
         let unlocked_txs = pending_pool
             .remove_unlocked_and_discard_double_spends(&published_block)
             .unwrap();

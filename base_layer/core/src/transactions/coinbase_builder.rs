@@ -203,7 +203,7 @@ mod test {
         let (builder, rules, _) = get_builder();
         assert_eq!(
             builder
-                .build(rules.consensus_constants(), rules.emission_schedule())
+                .build(rules.consensus_constants(0), rules.emission_schedule())
                 .unwrap_err(),
             CoinbaseBuildError::MissingBlockHeight
         );
@@ -215,7 +215,7 @@ mod test {
         let builder = builder.with_block_height(42);
         assert_eq!(
             builder
-                .build(rules.consensus_constants(), rules.emission_schedule())
+                .build(rules.consensus_constants(42), rules.emission_schedule())
                 .unwrap_err(),
             CoinbaseBuildError::MissingFees
         );
@@ -228,7 +228,7 @@ mod test {
         let builder = builder.with_block_height(42).with_fees(0 * uT).with_nonce(p.nonce);
         assert_eq!(
             builder
-                .build(rules.consensus_constants(), rules.emission_schedule())
+                .build(rules.consensus_constants(42), rules.emission_schedule())
                 .unwrap_err(),
             CoinbaseBuildError::MissingSpendKey
         );
@@ -244,7 +244,7 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
         let (tx, unblinded_output) = builder
-            .build(rules.consensus_constants(), rules.emission_schedule())
+            .build(rules.consensus_constants(42), rules.emission_schedule())
             .unwrap();
         let utxo = &tx.body.outputs()[0];
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
@@ -258,7 +258,7 @@ mod test {
         assert_eq!(
             tx.body.check_coinbase_output(
                 block_reward,
-                rules.consensus_constants().coinbase_lock_height(),
+                rules.consensus_constants(0).coinbase_lock_height(),
                 &factories,
                 42
             ),
@@ -277,13 +277,13 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
         let (mut tx, _) = builder
-            .build(rules.consensus_constants(), rules.emission_schedule())
+            .build(rules.consensus_constants(0), rules.emission_schedule())
             .unwrap();
         tx.body.outputs_mut()[0].features.maturity = 1;
         assert_eq!(
             tx.body.check_coinbase_output(
                 block_reward,
-                rules.consensus_constants().coinbase_lock_height(),
+                rules.consensus_constants(0).coinbase_lock_height(),
                 &factories,
                 42
             ),
@@ -303,7 +303,7 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
         let (mut tx, _) = builder
-            .build(rules.consensus_constants(), rules.emission_schedule())
+            .build(rules.consensus_constants(0), rules.emission_schedule())
             .unwrap();
         let block_reward = rules.emission_schedule().block_reward(42) + missing_fee;
         let builder = CoinbaseBuilder::new(factories.clone());
@@ -313,7 +313,7 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
         let (tx2, _) = builder
-            .build(rules.consensus_constants(), rules.emission_schedule())
+            .build(rules.consensus_constants(0), rules.emission_schedule())
             .unwrap();
         let mut coinbase2 = tx2.body.outputs()[0].clone();
         let mut coinbase_kernel2 = tx2.body.kernels()[0].clone();
@@ -326,7 +326,7 @@ mod test {
         assert_eq!(
             tx.body.check_coinbase_output(
                 block_reward,
-                rules.consensus_constants().coinbase_lock_height(),
+                rules.consensus_constants(0).coinbase_lock_height(),
                 &factories,
                 42
             ),
@@ -346,13 +346,13 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
         let (tx3, _) = builder
-            .build(rules.consensus_constants(), rules.emission_schedule())
+            .build(rules.consensus_constants(0), rules.emission_schedule())
             .unwrap();
         assert!(tx3
             .body
             .check_coinbase_output(
                 block_reward,
-                rules.consensus_constants().coinbase_lock_height(),
+                rules.consensus_constants(0).coinbase_lock_height(),
                 &factories,
                 42
             )
@@ -371,7 +371,7 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
         let (mut tx, _) = builder
-            .build(rules.consensus_constants(), rules.emission_schedule())
+            .build(rules.consensus_constants(0), rules.emission_schedule())
             .unwrap();
         let block_reward = rules.emission_schedule().block_reward(42) + missing_fee;
         let builder = CoinbaseBuilder::new(factories.clone());
@@ -381,7 +381,7 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
         let (tx2, _) = builder
-            .build(rules.consensus_constants(), rules.emission_schedule())
+            .build(rules.consensus_constants(0), rules.emission_schedule())
             .unwrap();
         let mut tx_kernel_test = tx.clone();
 
@@ -403,7 +403,7 @@ mod test {
         assert_eq!(
             tx.body.check_coinbase_output(
                 block_reward,
-                rules.consensus_constants().coinbase_lock_height(),
+                rules.consensus_constants(0).coinbase_lock_height(),
                 &factories,
                 42
             ),
@@ -413,7 +413,7 @@ mod test {
         assert_eq!(
             tx_kernel_test.body.check_coinbase_output(
                 block_reward,
-                rules.consensus_constants().coinbase_lock_height(),
+                rules.consensus_constants(0).coinbase_lock_height(),
                 &factories,
                 42
             ),

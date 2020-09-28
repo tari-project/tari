@@ -21,13 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    block_template_data::{BlockTemplateDataBuilder, BlockTemplateRepository},
     error::MmProxyError,
     helpers,
-    helpers::{default_accept},
-    state::SharedState,
+    helpers::default_accept,
 };
-use crate::block_template_data::BlockTemplateRepository;
-use crate::block_template_data::BlockTemplateDataBuilder;
 use bytes::BytesMut;
 use futures::StreamExt;
 use hyper::{
@@ -43,13 +41,20 @@ use hyper::{
     Version,
 };
 use jsonrpc::error::StandardError;
-use log::*;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
-use std::{cmp::min, convert::TryFrom, future::Future, net::SocketAddr, task::{Context, Poll}, cmp};
+use std::{
+    cmp,
+    cmp::min,
+    convert::TryFrom,
+    future::Future,
+    net::SocketAddr,
+    task::{Context, Poll},
+};
 use tari_app_grpc::{tari_rpc as grpc, tari_rpc::GetCoinbaseRequest};
 use tari_common::{GlobalConfig, Network};
 use tari_core::{blocks::NewBlockTemplate, proof_of_work::monero_rx};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 pub const LOG_TARGET: &str = "tari_mm_proxy::xmrig";
 
@@ -86,7 +91,11 @@ pub struct MergeMiningProxyService {
 impl MergeMiningProxyService {
     pub fn new(config: MergeMiningProxyConfig, block_templates: BlockTemplateRepository) -> Self {
         Self {
-            inner: InnerService { config, block_templates},
+            inner: InnerService {
+                config,
+                block_templates,
+                http_client: reqwest::Client::new(),
+            },
         }
     }
 }
@@ -122,10 +131,12 @@ impl Service<Request<Body>> for MergeMiningProxyService {
 #[derive(Debug, Clone)]
 struct InnerService {
     config: MergeMiningProxyConfig,
-    block_templates: BlockTemplateRepository
+    block_templates: BlockTemplateRepository,
+    http_client: reqwest::Client,
 }
 
 impl InnerService {
+    #[instrument]
     async fn handle_get_height(&mut self, monerod_resp: Response<json::Value>) -> Result<Response<Body>, MmProxyError> {
         let (parts, mut json) = monerod_resp.into_parts();
         if json["height"].is_null() {
@@ -178,30 +189,32 @@ impl InnerService {
 
         let params = match request.body()["params"].as_array() {
             Some(v) => v,
-            None => return Ok(Response::builder()
-                .body(standard_rpc_error(
-                    StandardError::InvalidParams,
-                    Some(
-                        "`params` field is empty or an invalid type for submit block request. Expected an array."
-                            .into(),
-                    ),
-                ))
-                .unwrap())
+            None => {
+                return Ok(Response::builder()
+                    .body(standard_rpc_error(
+                        StandardError::InvalidParams,
+                        Some(
+                            "`params` field is empty or an invalid type for submit block request. Expected an array."
+                                .into(),
+                        ),
+                    ))
+                    .unwrap())
+            },
         };
 
         for param in params.iter().map(|p| p.as_str()).filter_map(|p| p) {
-
             let monero_block = helpers::deserialize_monero_block_from_hex(param)?;
             let hash = match helpers::extract_tari_hash(&monero_block) {
                 Some(h) => h.clone(),
-                None => return Err(MmProxyError::MissingDataError("Could not find Tari header in coinbase".to_string()))
+                None => {
+                    return Err(MmProxyError::MissingDataError(
+                        "Could not find Tari header in coinbase".to_string(),
+                    ))
+                },
             };
 
             if let Some(mut block_data) = self.block_templates.get(&hash).await {
-                let monero_data = helpers::construct_monero_data(
-                    monero_block,
-                    block_data.monero_seed,
-                )?;
+                let monero_data = helpers::construct_monero_data(monero_block, block_data.monero_seed)?;
 
                 let pow_data = bincode::serialize(&monero_data)?;
                 let h = block_data.tari_block.header.as_mut().unwrap();
@@ -218,9 +231,11 @@ impl InnerService {
                     })?;
 
                 self.block_templates.remove(&hash).await;
-            }
-            else {
-                info!(target: LOG_TARGET, "Block submitted but no matching block template was found");
+            } else {
+                info!(
+                    target: LOG_TARGET,
+                    "Block submitted but no matching block template was found"
+                );
             }
         }
         // Return the Monero response as is
@@ -317,13 +332,20 @@ impl InnerService {
             })?
             .into_inner();
 
+        debug!(target: LOG_TARGET, "New block received from Tari: {:?}", block);
         let mining_data = block
             .clone()
             .miner_data
             .ok_or_else(|| MmProxyError::GrpcResponseMissingField("mining_data"))?;
 
         let block_data = BlockTemplateDataBuilder::default();
-        let block_data = block_data.tari_block(block.block.ok_or_else(|| MmProxyError::GrpcResponseMissingField("block"))?).tari_miner_data(mining_data.clone());
+        let block_data = block_data
+            .tari_block(
+                block
+                    .block
+                    .ok_or_else(|| MmProxyError::GrpcResponseMissingField("block"))?,
+            )
+            .tari_miner_data(mining_data.clone());
 
         // Deserialize the block template blob
         let block_template_blob = &monerod_resp["result"]["blocktemplate_blob"]
@@ -340,9 +362,11 @@ impl InnerService {
         // Must be done after the tag is inserted since it will affect the hash of the miner tx
         let blockhashing_blob = monero_rx::create_blockhashing_blob(&monero_block)?;
 
+        debug!(target: LOG_TARGET, "blockhashing_blob:{}", blockhashing_blob);
         monerod_resp["result"]["blockhashing_blob"] = blockhashing_blob.into();
 
         let blocktemplate_blob = helpers::serialize_monero_block_to_hex(&monero_block)?;
+        debug!(target: LOG_TARGET, "blocktemplate_blob:{}", block_template_blob);
         monerod_resp["result"]["blocktemplate_blob"] = blocktemplate_blob.into();
 
         let seed = monerod_resp["result"]["seed_hash"].to_string().replace("\"", "");
@@ -354,14 +378,20 @@ impl InnerService {
 
         let mining_difficulty = min(monero_difficulty, tari_difficulty);
 
-        let block_data = block_data.monero_difficulty(monero_difficulty).tari_difficulty(tari_difficulty);
+        let block_data = block_data
+            .monero_difficulty(monero_difficulty)
+            .tari_difficulty(tari_difficulty);
 
-        self.block_templates.save(mining_data.merge_mining_hash, block_data.build()?).await;
+        self.block_templates
+            .save(mining_data.merge_mining_hash, block_data.build()?)
+            .await;
         info!(
             target: LOG_TARGET,
             "Difficulties: Tari ({}), Monero({}),Selected({})", tari_difficulty, monero_difficulty, mining_difficulty
         );
         monerod_resp["result"]["difficulty"] = mining_difficulty.into();
+
+        debug!(target: LOG_TARGET, "Returning template result: {}", monerod_resp);
         Ok(into_body(parts, monerod_resp))
     }
 
@@ -418,9 +448,10 @@ impl InnerService {
             //     let monero_block = helpers::deserialize_monero_block_from_hex(params_string)?;
             //     debug!(target: LOG_TARGET, "monero_block: {:?}", monero_block);
             //
-            //     let hash = helpers::extract_tari_hash(&monero_block).ok_or_else(|| MmProxyError::MissingDataError("Could not find Tari hash in Monero block".to_string()))?;
+            //     let hash = helpers::extract_tari_hash(&monero_block).ok_or_else(||
+            // MmProxyError::MissingDataError("Could not find Tari hash in Monero block".to_string()))?;
             //
-                should_proxy = false;
+            should_proxy = false;
             // }
         }
 
@@ -432,7 +463,8 @@ impl InnerService {
                 monerod_uri,
                 json["method"]
             );
-            let mut builder = reqwest::Client::new()
+            let mut builder = self
+                .http_client
                 .request(request.method().clone(), monerod_uri)
                 .headers(request.headers().clone());
 
@@ -509,6 +541,7 @@ impl InnerService {
 
     async fn handle(mut self, request: Request<Body>) -> Result<Response<Body>, MmProxyError> {
         debug!(target: LOG_TARGET, "Got request: {}", request.uri());
+        debug!(target: LOG_TARGET, "Request headers: {:?}", request.headers());
         let (request, monerod_resp) = self.proxy_request_to_monerod(request).await?;
         // Any failed (!= 200 OK) responses from Monero are immediately returned to the requester
         if !monerod_resp.status().is_success() {

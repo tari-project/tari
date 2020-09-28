@@ -39,7 +39,7 @@ use std::sync::Arc;
 use tari_crypto::tari_utilities::hash::Hashable;
 use thiserror::Error;
 
-#[derive(Debug, Error, Clone)]
+#[derive(Debug, Error)]
 pub enum ConsensusManagerError {
     #[error("Difficulty adjustment encountered an error: `{0}`")]
     DifficultyAdjustmentError(#[from] DifficultyAdjustmentError),
@@ -89,8 +89,15 @@ impl ConsensusManager {
     }
 
     /// Get a pointer to the consensus constants
-    pub fn consensus_constants(&self) -> &ConsensusConstants {
-        &self.inner.consensus_constants
+    pub fn consensus_constants(&self, height: u64) -> &ConsensusConstants {
+        let mut constants = &self.inner.consensus_constants[0];
+        for c in self.inner.consensus_constants.iter() {
+            if c.effective_from_height() > height {
+                break;
+            }
+            constants = &c
+        }
+        constants
     }
 
     /// Creates a total_coinbase offset containing all fees for the validation from block
@@ -109,7 +116,7 @@ impl ConsensusManager {
 #[derive(Debug)]
 struct ConsensusManagerInner {
     /// This is the inner struct used to control all consensus values.
-    pub consensus_constants: ConsensusConstants,
+    pub consensus_constants: Vec<ConsensusConstants>,
     /// The configured chain network.
     pub network: Network,
     /// The configuration for the emission schedule.
@@ -121,7 +128,7 @@ struct ConsensusManagerInner {
 /// Constructor for the consensus manager struct
 pub struct ConsensusManagerBuilder {
     /// This is the inner struct used to control all consensus values.
-    pub consensus_constants: Option<ConsensusConstants>,
+    pub consensus_constants: Vec<ConsensusConstants>,
     /// The configured chain network.
     pub network: Network,
     /// This allows the user to set a custom Genesis block
@@ -132,7 +139,7 @@ impl ConsensusManagerBuilder {
     /// Creates a new ConsensusManagerBuilder with the specified network
     pub fn new(network: Network) -> Self {
         ConsensusManagerBuilder {
-            consensus_constants: None,
+            consensus_constants: vec![],
             network,
             gen_block: None,
         }
@@ -140,7 +147,7 @@ impl ConsensusManagerBuilder {
 
     /// Adds in a custom consensus constants to be used
     pub fn with_consensus_constants(mut self, consensus_constants: ConsensusConstants) -> Self {
-        self.consensus_constants = Some(consensus_constants);
+        self.consensus_constants.push(consensus_constants);
         self
     }
 
@@ -151,18 +158,20 @@ impl ConsensusManagerBuilder {
     }
 
     /// Builds a consensus manager
-    #[allow(clippy::or_fun_call)]
-    pub fn build(self) -> ConsensusManager {
-        let consensus_constants = self
-            .consensus_constants
-            .unwrap_or(self.network.create_consensus_constants());
+    pub fn build(mut self) -> ConsensusManager {
+        if self.consensus_constants.is_empty() {
+            self.consensus_constants = self.network.create_consensus_constants();
+        }
+        // TODO: Check that constants is not empty
+
+        // Use the first constants for now.
         let emission = EmissionSchedule::new(
-            consensus_constants.emission_initial,
-            consensus_constants.emission_decay,
-            consensus_constants.emission_tail,
+            self.consensus_constants[0].emission_initial,
+            self.consensus_constants[0].emission_decay,
+            self.consensus_constants[0].emission_tail,
         );
         let inner = ConsensusManagerInner {
-            consensus_constants,
+            consensus_constants: self.consensus_constants,
             network: self.network,
             emission,
             gen_block: self.gen_block,

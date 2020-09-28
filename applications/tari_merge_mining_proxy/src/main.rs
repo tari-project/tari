@@ -28,31 +28,25 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 
-#[cfg(test)]
-mod test;
+mod block_template_data;
 mod error;
 mod helpers;
-mod block_template_data;
 mod proxy;
-mod state;
+#[cfg(test)]
+mod test;
 
-use state::SharedState;
-use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
-use crate::error::MmProxyError;
+use crate::{block_template_data::BlockTemplateRepository, error::MmProxyError};
 use futures::future;
 use hyper::{service::make_service_fn, Server};
+use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
 use std::convert::Infallible;
 use structopt::StructOpt;
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
-use crate::block_template_data::BlockTemplateRepository;
 
 #[tokio_macros::main]
 async fn main() -> Result<(), MmProxyError> {
+    // tracing_subscriber::fmt::init();
     let config = initialize()?;
-
-    let state = SharedState {
-        transient_data: Default::default(),
-    };
 
     let addr = config.proxy_host_address;
     println!("Listening on {}...", addr);

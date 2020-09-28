@@ -34,7 +34,7 @@ use tari_core::{
 fn test_target_difficulty_at_tip() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let constants = consensus_manager.consensus_constants();
+    let constants = consensus_manager.consensus_constants(0);
     let block_window = constants.get_difficulty_block_window() as usize;
     let target_time = constants.get_diff_target_block_interval();
     let max_block_time = constants.get_difficulty_max_block_interval();
@@ -88,7 +88,7 @@ fn test_target_difficulty_at_tip() {
 fn test_target_difficulty_with_height() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let constants = consensus_manager.consensus_constants();
+    let constants = consensus_manager.consensus_constants(0);
     let block_window = constants.get_difficulty_block_window() as usize;
     let target_time = constants.get_diff_target_block_interval();
     let max_block_time = constants.get_difficulty_max_block_interval();

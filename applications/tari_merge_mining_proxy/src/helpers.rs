@@ -20,14 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{error::MmProxyError, proxy::LOG_TARGET, state::TransientData};
+use crate::error::MmProxyError;
 use json::Value;
-use log::*;
 use monero::{
     blockdata::{transaction::SubField, Block as MoneroBlock, Block},
-    consensus::{deserialize, encode::VarInt, serialize},
+    consensus::{deserialize, serialize},
+    cryptonote::hash::Hash,
 };
-use monero::cryptonote::hash::Hash;
 use serde_json as json;
 use std::convert::TryFrom;
 use tari_app_grpc::tari_rpc as grpc;
@@ -97,46 +96,13 @@ pub fn default_accept(json: &Value) -> Value {
     json::from_str(&accept_response).unwrap_or_default()
 }
 
-#[allow(dead_code)]
-pub fn default_error(json: &Value, code: i64, message: &str) -> Value {
-    let id = json["id"].as_i64().unwrap_or_else(|| -1);
-    let error_response = format!(
-        "{} \"id\": {}, \"jsonrpc\": \"2.0\", \"error\": {} \"code\": {},\"message\": \"{}\" {}{}",
-        "{", id, "{", code, message, "}", "}",
-    );
-    json::from_str(&error_response).unwrap_or_default()
-}
-
-#[allow(dead_code)]
-pub fn validate_merge_mining_tag(transient: &TransientData, json: &Value) -> bool {
-    if json["params"][0].is_null() {
-        return false;
-    }
-
-    if let Some(tari) = transient.tari_block.clone() {
-        if let Some(data) = tari.miner_data {
-            let mm_hash = data.merge_mining_hash;
-            let params = json["params"][0].clone().to_string();
-            let monero = deserialize_monero_block_from_hex(params).unwrap_or_default();
-            let is_found = monero.miner_tx.prefix.extra.0.iter().any(|item| match item {
-                SubField::MergeMining(depth, merge_mining_hash) => {
-                    depth == &VarInt(0) && merge_mining_hash.0 == mm_hash.as_slice()
-                },
-                _ => false,
-            });
-            return is_found;
-        }
-    }
-    false
-}
-
 pub fn extract_tari_hash(monero: &Block) -> Option<&Hash> {
     for item in monero.miner_tx.prefix.extra.0.iter() {
         match item {
-            SubField::MergeMining(depth, merge_mining_hash) => {
+            SubField::MergeMining(_depth, merge_mining_hash) => {
                 return Some(merge_mining_hash);
             },
-            _ => ()
+            _ => (),
         }
     }
     None

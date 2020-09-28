@@ -154,7 +154,12 @@ impl Clone for ReorgPool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{consensus::Network, helpers::create_orphan_block, transactions::tari_amount::MicroTari, tx};
+    use crate::{
+        consensus::{ConsensusManagerBuilder, Network},
+        helpers::create_orphan_block,
+        transactions::tari_amount::MicroTari,
+        tx,
+    };
     use std::{thread, time::Duration};
 
     #[test]
@@ -244,7 +249,7 @@ mod test {
     #[test]
     fn remove_scan_for_and_remove_reorged_txs() {
         let network = Network::LocalNet;
-        let consensus_constants = network.create_consensus_constants();
+        let consensus = ConsensusManagerBuilder::new(network).build();
         let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), lock: 4000, inputs: 2, outputs: 1).0);
         let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(30), lock: 3000, inputs: 2, outputs: 1).0);
         let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), lock: 2500, inputs: 2, outputs: 1).0);
@@ -306,8 +311,8 @@ mod test {
         );
 
         let reorg_blocks = vec![
-            create_orphan_block(3000, vec![(*tx3).clone(), (*tx4).clone()], &consensus_constants).into(),
-            create_orphan_block(4000, vec![(*tx1).clone(), (*tx2).clone()], &consensus_constants).into(),
+            create_orphan_block(3000, vec![(*tx3).clone(), (*tx4).clone()], &consensus).into(),
+            create_orphan_block(4000, vec![(*tx1).clone(), (*tx2).clone()], &consensus).into(),
         ];
 
         let removed_txs = reorg_pool

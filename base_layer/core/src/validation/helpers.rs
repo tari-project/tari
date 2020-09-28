@@ -48,7 +48,11 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
     if block_header.height == 0 || rules.get_genesis_block_hash() == block_header.hash() {
         return Ok(()); // Its the genesis block, so we dont have to check median
     }
-    let min_height = height.saturating_sub(rules.consensus_constants().get_median_timestamp_count() as u64);
+    let min_height = height.saturating_sub(
+        rules
+            .consensus_constants(block_header.height)
+            .get_median_timestamp_count() as u64,
+    );
     let block_nums = (min_height..=height).collect();
     let timestamps = fetch_headers(db, block_nums)?
         .iter()
@@ -89,7 +93,8 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
         // Current proposals are to either store the height of first seed use, or count the seed use.
         let seed_height = 0;
         if (seed_height != 0) &&
-            (block_header.height - seed_height > rules.consensus_constants().max_randomx_seed_height())
+            (block_header.height - seed_height >
+                rules.consensus_constants(block_header.height).max_randomx_seed_height())
         {
             return Err(ValidationError::BlockHeaderError(
                 BlockHeaderValidationError::OldSeedHash,
@@ -99,7 +104,7 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
     let achieved = block_header.achieved_difficulty()?;
     // This tests the target diff.
     let target = if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
-        let constants = rules.consensus_constants();
+        let constants = rules.consensus_constants(block_header.height);
         let block_window = constants.get_difficulty_block_window() as usize;
         let target_difficulties = db.fetch_target_difficulties(pow_algo, height, block_window)?;
         get_target_difficulty(
@@ -137,7 +142,7 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
             target
         );
         return Err(ValidationError::BlockHeaderError(
-            BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow),
+            BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow { achieved, target }),
         ));
     }
     Ok(())

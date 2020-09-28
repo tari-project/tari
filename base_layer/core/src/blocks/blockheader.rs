@@ -62,7 +62,7 @@ use thiserror::Error;
 pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
 
-#[derive(Clone, Debug, Error)]
+#[derive(Debug, Error)]
 pub enum BlockHeaderValidationError {
     #[error("The Genesis block header is incorrectly chained")]
     ChainedGenesisBlockHeader,

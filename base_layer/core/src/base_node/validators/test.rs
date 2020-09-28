@@ -136,7 +136,7 @@ fn chain_balance_validation() {
     // block that contains an extra faucet utxo
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
-        .with_consensus_constants(consensus_manager.consensus_constants().clone())
+        .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
         .build();
 
     let db = create_mem_db(&consensus_manager);

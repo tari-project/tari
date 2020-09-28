@@ -19,52 +19,49 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use monero::cryptonote::hash::Hash;
-use std::collections::HashMap;
 use crate::error::MmProxyError;
+use std::{collections::HashMap, sync::Arc};
 use tari_app_grpc::tari_rpc::{Block, MinerData};
-use std::sync::{Arc};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct BlockTemplateRepository {
-    blocks: Arc<RwLock<HashMap<Vec<u8>, BlockTemplateData>>>
+    blocks: Arc<RwLock<HashMap<Vec<u8>, BlockTemplateData>>>,
 }
-
 
 impl BlockTemplateRepository {
     pub fn new() -> Self {
         Self {
-            blocks: Arc::new(RwLock::new(HashMap::new()))
+            blocks: Arc::new(RwLock::new(HashMap::new())),
         }
     }
-    pub async fn get<T:AsRef<[u8]>>(&self, hash: T) -> Option<BlockTemplateData> {
+
+    pub async fn get<T: AsRef<[u8]>>(&self, hash: T) -> Option<BlockTemplateData> {
         let b = self.blocks.read().await;
-       b.get(hash.as_ref()).map(|bt| bt.clone())
+        b.get(hash.as_ref()).map(|bt| bt.clone())
     }
 
-    pub async fn save<T:AsRef<[u8]>>(&mut self, hash: T, block_template: BlockTemplateData) {
+    pub async fn save<T: AsRef<[u8]>>(&mut self, hash: T, block_template: BlockTemplateData) {
         let mut b = self.blocks.write().await;
         b.insert(Vec::from(hash.as_ref()), block_template);
     }
-    pub async fn remove<T:AsRef<[u8]>>(&mut self, hash: T) -> Option<BlockTemplateData> {
+
+    pub async fn remove<T: AsRef<[u8]>>(&mut self, hash: T) -> Option<BlockTemplateData> {
         let mut b = self.blocks.write().await;
         b.remove(hash.as_ref())
     }
 }
 
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 pub struct BlockTemplateData {
-    pub monero_seed : String,
+    pub monero_seed: String,
     pub tari_block: Block,
     pub tari_miner_data: MinerData,
     pub monero_difficulty: u64,
-    pub tari_difficulty: u64
+    pub tari_difficulty: u64,
 }
 
-impl BlockTemplateData {
-
-}
+impl BlockTemplateData {}
 
 #[derive(Default)]
 pub struct BlockTemplateDataBuilder {
@@ -73,9 +70,7 @@ pub struct BlockTemplateDataBuilder {
     tari_miner_data: Option<MinerData>,
     monero_difficulty: Option<u64>,
     tari_difficulty: Option<u64>,
-
 }
-
 
 impl BlockTemplateDataBuilder {
     pub fn monero_seed(mut self, monero_seed: String) -> Self {
@@ -97,21 +92,35 @@ impl BlockTemplateDataBuilder {
         self.monero_difficulty = Some(difficulty);
         self
     }
+
     pub fn tari_difficulty(mut self, difficulty: u64) -> Self {
         self.tari_difficulty = Some(difficulty);
         self
     }
 
     pub fn build(self) -> Result<BlockTemplateData, MmProxyError> {
-        let monero_seed = self.monero_seed.ok_or_else(|| MmProxyError::MissingDataError("monero_seed not provided".to_string()))?;
-        let tari_block = self.tari_block.ok_or_else(|| MmProxyError::MissingDataError("block not provided".to_string()))?;
-        let tari_miner_data = self.tari_miner_data.ok_or_else(|| MmProxyError::MissingDataError("miner_data not provided".to_string()))?;
-        let monero_difficulty = self.monero_difficulty .ok_or_else(|| MmProxyError::MissingDataError("monero_difficulty not provided".to_string()))?;
-        let tari_difficulty = self.tari_difficulty .ok_or_else(|| MmProxyError::MissingDataError("tari_difficulty not provided".to_string()))?;
+        let monero_seed = self
+            .monero_seed
+            .ok_or_else(|| MmProxyError::MissingDataError("monero_seed not provided".to_string()))?;
+        let tari_block = self
+            .tari_block
+            .ok_or_else(|| MmProxyError::MissingDataError("block not provided".to_string()))?;
+        let tari_miner_data = self
+            .tari_miner_data
+            .ok_or_else(|| MmProxyError::MissingDataError("miner_data not provided".to_string()))?;
+        let monero_difficulty = self
+            .monero_difficulty
+            .ok_or_else(|| MmProxyError::MissingDataError("monero_difficulty not provided".to_string()))?;
+        let tari_difficulty = self
+            .tari_difficulty
+            .ok_or_else(|| MmProxyError::MissingDataError("tari_difficulty not provided".to_string()))?;
 
-        Ok(BlockTemplateData{
-            monero_seed
-        , tari_block, tari_miner_data: tari_miner_data, monero_difficulty,
-    tari_difficulty})
+        Ok(BlockTemplateData {
+            monero_seed,
+            tari_block,
+            tari_miner_data,
+            monero_difficulty,
+            tari_difficulty,
+        })
     }
 }

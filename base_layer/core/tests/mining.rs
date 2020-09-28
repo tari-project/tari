@@ -59,9 +59,9 @@ fn mining() {
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =
-        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
+        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())
         .build();
     let (mut alice_node, mut bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(

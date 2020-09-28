@@ -32,6 +32,8 @@ use tari_crypto::tari_utilities::epoch_time::EpochTime;
 /// This is the inner struct used to control all consensus values.
 #[derive(Debug, Clone)]
 pub struct ConsensusConstants {
+    /// The height at which these constants become effective
+    effective_from_height: u64,
     /// The min height maturity a coinbase utxo must have
     coinbase_lock_height: u64,
     /// Current version of the blockchain
@@ -68,6 +70,11 @@ pub struct ConsensusConstants {
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
 impl ConsensusConstants {
+    /// The height at which these constants become effective
+    pub fn effective_from_height(&self) -> u64 {
+        self.effective_from_height
+    }
+
     /// This gets the emission curve values as (initial, decay, tail)
     pub fn emission_amounts(&self) -> (MicroTari, f64, MicroTari) {
         (self.emission_initial, self.emission_decay, self.emission_tail)
@@ -160,32 +167,54 @@ impl ConsensusConstants {
     }
 
     #[allow(clippy::identity_op)]
-    pub fn rincewind() -> Self {
+    pub fn rincewind() -> Vec<Self> {
         let target_block_interval = 120;
         let difficulty_block_window = 90;
-        ConsensusConstants {
-            coinbase_lock_height: 60,
-            blockchain_version: 1,
-            future_time_limit: target_block_interval * difficulty_block_window / 20,
-            target_block_interval,
-            difficulty_block_window,
-            difficulty_max_block_interval: target_block_interval * 60,
-            max_block_transaction_weight: 19500,
-            pow_algo_count: 1,
-            median_timestamp_count: 11,
-            emission_initial: 5_538_846_115 * uT,
-            emission_decay: 0.999_999_560_409_038_5,
-            emission_tail: 1 * T,
-            min_pow_difficulty: (10_000.into(), 60_000_000.into()),
-            max_randomx_seed_height: std::u64::MAX,
-            genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
-        }
+        vec![
+            ConsensusConstants {
+                effective_from_height: 0,
+                coinbase_lock_height: 60,
+                blockchain_version: 1,
+                future_time_limit: target_block_interval * difficulty_block_window / 20,
+                target_block_interval,
+                difficulty_block_window,
+                difficulty_max_block_interval: target_block_interval * 60,
+                max_block_transaction_weight: 19500,
+                pow_algo_count: 1,
+                median_timestamp_count: 11,
+                emission_initial: 5_538_846_115 * uT,
+                emission_decay: 0.999_999_560_409_038_5,
+                emission_tail: 1 * T,
+                min_pow_difficulty: (1.into(), 60_000_000.into()),
+                max_randomx_seed_height: std::u64::MAX,
+                genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
+            },
+            ConsensusConstants {
+                effective_from_height: 102916,
+                coinbase_lock_height: 60,
+                blockchain_version: 1,
+                future_time_limit: target_block_interval * difficulty_block_window / 20,
+                target_block_interval,
+                difficulty_block_window,
+                difficulty_max_block_interval: target_block_interval * 60,
+                max_block_transaction_weight: 19500,
+                pow_algo_count: 1,
+                median_timestamp_count: 11,
+                emission_initial: 5_538_846_115 * uT,
+                emission_decay: 0.999_999_560_409_038_5,
+                emission_tail: 1 * T,
+                min_pow_difficulty: (59_000.into(), 60_000_000.into()),
+                max_randomx_seed_height: std::u64::MAX,
+                genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
+            },
+        ]
     }
 
-    pub fn localnet() -> Self {
+    pub fn localnet() -> Vec<Self> {
         let target_block_interval = 120;
         let difficulty_block_window = 90;
-        ConsensusConstants {
+        vec![ConsensusConstants {
+            effective_from_height: 0,
             coinbase_lock_height: 1,
             blockchain_version: 1,
             future_time_limit: target_block_interval * difficulty_block_window / 20,
@@ -201,14 +230,15 @@ impl ConsensusConstants {
             min_pow_difficulty: (1.into(), 1.into()),
             max_randomx_seed_height: std::u64::MAX,
             genesis_coinbase_value_offset: 0.into(),
-        }
+        }]
     }
 
-    pub fn mainnet() -> Self {
+    pub fn mainnet() -> Vec<Self> {
         // Note these values are all placeholders for final values
         let target_block_interval = 120;
         let difficulty_block_window = 90;
-        ConsensusConstants {
+        vec![ConsensusConstants {
+            effective_from_height: 0,
             coinbase_lock_height: 1,
             blockchain_version: 1,
             future_time_limit: target_block_interval * difficulty_block_window / 20,
@@ -224,7 +254,7 @@ impl ConsensusConstants {
             min_pow_difficulty: (1.into(), 500_000_000.into()),
             max_randomx_seed_height: std::u64::MAX,
             genesis_coinbase_value_offset: 0.into(),
-        }
+        }]
     }
 }
 
@@ -236,7 +266,8 @@ pub struct ConsensusConstantsBuilder {
 impl ConsensusConstantsBuilder {
     pub fn new(network: Network) -> Self {
         Self {
-            consensus: network.create_consensus_constants(),
+            // TODO: Resolve this unwrap
+            consensus: network.create_consensus_constants().pop().unwrap(),
         }
     }
 

@@ -194,7 +194,7 @@ fn async_add_new_block() {
         .iter()
         .map(|t| t.deref().clone())
         .collect();
-    let new_block = chain_block(&blocks.last().unwrap(), txns, &consensus_manager.consensus_constants());
+    let new_block = chain_block(&blocks.last().unwrap(), txns, &consensus_manager);
     let new_block = db.calculate_mmr_roots(new_block).unwrap();
     test_async(|rt| {
         let dbc = db.clone();
@@ -237,7 +237,7 @@ fn async_add_block_fetch_orphan() {
     let network = Network::LocalNet;
     let consensus: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let (db, _, _, _) = create_blockchain_db_no_cut_through();
-    let orphan = create_orphan_block(7, vec![], &consensus.consensus_constants());
+    let orphan = create_orphan_block(7, vec![], &consensus);
     let block_hash = orphan.hash();
     test_async(move |rt| {
         let dbc = db.clone();

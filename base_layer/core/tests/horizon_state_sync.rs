@@ -380,7 +380,7 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
     // block that contains an extra faucet utxo
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis_block.clone())
-        .with_consensus_constants(consensus_manager.consensus_constants().clone())
+        .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
         .build();
 
     let blockchain_db_config = BlockchainDatabaseConfig {

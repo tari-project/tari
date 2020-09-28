@@ -40,6 +40,7 @@ pub fn get_target_difficulty(
     for (epoch, difficulty) in target_difficulties {
         lwma.add(epoch, difficulty)?;
     }
-    let target_difficulty = lwma.get_difficulty();
-    Ok(cmp::max(target_difficulty, min_difficulty))
+    let mut target_difficulty = lwma.get_difficulty();
+    target_difficulty = cmp::max(target_difficulty, min_difficulty);
+    Ok(target_difficulty)
 }

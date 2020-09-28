@@ -203,7 +203,7 @@ async fn inbound_fetch_headers() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .with_consensus_constants(consensus_constants[0].clone())
         .build();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
@@ -257,7 +257,7 @@ async fn inbound_fetch_utxos() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .with_consensus_constants(consensus_constants[0].clone())
         .build();
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
@@ -318,7 +318,7 @@ async fn inbound_fetch_txos() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .with_consensus_constants(consensus_constants[0].clone())
         .build();
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
@@ -362,7 +362,7 @@ async fn outbound_fetch_blocks() {
     let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
-    let gb = BlockBuilder::new(consensus_constants.blockchain_version()).build();
+    let gb = BlockBuilder::new(consensus_constants[0].blockchain_version()).build();
     let block = HistoricalBlock::new(gb, 0, Vec::new());
     let block_response = NodeCommsResponse::HistoricalBlocks(vec![block.clone()]);
     let (received_blocks, _) = futures::join!(
@@ -382,7 +382,7 @@ async fn inbound_fetch_blocks() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .with_consensus_constants(consensus_constants[0].clone())
         .build();
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = futures_mpsc_channel_unbounded();
@@ -413,7 +413,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let consensus_constants = network.create_consensus_constants();
     let block0 = genesis_block::get_rincewind_genesis_block_raw();
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants.clone())
+        .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())
         .build();
     let validators = Validators::new(
@@ -438,14 +438,14 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         block_event_sender,
         store.clone(),
         mempool,
-        consensus_manager,
+        consensus_manager.clone(),
         outbound_nci,
     );
 
-    let block1 = append_block(&store, &block0, vec![], &consensus_constants, 1.into()).unwrap();
-    let block2 = append_block(&store, &block1, vec![], &consensus_constants, 1.into()).unwrap();
-    let block3 = append_block(&store, &block2, vec![], &consensus_constants, 1.into()).unwrap();
-    let _block4 = append_block(&store, &block3, vec![], &consensus_constants, 1.into()).unwrap();
+    let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
+    let _block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
         .handle_request(&NodeCommsRequest::FetchBlocks(vec![1]))

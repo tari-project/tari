@@ -301,9 +301,9 @@ fn request_and_response_fetch_blocks() {
 
     let mut blocks = vec![block0];
     let db = &mut bob_node.blockchain_db;
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
 
     carol_node.blockchain_db.add_block(blocks[1].clone().into()).unwrap();
     carol_node.blockchain_db.add_block(blocks[2].clone().into()).unwrap();
@@ -352,9 +352,9 @@ fn request_and_response_fetch_blocks_with_hashes() {
 
     let mut blocks = vec![block0];
     let db = &mut bob_node.blockchain_db;
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
     let block0_hash = blocks[0].hash();
     let block1_hash = blocks[1].hash();
 
@@ -455,7 +455,7 @@ fn propagate_and_forward_many_valid_blocks() {
     let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
     let mut dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
 
-    let blocks = construct_chained_blocks(&alice_node.blockchain_db, block0, &rules.consensus_constants(), 5);
+    let blocks = construct_chained_blocks(&alice_node.blockchain_db, block0, &rules, 5);
 
     runtime.block_on(async {
         for block in &blocks {
@@ -551,14 +551,7 @@ fn propagate_and_forward_invalid_block_hash() {
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
     });
 
-    let mut block1 = append_block(
-        &alice_node.blockchain_db,
-        &block0,
-        vec![],
-        &rules.consensus_constants(),
-        1.into(),
-    )
-    .unwrap();
+    let mut block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules, 1.into()).unwrap();
     // Create unknown block hash
     block1.header.height = 0;
 
@@ -678,14 +671,7 @@ fn propagate_and_forward_invalid_block() {
 
     // This is a valid block, however Bob, Carol and Dan's block validator is set to always reject the block
     // after fetching it.
-    let block1 = append_block(
-        &alice_node.blockchain_db,
-        &block0,
-        vec![],
-        &rules.consensus_constants(),
-        1.into(),
-    )
-    .unwrap();
+    let block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules, 1.into()).unwrap();
     let block1_hash = block1.hash();
 
     runtime.block_on(async {
@@ -762,8 +748,8 @@ fn local_get_metadata() {
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
     let db = &node.blockchain_db;
     let block0 = db.fetch_block(0).unwrap().block().clone();
-    let block1 = append_block(db, &block0, vec![], &consensus_manager.consensus_constants(), 1.into()).unwrap();
-    let block2 = append_block(db, &block1, vec![], &consensus_manager.consensus_constants(), 1.into()).unwrap();
+    let block1 = append_block(db, &block0, vec![], &consensus_manager, 1.into()).unwrap();
+    let block2 = append_block(db, &block1, vec![], &consensus_manager, 1.into()).unwrap();
 
     runtime.block_on(async {
         let metadata = node.local_nci.get_metadata().await.unwrap();
@@ -781,9 +767,9 @@ fn local_get_new_block_template_and_get_new_block() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
-    let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants);
+    let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants[0]);
     let rules = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
     let (mut node, _rules) = BaseNodeBuilder::new(network)
@@ -819,50 +805,6 @@ fn local_get_new_block_template_and_get_new_block() {
 }
 
 #[test]
-fn local_get_target_difficulty() {
-    let network = Network::LocalNet;
-    let mut runtime = Runtime::new().unwrap();
-    let temp_dir = tempdir().unwrap();
-    let (mut node, consensus_manager) =
-        BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
-
-    let db = &node.blockchain_db;
-    let block0 = db.fetch_block(0).unwrap().block().clone();
-    assert_eq!(node.blockchain_db.get_height().unwrap(), Some(0));
-
-    runtime.block_on(async {
-        let monero_target_difficulty1 = node
-            .local_nci
-            .get_target_difficulty(PowAlgorithm::Monero)
-            .await
-            .unwrap();
-        let blake_target_difficulty1 = node.local_nci.get_target_difficulty(PowAlgorithm::Blake).await.unwrap();
-        assert_ne!(monero_target_difficulty1, Difficulty::from(0));
-        assert_ne!(blake_target_difficulty1, Difficulty::from(0));
-
-        let block1 = chain_block(&block0, Vec::new(), &consensus_manager.consensus_constants());
-        let mut block1 = node.blockchain_db.calculate_mmr_roots(block1).unwrap();
-        block1.header.timestamp = block0
-            .header
-            .timestamp
-            .increase(consensus_manager.consensus_constants().get_target_block_interval());
-        block1.header.pow.pow_algo = PowAlgorithm::Blake;
-        node.blockchain_db.add_block(block1.into()).unwrap();
-        assert_eq!(node.blockchain_db.get_height().unwrap(), Some(1));
-        let monero_target_difficulty2 = node
-            .local_nci
-            .get_target_difficulty(PowAlgorithm::Monero)
-            .await
-            .unwrap();
-        let blake_target_difficulty2 = node.local_nci.get_target_difficulty(PowAlgorithm::Blake).await.unwrap();
-        assert!(monero_target_difficulty1 <= monero_target_difficulty2);
-        assert!(blake_target_difficulty1 <= blake_target_difficulty2);
-
-        node.comms.shutdown().await;
-    });
-}
-
-#[test]
 fn local_submit_block() {
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
@@ -874,7 +816,7 @@ fn local_submit_block() {
     let mut event_stream = node.local_nci.get_block_event_stream_fused();
     let block0 = db.fetch_block(0).unwrap().block().clone();
     let block1 = db
-        .calculate_mmr_roots(chain_block(&block0, vec![], &consensus_manager.consensus_constants()))
+        .calculate_mmr_roots(chain_block(&block0, vec![], &consensus_manager))
         .unwrap();
     runtime.block_on(async {
         assert!(node
@@ -902,9 +844,9 @@ fn request_and_response_fetch_mmr_node_and_count() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
-    let (block0, _) = create_genesis_block(&factories, &consensus_constants);
+    let (block0, _) = create_genesis_block(&factories, &consensus_constants[0]);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())
         .build();
     let (mut alice_node, mut bob_node, _) = create_network_with_2_base_nodes_with_config(
@@ -941,21 +883,21 @@ fn request_and_response_fetch_mmr_node_and_count() {
     txn.insert_utxo(utxo2.clone());
     txn.insert_kernel(kernel1.clone());
     assert!(db.commit(txn).is_ok());
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo3.clone());
     txn.spend_utxo(utxo_hash1.clone());
     txn.insert_kernel(kernel2.clone());
     assert!(db.commit(txn).is_ok());
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo4.clone());
     txn.spend_utxo(utxo_hash3.clone());
     txn.insert_kernel(kernel3.clone());
     assert!(db.commit(txn).is_ok());
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
 
     runtime.block_on(async {
         let node_count = alice_node

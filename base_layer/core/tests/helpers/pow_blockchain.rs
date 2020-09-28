@@ -60,10 +60,10 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
     consensus_manager: &ConsensusManager,
 )
 {
-    let constants = consensus_manager.consensus_constants();
+    let constants = consensus_manager.consensus_constants(0);
     let mut prev_block = chain_tip;
     for pow_algo in pow_algos {
-        let new_block = chain_block(&prev_block, Vec::new(), constants);
+        let new_block = chain_block(&prev_block, Vec::new(), consensus_manager);
         let mut new_block = db.calculate_mmr_roots(new_block).unwrap();
         new_block.header.timestamp = prev_block
             .header
@@ -95,7 +95,6 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
                 transaction_root: root.to_fixed_bytes(),
                 transaction_hashes: hashes.into_iter().map(|h| h.to_fixed_bytes()).collect(),
                 coinbase_tx: block.miner_tx,
-                difficulty: 18471,
             };
             let serialized = bincode::serialize(&monero_data).unwrap();
             new_block.header.pow.pow_data = serialized.clone();

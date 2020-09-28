@@ -30,7 +30,7 @@ use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
 use tokio::task;
 
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Error)]
 pub enum ChainStorageError {
     #[error("Access to the underlying storage mechanism failed: {0}")]
     AccessError(String),

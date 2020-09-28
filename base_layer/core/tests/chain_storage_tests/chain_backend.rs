@@ -41,7 +41,7 @@ use tari_core::{
         MmrTree,
         WriteOperation,
     },
-    consensus::{ConsensusConstants, Network},
+    consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
     helpers::create_orphan_block,
     proof_of_work::{
         monero_rx::{append_merge_mining_tag, tree_hash, MoneroData},
@@ -204,12 +204,12 @@ fn lmdb_insert_contains_delete_and_fetch_kernel() {
     }
 }
 
-fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(mut db: T, consensus_constants: &ConsensusConstants) {
+fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(mut db: T, consensus: &ConsensusManager) {
     let txs = vec![
         (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
         (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
     ];
-    let orphan = create_orphan_block(10, txs, consensus_constants);
+    let orphan = create_orphan_block(10, txs, consensus);
     let hash = orphan.hash();
     assert_eq!(db.contains(&DbKey::OrphanBlock(hash.clone())).unwrap(), false);
 
@@ -233,9 +233,9 @@ fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(mut db: T, cons
 #[test]
 fn memory_insert_contains_delete_and_fetch_orphan() {
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
+    let consensus = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::default();
-    insert_contains_delete_and_fetch_orphan(db, &consensus_constants);
+    insert_contains_delete_and_fetch_orphan(db, &consensus);
 }
 
 #[test]
@@ -246,9 +246,9 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
     // Perform test
     {
         let network = Network::LocalNet;
-        let consensus_constants = network.create_consensus_constants();
+        let consensus = ConsensusManagerBuilder::new(network).build();
         let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
-        insert_contains_delete_and_fetch_orphan(db, &consensus_constants);
+        insert_contains_delete_and_fetch_orphan(db, &consensus);
     }
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
@@ -796,21 +796,21 @@ fn lmdb_commit_block_and_create_fetch_checkpoint_and_rewind_mmr() {
     }
 }
 
-fn for_each_orphan<T: BlockchainBackend>(mut db: T, consensus_constants: &ConsensusConstants) {
+fn for_each_orphan<T: BlockchainBackend>(mut db: T, consensus: &ConsensusManager) {
     let orphan1 = create_orphan_block(
         5,
         vec![(tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0],
-        consensus_constants,
+        consensus,
     );
     let orphan2 = create_orphan_block(
         10,
         vec![(tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0],
-        consensus_constants,
+        consensus,
     );
     let orphan3 = create_orphan_block(
         15,
         vec![(tx!(3000.into(), fee: 40.into(), inputs: 1, outputs: 2)).0],
-        consensus_constants,
+        consensus,
     );
     let hash1 = orphan1.hash();
     let hash2 = orphan2.hash();
@@ -846,9 +846,9 @@ fn for_each_orphan<T: BlockchainBackend>(mut db: T, consensus_constants: &Consen
 #[test]
 fn memory_for_each_orphan() {
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
+    let consensus = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::default();
-    for_each_orphan(db, &consensus_constants);
+    for_each_orphan(db, &consensus);
 }
 
 #[test]
@@ -859,9 +859,9 @@ fn lmdb_for_each_orphan() {
     // Perform test
     {
         let network = Network::LocalNet;
-        let consensus_constants = network.create_consensus_constants();
+        let consensus = ConsensusManagerBuilder::new(network).build();
         let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
-        for_each_orphan(db, &consensus_constants);
+        for_each_orphan(db, &consensus);
     }
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
@@ -1049,10 +1049,11 @@ fn lmdb_for_each_utxo() {
 fn lmdb_backend_restore() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
+
+    let consensus = ConsensusManagerBuilder::new(network).build();
 
     let txs = vec![(tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0];
-    let orphan = create_orphan_block(10, txs, &consensus_constants);
+    let orphan = create_orphan_block(10, txs, &consensus);
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
     let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
     let kernel = create_test_kernel(100.into(), 0);
@@ -1609,7 +1610,6 @@ fn fetch_target_difficulties<T: BlockchainBackend>(mut db: T) {
         transaction_root: root.to_fixed_bytes(),
         transaction_hashes: hashes.into_iter().map(|h| h.to_fixed_bytes()).collect(),
         coinbase_tx: block.miner_tx,
-        difficulty: 18471,
     };
     let serialized = bincode::serialize(&monero_data).unwrap();
     header1.pow.pow_data = serialized.clone();
@@ -1643,7 +1643,6 @@ fn fetch_target_difficulties<T: BlockchainBackend>(mut db: T) {
         transaction_root: root4.to_fixed_bytes(),
         transaction_hashes: hashes4.into_iter().map(|h| h.to_fixed_bytes()).collect(),
         coinbase_tx: block4.miner_tx,
-        difficulty: 18471,
     };
     let serialized4 = bincode::serialize(&monero_data4).unwrap();
     header4.pow.pow_data = serialized4.clone();

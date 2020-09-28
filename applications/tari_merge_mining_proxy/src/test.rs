@@ -42,14 +42,14 @@ async fn read_body_as_json(body: &mut Body) -> serde_json::Value {
 
 mod merge_mining_proxy_service {
     use super::*;
-    use crate::proxy::MergeMiningProxyService;
+    use crate::{block_template_data::BlockTemplateRepository, proxy::MergeMiningProxyService};
     use futures::task::Poll;
     use futures_test::task::noop_context;
     use hyper::{service::Service, Body, Request};
 
     #[test]
     fn it_is_always_ready() {
-        let mut service = MergeMiningProxyService::new(default_test_config(), Default::default());
+        let mut service = MergeMiningProxyService::new(default_test_config(), BlockTemplateRepository::new());
         let mut cx = noop_context();
         let poll = service.poll_ready(&mut cx);
         match poll {
@@ -60,7 +60,7 @@ mod merge_mining_proxy_service {
 
     #[tokio_macros::test]
     async fn it_returns_an_error_response_empty_request() {
-        let mut service = MergeMiningProxyService::new(default_test_config(), Default::default());
+        let mut service = MergeMiningProxyService::new(default_test_config(), BlockTemplateRepository::new());
         let req = Request::new(Body::empty());
         let mut resp = service.call(req).await.unwrap();
         assert_eq!(resp.status().is_success(), false);

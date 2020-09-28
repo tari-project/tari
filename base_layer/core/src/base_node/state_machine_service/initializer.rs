@@ -126,8 +126,9 @@ where B: BlockchainBackend + 'static
             let mut state_machine_config = BaseNodeStateMachineConfig::default();
             state_machine_config.block_sync_config.sync_strategy = sync_strategy;
 
+            // TODO: This should move to checking each time
             state_machine_config.horizon_sync_config.horizon_sync_height_offset =
-                rules.consensus_constants().coinbase_lock_height() + 50;
+                rules.consensus_constants(0).coinbase_lock_height() + 50;
 
             let sync_validators = SyncValidators::full_consensus(db.clone(), rules.clone(), factories.clone());
             let node = BaseNodeStateMachine::new(

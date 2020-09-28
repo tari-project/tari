@@ -2,7 +2,7 @@ syntax = "proto3";
 
 import "block.proto";
 import "mmr_tree.proto";
-import "types.proto"; 
+import "types.proto";
 
 package tari.base_node;
 
@@ -28,8 +28,6 @@ message BaseNodeServiceRequest {
         uint64 get_new_block_template = 9;
         // Indicates a GetNewBlock request.
         tari.core.NewBlockTemplate get_new_block = 10;
-        // Indicates a GetTargetDifficulty request.
-        uint64 get_target_difficulty = 11;
         // Get headers in best chain following any headers in this list
         FetchHeadersAfter fetch_headers_after = 12;
         // Indicates a FetchMmrNodeCount request.

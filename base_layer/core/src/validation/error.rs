@@ -28,7 +28,7 @@ use crate::{
 };
 use thiserror::Error;
 
-#[derive(Clone, Debug, Error)]
+#[derive(Debug, Error)]
 pub enum ValidationError {
     #[error("Block header validation failed: {0}")]
     BlockHeaderError(#[from] BlockHeaderValidationError),
