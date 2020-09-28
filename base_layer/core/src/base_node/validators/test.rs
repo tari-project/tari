@@ -84,6 +84,8 @@ fn header_iter_fetch_in_chunks() {
 
 #[test]
 fn headers_validation() {
+    // This test works on the fact that the target_diff stays 1. But for it to stay 1, we need to ensure that the first
+    // timestamp is long enough back.
     let rules = ConsensusManagerBuilder::new(Network::LocalNet).build();
     let db = create_mem_db(&rules);
     let validator = HeaderValidator::new(db.clone(), rules.clone());
@@ -91,7 +93,10 @@ fn headers_validation() {
     let genesis = rules.get_genesis_block();
     validator.validate(&genesis.header).unwrap();
 
-    let header = BlockHeader::from_previous(&genesis.header);
+    let mut header = BlockHeader::from_previous(&genesis.header);
+    // update timestamp
+    header.timestamp =
+        EpochTime::from(header.timestamp.as_u64() - rules.consensus_constants().get_difficulty_max_block_interval());
     validator.validate(&header).unwrap();
     db.insert_valid_headers(vec![header.clone()]).unwrap();
 

@@ -101,7 +101,9 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
     let target = if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
         let constants = rules.consensus_constants();
         let block_window = constants.get_difficulty_block_window() as usize;
-        let target_difficulties = db.fetch_target_difficulties(pow_algo, height, block_window)?;
+        // We need to request + 2 timestamps as the lwma uses the first 2 only for timestamp verification and not
+        // calculation
+        let target_difficulties = db.fetch_target_difficulties(pow_algo, height, block_window + 2)?;
         get_target_difficulty(
             target_difficulties,
             block_window,

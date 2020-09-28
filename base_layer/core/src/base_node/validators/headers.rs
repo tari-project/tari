@@ -79,8 +79,8 @@ impl<B: BlockchainBackend> HeaderValidator<B> {
             Difficulty::from(1)
         } else {
             let target_difficulties = self.fetch_target_difficulties(block_header)?;
-
             let constants = self.rules.consensus_constants();
+            dbg!(constants.get_difficulty_block_window());
             get_target_difficulty(
                 target_difficulties,
                 constants.get_difficulty_block_window() as usize,
@@ -98,7 +98,8 @@ impl<B: BlockchainBackend> HeaderValidator<B> {
                 ))
             })?
         };
-
+        dbg!(&block_header.pow.target_difficulty);
+        dbg!(&target);
         if block_header.pow.target_difficulty != target {
             warn!(
                 target: LOG_TARGET,
@@ -134,7 +135,9 @@ impl<B: BlockchainBackend> HeaderValidator<B> {
         block_header: &BlockHeader,
     ) -> Result<Vec<(EpochTime, Difficulty)>, ValidationError>
     {
-        let block_window = self.rules.consensus_constants().get_difficulty_block_window();
+        // We need to request + 2 timestamps as the lwma uses the first 2 only for timestamp verification and not
+        // calculation
+        let block_window = self.rules.consensus_constants().get_difficulty_block_window() + 2;
         let start_height = block_header.height.saturating_sub(block_window);
         if start_height == block_header.height {
             return Ok(vec![]);
@@ -144,7 +147,7 @@ impl<B: BlockchainBackend> HeaderValidator<B> {
             target: LOG_TARGET,
             "fetch_target_difficulties: new header height = {}, block window = {}",
             block_header.height,
-            block_window
+            block_window - 2
         );
 
         let block_window = block_window as usize;

@@ -169,7 +169,7 @@ impl ConsensusConstants {
             future_time_limit: target_block_interval * difficulty_block_window / 20,
             target_block_interval,
             difficulty_block_window,
-            difficulty_max_block_interval: target_block_interval * 60,
+            difficulty_max_block_interval: target_block_interval * 6,
             max_block_transaction_weight: 19500,
             pow_algo_count: 1,
             median_timestamp_count: 11,

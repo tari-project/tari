@@ -32,9 +32,10 @@ impl LinearWeightedMovingAverage {
         max_block_time: u64,
     ) -> LinearWeightedMovingAverage
     {
+        // The first two index as only used as time checking, but it uses blockwindow + 2 entries.
         LinearWeightedMovingAverage {
-            timestamps: VecDeque::with_capacity(block_window + 1),
-            target_difficulties: VecDeque::with_capacity(block_window + 1),
+            timestamps: VecDeque::with_capacity(block_window + 2),
+            target_difficulties: VecDeque::with_capacity(block_window + 2),
             block_window,
             target_time,
             initial_difficulty,
@@ -44,40 +45,59 @@ impl LinearWeightedMovingAverage {
 
     fn calculate(&self) -> Difficulty {
         let timestamps = &self.timestamps;
-        if timestamps.len() <= 1 {
+        // We cant properly calculate the lwma if we dont have the required blocks. So for the 3 we
+        // return the minimum difficulty This is only relevant for the first blocks of the blocks chain
+        if timestamps.len() <= 2 {
             // return INITIAL_DIFFICULTY;
             return self.initial_difficulty;
         }
 
         // Use the array length rather than block_window to include early cases where the no. of pts < block_window
-        let n = (timestamps.len() - 1) as u64;
+        let n = (timestamps.len() - 2) as u64;
 
         let mut weighted_times: u64 = 0;
         let mut difficulty: u64 = 0;
-        for diff in self.target_difficulties.iter().skip(1) {
+        // Skip the first 2 as they are there for the timestamps fixing only
+        for diff in self.target_difficulties.iter().skip(2) {
+            dbg!(diff.as_u64());
             difficulty += diff.as_u64();
         }
         let ave_difficulty = difficulty as f64 / n as f64;
+        dbg!(&ave_difficulty);
 
-        let mut previous_timestamp = timestamps[0];
         let mut this_timestamp;
         // Loop through N most recent blocks.
-        for i in 1..=n as usize {
-            // We cannot have if solve_time < 1 then solve_time = 1, this will greatly increase the next timestamp
-            // difficulty which will lower the difficulty
+        // We cannot have if solve_time < 1 then solve_time = 1, this will greatly increase the next timestamp
+        // difficulty which will lower the difficulty
+        // The reason we use to extra timestamps is because we always fix the timestamp in section below. But if the
+        // timestamp drops out of the array(in this case timestamp[0] we dont know we have fixed timestamp[1]) so it
+        // stays broken for a single block interval. This stops it.
+        let mut previous_timestamp = if timestamps[1] > timestamps[0] {
+            timestamps[1]
+        } else {
+            timestamps[0].increase(1)
+        };
+        dbg!(&previous_timestamp);
+        for i in 2..timestamps.len() as usize {
             if timestamps[i] > previous_timestamp {
                 this_timestamp = timestamps[i];
             } else {
                 this_timestamp = previous_timestamp.increase(1);
             }
             let solve_time = cmp::min((this_timestamp - previous_timestamp).as_u64(), self.max_block_time);
+            dbg!(&solve_time);
             previous_timestamp = this_timestamp;
 
             // Give linearly higher weight to more recent solve times.
             // Note: This will not overflow for practical values of block_window and solve time.
-            weighted_times += solve_time * i as u64;
+            weighted_times += solve_time * (i - 1) as u64;
+            dbg!(&weighted_times);
+            dbg!(&solve_time);
         }
+        dbg!(&timestamps);
+        dbg!(&self.target_difficulties);
         // k is the sum of weights (1+2+..+n) * target_time
+        dbg!(n);
         let k = n * (n + 1) * self.target_time / 2;
         let target = ave_difficulty * k as f64 / weighted_times as f64;
         trace!(
@@ -120,7 +140,7 @@ impl DifficultyAdjustment for LinearWeightedMovingAverage {
 
         self.timestamps.push_back(timestamp);
         self.target_difficulties.push_back(target_difficulty);
-        while self.timestamps.len() > self.block_window + 1 {
+        while self.timestamps.len() > self.block_window + 2 {
             self.timestamps.pop_front();
             self.target_difficulties.pop_front();
         }
@@ -170,6 +190,7 @@ mod test {
     #[test]
     fn lwma_limit_difficulty_change() {
         let mut dif = LinearWeightedMovingAverage::new(5, 60, 1.into(), 60 * 6);
+        let _ = dif.add(59.into(), 100.into());
         let _ = dif.add(60.into(), 100.into());
         let _ = dif.add(10_000_000.into(), 100.into());
         assert_eq!(dif.get_difficulty(), 17.into());
@@ -186,6 +207,7 @@ mod test {
     // Target:     1, 100, 100, 100, 100, 107, 136, 130, 120,  94,  36,  39,  47,  67, 175
     fn lwma_calculate() {
         let mut dif = LinearWeightedMovingAverage::new(5, 60, 1.into(), 60 * 6);
+        let _ = dif.add(59.into(), 100.into());
         let _ = dif.add(60.into(), 100.into());
         assert_eq!(dif.get_difficulty(), 1.into());
         let _ = dif.add(120.into(), 100.into());
