@@ -31,4 +31,6 @@ pub enum OrphanPoolError {
     ChainStorageError(#[from] ChainStorageError),
     #[error("The Blockchain height is undefined")]
     ChainHeightUndefined,
+    #[error("Cannot insert transaction with zero kernels")]
+    InsertFailedNoKernels,
 }

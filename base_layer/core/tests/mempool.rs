@@ -76,8 +76,11 @@ use tokio::runtime::Runtime;
 fn test_insert_and_process_published_block() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default(), mempool_validator);
+    let mempool_validator = MempoolValidators::new(
+        TxInputAndMaturityValidator::new(store.clone()),
+        TxInputAndMaturityValidator::new(store.clone()),
+    );
+    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
     // Create a block with 4 outputs
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
@@ -231,8 +234,11 @@ fn test_insert_and_process_published_block() {
 fn test_retrieve() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default(), mempool_validator);
+    let mempool_validator = MempoolValidators::new(
+        TxInputAndMaturityValidator::new(store.clone()),
+        TxInputAndMaturityValidator::new(store.clone()),
+    );
+    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
         to: vec![1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T]
@@ -330,8 +336,11 @@ fn test_retrieve() {
 fn test_reorg() {
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
-    let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
+    let mempool_validator = MempoolValidators::new(
+        TxInputAndMaturityValidator::new(db.clone()),
+        TxInputAndMaturityValidator::new(db.clone()),
+    );
+    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
 
     // "Mine" Block 1
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![1 * T, 1 * T])];
@@ -459,8 +468,11 @@ fn test_orphaned_mempool_transactions() {
         &consensus_manager.consensus_constants(),
     )
     .unwrap();
-    let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default(), mempool_validator);
+    let mempool_validator = MempoolValidators::new(
+        TxInputAndMaturityValidator::new(store.clone()),
+        TxInputAndMaturityValidator::new(store.clone()),
+    );
+    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
     // There are 2 orphan txs
     vec![txns[2].clone(), txns2[0].clone(), txns2[1].clone(), txns2[2].clone()]
         .into_iter()

@@ -32,7 +32,7 @@ use crate::{
     transactions::types::CryptoFactories,
     validation::{
         helpers::{check_achieved_and_target_difficulty, check_median_timestamp, is_stxo},
-        StatelessValidation,
+        StatefulValidation,
         Validation,
         ValidationError,
     },
@@ -55,7 +55,7 @@ impl StatelessBlockValidator {
     }
 }
 
-impl StatelessValidation<Block> for StatelessBlockValidator {
+impl Validation<Block> for StatelessBlockValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Is the block weight of the block under the prescribed limit?
     /// 1. Does it contain only unique inputs and outputs?
@@ -102,7 +102,7 @@ impl FullConsensusValidator {
     }
 }
 
-impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
+impl<B: BlockchainBackend> StatefulValidation<Block, B> for FullConsensusValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Does the block satisfy the stateless checks?
     /// 1. Are all inputs currently in the UTXO set?
@@ -134,7 +134,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
     }
 }
 
-impl<B: BlockchainBackend> Validation<BlockHeader, B> for FullConsensusValidator {
+impl<B: BlockchainBackend> StatefulValidation<BlockHeader, B> for FullConsensusValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Is the Proof of Work valid?
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
@@ -181,7 +181,7 @@ impl MockStatelessBlockValidator {
     }
 }
 
-impl StatelessValidation<Block> for MockStatelessBlockValidator {
+impl Validation<Block> for MockStatelessBlockValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Is there precisely one Coinbase output and is it correctly defined?
     /// 1. Is the block weight of the block under the prescribed limit?

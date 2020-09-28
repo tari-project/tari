@@ -22,29 +22,29 @@
 
 use crate::validation::{and_then::AndThenValidator, error::ValidationError};
 
-pub type Validator<T, B> = Box<dyn Validation<T, B>>;
-pub type StatelessValidator<T> = Box<dyn StatelessValidation<T>>;
+pub type StatefulValidator<T, B> = Box<dyn StatefulValidation<T, B>>;
+pub type Validator<T> = Box<dyn Validation<T>>;
 
-/// The core validation trait. Multiple `Validation` implementors can be chained together in a [ValidatorPipeline] to
-/// provide consensus validation for blocks, transactions, or DAN instructions. Implementors only need to implement
-/// the methods that are relevant for the pipeline, since the default implementation always passes.
-pub trait Validation<T, B>: Send + Sync {
+/// The "stateful" version of the `Validation` trait. This trait allows extra context to be passed through to the
+/// validate function. Typically this will be an implementation of the `BlockchainBackend` trait.
+pub trait StatefulValidation<T, B>: Send + Sync {
     /// General validation code that can run independent of external state
     fn validate(&self, item: &T, db: &B) -> Result<(), ValidationError>;
 }
 
-/// Stateless version of the core validation trait.
-pub trait StatelessValidation<T>: Send + Sync {
+/// The core validation trait.
+/// Multiple validators can be chained together by using the `and_then` combinator.
+pub trait Validation<T>: Send + Sync {
     /// General validation code that can run independent of external state
     fn validate(&self, item: &T) -> Result<(), ValidationError>;
 }
 
-pub trait StatelessValidationExt<T>: StatelessValidation<T> {
+pub trait ValidationExt<T>: Validation<T> {
     /// Creates a new validator that performs this validation followed by another. If the first validation fails, the
     /// second one is not run.
-    fn and_then<V: StatelessValidation<T>>(self, other: V) -> AndThenValidator<Self, V>
+    fn and_then<V: Validation<T>>(self, other: V) -> AndThenValidator<Self, V>
     where Self: Sized {
         AndThenValidator::new(self, other)
     }
 }
-impl<T, U> StatelessValidationExt<T> for U where U: StatelessValidation<T> {}
+impl<T, U> ValidationExt<T> for U where U: Validation<T> {}

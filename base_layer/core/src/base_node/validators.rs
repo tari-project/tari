@@ -36,21 +36,21 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
     transactions::types::CryptoFactories,
-    validation::{StatelessValidation, StatelessValidator},
+    validation::{Validation, Validator},
 };
 use std::{fmt, sync::Arc};
 
 #[derive(Clone)]
 pub struct SyncValidators {
-    pub header: Arc<StatelessValidator<BlockHeader>>,
-    pub final_state: Arc<StatelessValidator<u64>>,
+    pub header: Arc<Validator<BlockHeader>>,
+    pub final_state: Arc<Validator<u64>>,
 }
 
 impl SyncValidators {
     pub fn new<THeader, TFinal>(header: THeader, final_state: TFinal) -> Self
     where
-        THeader: StatelessValidation<BlockHeader> + 'static,
-        TFinal: StatelessValidation<u64> + 'static,
+        THeader: Validation<BlockHeader> + 'static,
+        TFinal: Validation<u64> + 'static,
     {
         Self {
             header: Arc::new(Box::new(header)),

@@ -39,7 +39,7 @@ use crate::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{Commitment, HashOutput, PublicKey, Signature},
     },
-    validation::{StatelessValidation, StatelessValidator, Validation, ValidationError, Validator},
+    validation::{StatefulValidation, StatefulValidator, Validation, ValidationError, Validator},
 };
 use croaring::Bitmap;
 use log::*;
@@ -97,16 +97,16 @@ pub struct MutableMmrState {
 /// The `GenesisBlockValidator` is used to check that the chain builds on the correct genesis block.
 /// The `ChainTipValidator` is used to check that the accounting balance and MMR states of the chain state is valid.
 pub struct Validators<B> {
-    block: Arc<Validator<Block, B>>,
-    orphan: Arc<StatelessValidator<Block>>,
-    accum_difficulty: Arc<Validator<Difficulty, B>>,
+    block: Arc<StatefulValidator<Block, B>>,
+    orphan: Arc<Validator<Block>>,
+    accum_difficulty: Arc<StatefulValidator<Difficulty, B>>,
 }
 
 impl<B: BlockchainBackend> Validators<B> {
     pub fn new(
-        block: impl Validation<Block, B> + 'static,
-        orphan: impl StatelessValidation<Block> + 'static,
-        accum_difficulty: impl Validation<Difficulty, B> + 'static,
+        block: impl StatefulValidation<Block, B> + 'static,
+        orphan: impl Validation<Block> + 'static,
+        accum_difficulty: impl StatefulValidation<Difficulty, B> + 'static,
     ) -> Self
     {
         Self {
@@ -267,7 +267,7 @@ macro_rules! fetch {
 ///     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
 ///     consensus::{ConsensusManagerBuilder, Network},
 ///     transactions::types::HashDigest,
-///     validation::{accum_difficulty_validators::AccumDifficultyValidator, mocks::MockValidator, Validation},
+///     validation::{accum_difficulty_validators::AccumDifficultyValidator, mocks::MockValidator, StatefulValidation},
 /// };
 /// let db_backend = MemoryDatabase::<HashDigest>::default();
 /// let validators = Validators::new(
@@ -1085,8 +1085,8 @@ fn fetch_mmr_proof<T: BlockchainBackend>(db: &T, tree: MmrTree, pos: usize) -> R
 
 fn add_block<T: BlockchainBackend>(
     db: &mut T,
-    block_validator: &Validator<Block, T>,
-    accum_difficulty_validator: &Validator<Difficulty, T>,
+    block_validator: &StatefulValidator<Block, T>,
+    accum_difficulty_validator: &StatefulValidator<Difficulty, T>,
     block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
@@ -1446,8 +1446,8 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
 // is reorganised if necessary.
 fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut T,
-    block_validator: &Validator<Block, T>,
-    accum_difficulty_validator: &Validator<Difficulty, T>,
+    block_validator: &StatefulValidator<Block, T>,
+    accum_difficulty_validator: &StatefulValidator<Difficulty, T>,
     block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
@@ -1482,8 +1482,8 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 // with the newly un-orphaned blocks from the reorg chain.
 fn handle_reorg<T: BlockchainBackend>(
     db: &mut T,
-    block_validator: &Validator<Block, T>,
-    accum_difficulty_validator: &Validator<Difficulty, T>,
+    block_validator: &StatefulValidator<Block, T>,
+    accum_difficulty_validator: &StatefulValidator<Difficulty, T>,
     new_block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
@@ -1630,7 +1630,7 @@ fn handle_reorg<T: BlockchainBackend>(
 // Reorganize the main chain with the provided fork chain, starting at the specified height.
 fn reorganize_chain<T: BlockchainBackend>(
     db: &mut T,
-    block_validator: &Validator<Block, T>,
+    block_validator: &StatefulValidator<Block, T>,
     height: u64,
     chain: VecDeque<Arc<Block>>,
 ) -> Result<Vec<Arc<Block>>, ChainStorageError>

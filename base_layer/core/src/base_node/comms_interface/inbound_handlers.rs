@@ -93,7 +93,7 @@ impl From<bool> for Broadcast {
 pub struct InboundNodeCommsHandlers<T> {
     block_event_sender: BlockEventSender,
     blockchain_db: BlockchainDatabase<T>,
-    mempool: Mempool<T>,
+    mempool: Mempool,
     consensus_manager: ConsensusManager,
     new_block_request_semaphore: Arc<Semaphore>,
     outbound_nci: OutboundNodeCommsInterface,
@@ -106,7 +106,7 @@ where T: BlockchainBackend + 'static
     pub fn new(
         block_event_sender: BlockEventSender,
         blockchain_db: BlockchainDatabase<T>,
-        mempool: Mempool<T>,
+        mempool: Mempool,
         consensus_manager: ConsensusManager,
         outbound_nci: OutboundNodeCommsInterface,
     ) -> Self

@@ -28,7 +28,6 @@ use crate::{
         StateMachineHandle,
         WaitingRequests,
     },
-    chain_storage::BlockchainBackend,
     mempool::{
         proto,
         service::{
@@ -103,9 +102,9 @@ impl<SOutReq, SInReq, SInRes, STxIn, SLocalReq> MempoolStreams<SOutReq, SInReq, 
 
 /// The Mempool Service is responsible for handling inbound requests and responses and for sending new requests to the
 /// Mempools of remote Base nodes.
-pub struct MempoolService<B: BlockchainBackend + 'static> {
+pub struct MempoolService {
     outbound_message_service: OutboundMessageRequester,
-    inbound_handlers: MempoolInboundHandlers<B>,
+    inbound_handlers: MempoolInboundHandlers,
     waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>>,
     timeout_sender: Sender<RequestKey>,
     timeout_receiver_stream: Option<Receiver<RequestKey>>,
@@ -113,12 +112,10 @@ pub struct MempoolService<B: BlockchainBackend + 'static> {
     state_machine: StateMachineHandle,
 }
 
-impl<B> MempoolService<B>
-where B: BlockchainBackend + 'static
-{
+impl MempoolService {
     pub fn new(
         outbound_message_service: OutboundMessageRequester,
-        inbound_handlers: MempoolInboundHandlers<B>,
+        inbound_handlers: MempoolInboundHandlers,
         config: MempoolServiceConfig,
         state_machine: StateMachineHandle,
     ) -> Self
@@ -361,8 +358,8 @@ where B: BlockchainBackend + 'static
     }
 }
 
-async fn handle_incoming_request<B: BlockchainBackend + 'static>(
-    mut inbound_handlers: MempoolInboundHandlers<B>,
+async fn handle_incoming_request(
+    mut inbound_handlers: MempoolInboundHandlers,
     mut outbound_message_service: OutboundMessageRequester,
     domain_request_msg: DomainMessage<proto::MempoolServiceRequest>,
 ) -> Result<(), MempoolServiceError>
@@ -473,8 +470,8 @@ async fn handle_outbound_request(
     }
 }
 
-async fn handle_incoming_tx<B: BlockchainBackend + 'static>(
-    mut inbound_handlers: MempoolInboundHandlers<B>,
+async fn handle_incoming_tx(
+    mut inbound_handlers: MempoolInboundHandlers,
     domain_transaction_msg: DomainMessage<Transaction>,
 ) -> Result<(), MempoolServiceError>
 {
@@ -545,8 +542,8 @@ async fn handle_outbound_tx(
         .map(|_| ())
 }
 
-async fn handle_block_event<B: BlockchainBackend + 'static>(
-    mut inbound_handlers: MempoolInboundHandlers<B>,
+async fn handle_block_event(
+    mut inbound_handlers: MempoolInboundHandlers,
     block_event: &BlockEvent,
 ) -> Result<(), MempoolServiceError>
 {

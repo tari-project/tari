@@ -23,14 +23,14 @@
 use crate::{
     chain_storage::BlockchainBackend,
     proof_of_work::Difficulty,
-    validation::{Validation, ValidationError},
+    validation::{StatefulValidation, ValidationError},
 };
 
 /// This validator will check if a provided accumulated difficulty is stronger than the chain tip.
 #[derive(Clone)]
 pub struct AccumDifficultyValidator {}
 
-impl<B: BlockchainBackend> Validation<Difficulty, B> for AccumDifficultyValidator {
+impl<B: BlockchainBackend> StatefulValidation<Difficulty, B> for AccumDifficultyValidator {
     fn validate(&self, accum_difficulty: &Difficulty, db: &B) -> Result<(), ValidationError> {
         let tip_header = db
             .fetch_last_header()?
@@ -48,7 +48,7 @@ impl<B: BlockchainBackend> Validation<Difficulty, B> for AccumDifficultyValidato
 #[derive(Clone)]
 pub struct MockAccumDifficultyValidator;
 
-impl<B: BlockchainBackend> Validation<Difficulty, B> for MockAccumDifficultyValidator {
+impl<B: BlockchainBackend> StatefulValidation<Difficulty, B> for MockAccumDifficultyValidator {
     fn validate(&self, accum_difficulty: &Difficulty, db: &B) -> Result<(), ValidationError> {
         let tip_header = db
             .fetch_last_header()?

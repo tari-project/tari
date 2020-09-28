@@ -26,7 +26,7 @@ use tari_core::{
     proof_of_work::Difficulty,
     tari_utilities::message_format::MessageFormat,
     transactions::types::CryptoFactories,
-    validation::{block_validators::StatelessBlockValidator, StatelessValidation},
+    validation::{block_validators::StatelessBlockValidator, Validation},
 };
 
 /// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 9182

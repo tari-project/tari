@@ -22,7 +22,6 @@
 
 use crate::{
     base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
-    chain_storage::BlockchainBackend,
     mempool::{
         mempool::Mempool,
         proto,
@@ -60,19 +59,17 @@ const LOG_TARGET: &str = "c::bn::mempool_service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Mempool";
 
 /// Initializer for the Mempool service and service future.
-pub struct MempoolServiceInitializer<T> {
+pub struct MempoolServiceInitializer {
     inbound_message_subscription_factory: Arc<SubscriptionFactory>,
-    mempool: Mempool<T>,
+    mempool: Mempool,
     config: MempoolServiceConfig,
 }
 
-impl<T> MempoolServiceInitializer<T>
-where T: BlockchainBackend
-{
+impl MempoolServiceInitializer {
     /// Create a new MempoolServiceInitializer from the inbound message subscriber.
     pub fn new(
         inbound_message_subscription_factory: Arc<SubscriptionFactory>,
-        mempool: Mempool<T>,
+        mempool: Mempool,
         config: MempoolServiceConfig,
     ) -> Self
     {
@@ -138,9 +135,7 @@ async fn extract_transaction(msg: Arc<PeerMessage>) -> Option<DomainMessage<Tran
     }
 }
 
-impl<T> ServiceInitializer for MempoolServiceInitializer<T>
-where T: BlockchainBackend + 'static
-{
+impl ServiceInitializer for MempoolServiceInitializer {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
     fn initialize(
