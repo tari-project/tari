@@ -141,9 +141,9 @@ where
         Ok(lmdb_get::<i64, T>(&self.env, &self.db, &key)?)
     }
 
-    fn get_or_panic(&self, index: usize) -> Self::Value {
-        self.get(index).unwrap().unwrap()
-    }
+    // fn get_or_panic(&self, index: usize) -> Self::Value {
+    //     self.get(index).unwrap().unwrap()
+    // }
 
     fn clear(&mut self) -> Result<(), Self::Error> {
         let txn = WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;

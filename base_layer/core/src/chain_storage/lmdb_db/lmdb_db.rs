@@ -463,7 +463,7 @@ where D: Digest + Send + Sync
             MmrTree::Utxo => {
                 let mut pruned_mmr = prune_mutable_mmr(&*self.utxo_mmr)?;
                 for hash in self.curr_utxo_checkpoint.nodes_added() {
-                    pruned_mmr.push(&hash)?;
+                    pruned_mmr.push(hash.clone())?;
                 }
                 for index in self.curr_utxo_checkpoint.nodes_deleted().to_vec() {
                     pruned_mmr.delete_and_compress(index, false);
@@ -474,14 +474,14 @@ where D: Digest + Send + Sync
             MmrTree::Kernel => {
                 let mut pruned_mmr = prune_mutable_mmr(&*self.kernel_mmr)?;
                 for hash in self.curr_kernel_checkpoint.nodes_added() {
-                    pruned_mmr.push(&hash)?;
+                    pruned_mmr.push(hash.clone())?;
                 }
                 pruned_mmr
             },
             MmrTree::RangeProof => {
                 let mut pruned_mmr = prune_mutable_mmr(&*self.range_proof_mmr)?;
                 for hash in self.curr_range_proof_checkpoint.nodes_added() {
-                    pruned_mmr.push(&hash)?;
+                    pruned_mmr.push(hash.clone())?;
                 }
                 pruned_mmr
             },
@@ -638,7 +638,7 @@ where D: Digest + Send + Sync
     {
         let mut pruned_mmr = self.get_pruned_mmr(&tree)?;
         for hash in additions {
-            pruned_mmr.push(&hash)?;
+            pruned_mmr.push(hash)?;
         }
         if tree == MmrTree::Utxo {
             for hash in deletions {

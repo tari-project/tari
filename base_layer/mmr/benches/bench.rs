@@ -22,29 +22,28 @@
 //
 
 use blake2::Blake2b;
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use digest::Digest;
 use std::time::Duration;
 use tari_mmr::MerkleMountainRange;
 
 fn get_hashes(n: usize) -> Vec<Vec<u8>> {
-    let mut result = Vec::with_capacity(n);
-    for i in 0..n {
-        let h = Blake2b::digest(&i.to_le_bytes()).to_vec();
-        result.push(h);
-    }
-    result
+    (0..n).map(|i| Blake2b::digest(&i.to_le_bytes()).to_vec()).collect()
 }
 
 fn build_mmr(c: &mut Criterion) {
     c.bench_function("Build MMR", move |b| {
         let hashes = get_hashes(1000);
         let mut mmr = MerkleMountainRange::<Blake2b, _>::new(Vec::default());
-        b.iter(|| {
-            for i in 0..1000 {
-                let _ = mmr.push(&hashes[i]);
-            }
-        });
+        b.iter_batched(
+            || hashes.clone(),
+            |hashes| {
+                hashes.into_iter().for_each(|hash| {
+                    mmr.push(hash).unwrap();
+                });
+            },
+            BatchSize::SmallInput,
+        );
     });
 }
 

@@ -32,7 +32,7 @@ pub fn create_mmr(size: usize) -> MerkleMountainRange<Hasher, Vec<Hash>> {
     let mut mmr = MerkleMountainRange::<Hasher, _>::new(Vec::default());
     for i in 0..size {
         let hash = int_to_hash(i);
-        assert!(mmr.push(&hash).is_ok());
+        assert!(mmr.push(hash).is_ok());
     }
     mmr
 }
@@ -41,7 +41,7 @@ pub fn create_mutable_mmr(size: usize) -> MutableMmr<Hasher, Vec<Hash>> {
     let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
     for i in 0..size {
         let hash = int_to_hash(i);
-        assert!(mmr.push(&hash).is_ok());
+        assert!(mmr.push(hash).is_ok());
     }
     mmr
 }
