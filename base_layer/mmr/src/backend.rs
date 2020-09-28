@@ -40,10 +40,6 @@ pub trait ArrayLike {
     /// Return the item at the given index
     fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error>;
 
-    /// Return the item at the given index. Use this if you *know* that the index is valid. Requesting a hash for an
-    /// invalid index may cause the a panic
-    fn get_or_panic(&self, index: usize) -> Self::Value;
-
     /// Remove all stored items from the the backend.
     fn clear(&mut self) -> Result<(), Self::Error>;
 
@@ -87,10 +83,6 @@ impl<T: Clone + PartialEq> ArrayLike for Vec<T> {
 
     fn get(&self, index: usize) -> Result<Option<Self::Value>, Self::Error> {
         Ok((self as &[Self::Value]).get(index).map(Clone::clone))
-    }
-
-    fn get_or_panic(&self, index: usize) -> Self::Value {
-        self[index].clone()
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {

@@ -128,18 +128,18 @@ where
     }
 
     /// See [MerkleMountainRange::find_node_index]
-    pub fn find_node_index(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
+    pub fn find_node_index(&self, hash: &[u8]) -> Result<Option<usize>, MerkleMountainRangeError> {
         self.mmr.find_node_index(hash)
     }
 
     /// See [MerkleMountainRange::find_leaf_index]
-    pub fn find_leaf_index(&self, hash: &Hash) -> Result<Option<u32>, MerkleMountainRangeError> {
+    pub fn find_leaf_index(&self, hash: &[u8]) -> Result<Option<u32>, MerkleMountainRangeError> {
         self.mmr.find_leaf_index(hash)
     }
 
     /// Push a new element into the MMR. Computes new related peaks at the same time if applicable.
     /// Returns the new number of leaf nodes (regardless of deleted state) in the mutable MMR
-    pub fn push(&mut self, hash: &Hash) -> Result<usize, MerkleMountainRangeError> {
+    pub fn push(&mut self, hash: Hash) -> Result<usize, MerkleMountainRangeError> {
         if self.size == std::u32::MAX {
             return Err(MerkleMountainRangeError::MaximumSizeReached);
         }

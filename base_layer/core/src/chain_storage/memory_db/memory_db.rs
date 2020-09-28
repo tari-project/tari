@@ -446,7 +446,7 @@ where D: Digest + Send + Sync
         let db = self.db_access()?;
         let mut pruned_mmr = get_pruned_mmr(&db, &tree)?;
         for hash in additions {
-            pruned_mmr.push(&hash)?;
+            pruned_mmr.push(hash)?;
         }
         if tree == MmrTree::Utxo {
             deletions.iter().for_each(|hash| {
@@ -855,7 +855,7 @@ fn get_pruned_mmr<D: Digest>(
         MmrTree::Utxo => {
             let mut pruned_mmr = prune_mutable_mmr(&db.utxo_mmr)?;
             for hash in db.curr_utxo_checkpoint.nodes_added() {
-                pruned_mmr.push(&hash)?;
+                pruned_mmr.push(hash.clone())?;
             }
             db.curr_utxo_checkpoint
                 .nodes_deleted()
@@ -870,14 +870,14 @@ fn get_pruned_mmr<D: Digest>(
         MmrTree::Kernel => {
             let mut pruned_mmr = prune_mutable_mmr(&db.kernel_mmr)?;
             for hash in db.curr_kernel_checkpoint.nodes_added() {
-                pruned_mmr.push(&hash)?;
+                pruned_mmr.push(hash.clone())?;
             }
             pruned_mmr
         },
         MmrTree::RangeProof => {
             let mut pruned_mmr = prune_mutable_mmr(&db.range_proof_mmr)?;
             for hash in db.curr_range_proof_checkpoint.nodes_added() {
-                pruned_mmr.push(&hash)?;
+                pruned_mmr.push(hash.clone())?;
             }
             pruned_mmr
         },

@@ -44,7 +44,7 @@ fn build_mmr() {
     // Add a single item
     let h0 = int_to_hash(0);
 
-    assert!(mmr.push(&h0).is_ok());
+    assert!(mmr.push(h0.clone()).is_ok());
     // The root of a single hash is the hash of that hash
     assert_eq!(mmr.len(), Ok(1));
     assert_eq!(mmr.get_merkle_root(), Ok(combine_hashes(&[&h0])));
@@ -52,7 +52,7 @@ fn build_mmr() {
     //    2
     //  0   1
     let h1 = int_to_hash(1);
-    assert!(mmr.push(&h1).is_ok());
+    assert!(mmr.push(h1.clone()).is_ok());
     let h_2 = combine_hashes(&[&h0, &h1]);
     assert_eq!(mmr.get_merkle_root(), Ok(combine_hashes(&[&h_2])));
     assert_eq!(mmr.len(), Ok(3));
@@ -60,7 +60,7 @@ fn build_mmr() {
     //    2
     //  0   1  3
     let h3 = int_to_hash(3);
-    assert!(mmr.push(&h3).is_ok());
+    assert!(mmr.push(h3.clone()).is_ok());
     // The root is a bagged root
     let root = combine_hashes(&[&h_2, &h3]);
     assert_eq!(mmr.get_merkle_root(), Ok(root));
@@ -70,7 +70,7 @@ fn build_mmr() {
     //    2      5
     //  0   1  3   4
     let h4 = int_to_hash(4);
-    assert!(mmr.push(&h4).is_ok());
+    assert!(mmr.push(h4.clone()).is_ok());
     let h_5 = combine_hashes(&[&h3, &h4]);
     let h_6 = combine_hashes(&[&h_2, &h_5]);
     assert_eq!(mmr.get_merkle_root(), Ok(combine_hashes(&[&h_6])));
@@ -80,7 +80,7 @@ fn build_mmr() {
     //    2      5
     //  0   1  3   4  7
     let h7 = int_to_hash(7);
-    assert!(mmr.push(&h7).is_ok());
+    assert!(mmr.push(h7.clone()).is_ok());
     let root = combine_hashes(&[&h_6, &h7]);
     assert_eq!(mmr.get_merkle_root(), Ok(root));
     assert_eq!(mmr.len(), Ok(8));
@@ -90,7 +90,7 @@ fn build_mmr() {
     //  0   1  3   4  7  8
     let h8 = int_to_hash(8);
     let h_9 = combine_hashes(&[&h7, &h8]);
-    assert!(mmr.push(&h8).is_ok());
+    assert!(mmr.push(h8.clone()).is_ok());
     let root = combine_hashes(&[&h_6, &h_9]);
     assert_eq!(mmr.get_merkle_root(), Ok(root));
     assert_eq!(mmr.len(), Ok(10));
@@ -101,12 +101,12 @@ fn equality_check() {
     let mut ma = MerkleMountainRange::<Hasher, _>::new(Vec::default());
     let mut mb = MerkleMountainRange::<Hasher, _>::new(Vec::default());
     assert!(ma == mb);
-    assert!(ma.push(&int_to_hash(1)).is_ok());
+    assert!(ma.push(int_to_hash(1)).is_ok());
     assert!(ma != mb);
-    assert!(mb.push(&int_to_hash(1)).is_ok());
+    assert!(mb.push(int_to_hash(1)).is_ok());
     assert!(ma == mb);
-    assert!(ma.push(&int_to_hash(2)).is_ok());
-    assert!(mb.push(&int_to_hash(3)).is_ok());
+    assert!(ma.push(int_to_hash(2)).is_ok());
+    assert!(mb.push(int_to_hash(3)).is_ok());
     assert!(ma != mb);
 }
 
@@ -126,10 +126,10 @@ fn restore_from_leaf_hashes() {
     let h1 = int_to_hash(1);
     let h2 = int_to_hash(2);
     let h3 = int_to_hash(3);
-    assert!(mmr.push(&h0).is_ok());
-    assert!(mmr.push(&h1).is_ok());
-    assert!(mmr.push(&h2).is_ok());
-    assert!(mmr.push(&h3).is_ok());
+    assert!(mmr.push(h0.clone()).is_ok());
+    assert!(mmr.push(h1.clone()).is_ok());
+    assert!(mmr.push(h2.clone()).is_ok());
+    assert!(mmr.push(h3.clone()).is_ok());
     assert_eq!(mmr.len(), Ok(7));
 
     // Construct MMR state from multiple leaf hash queries.
@@ -142,8 +142,8 @@ fn restore_from_leaf_hashes() {
     assert_eq!(leaf_hashes[2], h2);
     assert_eq!(leaf_hashes[3], h3);
 
-    assert!(mmr.push(&int_to_hash(4)).is_ok());
-    assert!(mmr.push(&int_to_hash(5)).is_ok());
+    assert!(mmr.push(int_to_hash(4)).is_ok());
+    assert!(mmr.push(int_to_hash(5)).is_ok());
     assert_eq!(mmr.len(), Ok(10));
 
     assert!(mmr.assign(leaf_hashes).is_ok());
@@ -164,11 +164,11 @@ fn find_leaf_index() {
     let h3 = int_to_hash(3);
     let h4 = int_to_hash(4);
     let h5 = int_to_hash(5);
-    assert!(mmr.push(&h0).is_ok());
-    assert!(mmr.push(&h1).is_ok());
-    assert!(mmr.push(&h2).is_ok());
-    assert!(mmr.push(&h3).is_ok());
-    assert!(mmr.push(&h4).is_ok());
+    assert!(mmr.push(h0.clone()).is_ok());
+    assert!(mmr.push(h1.clone()).is_ok());
+    assert!(mmr.push(h2.clone()).is_ok());
+    assert!(mmr.push(h3.clone()).is_ok());
+    assert!(mmr.push(h4.clone()).is_ok());
     assert_eq!(mmr.len(), Ok(8));
 
     assert_eq!(mmr.find_leaf_index(&h0), Ok(Some(0)));

@@ -439,9 +439,9 @@ fn fetch_mmr_root_and_proof_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
     assert!(db.write(txn).is_ok());
 
     let mut utxo_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
-    assert!(utxo_mmr_check.push(&utxo_hash1).is_ok());
-    assert!(utxo_mmr_check.push(&utxo_hash2).is_ok());
-    assert!(utxo_mmr_check.push(&utxo_hash3).is_ok());
+    assert!(utxo_mmr_check.push(utxo_hash1.clone()).is_ok());
+    assert!(utxo_mmr_check.push(utxo_hash2.clone()).is_ok());
+    assert!(utxo_mmr_check.push(utxo_hash3.clone()).is_ok());
     assert_eq!(
         db.fetch_mmr_root(MmrTree::Utxo).unwrap().to_hex(),
         utxo_mmr_check.get_merkle_root().unwrap().to_hex()
@@ -456,9 +456,9 @@ fn fetch_mmr_root_and_proof_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
     assert!(proof3.verify_leaf::<HashDigest>(&mmr_only_root, &utxo_hash3, 2).is_ok());
 
     let mut rp_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
-    assert_eq!(rp_mmr_check.push(&rp_hash1), Ok(1));
-    assert_eq!(rp_mmr_check.push(&rp_hash2), Ok(2));
-    assert_eq!(rp_mmr_check.push(&rp_hash3), Ok(3));
+    assert_eq!(rp_mmr_check.push(rp_hash1.clone()), Ok(1));
+    assert_eq!(rp_mmr_check.push(rp_hash2.clone()), Ok(2));
+    assert_eq!(rp_mmr_check.push(rp_hash3.clone()), Ok(3));
     assert_eq!(
         db.fetch_mmr_root(MmrTree::RangeProof).unwrap().to_hex(),
         rp_mmr_check.get_merkle_root().unwrap().to_hex()
@@ -517,9 +517,9 @@ fn fetch_mmr_root_and_proof_for_kernel<T: BlockchainBackend>(mut db: T) {
     assert!(db.write(txn).is_ok());
 
     let mut kernel_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
-    assert!(kernel_mmr_check.push(&hash1).is_ok());
-    assert!(kernel_mmr_check.push(&hash2).is_ok());
-    assert!(kernel_mmr_check.push(&hash3).is_ok());
+    assert!(kernel_mmr_check.push(hash1.clone()).is_ok());
+    assert!(kernel_mmr_check.push(hash2.clone()).is_ok());
+    assert!(kernel_mmr_check.push(hash3.clone()).is_ok());
     assert_eq!(
         db.fetch_mmr_root(MmrTree::Kernel).unwrap().to_hex(),
         kernel_mmr_check.get_merkle_root().unwrap().to_hex()
@@ -1883,10 +1883,10 @@ fn insert_mmr_node_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
     assert!(db.write(txn).is_ok());
 
     let mut utxo_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
-    assert!(utxo_mmr_check.push(&utxo_hash1).is_ok());
-    assert!(utxo_mmr_check.push(&utxo_hash2).is_ok());
-    assert!(utxo_mmr_check.push(&utxo_hash3).is_ok());
-    assert!(utxo_mmr_check.push(&utxo_hash4).is_ok());
+    assert!(utxo_mmr_check.push(utxo_hash1.clone()).is_ok());
+    assert!(utxo_mmr_check.push(utxo_hash2.clone()).is_ok());
+    assert!(utxo_mmr_check.push(utxo_hash3.clone()).is_ok());
+    assert!(utxo_mmr_check.push(utxo_hash4.clone()).is_ok());
     let leaf_index = utxo_mmr_check.find_leaf_index(&utxo_hash2).unwrap().unwrap();
     assert!(utxo_mmr_check.delete(leaf_index));
     assert_eq!(
@@ -1905,10 +1905,10 @@ fn insert_mmr_node_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
     assert!(proof4.verify_leaf::<HashDigest>(&mmr_only_root, &utxo_hash4, 3).is_ok());
 
     let mut rp_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
-    assert_eq!(rp_mmr_check.push(&rp_hash1), Ok(1));
-    assert_eq!(rp_mmr_check.push(&rp_hash2), Ok(2));
-    assert_eq!(rp_mmr_check.push(&rp_hash3), Ok(3));
-    assert_eq!(rp_mmr_check.push(&rp_hash4), Ok(4));
+    assert_eq!(rp_mmr_check.push(rp_hash1.clone()), Ok(1));
+    assert_eq!(rp_mmr_check.push(rp_hash2.clone()), Ok(2));
+    assert_eq!(rp_mmr_check.push(rp_hash3.clone()), Ok(3));
+    assert_eq!(rp_mmr_check.push(rp_hash4.clone()), Ok(4));
     assert_eq!(
         db.fetch_mmr_root(MmrTree::RangeProof).unwrap().to_hex(),
         rp_mmr_check.get_merkle_root().unwrap().to_hex()
