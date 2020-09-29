@@ -49,7 +49,6 @@ use tari_storage::{
 };
 use thiserror::Error;
 use tower::ServiceBuilder;
-
 const LOG_TARGET: &str = "p2p::initialization";
 
 #[derive(Debug, Error)]

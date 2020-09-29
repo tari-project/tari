@@ -207,7 +207,11 @@ impl DhtConnectivity {
             },
             ConnectivityStateDegraded(n) | ConnectivityStateOnline(n) => {
                 if self.config.auto_join && self.can_send_join() {
-                    info!(target: LOG_TARGET, "Joining the network automatically");
+                    info!(
+                        target: LOG_TARGET,
+                        "[ThisNode={}] Joining the network automatically",
+                        self.node_identity.node_id().short_str()
+                    );
                     self.dht_requester
                         .send_join()
                         .await
