@@ -388,9 +388,11 @@ where
                     "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
                 );
                 match error {
-                    // This is the only error where we do not want to send this event as it was sent as a Timeout event
-                    // in the protocol
+                    // An event for this error has already been sent at this time
                     OutputManagerError::MaximumAttemptsExceeded => (),
+                    // An event for this error has already been sent at this time
+                    OutputManagerError::BaseNodeNotSynced => (),
+                    // A generic event is sent for all other errors
                     _ => {
                         let _ = self
                             .resources
