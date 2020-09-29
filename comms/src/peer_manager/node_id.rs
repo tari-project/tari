@@ -81,6 +81,11 @@ impl XorDistance {
     pub const fn zero() -> Self {
         Self([0; NODE_XOR_DISTANCE_ARRAY_SIZE])
     }
+
+    /// Returns the number of bytes required to represent the `XorDistance`
+    pub const fn byte_length() -> usize {
+        NODE_XOR_DISTANCE_ARRAY_SIZE
+    }
 }
 
 impl PartialEq for XorDistance {
@@ -101,6 +106,20 @@ impl TryFrom<&[u8]> for XorDistance {
         } else {
             Err(NodeIdError::IncorrectByteCount)
         }
+    }
+}
+
+impl TryFrom<XorDistance> for u128 {
+    type Error = String;
+
+    fn try_from(value: XorDistance) -> Result<Self, Self::Error> {
+        if XorDistance::byte_length() > 16 {
+            return Err("XorDistance has too many bytes to be converted to U128".to_string());
+        }
+        let slice = value.as_bytes();
+        let mut bytes: [u8; 16] = [0u8; 16];
+        bytes[..XorDistance::byte_length()].copy_from_slice(&slice[..XorDistance::byte_length()]);
+        Ok(u128::from_be_bytes(bytes))
     }
 }
 
@@ -559,5 +578,41 @@ mod test {
 
         let hamming_dist = HammingDistance::from_node_ids(&node_max, &node_min);
         assert_eq!(hamming_dist, HammingDistance::max_distance());
+    }
+
+    #[test]
+    fn convert_xor_distance_to_u128() {
+        let node_id1 = NodeId::try_from(
+            [
+                144, 28, 106, 112, 220, 197, 216, 119, 9, 217, 42, 77, 159, 211, 53, 207, 0, 157, 5, 55, 235, 247, 160,
+                195, 240, 48, 146, 168, 119, 15, 241, 54,
+            ]
+            .as_bytes(),
+        )
+        .unwrap();
+        let node_id2 = NodeId::try_from(
+            [
+                186, 43, 62, 14, 60, 214, 9, 180, 145, 122, 55, 160, 83, 83, 45, 185, 219, 206, 226, 128, 5, 26, 20, 0,
+                192, 121, 216, 178, 134, 212, 51, 131,
+            ]
+            .as_bytes(),
+        )
+        .unwrap();
+        let node_id3 = NodeId::try_from(
+            [
+                60, 32, 246, 39, 108, 201, 214, 91, 30, 230, 3, 126, 31, 46, 66, 203, 27, 51, 240, 177, 230, 22, 118,
+                102, 201, 55, 211, 147, 229, 26, 116, 103,
+            ]
+            .as_bytes(),
+        )
+        .unwrap();
+        let n1_to_n2_dist = node_id1.distance(&node_id2);
+        let n1_to_n3_dist = node_id1.distance(&node_id3);
+        assert!(n1_to_n2_dist < n1_to_n3_dist);
+        let n12_distance = u128::try_from(n1_to_n2_dist).unwrap();
+        let n13_distance = u128::try_from(n1_to_n3_dist).unwrap();
+        assert!(n12_distance < n13_distance);
+        assert_eq!(n12_distance, 56114865924689668092413877285545836544);
+        assert_eq!(n13_distance, 228941924089749863963604860508980641792);
     }
 }

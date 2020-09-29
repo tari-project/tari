@@ -388,7 +388,7 @@ impl StoreAndForwardService {
     fn check_saf_response_threshold(&mut self) {
         // This check can only be done after the `ConnectivityStateOnline` event has arrived
         if let Some(num_peers) = self.num_online_peers {
-            // We only perform the check while we are still tracking reponses
+            // We only perform the check while we are still tracking responses
             if let Some(n) = self.num_received_saf_responses {
                 if n >= num_peers {
                     // A send operation can only fail if there are no subscribers, so it is safe to ignore the error
