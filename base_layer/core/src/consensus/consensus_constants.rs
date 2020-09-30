@@ -185,18 +185,21 @@ impl ConsensusConstants {
                 emission_initial: 5_538_846_115 * uT,
                 emission_decay: 0.999_999_560_409_038_5,
                 emission_tail: 1 * T,
-                min_pow_difficulty: (1.into(), 60_000_000.into()),
+                min_pow_difficulty: (1.into(), 1.into()),
                 max_randomx_seed_height: std::u64::MAX,
                 genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
             },
+            // Max difficulty block window reduced to 6x.
+            // min_pow_difficulty increased. Previous blocks would treat this value as 1 because of
+            // a bug that was fixed.
             ConsensusConstants {
-                effective_from_height: 102916,
+                effective_from_height: 109000,
                 coinbase_lock_height: 60,
                 blockchain_version: 1,
                 future_time_limit: target_block_interval * difficulty_block_window / 20,
                 target_block_interval,
                 difficulty_block_window,
-                difficulty_max_block_interval: target_block_interval * 60,
+                difficulty_max_block_interval: target_block_interval * 6,
                 max_block_transaction_weight: 19500,
                 pow_algo_count: 1,
                 median_timestamp_count: 11,

@@ -221,10 +221,8 @@ fn get_random_x_difficulty(input: &[u8], key: &[u8]) -> Result<(Difficulty, Vec<
         hash.to_hex(),
         Vec::from(key).to_hex()
     );
-    let scalar = U256::from_little_endian(&hash); // Big endian so the hash has leading zeroes
-    let max_u128 = U256::from(u128::max_value());
-    let max_u256 = max_u128 * max_u128;
-    let result = max_u256 / scalar;
+    let scalar = U256::from_little_endian(&hash); // Little endian so the hash has trailing zeroes
+    let result = MAX_TARGET / scalar;
     let difficulty = Difficulty::from(result.low_u64());
     Ok((difficulty, hash))
 }
@@ -849,8 +847,6 @@ mod test {
             difficulty.1.to_hex(),
             "f68fbc8cc85bde856cd1323e9f8e6f024483038d728835de2f8c014ff6260000"
         );
-        // Should be 897200 according to Monero calculation. Not sure why it is lower
-        // assert_eq!(difficulty.0, 897200.into());
         assert_eq!(difficulty.0, 430603.into());
     }
 }

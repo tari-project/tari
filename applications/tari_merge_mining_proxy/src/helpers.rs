@@ -23,7 +23,7 @@
 use crate::error::MmProxyError;
 use json::Value;
 use monero::{
-    blockdata::{transaction::SubField, Block as MoneroBlock, Block},
+    blockdata::{transaction::SubField, Block},
     consensus::{deserialize, serialize},
     cryptonote::hash::Hash,
 };
@@ -52,7 +52,7 @@ pub fn serialize_monero_block_to_hex(obj: &Block) -> Result<String, MmProxyError
     Ok(bytes)
 }
 
-pub fn construct_monero_data(block: MoneroBlock, seed: String) -> Result<MoneroData, MmProxyError> {
+pub fn construct_monero_data(block: Block, seed: String) -> Result<MoneroData, MmProxyError> {
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&block);
     let root = monero_rx::tree_hash(&hashes)?;
     Ok(MoneroData {
