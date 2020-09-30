@@ -42,7 +42,7 @@ use thiserror::Error;
 
 pub const LOG_TARGET: &str = "c::pow::monero_rx";
 
-// const MAX_TARGET: U256 = U256::MAX;
+const MAX_TARGET: U256 = U256::MAX;
 
 #[derive(Debug, Error)]
 pub enum MergeMineError {
