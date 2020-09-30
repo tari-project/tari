@@ -27,6 +27,7 @@ use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::MessageSendStates;
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks";
+const LOG_TARGET_STRESS: &str = "stress_test::transaction_service::tasks";
 
 /// This function contains the logic to wait on a dial and send of a queued message
 pub async fn wait_on_dial(
@@ -46,10 +47,22 @@ pub async fn wait_on_dial(
             destination_pubkey,
             send_states[0].tag,
         );
+        debug!(
+            target: LOG_TARGET_STRESS,
+            "{} (TxId: {}) Direct Send to {} queued with Message {}",
+            message,
+            tx_id,
+            destination_pubkey,
+            send_states[0].tag,
+        );
         let (sent, failed) = send_states.wait_n_timeout(direct_send_timeout, 1).await;
         if !sent.is_empty() {
             info!(
                 target: LOG_TARGET,
+                "Direct Send process for {} TX_ID: {} was successful with Message: {}", message, tx_id, sent[0]
+            );
+            debug!(
+                target: LOG_TARGET_STRESS,
                 "Direct Send process for {} TX_ID: {} was successful with Message: {}", message, tx_id, sent[0]
             );
             true
@@ -59,9 +72,20 @@ pub async fn wait_on_dial(
                     target: LOG_TARGET,
                     "Direct Send process for {} TX_ID: {} timed out", message, tx_id
                 );
+                debug!(
+                    target: LOG_TARGET_STRESS,
+                    "Direct Send process for {} TX_ID: {} timed out", message, tx_id
+                );
             } else {
                 warn!(
                     target: LOG_TARGET,
+                    "Direct Send process for {} TX_ID: {} and Message {} was unsuccessful and no message was sent",
+                    message,
+                    tx_id,
+                    failed[0]
+                );
+                debug!(
+                    target: LOG_TARGET_STRESS,
                     "Direct Send process for {} TX_ID: {} and Message {} was unsuccessful and no message was sent",
                     message,
                     tx_id,

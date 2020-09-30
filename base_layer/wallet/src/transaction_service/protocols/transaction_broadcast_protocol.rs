@@ -51,6 +51,7 @@ use tari_p2p::tari_message::TariMessageType;
 use tokio::{sync::broadcast, time::delay_for};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
+const LOG_TARGET_STRESS: &str = "stress_test::broadcast_protocol";
 
 /// This protocol defines the process of monitoring a mempool and base node to detect when a Completed transaction is
 /// Broadcast to the mempool or potentially Mined
@@ -347,6 +348,17 @@ where TBackend: TransactionBackend + Clone + 'static
                             // Broadcast state
                             info!(
                                 target: LOG_TARGET,
+                                "Completed Transaction (TxId: {} and Kernel Excess Sig: {}) detected as Broadcast to \
+                                 Base Node Mempool in {:?}",
+                                self.id,
+                                completed_tx.transaction.body.kernels()[0]
+                                    .excess_sig
+                                    .get_signature()
+                                    .to_hex(),
+                                ts
+                            );
+                            debug!(
+                                target: LOG_TARGET_STRESS,
                                 "Completed Transaction (TxId: {} and Kernel Excess Sig: {}) detected as Broadcast to \
                                  Base Node Mempool in {:?}",
                                 self.id,
