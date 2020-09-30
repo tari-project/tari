@@ -37,15 +37,13 @@ impl TransactionsTab {
         let total = app_state.pending_txs.len() + app_state.completed_txs.len();
         let (pending_constraint, completed_constaint) = if app_state.pending_txs.len() == 0 {
             (Constraint::Min(4), Constraint::Min(4))
+        } else if app_state.pending_txs.len() as f32 / total as f32 > 0.25 {
+            (
+                Constraint::Ratio(app_state.pending_txs.len() as u32, total as u32),
+                Constraint::Ratio(app_state.completed_txs.len() as u32, total as u32),
+            )
         } else {
-            if app_state.pending_txs.len() as f32 / total as f32 > 0.25 {
-                (
-                    Constraint::Ratio(app_state.pending_txs.len() as u32, total as u32),
-                    Constraint::Ratio(app_state.completed_txs.len() as u32, total as u32),
-                )
-            } else {
-                (Constraint::Max(5), Constraint::Min(4))
-            }
+            (Constraint::Max(5), Constraint::Min(4))
         };
 
         let list_areas = Layout::default()
@@ -309,10 +307,10 @@ impl<B: Backend> Component<B> for TransactionsTab {
             },
             '\n' => match self.selected_tx_list {
                 SelectedTransactionList::PendingTxs => {
-                    app_state.detailed_transaction = app_state.pending_txs.selected_item().map(|i| i.clone());
+                    app_state.detailed_transaction = app_state.pending_txs.selected_item().cloned();
                 },
                 SelectedTransactionList::CompletedTxs => {
-                    app_state.detailed_transaction = app_state.completed_txs.selected_item().map(|i| i.clone());
+                    app_state.detailed_transaction = app_state.completed_txs.selected_item().cloned();
                 },
             },
             _ => {},
@@ -323,11 +321,11 @@ impl<B: Backend> Component<B> for TransactionsTab {
         match self.selected_tx_list {
             SelectedTransactionList::PendingTxs => {
                 app_state.pending_txs.previous();
-                app_state.detailed_transaction = app_state.pending_txs.selected_item().map(|i| i.clone());
+                app_state.detailed_transaction = app_state.pending_txs.selected_item().cloned();
             },
             SelectedTransactionList::CompletedTxs => {
                 app_state.completed_txs.previous();
-                app_state.detailed_transaction = app_state.completed_txs.selected_item().map(|i| i.clone());
+                app_state.detailed_transaction = app_state.completed_txs.selected_item().cloned();
             },
         }
     }
@@ -336,11 +334,11 @@ impl<B: Backend> Component<B> for TransactionsTab {
         match self.selected_tx_list {
             SelectedTransactionList::PendingTxs => {
                 app_state.pending_txs.next();
-                app_state.detailed_transaction = app_state.pending_txs.selected_item().map(|i| i.clone());
+                app_state.detailed_transaction = app_state.pending_txs.selected_item().cloned();
             },
             SelectedTransactionList::CompletedTxs => {
                 app_state.completed_txs.next();
-                app_state.detailed_transaction = app_state.completed_txs.selected_item().map(|i| i.clone());
+                app_state.detailed_transaction = app_state.completed_txs.selected_item().cloned();
             },
         }
     }

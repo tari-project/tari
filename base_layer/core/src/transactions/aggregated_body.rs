@@ -181,9 +181,9 @@ impl AggregateBody {
     pub fn verify_kernel_signatures(&self) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking kernel signatures",);
         for kernel in self.kernels.iter() {
-            kernel.verify_signature().or_else(|e| {
+            kernel.verify_signature().map_err(|e| {
                 warn!(target: LOG_TARGET, "Kernel ({}) signature failed {:?}.", kernel, e);
-                Err(e)
+                e
             })?;
         }
         Ok(())

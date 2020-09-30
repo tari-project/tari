@@ -212,25 +212,20 @@ impl Miner {
                 // found block, lets ensure we kill all other threads
                 self.stop_mining_flag.store(true, Ordering::Relaxed);
                 block.header = r;
-                if self
-                    .send_block(block)
-                    .await
-                    .or_else(|e| {
-                        error!(target: LOG_TARGET, "Could not send block to base node. {:?}.", e);
-                        Err(e)
-                    })
-                    .is_err()
-                {
+                let block_sent = self.send_block(block).await;
+
+                if let Err(e) = block_sent {
+                    error!(target: LOG_TARGET, "Could not send block to base node. {:?}.", e);
                     break;
-                };
-                let _ = self
-                    .utxo_sender
-                    .try_send(output)
-                    .or_else(|e| {
-                        error!(target: LOG_TARGET, "Could not send utxo to wallet. {:?}.", e);
-                        Err(e)
-                    })
-                    .map_err(|e| MinerError::CommunicationError(e.to_string()));
+                }
+
+                let utxo_sent = self.utxo_sender.try_send(output);
+
+                if let Err(e) = utxo_sent {
+                    error!(target: LOG_TARGET, "Could not send utxo to wallet. {:?}.", e);
+                    return Err(MinerError::CommunicationError(e.to_string()));
+                }
+
                 break;
             }
         }
@@ -354,12 +349,12 @@ impl Miner {
             .node_interface
             .get_new_block_template(PowAlgorithm::Blake)
             .await
-            .or_else(|e| {
+            .map_err(|e| {
                 error!(
                     target: LOG_TARGET,
                     "Could not get a new block template from the base node. {:?}.", e
                 );
-                Err(e)
+                e
             })
             .map_err(|e| MinerError::CommunicationError(e.to_string()))?)
     }
@@ -374,12 +369,12 @@ impl Miner {
             .node_interface
             .get_new_block(block)
             .await
-            .or_else(|e| {
+            .map_err(|e| {
                 error!(
                     target: LOG_TARGET,
                     "Could not get a new block from the base node. {:?}.", e
                 );
-                Err(e)
+                e
             })
             .map_err(|e| MinerError::CommunicationError(e.to_string()))?)
     }

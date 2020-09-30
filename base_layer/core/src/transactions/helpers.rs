@@ -285,7 +285,7 @@ pub fn create_tx(
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
     match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
-        Ok(_0) => (),
+        Ok(_) => (),
         Err(e) => panic!("{:?}", e),
     }
     (
@@ -331,7 +331,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     };
     outputs.push(change_output);
     match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
-        Ok(_0) => (),
+        Ok(_) => (),
         Err(e) => panic!("{:?}", e),
     }
     let txn = stx_protocol.get_transaction().unwrap().clone();
@@ -406,7 +406,7 @@ pub fn display_currency(value: f64, precision: usize, separator: &str) -> String
     if precision > 0 {
         format!("{}.{:0>2$}", formatted_whole_value, decimal, precision)
     } else {
-        format!("{}", formatted_whole_value)
+        formatted_whole_value
     }
 }
 

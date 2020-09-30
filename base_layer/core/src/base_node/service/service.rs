@@ -240,7 +240,8 @@ where B: BlockchainBackend + 'static
         let config = self.config;
         task::spawn(async move {
             let ((request, node_id), reply_tx) = request_context.split();
-            let _ = handle_outbound_request(
+
+            let result = handle_outbound_request(
                 outbound_message_service,
                 waiting_requests,
                 timeout_sender,
@@ -249,26 +250,22 @@ where B: BlockchainBackend + 'static
                 node_id,
                 config,
             )
-            .await
-            .or_else(|err| {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to handle outbound request message: {:?}", err
-                );
-                Err(err)
-            });
+            .await;
+
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle outbound request message: {:?}", e);
+            }
         });
     }
 
     fn spawn_handle_outbound_block(&self, new_block: NewBlock, excluded_peers: Vec<NodeId>) {
         let outbound_message_service = self.outbound_message_service.clone();
         task::spawn(async move {
-            let _ = handle_outbound_block(outbound_message_service, new_block, excluded_peers)
-                .await
-                .or_else(|err| {
-                    error!(target: LOG_TARGET, "Failed to handle outbound block message {:?}", err);
-                    Err(err)
-                });
+            let result = handle_outbound_block(outbound_message_service, new_block, excluded_peers).await;
+
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle outbound block message {:?}", e);
+            }
         });
     }
 
@@ -277,42 +274,36 @@ where B: BlockchainBackend + 'static
         let outbound_message_service = self.outbound_message_service.clone();
         let state_machine_handle = self.state_machine_handle.clone();
         task::spawn(async move {
-            let _ = handle_incoming_request(inbound_nch, outbound_message_service, state_machine_handle, domain_msg)
-                .await
-                .or_else(|err| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to handle incoming request message: {:?}", err
-                    );
-                    Err(err)
-                });
+            let result =
+                handle_incoming_request(inbound_nch, outbound_message_service, state_machine_handle, domain_msg).await;
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle incoming request message: {:?}", e);
+            }
         });
     }
 
     fn spawn_handle_incoming_response(&self, domain_msg: DomainMessage<proto::base_node::BaseNodeServiceResponse>) {
         let waiting_requests = self.waiting_requests.clone();
         task::spawn(async move {
-            let _ = handle_incoming_response(waiting_requests, domain_msg.into_inner())
-                .await
-                .or_else(|err| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to handle incoming response message: {:?}", err
-                    );
-                    Err(err)
-                });
+            let result = handle_incoming_response(waiting_requests, domain_msg.into_inner()).await;
+
+            if let Err(e) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to handle incoming response message: {:?}", e
+                );
+            }
         });
     }
 
     fn spawn_handle_request_timeout(&self, timeout_request_key: u64) {
         let waiting_requests = self.waiting_requests.clone();
         task::spawn(async move {
-            let _ = handle_request_timeout(waiting_requests, timeout_request_key)
-                .await
-                .or_else(|err| {
-                    error!(target: LOG_TARGET, "Failed to handle request timeout event: {:?}", err);
-                    Err(err)
-                });
+            let result = handle_request_timeout(waiting_requests, timeout_request_key).await;
+
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle request timeout event: {:?}", e);
+            }
         });
     }
 
@@ -331,10 +322,11 @@ where B: BlockchainBackend + 'static
         }
         let inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
-            let _ = handle_incoming_block(inbound_nch, new_block).await.or_else(|err| {
-                error!(target: LOG_TARGET, "Failed to handle incoming block message: {:?}", err);
-                Err(err)
-            });
+            let result = handle_incoming_block(inbound_nch, new_block).await;
+
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle incoming block message: {:?}", e);
+            }
         });
     }
 
@@ -346,15 +338,13 @@ where B: BlockchainBackend + 'static
         let inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
             let (request, reply_tx) = request_context.split();
-            let _ = reply_tx
-                .send(inbound_nch.handle_request(&request).await)
-                .or_else(|err| {
-                    error!(
-                        target: LOG_TARGET,
-                        "BaseNodeService failed to send reply to local request {:?}", err
-                    );
-                    Err(err)
-                });
+            let result = reply_tx.send(inbound_nch.handle_request(&request).await);
+            if let Err(e) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "BaseNodeService failed to send reply to local request {:?}", e
+                );
+            }
         });
     }
 
@@ -366,15 +356,14 @@ where B: BlockchainBackend + 'static
         let inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
             let ((block, broadcast), reply_tx) = block_context.split();
-            let _ = reply_tx
-                .send(inbound_nch.handle_block(Arc::new(block), broadcast, None).await)
-                .or_else(|err| {
-                    error!(
-                        target: LOG_TARGET,
-                        "BaseNodeService failed to send reply to local block submitter {:?}", err
-                    );
-                    Err(err)
-                });
+            let result = reply_tx.send(inbound_nch.handle_block(Arc::new(block), broadcast, None).await);
+
+            if let Err(e) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "BaseNodeService failed to send reply to local block submitter {:?}", e
+                );
+            }
         });
     }
 }
@@ -484,12 +473,12 @@ async fn handle_incoming_response(
             started.elapsed().as_millis(),
             is_synced
         );
-        let _ = reply_tx.send(Ok(response).or_else(|resp| {
+        let _ = reply_tx.send(Ok(response).map_err(|e| {
             warn!(
                 target: LOG_TARGET,
-                "Failed to finalize request (request key:{}): {:?}", &request_key, resp
+                "Failed to finalize request (request key:{}): {:?}", &request_key, e
             );
-            Err(resp)
+            e
         }));
     }
 
@@ -528,15 +517,14 @@ async fn handle_outbound_request(
 
     match send_result.resolve().await {
         Ok(send_states) if send_states.is_empty() => {
-            let _ = reply_tx
-                .send(Err(CommsInterfaceError::NoBootstrapNodesConfigured))
-                .or_else(|resp| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to send outbound request as no bootstrap nodes were configured"
-                    );
-                    Err(resp)
-                });
+            let result = reply_tx.send(Err(CommsInterfaceError::NoBootstrapNodesConfigured));
+
+            if let Err(_e) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to send outbound request as no bootstrap nodes were configured"
+                );
+            }
         },
         Ok(send_states) => {
             // Wait for matching responses to arrive
@@ -564,15 +552,14 @@ async fn handle_outbound_request(
         },
         Err(err) => {
             debug!(target: LOG_TARGET, "Failed to send outbound request: {}", err);
-            let _ = reply_tx
-                .send(Err(CommsInterfaceError::BroadcastFailed))
-                .or_else(|resp| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to send outbound request ({}) because DHT outbound broadcast failed", request_key
-                    );
-                    Err(resp)
-                });
+            let result = reply_tx.send(Err(CommsInterfaceError::BroadcastFailed));
+
+            if let Err(_e) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to send outbound request ({}) because DHT outbound broadcast failed", request_key
+                );
+            }
         },
     }
     Ok(())
@@ -611,12 +598,12 @@ async fn handle_request_timeout(
             started.elapsed().as_millis()
         );
         let reply_msg = Err(CommsInterfaceError::RequestTimedOut);
-        let _ = reply_tx.send(reply_msg.or_else(|resp| {
+        let _ = reply_tx.send(reply_msg.map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "Failed to send outbound request (request key: {}): {:?}", &request_key, resp
+                "Failed to send outbound request (request key: {}): {:?}", &request_key, e
             );
-            Err(resp)
+            e
         }));
     }
     Ok(())

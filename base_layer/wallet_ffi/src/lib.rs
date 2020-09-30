@@ -2814,8 +2814,8 @@ pub unsafe extern "C" fn wallet_create(
                 pattern = format!("{}{}", path.clone(), "{}");
             } else {
                 pattern = split_str[0].to_string();
-                for i in 1..split_str.len() - 1 {
-                    pattern = format!("{}.{}", pattern, split_str[i]);
+                for part in split_str.iter().take(split_str.len() - 1).skip(1) {
+                    pattern = format!("{}.{}", pattern, part);
                 }
 
                 pattern = format!("{}{}", pattern, ".{}.");
@@ -3456,7 +3456,7 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
         return false;
     }
 
-    return true;
+    true
 }
 
 /// Upserts a TariContact to the TariWallet. If the contact does not exist it will be Inserted. If it does exist the

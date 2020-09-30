@@ -115,10 +115,8 @@ impl std::str::FromStr for MicroTari {
         let processed = s.replace(",", "").replace(" ", "").to_ascii_lowercase();
         let is_micro_tari = if processed.ends_with("ut") || processed.ends_with("µt") {
             true
-        } else if processed.ends_with("t") {
-            false
         } else {
-            true
+            !processed.ends_with('t')
         };
 
         // Avoid using f64 if we an
