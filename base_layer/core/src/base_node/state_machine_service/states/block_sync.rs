@@ -411,6 +411,7 @@ async fn find_chain_split_height<B: BlockchainBackend + 'static>(
                         sync_peers,
                         sync_peer.clone(),
                         shared.config.sync_peer_config.short_term_peer_ban_duration,
+                        "Peer supplied invalid chain link".to_string(),
                     )
                     .await?;
                     Err(BlockSyncError::InvalidChainLink)
@@ -427,6 +428,7 @@ async fn find_chain_split_height<B: BlockchainBackend + 'static>(
         shared,
         sync_peers,
         shared.config.sync_peer_config.peer_ban_duration,
+        "Mass ban because peer could not provide a valid chain link".to_string(),
     )
     .await?;
     Err(BlockSyncError::ForkChainNotLinked)
@@ -511,6 +513,7 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
                         sync_peers,
                         sync_peer.clone(),
                         shared.config.sync_peer_config.peer_ban_duration,
+                        "Peer supplied an invalid block".to_string(),
                     )
                     .await?;
 
@@ -531,6 +534,7 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
                         sync_peers,
                         sync_peer.clone(),
                         shared.config.sync_peer_config.peer_ban_duration,
+                        format!("Peer supplied an invalid block that failed validation: {}", source),
                     )
                     .await?;
                     break;
@@ -594,6 +598,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                         sync_peers,
                         sync_peer.clone(),
                         config.short_term_peer_ban_duration,
+                        "Peer supplied the incorrect blocks".to_string(),
                     )
                     .await?;
                 } else {
@@ -614,6 +619,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                         sync_peers,
                         sync_peer.clone(),
                         config.short_term_peer_ban_duration,
+                        "Peer supplied the incorrect number of blocks".to_string(),
                     )
                     .await?;
                 }
@@ -626,6 +632,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                     sync_peers,
                     sync_peer.clone(),
                     config.peer_ban_duration,
+                    "Remote node provided an unexpected api response".to_string(),
                 )
                 .await?;
             },
@@ -641,6 +648,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                     sync_peers,
                     sync_peer.clone(),
                     config.short_term_peer_ban_duration,
+                    "Failed to fetch blocks from peer".to_string(),
                 )
                 .await?;
             },

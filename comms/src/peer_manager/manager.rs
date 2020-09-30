@@ -231,13 +231,28 @@ impl PeerManager {
     }
 
     /// Ban the peer for a length of time specified by the duration
-    pub async fn ban_peer(&self, public_key: &CommsPublicKey, duration: Duration) -> Result<NodeId, PeerManagerError> {
-        self.peer_storage.write().await.ban_peer(public_key, duration)
+    pub async fn ban_peer(
+        &self,
+        public_key: &CommsPublicKey,
+        duration: Duration,
+        reason: String,
+    ) -> Result<NodeId, PeerManagerError>
+    {
+        self.peer_storage.write().await.ban_peer(public_key, duration, reason)
     }
 
     /// Ban the peer for a length of time specified by the duration
-    pub async fn ban_peer_by_node_id(&self, node_id: &NodeId, duration: Duration) -> Result<NodeId, PeerManagerError> {
-        self.peer_storage.write().await.ban_peer_by_node_id(node_id, duration)
+    pub async fn ban_peer_by_node_id(
+        &self,
+        node_id: &NodeId,
+        duration: Duration,
+        reason: String,
+    ) -> Result<NodeId, PeerManagerError>
+    {
+        self.peer_storage
+            .write()
+            .await
+            .ban_peer_by_node_id(node_id, duration, reason)
     }
 
     /// Changes the offline flag bit of the peer

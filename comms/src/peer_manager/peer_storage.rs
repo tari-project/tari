@@ -125,6 +125,7 @@ where DS: KeyValueStore<PeerId, Peer>
         net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
         banned_until: Option<Option<Duration>>,
+        banned_reason: Option<String>,
         is_offline: Option<bool>,
         peer_features: Option<PeerFeatures>,
         supported_protocols: Option<Vec<ProtocolId>>,
@@ -144,6 +145,7 @@ where DS: KeyValueStore<PeerId, Peer>
                     net_addresses,
                     flags,
                     banned_until,
+                    banned_reason,
                     is_offline,
                     peer_features,
                     supported_protocols,
@@ -433,30 +435,42 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 
     /// Ban the peer for the given duration
-    pub fn ban_peer(&mut self, public_key: &CommsPublicKey, duration: Duration) -> Result<NodeId, PeerManagerError> {
+    pub fn ban_peer(
+        &mut self,
+        public_key: &CommsPublicKey,
+        duration: Duration,
+        reason: String,
+    ) -> Result<NodeId, PeerManagerError>
+    {
         let id = *self
             .public_key_index
             .get(public_key)
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        self.ban_peer_by_id(id, duration)
+        self.ban_peer_by_id(id, duration, reason)
     }
 
     /// Ban the peer for the given duration
-    pub fn ban_peer_by_node_id(&mut self, node_id: &NodeId, duration: Duration) -> Result<NodeId, PeerManagerError> {
+    pub fn ban_peer_by_node_id(
+        &mut self,
+        node_id: &NodeId,
+        duration: Duration,
+        reason: String,
+    ) -> Result<NodeId, PeerManagerError>
+    {
         let id = *self
             .node_id_index
             .get(node_id)
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        self.ban_peer_by_id(id, duration)
+        self.ban_peer_by_id(id, duration, reason)
     }
 
-    fn ban_peer_by_id(&mut self, id: PeerId, duration: Duration) -> Result<NodeId, PeerManagerError> {
+    fn ban_peer_by_id(&mut self, id: PeerId, duration: Duration, reason: String) -> Result<NodeId, PeerManagerError> {
         let mut peer: Peer = self
             .peer_db
             .get(&id)
             .map_err(PeerManagerError::DatabaseError)?
             .expect("index are out of sync with peer db");
-        peer.ban_for(duration);
+        peer.ban_for(duration, reason);
         let node_id = peer.node_id.clone();
         self.peer_db.insert(id, peer).map_err(PeerManagerError::DatabaseError)?;
         Ok(node_id)

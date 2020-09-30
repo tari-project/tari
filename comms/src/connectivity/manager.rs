@@ -239,8 +239,8 @@ impl ConnectivityManagerActor {
             GetAllConnectionStates(reply_tx) => {
                 let _ = reply_tx.send(self.pool.all().into_iter().cloned().collect());
             },
-            BanPeer(node_id, duration) => {
-                if let Err(err) = self.ban_peer(&node_id, duration).await {
+            BanPeer(node_id, duration, reason) => {
+                if let Err(err) = self.ban_peer(&node_id, duration, reason).await {
                     error!(target: LOG_TARGET, "Error when banning peer: {:?}", err);
                 }
             },
@@ -639,7 +639,13 @@ impl ConnectivityManagerActor {
         let _ = self.event_tx.send(Arc::new(event));
     }
 
-    async fn ban_peer(&mut self, node_id: &NodeId, duration: Duration) -> Result<(), ConnectivityError> {
+    async fn ban_peer(
+        &mut self,
+        node_id: &NodeId,
+        duration: Duration,
+        reason: String,
+    ) -> Result<(), ConnectivityError>
+    {
         info!(
             target: LOG_TARGET,
             "Banning peer {} for {}",
@@ -652,7 +658,7 @@ impl ConnectivityManagerActor {
             debug!(target: LOG_TARGET, "Banned managed peer '{}'", node_id);
         }
 
-        self.peer_manager.ban_peer_by_node_id(node_id, duration).await?;
+        self.peer_manager.ban_peer_by_node_id(node_id, duration, reason).await?;
 
         self.publish_event(ConnectivityEvent::PeerBanned(node_id.clone()));
 
