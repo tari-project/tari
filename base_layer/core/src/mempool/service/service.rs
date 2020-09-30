@@ -228,7 +228,7 @@ impl MempoolService {
         let config = self.config;
         task::spawn(async move {
             let (request, reply_tx) = request_context.split();
-            let _ = handle_outbound_request(
+            let result = handle_outbound_request(
                 outbound_message_service,
                 waiting_requests,
                 timeout_sender,
@@ -236,26 +236,21 @@ impl MempoolService {
                 request,
                 config,
             )
-            .await
-            .or_else(|err| {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to handle outbound request message: {:?}", err
-                );
-                Err(err)
-            });
+            .await;
+
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle outbound request message: {:?}", e);
+            }
         });
     }
 
     fn spawn_handle_outbound_tx(&self, tx: Transaction, excluded_peers: Vec<NodeId>) {
         let outbound_message_service = self.outbound_message_service.clone();
         task::spawn(async move {
-            let _ = handle_outbound_tx(outbound_message_service, tx, excluded_peers)
-                .await
-                .or_else(|err| {
-                    error!(target: LOG_TARGET, "Failed to handle outbound tx message {:?}", err);
-                    Err(err)
-                });
+            let result = handle_outbound_tx(outbound_message_service, tx, excluded_peers).await;
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle outbound tx message {:?}", e);
+            }
         });
     }
 
@@ -263,30 +258,25 @@ impl MempoolService {
         let inbound_handlers = self.inbound_handlers.clone();
         let outbound_message_service = self.outbound_message_service.clone();
         task::spawn(async move {
-            let _ = handle_incoming_request(inbound_handlers, outbound_message_service, domain_msg)
-                .await
-                .or_else(|err| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to handle incoming request message: {:?}", err
-                    );
-                    Err(err)
-                });
+            let result = handle_incoming_request(inbound_handlers, outbound_message_service, domain_msg).await;
+
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle incoming request message: {:?}", e);
+            }
         });
     }
 
     fn spawn_handle_incoming_response(&self, domain_msg: DomainMessage<proto::mempool::MempoolServiceResponse>) {
         let waiting_requests = self.waiting_requests.clone();
         task::spawn(async move {
-            let _ = handle_incoming_response(waiting_requests, domain_msg.into_inner())
-                .await
-                .or_else(|err| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to handle incoming response message: {:?}", err
-                    );
-                    Err(err)
-                });
+            let result = handle_incoming_response(waiting_requests, domain_msg.into_inner()).await;
+
+            if let Err(e) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to handle incoming response message: {:?}", e
+                );
+            }
         });
     }
 
@@ -305,13 +295,13 @@ impl MempoolService {
         }
         let inbound_handlers = self.inbound_handlers.clone();
         task::spawn(async move {
-            let _ = handle_incoming_tx(inbound_handlers, tx_msg).await.or_else(|err| {
+            let result = handle_incoming_tx(inbound_handlers, tx_msg).await;
+            if let Err(e) = result {
                 error!(
                     target: LOG_TARGET,
-                    "Failed to handle incoming transaction message: {:?}", err
+                    "Failed to handle incoming transaction message: {:?}", e
                 );
-                Err(err)
-            });
+            }
         });
     }
 
@@ -323,37 +313,35 @@ impl MempoolService {
         let mut inbound_handlers = self.inbound_handlers.clone();
         task::spawn(async move {
             let (request, reply_tx) = request_context.split();
-            let _ = reply_tx
-                .send(inbound_handlers.handle_request(request).await)
-                .or_else(|err| {
-                    error!(
-                        target: LOG_TARGET,
-                        "MempoolService failed to send reply to local request {:?}", err
-                    );
-                    Err(err)
-                });
+            let result = reply_tx.send(inbound_handlers.handle_request(request).await);
+
+            if let Err(e) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "MempoolService failed to send reply to local request {:?}", e
+                );
+            }
         });
     }
 
     fn spawn_handle_block_event(&self, block_event: Arc<BlockEvent>) {
         let inbound_handlers = self.inbound_handlers.clone();
         task::spawn(async move {
-            let _ = handle_block_event(inbound_handlers, &block_event).await.or_else(|err| {
-                error!(target: LOG_TARGET, "Failed to handle base node block event: {:?}", err);
-                Err(err)
-            });
+            let result = handle_block_event(inbound_handlers, &block_event).await;
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle base node block event: {:?}", e);
+            }
         });
     }
 
     fn spawn_handle_request_timeout(&self, timeout_request_key: u64) {
         let waiting_requests = self.waiting_requests.clone();
         task::spawn(async move {
-            let _ = handle_request_timeout(waiting_requests, timeout_request_key)
-                .await
-                .or_else(|err| {
-                    error!(target: LOG_TARGET, "Failed to handle request timeout event: {:?}", err);
-                    Err(err)
-                });
+            let result = handle_request_timeout(waiting_requests, timeout_request_key).await;
+
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle request timeout event: {:?}", e);
+            }
         });
     }
 }
@@ -408,12 +396,12 @@ async fn handle_incoming_response(
             &request_key,
             started.elapsed().as_millis()
         );
-        let _ = reply_tx.send(Ok(response).or_else(|resp| {
+        let _ = reply_tx.send(Ok(response).map_err(|e| {
             warn!(
                 target: LOG_TARGET,
-                "Failed to finalize request (request key:{}): {:?}", &request_key, resp
+                "Failed to finalize request (request key:{}): {:?}", &request_key, e
             );
-            Err(resp)
+            e
         }));
     }
 
@@ -453,12 +441,12 @@ async fn handle_outbound_request(
             Ok(())
         },
         Err(DhtOutboundError::NoMessagesQueued) => {
-            let _ = reply_tx.send(Err(MempoolServiceError::NoBootstrapNodesConfigured).or_else(|resp| {
+            let _ = reply_tx.send(Err(MempoolServiceError::NoBootstrapNodesConfigured).map_err(|e| {
                 error!(
                     target: LOG_TARGET,
                     "Failed to send outbound request as no bootstrap nodes were configured"
                 );
-                Err(resp)
+                e
             }));
 
             Ok(())
@@ -508,12 +496,13 @@ async fn handle_request_timeout(
             started.elapsed().as_millis()
         );
         let reply_msg = Err(MempoolServiceError::RequestTimedOut);
-        let _ = reply_tx.send(reply_msg.or_else(|resp| {
+
+        let _ = reply_tx.send(reply_msg.map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "Failed to send outbound request (request key: {}): {:?}", &request_key, resp
+                "Failed to send outbound request (request key: {}): {:?}", &request_key, e
             );
-            Err(resp)
+            e
         }));
     }
 
@@ -526,20 +515,21 @@ async fn handle_outbound_tx(
     exclude_peers: Vec<NodeId>,
 ) -> Result<(), MempoolServiceError>
 {
-    outbound_message_service
+    let result = outbound_message_service
         .propagate(
             NodeDestination::Unknown,
             OutboundEncryption::None,
             exclude_peers,
             OutboundDomainMessage::new(TariMessageType::NewTransaction, ProtoTransaction::from(tx)),
         )
-        .await
-        .or_else(|e| {
-            error!(target: LOG_TARGET, "Handle outbound tx failure. {:?}", e);
-            Err(e)
-        })
-        .map_err(|e| MempoolServiceError::OutboundMessageService(e.to_string()))
-        .map(|_| ())
+        .await;
+
+    if let Err(e) = result {
+        error!(target: LOG_TARGET, "Handle outbound tx failure. {:?}", e);
+        return Err(MempoolServiceError::OutboundMessageService(e.to_string()));
+    }
+
+    Ok(())
 }
 
 async fn handle_block_event(

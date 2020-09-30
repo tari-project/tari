@@ -37,6 +37,7 @@ use tokio::sync::broadcast;
 use tower::Service;
 
 /// API Request enum
+#[allow(clippy::large_enum_variant)]
 pub enum TransactionServiceRequest {
     GetPendingInboundTransactions,
     GetPendingOutboundTransactions,

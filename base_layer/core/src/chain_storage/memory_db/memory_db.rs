@@ -383,10 +383,7 @@ where D: Digest + Send + Sync
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
         let db = self.db_access()?;
         let result = match key {
-            DbKey::Metadata(k) => db
-                .metadata
-                .get(&(k.clone() as u32))
-                .map(|v| DbValue::Metadata(v.clone())),
+            DbKey::Metadata(k) => db.metadata.get(&(*k as u32)).map(|v| DbValue::Metadata(v.clone())),
             DbKey::BlockHeader(k) => db.headers.get(k).map(|v| DbValue::BlockHeader(Box::new(v.clone()))),
             DbKey::BlockHash(hash) => db
                 .block_hashes
@@ -755,6 +752,7 @@ where D: Digest + Send + Sync
     }
 }
 
+#[allow(clippy::ptr_arg)]
 fn validate_merkle_root<D, B>(
     mmr: &MutableMmr<D, B>,
     current_cp: &MerkleCheckPoint,

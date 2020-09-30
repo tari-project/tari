@@ -302,6 +302,7 @@ pub(crate) mod hash_serializer {
     use super::*;
     use tari_crypto::tari_utilities::hex::Hex;
 
+    #[allow(clippy::ptr_arg)]
     pub fn serialize<S>(bytes: &BlockHash, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
         if serializer.is_human_readable() {

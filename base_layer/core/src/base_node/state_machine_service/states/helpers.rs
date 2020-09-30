@@ -318,6 +318,7 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
 
 /// Request the total merkle mountain range node count upto the specified height for the selected MMR from remote base
 /// nodes.
+#[allow(clippy::too_many_arguments)]
 pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
@@ -475,7 +476,7 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
         match shared
             .comms
             .request_txos_from_peer(
-                hashes.into_iter().map(|c| Clone::clone(&**c)).collect(),
+                hashes.iter().map(|c| Clone::clone(&**c)).collect(),
                 Some(sync_peer.node_id.clone()),
             )
             .await
