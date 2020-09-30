@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v[0-9].[0-9]+.[0-9]+"
+  schedule:
+    - cron: '05 00 * * *'
 
 env:
   TBN_FILENAME: 'tari_base_node'
@@ -32,12 +34,24 @@ jobs:
     - name: Checkout source code
       uses: actions/checkout@v2
 
-    - name: Declare Global Variables
+    - name: Declare Global Variables 4 GHA ${{ github.event_name }}
       id: vars
       shell: bash
       run: |
         echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
         echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+
+    - name: Default Destination Folder
+      uses: allenevans/set-env@v1.0.0
+      with:
+        overwrite: true
+        S3DESTOVERRIDE: ''
+    - name: Scheduled Destination Folder Override
+      if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 * * *' }}
+      uses: allenevans/set-env@v1.0.0
+      with:
+        overwrite: true
+        S3DESTOVERRIDE: 'daily/'
 
     - name: Setup Rust toolchain
       uses: actions-rs/toolchain@v1
@@ -154,7 +168,7 @@ jobs:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         SOURCE: '${{ github.workspace }}${{ env.TBN_DIST }}'
-        DEST_DIR: '${{ env.S3DESTDIR }}/'
+        DEST_DIR: '${{ env.S3DESTOVERRIDE }}${{ env.S3DESTDIR }}/'
         S3CMD: 'cp'
         S3OPTIONS: '--recursive'
         # S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
