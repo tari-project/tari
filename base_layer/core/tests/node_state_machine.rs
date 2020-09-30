@@ -143,21 +143,10 @@ fn test_listening_lagging() {
         let mut bob_local_nci = bob_node.local_nci;
 
         // Bob Block 1 - no block event
-        let prev_block = append_block(
-            &bob_db,
-            &prev_block,
-            vec![],
-            &consensus_manager.consensus_constants(),
-            3.into(),
-        )
-        .unwrap();
+        let prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager, 3.into()).unwrap();
         // Bob Block 2 - with block event and liveness service metadata update
         let prev_block = bob_db
-            .calculate_mmr_roots(chain_block(
-                &prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-            ))
+            .calculate_mmr_roots(chain_block(&prev_block, vec![], &consensus_manager))
             .unwrap();
         bob_local_nci
             .submit_block(prev_block, Broadcast::from(true))
@@ -298,14 +287,7 @@ fn test_block_sync() {
         let alice_db = &alice_node.blockchain_db;
         let bob_db = &bob_node.blockchain_db;
         for _ in 1..6 {
-            prev_block = append_block(
-                bob_db,
-                &prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
+            prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager, 1.into()).unwrap();
         }
 
         // Sync Blocks from genesis block to tip
@@ -414,25 +396,11 @@ fn test_lagging_block_sync() {
         let alice_db = &alice_node.blockchain_db;
         let bob_db = &bob_node.blockchain_db;
         for _ in 0..4 {
-            prev_block = append_block(
-                bob_db,
-                &prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
+            prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager, 1.into()).unwrap();
             alice_db.add_block(prev_block.clone().into()).unwrap();
         }
         for _ in 0..4 {
-            prev_block = append_block(
-                bob_db,
-                &prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
+            prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager, 1.into()).unwrap();
         }
         assert_eq!(alice_db.get_height().unwrap(), Some(4));
         assert_eq!(bob_db.get_height().unwrap(), Some(8));
@@ -523,24 +491,10 @@ fn test_block_sync_recovery() {
         let bob_db = &bob_node.blockchain_db;
         let carol_db = &carol_node.blockchain_db;
         // Bob and Carol is ahead of Alice and Bob is ahead of Carol
-        prev_block = append_block(
-            bob_db,
-            &prev_block,
-            vec![],
-            &consensus_manager.consensus_constants(),
-            1.into(),
-        )
-        .unwrap();
+        prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager, 1.into()).unwrap();
         carol_db.add_block(prev_block.clone().into()).unwrap();
         for _ in 0..2 {
-            prev_block = append_block(
-                bob_db,
-                &prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
+            prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager, 1.into()).unwrap();
         }
 
         // Sync Blocks from genesis block to tip. Alice will notice that the chain tip is equivalent to Bobs tip and
@@ -631,14 +585,7 @@ fn test_forked_block_sync() {
         let alice_db = &alice_node.blockchain_db;
         let bob_db = &bob_node.blockchain_db;
         for _ in 0..2 {
-            prev_block = append_block(
-                bob_db,
-                &prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
+            prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager, 1.into()).unwrap();
             alice_db.add_block(prev_block.clone().into()).unwrap();
         }
 
@@ -649,25 +596,11 @@ fn test_forked_block_sync() {
         let mut bob_prev_block = prev_block;
         // Alice fork
         for _ in 0..2 {
-            alice_prev_block = append_block(
-                alice_db,
-                &alice_prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
+            alice_prev_block = append_block(alice_db, &alice_prev_block, vec![], &consensus_manager, 1.into()).unwrap();
         }
         // Bob fork
         for _ in 0..7 {
-            bob_prev_block = append_block(
-                bob_db,
-                &bob_prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
+            bob_prev_block = append_block(bob_db, &bob_prev_block, vec![], &consensus_manager, 1.into()).unwrap();
         }
         assert_eq!(alice_db.get_height().unwrap(), Some(4));
         assert_eq!(bob_db.get_height().unwrap(), Some(9));
@@ -790,19 +723,14 @@ fn test_sync_peer_banning() {
             let (mut coinbase_utxo, coinbase_kernel, mut coinbase) = create_coinbase(
                 &factories,
                 coinbase_value,
-                height + consensus_manager.consensus_constants().coinbase_lock_height(),
+                height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
             );
             // we want these to fail later
             coinbase_utxo.features.maturity = 1000;
             coinbase.features.maturity = 1000;
             last_utxo = Some(coinbase);
-            let template = chain_block_with_coinbase(
-                &prev_block,
-                vec![],
-                coinbase_utxo,
-                coinbase_kernel,
-                &consensus_manager.consensus_constants(),
-            );
+            let template =
+                chain_block_with_coinbase(&prev_block, vec![], coinbase_utxo, coinbase_kernel, &consensus_manager);
             prev_block = bob_db.calculate_mmr_roots(template).unwrap();
             prev_block.header.nonce = OsRng.next_u64();
             find_header_with_achieved_difficulty(&mut prev_block.header, 1.into());
@@ -822,14 +750,14 @@ fn test_sync_peer_banning() {
             let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
                 &factories,
                 coinbase_value,
-                height + consensus_manager.consensus_constants().coinbase_lock_height(),
+                height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
             );
             let template = chain_block_with_coinbase(
                 &alice_prev_block,
                 vec![],
                 coinbase_utxo,
                 coinbase_kernel,
-                &consensus_manager.consensus_constants(),
+                &consensus_manager,
             );
             alice_prev_block = alice_db.calculate_mmr_roots(template).unwrap();
             alice_prev_block.header.nonce = OsRng.next_u64();
@@ -847,14 +775,7 @@ fn test_sync_peer_banning() {
             // tx.body.outputs[0].features.maturity = 1000;
 
             last_utxo = Some(outputs[0].clone());
-            bob_prev_block = append_block(
-                bob_db,
-                &bob_prev_block,
-                vec![tx],
-                &consensus_manager.consensus_constants(),
-                3.into(),
-            )
-            .unwrap();
+            bob_prev_block = append_block(bob_db, &bob_prev_block, vec![tx], &consensus_manager, 3.into()).unwrap();
         }
 
         assert_eq!(alice_db.get_height().unwrap(), Some(4));

@@ -22,6 +22,7 @@
 
 use crate::{
     chain_storage::{lmdb_db::LMDBVecError, MmrTree},
+    proof_of_work::PowError,
     validation::ValidationError,
 };
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
@@ -29,7 +30,7 @@ use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
 use tokio::task;
 
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Error)]
 pub enum ChainStorageError {
     #[error("Access to the underlying storage mechanism failed: {0}")]
     AccessError(String),
@@ -90,6 +91,11 @@ pub enum ChainStorageError {
     LmdbError {
         #[from]
         source: LMDBError,
+    },
+    #[error("Invalid proof of work: {source}")]
+    ProofOfWorkError {
+        #[from]
+        source: PowError,
     },
 }
 

@@ -21,6 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use croaring::Bitmap;
+use monero::{
+    blockdata::Block as MoneroBlock,
+    consensus::deserialize,
+    cryptonote::hash::{Hash as MoneroHash, Hashable as MoneroHashable},
+};
 use tari_core::{
     blocks::BlockHeader,
     chain_storage::{
@@ -36,9 +41,13 @@ use tari_core::{
         MmrTree,
         WriteOperation,
     },
-    consensus::{ConsensusConstants, Network},
+    consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
     helpers::create_orphan_block,
-    proof_of_work::{Difficulty, PowAlgorithm},
+    proof_of_work::{
+        monero_rx::{append_merge_mining_tag, tree_hash, MoneroData},
+        Difficulty,
+        PowAlgorithm,
+    },
     transactions::{
         helpers::{create_test_kernel, create_utxo},
         tari_amount::MicroTari,
@@ -195,12 +204,12 @@ fn lmdb_insert_contains_delete_and_fetch_kernel() {
     }
 }
 
-fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(mut db: T, consensus_constants: &ConsensusConstants) {
+fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(mut db: T, consensus: &ConsensusManager) {
     let txs = vec![
         (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
         (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
     ];
-    let orphan = create_orphan_block(10, txs, consensus_constants);
+    let orphan = create_orphan_block(10, txs, consensus);
     let hash = orphan.hash();
     assert_eq!(db.contains(&DbKey::OrphanBlock(hash.clone())).unwrap(), false);
 
@@ -224,9 +233,9 @@ fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(mut db: T, cons
 #[test]
 fn memory_insert_contains_delete_and_fetch_orphan() {
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
+    let consensus = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::default();
-    insert_contains_delete_and_fetch_orphan(db, &consensus_constants);
+    insert_contains_delete_and_fetch_orphan(db, &consensus);
 }
 
 #[test]
@@ -237,9 +246,9 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
     // Perform test
     {
         let network = Network::LocalNet;
-        let consensus_constants = network.create_consensus_constants();
+        let consensus = ConsensusManagerBuilder::new(network).build();
         let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
-        insert_contains_delete_and_fetch_orphan(db, &consensus_constants);
+        insert_contains_delete_and_fetch_orphan(db, &consensus);
     }
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
@@ -687,7 +696,7 @@ fn commit_block_and_create_fetch_checkpoint_and_rewind_mmr<T: BlockchainBackend>
 
     let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
     let kernel2 = create_test_kernel(200.into(), 0);
-    let header2 = BlockHeader::from_previous(&header1);
+    let header2 = BlockHeader::from_previous(&header1).unwrap();
     let utxo_hash2 = utxo2.hash();
     let kernel_hash2 = kernel2.hash();
     let rp_hash2 = utxo2.proof.hash();
@@ -787,21 +796,21 @@ fn lmdb_commit_block_and_create_fetch_checkpoint_and_rewind_mmr() {
     }
 }
 
-fn for_each_orphan<T: BlockchainBackend>(mut db: T, consensus_constants: &ConsensusConstants) {
+fn for_each_orphan<T: BlockchainBackend>(mut db: T, consensus: &ConsensusManager) {
     let orphan1 = create_orphan_block(
         5,
         vec![(tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0],
-        consensus_constants,
+        consensus,
     );
     let orphan2 = create_orphan_block(
         10,
         vec![(tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0],
-        consensus_constants,
+        consensus,
     );
     let orphan3 = create_orphan_block(
         15,
         vec![(tx!(3000.into(), fee: 40.into(), inputs: 1, outputs: 2)).0],
-        consensus_constants,
+        consensus,
     );
     let hash1 = orphan1.hash();
     let hash2 = orphan2.hash();
@@ -837,9 +846,9 @@ fn for_each_orphan<T: BlockchainBackend>(mut db: T, consensus_constants: &Consen
 #[test]
 fn memory_for_each_orphan() {
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
+    let consensus = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::default();
-    for_each_orphan(db, &consensus_constants);
+    for_each_orphan(db, &consensus);
 }
 
 #[test]
@@ -850,9 +859,9 @@ fn lmdb_for_each_orphan() {
     // Perform test
     {
         let network = Network::LocalNet;
-        let consensus_constants = network.create_consensus_constants();
+        let consensus = ConsensusManagerBuilder::new(network).build();
         let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
-        for_each_orphan(db, &consensus_constants);
+        for_each_orphan(db, &consensus);
     }
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
@@ -921,8 +930,8 @@ fn lmdb_for_each_kernel() {
 
 fn for_each_header<T: BlockchainBackend>(mut db: T) {
     let header1 = BlockHeader::new(0);
-    let header2 = BlockHeader::from_previous(&header1);
-    let header3 = BlockHeader::from_previous(&header2);
+    let header2 = BlockHeader::from_previous(&header1).unwrap();
+    let header3 = BlockHeader::from_previous(&header2).unwrap();
     let key1 = header1.height;
     let key2 = header2.height;
     let key3 = header3.height;
@@ -1040,10 +1049,11 @@ fn lmdb_for_each_utxo() {
 fn lmdb_backend_restore() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
+
+    let consensus = ConsensusManagerBuilder::new(network).build();
 
     let txs = vec![(tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0];
-    let orphan = create_orphan_block(10, txs, &consensus_constants);
+    let orphan = create_orphan_block(10, txs, &consensus);
     let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
     let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
     let kernel = create_test_kernel(100.into(), 0);
@@ -1227,7 +1237,7 @@ fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
 
     let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
     let kernel2 = create_test_kernel(200.into(), 0);
-    let header2 = BlockHeader::from_previous(&header1);
+    let header2 = BlockHeader::from_previous(&header1).unwrap();
     let utxo_hash2 = utxo2.hash();
     let kernel_hash2 = kernel2.hash();
     let rp_hash2 = utxo2.proof.hash();
@@ -1254,7 +1264,7 @@ fn fetch_checkpoint<T: BlockchainBackend>(mut db: T) {
 
     let (utxo3, _) = create_utxo(MicroTari(20_000), &factories, None);
     let kernel3 = create_test_kernel(300.into(), 0);
-    let header3 = BlockHeader::from_previous(&header2);
+    let header3 = BlockHeader::from_previous(&header2).unwrap();
     let utxo_hash3 = utxo3.hash();
     let kernel_hash3 = kernel3.hash();
     let rp_hash3 = utxo3.proof.hash();
@@ -1341,8 +1351,8 @@ fn merging_and_fetch_checkpoints_and_stxo_discard<T: BlockchainBackend>(mut db: 
     let kernel3 = create_test_kernel(300.into(), 0);
     let mut header1 = BlockHeader::new(0);
     header1.height = 0;
-    let header2 = BlockHeader::from_previous(&header1);
-    let header3 = BlockHeader::from_previous(&header2);
+    let header2 = BlockHeader::from_previous(&header1).unwrap();
+    let header3 = BlockHeader::from_previous(&header2).unwrap();
     let utxo_hash1 = utxo1.hash();
     let utxo_hash2 = utxo2.hash();
     let utxo_hash3 = utxo3.hash();
@@ -1574,19 +1584,69 @@ fn fetch_target_difficulties<T: BlockchainBackend>(mut db: T) {
     let mut header0 = BlockHeader::new(0);
     header0.pow.pow_algo = PowAlgorithm::Blake;
     header0.pow.target_difficulty = Difficulty::from(100);
-    let mut header1 = BlockHeader::from_previous(&header0);
+    let mut header1 = BlockHeader::from_previous(&header0).unwrap();
     header1.pow.pow_algo = PowAlgorithm::Monero;
     header1.pow.target_difficulty = Difficulty::from(1000);
-    let mut header2 = BlockHeader::from_previous(&header1);
+    let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+    let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+    let bytes = hex::decode(blocktemplate_blob.clone()).unwrap();
+    let mut block = deserialize::<MoneroBlock>(&bytes[..]).unwrap();
+    let hash = MoneroHash::from_slice(&header1.merged_mining_hash().as_ref());
+    append_merge_mining_tag(&mut block, hash).unwrap();
+    let count = 1 + (block.tx_hashes.len() as u16);
+    let mut hashes = Vec::with_capacity(count as usize);
+    let mut proof = Vec::with_capacity(count as usize);
+    hashes.push(block.miner_tx.hash());
+    proof.push(block.miner_tx.hash());
+    for item in block.clone().tx_hashes {
+        hashes.push(item);
+        proof.push(item);
+    }
+    let root = tree_hash(hashes.clone().as_ref()).unwrap();
+    let monero_data = MoneroData {
+        header: block.header,
+        key: seed_hash.clone(),
+        count,
+        transaction_root: root.to_fixed_bytes(),
+        transaction_hashes: hashes.into_iter().map(|h| h.to_fixed_bytes()).collect(),
+        coinbase_tx: block.miner_tx,
+    };
+    let serialized = bincode::serialize(&monero_data).unwrap();
+    header1.pow.pow_data = serialized.clone();
+    let mut header2 = BlockHeader::from_previous(&header1).unwrap();
     header2.pow.pow_algo = PowAlgorithm::Blake;
     header2.pow.target_difficulty = Difficulty::from(2000);
-    let mut header3 = BlockHeader::from_previous(&header2);
+    let mut header3 = BlockHeader::from_previous(&header2).unwrap();
     header3.pow.pow_algo = PowAlgorithm::Blake;
     header3.pow.target_difficulty = Difficulty::from(3000);
-    let mut header4 = BlockHeader::from_previous(&header3);
+    let mut header4 = BlockHeader::from_previous(&header3).unwrap();
     header4.pow.pow_algo = PowAlgorithm::Monero;
     header4.pow.target_difficulty = Difficulty::from(200);
-    let mut header5 = BlockHeader::from_previous(&header4);
+    let bytes4 = hex::decode(blocktemplate_blob.clone()).unwrap();
+    let mut block4 = deserialize::<MoneroBlock>(&bytes4[..]).unwrap();
+    let hash4 = MoneroHash::from_slice(&header4.merged_mining_hash().as_ref());
+    append_merge_mining_tag(&mut block4, hash4).unwrap();
+    let count2 = 1 + (block4.tx_hashes.len() as u16);
+    let mut hashes4 = Vec::with_capacity(count as usize);
+    let mut proof4 = Vec::with_capacity(count as usize);
+    hashes4.push(block4.miner_tx.hash());
+    proof4.push(block4.miner_tx.hash());
+    for item4 in block4.clone().tx_hashes {
+        hashes4.push(item4);
+        proof4.push(item4);
+    }
+    let root4 = tree_hash(hashes4.clone().as_ref()).unwrap();
+    let monero_data4 = MoneroData {
+        header: block4.header,
+        key: seed_hash.clone(),
+        count: count2,
+        transaction_root: root4.to_fixed_bytes(),
+        transaction_hashes: hashes4.into_iter().map(|h| h.to_fixed_bytes()).collect(),
+        coinbase_tx: block4.miner_tx,
+    };
+    let serialized4 = bincode::serialize(&monero_data4).unwrap();
+    header4.pow.pow_data = serialized4.clone();
+    let mut header5 = BlockHeader::from_previous(&header4).unwrap();
     header5.pow.pow_algo = PowAlgorithm::Blake;
     header5.pow.target_difficulty = Difficulty::from(4000);
     assert!(db.fetch_target_difficulties(PowAlgorithm::Blake, 5, 100).is_err());

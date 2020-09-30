@@ -163,7 +163,7 @@ fn insert_and_fetch_header() {
     let store = create_mem_db(&consensus_manager);
     let mut header1 = BlockHeader::new(0);
     header1.height = 42;
-    let header2 = BlockHeader::from_previous(&header1);
+    let header2 = BlockHeader::from_previous(&header1).unwrap();
 
     store
         .insert_valid_headers(vec![header1.clone(), header2.clone()])
@@ -201,7 +201,7 @@ fn insert_and_fetch_orphan() {
         (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
         (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
     ];
-    let orphan = create_orphan_block(10, txs, &consensus_manager.consensus_constants());
+    let orphan = create_orphan_block(10, txs, &consensus_manager);
     let orphan_hash = orphan.hash();
     let mut txn = DbTransaction::new();
     txn.insert_orphan(orphan.clone().into());
@@ -458,14 +458,7 @@ fn add_multiple_blocks() {
     let block0 = store.fetch_block(0).unwrap().block().clone();
     assert_eq!(metadata.best_block, Some(block0.hash()));
     // Add another block
-    let block1 = append_block(
-        &store,
-        &block0,
-        vec![],
-        &consensus_manager.consensus_constants(),
-        1.into(),
-    )
-    .unwrap();
+    let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
     let metadata = store.get_chain_metadata().unwrap();
     let hash = block1.hash();
     assert_eq!(metadata.height_of_longest_chain, Some(1));
@@ -491,14 +484,7 @@ fn test_checkpoints() {
         to: vec![MicroTari(5_000), MicroTari(6_000)]
     );
     let (txn, _, _) = spend_utxos(txn);
-    let block1 = append_block(
-        &db,
-        &blocks[0],
-        vec![txn],
-        &consensus_manager.consensus_constants(),
-        1.into(),
-    )
-    .unwrap();
+    let block1 = append_block(&db, &blocks[0], vec![txn], &consensus_manager, 1.into()).unwrap();
     // Get the checkpoint
     let block_a = db.fetch_block(0).unwrap();
     assert_eq!(block_a.confirmations(), 2);
@@ -518,27 +504,13 @@ fn rewind_to_height() {
     // Block 1
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![6 * T, 3 * T])];
     assert_eq!(
-        generate_new_block(
-            &mut db,
-            &mut blocks,
-            &mut outputs,
-            schema,
-            &consensus_manager.consensus_constants(),
-        )
-        .unwrap(),
+        generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap(),
         BlockAddResult::Ok
     );
     // Block 2
     let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
     assert_eq!(
-        generate_new_block(
-            &mut db,
-            &mut blocks,
-            &mut outputs,
-            schema,
-            &consensus_manager.consensus_constants(),
-        )
-        .unwrap(),
+        generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap(),
         BlockAddResult::Ok
     );
     // Block 3
@@ -547,14 +519,7 @@ fn rewind_to_height() {
         txn_schema!(from: vec![outputs[1][1].clone()], to: vec![500_000 * uT]),
     ];
     assert_eq!(
-        generate_new_block(
-            &mut db,
-            &mut blocks,
-            &mut outputs,
-            schema,
-            &consensus_manager.consensus_constants(),
-        )
-        .unwrap(),
+        generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap(),
         BlockAddResult::Ok
     );
 
@@ -592,7 +557,6 @@ fn rewind_past_horizon_height() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_rincewind_genesis_block_raw();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
-    let consensus_constansts = consensus_manager.consensus_constants();
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
@@ -606,10 +570,10 @@ fn rewind_past_horizon_height() {
     };
     let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
 
-    let block1 = append_block(&store, &block0, vec![], &consensus_constansts, 1.into()).unwrap();
-    let block2 = append_block(&store, &block1, vec![], &consensus_constansts, 1.into()).unwrap();
-    let block3 = append_block(&store, &block2, vec![], &consensus_constansts, 1.into()).unwrap();
-    let _block4 = append_block(&store, &block3, vec![], &consensus_constansts, 1.into()).unwrap();
+    let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
+    let _block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
 
     let metadata = store.get_chain_metadata().unwrap();
     let horizon_height = metadata.horizon_block(metadata.height_of_longest_chain.unwrap_or(0));
@@ -639,7 +603,7 @@ fn handle_tip_reorg() {
         &mut outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
     // Block A2
@@ -650,7 +614,7 @@ fn handle_tip_reorg() {
         &mut outputs,
         txs,
         Difficulty::from(3),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
 
@@ -670,7 +634,7 @@ fn handle_tip_reorg() {
         &mut orphan_outputs,
         txs,
         Difficulty::from(7),
-        &consensus_manager_fork.consensus_constants()
+        &consensus_manager_fork
     )
     .is_ok());
 
@@ -709,7 +673,7 @@ fn handle_reorg() {
         &mut outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
     // Block A2
@@ -720,7 +684,7 @@ fn handle_reorg() {
         &mut outputs,
         txs,
         Difficulty::from(3),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
     // Block A3
@@ -731,7 +695,7 @@ fn handle_reorg() {
         &mut outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
     // Block A4
@@ -742,7 +706,7 @@ fn handle_reorg() {
         &mut outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
 
@@ -762,7 +726,7 @@ fn handle_reorg() {
         &mut orphan1_outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
     // Block B3
@@ -776,7 +740,7 @@ fn handle_reorg() {
         &mut orphan1_outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
     // Block B4
@@ -787,7 +751,7 @@ fn handle_reorg() {
         &mut orphan1_outputs,
         txs,
         Difficulty::from(5),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
 
@@ -819,7 +783,7 @@ fn handle_reorg() {
         &mut orphan2_outputs,
         txs,
         Difficulty::from(20),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
 
@@ -863,7 +827,7 @@ fn handle_reorg_with_no_removed_blocks() {
         &mut outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
 
@@ -883,7 +847,7 @@ fn handle_reorg_with_no_removed_blocks() {
         &mut orphan1_outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
     // Block B3
@@ -897,7 +861,7 @@ fn handle_reorg_with_no_removed_blocks() {
         &mut orphan1_outputs,
         txs,
         Difficulty::from(1),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
 
@@ -950,7 +914,7 @@ fn handle_reorg_failure_recovery() {
             &mut outputs,
             txs,
             Difficulty::from(1),
-            &consensus_manager.consensus_constants(),
+            &consensus_manager,
         )
         .unwrap();
         // Block A2
@@ -961,7 +925,7 @@ fn handle_reorg_failure_recovery() {
             &mut outputs,
             txs,
             Difficulty::from(1),
-            &consensus_manager.consensus_constants(),
+            &consensus_manager,
         )
         .unwrap();
         // Block A3
@@ -972,7 +936,7 @@ fn handle_reorg_failure_recovery() {
             &mut outputs,
             txs,
             Difficulty::from(2),
-            &consensus_manager.consensus_constants(),
+            &consensus_manager,
         )
         .unwrap();
         // Block A4
@@ -983,7 +947,7 @@ fn handle_reorg_failure_recovery() {
             &mut outputs,
             txs,
             Difficulty::from(2),
-            &consensus_manager.consensus_constants(),
+            &consensus_manager,
         )
         .unwrap();
 
@@ -1003,7 +967,7 @@ fn handle_reorg_failure_recovery() {
             &mut orphan1_outputs,
             txs,
             Difficulty::from(1),
-            &consensus_manager.consensus_constants(),
+            &consensus_manager,
         )
         .unwrap();
         // Block B3 (Double spend)
@@ -1022,11 +986,7 @@ fn handle_reorg_failure_recovery() {
             }
             orphan1_outputs.push(block_utxos);
 
-            let template = chain_block(
-                &orphan1_blocks.last().unwrap(),
-                txns,
-                consensus_manager.consensus_constants(),
-            );
+            let template = chain_block(&orphan1_blocks.last().unwrap(), txns, &consensus_manager);
             let mut block = orphan1_store.calculate_mmr_roots(template).unwrap();
             block.header.nonce = OsRng.next_u64();
             find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(2));
@@ -1059,7 +1019,7 @@ fn handle_reorg_failure_recovery() {
             &mut orphan1_outputs,
             txs,
             Difficulty::from(1),
-            &consensus_manager.consensus_constants(),
+            &consensus_manager,
         )
         .unwrap();
         // B3
@@ -1097,13 +1057,13 @@ fn store_and_retrieve_blocks() {
     let store = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
 
     let block0 = store.fetch_block(0).unwrap().block().clone();
-    let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
-    let block2 = append_block(&store, &block1, vec![], &rules.consensus_constants(), 1.into()).unwrap();
+    let block1 = append_block(&store, &block0, vec![], &rules, 1.into()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &rules, 1.into()).unwrap();
     assert_eq!(*store.fetch_block(0).unwrap().block(), block0);
     assert_eq!(*store.fetch_block(1).unwrap().block(), block1);
     assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
 
-    let block3 = append_block(&store, &block2, vec![], &rules.consensus_constants(), 1.into()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &rules, 1.into()).unwrap();
     assert_eq!(*store.fetch_block(0).unwrap().block(), block0);
     assert_eq!(*store.fetch_block(1).unwrap().block(), block1);
     assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
@@ -1124,8 +1084,8 @@ fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
     let store = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
 
     let block0 = store.fetch_block(0).unwrap().block().clone();
-    let block1 = append_block(&store, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
-    let orphan = create_orphan_block(10, vec![], &rules.consensus_constants());
+    let block1 = append_block(&store, &block0, vec![], &rules, 1.into()).unwrap();
+    let orphan = create_orphan_block(10, vec![], &rules);
     let mut txn = DbTransaction::new();
     txn.insert_orphan(orphan.clone().into());
     assert!(store.commit(txn).is_ok());
@@ -1146,27 +1106,13 @@ fn store_and_retrieve_blocks_from_contents() {
     // Block 1
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![6 * T, 3 * T])];
     assert_eq!(
-        generate_new_block(
-            &mut db,
-            &mut blocks,
-            &mut outputs,
-            schema,
-            &consensus_manager.consensus_constants(),
-        )
-        .unwrap(),
+        generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap(),
         BlockAddResult::Ok
     );
     // Block 2
     let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
     assert_eq!(
-        generate_new_block(
-            &mut db,
-            &mut blocks,
-            &mut outputs,
-            schema,
-            &consensus_manager.consensus_constants(),
-        )
-        .unwrap(),
+        generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap(),
         BlockAddResult::Ok
     );
     let kernel_sig = blocks[1].body.kernels()[0].clone().excess_sig;
@@ -1209,7 +1155,7 @@ fn restore_metadata_and_pruning_horizon_update() {
             config.pruning_horizon = pruning_horizon1;
             let db = BlockchainDatabase::new(db, &rules, validators.clone(), config).unwrap();
 
-            let block1 = append_block(&db, &block0, vec![], &rules.consensus_constants(), 1.into()).unwrap();
+            let block1 = append_block(&db, &block0, vec![], &rules, 1.into()).unwrap();
             db.add_block(block1.clone().into()).unwrap();
             block_hash = block1.hash();
             let metadata = db.get_chain_metadata().unwrap();
@@ -1295,7 +1241,7 @@ fn invalid_block() {
                 &mut outputs,
                 txs,
                 coinbase_value,
-                &consensus_manager.consensus_constants()
+                &consensus_manager
             )
             .unwrap(),
             BlockAddResult::Ok
@@ -1325,7 +1271,7 @@ fn invalid_block() {
                 &mut outputs,
                 txs,
                 coinbase_value,
-                &consensus_manager.consensus_constants()
+                &consensus_manager
             )
             .unwrap_err()
         );
@@ -1353,7 +1299,7 @@ fn invalid_block() {
                 &mut outputs,
                 txs,
                 coinbase_value,
-                &consensus_manager.consensus_constants()
+                &consensus_manager
             )
             .unwrap(),
             BlockAddResult::Ok
@@ -1397,13 +1343,13 @@ fn orphan_cleanup_on_block_add() {
     };
     let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
 
-    let orphan1 = create_orphan_block(500, vec![], &consensus_manager.consensus_constants());
-    let orphan2 = create_orphan_block(5, vec![], &consensus_manager.consensus_constants());
-    let orphan3 = create_orphan_block(30, vec![], &consensus_manager.consensus_constants());
-    let orphan4 = create_orphan_block(700, vec![], &consensus_manager.consensus_constants());
-    let orphan5 = create_orphan_block(43, vec![], &consensus_manager.consensus_constants());
-    let orphan6 = create_orphan_block(75, vec![], &consensus_manager.consensus_constants());
-    let orphan7 = create_orphan_block(150, vec![], &consensus_manager.consensus_constants());
+    let orphan1 = create_orphan_block(500, vec![], &consensus_manager);
+    let orphan2 = create_orphan_block(5, vec![], &consensus_manager);
+    let orphan3 = create_orphan_block(30, vec![], &consensus_manager);
+    let orphan4 = create_orphan_block(700, vec![], &consensus_manager);
+    let orphan5 = create_orphan_block(43, vec![], &consensus_manager);
+    let orphan6 = create_orphan_block(75, vec![], &consensus_manager);
+    let orphan7 = create_orphan_block(150, vec![], &consensus_manager);
     let orphan1_hash = orphan1.hash();
     let orphan2_hash = orphan2.hash();
     let orphan3_hash = orphan3.hash();
@@ -1443,7 +1389,6 @@ fn horizon_height_orphan_cleanup() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_rincewind_genesis_block_raw();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
-    let consensus_constansts = consensus_manager.consensus_constants();
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
@@ -1456,10 +1401,10 @@ fn horizon_height_orphan_cleanup() {
         pruning_interval: 50,
     };
     let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
-    let orphan1 = create_orphan_block(2, vec![], &consensus_constansts);
-    let orphan2 = create_orphan_block(3, vec![], &consensus_constansts);
-    let orphan3 = create_orphan_block(1, vec![], &consensus_constansts);
-    let orphan4 = create_orphan_block(4, vec![], &consensus_constansts);
+    let orphan1 = create_orphan_block(2, vec![], &consensus_manager);
+    let orphan2 = create_orphan_block(3, vec![], &consensus_manager);
+    let orphan3 = create_orphan_block(1, vec![], &consensus_manager);
+    let orphan4 = create_orphan_block(4, vec![], &consensus_manager);
     let orphan1_hash = orphan1.hash();
     let orphan2_hash = orphan2.hash();
     let orphan3_hash = orphan3.hash();
@@ -1472,10 +1417,10 @@ fn horizon_height_orphan_cleanup() {
     assert_eq!(store.add_block(orphan3.into()).unwrap(), BlockAddResult::OrphanBlock);
     assert_eq!(store.db_read_access().unwrap().get_orphan_count().unwrap(), 3);
 
-    let block1 = append_block(&store, &block0, vec![], &consensus_constansts, 1.into()).unwrap();
-    let block2 = append_block(&store, &block1, vec![], &consensus_constansts, 1.into()).unwrap();
-    let block3 = append_block(&store, &block2, vec![], &consensus_constansts, 1.into()).unwrap();
-    let _block4 = append_block(&store, &block3, vec![], &consensus_constansts, 1.into()).unwrap();
+    let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
+    let _block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
 
     // Adding another orphan block will trigger the orphan cleanup as the storage limit was reached
     assert_eq!(
@@ -1523,7 +1468,7 @@ fn orphan_cleanup_on_reorg() {
         &mut outputs,
         vec![],
         Difficulty::from(2),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
     // Block A2
@@ -1533,7 +1478,7 @@ fn orphan_cleanup_on_reorg() {
         &mut outputs,
         vec![],
         Difficulty::from(3),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
     // Block A3
@@ -1543,7 +1488,7 @@ fn orphan_cleanup_on_reorg() {
         &mut outputs,
         vec![],
         Difficulty::from(3),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
     // Block A4
@@ -1553,7 +1498,7 @@ fn orphan_cleanup_on_reorg() {
         &mut outputs,
         vec![],
         Difficulty::from(3),
-        &consensus_manager.consensus_constants()
+        &consensus_manager
     )
     .is_ok());
 
@@ -1571,7 +1516,7 @@ fn orphan_cleanup_on_reorg() {
         &mut orphan_outputs,
         vec![],
         Difficulty::from(2),
-        &consensus_manager_fork.consensus_constants()
+        &consensus_manager_fork
     )
     .is_ok());
     // Block B2
@@ -1581,7 +1526,7 @@ fn orphan_cleanup_on_reorg() {
         &mut orphan_outputs,
         vec![],
         Difficulty::from(10),
-        &consensus_manager_fork.consensus_constants()
+        &consensus_manager_fork
     )
     .is_ok());
     // Block B3
@@ -1591,13 +1536,13 @@ fn orphan_cleanup_on_reorg() {
         &mut orphan_outputs,
         vec![],
         Difficulty::from(15),
-        &consensus_manager_fork.consensus_constants()
+        &consensus_manager_fork
     )
     .is_ok());
 
     // Fill orphan block pool
-    let orphan1 = create_orphan_block(1, vec![], &consensus_manager.consensus_constants());
-    let orphan2 = create_orphan_block(1, vec![], &consensus_manager.consensus_constants());
+    let orphan1 = create_orphan_block(1, vec![], &consensus_manager);
+    let orphan2 = create_orphan_block(1, vec![], &consensus_manager);
     assert_eq!(
         store.add_block(orphan1.clone().into()).unwrap(),
         BlockAddResult::OrphanBlock
@@ -1658,7 +1603,7 @@ fn fails_validation() {
         &mut outputs,
         schemas,
         Difficulty::from(3),
-        &consensus_manager.consensus_constants(),
+        &consensus_manager,
     )
     .unwrap_err();
     unpack_enum!(ChainStorageError::ValidationError { source } = err);
@@ -1685,43 +1630,15 @@ fn pruned_mode_cleanup_and_fetch_block() {
         pruning_interval: 2,
     };
     let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
-    let block1 = append_block(
-        &store,
-        &block0,
-        vec![],
-        &consensus_manager.consensus_constants(),
-        1.into(),
-    )
-    .unwrap();
-    let block2 = append_block(
-        &store,
-        &block1,
-        vec![],
-        &consensus_manager.consensus_constants(),
-        1.into(),
-    )
-    .unwrap();
-    let block3 = append_block(
-        &store,
-        &block2,
-        vec![],
-        &consensus_manager.consensus_constants(),
-        1.into(),
-    )
-    .unwrap();
+    let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
 
     assert!(store.fetch_block(0).is_err()); // Genesis block cant be retrieved in pruned mode
     assert_eq!(store.fetch_block(1).unwrap().block, block1);
     assert_eq!(store.fetch_block(2).unwrap().block, block2);
 
-    let block4 = append_block(
-        &store,
-        &block3,
-        vec![],
-        &consensus_manager.consensus_constants(),
-        1.into(),
-    )
-    .unwrap();
+    let block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
 
     // Adding block 4 will trigger the pruned mode cleanup, first block after horizon block height is retrievable.
     assert!(store.fetch_block(0).is_err());
@@ -1771,7 +1688,7 @@ fn pruned_mode_is_stxo() {
             &mut outputs,
             txs,
             coinbase_value,
-            &consensus_manager.consensus_constants()
+            &consensus_manager
         )
         .unwrap(),
         BlockAddResult::Ok
@@ -1797,7 +1714,7 @@ fn pruned_mode_is_stxo() {
             &mut outputs,
             txs,
             coinbase_value,
-            &consensus_manager.consensus_constants()
+            &consensus_manager
         )
         .unwrap(),
         BlockAddResult::Ok
@@ -1826,7 +1743,7 @@ fn pruned_mode_is_stxo() {
             &mut outputs,
             txs,
             coinbase_value,
-            &consensus_manager.consensus_constants()
+            &consensus_manager
         )
         .unwrap(),
         BlockAddResult::Ok
@@ -1858,7 +1775,7 @@ fn pruned_mode_is_stxo() {
             &mut outputs,
             txs,
             coinbase_value,
-            &consensus_manager.consensus_constants()
+            &consensus_manager
         )
         .unwrap(),
         BlockAddResult::Ok
@@ -1894,44 +1811,16 @@ fn pruned_mode_fetch_insert_and_commit() {
         from: vec![outputs[0][0].clone()],
         to: vec![10 * T, 10 * T, 10 * T, 10 * T]
     )];
-    assert!(generate_new_block(
-        &mut alice_store,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants()
-    )
-    .is_ok());
+    assert!(generate_new_block(&mut alice_store, &mut blocks, &mut outputs, txs, &consensus_manager).is_ok());
     // Block2
     let txs = vec![txn_schema!(from: vec![outputs[1][3].clone()], to: vec![6 * T])];
-    assert!(generate_new_block(
-        &mut alice_store,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants()
-    )
-    .is_ok());
+    assert!(generate_new_block(&mut alice_store, &mut blocks, &mut outputs, txs, &consensus_manager).is_ok());
     // Block3
     let txs = vec![txn_schema!(from: vec![outputs[2][0].clone()], to: vec![2 * T])];
-    assert!(generate_new_block(
-        &mut alice_store,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants()
-    )
-    .is_ok());
+    assert!(generate_new_block(&mut alice_store, &mut blocks, &mut outputs, txs, &consensus_manager).is_ok());
     // Block4
     let txs = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![2 * T])];
-    assert!(generate_new_block(
-        &mut alice_store,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants()
-    )
-    .is_ok());
+    assert!(generate_new_block(&mut alice_store, &mut blocks, &mut outputs, txs, &consensus_manager).is_ok());
 
     // Perform a manual horizon state sync between Alice and Bob
     let validators = Validators::new(
@@ -2077,7 +1966,7 @@ fn pruned_mode_fetch_insert_and_commit() {
     assert_eq!(bob_metadata.best_block, Some(sync_height_header.hash()));
     assert_eq!(
         bob_metadata.accumulated_difficulty,
-        Some(sync_height_header.total_accumulated_difficulty_inclusive())
+        Some(sync_height_header.total_accumulated_difficulty_inclusive().unwrap())
     );
     // Check headers
     let block_nums = (0..=bob_metadata.height_of_longest_chain.unwrap()).collect::<Vec<u64>>();

@@ -391,7 +391,10 @@ impl Miner {
             .with_nonce(r)
             .with_spend_key(key);
         let (tx, unblinded_output) = builder
-            .build(self.consensus.consensus_constants(), self.consensus.emission_schedule())
+            .build(
+                self.consensus.consensus_constants(block.header.height),
+                self.consensus.emission_schedule(),
+            )
             .expect("invalid constructed coinbase");
         block.body.add_output(tx.body.outputs()[0].clone());
         block.body.add_kernel(tx.body.kernels()[0].clone());

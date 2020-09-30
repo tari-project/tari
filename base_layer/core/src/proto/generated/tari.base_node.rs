@@ -113,7 +113,7 @@ pub struct BaseNodeServiceRequest {
     pub request_key: u64,
     #[prost(
         oneof = "base_node_service_request::Request",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18"
     )]
     pub request: ::std::option::Option<base_node_service_request::Request>,
 }
@@ -147,9 +147,6 @@ pub mod base_node_service_request {
         /// Indicates a GetNewBlock request.
         #[prost(message, tag = "10")]
         GetNewBlock(super::super::core::NewBlockTemplate),
-        /// Indicates a GetTargetDifficulty request.
-        #[prost(uint64, tag = "11")]
-        GetTargetDifficulty(u64),
         /// Get headers in best chain following any headers in this list
         #[prost(message, tag = "12")]
         FetchHeadersAfter(super::FetchHeadersAfter),

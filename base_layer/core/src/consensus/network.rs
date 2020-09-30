@@ -35,7 +35,7 @@ pub enum Network {
 }
 
 impl Network {
-    pub fn create_consensus_constants(self) -> ConsensusConstants {
+    pub fn create_consensus_constants(self) -> Vec<ConsensusConstants> {
         match self {
             Network::MainNet => ConsensusConstants::mainnet(),
             Network::Rincewind => ConsensusConstants::rincewind(),

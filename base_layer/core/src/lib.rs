@@ -73,3 +73,8 @@ uint::construct_uint! {
     /// 256-bit unsigned integer.
     pub(crate) struct U256(4);
 }
+
+uint::construct_uint! {
+    /// 512-bit unsigned integer.
+    pub(crate) struct U512(8);
+}

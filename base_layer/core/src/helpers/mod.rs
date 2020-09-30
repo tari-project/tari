@@ -28,7 +28,7 @@ mod mock_backend;
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
-    consensus::{ConsensusConstants, ConsensusManager},
+    consensus::ConsensusManager,
     transactions::{transaction::Transaction, types::HashDigest},
     validation::{accum_difficulty_validators::MockAccumDifficultyValidator, mocks::MockValidator},
 };
@@ -37,13 +37,8 @@ pub use mock_backend::MockBackend;
 
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
-pub fn create_orphan_block(
-    block_height: u64,
-    transactions: Vec<Transaction>,
-    consensus_constants: &ConsensusConstants,
-) -> Block
-{
-    let mut header = BlockHeader::new(consensus_constants.blockchain_version());
+pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, consensus: &ConsensusManager) -> Block {
+    let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version());
     header.height = block_height;
     header.into_builder().with_transactions(transactions).build()
 }

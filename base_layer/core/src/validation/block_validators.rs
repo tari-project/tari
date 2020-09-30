@@ -65,7 +65,7 @@ impl Validation<Block> for StatelessBlockValidator {
     /// 1. Is the accounting correct?
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
         let block_id = format!("block #{} ({})", block.header.height, block.hash().to_hex());
-        check_block_weight(block, &self.rules.consensus_constants())?;
+        check_block_weight(block, &self.rules.consensus_constants(block.header.height))?;
         trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
         check_duplicate_transactions_inputs(block)?;
         trace!(
@@ -189,7 +189,7 @@ impl Validation<Block> for MockStatelessBlockValidator {
     /// 1. Where all the rules for the spent outputs followed?
     /// 1. Was cut through applied in the block?
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
-        check_block_weight(block, &self.rules.consensus_constants())?;
+        check_block_weight(block, &self.rules.consensus_constants(block.header.height))?;
         // Check that the inputs are are allowed to be spent
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_cut_through(block)?;
@@ -257,7 +257,11 @@ fn check_coinbase_output(
     );
     let total_coinbase = rules.calculate_coinbase_and_fees(block);
     block
-        .check_coinbase_output(total_coinbase, rules.consensus_constants(), factories)
+        .check_coinbase_output(
+            total_coinbase,
+            rules.consensus_constants(block.header.height),
+            factories,
+        )
         .map_err(ValidationError::from)
 }
 
@@ -325,7 +329,7 @@ fn check_timestamp_ftl(
     consensus_manager: &ConsensusManager,
 ) -> Result<(), ValidationError>
 {
-    if block_header.timestamp > consensus_manager.consensus_constants().ftl() {
+    if block_header.timestamp > consensus_manager.consensus_constants(block_header.height).ftl() {
         warn!(
             target: LOG_TARGET,
             "Invalid Future Time Limit on block:{}",

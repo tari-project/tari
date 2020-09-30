@@ -438,7 +438,7 @@ pub struct GetNewBlockResult {
     pub block: ::std::option::Option<Block>,
     /// This is the merge_mining hash of the completed block.
     #[prost(message, optional, tag = "3")]
-    pub mining_data: ::std::option::Option<MinerData>,
+    pub miner_data: ::std::option::Option<MinerData>,
 }
 /// This is mining data for the miner asking for a new block
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -450,7 +450,7 @@ pub struct MinerData {
     #[prost(uint64, tag = "3")]
     pub reward: u64,
     #[prost(bytes, tag = "4")]
-    pub mergemining_hash: std::vec::Vec<u8>,
+    pub merge_mining_hash: std::vec::Vec<u8>,
 }
 /// This is the request type for the Search Kernels rpc
 #[derive(Clone, PartialEq, ::prost::Message)]

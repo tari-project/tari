@@ -663,7 +663,7 @@ where B: BlockchainBackend
 
     fn store_new_block(&self, block: Block) -> Result<(), ChainStorageError> {
         let mut txn = DbTransaction::new();
-        store_new_block(&mut txn, block);
+        store_new_block(&mut txn, block)?;
         let mut db = self.db_write_access()?;
         commit(&mut *db, txn)
     }
@@ -817,7 +817,7 @@ where B: BlockchainBackend
         txn.set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(Some(best_block)));
 
         let accumulated_difficulty =
-            ProofOfWork::new_from_difficulty(&tip_header.pow, ProofOfWork::achieved_difficulty(&tip_header))
+            ProofOfWork::new_from_difficulty(&tip_header.pow, ProofOfWork::achieved_difficulty(&tip_header)?)
                 .total_accumulated_difficulty();
         txn.set_metadata(
             MetadataKey::AccumulatedWork,
@@ -1099,7 +1099,7 @@ fn add_block<T: BlockchainBackend>(
 }
 
 // Adds a new block onto the chain tip.
-fn store_new_block(txn: &mut DbTransaction, block: Block) {
+fn store_new_block(txn: &mut DbTransaction, block: Block) -> Result<(), ChainStorageError> {
     debug!(
         target: LOG_TARGET,
         "Storing new block #{} `{}`",
@@ -1111,7 +1111,7 @@ fn store_new_block(txn: &mut DbTransaction, block: Block) {
     let height = header.height;
     let best_block = header.hash();
     let accumulated_difficulty =
-        ProofOfWork::new_from_difficulty(&header.pow, ProofOfWork::achieved_difficulty(&header))
+        ProofOfWork::new_from_difficulty(&header.pow, ProofOfWork::achieved_difficulty(&header)?)
             .total_accumulated_difficulty();
     // Build all the DB queries needed to add the block and the add it atomically
 
@@ -1128,6 +1128,8 @@ fn store_new_block(txn: &mut DbTransaction, block: Block) {
     outputs.into_iter().for_each(|utxo| txn.insert_utxo(utxo));
     kernels.into_iter().for_each(|k| txn.insert_kernel(k));
     txn.commit_block();
+
+    Ok(())
 }
 
 fn store_pruning_horizon<T: BlockchainBackend>(db: &mut T, pruning_horizon: u64) -> Result<(), ChainStorageError> {
@@ -1424,7 +1426,7 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
     // Update metadata
     let last_header = fetch_header(db, height)?;
     let accumulated_work =
-        ProofOfWork::new_from_difficulty(&last_header.pow, ProofOfWork::achieved_difficulty(&last_header))
+        ProofOfWork::new_from_difficulty(&last_header.pow, ProofOfWork::achieved_difficulty(&last_header)?)
             .total_accumulated_difficulty();
     txn.set_metadata(
         MetadataKey::ChainHeight,
@@ -1523,7 +1525,7 @@ fn handle_reorg<T: BlockchainBackend>(
             fork_accum_difficulty,
             fork_tip_hash.to_hex(),
             tip_header.height,
-            tip_header.total_accumulated_difficulty_inclusive(),
+            tip_header.total_accumulated_difficulty_inclusive()?,
             tip_header.hash().to_hex()
         );
     } else {
@@ -1536,7 +1538,7 @@ fn handle_reorg<T: BlockchainBackend>(
             new_block.header.height,
             new_block_hash.to_hex(),
             tip_header.height,
-            tip_header.total_accumulated_difficulty_inclusive(),
+            tip_header.total_accumulated_difficulty_inclusive()?,
             tip_header.hash().to_hex()
         );
     }
@@ -1666,7 +1668,7 @@ fn reorganize_chain<T: BlockchainBackend>(
             return Err(e.into());
         }
 
-        store_new_block(&mut txn, unwrap_or_clone(block));
+        store_new_block(&mut txn, unwrap_or_clone(block))?;
         // Failed to store the block - this should typically never happen unless there is a bug in the validator
         // (e.g. does not catch a double spend). In any case, we still need to restore the chain to a
         // good state before returning.
@@ -1705,7 +1707,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     // See: https://github.com/tari-project/tari/issues/2182
     for block in previous_chain.into_iter().rev() {
         txn.delete(DbKey::OrphanBlock(block.hash()));
-        store_new_block(&mut txn, unwrap_or_clone(block));
+        store_new_block(&mut txn, unwrap_or_clone(block))?;
     }
     commit(db, txn)?;
     Ok(())
@@ -1867,7 +1869,7 @@ fn find_strongest_orphan_tip<T: BlockchainBackend>(
     let mut best_tip_hash: Vec<u8> = vec![0; 32];
     for tip_hash in orphan_chain_tips {
         let header = fetch_orphan(db, tip_hash.clone())?.header;
-        let accum_difficulty = header.total_accumulated_difficulty_inclusive();
+        let accum_difficulty = header.total_accumulated_difficulty_inclusive()?;
         if accum_difficulty >= best_accum_difficulty {
             best_tip_hash = tip_hash;
             best_accum_difficulty = accum_difficulty;

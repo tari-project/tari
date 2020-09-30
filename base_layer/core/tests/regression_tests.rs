@@ -43,7 +43,7 @@ fn test_block_9182() {
     println!("{}", block);
     let validator = StatelessBlockValidator::new(rules, factories);
     assert!(validator.validate(&block).is_ok());
-    assert!(block.header.achieved_difficulty() > Difficulty::from(53193415));
+    assert!(block.header.achieved_difficulty().unwrap() > Difficulty::from(53193415));
 }
 
 /// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 9430
@@ -60,7 +60,7 @@ fn test_block_9430() {
     println!("{}", block);
     let validator = StatelessBlockValidator::new(rules, factories);
     assert!(validator.validate(&block).is_ok());
-    assert!(block.header.achieved_difficulty() > Difficulty::from(53193415));
+    assert!(block.header.achieved_difficulty().unwrap() > Difficulty::from(53193415));
 }
 
 /// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 10856
@@ -77,7 +77,7 @@ fn test_block_10856() {
     println!("{}", block);
     let validator = StatelessBlockValidator::new(rules, factories);
     assert!(validator.validate(&block).is_ok());
-    assert!(block.header.achieved_difficulty() > Difficulty::from(53193415));
+    assert!(block.header.achieved_difficulty().unwrap() > Difficulty::from(53193415));
 }
 
 /// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 11708
@@ -94,7 +94,7 @@ fn test_block_11708() {
     println!("{}", block);
     let validator = StatelessBlockValidator::new(rules, factories);
     assert!(validator.validate(&block).is_ok());
-    assert!(block.header.achieved_difficulty() > Difficulty::from(53193415));
+    assert!(block.header.achieved_difficulty().unwrap() > Difficulty::from(53193415));
 }
 
 /// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 30335
@@ -111,7 +111,7 @@ fn test_block_30335() {
     println!("{}", block);
     let validator = StatelessBlockValidator::new(rules, factories);
     assert!(validator.validate(&block).is_ok());
-    assert!(block.header.achieved_difficulty() > Difficulty::from(151763817));
+    assert!(block.header.achieved_difficulty().unwrap() > Difficulty::from(151763817));
 }
 
 /// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 33923
@@ -128,7 +128,7 @@ fn test_block_33923() {
     println!("{}", block);
     let validator = StatelessBlockValidator::new(rules, factories);
     assert!(validator.validate(&block).is_ok());
-    assert!(block.header.achieved_difficulty() > Difficulty::from(1156044026));
+    assert!(block.header.achieved_difficulty().unwrap() > Difficulty::from(1156044026));
 }
 
 /// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in Block 34947
@@ -145,5 +145,5 @@ fn test_block_34947() {
     println!("{}", block);
     let validator = StatelessBlockValidator::new(rules, factories);
     assert!(validator.validate(&block).is_ok());
-    assert!(block.header.achieved_difficulty() > Difficulty::from(448647867));
+    assert!(block.header.achieved_difficulty().unwrap() > Difficulty::from(448647867));
 }

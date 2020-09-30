@@ -35,7 +35,7 @@ impl<B: BlockchainBackend> StatefulValidation<Difficulty, B> for AccumDifficulty
         let tip_header = db
             .fetch_last_header()?
             .ok_or_else(|| ValidationError::custom_error("Cannot retrieve tip header. Blockchain DB is empty"))?;
-        if *accum_difficulty < tip_header.total_accumulated_difficulty_inclusive() {
+        if *accum_difficulty < tip_header.total_accumulated_difficulty_inclusive()? {
             return Err(ValidationError::WeakerAccumulatedDifficulty);
         }
         Ok(())
@@ -53,7 +53,7 @@ impl<B: BlockchainBackend> StatefulValidation<Difficulty, B> for MockAccumDiffic
         let tip_header = db
             .fetch_last_header()?
             .ok_or_else(|| ValidationError::custom_error("Cannot retrieve tip header. Blockchain DB is empty"))?;
-        if *accum_difficulty < tip_header.total_accumulated_difficulty_inclusive() {
+        if *accum_difficulty < tip_header.total_accumulated_difficulty_inclusive()? {
             return Err(ValidationError::WeakerAccumulatedDifficulty);
         }
         Ok(())

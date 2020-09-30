@@ -28,41 +28,31 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 
+mod block_template_data;
+mod error;
+mod helpers;
+mod proxy;
 #[cfg(test)]
 mod test;
 
-mod error;
-
-mod helpers;
-
-mod proxy;
-use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
-
-mod state;
-use state::SharedState;
-
-//---------------------------------- Imports --------------------------------------------//
-
-use crate::error::MmProxyError;
+use crate::{block_template_data::BlockTemplateRepository, error::MmProxyError};
 use futures::future;
 use hyper::{service::make_service_fn, Server};
+use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
 use std::convert::Infallible;
 use structopt::StructOpt;
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
 
 #[tokio_macros::main]
 async fn main() -> Result<(), MmProxyError> {
+    // tracing_subscriber::fmt::init();
     let config = initialize()?;
-
-    let state = SharedState {
-        transient_data: Default::default(),
-    };
 
     let addr = config.proxy_host_address;
     println!("Listening on {}...", addr);
 
     let config = MergeMiningProxyConfig::from(config);
-    let xmrig_service = MergeMiningProxyService::new(config, state);
+    let xmrig_service = MergeMiningProxyService::new(config, BlockTemplateRepository::new());
     let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(xmrig_service.clone())));
 
     Server::bind(&addr).serve(service).await?;

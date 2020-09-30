@@ -21,10 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::error::MmProxyError;
+use json::Value;
 use monero::{
-    blockdata::{Block as MoneroBlock, Block},
+    blockdata::{transaction::SubField, Block},
     consensus::{deserialize, serialize},
+    cryptonote::hash::Hash,
 };
+use serde_json as json;
 use std::convert::TryFrom;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_core::{
@@ -49,7 +52,7 @@ pub fn serialize_monero_block_to_hex(obj: &Block) -> Result<String, MmProxyError
     Ok(bytes)
 }
 
-pub fn construct_monero_data(block: MoneroBlock, seed: String) -> Result<MoneroData, MmProxyError> {
+pub fn construct_monero_data(block: Block, seed: String) -> Result<MoneroData, MmProxyError> {
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&block);
     let root = monero_rx::tree_hash(&hashes)?;
     Ok(MoneroData {
@@ -82,4 +85,25 @@ pub fn add_coinbase(
     } else {
         Err(MmProxyError::MissingDataError("Coinbase Invalid".to_string()))
     }
+}
+
+pub fn default_accept(json: &Value) -> Value {
+    let id = json["id"].as_i64().unwrap_or_else(|| -1);
+    let accept_response = format!(
+        "{} \"id\": {}, \"jsonrpc\": \"2.0\", \"result\": {} \"status\": \"OK\",\"untrusted\": false {}{}",
+        "{", id, "{", "}", "}",
+    );
+    json::from_str(&accept_response).unwrap_or_default()
+}
+
+pub fn extract_tari_hash(monero: &Block) -> Option<&Hash> {
+    for item in monero.miner_tx.prefix.extra.0.iter() {
+        match item {
+            SubField::MergeMining(_depth, merge_mining_hash) => {
+                return Some(merge_mining_hash);
+            },
+            _ => (),
+        }
+    }
+    None
 }

@@ -24,6 +24,7 @@ use crate::{
     consensus::ConsensusManagerError,
     proof_of_work::{difficulty::DifficultyAdjustment, lwma_diff::LinearWeightedMovingAverage, Difficulty},
 };
+use std::cmp;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// Returns the estimated target difficulty for the provided set of target difficulties.
@@ -31,14 +32,15 @@ pub fn get_target_difficulty(
     target_difficulties: Vec<(EpochTime, Difficulty)>,
     block_window: usize,
     target_time: u64,
-    initial_difficulty: Difficulty,
+    min_difficulty: Difficulty,
     max_block_time: u64,
 ) -> Result<Difficulty, ConsensusManagerError>
 {
-    let mut lwma = LinearWeightedMovingAverage::new(block_window, target_time, initial_difficulty, max_block_time);
+    let mut lwma = LinearWeightedMovingAverage::new(block_window, target_time, min_difficulty, max_block_time);
     for (epoch, difficulty) in target_difficulties {
         lwma.add(epoch, difficulty)?;
     }
-    let target_difficulty = lwma.get_difficulty();
+    let mut target_difficulty = lwma.get_difficulty();
+    target_difficulty = cmp::max(target_difficulty, min_difficulty);
     Ok(target_difficulty)
 }

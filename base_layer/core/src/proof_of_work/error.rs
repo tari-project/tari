@@ -20,16 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::proof_of_work::{monero_rx::MergeMineError, Difficulty};
 use thiserror::Error;
 
-#[derive(Clone, Debug, PartialEq, Error)]
+#[derive(Debug, Error)]
 pub enum PowError {
     #[error("ProofOfWorkFailed")]
     InvalidProofOfWork,
-    #[error("Target difficulty not achieved")]
-    AchievedDifficultyTooLow,
+    #[error("Target difficulty {target} not achieved. Achieved difficulty: {achieved}")]
+    AchievedDifficultyTooLow { target: Difficulty, achieved: Difficulty },
     #[error("Invalid target difficulty")]
     InvalidTargetDifficulty,
+    #[error("Invalid merge mining data or operation: {0}")]
+    MergeMineError(#[from] MergeMineError),
 }
 
 #[derive(Debug, Error, Clone, PartialEq)]

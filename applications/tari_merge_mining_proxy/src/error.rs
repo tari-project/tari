@@ -62,8 +62,6 @@ pub enum MmProxyError {
     HttpError(#[from] hyper::http::Error),
     #[error("Could not parse URL: {0}")]
     UrlParseError(#[from] url::ParseError),
-    #[error("Transient state error: {0}")]
-    TransientStateError(String),
     #[error("Bincode error: {0}")]
     BincodeError(#[from] bincode::Error),
     #[error("JSON error: {0}")]
