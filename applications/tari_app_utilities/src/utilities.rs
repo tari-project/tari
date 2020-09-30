@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::identity_management::load_from_json;
+use futures::future::Either;
 use log::*;
 use std::{fmt, fmt::Formatter, net::SocketAddr, path::Path};
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
@@ -31,22 +32,26 @@ use tari_comms::{
     tor,
     tor::TorIdentity,
     transports::SocksConfig,
+    types::CommsPublicKey,
 };
 use tari_core::transactions::types::PublicKey;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
+use tari_wallet::util::emoji::EmojiId;
 use tokio::runtime::Runtime;
 
 pub const LOG_TARGET: &str = "tari::application";
 
 /// Enum to show failure information
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum ExitCodes {
     ConfigError,
     UnknownError,
     InterfaceError,
     WalletError(String),
     GrpcError(String),
+    InputError(String),
+    CommandError(String),
 }
 
 impl ExitCodes {
@@ -57,6 +62,8 @@ impl ExitCodes {
             Self::InterfaceError => 103,
             Self::WalletError(_) => 104,
             Self::GrpcError(_) => 105,
+            Self::InputError(_) => 106,
+            Self::CommandError(_) => 107,
         }
     }
 }
@@ -73,6 +80,8 @@ impl fmt::Display for ExitCodes {
         match self {
             ExitCodes::WalletError(e) => write!(f, "Wallet Error ({}): {}", self.as_i32(), e),
             ExitCodes::GrpcError(e) => write!(f, "GRPC Error ({}): {}", self.as_i32(), e),
+            ExitCodes::InputError(e) => write!(f, "Input Error ({}): {}", self.as_i32(), e),
+            ExitCodes::CommandError(e) => write!(f, "Command Error ({}): {}", self.as_i32(), e),
             _ => write!(f, "{}", self.as_i32()),
         }
     }
@@ -273,4 +282,18 @@ pub fn parse_peer_seeds(seeds: &[String]) -> Vec<Peer> {
         result.push(peer);
     }
     result
+}
+
+/// Returns a CommsPublicKey from either a emoji id or a public key
+pub fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
+    EmojiId::str_to_pubkey(&key.trim().replace('|', ""))
+        .or_else(|_| CommsPublicKey::from_hex(key))
+        .ok()
+}
+
+/// Returns a CommsPublicKey from either a emoji id, a public key or node id
+pub fn parse_emoji_id_or_public_key_or_node_id(key: &str) -> Option<Either<CommsPublicKey, NodeId>> {
+    parse_emoji_id_or_public_key(key)
+        .map(Either::Left)
+        .or_else(|| NodeId::from_hex(key).ok().map(Either::Right))
 }

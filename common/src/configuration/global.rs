@@ -84,6 +84,8 @@ pub struct GlobalConfig {
     pub transaction_chain_monitoring_timeout: Duration,
     pub transaction_direct_send_timeout: Duration,
     pub transaction_broadcast_send_timeout: Duration,
+    pub wallet_command_send_wait_stage: String,
+    pub wallet_command_send_wait_timeout: u64,
     pub prevent_fee_gt_amount: bool,
     pub monerod_url: String,
     pub monerod_username: String,
@@ -349,6 +351,20 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_bool(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
 
+    let key = "wallet.command_send_wait_stage";
+    let wallet_command_send_wait_stage = match cfg.get_str(key) {
+        Ok(stage) => stage,
+        Err(ConfigError::NotFound(_)) => "Broadcast".to_string(),
+        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+    };
+
+    let key = "wallet.command_send_wait_timeout";
+    let wallet_command_send_wait_timeout = match cfg.get_int(key) {
+        Ok(timeout) => timeout as u64,
+        Err(ConfigError::NotFound(_)) => 300,
+        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+    };
+
     let key = "common.liveness_max_sessions";
     let liveness_max_sessions = cfg
         .get_int(key)
@@ -448,6 +464,8 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         transaction_chain_monitoring_timeout,
         transaction_direct_send_timeout,
         transaction_broadcast_send_timeout,
+        wallet_command_send_wait_stage,
+        wallet_command_send_wait_timeout,
         prevent_fee_gt_amount,
         proxy_host_address,
         monerod_url,

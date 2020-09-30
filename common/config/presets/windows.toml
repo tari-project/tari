@@ -90,6 +90,18 @@ base_node_query_timeout = 120
 # transactions (default = true).
 #prevent_fee_gt_amount = false
 
+# When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
+# for sent transactions.
+# The stages are:
+# - "DirectSendOrSaf" - The transaction was initiated and was accepted via Direct Send or Store And Forward.
+# - "Negotiated" - The recipient replied and the transaction was negotiated.
+# - "Broadcast" - The transaction was broadcast to the base node mempool.
+# - "Mined" - The transaction was successfully detected as mined on the blockchain.
+
+# The default values are:
+#command_send_wait_stage = "Broadcast"
+#command_send_wait_timeout = 300
+
 #[base_node.transport.tor]
 #control_address = "/ip4/127.0.0.1/tcp/9051"
 #control_auth_type = "none" # or "password"
