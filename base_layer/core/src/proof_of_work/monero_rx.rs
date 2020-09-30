@@ -244,7 +244,7 @@ pub fn append_merge_mining_tag<T: AsRef<[u8]>>(block: &mut MoneroBlock, hash: T)
     Ok(())
 }
 
-/// Creates a hex encoded Monero blockhashing_blob
+/// Creates a hex encoded Monero blockhashing_blob thats used by the pow hash
 pub fn create_blockhashing_blob(block: &MoneroBlock) -> Result<String, MergeMineError> {
     let tx_hashes = create_ordered_transaction_hashes_from_block(block);
     create_input_blob_from_parts(&block.header, &tx_hashes)
