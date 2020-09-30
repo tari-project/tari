@@ -193,8 +193,10 @@ pub trait BlockchainBackend: Send + Sync {
     /// Inserts an MMR node consisting of a leaf node hash and its deletion status into the given MMR tree.
     fn insert_mmr_node(&mut self, tree: MmrTree, hash: Hash, deleted: bool) -> Result<(), ChainStorageError>;
     /// Marks the MMR node corresponding to the provided hash as deleted.
+    #[allow(clippy::ptr_arg)]
     fn delete_mmr_node(&mut self, tree: MmrTree, hash: &Hash) -> Result<(), ChainStorageError>;
     /// Fetches the leaf index of the provided leaf node hash in the given MMR tree.
+    #[allow(clippy::ptr_arg)]
     fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &Hash) -> Result<Option<u32>, ChainStorageError>;
     /// Performs the function F for each orphan block in the orphan pool.
     fn for_each_orphan<F>(&self, f: F) -> Result<(), ChainStorageError>
@@ -574,6 +576,7 @@ where B: BlockchainBackend
     }
 
     /// Marks the MMR node corresponding to the provided hash as deleted.
+    #[allow(clippy::ptr_arg)]
     pub fn delete_mmr_node(&self, tree: MmrTree, hash: &Hash) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
         db.delete_mmr_node(tree, hash)
@@ -853,10 +856,9 @@ where B: BlockchainBackend
             usize::try_from(sync_state.initial_kernel_checkpoint_count).map_err(|_| ChainStorageError::OutOfRange)?;
         let cp_count = db.count_checkpoints(MmrTree::Kernel)?;
         for i in first_tmp_checkpoint_index..cp_count {
-            let cp = db.fetch_checkpoint_at_index(MmrTree::Kernel, i)?.expect(&format!(
-                "Database is corrupt: Failed to fetch kernel checkpoint at index {}",
-                i
-            ));
+            let cp = db
+                .fetch_checkpoint_at_index(MmrTree::Kernel, i)?
+                .unwrap_or_else(|| panic!("Database is corrupt: Failed to fetch kernel checkpoint at index {}", i));
             let (nodes_added, _) = cp.into_parts();
             for hash in nodes_added {
                 txn.delete(DbKey::TransactionKernel(hash));
@@ -870,10 +872,9 @@ where B: BlockchainBackend
             usize::try_from(sync_state.initial_utxo_checkpoint_count).map_err(|_| ChainStorageError::OutOfRange)?;
         let cp_count = db.count_checkpoints(MmrTree::Utxo)?;
         for i in first_tmp_checkpoint_index..cp_count {
-            let cp = db.fetch_checkpoint_at_index(MmrTree::Utxo, i)?.expect(&format!(
-                "Database is corrupt: Failed to fetch UTXO checkpoint at index {}",
-                i
-            ));
+            let cp = db
+                .fetch_checkpoint_at_index(MmrTree::Utxo, i)?
+                .unwrap_or_else(|| panic!("Database is corrupt: Failed to fetch UTXO checkpoint at index {}", i));
             let (nodes_added, deleted) = cp.into_parts();
             for hash in nodes_added {
                 txn.delete(DbKey::UnspentOutput(hash));
@@ -996,9 +997,9 @@ fn fetch_header_by_block_hash<T: BlockchainBackend>(db: &T, hash: BlockHash) -> 
 
 pub fn fetch_tip_header<T: BlockchainBackend>(db: &T) -> Result<BlockHeader, ChainStorageError> {
     db.fetch_last_header()
-        .or_else(|e| {
+        .map_err(|e| {
             error!(target: LOG_TARGET, "Could not fetch the tip header of the db. {:?}", e);
-            Err(e)
+            e
         })?
         .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve header. Blockchain DB is empty".into()))
 }
@@ -1321,7 +1322,7 @@ fn fetch_inputs<T: BlockchainBackend>(
                     assert!(deleted);
                     fetch_stxo(db, hash)
                 })
-                .and_then(|stxo| Ok(TransactionInput::from(stxo)))
+                .map(TransactionInput::from)
         })
         .collect();
     inputs
@@ -1455,12 +1456,12 @@ fn handle_possible_reorg<T: BlockchainBackend>(
         .fetch_chain_metadata()?
         .height_of_longest_chain
         .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve block. Blockchain DB is empty".into()))
-        .or_else(|e| {
+        .map_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "Could not retrieve block, block chain is empty {:?}", e
             );
-            Err(e)
+            e
         })?;
     insert_orphan(db, block.clone())?;
     debug!(
@@ -1676,7 +1677,7 @@ fn reorganize_chain<T: BlockchainBackend>(
             );
 
             restore_reorged_chain(db, height, removed_blocks)?;
-            return Err(e.into());
+            return Err(e);
         }
     }
 

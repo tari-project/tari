@@ -194,6 +194,12 @@ impl StatusInfo {
     }
 }
 
+impl Default for StatusInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Display for StatusInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "Bootstrapped: {}, {}", self.bootstrapped, self.state_info)

@@ -486,7 +486,7 @@ where
         state_machine,
         transaction_service_handle,
         oms_handle,
-        config.base_node_query_timeout.clone(),
+        config.base_node_query_timeout,
         base_node_public_key.clone(),
     ));
 
@@ -949,6 +949,7 @@ async fn setup_wallet_comms(
 ///
 /// ## Returns
 /// A hashmap of handles wrapped in an atomic reference counter
+#[allow(clippy::too_many_arguments)]
 async fn register_base_node_services<B>(
     comms: &CommsNode,
     dht: &Dht,
@@ -1014,6 +1015,7 @@ where
 ///
 /// ## Returns
 /// A hashmap of handles wrapped in an atomic reference counter
+#[allow(clippy::too_many_arguments)]
 async fn register_wallet_services(
     wallet_comms: &CommsNode,
     wallet_dht: &Dht,

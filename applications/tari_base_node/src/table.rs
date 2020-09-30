@@ -48,7 +48,7 @@ impl<'t, 's> Table<'t, 's> {
 
     pub fn render<T: Write>(&self, out: &mut T) -> io::Result<()> {
         self.render_titles(out)?;
-        if self.rows.len() > 0 {
+        if !self.rows.is_empty() {
             out.write_all(b"\n")?;
             self.render_rows(out)?;
             out.write_all(b"\n")?;

@@ -122,7 +122,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         let app = App::<CrosstermBackend<Stdout>>::new(
             "Tari Console Wallet".into(),
             &node_identity,
-            wallet.clone(),
+            wallet,
             node_config.network,
         );
         runtime.handle().enter(|| ui::run(app))?;
@@ -137,7 +137,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         println!("Starting grpc server");
         runtime
             .block_on(run_grpc(grpc, node_config.grpc_wallet_address))
-            .map_err(|err| ExitCodes::GrpcError(err))?;
+            .map_err(ExitCodes::GrpcError)?;
         println!("Shutting down");
         Ok(())
     }

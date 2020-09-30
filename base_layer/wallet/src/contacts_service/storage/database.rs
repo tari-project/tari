@@ -94,7 +94,7 @@ where T: ContactsBackend + 'static
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || fetch!(db_clone, pub_key.clone(), Contact))
             .await
-            .or_else(|err| Err(ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string())))
+            .map_err(|err| ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
 
@@ -111,7 +111,7 @@ where T: ContactsBackend + 'static
             Err(e) => log_error(DbKey::Contacts, e),
         })
         .await
-        .or_else(|err| Err(ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(c)
     }
 
@@ -125,7 +125,7 @@ where T: ContactsBackend + 'static
             )))
         })
         .await
-        .or_else(|err| Err(ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string())))??;
+        .map_err(|err| ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 
@@ -135,7 +135,7 @@ where T: ContactsBackend + 'static
         let result =
             tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Remove(DbKey::Contact(pub_key_clone))))
                 .await
-                .or_else(|err| Err(ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string())))
+                .map_err(|err| ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string()))
                 .and_then(|inner_result| inner_result)?
                 .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::Contact(pub_key.clone())))?;
 

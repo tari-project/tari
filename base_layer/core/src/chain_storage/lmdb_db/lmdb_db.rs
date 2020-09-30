@@ -911,6 +911,7 @@ where D: Digest + Send + Sync
     }
 }
 
+#[allow(clippy::ptr_arg)]
 fn validate_merkle_root<D, B>(
     mmr: &MutableMmr<D, B>,
     current_cp: &MerkleCheckPoint,

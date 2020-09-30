@@ -30,6 +30,7 @@ use tari_crypto::tari_utilities::hex::Hex;
 
 /// API Request enum for Mempool requests.
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum MempoolRequest {
     GetStats,
     GetState,

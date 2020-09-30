@@ -114,11 +114,8 @@ impl<B: Backend> App<B> {
     }
 
     pub async fn on_control_key(&mut self, c: char) {
-        match c {
-            'c' => {
-                self.should_quit = true;
-            },
-            _ => {},
+        if let 'c' = c {
+            self.should_quit = true;
         }
     }
 
@@ -129,7 +126,6 @@ impl<B: Backend> App<B> {
             },
             '\t' => {
                 self.tabs.next();
-                return;
             },
             _ => {
                 let mut app_state = self.app_state.write().await;
@@ -209,7 +205,7 @@ impl<B: Backend> App<B> {
             .get_completed_transactions()
             .await?
             .values()
-            .map(|t| t.clone())
+            .cloned()
             .collect();
         self.app_state.write().await.completed_txs.items = completed_transactions;
         Ok(())

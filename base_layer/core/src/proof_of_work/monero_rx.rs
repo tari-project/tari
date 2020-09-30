@@ -154,7 +154,7 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
                 i += 2;
             }
 
-            if !(i == hashes.len()) {
+            if i != hashes.len() {
                 return Err(MergeMineError::HashingError(
                     "Cannot calculate Monero root, hashes not equal to count".to_string(),
                 ));
@@ -180,7 +180,7 @@ impl MoneroData {
         bincode::deserialize(&tari_header.pow.pow_data).map_err(|e| MergeMineError::DeserializeError(e.to_string()))
     }
 
-    pub fn new_from_pow(pow_data: &Vec<u8>) -> Result<MoneroData, MergeMineError> {
+    pub fn new_from_pow(pow_data: &[u8]) -> Result<MoneroData, MergeMineError> {
         bincode::deserialize(pow_data).map_err(|e| MergeMineError::DeserializeError(e.to_string()))
     }
 }
@@ -274,7 +274,7 @@ fn verify_root(monero_data: &MoneroData) -> Result<(), MergeMineError> {
         .collect::<Vec<_>>();
     let root = tree_hash(&hashes)?;
 
-    if !(&monero_data.transaction_root == root.as_fixed_bytes()) {
+    if &monero_data.transaction_root != root.as_fixed_bytes() {
         return Err(MergeMineError::ValidationError(
             "Transaction root did not match".to_string(),
         ));
