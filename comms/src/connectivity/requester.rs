@@ -92,7 +92,7 @@ pub enum ConnectivityRequest {
     ),
     GetConnection(NodeId, oneshot::Sender<Option<PeerConnection>>),
     GetAllConnectionStates(oneshot::Sender<Vec<PeerConnectionState>>),
-    BanPeer(NodeId, Duration),
+    BanPeer(NodeId, Duration, String),
 }
 
 #[derive(Debug, Clone)]
@@ -179,9 +179,15 @@ impl ConnectivityRequester {
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
-    pub async fn ban_peer(&mut self, node_id: NodeId, duration: Duration) -> Result<(), ConnectivityError> {
+    pub async fn ban_peer(
+        &mut self,
+        node_id: NodeId,
+        duration: Duration,
+        reason: String,
+    ) -> Result<(), ConnectivityError>
+    {
         self.sender
-            .send(ConnectivityRequest::BanPeer(node_id, duration))
+            .send(ConnectivityRequest::BanPeer(node_id, duration, reason))
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         Ok(())

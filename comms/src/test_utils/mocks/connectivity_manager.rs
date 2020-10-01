@@ -180,7 +180,7 @@ impl ConnectivityManagerMock {
                     .unwrap();
             },
             GetAllConnectionStates(_) => unimplemented!(),
-            BanPeer(_, _) => unimplemented!(),
+            BanPeer(_, _, _) => unimplemented!(),
         }
     }
 }

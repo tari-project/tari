@@ -71,6 +71,7 @@ pub struct Peer {
     /// Flags for the peer.
     pub flags: PeerFlags,
     pub banned_until: Option<NaiveDateTime>,
+    pub banned_reason: String,
     pub offline_at: Option<NaiveDateTime>,
     /// Features supported by the peer
     pub features: PeerFeatures,
@@ -105,6 +106,7 @@ impl Peer {
             flags,
             features,
             banned_until: None,
+            banned_reason: "".to_string(),
             offline_at: None,
             connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
@@ -168,6 +170,7 @@ impl Peer {
         net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
         banned_until: Option<Option<Duration>>,
+        banned_reason: Option<String>,
         is_offline: Option<bool>,
         features: Option<PeerFeatures>,
         supported_protocols: Option<Vec<ProtocolId>>,
@@ -183,6 +186,9 @@ impl Peer {
             self.banned_until = banned_until
                 .map(safe_future_datetime_from_duration)
                 .map(|dt| dt.naive_utc());
+        }
+        if let Some(banned_reason) = banned_reason {
+            self.banned_reason = banned_reason;
         }
         if let Some(is_offline) = is_offline {
             self.set_offline(is_offline);
@@ -211,14 +217,16 @@ impl Peer {
     }
 
     /// Bans the peer for a specified duration
-    pub fn ban_for(&mut self, duration: Duration) {
+    pub fn ban_for(&mut self, duration: Duration, reason: String) {
         let dt = safe_future_datetime_from_duration(duration);
         self.banned_until = Some(dt.naive_utc());
+        self.banned_reason = reason;
     }
 
     /// Unban the peer
     pub fn unban(&mut self) {
         self.banned_until = None;
+        self.banned_reason = "".to_string();
     }
 
     pub fn banned_until(&self) -> Option<&NaiveDateTime> {
@@ -252,6 +260,7 @@ impl Display for Peer {
 
             if let Some(dt) = self.banned_until() {
                 s.push(format!("BANNED until {}", dt));
+                s.push(format!("Banned because: {}", self.banned_reason))
             }
             s.join(", ")
         };

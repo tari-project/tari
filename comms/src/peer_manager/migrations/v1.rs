@@ -80,6 +80,7 @@ impl Migration<LMDBDatabase> for MigrationV1 {
                         addresses: peer.addresses,
                         flags: peer.flags,
                         banned_until: peer.banned_until,
+                        banned_reason: "".to_string(),
                         offline_at: peer.offline_at,
                         features: peer.features,
                         connection_stats: peer.connection_stats,

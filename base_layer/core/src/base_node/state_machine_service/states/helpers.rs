@@ -101,6 +101,7 @@ pub async fn ban_sync_peer_if_online(
     sync_peers: &mut SyncPeers,
     sync_peer: SyncPeer,
     ban_duration: Duration,
+    reason: String,
 ) -> Result<(), BlockSyncError>
 {
     if !connectivity.get_connectivity_status().await?.is_online() {
@@ -110,7 +111,7 @@ pub async fn ban_sync_peer_if_online(
         );
         return Ok(());
     }
-    ban_sync_peer(log_target, connectivity, sync_peers, sync_peer, ban_duration).await
+    ban_sync_peer(log_target, connectivity, sync_peers, sync_peer, ban_duration, reason).await
 }
 
 /// Ban and disconnect the provided sync peer.
@@ -120,10 +121,13 @@ pub async fn ban_sync_peer(
     sync_peers: &mut SyncPeers,
     sync_peer: SyncPeer,
     ban_duration: Duration,
+    reason: String,
 ) -> Result<(), BlockSyncError>
 {
     info!(target: log_target, "Banning peer {} from local node.", sync_peer);
-    connectivity.ban_peer(sync_peer.node_id.clone(), ban_duration).await?;
+    connectivity
+        .ban_peer(sync_peer.node_id.clone(), ban_duration, reason)
+        .await?;
     exclude_sync_peer(log_target, sync_peers, sync_peer)
 }
 
@@ -133,6 +137,7 @@ pub async fn ban_all_sync_peers<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
     sync_peers: &mut SyncPeers,
     ban_duration: Duration,
+    reason: String,
 ) -> Result<(), BlockSyncError>
 {
     while !sync_peers.is_empty() {
@@ -142,6 +147,7 @@ pub async fn ban_all_sync_peers<B: BlockchainBackend + 'static>(
             sync_peers,
             sync_peers[0].clone(),
             ban_duration,
+            reason.clone(),
         )
         .await?;
     }
@@ -188,6 +194,7 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
                             sync_peers,
                             sync_peer.clone(),
                             config.short_term_peer_ban_duration,
+                            "Peer supplied the incorrect headers".to_string(),
                         )
                         .await?;
                     }
@@ -209,6 +216,7 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
                         sync_peers,
                         sync_peer.clone(),
                         config.short_term_peer_ban_duration,
+                        "Peer supplied the incorrect headers".to_string(),
                     )
                     .await?;
                 }
@@ -225,6 +233,7 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
                     sync_peers,
                     sync_peer.clone(),
                     config.short_term_peer_ban_duration,
+                    "Peer provided an unexpected api response".to_string(),
                 )
                 .await?;
             },
@@ -240,6 +249,7 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
                     sync_peers,
                     sync_peer.clone(),
                     config.short_term_peer_ban_duration,
+                    "Failed to fetch header from peer".to_string(),
                 )
                 .await?;
             },
@@ -288,6 +298,7 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
                     sync_peers,
                     sync_peer.clone(),
                     config.short_term_peer_ban_duration,
+                    "Peer provided an unexpected api response".to_string(),
                 )
                 .await?;
             },
@@ -303,6 +314,7 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
                     sync_peers,
                     sync_peer.clone(),
                     config.short_term_peer_ban_duration,
+                    "Failed to fetch mmr node count from peer".to_string(),
                 )
                 .await?;
             },
@@ -361,6 +373,7 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
                     sync_peers,
                     sync_peer.clone(),
                     config.short_term_peer_ban_duration,
+                    "Peer provided an unexpected api response".to_string(),
                 )
                 .await?;
             },
@@ -376,6 +389,7 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
                     sync_peers,
                     sync_peer.clone(),
                     config.short_term_peer_ban_duration,
+                    "Failed to fetch mmr nodes from peer".to_string(),
                 )
                 .await?;
             },
@@ -425,6 +439,7 @@ pub async fn request_kernels<B: BlockchainBackend + 'static>(
                     sync_peers,
                     sync_peer.clone(),
                     config.peer_ban_duration,
+                    "Peer provided an unexpected api response".to_string(),
                 )
                 .await?;
             },
@@ -440,6 +455,7 @@ pub async fn request_kernels<B: BlockchainBackend + 'static>(
                     sync_peers,
                     sync_peer.clone(),
                     config.short_term_peer_ban_duration,
+                    "Failed to fetch kernels from peer".to_string(),
                 )
                 .await?;
             },
@@ -496,6 +512,7 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
                     sync_peers,
                     sync_peer.clone(),
                     config.peer_ban_duration,
+                    "Peer provided an unexpected api response".to_string(),
                 )
                 .await?;
             },
@@ -511,6 +528,7 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
                     sync_peers,
                     sync_peer.clone(),
                     config.short_term_peer_ban_duration,
+                    "Failed to fetch kernels from peer".to_string(),
                 )
                 .await?;
             },

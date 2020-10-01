@@ -247,7 +247,8 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
                                 target: LOG_TARGET,
                                 "Banning peer {} from local node, because they supplied invalid kernels", sync_peer
                             );
-                            self.ban_sync_peer(sync_peer.clone()).await?;
+                            self.ban_sync_peer(sync_peer.clone(), "Peer supplied invalid kernels".to_string())
+                                .await?;
                         }
                     },
                     Err(e) => return Err(e),
@@ -284,13 +285,14 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
         }
     }
 
-    async fn ban_sync_peer(&mut self, sync_peer: SyncPeer) -> Result<(), HorizonSyncError> {
+    async fn ban_sync_peer(&mut self, sync_peer: SyncPeer, reason: String) -> Result<(), HorizonSyncError> {
         helpers::ban_sync_peer(
             LOG_TARGET,
             &mut self.shared.connectivity,
             self.sync_peers,
             sync_peer,
             self.shared.config.sync_peer_config.short_term_peer_ban_duration,
+            reason,
         )
         .await?;
         Ok(())
@@ -519,7 +521,11 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
                                 sync_peer1
                             );
 
-                            self.ban_sync_peer(sync_peer1.clone()).await?;
+                            self.ban_sync_peer(
+                                sync_peer1.clone(),
+                                "Peer supplied invalid UTXOs or MMR Nodes".to_string(),
+                            )
+                            .await?;
                         }
                     },
                     Err(e) => return Err(e),

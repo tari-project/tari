@@ -1151,7 +1151,10 @@ impl Parser {
             };
 
             if must_ban {
-                match connectivity.ban_peer(node_id.clone(), duration).await {
+                match connectivity
+                    .ban_peer(node_id.clone(), duration, "UI manual ban".to_string())
+                    .await
+                {
                     Ok(_) => println!("Peer was banned in base node."),
                     Err(err) => {
                         println!("Failed to ban peer: {:?}", err);
@@ -1159,7 +1162,10 @@ impl Parser {
                     },
                 }
 
-                match wallet_connectivity.ban_peer(node_id, duration).await {
+                match wallet_connectivity
+                    .ban_peer(node_id, duration, "UI manual ban".to_string())
+                    .await
+                {
                     Ok(_) => println!("Peer was banned in wallet."),
                     Err(err) => {
                         println!("Failed to ban peer: {:?}", err);
