@@ -49,10 +49,8 @@ use tari_core::{
         MempoolValidators,
         OutboundMempoolServiceInterface,
     },
-    proof_of_work::Difficulty,
     transactions::types::HashDigest,
     validation::{
-        accum_difficulty_validators::MockAccumDifficultyValidator,
         mocks::MockValidator,
         transaction_validators::TxInputAndMaturityValidator,
         StatefulValidation,
@@ -173,10 +171,9 @@ impl BaseNodeBuilder {
         mut self,
         block: impl StatefulValidation<Block, MemoryDatabase<HashDigest>> + 'static,
         orphan: impl Validation<Block> + 'static,
-        accum_difficulty: impl StatefulValidation<Difficulty, MemoryDatabase<HashDigest>> + 'static,
     ) -> Self
     {
-        let validators = Validators::new(block, orphan, accum_difficulty);
+        let validators = Validators::new(block, orphan);
         self.validators = Some(validators);
         self
     }
@@ -190,11 +187,9 @@ impl BaseNodeBuilder {
     /// Build the test base node and start its services.
     pub fn start(self, runtime: &mut Runtime, data_path: &str) -> (NodeInterfaces, ConsensusManager) {
         let mmr_cache_config = self.mmr_cache_config.unwrap_or(MmrCacheConfig { rewind_hist_len: 10 });
-        let validators = self.validators.unwrap_or(Validators::new(
-            MockValidator::new(true),
-            MockValidator::new(true),
-            MockAccumDifficultyValidator {},
-        ));
+        let validators = self
+            .validators
+            .unwrap_or(Validators::new(MockValidator::new(true), MockValidator::new(true)));
         let consensus_manager = self
             .consensus_manager
             .unwrap_or(ConsensusManagerBuilder::new(self.network).build());

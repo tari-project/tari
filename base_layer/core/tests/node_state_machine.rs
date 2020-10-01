@@ -74,11 +74,7 @@ use tari_core::{
     proof_of_work::Difficulty,
     transactions::{helpers::spend_utxos, types::CryptoFactories},
     txn_schema,
-    validation::{
-        accum_difficulty_validators::MockAccumDifficultyValidator,
-        block_validators::MockStatelessBlockValidator,
-        mocks::MockValidator,
-    },
+    validation::{block_validators::MockStatelessBlockValidator, mocks::MockValidator},
 };
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
@@ -663,11 +659,7 @@ fn test_sync_peer_banning() {
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
-        .with_validators(
-            mock_validator,
-            stateless_block_validator,
-            MockAccumDifficultyValidator {},
-        )
+        .with_validators(mock_validator, stateless_block_validator)
         .start(&mut runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)

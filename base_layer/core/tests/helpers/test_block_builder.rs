@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,27 +19,40 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
 
-pub(crate) mod chain_strength_comparer;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-mod consensus_constants;
-#[cfg(feature = "base_node")]
-mod consensus_manager;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub mod emission;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-mod network;
+#[derive(Default)]
+pub struct TestBlockBuilder {}
 
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub const WEIGHT_PER_INPUT: u64 = 1;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub const WEIGHT_PER_OUTPUT: u64 = 13;
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub const KERNEL_WEIGHT: u64 = 3; // Constant weight per transaction; covers kernel and part of header.
+impl TestBlockBuilder {
+    pub fn new_block(&self, name: &str) -> TestBlockBuilderInner {
+        TestBlockBuilderInner::new(name)
+    }
+}
 
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub use consensus_constants::{ConsensusConstants, ConsensusConstantsBuilder};
-#[cfg(feature = "base_node")]
-pub use consensus_manager::{ConsensusManager, ConsensusManagerBuilder, ConsensusManagerError};
-#[cfg(any(feature = "base_node", feature = "transactions"))]
-pub use network::Network;
+#[derive(Debug, Clone)]
+pub struct TestBlockBuilderInner {
+    pub name: String,
+    pub child_of: Option<String>,
+    pub difficulty: Option<u64>,
+}
+
+impl TestBlockBuilderInner {
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            child_of: None,
+            difficulty: None,
+        }
+    }
+
+    pub fn child_of(mut self, parent: &str) -> Self {
+        self.child_of = Some(parent.to_string());
+        self
+    }
+
+    pub fn difficulty(mut self, difficulty: u64) -> Self {
+        self.difficulty = Some(difficulty);
+        self
+    }
+}

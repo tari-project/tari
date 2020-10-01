@@ -49,11 +49,7 @@ use tari_core::{
         tari_amount::MicroTari,
         types::{CryptoFactories, HashDigest},
     },
-    validation::{
-        accum_difficulty_validators::MockAccumDifficultyValidator,
-        mocks::MockValidator,
-        transaction_validators::TxInputAndMaturityValidator,
-    },
+    validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
 };
 use tari_crypto::tari_utilities::hash::Hashable;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
@@ -416,11 +412,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())
         .build();
-    let validators = Validators::new(
-        MockValidator::new(true),
-        MockValidator::new(true),
-        MockAccumDifficultyValidator {},
-    );
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
     let db = MemoryDatabase::<HashDigest>::default();
     let mut config = BlockchainDatabaseConfig::default();
     config.pruning_horizon = 2;

@@ -24,10 +24,7 @@ use tari_core::{
     chain_storage::{BlockAddResult, BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
     consensus::{ConsensusManagerBuilder, Network},
     transactions::types::{CryptoFactories, HashDigest},
-    validation::{
-        accum_difficulty_validators::AccumDifficultyValidator,
-        block_validators::{FullConsensusValidator, StatelessBlockValidator},
-    },
+    validation::block_validators::{FullConsensusValidator, StatelessBlockValidator},
 };
 
 #[test]
@@ -39,7 +36,6 @@ fn test_genesis_block() {
     let validators = Validators::new(
         FullConsensusValidator::new(rules.clone()),
         StatelessBlockValidator::new(rules.clone(), factories),
-        AccumDifficultyValidator {},
     );
     let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
     let block = rules.get_genesis_block();

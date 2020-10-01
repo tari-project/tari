@@ -324,8 +324,14 @@ pub fn generate_new_block_with_coinbase<B: BlockchainBackend>(
 }
 
 pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
+    let mut num_tries = 0;
     while header.achieved_difficulty().unwrap() != achieved_difficulty {
         header.nonce += 1;
+        num_tries += 1;
+        if num_tries > 10_000_000 {
+            // Just in case we burn a hole in the CI server
+            panic!("Could not find a nonce for achieved difficulty in time");
+        }
     }
 }
 

@@ -21,5 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use std::{
+    collections::HashMap,
+    rc::{Rc, Weak},
+};
+use tari_core::consensus::{ConsensusManager, Network};
+
 mod chain_backend;
 mod chain_storage;
