@@ -44,10 +44,10 @@ use tari_storage::{
     IterationResult,
 };
 
-const LOG_TARGET: &str = "comms::peer_manager::migrations::v1";
+const LOG_TARGET: &str = "comms::peer_manager::migrations::v2";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct PeerV1 {
+pub struct PeerV2 {
     id: Option<PeerId>,
     public_key: CommsPublicKey,
     #[serde(serialize_with = "serialize_to_hex")]
@@ -61,16 +61,16 @@ pub struct PeerV1 {
     connection_stats: PeerConnectionStats,
     supported_protocols: Vec<ProtocolId>,
     added_at: NaiveDateTime,
+    user_agent: String,
 }
+/// This migration is to add banned_reason field
+pub struct MigrationV2;
 
-/// This migration is to add user_agent field
-pub struct MigrationV1;
-
-impl Migration<LMDBDatabase> for MigrationV1 {
+impl Migration<LMDBDatabase> for MigrationV2 {
     type Error = LMDBError;
 
     fn migrate(&self, db: &LMDBDatabase) -> Result<(), Self::Error> {
-        db.for_each::<PeerId, PeerV1, _>(|old_peer| {
+        db.for_each::<PeerId, PeerV2, _>(|old_peer| {
             match old_peer {
                 Ok((key, peer)) => {
                     debug!(target: LOG_TARGET, "Migrating peer `{}`", peer.node_id.short_str());
@@ -87,7 +87,7 @@ impl Migration<LMDBDatabase> for MigrationV1 {
                         connection_stats: peer.connection_stats,
                         supported_protocols: peer.supported_protocols,
                         added_at: peer.added_at,
-                        user_agent: String::new(),
+                        user_agent: peer.user_agent,
                     });
 
                     if let Err(err) = result {

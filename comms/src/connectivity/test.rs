@@ -232,7 +232,7 @@ async fn ban_peer() {
     assert!(conn.is_some());
 
     connectivity
-        .ban_peer(peer.node_id.clone(), Duration::from_secs(3600))
+        .ban_peer(peer.node_id.clone(), Duration::from_secs(3600), "".to_string())
         .await
         .unwrap();
 

@@ -326,7 +326,7 @@ mod test {
             Default::default(),
         );
         if ban_flag {
-            peer.ban_for(Duration::from_secs(1000));
+            peer.ban_for(Duration::from_secs(1000), "".to_string());
         }
         peer
     }
