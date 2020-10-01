@@ -773,7 +773,7 @@ mod test {
             Default::default(),
         );
         if ban {
-            peer.ban_for(Duration::from_secs(600));
+            peer.ban_for(Duration::from_secs(600), "".to_string());
         }
         peer.set_offline(offline);
         peer

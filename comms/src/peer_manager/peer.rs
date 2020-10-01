@@ -216,6 +216,11 @@ impl Peer {
         self.banned_until().is_some()
     }
 
+    /// Returns the ban status of the peer
+    pub fn reason_banned(&self) -> &str {
+        &self.banned_reason
+    }
+
     /// Bans the peer for a specified duration
     pub fn ban_for(&mut self, duration: Duration, reason: String) {
         let dt = safe_future_datetime_from_duration(duration);
@@ -319,9 +324,10 @@ mod test {
             Default::default(),
         );
         assert_eq!(peer.is_banned(), false);
-        peer.ban_for(Duration::from_millis(std::u64::MAX));
+        peer.ban_for(Duration::from_millis(std::u64::MAX), "Very long manual ban".to_string());
+        assert_eq!(peer.reason_banned(), &"Very long manual ban".to_string());
         assert_eq!(peer.is_banned(), true);
-        peer.ban_for(Duration::from_millis(0));
+        peer.ban_for(Duration::from_millis(0), "".to_string());
         assert_eq!(peer.is_banned(), false);
     }
 
@@ -348,6 +354,7 @@ mod test {
             Some(vec![net_address2.clone(), net_address3.clone()]),
             None,
             Some(Some(Duration::from_secs(1000))),
+            Some("".to_string()),
             None,
             Some(PeerFeatures::MESSAGE_PROPAGATION),
             Some(vec![protocol::IDENTITY_PROTOCOL.clone()]),
