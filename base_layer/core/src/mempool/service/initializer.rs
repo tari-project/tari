@@ -30,6 +30,7 @@ use crate::{
             local_service::LocalMempoolService,
             outbound_interface::OutboundMempoolServiceInterface,
             service::{MempoolService, MempoolStreams},
+            MempoolHandle,
         },
         MempoolServiceConfig,
     },
@@ -141,7 +142,12 @@ impl ServiceInitializer for MempoolServiceInitializer {
         let inbound_request_stream = self.inbound_request_stream();
         let inbound_response_stream = self.inbound_response_stream();
         let inbound_transaction_stream = self.inbound_transaction_stream();
+
         // Connect MempoolOutboundServiceHandle to MempoolService
+        let (request_sender, request_receiver) = reply_channel::unbounded();
+        let mempool_handle = MempoolHandle::new(request_sender);
+        context.register_handle(mempool_handle);
+
         let (outbound_tx_sender, outbound_tx_stream) = mpsc::unbounded();
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
@@ -166,15 +172,16 @@ impl ServiceInitializer for MempoolServiceInitializer {
             let state_machine = handles.expect_handle::<StateMachineHandle>();
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
 
-            let streams = MempoolStreams::new(
+            let streams = MempoolStreams {
                 outbound_request_stream,
                 outbound_tx_stream,
                 inbound_request_stream,
                 inbound_response_stream,
                 inbound_transaction_stream,
                 local_request_stream,
-                base_node.get_block_event_stream(),
-            );
+                block_event_stream: base_node.get_block_event_stream(),
+                request_receiver,
+            };
             let service =
                 MempoolService::new(outbound_message_service, inbound_handlers, config, state_machine).start(streams);
             futures::pin_mut!(service);

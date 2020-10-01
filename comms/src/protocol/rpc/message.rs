@@ -77,6 +77,20 @@ impl<T> Request<T> {
         self.inner.into_message()
     }
 
+    /// Returns the request context and inner message, consuming this Request.
+    ///
+    /// ## Panics
+    ///
+    /// This will panic if this instance was not constructed with `with_context`.
+    /// The only time this may not be the case is in tests.
+    pub fn into_parts(self) -> (RequestContext, T) {
+        (
+            self.context
+                .expect("Request::context called on request without a context"),
+            self.inner.into_message(),
+        )
+    }
+
     /// Returns the request context that is provided to every service request.
     ///
     /// ## Panics

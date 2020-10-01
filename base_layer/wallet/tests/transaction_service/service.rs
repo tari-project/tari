@@ -1566,7 +1566,7 @@ fn transaction_mempool_broadcast() {
                 match m.request {
                     MempoolRequest::GetStats => assert!(false, "Invalid Mempool Service Request variant"),
                     MempoolRequest::GetState => assert!(false, "Invalid Mempool Service Request variant"),
-                    MempoolRequest::GetTxStateWithExcessSig(_) => {
+                    MempoolRequest::GetTxStateByExcessSig(_) => {
                         assert!(false, "Invalid Mempool Service Request variant")
                     },
                     MempoolRequest::SubmitTransaction(t) => {

@@ -124,6 +124,10 @@ impl<TSubstream> Protocols<TSubstream> {
             None => Err(ProtocolError::ProtocolNotRegistered),
         }
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &ProtocolId> {
+        self.protocols.iter().map(|(protocol_id, _)| protocol_id)
+    }
 }
 
 /// Protocols<Substream> itself is a `ProtocolExtension`. When installed the protocol names and notifiers are simply

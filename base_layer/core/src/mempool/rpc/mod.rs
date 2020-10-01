@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2020, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,43 +20,40 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod service;
+pub use service::MempoolRpcService;
+
+#[cfg(test)]
+mod test;
+
 use crate::{
-    base_node::RequestKey,
-    transactions::{transaction::Transaction, types::Signature},
+    mempool::service::MempoolHandle,
+    proto::generated::{
+        mempool::{StateResponse, StatsResponse, TxStorage},
+        types::{Signature, Transaction},
+    },
 };
-use core::fmt::{Display, Error, Formatter};
-use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+use tari_comms_rpc_macros::tari_rpc;
 
-/// API Request enum for Mempool requests.
-#[derive(Debug, Serialize, Deserialize)]
-#[allow(clippy::large_enum_variant)]
-pub enum MempoolRequest {
-    GetStats,
-    GetState,
-    GetTxStateByExcessSig(Signature),
-    SubmitTransaction(Transaction),
+#[tari_rpc(protocol_name = b"t/mempool/1", server_struct = MempoolRpcServer, client_struct = MempoolRpcClient)]
+pub trait MempoolService: Send + Sync + 'static {
+    #[rpc(method = 1)]
+    async fn get_stats(&self, request: Request<()>) -> Result<Response<StatsResponse>, RpcStatus>;
+
+    #[rpc(method = 2)]
+    async fn get_state(&self, request: Request<()>) -> Result<Response<StateResponse>, RpcStatus>;
+
+    #[rpc(method = 3)]
+    async fn get_transaction_state_by_excess_sig(
+        &self,
+        request: Request<Signature>,
+    ) -> Result<Response<TxStorage>, RpcStatus>;
+
+    #[rpc(method = 4)]
+    async fn submit_transaction(&self, request: Request<Transaction>) -> Result<Response<TxStorage>, RpcStatus>;
 }
 
-impl Display for MempoolRequest {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        match self {
-            MempoolRequest::GetStats => f.write_str("GetStats"),
-            MempoolRequest::GetState => f.write_str("GetState"),
-            MempoolRequest::GetTxStateByExcessSig(sig) => {
-                f.write_str(&format!("GetTxStateByExcessSig ({})", sig.get_signature().to_hex()))
-            },
-            MempoolRequest::SubmitTransaction(tx) => f.write_str(&format!(
-                "SubmitTransaction ({})",
-                tx.body.kernels()[0].excess_sig.get_signature().to_hex()
-            )),
-        }
-    }
-}
-
-/// Request type for a received MempoolService request.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MempoolServiceRequest {
-    pub request_key: RequestKey,
-    pub request: MempoolRequest,
+pub fn create_mempool_rpc_service(mempool: MempoolHandle) -> MempoolRpcServer<MempoolRpcService> {
+    MempoolRpcServer::new(MempoolRpcService::new(mempool))
 }

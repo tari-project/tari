@@ -75,7 +75,7 @@ impl MempoolInboundHandlers {
             GetState => Ok(MempoolResponse::State(
                 async_mempool::state(self.mempool.clone()).await?,
             )),
-            GetTxStateWithExcessSig(excess_sig) => Ok(MempoolResponse::TxStorage(
+            GetTxStateByExcessSig(excess_sig) => Ok(MempoolResponse::TxStorage(
                 async_mempool::has_tx_with_excess_sig(self.mempool.clone(), excess_sig).await?,
             )),
             SubmitTransaction(tx) => {

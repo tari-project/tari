@@ -125,7 +125,7 @@ where TBackend: TransactionBackend + Clone + 'static
 
         // This is the main loop of the protocol and following the following steps
         // 1) Check transaction being monitored is still in the Broadcast state and needs to be monitored
-        // 2) Send a MempoolRequest::GetTxStateWithExcessSig to Mempool and a Mined? Request to base node
+        // 2) Send a MempoolRequest::GetTxStateByExcessSig to Mempool and a Mined? Request to base node
         // 3) Wait for both a Mempool response and Base Node response for the correct Id OR a Timeout
         //      a) If the Tx is not in the mempool AND is not mined the protocol ends and Tx should be cancelled
         //      b) If the Tx is in the mempool AND not mined > perform another iteration
@@ -179,7 +179,7 @@ where TBackend: TransactionBackend + Clone + 'static
             let tx_excess_sig = completed_tx.transaction.body.kernels()[0].excess_sig.clone();
             let mempool_request = MempoolProto::MempoolServiceRequest {
                 request_key: self.id,
-                request: Some(MempoolProto::mempool_service_request::Request::GetTxStateWithExcessSig(
+                request: Some(MempoolProto::mempool_service_request::Request::GetTxStateByExcessSig(
                     tx_excess_sig.into(),
                 )),
             };

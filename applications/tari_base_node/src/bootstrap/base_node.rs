@@ -44,7 +44,14 @@ use tari_core::{
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
-    mempool::{Mempool, MempoolServiceConfig, MempoolServiceInitializer, MempoolSyncInitializer},
+    mempool,
+    mempool::{
+        service::MempoolHandle,
+        Mempool,
+        MempoolServiceConfig,
+        MempoolServiceInitializer,
+        MempoolSyncInitializer,
+    },
     transactions::types::CryptoFactories,
 };
 use tari_p2p::{
@@ -129,16 +136,11 @@ where B: BlockchainBackend + 'static
             .build()
             .await?;
 
-        let dht = handles.expect_handle::<Dht>();
-
         let comms = handles
             .take_handle::<UnspawnedCommsNode>()
             .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
 
-        // Add other RPC services here
-        let rpc_server = RpcServer::new().add_service(dht.rpc_service());
-
-        let comms = comms.add_protocol_extension(rpc_server);
+        let comms = Self::setup_rpc_services(comms, &handles);
         let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
@@ -152,6 +154,20 @@ where B: BlockchainBackend + 'static
         handles.register(comms);
 
         Ok(handles)
+    }
+
+    fn setup_rpc_services(comms: UnspawnedCommsNode, handles: &ServiceHandles) -> UnspawnedCommsNode {
+        let dht = handles.expect_handle::<Dht>();
+
+        // Add your RPC services here ‍🏴‍☠️️☮️🌊
+        let rpc_server =
+            RpcServer::new()
+                .add_service(dht.rpc_service())
+                .add_service(mempool::create_mempool_rpc_service(
+                    handles.expect_handle::<MempoolHandle>(),
+                ));
+
+        comms.add_protocol_extension(rpc_server)
     }
 
     fn create_comms_config(&self) -> CommsConfig {

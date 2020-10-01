@@ -38,6 +38,11 @@ pub struct StateResponse {
     #[prost(message, repeated, tag = "4")]
     pub reorg_pool: ::std::vec::Vec<Signature>,
 }
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TxStorage {
+    #[prost(enumeration = "TxStorageResponse", tag = "1")]
+    pub response: i32,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum TxStorageResponse {
@@ -84,9 +89,9 @@ pub mod mempool_service_request {
         /// Indicates a GetState request. The value of the bool should be ignored.
         #[prost(bool, tag = "3")]
         GetState(bool),
-        /// Indicates a GetTxStateWithExcessSig request.
+        /// Indicates a GetTxStateByExcessSig request.
         #[prost(message, tag = "4")]
-        GetTxStateWithExcessSig(super::super::types::Signature),
+        GetTxStateByExcessSig(super::super::types::Signature),
         /// Indicates a SubmitTransaction request.
         #[prost(message, tag = "5")]
         SubmitTransaction(super::super::types::Transaction),

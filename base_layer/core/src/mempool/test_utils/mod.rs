@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2020, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,43 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node::RequestKey,
-    transactions::{transaction::Transaction, types::Signature},
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use std::{iter, path::Path, sync::Arc};
+use tari_comms::PeerManager;
+use tari_storage::{
+    lmdb_store::{LMDBBuilder, LMDBConfig},
+    LMDBWrapper,
 };
-use core::fmt::{Display, Error, Formatter};
-use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::hex::Hex;
 
-/// API Request enum for Mempool requests.
-#[derive(Debug, Serialize, Deserialize)]
-#[allow(clippy::large_enum_variant)]
-pub enum MempoolRequest {
-    GetStats,
-    GetState,
-    GetTxStateByExcessSig(Signature),
-    SubmitTransaction(Transaction),
-}
+pub mod mock;
 
-impl Display for MempoolRequest {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        match self {
-            MempoolRequest::GetStats => f.write_str("GetStats"),
-            MempoolRequest::GetState => f.write_str("GetState"),
-            MempoolRequest::GetTxStateByExcessSig(sig) => {
-                f.write_str(&format!("GetTxStateByExcessSig ({})", sig.get_signature().to_hex()))
-            },
-            MempoolRequest::SubmitTransaction(tx) => f.write_str(&format!(
-                "SubmitTransaction ({})",
-                tx.body.kernels()[0].excess_sig.get_signature().to_hex()
-            )),
-        }
-    }
-}
-
-/// Request type for a received MempoolService request.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MempoolServiceRequest {
-    pub request_key: RequestKey,
-    pub request: MempoolRequest,
+pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
+    let peer_database_name = {
+        let mut rng = thread_rng();
+        iter::repeat(())
+            .map(|_| rng.sample(Alphanumeric))
+            .take(8)
+            .collect::<String>()
+    };
+    std::fs::create_dir_all(&data_path).unwrap();
+    let datastore = LMDBBuilder::new()
+        .set_path(data_path)
+        .set_env_config(LMDBConfig::default())
+        .set_max_number_of_databases(1)
+        .add_database(&peer_database_name, lmdb_zero::db::CREATE)
+        .build()
+        .unwrap();
+    let peer_database = datastore.get_handle(&peer_database_name).unwrap();
+    Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database))).unwrap())
 }
