@@ -22,7 +22,7 @@
 
 use crate::output_manager_service::{
     error::OutputManagerError,
-    protocols::utxo_validation_protocol::UtxoValidationRetry,
+    protocols::txo_validation_protocol::{TxoValidationRetry, TxoValidationType},
     service::Balance,
     storage::database::PendingTransactionOutputs,
 };
@@ -57,7 +57,7 @@ pub enum OutputManagerRequest {
     GetInvalidOutputs,
     GetSeedWords,
     SetBaseNodePublicKey(CommsPublicKey),
-    ValidateUtxos(UtxoValidationRetry),
+    ValidateUtxos(TxoValidationType, TxoValidationRetry),
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
@@ -82,7 +82,7 @@ impl fmt::Display for OutputManagerRequest {
             Self::GetInvalidOutputs => f.write_str("GetInvalidOutputs"),
             Self::GetSeedWords => f.write_str("GetSeedWords"),
             Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
-            Self::ValidateUtxos(retry) => f.write_str(&format!("ValidateUtxos ({:?})", retry)),
+            Self::ValidateUtxos(validation_type, retry) => f.write_str(&format!("{} ({:?})", validation_type, retry)),
             Self::CreateCoinSplit(v) => f.write_str(&format!("CreateCoinSplit ({})", v.0)),
             OutputManagerRequest::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
             OutputManagerRequest::RemoveEncryption => f.write_str("RemoveEncryption"),
@@ -121,10 +121,10 @@ pub type OutputManagerEventReceiver = broadcast::Receiver<OutputManagerEvent>;
 /// Events that can be published on the Text Message Service Event Stream
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum OutputManagerEvent {
-    UtxoValidationTimedOut(u64),
-    UtxoValidationSuccess(u64),
-    UtxoValidationFailure(u64),
-    UtxoValidationAborted(u64),
+    TxoValidationTimedOut(u64),
+    TxoValidationSuccess(u64),
+    TxoValidationFailure(u64),
+    TxoValidationAborted(u64),
     Error(String),
 }
 
@@ -322,8 +322,17 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn validate_utxos(&mut self, retries: UtxoValidationRetry) -> Result<u64, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::ValidateUtxos(retries)).await?? {
+    pub async fn validate_txos(
+        &mut self,
+        validation_type: TxoValidationType,
+        retries: TxoValidationRetry,
+    ) -> Result<u64, OutputManagerError>
+    {
+        match self
+            .handle
+            .call(OutputManagerRequest::ValidateUtxos(validation_type, retries))
+            .await??
+        {
             OutputManagerResponse::UtxoValidationStarted(request_key) => Ok(request_key),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }

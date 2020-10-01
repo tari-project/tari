@@ -225,16 +225,16 @@ where TBackend: TransactionBackend + 'static
                         Ok(msg) => {
                             trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
                             match msg {
-                                OutputManagerEvent::UtxoValidationSuccess(request_key) => {
+                                OutputManagerEvent::TxoValidationSuccess(request_key) => {
                                     self.receive_sync_process_result(request_key, true);
                                 },
-                                OutputManagerEvent::UtxoValidationTimedOut(request_key) => {
+                                OutputManagerEvent::TxoValidationTimedOut(request_key) => {
                                     self.receive_sync_process_result(request_key, false);
                                 }
-                                OutputManagerEvent::UtxoValidationFailure(request_key) => {
+                                OutputManagerEvent::TxoValidationFailure(request_key) => {
                                     self.receive_sync_process_result(request_key, false);
                                 }
-                                OutputManagerEvent::UtxoValidationAborted(request_key) => {
+                                OutputManagerEvent::TxoValidationAborted(request_key) => {
                                     self.receive_sync_process_result(request_key, false);
                                 }
                                 /// Only the above variants are mapped to callbacks
@@ -711,11 +711,9 @@ mod test {
             .send(Arc::new(TransactionEvent::TransactionCancelled(5u64)))
             .unwrap();
 
+        oms_sender.send(OutputManagerEvent::TxoValidationSuccess(1u64)).unwrap();
         oms_sender
-            .send(OutputManagerEvent::UtxoValidationSuccess(1u64))
-            .unwrap();
-        oms_sender
-            .send(OutputManagerEvent::UtxoValidationTimedOut(1u64))
+            .send(OutputManagerEvent::TxoValidationTimedOut(1u64))
             .unwrap();
         dht_sender
             .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))

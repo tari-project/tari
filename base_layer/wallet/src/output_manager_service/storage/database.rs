@@ -93,6 +93,11 @@ pub trait OutputManagerBackend: Send + Sync {
     fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError>;
     /// Remove encryption from the backend.
     fn remove_encryption(&self) -> Result<(), OutputManagerStorageError>;
+    /// Update a Spent output to be Unspent
+    fn update_spent_output_to_unspent(
+        &self,
+        commitment: &Commitment,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
 }
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
@@ -514,6 +519,23 @@ where T: OutputManagerBackend + Clone + 'static
         Ok(uo)
     }
 
+    pub async fn get_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+
+        let uo = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::SpentOutputs) {
+            Ok(None) => log_error(
+                DbKey::SpentOutputs,
+                OutputManagerStorageError::UnexpectedResult("Could not retrieve spent outputs".to_string()),
+            ),
+            Ok(Some(DbValue::SpentOutputs(uo))) => Ok(uo),
+            Ok(Some(other)) => unexpected_result(DbKey::SpentOutputs, other),
+            Err(e) => log_error(DbKey::SpentOutputs, e),
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(uo)
+    }
+
     pub async fn get_timelocked_outputs(&self, tip: u64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
 
@@ -563,6 +585,18 @@ where T: OutputManagerBackend + Clone + 'static
     pub async fn revalidate_output(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.revalidate_unspent_output(&commitment))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn update_spent_output_to_unspent(
+        &self,
+        commitment: Commitment,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
+    {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.update_spent_output_to_unspent(&commitment))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)

@@ -25,7 +25,7 @@ use crate::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError},
         handle::{OutputManagerEvent, OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
-        protocols::utxo_validation_protocol::{UtxoValidationProtocol, UtxoValidationRetry, UtxoValidationType},
+        protocols::txo_validation_protocol::{TxoValidationProtocol, TxoValidationRetry, TxoValidationType},
         storage::{
             database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
             models::DbUnblindedOutput,
@@ -291,11 +291,11 @@ where
             },
             OutputManagerRequest::GetSeedWords => self.get_seed_words().await.map(OutputManagerResponse::SeedWords),
             OutputManagerRequest::SetBaseNodePublicKey(pk) => self
-                .set_base_node_public_key(pk, utxo_validation_handles)
+                .set_base_node_public_key(pk)
                 .await
                 .map(|_| OutputManagerResponse::BaseNodePublicKeySet),
-            OutputManagerRequest::ValidateUtxos(retries) => self
-                .validate_outputs(UtxoValidationType::Unspent, retries, utxo_validation_handles)
+            OutputManagerRequest::ValidateUtxos(validation_type, retries) => self
+                .validate_outputs(validation_type, retries, utxo_validation_handles)
                 .map(OutputManagerResponse::UtxoValidationStarted),
             OutputManagerRequest::GetInvalidOutputs => {
                 let outputs = self
@@ -346,8 +346,8 @@ where
 
     fn validate_outputs(
         &mut self,
-        validation_type: UtxoValidationType,
-        retry_strategy: UtxoValidationRetry,
+        validation_type: TxoValidationType,
+        retry_strategy: TxoValidationRetry,
         utxo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<u64, OutputManagerError>
     {
@@ -356,7 +356,7 @@ where
             Some(pk) => {
                 let id = OsRng.next_u64();
 
-                let utxo_validation_protocol = UtxoValidationProtocol::new(
+                let utxo_validation_protocol = TxoValidationProtocol::new(
                     id,
                     validation_type,
                     retry_strategy,
@@ -397,7 +397,7 @@ where
                         let _ = self
                             .resources
                             .event_publisher
-                            .send(OutputManagerEvent::UtxoValidationFailure(id))
+                            .send(OutputManagerEvent::TxoValidationFailure(id))
                             .map_err(|e| {
                                 trace!(
                                     target: LOG_TARGET,
@@ -771,22 +771,9 @@ where
     async fn set_base_node_public_key(
         &mut self,
         base_node_public_key: CommsPublicKey,
-        utxo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<(), OutputManagerError>
     {
-        let startup_query = self.resources.base_node_public_key.is_none();
-
         self.resources.base_node_public_key = Some(base_node_public_key);
-
-        if startup_query {
-            // This validation is not critical so if the Base node is not reachable we will wait until the next restart
-            // after 5 attempts
-            self.validate_outputs(
-                UtxoValidationType::Invalid,
-                UtxoValidationRetry::Limited(5),
-                utxo_validation_handles,
-            )?;
-        }
         Ok(())
     }
 

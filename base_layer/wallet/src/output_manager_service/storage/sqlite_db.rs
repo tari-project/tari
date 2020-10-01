@@ -581,6 +581,31 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
+    fn update_spent_output_to_unspent(
+        &self,
+        commitment: &Commitment,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
+    {
+        let conn = acquire_lock!(self.database_connection);
+        let output = OutputSql::find_by_commitment(&commitment.to_vec(), &conn)?;
+
+        if OutputStatus::try_from(output.status)? != OutputStatus::Spent {
+            return Err(OutputManagerStorageError::ValuesNotFound);
+        }
+
+        let mut o = output.update(
+            UpdateOutput {
+                status: Some(OutputStatus::Unspent),
+                tx_id: None,
+                spending_key: None,
+            },
+            &(*conn),
+        )?;
+        self.decrypt_if_necessary(&mut o)?;
+
+        Ok(DbUnblindedOutput::try_from(o)?)
+    }
+
     fn cancel_pending_transaction_at_block_height(&self, block_height: u64) -> Result<(), OutputManagerStorageError> {
         let pending_txs;
         {
