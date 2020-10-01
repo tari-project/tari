@@ -5831,16 +5831,6 @@ mod test {
             assert_eq!(peer_added, true);
             peer_added = wallet_add_base_node_peer(bob_wallet, public_key_alice.clone(), address_alice_str, error_ptr);
             assert_eq!(peer_added, true);
-            (*alice_wallet)
-                .runtime
-                .block_on(
-                    (*alice_wallet)
-                        .wallet
-                        .comms
-                        .connection_manager()
-                        .dial_peer((*bob_wallet).wallet.comms.node_identity().node_id().clone()),
-                )
-                .unwrap();
             assert!(wallet_sync_with_base_node(alice_wallet, error_ptr) > 0);
 
             // Test pending tx cancellation
