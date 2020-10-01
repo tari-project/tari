@@ -80,6 +80,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("wallet.transaction_direct_send_timeout", 600).unwrap();
     cfg.set_default("wallet.transaction_broadcast_send_timeout", 600)
         .unwrap();
+    cfg.set_default("wallet.prevent_fee_gt_amount", true).unwrap();
 
     //---------------------------------- Mainnet Defaults --------------------------------------------//
 

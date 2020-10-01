@@ -463,6 +463,7 @@ where
         config.transaction_direct_send_timeout,
         config.transaction_broadcast_send_timeout,
         network,
+        config.prevent_fee_gt_amount,
     )
     .await;
 
@@ -1028,6 +1029,7 @@ async fn register_wallet_services(
     direct_send_timeout: Duration,
     broadcast_send_timeout: Duration,
     network: NetworkType,
+    prevent_fee_gt_amount: bool,
 ) -> Arc<ServiceHandles>
 {
     let transaction_db = TransactionServiceSqliteDatabase::new(wallet_db_conn.clone(), None);
@@ -1045,7 +1047,7 @@ async fn register_wallet_services(
     ))
         // Wallet services
         .add_initializer(OutputManagerServiceInitializer::new(
-            OutputManagerServiceConfig::new(base_node_query_timeout),
+            OutputManagerServiceConfig::new(base_node_query_timeout, prevent_fee_gt_amount),
             subscription_factory.clone(),
             OutputManagerSqliteDatabase::new(wallet_db_conn.clone(),None),
             factories.clone(),

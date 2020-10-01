@@ -78,13 +78,6 @@ pub(super) struct RawTransactionInfo {
     pub message: String,
 }
 
-impl RawTransactionInfo {
-    pub fn calculate_total_amount(&self) -> MicroTari {
-        let to_others: MicroTari = self.amounts.iter().sum();
-        to_others + self.amount_to_self
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SingleRoundSenderData {
     /// The transaction id for the recipient
@@ -342,14 +335,7 @@ impl SenderTransactionProtocol {
     /// Performs sanitary checks on the collected transaction pieces prior to building the final Transaction instance
     fn validate(&self) -> Result<(), TPE> {
         if let SenderState::Finalizing(info) = &self.state {
-            let total_amount = info.calculate_total_amount();
             let fee = info.metadata.fee;
-            // The fee should be less than the amount. This isn't a protocol requirement, but it's what you want 99.999%
-            // of the time, and our users will thank us if we reject a tx where they put the amount in the fee field by
-            // mistake!
-            if fee > total_amount {
-                return Err(TPE::ValidationError("Fee is greater than amount".into()));
-            }
             // The fee must be greater than MIN_FEE to prevent spam attacks
             if fee < MINIMUM_TRANSACTION_FEE {
                 return Err(TPE::ValidationError("Fee is less than the minimum".into()));
@@ -773,5 +759,56 @@ mod test {
                 TransactionProtocolError::ValidationError("Recipient output range proof failed to verify".into())
             ),
         }
+    }
+
+    fn get_fee_larger_than_amount_values() -> (MicroTari, MicroTari, MicroTari) {
+        (MicroTari(2500), MicroTari(51), MicroTari(500))
+    }
+
+    #[test]
+    fn disallow_fee_larger_than_amount() {
+        let factories = CryptoFactories::default();
+        // Alice's parameters
+        let alice = TestParams::new();
+        let (utxo_amount, fee_per_gram, amount) = get_fee_larger_than_amount_values();
+        let (utxo, input) = make_input(&mut OsRng, utxo_amount, &factories.commitment);
+        let mut builder = SenderTransactionProtocol::builder(1);
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(alice.offset.clone())
+            .with_private_nonce(alice.nonce.clone())
+            .with_change_secret(alice.change_key.clone())
+            .with_input(utxo.clone(), input)
+            .with_amount(0, amount);
+        // Verify that the initial 'fee greater than amount' check rejects the transaction when it is constructed
+        match builder.build::<Blake256>(&factories) {
+            Ok(_) => panic!("'BuildError(\"Fee is greater than amount\")' not caught"),
+            Err(e) => assert_eq!(e.message, "Fee is greater than amount".to_string()),
+        };
+    }
+
+    #[test]
+    fn allow_fee_larger_than_amount() {
+        let factories = CryptoFactories::default();
+        // Alice's parameters
+        let alice = TestParams::new();
+        let (utxo_amount, fee_per_gram, amount) = get_fee_larger_than_amount_values();
+        let (utxo, input) = make_input(&mut OsRng, utxo_amount, &factories.commitment);
+        let mut builder = SenderTransactionProtocol::builder(1);
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(alice.offset.clone())
+            .with_private_nonce(alice.nonce.clone())
+            .with_change_secret(alice.change_key.clone())
+            .with_input(utxo.clone(), input)
+            .with_amount(0, amount)
+            .with_prevent_fee_gt_amount(false);
+        // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
+        match builder.build::<Blake256>(&factories) {
+            Ok(_) => assert!(true),
+            Err(e) => panic!("Unexpected error: {:?}", e),
+        };
     }
 }

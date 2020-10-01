@@ -29,6 +29,7 @@ const LOG_TARGET: &str = "wallet::output_manager_service::config";
 pub struct OutputManagerServiceConfig {
     pub base_node_query_timeout: Duration,
     pub max_utxo_query_size: usize,
+    pub prevent_fee_gt_amount: bool,
 }
 
 impl Default for OutputManagerServiceConfig {
@@ -36,11 +37,12 @@ impl Default for OutputManagerServiceConfig {
         Self {
             base_node_query_timeout: Duration::from_secs(30),
             max_utxo_query_size: 5000,
+            prevent_fee_gt_amount: true,
         }
     }
 }
 impl OutputManagerServiceConfig {
-    pub fn new(base_node_query_timeout: Duration) -> Self {
+    pub fn new(base_node_query_timeout: Duration, prevent_fee_gt_amount: bool) -> Self {
         trace!(
             target: LOG_TARGET,
             "Timeouts - Base node query: {} s",
@@ -48,6 +50,7 @@ impl OutputManagerServiceConfig {
         );
         Self {
             base_node_query_timeout,
+            prevent_fee_gt_amount,
             ..Default::default()
         }
     }

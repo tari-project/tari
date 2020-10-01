@@ -84,6 +84,7 @@ pub struct GlobalConfig {
     pub transaction_chain_monitoring_timeout: Duration,
     pub transaction_direct_send_timeout: Duration,
     pub transaction_broadcast_send_timeout: Duration,
+    pub prevent_fee_gt_amount: bool,
     pub monerod_url: String,
     pub monerod_username: String,
     pub monerod_password: String,
@@ -343,6 +344,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
             .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
     );
 
+    let key = "wallet.prevent_fee_gt_amount";
+    let prevent_fee_gt_amount = cfg
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
+
     let key = "common.liveness_max_sessions";
     let liveness_max_sessions = cfg
         .get_int(key)
@@ -442,6 +448,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         transaction_chain_monitoring_timeout,
         transaction_direct_send_timeout,
         transaction_broadcast_send_timeout,
+        prevent_fee_gt_amount,
         proxy_host_address,
         monerod_url,
         monerod_username,
