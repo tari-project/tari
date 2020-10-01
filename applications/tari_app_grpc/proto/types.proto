@@ -67,12 +67,12 @@ message ProofOfWork {
 }
 
 //This is used to request the which pow algo should be used with the block template
-message PowAlgo{
-    enum PowAlgo {
-        POW_ALGO_MONERO = 0;
-        POW_ALGO_BLAKE = 1;
+message PowAlgo {
+    enum PowAlgos {
+        POW_ALGOS_MONERO = 0;
+        POW_ALGOS_BLAKE = 1;
     }
-    PowAlgo pow_algo = 1;
+    PowAlgos pow_algo = 1;
 }
 
 

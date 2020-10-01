@@ -284,7 +284,7 @@ impl InnerService {
         debug!(target: LOG_TARGET, "Requested new block template from Tari base node");
         let new_block_template_response = grpc_client
             .get_new_block_template(grpc::PowAlgo {
-                pow_algo: grpc::pow_algo::PowAlgo::Monero.into(),
+                pow_algo: grpc::pow_algo::PowAlgos::Monero.into(),
             })
             .await
             .map_err(|status| MmProxyError::GrpcRequestError {
