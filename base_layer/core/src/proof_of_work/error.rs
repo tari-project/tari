@@ -31,7 +31,7 @@ pub enum PowError {
     AchievedDifficultyTooLow { target: Difficulty, achieved: Difficulty },
     #[error("Invalid target difficulty")]
     InvalidTargetDifficulty,
-    #[cfg(any(feature = "base_node", feature = "transactions"))]
+    #[cfg(feature = "base_node")]
     #[error("Invalid merge mining data or operation: {0}")]
     MergeMineError(#[from] super::monero_rx::MergeMineError),
 }
