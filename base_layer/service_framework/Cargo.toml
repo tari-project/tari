@@ -14,10 +14,11 @@ tari_shutdown = { version = "^0.2", path="../../infrastructure/shutdown" }
 thiserror = "1.0.20"
 futures = { version = "^0.3.1", features=["async-await"]}
 tower-service = { version="0.3.0" }
-tokio = "0.2.10"
+tokio = { version = "0.2.10" }
 log = "0.4.8"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.2", path="../../infrastructure/test_utils" }
 futures-test = { version = "0.3.3" }
 tower = "0.3.1"
+tokio-macros = "0.2.4"
