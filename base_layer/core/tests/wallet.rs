@@ -297,7 +297,7 @@ fn wallet_base_node_integration_test() {
     let transaction = transaction.expect("Transaction must be present");
 
     // Setup and start the miner
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
     let mut miner = Miner::new(shutdown.to_signal(), consensus_manager, &base_node.local_nci, 1);
     miner.enable_mining_flag().store(true, Ordering::Relaxed);
     let (state_event_sender, state_event_receiver) = broadcast::channel(1);
@@ -350,9 +350,4 @@ fn wallet_base_node_integration_test() {
         }
         assert!(mined, "Transaction has not been mined before timeout");
     });
-
-    runtime.block_on(alice_wallet.shutdown());
-    runtime.block_on(bob_wallet.shutdown());
-    let _ = shutdown.trigger();
-    runtime.block_on(base_node.comms.shutdown());
 }

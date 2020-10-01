@@ -41,7 +41,7 @@ use tari_core::{
         MmrTree,
         WriteOperation,
     },
-    consensus::{ConsensusConstants, ConsensusManager, ConsensusManagerBuilder, Network},
+    consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     helpers::create_orphan_block,
     proof_of_work::{
         monero_rx::{append_merge_mining_tag, tree_hash, MoneroData},

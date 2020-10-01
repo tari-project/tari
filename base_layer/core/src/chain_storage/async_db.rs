@@ -50,14 +50,14 @@ where F: FnOnce() -> R {
     let trace_id = OsRng.next_u32();
     trace!(
         target: LOG_TARGET,
-        "[{}] Entered blocking thread. trace_id: '{}'",
+        "[{}] Entered blocking thread. trace_id: {}",
         name,
         trace_id
     );
     let ret = f();
     trace!(
         target: LOG_TARGET,
-        "[{}] Exited blocking thread after {}ms. trace_id: '{}'",
+        "[{}] Exited blocking thread after {}ms. trace_id: {}",
         name,
         start.elapsed().as_millis(),
         trace_id

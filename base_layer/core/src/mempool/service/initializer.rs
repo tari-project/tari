@@ -38,7 +38,7 @@ use crate::{
 use futures::{channel::mpsc, future, Future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
-use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
@@ -46,13 +46,12 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
-    handles::ServiceHandlesFuture,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
+    ServiceInitializerContext,
 };
-use tari_shutdown::ShutdownSignal;
-use tokio::{runtime, sync::broadcast};
+use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "c::bn::mempool_service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Mempool";
@@ -67,9 +66,9 @@ pub struct MempoolServiceInitializer {
 impl MempoolServiceInitializer {
     /// Create a new MempoolServiceInitializer from the inbound message subscriber.
     pub fn new(
-        inbound_message_subscription_factory: Arc<SubscriptionFactory>,
-        mempool: Mempool,
         config: MempoolServiceConfig,
+        mempool: Mempool,
+        inbound_message_subscription_factory: Arc<SubscriptionFactory>,
     ) -> Self
     {
         Self {
@@ -137,13 +136,7 @@ async fn extract_transaction(msg: Arc<PeerMessage>) -> Option<DomainMessage<Tran
 impl ServiceInitializer for MempoolServiceInitializer {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         // Create streams for receiving Mempool service requests and response messages from comms
         let inbound_request_stream = self.inbound_request_stream();
         let inbound_response_stream = self.inbound_response_stream();
@@ -165,23 +158,13 @@ impl ServiceInitializer for MempoolServiceInitializer {
         );
 
         // Register handle to OutboundMempoolServiceInterface before waiting for handles to be ready
-        handles_fut.register(outbound_mp_interface);
-        handles_fut.register(local_mp_interface);
+        context.register_handle(outbound_mp_interface);
+        context.register_handle(local_mp_interface);
 
-        executor.spawn(async move {
-            let handles = handles_fut.await;
-
-            let outbound_message_service = handles
-                .get_handle::<OutboundMessageRequester>()
-                .expect("OutboundMessageRequester handle required for MempoolService");
-
-            let state_machine = handles
-                .get_handle::<StateMachineHandle>()
-                .expect("StateMachineHandle required to initialize MempoolService");
-
-            let base_node = handles
-                .get_handle::<LocalNodeCommsInterface>()
-                .expect("LocalNodeCommsInterface required to initialize ChainStateSyncService");
+        context.spawn_when_ready(move |handles| async move {
+            let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
+            let state_machine = handles.expect_handle::<StateMachineHandle>();
+            let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
 
             let streams = MempoolStreams::new(
                 outbound_request_stream,
@@ -195,7 +178,7 @@ impl ServiceInitializer for MempoolServiceInitializer {
             let service =
                 MempoolService::new(outbound_message_service, inbound_handlers, config, state_machine).start(streams);
             futures::pin_mut!(service);
-            future::select(service, shutdown).await;
+            future::select(service, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "Mempool Service shutdown");
         });
 

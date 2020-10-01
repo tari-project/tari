@@ -52,7 +52,7 @@ use multiaddr::Multiaddr;
 use std::{collections::HashMap, fmt, sync::Arc};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use time::Duration;
-use tokio::{sync::broadcast, time};
+use tokio::{sync::broadcast, task, time};
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
@@ -227,13 +227,17 @@ where
         }
     }
 
-    pub fn set_protocols(&mut self, protocols: Protocols<Substream>) -> &mut Self {
-        self.protocols = protocols;
+    pub fn add_protocols(&mut self, protocols: Protocols<Substream>) -> &mut Self {
+        self.protocols.extend(protocols);
         self
     }
 
     pub fn complete_signal(&self) -> ShutdownSignal {
         self.complete_trigger.to_signal()
+    }
+
+    pub fn spawn(self) -> task::JoinHandle<()> {
+        task::spawn(self.run())
     }
 
     pub async fn run(mut self) {

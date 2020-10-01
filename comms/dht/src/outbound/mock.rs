@@ -169,13 +169,13 @@ impl OutboundServiceMock {
         while let Some(req) = self.receiver.next().await {
             match req {
                 DhtOutboundRequest::SendMessage(params, body, reply_tx) => {
+                    let behaviour = self.mock_state.get_behaviour();
                     trace!(
                         target: LOG_TARGET,
-                        "Send message request received with length of {} bytes",
-                        body.len()
+                        "Send message request received with length of {} bytes (behaviour = {:?})",
+                        body.len(),
+                        behaviour
                     );
-                    let behaviour = self.mock_state.get_behaviour();
-
                     match (*params).clone().broadcast_strategy {
                         BroadcastStrategy::DirectPublicKey(_) => {
                             match behaviour.direct {
@@ -292,7 +292,7 @@ pub enum ResponseType {
 }
 
 /// Define how the mock service will response to various broadcast strategies
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct MockBehaviour {
     pub direct: ResponseType,
     pub broadcast: ResponseType,

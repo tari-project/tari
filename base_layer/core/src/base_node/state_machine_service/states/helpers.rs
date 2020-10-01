@@ -173,7 +173,7 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
             sync_peer.node_id
         );
         match shared
-            .comms
+            .outbound_nci
             .request_headers_from_peer(block_nums.to_vec(), Some(sync_peer.node_id.clone()))
             .await
         {
@@ -279,7 +279,7 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
             "Requesting mmr node count to height {} from {}.", height, sync_peer.node_id
         );
         match shared
-            .comms
+            .outbound_nci
             .fetch_mmr_node_count(tree, height, Some(sync_peer.node_id.clone()))
             .await
         {
@@ -354,7 +354,7 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
             sync_peer.node_id
         );
         match shared
-            .comms
+            .outbound_nci
             .fetch_mmr_nodes(tree, pos, count, height, Some(sync_peer.node_id.clone()))
             .await
         {
@@ -420,7 +420,7 @@ pub async fn request_kernels<B: BlockchainBackend + 'static>(
             sync_peer.node_id
         );
         match shared
-            .comms
+            .outbound_nci
             .request_kernels_from_peer(hashes.clone(), Some(sync_peer.node_id.clone()))
             .await
         {
@@ -490,7 +490,7 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
             sync_peer.node_id
         );
         match shared
-            .comms
+            .outbound_nci
             .request_txos_from_peer(
                 hashes.iter().map(|c| Clone::clone(&**c)).collect(),
                 Some(sync_peer.node_id.clone()),

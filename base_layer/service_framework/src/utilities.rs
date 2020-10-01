@@ -20,42 +20,29 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{
-    sync_protocol::{MempoolSyncProtocol, MEMPOOL_SYNC_PROTOCOL},
-    Mempool,
-    MempoolServiceConfig,
-};
-use futures::channel::mpsc;
-use tari_comms::protocol::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError};
-use tokio::task;
+use crate::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use futures::future;
 
-pub struct MempoolSyncProtocolExtension {
-    config: MempoolServiceConfig,
-    mempool: Mempool,
+/// This initializer adds a handle to the service context.
+pub struct RegisterHandle<T> {
+    handle: Option<T>,
 }
 
-impl MempoolSyncProtocolExtension {
-    pub fn new(config: MempoolServiceConfig, mempool: Mempool) -> Self {
-        Self { mempool, config }
+impl<T> RegisterHandle<T> {
+    pub fn new(handle: T) -> Self {
+        Self { handle: Some(handle) }
     }
 }
 
-impl ProtocolExtension for MempoolSyncProtocolExtension {
-    fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
-        let (notif_tx, notif_rx) = mpsc::channel(3);
+impl<T: Send + Sync + 'static> ServiceInitializer for RegisterHandle<T> {
+    type Future = future::Ready<Result<(), ServiceInitializationError>>;
 
-        context.add_protocol(&[MEMPOOL_SYNC_PROTOCOL.clone()], notif_tx);
-
-        task::spawn(
-            MempoolSyncProtocol::new(
-                self.config,
-                notif_rx,
-                context.connectivity().subscribe_event_stream(),
-                self.mempool.clone(),
-            )
-            .run(),
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+        context.register_handle(
+            self.handle
+                .take()
+                .expect("RegisterHandle: ServiceInitializer called more than once"),
         );
-
-        Ok(())
+        future::ready(Ok(()))
     }
 }

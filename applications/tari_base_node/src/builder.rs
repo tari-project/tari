@@ -20,53 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::miner;
-use futures::{future, stream::Fuse, FutureExt, StreamExt};
+use crate::{
+    bootstrap::{BaseNodeBootstrapper, WalletBootstrapper},
+    miner,
+    tasks,
+};
+use futures::{future, StreamExt};
 use log::*;
 use std::{
-    path::Path,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
     time::Duration,
 };
-use tari_app_utilities::{
-    identity_management::{load_from_json, save_as_json},
-    utilities::{
-        create_peer_db_folder,
-        create_wallet_folder,
-        into_socks_authentication,
-        parse_peer_seeds,
-        setup_wallet_transport_type,
-    },
-};
-use tari_common::{CommsTransport, DatabaseType, GlobalConfig, Network, TorControlAuthentication};
-use tari_comms::{
-    peer_manager::{NodeIdentity, Peer},
-    protocol::ProtocolExtensions,
-    socks,
-    tor,
-    tor::TorIdentity,
-    transports::SocksConfig,
-    types::CommsPublicKey,
-    utils::multiaddr::multiaddr_to_socketaddr,
-    CommsNode,
-    ConnectionManagerEvent,
-    PeerManager,
-};
-use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
+use tari_common::{DatabaseType, GlobalConfig};
+use tari_comms::{peer_manager::NodeIdentity, CommsNode};
+use tari_comms_dht::Dht;
 use tari_core::{
-    base_node::{
-        chain_metadata_service::ChainMetadataServiceInitializer,
-        service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
-        state_machine_service::{
-            initializer::BaseNodeStateMachineInitializer,
-            states::{BlockSyncStrategy, StatusInfo},
-        },
-        LocalNodeCommsInterface,
-        StateMachineHandle,
-    },
+    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
     chain_storage::{
         create_lmdb_database,
         BlockchainBackend,
@@ -75,16 +47,8 @@ use tari_core::{
         MemoryDatabase,
         Validators,
     },
-    consensus::{ConsensusManager, ConsensusManagerBuilder, Network as NetworkType},
-    mempool::{
-        service::LocalMempoolService,
-        Mempool,
-        MempoolConfig,
-        MempoolServiceConfig,
-        MempoolServiceInitializer,
-        MempoolSyncProtocolExtension,
-        MempoolValidators,
-    },
+    consensus::ConsensusManagerBuilder,
+    mempool::{service::LocalMempoolService, Mempool, MempoolConfig, MempoolValidators},
     mining::{Miner, MinerInstruction},
     transactions::types::{CryptoFactories, HashDigest},
     validation::{
@@ -94,45 +58,22 @@ use tari_core::{
     },
 };
 use tari_mmr::MmrCacheConfig;
-use tari_p2p::{
-    comms_connector::{pubsub_connector, PubsubDomainConnector, SubscriptionFactory},
-    initialization::{initialize_comms, CommsConfig},
-    services::{
-        comms_outbound::CommsOutboundServiceInitializer,
-        liveness::{LivenessConfig, LivenessInitializer},
-    },
-    transport::{TorConfig, TransportType},
-};
-use tari_service_framework::{handles::ServiceHandles, StackBuilder};
+use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::{
-        config::OutputManagerServiceConfig,
-        handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
+        handle::OutputManagerHandle,
         protocols::txo_validation_protocol::{TxoValidationRetry, TxoValidationType},
-        storage::sqlite_db::OutputManagerSqliteDatabase,
-        OutputManagerServiceInitializer,
     },
-    storage::sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection},
-    transaction_service::{
-        config::TransactionServiceConfig,
-        handle::TransactionServiceHandle,
-        storage::sqlite_db::TransactionServiceSqliteDatabase,
-        TransactionServiceInitializer,
-    },
+    transaction_service::handle::TransactionServiceHandle,
 };
 use tokio::{
-    runtime,
-    sync::{broadcast, broadcast::Sender as syncSender, watch},
+    sync::{broadcast::Sender as syncSender, watch},
     task,
     time::delay_for,
 };
 
 const LOG_TARGET: &str = "c::bn::initialization";
-/// The minimum buffer size for the base node pubsub_connector channel
-const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
-/// The minimum buffer size for the base node wallet pubsub_connector channel
-const BASE_NODE_WALLET_BUFFER_MIN_SIZE: usize = 300;
 
 /// The base node context is a container for all the key structural pieces for the base node application, including the
 /// communications stack, the node state machine, the miner and handles to the various services that are registered
@@ -141,8 +82,8 @@ pub struct BaseNodeContext {
     base_node_comms: CommsNode,
     base_node_dht: Dht,
     wallet_comms: CommsNode,
-    base_node_handles: Arc<ServiceHandles>,
-    wallet_handles: Arc<ServiceHandles>,
+    base_node_handles: ServiceHandles,
+    wallet_handles: ServiceHandles,
     miner: Option<Miner>,
     miner_enabled: Arc<AtomicBool>,
     mining_status: Arc<AtomicBool>,
@@ -153,15 +94,15 @@ pub struct BaseNodeContext {
 impl BaseNodeContext {
     /// Starts the node container. This entails starting the miner and wallet (if `mining_enabled` is true) and then
     /// starting the base node state machine. This call consumes the NodeContainer instance.
-    pub async fn run(mut self, rt: runtime::Handle) {
+    pub async fn run(mut self) {
         info!(target: LOG_TARGET, "Tari base node has STARTED");
         let mut wallet_output_handle = self.output_manager();
         // Start wallet & miner
         let mut miner = self.miner.take().expect("Miner was not constructed");
         let mut rx = miner.get_utxo_receiver_channel();
-        rt.spawn(async move {
+        task::spawn(async move {
             info!(target: LOG_TARGET, " ⚒️ Mining wallet ready to receive coins.");
-            while let Some(utxo) = StreamExt::next(&mut rx).await {
+            while let Some(utxo) = rx.next().await {
                 match wallet_output_handle.add_output(utxo).await {
                     Ok(_) => {
                         info!(
@@ -170,7 +111,7 @@ impl BaseNodeContext {
                         );
                         // TODO Remove this when the wallet monitors the UTXO's more intelligently
                         let mut oms_handle_clone = wallet_output_handle.clone();
-                        tokio::spawn(async move {
+                        task::spawn(async move {
                             delay_for(Duration::from_secs(240)).await;
                             let _ = oms_handle_clone
                                 .validate_txos(TxoValidationType::Unspent, TxoValidationRetry::UntilSuccess)
@@ -181,7 +122,7 @@ impl BaseNodeContext {
                 }
             }
         });
-        rt.spawn(async move {
+        task::spawn(async move {
             info!(target: LOG_TARGET, "⚒️ Starting miner");
             miner.mine().await;
             info!(target: LOG_TARGET, "⚒️ Miner has shutdown");
@@ -190,28 +131,27 @@ impl BaseNodeContext {
             warn!(target: LOG_TARGET, "Error shutting down Base Node State Machine: {}", e);
         }
         info!(target: LOG_TARGET, "Initiating communications stack shutdown");
-        future::join(self.base_node_comms.shutdown(), self.wallet_comms.shutdown()).await;
+        future::join(
+            self.base_node_comms.wait_until_shutdown(),
+            self.wallet_comms.wait_until_shutdown(),
+        )
+        .await;
+        info!(target: LOG_TARGET, "Communications stack has shutdown");
     }
 
     /// Returns a handle to the Output Manager
     pub fn output_manager(&self) -> OutputManagerHandle {
-        self.wallet_handles
-            .get_handle::<OutputManagerHandle>()
-            .expect("Problem getting wallet output manager handle")
+        self.wallet_handles.expect_handle::<OutputManagerHandle>()
     }
 
     /// Returns the handle to the Comms Interface
     pub fn local_node(&self) -> LocalNodeCommsInterface {
-        self.base_node_handles
-            .get_handle::<LocalNodeCommsInterface>()
-            .expect("Could not get local node interface handle")
+        self.base_node_handles.expect_handle::<LocalNodeCommsInterface>()
     }
 
     /// Returns the handle to the Mempool
     pub fn local_mempool(&self) -> LocalMempoolService {
-        self.base_node_handles
-            .get_handle::<LocalMempoolService>()
-            .expect("Could not get local mempool interface handle")
+        self.base_node_handles.expect_handle::<LocalMempoolService>()
     }
 
     /// Returns the CommsNode.
@@ -226,9 +166,7 @@ impl BaseNodeContext {
 
     /// Returns the wallet CommsNode.
     pub fn state_machine(&self) -> StateMachineHandle {
-        self.base_node_handles
-            .get_handle::<StateMachineHandle>()
-            .expect("Could not get State Machine handle")
+        self.base_node_handles.expect_handle::<StateMachineHandle>()
     }
 
     /// Returns this node's identity.
@@ -268,16 +206,13 @@ impl BaseNodeContext {
 
     /// Return the handle to the Transaction Service
     pub fn wallet_transaction_service(&self) -> TransactionServiceHandle {
-        self.wallet_handles
-            .get_handle::<TransactionServiceHandle>()
-            .expect("Could not get wallet transaction service handle")
+        self.wallet_handles.expect_handle::<TransactionServiceHandle>()
     }
 
     /// Return the state machine channel to provide info updates
     pub fn get_state_machine_info_channel(&self) -> watch::Receiver<StatusInfo> {
         self.base_node_handles
-            .get_handle::<StateMachineHandle>()
-            .expect("Could not get State Machine service handle")
+            .expect_handle::<StateMachineHandle>()
             .get_status_info_watch()
     }
 }
@@ -295,37 +230,16 @@ pub async fn configure_and_initialize_node(
     node_identity: Arc<NodeIdentity>,
     wallet_node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
-) -> Result<BaseNodeContext, String>
+) -> Result<BaseNodeContext, anyhow::Error>
 {
-    let network = match &config.network {
-        Network::MainNet => NetworkType::MainNet,
-        Network::Rincewind => NetworkType::Rincewind,
-    };
     let result = match &config.db_type {
         DatabaseType::Memory => {
             let backend = MemoryDatabase::<HashDigest>::default();
-            build_node_context(
-                backend,
-                network,
-                node_identity,
-                wallet_node_identity,
-                config,
-                interrupt_signal,
-            )
-            .await?
+            build_node_context(backend, node_identity, wallet_node_identity, config, interrupt_signal).await?
         },
         DatabaseType::LMDB(p) => {
-            let backend = create_lmdb_database(&p, config.db_config.clone(), MmrCacheConfig::default())
-                .map_err(|e| e.to_string())?;
-            build_node_context(
-                backend,
-                network,
-                node_identity,
-                wallet_node_identity,
-                config,
-                interrupt_signal,
-            )
-            .await?
+            let backend = create_lmdb_database(&p, config.db_config.clone(), MmrCacheConfig::default())?;
+            build_node_context(backend, node_identity, wallet_node_identity, config, interrupt_signal).await?
         },
     };
     Ok(result)
@@ -344,18 +258,17 @@ pub async fn configure_and_initialize_node(
 /// Result containing the BaseNodeContext, String will contain the reason on error
 async fn build_node_context<B>(
     backend: B,
-    network: NetworkType,
     base_node_identity: Arc<NodeIdentity>,
     wallet_node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
     interrupt_signal: ShutdownSignal,
-) -> Result<BaseNodeContext, String>
+) -> Result<BaseNodeContext, anyhow::Error>
 where
     B: BlockchainBackend + 'static,
 {
     //---------------------------------- Blockchain --------------------------------------------//
 
-    let rules = ConsensusManagerBuilder::new(network).build();
+    let rules = ConsensusManagerBuilder::new(config.network.into()).build();
     let factories = CryptoFactories::default();
     let validators = Validators::new(
         FullConsensusValidator::new(rules.clone()),
@@ -366,139 +279,74 @@ where
         pruning_horizon: config.pruning_horizon,
         pruning_interval: config.pruned_mode_cleanup_interval,
     };
-    let db = BlockchainDatabase::new(backend, &rules, validators, db_config).map_err(|e| e.to_string())?;
+    let db = BlockchainDatabase::new(backend, &rules, validators, db_config)?;
     let mempool_validator = MempoolValidators::new(
         TxInternalConsistencyValidator::new(factories.clone()).and_then(TxInputAndMaturityValidator::new(db.clone())),
         TxInputAndMaturityValidator::new(db.clone()),
     );
     let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
-    let handle = runtime::Handle::current();
 
     //---------------------------------- Base Node  --------------------------------------------//
     debug!(target: LOG_TARGET, "Creating base node state machine.");
 
-    let buf_size = std::cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
-    let (publisher, base_node_subscriptions) =
-        pubsub_connector(handle.clone(), buf_size, config.buffer_rate_limit_base_node);
-    let base_node_subscriptions = Arc::new(base_node_subscriptions);
-    create_peer_db_folder(&config.peer_db_path)?;
-
-    let mut protocols = ProtocolExtensions::new();
-    protocols.add(MempoolSyncProtocolExtension::new(Default::default(), mempool.clone()));
-
-    let (base_node_comms, base_node_dht) =
-        setup_base_node_comms(base_node_identity, config, publisher, protocols).await?;
-    base_node_comms
-        .peer_manager()
-        .add_peer(wallet_node_identity.to_peer())
-        .await
-        .map_err(|err| err.to_string())?;
-
-    debug!(target: LOG_TARGET, "Registering base node services");
-    let base_node_handles = register_base_node_services(
-        &base_node_comms,
-        &base_node_dht,
-        db.clone(),
-        base_node_subscriptions.clone(),
+    let base_node_handles = BaseNodeBootstrapper {
+        config,
+        node_identity: base_node_identity,
+        db,
         mempool,
-        rules.clone(),
-        factories.clone(),
-        config
-            .block_sync_strategy
-            .parse()
-            .expect("Problem reading block sync strategy from config"),
-        interrupt_signal.clone(),
-    )
-    .await;
-    debug!(target: LOG_TARGET, "Base node service registration complete.");
+        rules: rules.clone(),
+        factories: factories.clone(),
+        interrupt_signal: interrupt_signal.clone(),
+    }
+    .bootstrap()
+    .await?;
+
+    let base_node_comms = base_node_handles.expect_handle::<CommsNode>();
+    let base_node_dht = base_node_handles.expect_handle::<Dht>();
 
     //---------------------------------- Wallet --------------------------------------------//
-    let buf_size = std::cmp::max(BASE_NODE_WALLET_BUFFER_MIN_SIZE, config.buffer_size_base_node_wallet);
-    let (publisher, wallet_subscriptions) =
-        pubsub_connector(handle.clone(), buf_size, config.buffer_rate_limit_base_node_wallet);
-    let wallet_subscriptions = Arc::new(wallet_subscriptions);
-    create_peer_db_folder(&config.wallet_peer_db_path)?;
-    let (wallet_comms, wallet_dht) = setup_wallet_comms(
-        wallet_node_identity,
+    let wallet_handles = WalletBootstrapper {
+        node_identity: wallet_node_identity,
         config,
-        publisher,
-        base_node_comms.node_identity().to_peer(),
-    )
+        interrupt_signal: interrupt_signal.clone(),
+        base_node_peer: base_node_comms.node_identity().to_peer(),
+        factories,
+    }
+    .bootstrap()
     .await?;
-    wallet_comms
-        .connectivity()
-        .add_managed_peers(vec![base_node_comms.node_identity().node_id().clone()])
-        .await
-        .map_err(|err| err.to_string())?;
 
-    task::spawn(sync_peers(
+    let wallet_comms = wallet_handles.expect_handle::<CommsNode>();
+
+    task::spawn(tasks::sync_peers(
         base_node_comms.subscribe_connection_manager_events(),
         base_node_comms.peer_manager(),
         wallet_comms.peer_manager(),
     ));
 
-    create_wallet_folder(
-        &config
-            .wallet_db_file
-            .parent()
-            .expect("wallet_db_file cannot be set to a root directory"),
-    )?;
-    let wallet_conn = run_migration_and_create_sqlite_connection(&config.wallet_db_file)
-        .map_err(|e| format!("Could not create wallet: {:?}", e))?;
-
-    let network = match &config.network {
-        Network::MainNet => NetworkType::MainNet,
-        Network::Rincewind => NetworkType::Rincewind,
-    };
-
-    let wallet_handles = register_wallet_services(
-        &wallet_comms,
-        &wallet_dht,
-        &wallet_conn,
-        wallet_subscriptions,
-        factories.clone(),
-        config.base_node_query_timeout,
-        config.transaction_broadcast_monitoring_timeout,
-        config.transaction_chain_monitoring_timeout,
-        config.transaction_direct_send_timeout,
-        config.transaction_broadcast_send_timeout,
-        network,
-        config.prevent_fee_gt_amount,
-    )
-    .await;
-
     // Set the base node for the wallet to the 'local' base node
     let base_node_public_key = base_node_comms.node_identity().public_key().clone();
-    let mut transaction_service_handle = wallet_handles
-        .get_handle::<TransactionServiceHandle>()
-        .expect("TransactionService is not registered");
+    let mut transaction_service_handle = wallet_handles.expect_handle::<TransactionServiceHandle>();
     transaction_service_handle
         .set_base_node_public_key(base_node_public_key.clone())
         .await
         .expect("Problem setting local base node public key for transaction service.");
-    let oms_handle = wallet_handles
-        .get_handle::<OutputManagerHandle>()
-        .expect("OutputManagerService is not registered");
+    let oms_handle = wallet_handles.expect_handle::<OutputManagerHandle>();
     // Only start the transaction broadcast and UTXO validartion protocols once the local node is synced
-    let state_machine = base_node_handles
-        .get_handle::<StateMachineHandle>()
-        .expect("Could not get State Machine handle");
-    task::spawn(start_transaction_protocols_and_utxo_validation(
+    let state_machine = base_node_handles.expect_handle::<StateMachineHandle>();
+    tasks::spawn_transaction_protocols_and_utxo_validation(
         state_machine,
         transaction_service_handle,
         oms_handle,
         config.base_node_query_timeout,
         base_node_public_key.clone(),
-    ));
+        interrupt_signal.clone(),
+    );
 
     //---------------------------------- Mining --------------------------------------------//
 
-    let local_mp_interface = base_node_handles
-        .get_handle::<LocalMempoolService>()
-        .expect("Problem getting mempool interface handle.");
+    let local_mp_interface = base_node_handles.expect_handle::<LocalMempoolService>();
     let node_event_stream = base_node_handles
-        .get_handle::<StateMachineHandle>()
-        .expect("Could not get State Machine handle")
+        .expect_handle::<StateMachineHandle>()
         .get_state_change_event_stream();
     let mempool_event_stream = local_mp_interface.get_mempool_state_event_stream();
     let miner = miner::build_miner(
@@ -535,566 +383,4 @@ where
         miner_instruction_events,
         miner_hashrate,
     })
-}
-
-/// Asynchronously syncs peers with base node, adding peers if the peer is not already known
-/// ## Parameters
-/// `events_rx` - The event stream
-/// `base_node_peer_manager` - The peer manager for the base node wrapped in an atomic reference counter
-/// `wallet_peer_manager` - The peer manager for the base node's wallet wrapped in an atomic reference counter
-///
-/// ## Returns
-/// Nothing is returned
-async fn sync_peers(
-    mut events_rx: broadcast::Receiver<Arc<ConnectionManagerEvent>>,
-    base_node_peer_manager: Arc<PeerManager>,
-    wallet_peer_manager: Arc<PeerManager>,
-)
-{
-    while let Some(Ok(event)) = StreamExt::next(&mut events_rx).await {
-        if let ConnectionManagerEvent::PeerConnected(conn) = &*event {
-            if !wallet_peer_manager.exists_node_id(conn.peer_node_id()).await {
-                match base_node_peer_manager.find_by_node_id(conn.peer_node_id()).await {
-                    Ok(mut peer) => {
-                        peer.unset_id();
-                        if let Err(err) = wallet_peer_manager.add_peer(peer).await {
-                            warn!(target: LOG_TARGET, "Failed to add peer to wallet: {:?}", err);
-                        }
-                    },
-                    Err(err) => {
-                        warn!(target: LOG_TARGET, "Failed to find peer in base node: {:?}", err);
-                    },
-                }
-            }
-        }
-    }
-}
-
-/// Asynchronously start transaction protocols and TXO validation
-/// ## Parameters
-/// `state_machine` - A handle to the state machine
-/// `transaction_service_handle` - A handle to the transaction service
-/// `oms_handle` - A handle to the output manager service
-/// `base_node_query_timeout` - A time after which queries to the base node times out
-/// `base_node_public_key` - The base node's public key
-///
-/// ## Returns
-/// Nothing is returned
-async fn start_transaction_protocols_and_utxo_validation(
-    state_machine: StateMachineHandle,
-    mut transaction_service_handle: TransactionServiceHandle,
-    mut oms_handle: OutputManagerHandle,
-    base_node_query_timeout: Duration,
-    base_node_public_key: CommsPublicKey,
-)
-{
-    let mut status_watch = state_machine.get_status_info_watch();
-    debug!(
-        target: LOG_TARGET,
-        "Waiting for initial sync before restarting transaction protocols and performing UTXO validation."
-    );
-    loop {
-        let bootstrapped = match status_watch.recv().await {
-            None => false,
-            Some(s) => s.bootstrapped,
-        };
-
-        if bootstrapped {
-            debug!(
-                target: LOG_TARGET,
-                "Initial sync achieved and starting with transaction and UTXO validation protocols.",
-            );
-            let _ = transaction_service_handle
-                .restart_broadcast_protocols()
-                .await
-                .map_err(|e| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Problem restarting broadcast protocols in the Transaction Service: {}", e
-                    );
-                    e
-                });
-
-            let _ = transaction_service_handle
-                .restart_transaction_protocols()
-                .await
-                .map_err(|e| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Problem restarting transaction negotiation protocols in the Transaction Service: {}", e
-                    );
-                    e
-                });
-
-            let _ = oms_handle
-                .set_base_node_public_key(base_node_public_key.clone())
-                .await
-                .map_err(|e| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Problem with Output Manager Service setting the base node public key: {}", e
-                    );
-                    e
-                });
-
-            loop {
-                let _ = oms_handle
-                    .validate_txos(TxoValidationType::Unspent, TxoValidationRetry::UntilSuccess)
-                    .await
-                    .map_err(|e| {
-                        error!(
-                            target: LOG_TARGET,
-                            "Problem starting UTXO validation protocols in the Output Manager Service: {}", e
-                        );
-                        e
-                    });
-
-                trace!(target: LOG_TARGET, "Attempting UTXO validation for Unspent Outputs.",);
-                if monitor_validation_protocol(base_node_query_timeout * 2, oms_handle.get_event_stream_fused()).await {
-                    break;
-                }
-            }
-
-            loop {
-                let _ = oms_handle
-                    .validate_txos(TxoValidationType::Invalid, TxoValidationRetry::UntilSuccess)
-                    .await
-                    .map_err(|e| {
-                        error!(
-                            target: LOG_TARGET,
-                            "Problem starting Invalid TXO validation protocols in the Output Manager Service: {}", e
-                        );
-                        e
-                    });
-
-                trace!(
-                    target: LOG_TARGET,
-                    "Attempting Invalid TXO validation for Unspent Outputs.",
-                );
-                if monitor_validation_protocol(base_node_query_timeout * 2, oms_handle.get_event_stream_fused()).await {
-                    break;
-                }
-            }
-
-            loop {
-                let _ = oms_handle
-                    .validate_txos(TxoValidationType::Spent, TxoValidationRetry::UntilSuccess)
-                    .await
-                    .map_err(|e| {
-                        error!(
-                            target: LOG_TARGET,
-                            "Problem starting STXO validation protocols in the Output Manager Service: {}", e
-                        );
-                        e
-                    });
-
-                trace!(target: LOG_TARGET, "Attempting STXO validation for Unspent Outputs.",);
-                if monitor_validation_protocol(base_node_query_timeout * 2, oms_handle.get_event_stream_fused()).await {
-                    break;
-                }
-            }
-
-            break;
-        }
-    }
-    debug!(
-        target: LOG_TARGET,
-        "Restarting of transaction protocols and performing UTXO validation concluded."
-    );
-}
-
-/// Monitors the TXO validation protocol events
-/// /// ## Paramters
-/// `event_timeout` - A time after which waiting for the next event from the output manager service times out
-/// `event_stream` - The TXO validation protocol subscriber event stream
-///
-/// ##Returns
-/// bool indicating success or failure
-async fn monitor_validation_protocol(
-    event_timeout: Duration,
-    mut event_stream: Fuse<OutputManagerEventReceiver>,
-) -> bool
-{
-    let mut success = false;
-    loop {
-        let mut delay = delay_for(event_timeout).fuse();
-        futures::select! {
-            event = event_stream.select_next_some() => {
-                match event.unwrap() {
-                    // Restart the protocol if aborted (due to 'BaseNodeNotSynced')
-                    OutputManagerEvent::TxoValidationAborted(s) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "UTXO validation event 'TxoValidationAborted' ({}), restarting.", s,
-                        );
-                        break;
-                    },
-                    // Restart the protocol if failure
-                    OutputManagerEvent::TxoValidationFailure(s) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "UTXO validation event 'TxoValidationFailure' ({}), restarting.", s,
-                        );
-                        break;
-                    },
-                    // Exit upon success
-                    OutputManagerEvent::TxoValidationSuccess(s) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "UTXO validation event 'TxoValidationSuccess' ({}), success.", s,
-                        );
-                        success = true;
-                        break;
-                    },
-                    // Wait for the next event if timed out (several can be attempted)
-                    OutputManagerEvent::TxoValidationTimedOut(s) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "UTXO validation event 'TxoValidationTimedOut' ({}), waiting.", s,
-                        );
-                        continue;
-                    }
-                    // Wait for the next event upon an error
-                    OutputManagerEvent::Error(s) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "UTXO validation event 'Error({})', waiting.", s,
-                        );
-                        continue;
-                    },
-                    // Wait for the next event upon anything else
-                    _ => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "UTXO validation unknown event, waiting.",
-                        );
-                        continue;
-                    },
-                }
-            },
-            // Restart the protocol if it timed out
-            () = delay => {
-                trace!(
-                    target: LOG_TARGET,
-                    "UTXO validation protocol timed out, restarting.",
-                );
-                break;
-            },
-        }
-    }
-    success
-}
-
-/// Creates a transport type from the given configuration
-/// /// ## Paramters
-/// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
-///
-/// ##Returns
-/// TransportType based on the configuration
-fn setup_transport_type(config: &GlobalConfig) -> TransportType {
-    debug!(target: LOG_TARGET, "Transport is set to '{:?}'", config.comms_transport);
-
-    match config.comms_transport.clone() {
-        CommsTransport::Tcp {
-            listener_address,
-            tor_socks_address,
-            tor_socks_auth,
-        } => TransportType::Tcp {
-            listener_address,
-            tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
-                proxy_address,
-                authentication: tor_socks_auth.map(into_socks_authentication).unwrap_or_default(),
-            }),
-        },
-        CommsTransport::TorHiddenService {
-            control_server_address,
-            socks_address_override,
-            forward_address,
-            auth,
-            onion_port,
-        } => {
-            let tor_identity_path = Path::new(&config.tor_identity_file);
-            let identity = if tor_identity_path.exists() {
-                // If this fails, we can just use another address
-                load_from_json::<_, TorIdentity>(&tor_identity_path).ok()
-            } else {
-                None
-            };
-            info!(
-                target: LOG_TARGET,
-                "Tor identity at path '{}' {:?}",
-                tor_identity_path.to_string_lossy(),
-                identity
-                    .as_ref()
-                    .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))
-                    .or_else(|| Some("not found".to_string()))
-                    .unwrap()
-            );
-
-            let forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
-            TransportType::Tor(TorConfig {
-                control_server_addr: control_server_address,
-                control_server_auth: {
-                    match auth {
-                        TorControlAuthentication::None => tor::Authentication::None,
-                        TorControlAuthentication::Password(password) => tor::Authentication::HashedPassword(password),
-                    }
-                },
-                identity: identity.map(Box::new),
-                port_mapping: (onion_port, forward_addr).into(),
-                // TODO: make configurable
-                socks_address_override,
-                socks_auth: socks::Authentication::None,
-            })
-        },
-        CommsTransport::Socks5 {
-            proxy_address,
-            listener_address,
-            auth,
-        } => TransportType::Socks {
-            socks_config: SocksConfig {
-                proxy_address,
-                authentication: into_socks_authentication(auth),
-            },
-            listener_address,
-        },
-    }
-}
-
-/// Asynchronously initializes comms for the base node
-/// ## Parameters
-/// `node_identity` - The node identity to initialize the comms stack with, see [NodeIdentity]
-/// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
-/// `publisher` - The publisher for the publish-subscribe messaging system
-/// ## Returns
-/// A Result containing the commsnode and dht on success, string will indicate the reason on error
-async fn setup_base_node_comms(
-    node_identity: Arc<NodeIdentity>,
-    config: &GlobalConfig,
-    publisher: PubsubDomainConnector,
-    protocols: ProtocolExtensions,
-) -> Result<(CommsNode, Dht), String>
-{
-    // Ensure that the node identity has the correct public address
-    node_identity.set_public_address(config.public_address.clone());
-    let comms_config = CommsConfig {
-        node_identity,
-        transport_type: setup_transport_type(&config),
-        datastore_path: config.peer_db_path.clone(),
-        peer_database_name: "peers".to_string(),
-        max_concurrent_inbound_tasks: 100,
-        outbound_buffer_size: 100,
-        // TODO - make this configurable
-        dht: DhtConfig {
-            database_url: DbConnectionUrl::File(config.data_dir.join("dht.db")),
-            auto_join: true,
-            ..Default::default()
-        },
-        // TODO: This should be false unless testing locally - make this configurable
-        allow_test_addresses: true,
-        listener_liveness_allowlist_cidrs: config.listener_liveness_allowlist_cidrs.clone(),
-        listener_liveness_max_sessions: config.listnener_liveness_max_sessions,
-        user_agent: format!("tari/basenode/{}", env!("CARGO_PKG_VERSION")),
-    };
-
-    let seed_peers = parse_peer_seeds(&config.peer_seeds);
-    let (comms, dht) = initialize_comms(comms_config, publisher, seed_peers, protocols)
-        .await
-        .map_err(|e| e.to_friendly_string())?;
-
-    // Save final node identity after comms has initialized. This is required because the public_address can be changed
-    // by comms during initialization when using tor.
-    save_as_json(&config.identity_file, &*comms.node_identity())
-        .map_err(|e| format!("Failed to save node identity: {:?}", e))?;
-    if let Some(hs) = comms.hidden_service() {
-        save_as_json(&config.tor_identity_file, hs.tor_identity())
-            .map_err(|e| format!("Failed to save tor identity: {:?}", e))?;
-    }
-
-    Ok((comms, dht))
-}
-
-/// Asynchronously initializes comms for the base node's wallet
-/// ## Parameters
-/// `node_identity` - The node identity to initialize the comms stack with, see [NodeIdentity]
-/// `config` - The configuration in which to set up the comms stack, see [GlobalConfig]
-/// `publisher` - The publisher for the publish-subscribe messaging system
-/// `base_node_peer` - The base node for the wallet to connect to
-/// `peers` - A list of peers to be added to the comms node, the current node identity of the comms stack is excluded if
-/// found in the list. ## Returns
-/// A Result containing the commsnode and dht on success, string will indicate the reason on error
-async fn setup_wallet_comms(
-    node_identity: Arc<NodeIdentity>,
-    config: &GlobalConfig,
-    publisher: PubsubDomainConnector,
-    base_node_peer: Peer,
-) -> Result<(CommsNode, Dht), String>
-{
-    let comms_config = CommsConfig {
-        node_identity,
-        user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
-        transport_type: setup_wallet_transport_type(&config),
-        datastore_path: config.wallet_peer_db_path.clone(),
-        peer_database_name: "peers".to_string(),
-        max_concurrent_inbound_tasks: 100,
-        outbound_buffer_size: 100,
-        // TODO - make this configurable
-        dht: DhtConfig {
-            database_url: DbConnectionUrl::File(config.data_dir.join("dht-wallet.db")),
-            auto_join: true,
-            ..Default::default()
-        },
-        // TODO: This should be false unless testing locally - make this configurable
-        allow_test_addresses: true,
-        listener_liveness_allowlist_cidrs: Vec::new(),
-        listener_liveness_max_sessions: 0,
-    };
-
-    let mut seed_peers = parse_peer_seeds(&config.peer_seeds);
-    seed_peers.push(base_node_peer);
-    let (comms, dht) = initialize_comms(comms_config, publisher, seed_peers, Default::default())
-        .await
-        .map_err(|e| format!("Could not create comms layer: {:?}", e))?;
-
-    // Save final node identity after comms has initialized. This is required because the public_address can be changed
-    // by comms during initialization when using tor.
-    save_as_json(&config.wallet_identity_file, &*comms.node_identity())
-        .map_err(|e| format!("Failed to save node identity: {:?}", e))?;
-    if let Some(hs) = comms.hidden_service() {
-        save_as_json(&config.wallet_tor_identity_file, hs.tor_identity())
-            .map_err(|e| format!("Failed to save tor identity: {:?}", e))?;
-    }
-
-    Ok((comms, dht))
-}
-
-/// Asynchronously registers services of the base node
-///
-/// ## Parameters
-/// `comms` - A reference to the comms node. This is the communications stack
-/// `db` - The interface to the blockchain database, for all transactions stored in a block
-/// `dht` - A reference to the peer discovery service
-/// `subscription_factory` - The publish-subscribe messaging system, wrapped in an atomic reference counter
-/// `mempool` - The mempool interface, for all transactions not yet included or recently included in a block
-/// `consensus_manager` - The consensus manager for the blockchain
-/// `factories` -  Cryptographic factory based on Pederson Commitments
-///
-/// ## Returns
-/// A hashmap of handles wrapped in an atomic reference counter
-#[allow(clippy::too_many_arguments)]
-async fn register_base_node_services<B>(
-    comms: &CommsNode,
-    dht: &Dht,
-    db: BlockchainDatabase<B>,
-    subscription_factory: Arc<SubscriptionFactory>,
-    mempool: Mempool,
-    consensus_manager: ConsensusManager,
-    factories: CryptoFactories,
-    sync_strategy: BlockSyncStrategy,
-    interrupt_signal: ShutdownSignal,
-) -> Arc<ServiceHandles>
-where
-    B: BlockchainBackend + 'static,
-{
-    let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
-    let mempool_config = MempoolServiceConfig::default(); // TODO - make this configurable
-    StackBuilder::new(runtime::Handle::current(), comms.shutdown_signal())
-        .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
-        .add_initializer(BaseNodeServiceInitializer::new(
-            subscription_factory.clone(),
-            db.clone(),
-            mempool.clone(),
-            consensus_manager.clone(),
-            node_config,
-        ))
-        .add_initializer(MempoolServiceInitializer::new(
-            subscription_factory.clone(),
-            mempool,
-            mempool_config,
-        ))
-        .add_initializer(LivenessInitializer::new(
-            LivenessConfig {
-                auto_ping_interval: Some(Duration::from_secs(30)),
-                refresh_neighbours_interval: Duration::from_secs(3 * 60),
-                random_peer_selection_ratio: 0.4,
-                ..Default::default()
-            },
-            subscription_factory,
-            dht.dht_requester(),
-        ))
-        .add_initializer(ChainMetadataServiceInitializer)
-        .add_initializer(BaseNodeStateMachineInitializer::new(
-            db.clone(),
-            consensus_manager.clone(),
-            factories.clone(),
-            sync_strategy,
-            comms.peer_manager(),
-            comms.connectivity(),
-            interrupt_signal,
-        ))
-        .finish()
-        .await
-        .expect("Service initialization failed")
-}
-
-/// Asynchronously registers services for the base node's wallet
-/// ## Parameters
-/// `wallet_comms` - A reference to the comms node. This is the communications stack
-/// `wallet_dht` - A reference to the peer discovery service
-/// `wallet_db_conn` - A reference to the sqlite database connection for the transaction and output manager services
-/// `subscription_factory` - The publish-subscribe messaging system, wrapped in an atomic reference counter
-/// `factories` -  Cryptographic factory based on Pederson Commitments
-///
-/// ## Returns
-/// A hashmap of handles wrapped in an atomic reference counter
-#[allow(clippy::too_many_arguments)]
-async fn register_wallet_services(
-    wallet_comms: &CommsNode,
-    wallet_dht: &Dht,
-    wallet_db_conn: &WalletDbConnection,
-    subscription_factory: Arc<SubscriptionFactory>,
-    factories: CryptoFactories,
-    base_node_query_timeout: Duration,
-    broadcast_monitoring_timeout: Duration,
-    chain_monitoring_timeout: Duration,
-    direct_send_timeout: Duration,
-    broadcast_send_timeout: Duration,
-    network: NetworkType,
-    prevent_fee_gt_amount: bool,
-) -> Arc<ServiceHandles>
-{
-    let transaction_db = TransactionServiceSqliteDatabase::new(wallet_db_conn.clone(), None);
-    transaction_db.migrate(wallet_comms.node_identity().public_key().clone());
-
-    StackBuilder::new(runtime::Handle::current(), wallet_comms.shutdown_signal())
-        .add_initializer(CommsOutboundServiceInitializer::new(wallet_dht.outbound_requester()))
-        .add_initializer(LivenessInitializer::new(
-            LivenessConfig{
-                auto_ping_interval: Some(Duration::from_secs(60)),
-                ..Default::default()
-            },
-            subscription_factory.clone(),
-            wallet_dht.dht_requester(),
-    ))
-        // Wallet services
-        .add_initializer(OutputManagerServiceInitializer::new(
-            OutputManagerServiceConfig::new(base_node_query_timeout, prevent_fee_gt_amount),
-            subscription_factory.clone(),
-            OutputManagerSqliteDatabase::new(wallet_db_conn.clone(),None),
-            factories.clone(),
-            network
-        ))
-        .add_initializer(TransactionServiceInitializer::new(
-            TransactionServiceConfig::new(broadcast_monitoring_timeout,
-                                          chain_monitoring_timeout,
-                                          direct_send_timeout,
-                                          broadcast_send_timeout,),
-            subscription_factory,
-            transaction_db,
-            wallet_comms.node_identity(),
-            factories,network
-        ))
-        .finish()
-        .await
-        .expect("Service initialization failed")
 }

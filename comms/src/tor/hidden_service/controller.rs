@@ -43,7 +43,7 @@ use crate::{
 use futures::{future, future::Either, pin_mut, StreamExt};
 use log::*;
 use std::{net::SocketAddr, time::Duration};
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_shutdown::OptionalShutdownSignal;
 use thiserror::Error;
 use tokio::{sync::broadcast, time};
 
@@ -75,6 +75,7 @@ pub struct HiddenServiceController {
     identity: Option<TorIdentity>,
     hs_flags: HsFlags,
     is_authenticated: bool,
+    shutdown_signal: OptionalShutdownSignal,
 }
 
 impl HiddenServiceController {
@@ -87,6 +88,7 @@ impl HiddenServiceController {
         socks_auth: socks::Authentication,
         identity: Option<TorIdentity>,
         hs_flags: HsFlags,
+        shutdown_signal: OptionalShutdownSignal,
     ) -> Self
     {
         Self {
@@ -99,14 +101,17 @@ impl HiddenServiceController {
             hs_flags,
             identity,
             is_authenticated: false,
+            shutdown_signal,
         }
     }
 
+    /// The address to which all tor traffic is proxied. A TCP socket should be bound to this address to receive traffic
+    /// for this hidden service.
     pub fn proxied_address(&self) -> Multiaddr {
         socketaddr_to_multiaddr(self.proxied_port_mapping.proxied_address())
     }
 
-    pub async fn get_transport(&mut self) -> Result<SocksTransport, HiddenServiceControllerError> {
+    pub async fn initialize_transport(&mut self) -> Result<SocksTransport, HiddenServiceControllerError> {
         self.connect_and_auth().await?;
         let socks_addr = self.get_socks_address().await?;
         Ok(SocksTransport::new(SocksConfig {
@@ -123,7 +128,7 @@ impl HiddenServiceController {
         self.set_events().await?;
 
         let hidden_service = self.create_hidden_service_from_identity().await?;
-        let mut shutdown_signal = hidden_service.shutdown.to_signal();
+        let mut shutdown_signal = hidden_service.shutdown_signal.clone();
         let mut event_stream = self.client.as_ref().unwrap().get_event_stream();
 
         task::spawn({
@@ -180,7 +185,7 @@ impl HiddenServiceController {
     async fn reestablish_hidden_service(
         &mut self,
         event_tx: broadcast::Sender<TorControlEvent>,
-        shutdown_signal: &mut ShutdownSignal,
+        shutdown_signal: &mut OptionalShutdownSignal,
     ) -> Result<(), HiddenServiceControllerError>
     {
         let mut signal = Some(shutdown_signal);
@@ -320,7 +325,7 @@ impl HiddenServiceController {
             socks_auth: self.socks_auth.clone(),
             identity,
             proxied_addr,
-            shutdown: Shutdown::new(),
+            shutdown_signal: self.shutdown_signal.clone(),
         })
     }
 

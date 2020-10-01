@@ -49,7 +49,7 @@ pub struct TestBlockchain {
 impl TestBlockchain {
     pub fn with_genesis(genesis_name: &'static str) -> Self {
         let network = Network::LocalNet;
-        let (mut store, mut b, mut outputs, consensus_manager) = create_new_blockchain(network);
+        let (store, mut b, _outputs, consensus_manager) = create_new_blockchain(network);
 
         let name = genesis_name.to_string();
         let mut blocks = HashMap::new();
@@ -58,13 +58,12 @@ impl TestBlockchain {
         hash_to_block.insert(genesis_block.hash(), name.clone());
         blocks.insert(name.clone(), BlockProxy::new(name, genesis_block));
 
-        let mut result = Self {
+        Self {
             store,
             blocks,
             consensus_manager,
             hash_to_block,
-        };
-        result
+        }
     }
 
     pub fn add_block(&mut self, block: TestBlockBuilderInner) -> BlockAddResult {

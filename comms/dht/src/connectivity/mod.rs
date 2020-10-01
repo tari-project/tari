@@ -107,7 +107,7 @@ impl DhtConnectivity {
     /// Spawn a DhtConnectivity actor. This will immediately subscribe to the connection manager event stream to
     /// prevent unexpected missed events.
     pub fn spawn(self) -> JoinHandle<Result<(), DhtConnectivityError>> {
-        let connectivity_events = self.connectivity.subscribe_event_stream();
+        let connectivity_events = self.connectivity.get_event_subscription();
         task::spawn(async move {
             match self.run(connectivity_events).await {
                 Ok(_) => Ok(()),
@@ -189,6 +189,7 @@ impl DhtConnectivity {
     }
 
     async fn handle_dht_event(&mut self, event: &DhtEvent) -> Result<(), DhtConnectivityError> {
+        #[allow(clippy::single_match)]
         match event {
             DhtEvent::NetworkDiscoveryPeersAdded(info) => {
                 if info.has_new_neighbours() {

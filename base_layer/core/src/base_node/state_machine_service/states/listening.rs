@@ -31,7 +31,7 @@ use crate::{
     chain_storage::{async_db, BlockchainBackend, ChainMetadata},
     proof_of_work::Difficulty,
 };
-use futures::stream::StreamExt;
+use futures::StreamExt;
 use log::*;
 use std::{
     fmt::{Display, Formatter},

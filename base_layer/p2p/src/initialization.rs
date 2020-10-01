@@ -21,40 +21,57 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    comms_connector::{InboundDomainConnector, PeerMessage},
+    comms_connector::{InboundDomainConnector, PeerMessage, PubsubDomainConnector},
     transport::{TorConfig, TransportType},
 };
-use futures::{channel::mpsc, AsyncRead, AsyncWrite, Sink};
+use futures::{channel::mpsc, Sink};
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use std::{error::Error, iter, path::PathBuf, sync::Arc, time::Duration};
+use std::{error::Error, future::Future, iter, path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
     backoff::ConstantBackoff,
+    connection_manager::ConnectionManagerRequester,
+    connectivity::ConnectivityRequester,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerManagerError},
     pipeline,
     pipeline::SinkService,
-    protocol::{rpc::RpcServer, ProtocolExtensions},
+    protocol::{
+        messaging::{MessagingEventSender, MessagingProtocolExtension},
+        rpc::RpcServer,
+        ProtocolId,
+        ProtocolNotificationTx,
+        Protocols,
+    },
     tor,
-    transports::{MemoryTransport, SocksTransport, TcpWithTorTransport, Transport},
+    tor::HiddenServiceControllerError,
+    transports::{MemoryTransport, SocksTransport, TcpWithTorTransport},
     utils::cidr::parse_cidrs,
     CommsBuilder,
     CommsBuilderError,
     CommsNode,
     PeerManager,
+    Substream,
+    UnspawnedCommsNode,
 };
 use tari_comms_dht::{Dht, DhtBuilder, DhtConfig, DhtInitializationError};
+use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tari_shutdown::ShutdownSignal;
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
 };
 use thiserror::Error;
+use tokio::sync::{broadcast, Mutex};
 use tower::ServiceBuilder;
+
 const LOG_TARGET: &str = "p2p::initialization";
 
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
     #[error("Comms builder error: `{0}`")]
     CommsBuilderError(#[from] CommsBuilderError),
+    #[error("Failed to initialize tor hidden service: {0}")]
+    HiddenServiceControllerError(#[from] HiddenServiceControllerError),
     #[error("DHT initialization error: `{0}`")]
     DhtInitializationError(#[from] DhtInitializationError),
     #[error("Hidden service builder error: `{0}`")]
@@ -121,7 +138,8 @@ pub async fn initialize_local_test_comms<TSink>(
     data_path: &str,
     discovery_request_timeout: Duration,
     seed_peers: Vec<Peer>,
-) -> Result<(CommsNode, Dht), CommsInitializationError>
+    shutdown_signal: ShutdownSignal,
+) -> Result<(CommsNode, Dht, MessagingEventSender), CommsInitializationError>
 where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
@@ -148,7 +166,6 @@ where
 
     let comms = CommsBuilder::new()
         .allow_test_addresses()
-        .with_transport(MemoryTransport)
         .with_listener_address(node_identity.public_address())
         .with_listener_liveness_max_sessions(1)
         .with_node_identity(node_identity)
@@ -156,9 +173,10 @@ where
         .with_peer_storage(peer_database)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .with_min_connectivity(1.0)
+        .with_shutdown_signal(shutdown_signal)
         .build()?;
 
-    add_peers_to_comms(&comms.peer_manager, &comms.node_identity, seed_peers).await?;
+    add_all_peers(&comms.peer_manager(), &comms.node_identity(), seed_peers).await?;
 
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
@@ -172,58 +190,44 @@ where
     )
     .local_test()
     .with_discovery_timeout(discovery_request_timeout)
-    .finish()
+    .build()
     .await?;
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
+    let (event_sender, _) = broadcast::channel(100);
+    let pipeline = pipeline::Builder::new()
+        .outbound_buffer_size(10)
+        .with_outbound_pipeline(outbound_rx, |sink| {
+            ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
+        })
+        .max_concurrent_inbound_tasks(10)
+        .with_inbound_pipeline(
+            ServiceBuilder::new()
+                .layer(dht.inbound_middleware_layer())
+                .service(SinkService::new(connector)),
+        )
+        .build();
 
     let comms = comms
-        .with_messaging_pipeline(
-            pipeline::Builder::new()
-                .outbound_buffer_size(10)
-                .with_outbound_pipeline(outbound_rx, |sink| {
-                    ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
-                })
-                .max_concurrent_inbound_tasks(10)
-                .with_inbound_pipeline(
-                    ServiceBuilder::new()
-                        .layer(dht.inbound_middleware_layer())
-                        .service(SinkService::new(connector)),
-                )
-                .finish(),
-        )
-        .spawn()
+        .add_protocol_extension(MessagingProtocolExtension::new(event_sender.clone(), pipeline))
+        .spawn_with_transport(MemoryTransport)
         .await?;
 
-    Ok((comms, dht))
+    Ok((comms, dht, event_sender))
 }
 
-/// Initialize Tari Comms
-pub async fn initialize_comms<TSink>(
-    config: CommsConfig,
-    connector: InboundDomainConnector<TSink>,
-    seed_peers: Vec<Peer>,
-    protocols: ProtocolExtensions,
-) -> Result<(CommsNode, Dht), CommsInitializationError>
-where
-    TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
-    TSink::Error: Error + Send + Sync,
+pub async fn spawn_comms_using_transport(
+    comms: UnspawnedCommsNode,
+    transport_type: TransportType,
+) -> Result<CommsNode, CommsInitializationError>
 {
-    let mut builder = CommsBuilder::new()
-        .add_protocol_extensions(protocols)
-        .with_node_identity(config.node_identity.clone())
-        .with_user_agent(&config.user_agent);
-    if config.allow_test_addresses {
-        builder = builder.allow_test_addresses();
-    }
-
-    match &config.transport_type {
+    let comms = match transport_type {
         TransportType::Memory { listener_address } => {
             debug!(target: LOG_TARGET, "Building in-memory comms stack");
-            let comms = builder
-                .with_transport(MemoryTransport)
-                .with_listener_address(listener_address.clone());
-            configure_comms_and_dht(comms, config, connector, seed_peers).await
+            comms
+                .with_listener_address(listener_address)
+                .spawn_with_transport(MemoryTransport)
+                .await?
         },
         TransportType::Tcp {
             listener_address,
@@ -236,39 +240,39 @@ where
             );
             let mut transport = TcpWithTorTransport::new();
             if let Some(config) = tor_socks_config {
-                transport.set_tor_socks_proxy(config.clone());
+                transport.set_tor_socks_proxy(config);
             }
-            let comms = builder
-                .with_transport(transport)
-                .with_listener_address(listener_address.clone());
-            configure_comms_and_dht(comms, config, connector, seed_peers).await
+            comms
+                .with_listener_address(listener_address)
+                .spawn_with_transport(transport)
+                .await?
         },
         TransportType::Tor(tor_config) => {
             debug!(target: LOG_TARGET, "Building TOR comms stack ({})", tor_config);
-            let hidden_service_ctl = initialize_hidden_service(tor_config.clone()).await?;
-            let comms = builder.configure_from_hidden_service(hidden_service_ctl).await?;
-            let (comms, dht) = configure_comms_and_dht(comms, config, connector, seed_peers).await?;
+            let mut hidden_service_ctl = initialize_hidden_service(tor_config).await?;
+            // Set the listener address to be the address (usually local) to which tor will forward all traffic
+            let transport = hidden_service_ctl.initialize_transport().await?;
             debug!(target: LOG_TARGET, "Comms and DHT configured");
-            // Set the public address to the onion address that comms is using
-            comms.node_identity().set_public_address(
-                comms
-                    .hidden_service()
-                    .expect("hidden_service must be set because a tor hidden service is set")
-                    .get_onion_address(),
-            );
-            Ok((comms, dht))
+            comms
+                .with_listener_address(hidden_service_ctl.proxied_address())
+                .with_hidden_service_controller(hidden_service_ctl)
+                .spawn_with_transport(transport)
+                .await?
         },
         TransportType::Socks {
             socks_config,
             listener_address,
         } => {
             debug!(target: LOG_TARGET, "Building SOCKS5 comms stack");
-            let comms = builder
-                .with_transport(SocksTransport::new(socks_config.clone()))
-                .with_listener_address(listener_address.clone());
-            configure_comms_and_dht(comms, config, connector, seed_peers).await
+            let transport = SocksTransport::new(socks_config);
+            comms
+                .with_listener_address(listener_address)
+                .spawn_with_transport(transport)
+                .await?
         },
-    }
+    };
+
+    Ok(comms)
 }
 
 async fn initialize_hidden_service(
@@ -286,18 +290,15 @@ async fn initialize_hidden_service(
         builder = builder.with_tor_identity(*identity);
     }
 
-    builder.finish().await
+    builder.build().await
 }
 
-async fn configure_comms_and_dht<TTransport, TSink>(
-    builder: CommsBuilder<TTransport>,
+async fn configure_comms_and_dht<TSink>(
+    builder: CommsBuilder,
     config: CommsConfig,
     connector: InboundDomainConnector<TSink>,
-    seed_peers: Vec<Peer>,
-) -> Result<(CommsNode, Dht), CommsInitializationError>
+) -> Result<(UnspawnedCommsNode, Dht), CommsInitializationError>
 where
-    TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
-    TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
@@ -321,8 +322,6 @@ where
         .with_peer_storage(peer_database)
         .build()?;
 
-    add_peers_to_comms(&comms.peer_manager, &comms.node_identity, seed_peers).await?;
-
     // Create outbound channel
     let (outbound_tx, outbound_rx) = mpsc::channel(config.outbound_buffer_size);
 
@@ -333,14 +332,13 @@ where
         comms.connectivity(),
         comms.shutdown_signal(),
     )
-    .with_config(config.dht)
-    .finish()
+    .with_config(config.dht.clone())
+    .build()
     .await?;
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
 
     // DHT RPC service is only available for communication nodes
-    // TODO: (sdbondi) PeerFeatures should be simplified to PeerRole
     if comms
         .node_identity()
         .has_peer_features(PeerFeatures::COMMUNICATION_NODE)
@@ -348,23 +346,26 @@ where
         comms = comms.add_rpc(RpcServer::new().add_service(dht.rpc_service()));
     }
 
-    let comms = comms
-        .with_messaging_pipeline(
-            pipeline::Builder::new()
-                .outbound_buffer_size(config.outbound_buffer_size)
-                .with_outbound_pipeline(outbound_rx, |sink| {
-                    ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
-                })
-                .max_concurrent_inbound_tasks(config.max_concurrent_inbound_tasks)
-                .with_inbound_pipeline(
-                    ServiceBuilder::new()
-                        .layer(dht.inbound_middleware_layer())
-                        .service(SinkService::new(connector)),
-                )
-                .finish(),
+    // Hook up DHT messaging middlewares
+    // TODO: messaging events should be optional
+    let (messaging_events_sender, _) = broadcast::channel(1);
+    let messaging_pipeline = pipeline::Builder::new()
+        .outbound_buffer_size(config.outbound_buffer_size)
+        .with_outbound_pipeline(outbound_rx, |sink| {
+            ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
+        })
+        .max_concurrent_inbound_tasks(config.max_concurrent_inbound_tasks)
+        .with_inbound_pipeline(
+            ServiceBuilder::new()
+                .layer(dht.inbound_middleware_layer())
+                .service(SinkService::new(connector)),
         )
-        .spawn()
-        .await?;
+        .build();
+
+    comms = comms.add_protocol_extension(MessagingProtocolExtension::new(
+        messaging_events_sender,
+        messaging_pipeline,
+    ));
 
     Ok((comms, dht))
 }
@@ -377,7 +378,7 @@ where
 ///
 /// ## Returns
 /// A Result to determine if the call was successful or not, string will indicate the reason on error
-async fn add_peers_to_comms(
+async fn add_all_peers(
     peer_manager: &PeerManager,
     node_identity: &NodeIdentity,
     peers: Vec<Peer>,
@@ -401,4 +402,94 @@ async fn add_peers_to_comms(
             .map_err(CommsInitializationError::FailedToAddSeedPeer)?;
     }
     Ok(())
+}
+
+pub struct P2pInitializer {
+    config: CommsConfig,
+    connector: Option<PubsubDomainConnector>,
+    seed_peers: Vec<Peer>,
+}
+
+impl P2pInitializer {
+    pub fn new(config: CommsConfig, connector: PubsubDomainConnector, seed_peers: Vec<Peer>) -> Self {
+        Self {
+            config,
+            connector: Some(connector),
+            seed_peers,
+        }
+    }
+}
+
+impl ServiceInitializer for P2pInitializer {
+    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
+
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+        let config = self.config.clone();
+        let connector = self.connector.take().expect("P2pInitializer called more than once");
+        let peers = self.seed_peers.drain(..).collect();
+
+        async move {
+            let mut builder = CommsBuilder::new()
+                .with_shutdown_signal(context.get_shutdown_signal())
+                .with_node_identity(config.node_identity.clone())
+                .with_user_agent(&config.user_agent);
+
+            if config.allow_test_addresses {
+                builder = builder.allow_test_addresses();
+            }
+
+            let (comms, dht) = configure_comms_and_dht(builder, config, connector).await?;
+            add_all_peers(&comms.peer_manager(), &comms.node_identity(), peers).await?;
+
+            context.register_handle(SharedCommsContext::from_unspawned_comms(&comms));
+            context.register_handle(comms);
+            context.register_handle(dht);
+
+            Ok(())
+        }
+    }
+}
+
+/// Shared comms context that is made available by the P2pInitializer as a handle to other services.
+/// This should be used to hook up protocols to comms and is made available in the initialization phase before comms has
+/// spawned.
+#[derive(Clone)]
+pub struct SharedCommsContext {
+    protocols: Arc<Mutex<Protocols<Substream>>>,
+    connectivity: ConnectivityRequester,
+    connection_manager: ConnectionManagerRequester,
+    peer_manager: Arc<PeerManager>,
+}
+
+impl SharedCommsContext {
+    pub fn from_unspawned_comms(node: &UnspawnedCommsNode) -> Self {
+        Self {
+            protocols: Default::default(),
+            connectivity: node.connectivity(),
+            connection_manager: node.connection_manager(),
+            peer_manager: node.peer_manager(),
+        }
+    }
+
+    /// Register an mpsc channel to be notified whenever a peer wants to speak any of the given protocols.
+    pub async fn add_protocol_notifier<I: AsRef<[ProtocolId]>>(
+        &self,
+        protocols: I,
+        notifier: ProtocolNotificationTx<Substream>,
+    )
+    {
+        self.protocols.lock().await.add(protocols, notifier);
+    }
+
+    pub fn peer_manager(&self) -> Arc<PeerManager> {
+        self.peer_manager.clone()
+    }
+
+    pub fn connectivity(&self) -> ConnectivityRequester {
+        self.connectivity.clone()
+    }
+
+    pub fn connection_manager(&self) -> ConnectionManagerRequester {
+        self.connection_manager.clone()
+    }
 }

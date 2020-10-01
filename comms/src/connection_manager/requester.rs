@@ -101,9 +101,16 @@ impl ConnectionManagerRequester {
 
     request_fn!(get_active_connection(node_id: NodeId) -> Option<PeerConnection>, request = ConnectionManagerRequest::GetActiveConnection);
 
-    /// Returns a ConnectionManagerEvent stream
+    /// Returns a new ConnectionManagerEvent subscription
     pub fn get_event_subscription(&self) -> broadcast::Receiver<Arc<ConnectionManagerEvent>> {
         self.event_tx.subscribe()
+    }
+
+    /// Returns a ConnectionManagerEvent publisher.
+    ///
+    /// The CommsBuilder uses to make the publisher available to the connection manager.
+    pub(crate) fn get_event_publisher(&self) -> broadcast::Sender<Arc<ConnectionManagerEvent>> {
+        self.event_tx.clone()
     }
 
     /// Attempt to connect to a remote peer

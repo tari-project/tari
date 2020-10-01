@@ -36,6 +36,8 @@ pub enum CommsBuilderError {
     ConnectionManagerError(#[from] ConnectionManagerError),
     #[error("Node identity not set. Call `with_node_identity(node_identity)` on [CommsBuilder]")]
     NodeIdentityNotSet,
+    #[error("Shutdown signa not set. Call `with_shutdown_signal(shutdown_signal)` on [CommsBuilder]")]
+    ShutdownSignalNotSet,
     #[error("The PeerStorage was not provided to the CommsBuilder. Use `with_peer_storage` to set it.")]
     PeerStorageNotProvided,
     #[error("Unable to receive a ConnectionManagerEvent within timeout")]

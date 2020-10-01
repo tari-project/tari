@@ -32,6 +32,7 @@ serde_derive = "1.0.90"
 tokio = {version="0.2.10", features=["blocking"]}
 tower = "0.3.0-alpha.2"
 tower-service = { version="0.3.0-alpha.2" }
+anyhow = "1.0.32"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.2", path="../../infrastructure/test_utils" }

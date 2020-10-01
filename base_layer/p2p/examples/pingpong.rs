@@ -31,7 +31,7 @@ extern crate lazy_static;
 
 #[cfg(target_os = "windows")]
 mod pingpong {
-    pub(super) fn main() {
+    pub(super) async fn main() {
         println!("\nThis example (pingpong) does not work on Windows.\n");
     }
 }
@@ -59,21 +59,20 @@ mod pingpong {
     use tari_comms::{
         peer_manager::{NodeId, NodeIdentity},
         tor,
+        UnspawnedCommsNode,
     };
     use tari_crypto::tari_utilities::message_format::MessageFormat;
     use tari_p2p::{
         comms_connector::pubsub_connector,
-        initialization::{initialize_comms, CommsConfig},
-        services::{
-            comms_outbound::CommsOutboundServiceInitializer,
-            liveness::{LivenessConfig, LivenessEvent, LivenessHandle, LivenessInitializer},
-        },
+        initialization,
+        initialization::{CommsConfig, P2pInitializer},
+        services::liveness::{LivenessConfig, LivenessEvent, LivenessHandle, LivenessInitializer},
         transport::{TorConfig, TransportType},
     };
     use tari_service_framework::StackBuilder;
-    use tari_shutdown::ShutdownSignal;
+    use tari_shutdown::{Shutdown, ShutdownSignal};
     use tempfile::tempdir;
-    use tokio::runtime::Runtime;
+    use tokio::{runtime, task};
 
     fn load_file<T: MessageFormat>(path: &str) -> T {
         let contents = fs::read_to_string(path).unwrap();
@@ -84,7 +83,7 @@ mod pingpong {
         iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
     }
 
-    pub(super) fn main() {
+    pub(super) async fn main() {
         let matches = App::new("Tari comms peer to peer ping pong example")
             .version("1.0")
             .about("PingPong between two peers")
@@ -128,8 +127,6 @@ mod pingpong {
             )
             .get_matches();
 
-        let mut rt = Runtime::new().expect("Failed to initialize tokio runtime");
-
         let node_identity = Arc::new(load_file::<NodeIdentity>(matches.value_of("node-identity").unwrap()));
         let peer_identity = load_file::<NodeIdentity>(matches.value_of("peer-identity").unwrap());
         let tor_control_server_addr = matches.value_of("tor-control-address").unwrap();
@@ -143,7 +140,7 @@ mod pingpong {
 
         let datastore_path = tempdir().unwrap();
 
-        let (publisher, subscription_factory) = pubsub_connector(rt.handle().clone(), 100, 20);
+        let (publisher, subscription_factory) = pubsub_connector(runtime::Handle::current(), 100, 20);
         let subscription_factory = Arc::new(subscription_factory);
 
         let transport_type = if is_tor_enabled {
@@ -176,39 +173,38 @@ mod pingpong {
             listener_liveness_max_sessions: 0,
             user_agent: "tari/pingpong/1.0.0".to_string(),
         };
+        let mut shutdown = Shutdown::new();
+        let shutdown_signal = shutdown.to_signal();
 
-        let (comms, dht) = rt
-            .block_on(initialize_comms(comms_config, publisher, vec![], Default::default()))
-            .unwrap();
+        let transport_type = comms_config.transport_type.clone();
 
-        println!("Comms listening on {}", comms.listening_address());
-
-        rt.block_on(comms.peer_manager().add_peer(peer_identity.to_peer()))
-            .unwrap();
-        let shutdown_signal = comms.shutdown_signal();
-
-        let handles = rt
-            .block_on(
-                StackBuilder::new(rt.handle().clone(), comms.shutdown_signal())
-                    .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
-                    .add_initializer(LivenessInitializer::new(
-                        LivenessConfig {
-                            auto_ping_interval: None, // Some(Duration::from_secs(5)),
-                            ..Default::default()
-                        },
-                        Arc::clone(&subscription_factory),
-                        dht.dht_requester(),
-                    ))
-                    .finish(),
-            )
+        let mut handles = StackBuilder::new(shutdown.to_signal())
+            .add_initializer(P2pInitializer::new(comms_config, publisher, vec![]))
+            .add_initializer(LivenessInitializer::new(
+                LivenessConfig {
+                    auto_ping_interval: None, // Some(Duration::from_secs(5)),
+                    ..Default::default()
+                },
+                Arc::clone(&subscription_factory),
+            ))
+            .build()
+            .await
             .expect("Service initialization failed");
 
+        let comms = handles
+            .take_handle::<UnspawnedCommsNode>()
+            .expect("P2pInitializer was not added to the stack");
+        let comms = initialization::spawn_comms_using_transport(comms, transport_type)
+            .await
+            .unwrap();
+        comms.peer_manager().add_peer(peer_identity.to_peer()).await.unwrap();
+        println!("Comms listening on {}", comms.listening_address());
         let mut app = setup_ui();
 
         // Updates the UI when pings/pongs are received
         let ui_update_signal = app.cb_sink().clone();
         let liveness_handle = handles.get_handle::<LivenessHandle>().unwrap();
-        rt.spawn(update_ui(
+        task::spawn(update_ui(
             ui_update_signal,
             liveness_handle.clone(),
             shutdown_signal.clone(),
@@ -222,7 +218,7 @@ mod pingpong {
 
         let ui_update_signal = app.cb_sink().clone();
         let node_to_ping = peer_identity.node_id().clone();
-        rt.spawn(send_ping_on_trigger(
+        task::spawn(send_ping_on_trigger(
             send_ping_rx.fuse(),
             ui_update_signal,
             liveness_handle,
@@ -231,9 +227,10 @@ mod pingpong {
         ));
 
         app.add_global_callback('q', |s| s.quit());
+        // TODO: This is blocking (however app is not Send)
         app.run();
-
-        rt.block_on(comms.shutdown());
+        shutdown.trigger().unwrap();
+        comms.wait_until_shutdown().await;
     }
 
     fn setup_ui() -> Cursive {
@@ -362,6 +359,7 @@ mod pingpong {
     }
 }
 
-fn main() {
-    pingpong::main();
+#[tokio_macros::main]
+async fn main() {
+    pingpong::main().await;
 }

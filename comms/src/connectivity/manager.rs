@@ -99,17 +99,6 @@ pub enum ConnectivityStatus {
     Offline,
 }
 
-macro_rules! is_fn {
-    ($name: ident, $($enum_key:ident)::+) => {
-        pub fn $name(&self) -> bool {
-            match self {
-                $($enum_key)::+ => true,
-                _ => false
-            }
-        }
-    }
-}
-
 impl ConnectivityStatus {
     is_fn!(is_initializing, ConnectivityStatus::Initializing);
 

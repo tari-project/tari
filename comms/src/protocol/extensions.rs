@@ -31,7 +31,7 @@ use tari_shutdown::ShutdownSignal;
 
 pub type ProtocolExtensionError = anyhow::Error;
 
-pub trait ProtocolExtension {
+pub trait ProtocolExtension: Send + Sync {
     // TODO: The Box<Self> is easier to do for now at the cost of ProtocolExtension being less generic.
     fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError>;
 }
@@ -95,15 +95,22 @@ pub struct ProtocolExtensionContext {
     peer_manager: Arc<PeerManager>,
     protocols: Option<Protocols<Substream>>,
     complete_signals: Vec<ShutdownSignal>,
+    shutdown_signal: ShutdownSignal,
 }
 
 impl ProtocolExtensionContext {
-    pub(crate) fn new(connectivity: ConnectivityRequester, peer_manager: Arc<PeerManager>) -> Self {
+    pub(crate) fn new(
+        connectivity: ConnectivityRequester,
+        peer_manager: Arc<PeerManager>,
+        shutdown_signal: ShutdownSignal,
+    ) -> Self
+    {
         Self {
             connectivity,
             peer_manager,
             protocols: Some(Protocols::new()),
             complete_signals: Vec::new(),
+            shutdown_signal,
         }
     }
 
@@ -131,6 +138,10 @@ impl ProtocolExtensionContext {
 
     pub fn peer_manager(&self) -> Arc<PeerManager> {
         self.peer_manager.clone()
+    }
+
+    pub fn shutdown_signal(&self) -> ShutdownSignal {
+        self.shutdown_signal.clone()
     }
 
     pub(crate) fn drain_complete_signals(&mut self) -> Vec<ShutdownSignal> {

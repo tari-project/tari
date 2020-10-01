@@ -74,18 +74,20 @@
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
 
+mod context;
+pub use context::{LazyService, ServiceHandles, ServiceInitializerContext};
+
 mod initializer;
 pub use initializer::{ServiceInitializationError, ServiceInitializer};
 
 mod stack;
 pub use stack::StackBuilder;
 
-pub mod handles;
-
 pub mod reply_channel;
-pub use reply_channel::RequestContext;
-
 pub mod tower;
+
+mod utilities;
+pub use utilities::RegisterHandle;
 
 // Re-export
 pub use tower_service::Service;

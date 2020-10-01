@@ -150,9 +150,7 @@ impl ConnectivityManagerMock {
                     .unwrap();
             },
             GetConnectivityStatus(reply_tx) => {
-                reply_tx
-                    .send(self.state.connectivity_status.lock().await.clone())
-                    .unwrap();
+                reply_tx.send(*self.state.connectivity_status.lock().await).unwrap();
             },
             AddManagedPeers(peers) => {
                 // TODO: we should not have to implement behaviour of the actor in the mock

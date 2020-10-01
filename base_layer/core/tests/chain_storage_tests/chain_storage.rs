@@ -36,7 +36,7 @@ use crate::helpers::{
 use croaring::Bitmap;
 use env_logger;
 use rand::{rngs::OsRng, RngCore};
-use std::{sync::atomic::Ordering, thread};
+use std::thread;
 use tari_core::{
     blocks::{genesis_block, Block, BlockHash, BlockHeader},
     chain_storage::{
@@ -907,7 +907,6 @@ fn handle_reorg_failure_recovery() {
     let temp_path = create_temporary_data_path();
     {
         let block_validator = MockValidator::new(true);
-        let is_block_valid_flag = block_validator.shared_flag();
         let validators = Validators::new(block_validator, MockValidator::new(true));
         // Create Main Chain
         let network = Network::LocalNet;

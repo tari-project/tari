@@ -26,25 +26,20 @@ use crate::services::{ServiceAHandle, ServiceAInitializer, ServiceBHandle, Servi
 use std::time::Duration;
 use tari_service_framework::StackBuilder;
 use tari_shutdown::Shutdown;
-use tokio::{runtime, time::delay_for};
+use tokio::time::delay_for;
 
 #[tokio_macros::main]
 async fn main() {
     let mut shutdown = Shutdown::new();
-    let fut = StackBuilder::new(runtime::Handle::current(), shutdown.to_signal())
+    let fut = StackBuilder::new(shutdown.to_signal())
         .add_initializer(ServiceAInitializer::new("Service A response: ".to_string()))
         .add_initializer(ServiceBInitializer::new("Service B response: ".to_string()))
-        .finish();
+        .build();
 
     let handles = fut.await.expect("Should get the ServiceHandles from this stack ");
 
-    let mut service_a_handle = handles
-        .get_handle::<ServiceAHandle>()
-        .expect("Could not get service A handle");
-
-    let mut service_b_handle = handles
-        .get_handle::<ServiceBHandle>()
-        .expect("Could not get service B handle");
+    let mut service_a_handle = handles.expect_handle::<ServiceAHandle>();
+    let mut service_b_handle = handles.expect_handle::<ServiceBHandle>();
 
     delay_for(Duration::from_secs(1)).await;
     println!("----------------------------------------------------");

@@ -43,8 +43,8 @@ use crate::{
 use futures::{future, future::Either};
 use log::*;
 use std::{future::Future, sync::Arc};
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use tari_comms::connectivity::ConnectivityRequester;
+use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
 const LOG_TARGET: &str = "c::bn::base_node";
@@ -77,8 +77,7 @@ impl Default for BaseNodeStateMachineConfig {
 pub struct BaseNodeStateMachine<B> {
     pub(super) db: BlockchainDatabase<B>,
     pub(super) local_node_interface: LocalNodeCommsInterface,
-    pub(super) comms: OutboundNodeCommsInterface,
-    pub(super) peer_manager: Arc<PeerManager>,
+    pub(super) outbound_nci: OutboundNodeCommsInterface,
     pub(super) connectivity: ConnectivityRequester,
     pub(super) metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
     pub(super) config: BaseNodeStateMachineConfig,
@@ -88,7 +87,6 @@ pub struct BaseNodeStateMachine<B> {
     status_event_sender: watch::Sender<StatusInfo>,
     event_publisher: broadcast::Sender<Arc<StateEvent>>,
     interrupt_signal: ShutdownSignal,
-    service_shutdown: Shutdown,
 }
 
 impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
@@ -97,14 +95,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     pub fn new(
         db: &BlockchainDatabase<B>,
         local_node_interface: &LocalNodeCommsInterface,
-        comms: &OutboundNodeCommsInterface,
-        peer_manager: Arc<PeerManager>,
+        outbound_nci: &OutboundNodeCommsInterface,
         connectivity: ConnectivityRequester,
         metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
         config: BaseNodeStateMachineConfig,
         sync_validators: SyncValidators,
         interrupt_signal: ShutdownSignal,
-        service_shutdown: Shutdown,
         status_event_sender: watch::Sender<StatusInfo>,
         event_publisher: broadcast::Sender<Arc<StateEvent>>,
     ) -> Self
@@ -112,8 +108,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         Self {
             db: db.clone(),
             local_node_interface: local_node_interface.clone(),
-            comms: comms.clone(),
-            peer_manager,
+            outbound_nci: outbound_nci.clone(),
             connectivity,
             metadata_event_stream,
             interrupt_signal,
@@ -122,7 +117,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             event_publisher,
             status_event_sender,
             sync_validators,
-            service_shutdown,
             bootstrapped_sync: false,
         }
     }
@@ -211,7 +205,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             );
             state = self.transition(state, next_event);
         }
-        let _ = self.service_shutdown.trigger();
     }
 
     /// Processes and returns the next `StateEvent`

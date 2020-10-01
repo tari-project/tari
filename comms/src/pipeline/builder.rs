@@ -135,7 +135,7 @@ where
         })
     }
 
-    pub fn finish(self) -> Config<TInSvc, TOutSvc, TOutReq> {
+    pub fn build(self) -> Config<TInSvc, TOutSvc, TOutReq> {
         self.try_finish().unwrap()
     }
 }
@@ -181,7 +181,7 @@ mod test {
             .with_outbound_pipeline(rx, identity)
             // Discard all inbound messages
             .with_inbound_pipeline(service_fn(|_| future::ready(Result::<_, ()>::Ok(()))))
-            .finish();
+            .build();
 
         assert_eq!(config.max_concurrent_inbound_tasks, 50);
     }

@@ -33,6 +33,7 @@ use tari_comms::{connectivity::ConnectivityError, multiaddr, peer_manager::PeerM
 use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
+use tari_service_framework::ServiceInitializationError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -59,6 +60,8 @@ pub enum WalletError {
     StoreAndForwardError(#[from] StoreAndForwardError),
     #[error("Connectivity error: `{0}`")]
     ConnectivityError(#[from] ConnectivityError),
+    #[error("Failed to initialize services: {0}")]
+    ServiceInitializationError(#[from] ServiceInitializationError),
 }
 
 #[derive(Debug, Error)]

@@ -20,36 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::future::{self, Future};
-use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_service_framework::{handles::ServiceHandlesFuture, ServiceInitializationError, ServiceInitializer};
-use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
+mod handles;
+pub(crate) use handles::create_context_notifier_pair;
+pub use handles::{ServiceHandles, ServiceInitializerContext};
 
-/// Convenience type alias for external services that want to use this services handle
-pub type CommsOutboundHandle = OutboundMessageRequester;
-
-/// This initializer simply adds a comms OutboundMessageRequester as a handle for use in services.
-pub struct CommsOutboundServiceInitializer {
-    oms: Option<OutboundMessageRequester>,
-}
-
-impl CommsOutboundServiceInitializer {
-    pub fn new(oms: OutboundMessageRequester) -> Self {
-        Self { oms: Some(oms) }
-    }
-}
-
-impl ServiceInitializer for CommsOutboundServiceInitializer {
-    type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
-
-    fn initialize(&mut self, _: runtime::Handle, handles: ServiceHandlesFuture, _: ShutdownSignal) -> Self::Future {
-        handles.register(
-            self.oms
-                .take()
-                .expect("CommsOutboundServiceInitializer initialized without OutboundMessageRequester"),
-        );
-
-        future::ready(Ok(()))
-    }
-}
+mod lazy_service;
+pub use lazy_service::LazyService;

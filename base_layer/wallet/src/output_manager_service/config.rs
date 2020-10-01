@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::*;
 use std::time::Duration;
-
-const LOG_TARGET: &str = "wallet::output_manager_service::config";
 
 #[derive(Clone)]
 pub struct OutputManagerServiceConfig {
@@ -38,20 +35,6 @@ impl Default for OutputManagerServiceConfig {
             base_node_query_timeout: Duration::from_secs(30),
             max_utxo_query_size: 5000,
             prevent_fee_gt_amount: true,
-        }
-    }
-}
-impl OutputManagerServiceConfig {
-    pub fn new(base_node_query_timeout: Duration, prevent_fee_gt_amount: bool) -> Self {
-        trace!(
-            target: LOG_TARGET,
-            "Timeouts - Base node query: {} s",
-            base_node_query_timeout.as_secs()
-        );
-        Self {
-            base_node_query_timeout,
-            prevent_fee_gt_amount,
-            ..Default::default()
         }
     }
 }

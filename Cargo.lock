@@ -3783,6 +3783,7 @@ dependencies = [
 name = "tari_base_node"
 version = "0.5.5"
 dependencies = [
+ "anyhow",
  "chrono",
  "chrono-english",
  "config",
@@ -4134,6 +4135,7 @@ dependencies = [
 name = "tari_p2p"
 version = "0.2.6"
 dependencies = [
+ "anyhow",
  "bytes 0.4.12",
  "chrono",
  "clap",
@@ -4173,6 +4175,7 @@ dependencies = [
 name = "tari_service_framework"
 version = "0.2.6"
 dependencies = [
+ "anyhow",
  "futures 0.3.5",
  "futures-test",
  "log 0.4.11",

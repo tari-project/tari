@@ -51,6 +51,7 @@ use tari_comms::{
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
     CommsNode,
+    UnspawnedCommsNode,
 };
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::{
@@ -69,10 +70,11 @@ use tari_crypto::{
 };
 use tari_p2p::{
     comms_connector::pubsub_connector,
-    initialization::{initialize_comms, CommsConfig},
-    services::comms_outbound::CommsOutboundServiceInitializer,
+    initialization,
+    initialization::{CommsConfig, P2pInitializer},
 };
 use tari_service_framework::StackBuilder;
+use tari_shutdown::Shutdown;
 use tokio::runtime;
 
 const LOG_TARGET: &str = "wallet";
@@ -118,6 +120,7 @@ where
     W: ContactsBackend + 'static,
 {
     pub comms: CommsNode,
+    pub shutdown: Shutdown,
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
@@ -147,6 +150,7 @@ where
         contacts_backend: W,
     ) -> Result<Wallet<T, U, V, W>, WalletError>
     {
+        let shutdown = Shutdown::new();
         let db = WalletDatabase::new(wallet_backend);
 
         // Persist the Comms Private Key provided to this function
@@ -159,56 +163,47 @@ where
         let factories = config.factories;
         let (publisher, subscription_factory) =
             pubsub_connector(runtime::Handle::current(), config.buffer_size, config.rate_limit);
-        let subscription_factory = Arc::new(subscription_factory);
+        let peer_message_subscription_factory = Arc::new(subscription_factory);
+        let transport_type = config.comms_config.transport_type.clone();
+        let node_identity = config.comms_config.node_identity.clone();
 
-        debug!(target: LOG_TARGET, "Initializing Wallet Comms");
-
-        let (comms, dht) = initialize_comms(config.comms_config.clone(), publisher, vec![], Default::default()).await?;
-
-        debug!(target: LOG_TARGET, "Wallet Comms Initialized");
-
-        let fut = StackBuilder::new(runtime::Handle::current(), comms.shutdown_signal())
-            .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
+        debug!(target: LOG_TARGET, "Wallet Initializing");
+        let mut handles = StackBuilder::new(shutdown.to_signal())
+            .add_initializer(P2pInitializer::new(config.comms_config, publisher, vec![]))
             .add_initializer(OutputManagerServiceInitializer::new(
                 OutputManagerServiceConfig::default(),
-                subscription_factory.clone(),
+                peer_message_subscription_factory.clone(),
                 output_manager_backend,
                 factories.clone(),
                 config.network,
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
-                subscription_factory,
+                peer_message_subscription_factory,
                 transaction_backend,
-                comms.node_identity(),
+                node_identity,
                 factories.clone(),
                 config.network,
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
-            .finish();
+            .build()
+            .await?;
 
-        let handles = fut
-            .await
-            .map_err(|e| {
-                error!(target: LOG_TARGET, "Error creating Wallet stack: {:?}", e);
-                e
-            })
-            .expect("Service initialization failed");
+        let comms = handles
+            .take_handle::<UnspawnedCommsNode>()
+            .expect("P2pInitializer was not added to the stack");
+        let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
 
-        let output_manager_handle = handles
-            .get_handle::<OutputManagerHandle>()
-            .expect("Could not get Output Manager Service Handle");
-        let transaction_service_handle = handles
-            .get_handle::<TransactionServiceHandle>()
-            .expect("Could not get Transaction Service Handle");
-        let contacts_handle = handles
-            .get_handle::<ContactsServiceHandle>()
-            .expect("Could not get Contacts Service Handle");
+        let output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
+        let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
+        let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
+        let dht = handles.expect_handle::<Dht>();
 
         let store_and_forward_requester = dht.store_and_forward_requester();
 
         Ok(Wallet {
             comms,
+            shutdown,
             dht_service: dht,
             store_and_forward_requester,
             output_manager_service: output_manager_handle,
@@ -226,8 +221,12 @@ where
 
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
     /// exiting.
-    pub async fn shutdown(self) {
-        self.comms.shutdown().await;
+    pub async fn shutdown(mut self) {
+        self.shutdown.trigger().expect(
+            "No one is listening for shutdown trigger. If you are seeing this error then the shutdown signals have \
+             not been wired up correctly.",
+        );
+        self.comms.wait_until_shutdown().await;
     }
 
     /// This function will set the base_node that the wallet uses to broadcast transactions and monitor the blockchain

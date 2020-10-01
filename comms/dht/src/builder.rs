@@ -128,7 +128,7 @@ impl DhtBuilder {
     /// Build and initialize a Dht object.
     ///
     /// Will panic not in a tokio runtime context
-    pub async fn finish(self) -> Result<Dht, DhtInitializationError> {
+    pub async fn build(self) -> Result<Dht, DhtInitializationError> {
         Dht::initialize(
             self.config,
             self.node_identity,

@@ -48,13 +48,13 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
 ) -> (ContactsServiceHandle, Shutdown)
 {
     let shutdown = Shutdown::new();
-    let fut = StackBuilder::new(runtime.handle().clone(), shutdown.to_signal())
+    let fut = StackBuilder::new(shutdown.to_signal())
         .add_initializer(ContactsServiceInitializer::new(backend))
-        .finish();
+        .build();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");
 
-    let contacts_api = handles.get_handle::<ContactsServiceHandle>().unwrap();
+    let contacts_api = handles.expect_handle::<ContactsServiceHandle>();
 
     (contacts_api, shutdown)
 }

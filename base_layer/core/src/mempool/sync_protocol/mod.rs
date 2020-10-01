@@ -69,8 +69,8 @@ mod test;
 mod error;
 use error::MempoolProtocolError;
 
-mod extension;
-pub use extension::MempoolSyncProtocolExtension;
+mod initializer;
+pub use initializer::MempoolSyncInitializer;
 
 use crate::{
     mempool::{async_mempool, proto, Mempool, MempoolServiceConfig},

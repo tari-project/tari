@@ -26,6 +26,9 @@ extern crate lazy_static;
 #[macro_use]
 mod macros;
 
+mod builder;
+pub use builder::{CommsBuilder, CommsBuilderError, CommsNode, UnspawnedCommsNode};
+
 pub mod connection_manager;
 pub use connection_manager::{validate_peer_addresses, ConnectionManagerEvent, PeerConnection, PeerConnectionError};
 
@@ -62,9 +65,6 @@ pub mod transports;
 pub mod types;
 #[macro_use]
 pub mod utils;
-
-mod builder;
-pub use builder::{BuiltCommsNode, CommsBuilder, CommsBuilderError, CommsNode};
 
 // TODO: Test utils should be part of a `tari_comms_test` crate
 // #[cfg(test)]

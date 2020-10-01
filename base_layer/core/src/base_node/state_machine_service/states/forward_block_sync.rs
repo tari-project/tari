@@ -34,7 +34,7 @@ use crate::{
 use log::*;
 use rand::{rngs::OsRng, Rng};
 use std::cmp;
-use tari_comms::peer_manager::NodeId;
+use tari_comms::{connectivity::ConnectivitySelection, peer_manager::NodeId};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::block_sync";
@@ -55,11 +55,15 @@ impl ForwardBlockSyncInfo {
     {
         info!(target: LOG_TARGET, "Synchronizing missing blocks");
 
-        let peers = match shared.peer_manager.flood_peers().await {
+        let peers = match shared
+            .connectivity
+            .select_connections(ConnectivitySelection::all_nodes(vec![]))
+            .await
+        {
             Ok(peers) => peers,
             Err(e) => return StateEvent::FatalError(format!("Cannot get peers to sync to: {}", e)),
         };
-        let sync_peers = peers.into_iter().map(|peer| peer.node_id).collect();
+        let sync_peers = peers.into_iter().map(|peer| peer.peer_node_id().clone()).collect();
         match synchronize_blocks(shared, sync_peers).await {
             Ok(StateEvent::BlocksSynchronized) => {
                 info!(target: LOG_TARGET, "Block sync state has synchronised");
@@ -110,7 +114,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
         }
         shared.publish_event_info();
         match shared
-            .comms
+            .outbound_nci
             .fetch_headers_between(
                 from_headers.iter().map(|h| h.hash()).collect(),
                 None,
@@ -244,7 +248,7 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
 ) -> Result<bool, String>
 {
     // Request the block from a random peer node and add to chain.
-    match shared.comms.fetch_blocks_with_hashes(curr_headers.clone()).await {
+    match shared.outbound_nci.fetch_blocks_with_hashes(curr_headers.clone()).await {
         Ok(blocks) => {
             info!(target: LOG_TARGET, "Received {} blocks from peer", blocks.len());
             if !blocks.is_empty() {

@@ -20,14 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{future, future::BoxFuture};
+use futures::future;
 use tari_core::base_node::{state_machine_service::states::StatusInfo, StateMachineHandle};
-use tari_service_framework::{handles::ServiceHandlesFuture, ServiceInitializationError, ServiceInitializer};
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{
-    runtime,
-    sync::{broadcast, watch},
-};
+use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::sync::{broadcast, watch};
 
 pub struct MockBaseNodeStateMachine {
     status_receiver: watch::Receiver<StatusInfo>,
@@ -59,24 +55,17 @@ pub struct MockBaseNodeStateMachineInitializer {
 }
 
 impl ServiceInitializer for MockBaseNodeStateMachineInitializer {
-    type Future = BoxFuture<'static, Result<(), ServiceInitializationError>>;
+    type Future = future::Ready<Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        _executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        _shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         let (state_event_publisher, _) = broadcast::channel(10);
 
-        let shutdown = Shutdown::new();
         let handle = StateMachineHandle::new(
             state_event_publisher,
             self.status_receiver.clone(),
-            shutdown.to_signal(),
+            context.get_shutdown_signal(),
         );
-        handles_fut.register(handle);
-        Box::pin(future::ready(Ok(())))
+        context.register_handle(handle);
+        future::ready(Ok(()))
     }
 }

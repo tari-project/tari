@@ -36,7 +36,7 @@ use crate::{
 use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, future, Future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
-use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
@@ -44,13 +44,12 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
-    handles::ServiceHandlesFuture,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
+    ServiceInitializerContext,
 };
-use tari_shutdown::ShutdownSignal;
-use tokio::{runtime, sync::broadcast};
+use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "c::bn::service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Base Node";
@@ -146,13 +145,7 @@ where T: BlockchainBackend + 'static
 {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         // Create streams for receiving Base Node requests and response messages from comms
         let inbound_request_stream = self.inbound_request_stream();
         let inbound_response_stream = self.inbound_response_stream();
@@ -180,19 +173,14 @@ where T: BlockchainBackend + 'static
         let config = self.config;
 
         // Register handle to OutboundNodeCommsInterface before waiting for handles to be ready
-        handles_fut.register(outbound_nci);
-        handles_fut.register(local_nci);
+        context.register_handle(outbound_nci);
+        context.register_handle(local_nci);
 
-        executor.spawn(async move {
-            let handles = handles_fut.await;
+        context.spawn_when_ready(move |handles| async move {
+            let dht = handles.expect_handle::<Dht>();
+            let outbound_message_service = dht.outbound_requester();
 
-            let outbound_message_service = handles
-                .get_handle::<OutboundMessageRequester>()
-                .expect("OutboundMessageRequester handle required for BaseNodeService");
-
-            let state_machine = handles
-                .get_handle::<StateMachineHandle>()
-                .expect("StateMachineHandle required to initialize MempoolService");
+            let state_machine = handles.expect_handle::<StateMachineHandle>();
 
             let streams = BaseNodeStreams {
                 outbound_request_stream,
@@ -206,7 +194,7 @@ where T: BlockchainBackend + 'static
             let service =
                 BaseNodeService::new(outbound_message_service, inbound_nch, config, state_machine).start(streams);
             futures::pin_mut!(service);
-            future::select(service, shutdown).await;
+            future::select(service, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "Base Node Service shutdown");
         });
 
