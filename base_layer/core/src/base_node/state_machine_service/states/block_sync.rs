@@ -539,6 +539,27 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
                     .await?;
                     break;
                 },
+
+                Err(ChainStorageError::ProofOfWorkError { source }) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Validation on block {} from peer failed due to: {:?}.", block_hash_hex, source,
+                    );
+                    debug!(
+                        target: LOG_TARGET,
+                        "Banning peer {} from local node, because they supplied invalid block", sync_peer
+                    );
+                    ban_sync_peer(
+                        LOG_TARGET,
+                        &mut shared.connectivity,
+                        sync_peers,
+                        sync_peer.clone(),
+                        shared.config.sync_peer_config.peer_ban_duration,
+                        format!("Peer supplied an invalid block that failed validation: {}", source),
+                    )
+                    .await?;
+                    break;
+                },
                 Err(e) => return Err(e.into()),
             }
         }
