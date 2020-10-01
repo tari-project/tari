@@ -31,8 +31,7 @@ use crate::{
 use futures::channel::mpsc::UnboundedSender;
 use log::*;
 use tari_comms::peer_manager::NodeId;
-use tari_service_framework::reply_channel::SenderService;
-use tower_service::Service;
+use tari_service_framework::{reply_channel::SenderService, Service};
 
 pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
 

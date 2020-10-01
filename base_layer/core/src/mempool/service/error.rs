@@ -47,6 +47,4 @@ pub enum MempoolServiceError {
     TransportChannelError(#[from] TransportChannelError),
     #[error("Failed to send broadcast message")]
     BroadcastFailed,
-    #[error("Event stream error")]
-    EventStreamError,
 }

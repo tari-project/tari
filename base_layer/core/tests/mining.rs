@@ -23,14 +23,16 @@
 #[allow(dead_code)]
 mod helpers;
 
-use futures::{SinkExt, StreamExt};
+use futures::StreamExt;
 use helpers::{
     block_builders::create_genesis_block_with_coinbase_value,
     event_stream::event_stream_next,
     nodes::create_network_with_2_base_nodes_with_config,
 };
-use std::{sync::atomic::Ordering, time::Duration};
-use tari_broadcast_channel::{bounded, Publisher, Subscriber};
+use std::{
+    sync::{atomic::Ordering, Arc},
+    time::Duration,
+};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::{
@@ -49,7 +51,7 @@ use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType
 use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, sync::broadcast};
 
 #[test]
 fn mining() {
@@ -109,7 +111,7 @@ fn mining() {
     let shutdown = Shutdown::new();
     let mut miner = Miner::new(shutdown.to_signal(), consensus_manager, &alice_node.local_nci, 1);
     miner.enable_mining_flag().store(true, Ordering::Relaxed);
-    let (mut state_event_sender, state_event_receiver): (Publisher<_>, Subscriber<_>) = bounded(1, 112);
+    let (state_event_sender, state_event_receiver) = broadcast::channel(1);
     miner.subscribe_to_node_state_events(state_event_receiver);
     miner.subscribe_to_mempool_state_events(alice_node.local_mp_interface.get_mempool_state_event_stream());
     let mut miner_utxo_stream = miner.get_utxo_receiver_channel().fuse();
@@ -117,7 +119,9 @@ fn mining() {
 
     runtime.block_on(async {
         // Simulate the BlockSync event
-        assert!(state_event_sender.send(StateEvent::BlocksSynchronized).await.is_ok());
+        state_event_sender
+            .send(Arc::new(StateEvent::BlocksSynchronized))
+            .unwrap();
         // Wait for miner to finish mining block 1
         assert!(event_stream_next(&mut miner_utxo_stream, Duration::from_secs(20))
             .await

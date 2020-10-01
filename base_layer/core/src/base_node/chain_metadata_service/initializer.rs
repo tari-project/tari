@@ -25,11 +25,10 @@ use crate::base_node::{chain_metadata_service::handle::ChainMetadataHandle, comm
 use futures::{future, future::select, pin_mut};
 use log::*;
 use std::future::Future;
-use tari_broadcast_channel as broadcast_channel;
 use tari_p2p::services::liveness::LivenessHandle;
 use tari_service_framework::{handles::ServiceHandlesFuture, ServiceInitializationError, ServiceInitializer};
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
+use tokio::{runtime, sync::broadcast};
 
 // Must be set to 1 to ensure outdated chain metadata is discarded.
 const BROADCAST_EVENT_BUFFER_SIZE: usize = 1;
@@ -46,8 +45,8 @@ impl ServiceInitializer for ChainMetadataServiceInitializer {
         shutdown: ShutdownSignal,
     ) -> Self::Future
     {
-        let (publisher, subscriber) = broadcast_channel::bounded(BROADCAST_EVENT_BUFFER_SIZE, 5);
-        let handle = ChainMetadataHandle::new(subscriber);
+        let (publisher, _) = broadcast::channel(BROADCAST_EVENT_BUFFER_SIZE);
+        let handle = ChainMetadataHandle::new(publisher.clone());
         handles_fut.register(handle);
 
         executor.spawn(async move {

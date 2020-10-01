@@ -75,14 +75,17 @@
 #![feature(type_alias_impl_trait)]
 
 mod initializer;
+pub use initializer::{ServiceInitializationError, ServiceInitializer};
+
 mod stack;
+pub use stack::StackBuilder;
 
 pub mod handles;
+
 pub mod reply_channel;
+pub use reply_channel::RequestContext;
+
 pub mod tower;
 
-pub use self::{
-    initializer::{ServiceInitializationError, ServiceInitializer},
-    reply_channel::RequestContext,
-    stack::StackBuilder,
-};
+// Re-export
+pub use tower_service::Service;

@@ -954,7 +954,7 @@ dependencies = [
  "libsqlite3-sys",
  "num-bigint 0.2.6",
  "num-integer",
- "num-traits 0.2.12",
+ "num-traits 0.1.43",
  "serde_json",
 ]
 
@@ -3805,7 +3805,6 @@ dependencies = [
  "strum_macros 0.18.0",
  "tari_app_grpc",
  "tari_app_utilities",
- "tari_broadcast_channel",
  "tari_common",
  "tari_comms",
  "tari_comms_dht",
@@ -3820,18 +3819,6 @@ dependencies = [
  "toml 0.5.6",
  "tonic",
  "tonic-build",
-]
-
-[[package]]
-name = "tari_broadcast_channel"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7881ee3949ffdc521f78acffa6fb1d12afc8787d4e7ad9fced1cc14adfe87d7d"
-dependencies = [
- "arc-swap 0.4.7",
- "crossbeam-channel 0.3.9",
- "futures 0.3.5",
- "log 0.4.11",
 ]
 
 [[package]]
@@ -3995,22 +3982,17 @@ dependencies = [
 name = "tari_core"
 version = "0.2.6"
 dependencies = [
- "arrayref",
- "base64 0.10.1",
  "bincode",
  "bitflags 1.2.1",
  "blake2",
  "bytes 0.4.12",
- "cfg-if",
  "chrono",
  "config",
  "croaring",
- "crossbeam-channel 0.3.9",
  "digest",
  "env_logger 0.7.1",
  "futures 0.3.5",
  "hex",
- "lazy_static 1.4.0",
  "lmdb-zero",
  "log 0.4.11",
  "monero",
@@ -4020,12 +4002,10 @@ dependencies = [
  "prost-types",
  "rand 0.7.3",
  "randomx-rs",
- "rmp-serde",
  "serde 1.0.115",
  "serde_json",
  "strum 0.17.1",
  "strum_macros 0.17.1",
- "tari_broadcast_channel",
  "tari_common",
  "tari_comms",
  "tari_comms_dht",
@@ -4043,7 +4023,6 @@ dependencies = [
  "tokio",
  "tokio-macros",
  "tokio-test",
- "tower-service",
  "ttl_cache",
  "uint 0.8.5",
 ]
@@ -4173,7 +4152,6 @@ dependencies = [
  "serde 1.0.115",
  "serde_derive",
  "stream-cancel",
- "tari_broadcast_channel",
  "tari_common",
  "tari_comms",
  "tari_comms_dht",

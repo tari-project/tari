@@ -21,10 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::chain_storage::ChainMetadata;
-use futures::{stream::Fuse, StreamExt};
-use std::fmt::{Display, Error, Formatter};
-use tari_broadcast_channel::Subscriber;
+use std::{
+    fmt::{Display, Error, Formatter},
+    sync::Arc,
+};
 use tari_comms::peer_manager::NodeId;
+use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeerChainMetadata {
@@ -55,19 +57,15 @@ pub enum ChainMetadataEvent {
 
 #[derive(Clone)]
 pub struct ChainMetadataHandle {
-    event_stream: Subscriber<ChainMetadataEvent>,
+    event_stream: broadcast::Sender<Arc<ChainMetadataEvent>>,
 }
 
 impl ChainMetadataHandle {
-    pub fn new(event_stream: Subscriber<ChainMetadataEvent>) -> Self {
+    pub fn new(event_stream: broadcast::Sender<Arc<ChainMetadataEvent>>) -> Self {
         Self { event_stream }
     }
 
-    pub fn get_event_stream(&self) -> Subscriber<ChainMetadataEvent> {
-        self.event_stream.clone()
-    }
-
-    pub fn get_event_stream_fused(&self) -> Fuse<Subscriber<ChainMetadataEvent>> {
-        self.get_event_stream().fuse()
+    pub fn get_event_stream(&self) -> broadcast::Receiver<Arc<ChainMetadataEvent>> {
+        self.event_stream.subscribe()
     }
 }

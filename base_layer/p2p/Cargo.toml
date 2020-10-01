@@ -10,7 +10,6 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_broadcast_channel = "^0.2"
 tari_comms = { version = "^0.2", path = "../../comms"}
 tari_comms_dht = { version = "^0.2.2", path = "../../comms/dht"}
 tari_common = { version= "^0.2", path = "../../common" }

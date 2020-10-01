@@ -32,13 +32,11 @@ use crate::{
     },
     transactions::transaction::Transaction,
 };
-use futures::SinkExt;
 use log::*;
 use std::sync::Arc;
-use tari_broadcast_channel::Publisher;
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::hex::Hex;
-use tokio::sync::RwLock;
+use tokio::sync::broadcast;
 
 pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 
@@ -46,7 +44,7 @@ pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 /// nodes.
 #[derive(Clone)]
 pub struct MempoolInboundHandlers {
-    event_publisher: Arc<RwLock<Publisher<MempoolStateEvent>>>,
+    event_publisher: broadcast::Sender<MempoolStateEvent>,
     mempool: Mempool,
     outbound_nmi: OutboundMempoolServiceInterface,
 }
@@ -54,13 +52,13 @@ pub struct MempoolInboundHandlers {
 impl MempoolInboundHandlers {
     /// Construct the MempoolInboundHandlers.
     pub fn new(
-        event_publisher: Publisher<MempoolStateEvent>,
+        event_publisher: broadcast::Sender<MempoolStateEvent>,
         mempool: Mempool,
         outbound_nmi: OutboundMempoolServiceInterface,
     ) -> Self
     {
         Self {
-            event_publisher: Arc::new(RwLock::new(event_publisher)),
+            event_publisher,
             mempool,
             outbound_nmi,
         }
@@ -176,35 +174,20 @@ impl MempoolInboundHandlers {
         match block_event {
             ValidBlockAdded(block, BlockAddResult::Ok, broadcast) => {
                 async_mempool::process_published_block(self.mempool.clone(), block.clone()).await?;
-                if bool::from(*broadcast) {
-                    self.event_publisher
-                        .write()
-                        .await
-                        .send(MempoolStateEvent::Updated)
-                        .await
-                        .map_err(|_| MempoolServiceError::EventStreamError)?;
+                if broadcast.is_true() {
+                    let _ = self.event_publisher.send(MempoolStateEvent::Updated);
                 }
             },
             ValidBlockAdded(_, BlockAddResult::ChainReorg(removed_blocks, added_blocks), broadcast) => {
                 async_mempool::process_reorg(self.mempool.clone(), removed_blocks.clone(), added_blocks.clone())
                     .await?;
-                if bool::from(*broadcast) {
-                    self.event_publisher
-                        .write()
-                        .await
-                        .send(MempoolStateEvent::Updated)
-                        .await
-                        .map_err(|_| MempoolServiceError::EventStreamError)?;
+                if broadcast.is_true() {
+                    let _ = self.event_publisher.send(MempoolStateEvent::Updated);
                 }
             },
             BlockSyncComplete(tip_block) => {
                 async_mempool::process_published_block(self.mempool.clone(), tip_block.clone()).await?;
-                self.event_publisher
-                    .write()
-                    .await
-                    .send(MempoolStateEvent::Updated)
-                    .await
-                    .map_err(|_| MempoolServiceError::EventStreamError)?;
+                let _ = self.event_publisher.send(MempoolStateEvent::Updated);
             },
             _ => {},
         }

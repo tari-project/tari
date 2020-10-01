@@ -39,11 +39,13 @@ use crate::{
 use futures::{future, Future};
 use log::*;
 use std::sync::Arc;
-use tari_broadcast_channel::{bounded, Publisher, Subscriber};
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_service_framework::{handles::ServiceHandlesFuture, ServiceInitializationError, ServiceInitializer};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::runtime;
+use tokio::{
+    runtime,
+    sync::{broadcast, watch},
+};
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::initializer";
 
@@ -96,11 +98,15 @@ where B: BlockchainBackend + 'static
         _shutdown: ShutdownSignal,
     ) -> Self::Future
     {
-        let (state_event_publisher, state_event_subscriber): (Publisher<_>, Subscriber<_>) = bounded(10, 3);
-        let (status_event_sender, status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
+        let (state_event_publisher, _) = broadcast::channel(10);
+        let (status_event_sender, status_event_receiver) = watch::channel(StatusInfo::new());
 
         let shutdown = Shutdown::new();
-        let handle = StateMachineHandle::new(state_event_subscriber, status_event_receiver, shutdown.to_signal());
+        let handle = StateMachineHandle::new(
+            state_event_publisher.clone(),
+            status_event_receiver,
+            shutdown.to_signal(),
+        );
         handles_fut.register(handle);
 
         let factories = self.factories.clone();

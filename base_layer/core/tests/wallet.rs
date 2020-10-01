@@ -30,10 +30,12 @@ use helpers::{
 };
 
 use core::iter;
-use futures::{FutureExt, SinkExt, StreamExt};
+use futures::{FutureExt, StreamExt};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use std::{sync::atomic::Ordering, time::Duration};
-use tari_broadcast_channel::{bounded, Publisher, Subscriber};
+use std::{
+    sync::{atomic::Ordering, Arc},
+    time::Duration,
+};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -67,6 +69,7 @@ use tari_wallet::{
 use tempfile::tempdir;
 use tokio::{
     runtime::{Builder, Runtime},
+    sync::broadcast,
     time::delay_for,
 };
 
@@ -297,17 +300,17 @@ fn wallet_base_node_integration_test() {
     let mut shutdown = Shutdown::new();
     let mut miner = Miner::new(shutdown.to_signal(), consensus_manager, &base_node.local_nci, 1);
     miner.enable_mining_flag().store(true, Ordering::Relaxed);
-    let (mut state_event_sender, state_event_receiver): (Publisher<_>, Subscriber<_>) = bounded(1, 113);
+    let (state_event_sender, state_event_receiver) = broadcast::channel(1);
     miner.subscribe_to_node_state_events(state_event_receiver);
     miner.subscribe_to_mempool_state_events(base_node.local_mp_interface.get_mempool_state_event_stream());
     let mut miner_utxo_stream = miner.get_utxo_receiver_channel().fuse();
-    runtime.spawn(async move {
-        miner.mine().await;
-    });
+    runtime.spawn(miner.mine());
 
     runtime.block_on(async {
         // Simulate block sync
-        assert!(state_event_sender.send(StateEvent::BlocksSynchronized).await.is_ok());
+        state_event_sender
+            .send(Arc::new(StateEvent::BlocksSynchronized))
+            .unwrap();
         // Wait for miner to finish mining block 1
         assert!(event_stream_next(&mut miner_utxo_stream, Duration::from_secs(20))
             .await

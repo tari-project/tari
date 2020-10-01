@@ -40,13 +40,12 @@ use crate::{
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
 };
-use futures::{future, future::Either, SinkExt};
+use futures::{future, future::Either};
 use log::*;
 use std::{future::Future, sync::Arc};
-use tari_broadcast_channel::{Publisher, Subscriber};
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::sync::watch;
+use tokio::sync::{broadcast, watch};
 
 const LOG_TARGET: &str = "c::bn::base_node";
 
@@ -81,13 +80,13 @@ pub struct BaseNodeStateMachine<B> {
     pub(super) comms: OutboundNodeCommsInterface,
     pub(super) peer_manager: Arc<PeerManager>,
     pub(super) connectivity: ConnectivityRequester,
-    pub(super) metadata_event_stream: Subscriber<ChainMetadataEvent>,
+    pub(super) metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StateInfo,
     pub(super) sync_validators: SyncValidators,
     pub(super) bootstrapped_sync: bool,
     status_event_sender: watch::Sender<StatusInfo>,
-    event_publisher: Publisher<StateEvent>,
+    event_publisher: broadcast::Sender<Arc<StateEvent>>,
     interrupt_signal: ShutdownSignal,
     service_shutdown: Shutdown,
 }
@@ -101,13 +100,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         comms: &OutboundNodeCommsInterface,
         peer_manager: Arc<PeerManager>,
         connectivity: ConnectivityRequester,
-        metadata_event_stream: Subscriber<ChainMetadataEvent>,
+        metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
         config: BaseNodeStateMachineConfig,
         sync_validators: SyncValidators,
         interrupt_signal: ShutdownSignal,
         service_shutdown: Shutdown,
         status_event_sender: watch::Sender<StatusInfo>,
-        event_publisher: Publisher<StateEvent>,
+        event_publisher: broadcast::Sender<Arc<StateEvent>>,
     ) -> Self
     {
         Self {
@@ -203,7 +202,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             // Get the next `StateEvent`, returning a `UserQuit` state event if the interrupt signal is triggered
             let next_event = select_next_state_event(interrupt_signal, next_state_future).await;
             // Publish the event on the event bus
-            let _ = self.event_publisher.send(next_event.clone()).await;
+            let _ = self.event_publisher.send(Arc::new(next_event.clone()));
             trace!(
                 target: LOG_TARGET,
                 "Base Node event in State [{}]:  {}",

@@ -21,21 +21,20 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::base_node::state_machine_service::states::{StateEvent, StatusInfo};
-use futures::{stream::Fuse, StreamExt};
-use tari_broadcast_channel::Subscriber;
+use std::sync::Arc;
 use tari_shutdown::ShutdownSignal;
-use tokio::sync::watch;
+use tokio::sync::{broadcast, watch};
 
 #[derive(Clone)]
 pub struct StateMachineHandle {
-    state_change_event_subscriber: Subscriber<StateEvent>,
+    state_change_event_subscriber: broadcast::Sender<Arc<StateEvent>>,
     status_event_receiver: watch::Receiver<StatusInfo>,
     shutdown_signal: ShutdownSignal,
 }
 
 impl StateMachineHandle {
     pub fn new(
-        state_change_event_subscriber: Subscriber<StateEvent>,
+        state_change_event_subscriber: broadcast::Sender<Arc<StateEvent>>,
         status_event_receiver: watch::Receiver<StatusInfo>,
         shutdown_signal: ShutdownSignal,
     ) -> Self
@@ -50,12 +49,8 @@ impl StateMachineHandle {
     /// This clones the receiver end of the channel and gives out a copy to the caller
     /// This allows multiple subscribers to this channel by only keeping one channel and cloning the receiver for every
     /// caller.
-    pub fn get_state_change_event_stream(&self) -> Subscriber<StateEvent> {
-        self.state_change_event_subscriber.clone()
-    }
-
-    pub fn get_state_change_event_stream_fused(&self) -> Fuse<Subscriber<StateEvent>> {
-        self.get_state_change_event_stream().fuse()
+    pub fn get_state_change_event_stream(&self) -> broadcast::Receiver<Arc<StateEvent>> {
+        self.state_change_event_subscriber.subscribe()
     }
 
     /// This clones the receiver end of the channel and gives out a copy to the caller
@@ -63,10 +58,6 @@ impl StateMachineHandle {
     /// caller.
     pub fn get_status_info_watch(&self) -> watch::Receiver<StatusInfo> {
         self.status_event_receiver.clone()
-    }
-
-    pub fn get_status_info_watch_fused(&self) -> Fuse<watch::Receiver<StatusInfo>> {
-        self.get_status_info_watch().fuse()
     }
 
     pub fn shutdown_signal(&self) -> ShutdownSignal {

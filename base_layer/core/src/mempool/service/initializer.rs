@@ -38,7 +38,6 @@ use crate::{
 use futures::{channel::mpsc, future, Future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
-use tari_broadcast_channel::bounded;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
@@ -53,7 +52,7 @@ use tari_service_framework::{
     ServiceInitializer,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
+use tokio::{runtime, sync::broadcast};
 
 const LOG_TARGET: &str = "c::bn::mempool_service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Mempool";
@@ -153,10 +152,11 @@ impl ServiceInitializer for MempoolServiceInitializer {
         let (outbound_tx_sender, outbound_tx_stream) = mpsc::unbounded();
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
-        let (mempool_state_event_publisher, mempool_state_event_subscriber) = bounded(100, 6);
+        let (mempool_state_event_publisher, _) = broadcast::channel(100);
         let outbound_mp_interface =
             OutboundMempoolServiceInterface::new(outbound_request_sender_service, outbound_tx_sender);
-        let local_mp_interface = LocalMempoolService::new(local_request_sender_service, mempool_state_event_subscriber);
+        let local_mp_interface =
+            LocalMempoolService::new(local_request_sender_service, mempool_state_event_publisher.clone());
         let config = self.config;
         let inbound_handlers = MempoolInboundHandlers::new(
             mempool_state_event_publisher,
