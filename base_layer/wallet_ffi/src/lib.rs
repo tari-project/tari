@@ -162,7 +162,7 @@ use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::WalletError,
     output_manager_service::{
-        protocols::utxo_validation_protocol::UtxoValidationRetry,
+        protocols::txo_validation_protocol::TxoValidationRetry,
         storage::sqlite_db::OutputManagerSqliteDatabase,
     },
     storage::{
@@ -212,6 +212,7 @@ use log4rs::append::{
     Append,
 };
 use tari_core::consensus::Network;
+use tari_wallet::output_manager_service::protocols::txo_validation_protocol::TxoValidationType;
 use tokio::runtime::Runtime;
 
 const LOG_TARGET: &str = "wallet_ffi";
@@ -3447,6 +3448,7 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
+    // Restart Transaction Service protocols that need the base node peer
     if let Err(e) = (*wallet)
         .runtime
         .block_on((*wallet).wallet.transaction_service.restart_broadcast_protocols())
@@ -3455,7 +3457,27 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
-
+    // Start once off Output manager validation protocols that need the base node peer to be set
+    if let Err(e) = (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .output_manager_service
+            .validate_txos(TxoValidationType::Invalid, TxoValidationRetry::Limited(5)),
+    ) {
+        error = LibWalletError::from(WalletError::from(e)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+    if let Err(e) = (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .output_manager_service
+            .validate_txos(TxoValidationType::Spent, TxoValidationRetry::Limited(5)),
+    ) {
+        error = LibWalletError::from(WalletError::from(e)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
     true
 }
 
@@ -4523,7 +4545,7 @@ pub unsafe extern "C" fn wallet_sync_with_base_node(wallet: *mut TariWallet, err
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).wallet.validate_utxos(UtxoValidationRetry::Limited(1)))
+        .block_on((*wallet).wallet.validate_utxos(TxoValidationRetry::Limited(1)))
     {
         Ok(request_key) => request_key,
         Err(e) => {

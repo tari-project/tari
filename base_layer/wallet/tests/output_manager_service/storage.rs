@@ -354,6 +354,22 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
             .is_some(),
         "Should find revalidated output"
     );
+    let result = runtime.block_on(db.update_spent_output_to_unspent(unspent_outputs[0].commitment.clone()));
+    assert!(result.is_err());
+
+    let spent_outputs = runtime.block_on(db.get_spent_outputs()).unwrap();
+    let updated_output = runtime
+        .block_on(db.update_spent_output_to_unspent(spent_outputs[0].commitment.clone()))
+        .unwrap();
+
+    let unspent_outputs = runtime.block_on(db.get_unspent_outputs()).unwrap();
+    assert!(
+        unspent_outputs
+            .iter()
+            .find(|o| o.unblinded_output == updated_output.unblinded_output)
+            .is_some(),
+        "Should find updated spent output"
+    );
 }
 
 #[test]

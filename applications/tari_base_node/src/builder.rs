@@ -109,7 +109,7 @@ use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
-        protocols::utxo_validation_protocol::UtxoValidationRetry,
+        protocols::txo_validation_protocol::{TxoValidationRetry, TxoValidationType},
         storage::sqlite_db::OutputManagerSqliteDatabase,
         OutputManagerServiceInitializer,
     },
@@ -172,7 +172,9 @@ impl BaseNodeContext {
                         let mut oms_handle_clone = wallet_output_handle.clone();
                         tokio::spawn(async move {
                             delay_for(Duration::from_secs(240)).await;
-                            let _ = oms_handle_clone.validate_utxos(UtxoValidationRetry::UntilSuccess).await;
+                            let _ = oms_handle_clone
+                                .validate_txos(TxoValidationType::Unspent, TxoValidationRetry::UntilSuccess)
+                                .await;
                         });
                     },
                     Err(e) => warn!(target: LOG_TARGET, "Error adding output: {}", e),
@@ -581,7 +583,7 @@ async fn sync_peers(
 async fn start_transaction_protocols_and_utxo_validation(
     state_machine: StateMachineHandle,
     mut transaction_service_handle: TransactionServiceHandle,
-    oms_handle: OutputManagerHandle,
+    mut oms_handle: OutputManagerHandle,
     base_node_query_timeout: Duration,
     base_node_public_key: CommsPublicKey,
 )
@@ -624,29 +626,20 @@ async fn start_transaction_protocols_and_utxo_validation(
                     e
                 });
 
-            loop {
-                // Setting the base node public key starts the protocol
-                let _ = oms_handle
-                    .clone()
-                    .set_base_node_public_key(base_node_public_key.clone())
-                    .await
-                    .map_err(|e| {
-                        error!(
-                            target: LOG_TARGET,
-                            "Problem with Output Manager Service setting the base node public key: {}", e
-                        );
-                        e
-                    });
-                trace!(target: LOG_TARGET, "Attempting UTXO validation for Invalid Outputs.",);
-                if monitor_validation_protocol(base_node_query_timeout * 2, oms_handle.get_event_stream_fused()).await {
-                    break;
-                }
-            }
+            let _ = oms_handle
+                .set_base_node_public_key(base_node_public_key.clone())
+                .await
+                .map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Problem with Output Manager Service setting the base node public key: {}", e
+                    );
+                    e
+                });
 
             loop {
                 let _ = oms_handle
-                    .clone()
-                    .validate_utxos(UtxoValidationRetry::UntilSuccess)
+                    .validate_txos(TxoValidationType::Unspent, TxoValidationRetry::UntilSuccess)
                     .await
                     .map_err(|e| {
                         error!(
@@ -655,7 +648,47 @@ async fn start_transaction_protocols_and_utxo_validation(
                         );
                         e
                     });
+
                 trace!(target: LOG_TARGET, "Attempting UTXO validation for Unspent Outputs.",);
+                if monitor_validation_protocol(base_node_query_timeout * 2, oms_handle.get_event_stream_fused()).await {
+                    break;
+                }
+            }
+
+            loop {
+                let _ = oms_handle
+                    .validate_txos(TxoValidationType::Invalid, TxoValidationRetry::UntilSuccess)
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Problem starting Invalid TXO validation protocols in the Output Manager Service: {}", e
+                        );
+                        e
+                    });
+
+                trace!(
+                    target: LOG_TARGET,
+                    "Attempting Invalid TXO validation for Unspent Outputs.",
+                );
+                if monitor_validation_protocol(base_node_query_timeout * 2, oms_handle.get_event_stream_fused()).await {
+                    break;
+                }
+            }
+
+            loop {
+                let _ = oms_handle
+                    .validate_txos(TxoValidationType::Spent, TxoValidationRetry::UntilSuccess)
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Problem starting STXO validation protocols in the Output Manager Service: {}", e
+                        );
+                        e
+                    });
+
+                trace!(target: LOG_TARGET, "Attempting STXO validation for Unspent Outputs.",);
                 if monitor_validation_protocol(base_node_query_timeout * 2, oms_handle.get_event_stream_fused()).await {
                     break;
                 }
@@ -689,35 +722,35 @@ async fn monitor_validation_protocol(
             event = event_stream.select_next_some() => {
                 match event.unwrap() {
                     // Restart the protocol if aborted (due to 'BaseNodeNotSynced')
-                    OutputManagerEvent::UtxoValidationAborted(s) => {
+                    OutputManagerEvent::TxoValidationAborted(s) => {
                         trace!(
                             target: LOG_TARGET,
-                            "UTXO validation event 'UtxoValidationAborted' ({}), restarting.", s,
+                            "UTXO validation event 'TxoValidationAborted' ({}), restarting.", s,
                         );
                         break;
                     },
                     // Restart the protocol if failure
-                    OutputManagerEvent::UtxoValidationFailure(s) => {
+                    OutputManagerEvent::TxoValidationFailure(s) => {
                         trace!(
                             target: LOG_TARGET,
-                            "UTXO validation event 'UtxoValidationFailure' ({}), restarting.", s,
+                            "UTXO validation event 'TxoValidationFailure' ({}), restarting.", s,
                         );
                         break;
                     },
                     // Exit upon success
-                    OutputManagerEvent::UtxoValidationSuccess(s) => {
+                    OutputManagerEvent::TxoValidationSuccess(s) => {
                         trace!(
                             target: LOG_TARGET,
-                            "UTXO validation event 'UtxoValidationSuccess' ({}), success.", s,
+                            "UTXO validation event 'TxoValidationSuccess' ({}), success.", s,
                         );
                         success = true;
                         break;
                     },
                     // Wait for the next event if timed out (several can be attempted)
-                    OutputManagerEvent::UtxoValidationTimedOut(s) => {
+                    OutputManagerEvent::TxoValidationTimedOut(s) => {
                         trace!(
                             target: LOG_TARGET,
-                            "UTXO validation event 'UtxoValidationTimedOut' ({}), waiting.", s,
+                            "UTXO validation event 'TxoValidationTimedOut' ({}), waiting.", s,
                         );
                         continue;
                     }

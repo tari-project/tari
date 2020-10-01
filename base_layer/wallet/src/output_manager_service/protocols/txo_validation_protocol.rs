@@ -40,7 +40,7 @@ use tari_core::{
             base_node_service_response::Response as BaseNodeResponseProto,
         },
     },
-    transactions::transaction::TransactionOutput,
+    transactions::{transaction::TransactionOutput, types::Commitment},
 };
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tari_p2p::tari_message::TariMessageType;
@@ -48,12 +48,12 @@ use tokio::{sync::broadcast, time::delay_for};
 
 const LOG_TARGET: &str = "wallet::output_manager_service::protocols::utxo_validation_protocol";
 
-pub struct UtxoValidationProtocol<TBackend>
+pub struct TxoValidationProtocol<TBackend>
 where TBackend: OutputManagerBackend + Clone + 'static
 {
     id: u64,
-    validation_type: UtxoValidationType,
-    retry_strategy: UtxoValidationRetry,
+    validation_type: TxoValidationType,
+    retry_strategy: TxoValidationRetry,
     resources: OutputManagerResources<TBackend>,
     base_node_public_key: CommsPublicKey,
     timeout: Duration,
@@ -62,13 +62,13 @@ where TBackend: OutputManagerBackend + Clone + 'static
 }
 
 /// This protocol defines the process of submitting our current UTXO set to the Base Node to validate it.
-impl<TBackend> UtxoValidationProtocol<TBackend>
+impl<TBackend> TxoValidationProtocol<TBackend>
 where TBackend: OutputManagerBackend + Clone + 'static
 {
     pub fn new(
         id: u64,
-        validation_type: UtxoValidationType,
-        retry_strategy: UtxoValidationRetry,
+        validation_type: TxoValidationType,
+        retry_strategy: TxoValidationRetry,
         resources: OutputManagerResources<TBackend>,
         base_node_public_key: CommsPublicKey,
         timeout: Duration,
@@ -102,11 +102,11 @@ where TBackend: OutputManagerBackend + Clone + 'static
 
         debug!(
             target: LOG_TARGET,
-            "Starting UTXO validation protocol (Id: {}) for {}", self.id, self.validation_type,
+            "Starting TXO validation protocol (Id: {}) for {}", self.id, self.validation_type,
         );
 
         let outputs_to_query: Vec<Vec<u8>> = match self.validation_type {
-            UtxoValidationType::Unspent => self
+            TxoValidationType::Unspent => self
                 .resources
                 .db
                 .get_unspent_outputs()
@@ -117,7 +117,18 @@ where TBackend: OutputManagerBackend + Clone + 'static
                 .iter()
                 .map(|uo| uo.hash.clone())
                 .collect(),
-            UtxoValidationType::Invalid => self
+            TxoValidationType::Spent => self
+                .resources
+                .db
+                .get_spent_outputs()
+                .await
+                .map_err(|e| {
+                    OutputManagerProtocolError::new(self.id, OutputManagerError::OutputManagerStorageError(e))
+                })?
+                .iter()
+                .map(|uo| uo.hash.clone())
+                .collect(),
+            TxoValidationType::Invalid => self
                 .resources
                 .db
                 .get_invalid_outputs()
@@ -133,12 +144,12 @@ where TBackend: OutputManagerBackend + Clone + 'static
         if outputs_to_query.is_empty() {
             debug!(
                 target: LOG_TARGET,
-                "UTXO validation protocol (Id: {}) has no outputs to validate", self.id,
+                "TXO validation protocol (Id: {}) has no outputs to validate", self.id,
             );
             let _ = self
                 .resources
                 .event_publisher
-                .send(OutputManagerEvent::UtxoValidationSuccess(self.id))
+                .send(OutputManagerEvent::TxoValidationSuccess(self.id))
                 .map_err(|e| {
                     trace!(
                         target: LOG_TARGET,
@@ -151,8 +162,8 @@ where TBackend: OutputManagerBackend + Clone + 'static
         }
 
         let total_retries_str = match self.retry_strategy {
-            UtxoValidationRetry::Limited(n) => format!("{}", n),
-            UtxoValidationRetry::UntilSuccess => "∞".to_string(),
+            TxoValidationRetry::Limited(n) => format!("{}", n),
+            TxoValidationRetry::UntilSuccess => "∞".to_string(),
         };
 
         let mut retries = 0;
@@ -171,7 +182,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
                                     let _ = self
                                         .resources
                                         .event_publisher
-                                        .send(OutputManagerEvent::UtxoValidationSuccess(self.id))
+                                        .send(OutputManagerEvent::TxoValidationSuccess(self.id))
                                         .map_err(|e| {
                                            trace!(
                                                 target: LOG_TARGET,
@@ -195,7 +206,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
 
             debug!(
                 target: LOG_TARGET,
-                "UTXO Validation protocol (Id: {}) attempt {} out of {} timed out.",
+                "TXO Validation protocol (Id: {}) attempt {} out of {} timed out.",
                 self.id,
                 retries + 1,
                 total_retries_str
@@ -204,7 +215,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
             let _ = self
                 .resources
                 .event_publisher
-                .send(OutputManagerEvent::UtxoValidationTimedOut(self.id))
+                .send(OutputManagerEvent::TxoValidationTimedOut(self.id))
                 .map_err(|e| {
                     trace!(
                         target: LOG_TARGET,
@@ -216,12 +227,12 @@ where TBackend: OutputManagerBackend + Clone + 'static
 
             retries += 1;
             match self.retry_strategy {
-                UtxoValidationRetry::Limited(n) => {
+                TxoValidationRetry::Limited(n) => {
                     if retries >= n {
                         break;
                     }
                 },
-                UtxoValidationRetry::UntilSuccess => (),
+                TxoValidationRetry::UntilSuccess => (),
             }
 
             self.pending_queries.clear();
@@ -229,7 +240,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
 
         info!(
             target: LOG_TARGET,
-            "Maximum attempts exceeded for UTXO Validation Protocol (Id: {})", self.id
+            "Maximum attempts exceeded for TXO Validation Protocol (Id: {})", self.id
         );
         Err(OutputManagerProtocolError::new(
             self.id,
@@ -278,14 +289,14 @@ where TBackend: OutputManagerBackend + Clone + 'static
                 match send_message_response.resolve().await {
                     Err(e) => trace!(
                         target: LOG_TARGET,
-                        "Failed to send Output Manager UTXO query ({}) to Base Node: {}",
+                        "Failed to send Output Manager TXO query ({}) to Base Node: {}",
                         request_key,
                         e
                     ),
                     Ok(send_states) => {
                         trace!(
                             target: LOG_TARGET,
-                            "Output Manager UTXO query ({}) queued for sending with Message {}",
+                            "Output Manager TXO query ({}) queued for sending with Message {}",
                             request_key,
                             send_states[0].tag,
                         );
@@ -293,14 +304,14 @@ where TBackend: OutputManagerBackend + Clone + 'static
                         if send_states.wait_single().await {
                             trace!(
                                 target: LOG_TARGET,
-                                "Output Manager UTXO query ({}) successfully sent to Base Node with Message {}",
+                                "Output Manager TXO query ({}) successfully sent to Base Node with Message {}",
                                 request_key,
                                 message_tag,
                             )
                         } else {
                             trace!(
                                 target: LOG_TARGET,
-                                "Failed to send Output Manager UTXO query ({}) to Base Node with Message {}",
+                                "Failed to send Output Manager TXO query ({}) to Base Node with Message {}",
                                 request_key,
                                 message_tag,
                             );
@@ -333,12 +344,12 @@ where TBackend: OutputManagerBackend + Clone + 'static
         if !response.is_synced {
             warn!(
                 target: LOG_TARGET,
-                "Assigned Base Node is not synced to chain tip, aborted UTXO Validation protocol (id: {})", self.id
+                "Assigned Base Node is not synced to chain tip, aborted TXO Validation protocol (id: {})", self.id
             );
             let _ = self
                 .resources
                 .event_publisher
-                .send(OutputManagerEvent::UtxoValidationAborted(self.id))
+                .send(OutputManagerEvent::TxoValidationAborted(self.id))
                 .map_err(|e| {
                     trace!(
                         target: LOG_TARGET,
@@ -357,7 +368,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
         } else {
             trace!(
                 target: LOG_TARGET,
-                "Base Node Response (Id: {}) not expected for UTXO Validation protocol {}",
+                "Base Node Response (Id: {}) not expected for TXO Validation protocol {}",
                 request_key,
                 self.id
             );
@@ -366,7 +377,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
 
         trace!(
             target: LOG_TARGET,
-            "Handling a Base Node Response for {} request (Id: {}) for UTXO Validation protocol {}",
+            "Handling a Base Node Response for {} request (Id: {}) for TXO Validation protocol {}",
             self.validation_type,
             request_key,
             self.id
@@ -384,7 +395,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
         };
 
         match self.validation_type {
-            UtxoValidationType::Unspent => {
+            TxoValidationType::Unspent => {
                 // Construct a HashMap of all the unspent outputs
                 let unspent_outputs: Vec<DbUnblindedOutput> =
                     self.resources.db.get_unspent_outputs().await.map_err(|e| {
@@ -463,7 +474,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
                     "Handled Base Node response (Id: {}) for Unspent Outputs Query {}", request_key, self.id
                 );
             },
-            UtxoValidationType::Invalid => {
+            TxoValidationType::Invalid => {
                 let invalid_outputs = self.resources.db.get_invalid_outputs().await.map_err(|e| {
                     OutputManagerProtocolError::new(self.id, OutputManagerError::OutputManagerStorageError(e))
                 })?;
@@ -500,28 +511,50 @@ where TBackend: OutputManagerBackend + Clone + 'static
                     "Handled Base Node response (Id: {}) for Invalidated Outputs Query {}", request_key, self.id
                 );
             },
+            TxoValidationType::Spent => {
+                // Go through the response outputs and check if they are currently Spent, if they are then they can be
+                // marked as Unspent because they exist in the UTXO set. Hooray!
+                for output in response.iter() {
+                    if let Some(Some(commitment)) = output.clone().commitment.map(|c| Commitment::try_from(c).ok()) {
+                        match self.resources.db.update_spent_output_to_unspent(commitment).await {
+                            Ok(uo) => info!(
+                                target: LOG_TARGET,
+                                "Spent output with value {} restored to Unspent output", uo.unblinded_output.value
+                            ),
+                            Err(e) => debug!(target: LOG_TARGET, "Unable to restore Spent output to Unspent: {}", e),
+                        }
+                    }
+                }
+
+                debug!(
+                    target: LOG_TARGET,
+                    "Handled Base Node response (Id: {}) for Spent Outputs Query {}", request_key, self.id
+                );
+            },
         }
         Ok(true)
     }
 }
 
-pub enum UtxoValidationType {
+pub enum TxoValidationType {
     Unspent,
+    Spent,
     Invalid,
 }
 
-impl fmt::Display for UtxoValidationType {
+impl fmt::Display for TxoValidationType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UtxoValidationType::Unspent => write!(f, "Unspent Outputs Validation"),
-            UtxoValidationType::Invalid => write!(f, "Invalid Outputs Validation"),
+            TxoValidationType::Unspent => write!(f, "Unspent Outputs Validation"),
+            TxoValidationType::Spent => write!(f, "Spent Outputs Validation"),
+            TxoValidationType::Invalid => write!(f, "Invalid Outputs Validation"),
         }
     }
 }
 
 // 0 means keep retying until success
 #[derive(Debug)]
-pub enum UtxoValidationRetry {
+pub enum TxoValidationRetry {
     Limited(u8),
     UntilSuccess,
 }
