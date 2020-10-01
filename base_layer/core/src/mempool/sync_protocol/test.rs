@@ -201,7 +201,7 @@ async fn responder() {
     protocol_notif
         .send(ProtocolNotification::new(
             MEMPOOL_SYNC_PROTOCOL.clone(),
-            ProtocolEvent::NewInboundSubstream(Box::new(node1.node_id().clone()), sock_in),
+            ProtocolEvent::NewInboundSubstream(node1.node_id().clone(), sock_in),
         ))
         .await
         .unwrap();
@@ -236,7 +236,7 @@ async fn initiator_messages() {
     protocol_notif
         .send(ProtocolNotification::new(
             MEMPOOL_SYNC_PROTOCOL.clone(),
-            ProtocolEvent::NewInboundSubstream(Box::new(node1.node_id().clone()), sock_in),
+            ProtocolEvent::NewInboundSubstream(node1.node_id().clone(), sock_in),
         ))
         .await
         .unwrap();

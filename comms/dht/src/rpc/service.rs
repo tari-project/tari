@@ -58,7 +58,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
     async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
         if !self.node_identity.has_peer_features(PeerFeatures::COMMUNICATION_NODE) {
             debug!(target: LOG_TARGET, "get_peers request is not valid for client nodes");
-            // TODO: #banheuristic
+            // TODO: #banheuristic - nodes should never call this method for client nodes
             return Err(RpcStatus::unsupported_method("get_peers is not supported"));
         }
 

@@ -55,7 +55,7 @@ pub use status::{RpcStatus, RpcStatusCode};
 
 mod not_found;
 
-pub mod test_utils;
+pub mod mock;
 
 pub const RPC_MAX_FRAME_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
 
@@ -80,10 +80,5 @@ pub mod __macro_reexports {
         Bytes,
     };
     pub use futures::{future, future::BoxFuture, AsyncRead, AsyncWrite};
-    pub use std::{
-        future::Future,
-        sync::Arc,
-        task::{Context, Poll},
-    };
     pub use tower::Service;
 }

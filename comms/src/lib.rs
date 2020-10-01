@@ -82,3 +82,5 @@ pub use bytes::{Bytes, BytesMut};
 
 #[cfg(feature = "rpc")]
 pub use async_trait::async_trait;
+#[cfg(feature = "rpc")]
+pub use tower_make::MakeService;

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{envelope::Network, storage::DbConnectionUrl};
+use crate::{envelope::Network, network_discovery::NetworkDiscoveryConfig, storage::DbConnectionUrl};
 use std::time::Duration;
 
 /// The default maximum number of messages that can be stored using the Store-and-forward middleware
@@ -97,6 +97,8 @@ pub struct DhtConfig {
     pub connectivity_random_pool_refresh: Duration,
     /// The active Network. Default: TestNet
     pub network: Network,
+    /// Network discovery config
+    pub network_discovery: NetworkDiscoveryConfig,
 }
 
 impl DhtConfig {
@@ -117,6 +119,11 @@ impl DhtConfig {
             database_url: DbConnectionUrl::Memory,
             saf_auto_request: false,
             auto_join: false,
+            network_discovery: NetworkDiscoveryConfig {
+                // If a test requires the peer probe they should explicitly enable it
+                enabled: false,
+                ..Default::default()
+            },
             ..Default::default()
         }
     }
@@ -146,6 +153,7 @@ impl Default for DhtConfig {
             auto_join: false,
             join_cooldown_interval: Duration::from_secs(10 * 60),
             network: Network::TestNet,
+            network_discovery: Default::default(),
         }
     }
 }

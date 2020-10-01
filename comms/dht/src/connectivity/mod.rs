@@ -23,8 +23,8 @@
 #[cfg(test)]
 mod test;
 
-use crate::{DhtActorError, DhtConfig, DhtRequester};
-use futures::StreamExt;
+use crate::{event::DhtEvent, DhtActorError, DhtConfig, DhtRequester};
+use futures::{stream::Fuse, StreamExt};
 use log::*;
 use std::{sync::Arc, time::Instant};
 use tari_comms::{
@@ -36,7 +36,7 @@ use tari_comms::{
 };
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
-use tokio::{task, task::JoinHandle, time};
+use tokio::{sync::broadcast, task, task::JoinHandle, time};
 
 const LOG_TARGET: &str = "comms::dht::connectivity";
 
@@ -72,8 +72,9 @@ pub struct DhtConnectivity {
     random_pool: Vec<NodeId>,
     /// Used to track when the random peer pool was last refreshed
     random_pool_last_refresh: Option<Instant>,
-    ///
     stats: Stats,
+    dht_events: Fuse<broadcast::Receiver<Arc<DhtEvent>>>,
+
     shutdown_signal: Option<ShutdownSignal>,
 }
 
@@ -84,6 +85,7 @@ impl DhtConnectivity {
         node_identity: Arc<NodeIdentity>,
         connectivity: ConnectivityRequester,
         dht_requester: DhtRequester,
+        dht_events: broadcast::Receiver<Arc<DhtEvent>>,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -97,6 +99,7 @@ impl DhtConnectivity {
             dht_requester,
             random_pool_last_refresh: None,
             stats: Stats::new(),
+            dht_events: dht_events.fuse(),
             shutdown_signal: Some(shutdown_signal),
         }
     }
@@ -137,6 +140,14 @@ impl DhtConnectivity {
                     }
                },
 
+               event = self.dht_events.select_next_some() => {
+                   if let Ok(event) = event {
+                        if let Err(err) = self.handle_dht_event(&event).await {
+                            debug!(target: LOG_TARGET, "Error handling DHT event: {:?}", err);
+                        }
+                   }
+               },
+
                _ = ticker.next() => {
                     if let Err(err) = self.refresh_random_pool_if_required().await {
                         debug!(target: LOG_TARGET, "Error refreshing random peer pool: {:?}", err);
@@ -174,6 +185,24 @@ impl DhtConnectivity {
         );
 
         self.connectivity.add_managed_peers(self.neighbours.clone()).await?;
+        Ok(())
+    }
+
+    async fn handle_dht_event(&mut self, event: &DhtEvent) -> Result<(), DhtConnectivityError> {
+        match event {
+            DhtEvent::NetworkDiscoveryPeersAdded(info) => {
+                if info.has_new_neighbours() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Network discovery discovered {} more neighbouring peers. Reinitializing pools",
+                        info.num_new_peers
+                    );
+                    self.reinitialize_pools().await?;
+                }
+            },
+            _ => {},
+        }
+
         Ok(())
     }
 

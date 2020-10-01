@@ -29,6 +29,7 @@ use crate::{
     inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     logging_middleware::MessageLoggingLayer,
+    network_discovery::DhtNetworkDiscovery,
     outbound,
     outbound::DhtOutboundRequest,
     proto::envelope::DhtMessageType,
@@ -130,6 +131,7 @@ impl Dht {
             .await
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
+        dht.network_discovery_service(shutdown_signal.clone()).spawn();
         dht.connectivity_service(shutdown_signal.clone()).spawn();
         dht.store_and_forward_service(
             conn.clone(),
@@ -198,6 +200,19 @@ impl Dht {
             self.node_identity.clone(),
             self.connectivity.clone(),
             self.dht_requester(),
+            self.event_publisher.subscribe(),
+            shutdown_signal,
+        )
+    }
+
+    /// Create the network discovery service
+    fn network_discovery_service(&self, shutdown_signal: ShutdownSignal) -> DhtNetworkDiscovery {
+        DhtNetworkDiscovery::new(
+            self.config.clone(),
+            Arc::clone(&self.node_identity),
+            Arc::clone(&self.peer_manager),
+            self.connectivity.clone(),
+            self.event_publisher.clone(),
             shutdown_signal,
         )
     }

@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::RpcStatus;
-use crate::{peer_manager::PeerManagerError, PeerConnectionError};
+use crate::{connectivity::ConnectivityError, peer_manager::PeerManagerError, PeerConnectionError};
 use prost::DecodeError;
 use std::io;
 use thiserror::Error;
@@ -56,6 +56,8 @@ pub enum RpcError {
     PeerConnectionError(#[from] PeerConnectionError),
     #[error("Peer manager error: {0}")]
     PeerManagerError(#[from] PeerManagerError),
+    #[error("Connectivity error: {0}")]
+    ConnectivityError(#[from] ConnectivityError),
 }
 
 impl RpcError {

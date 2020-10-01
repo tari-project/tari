@@ -20,23 +20,40 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(test)]
-mod mock;
-#[cfg(test)]
-pub(crate) use mock::DhtRpcServiceMock;
-#[cfg(test)]
-mod test;
+use super::state_machine::StateEvent;
+use log::*;
+use std::time::Duration;
+use tokio::time;
 
-mod service;
-pub use service::DhtRpcServiceImpl;
+const LOG_TARGET: &str = "comms::dht::network_discovery";
 
-use crate::proto::rpc::{GetPeersRequest, GetPeersResponse};
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
+#[derive(Debug)]
+pub struct Waiting {
+    duration: Duration,
+}
 
-#[tari_rpc(protocol_name = b"t/dht/1", server_struct = DhtService, client_struct = DhtClient)]
-pub trait DhtRpcService: Send + Sync + 'static {
-    /// Fetches and returns nodes (as in PeerFeatures::COMMUNICATION_NODE)  as per `GetPeersRequest`
-    #[rpc(method = 1)]
-    async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus>;
+impl Waiting {
+    pub fn new(duration: Duration) -> Self {
+        Self { duration }
+    }
+
+    pub fn duration(&self) -> Duration {
+        self.duration
+    }
+
+    pub async fn next_event(&mut self) -> StateEvent {
+        debug!(
+            target: LOG_TARGET,
+            "Network discovery is IDLING for {:.0?}", self.duration
+        );
+        time::delay_for(self.duration).await;
+        debug!(target: LOG_TARGET, "Network discovery resuming");
+        StateEvent::Ready
+    }
+}
+
+impl From<Duration> for Waiting {
+    fn from(duration: Duration) -> Self {
+        Self::new(duration)
+    }
 }

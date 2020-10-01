@@ -155,7 +155,7 @@ impl Display for TxStorageResponse {
             TxStorageResponse::ReorgPool => "Reorg pool",
             TxStorageResponse::NotStored => "Not stored",
         };
-        fmt.write_str(&storage.to_string())
+        fmt.write_str(&storage)
     }
 }
 

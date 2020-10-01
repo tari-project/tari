@@ -308,7 +308,7 @@ impl MessagingProtocol {
                     node_id.short_str()
                 );
 
-                self.spawn_inbound_handler(*node_id, substream);
+                self.spawn_inbound_handler(node_id, substream);
             },
         }
     }

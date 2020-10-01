@@ -146,6 +146,9 @@ pub use dht::{Dht, DhtInitializationError};
 mod discovery;
 pub use discovery::DhtDiscoveryRequester;
 
+mod network_discovery;
+pub use network_discovery::NetworkDiscoveryConfig;
+
 mod storage;
 pub use storage::DbConnectionUrl;
 
@@ -155,16 +158,13 @@ pub use dedup::DedupLayer;
 mod logging_middleware;
 mod proto;
 mod rpc;
-mod tower_filter;
-mod utils;
-
 mod schema;
-
-pub mod event;
+mod tower_filter;
 
 pub mod broadcast_strategy;
 pub mod domain_message;
 pub mod envelope;
+pub mod event;
 pub mod inbound;
 pub mod outbound;
 pub mod store_forward;

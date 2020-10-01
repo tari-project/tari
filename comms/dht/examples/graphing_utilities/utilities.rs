@@ -111,7 +111,7 @@ pub async fn network_graph_snapshot(
                 .as_ref()
                 .comms
                 .connectivity()
-                .select_connections(ConnectivitySelection::ClosestTo(Box::new(node_id.clone()), n, vec![]))
+                .select_connections(ConnectivitySelection::closest_to(node_id.clone(), n, vec![]))
                 .await
                 .expect("Can't get connections");
 

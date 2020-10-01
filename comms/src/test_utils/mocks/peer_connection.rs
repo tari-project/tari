@@ -59,8 +59,8 @@ pub fn create_dummy_peer_connection(node_id: NodeId) -> (PeerConnection, mpsc::R
 
 pub async fn create_peer_connection_mock_pair(
     buf_size: usize,
-    peer_in: Peer,
-    peer_out: Peer,
+    peer1: Peer,
+    peer2: Peer,
 ) -> (
     PeerConnection,
     PeerConnectionMockState,
@@ -85,8 +85,8 @@ pub async fn create_peer_connection_mock_pair(
         PeerConnection::new(
             1,
             tx1,
-            peer_in.node_id,
-            peer_in.features,
+            peer2.node_id,
+            peer2.features,
             listen_addr.clone(),
             ConnectionDirection::Inbound,
             mock_state_in.substream_counter(),
@@ -95,8 +95,8 @@ pub async fn create_peer_connection_mock_pair(
         PeerConnection::new(
             2,
             tx2,
-            peer_out.node_id,
-            peer_out.features,
+            peer1.node_id,
+            peer1.features,
             listen_addr,
             ConnectionDirection::Outbound,
             mock_state_out.substream_counter(),

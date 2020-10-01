@@ -26,7 +26,7 @@ use crate::{
         rpc::{
             body::{Body, ClientStreaming},
             client::RpcClient,
-            context::RpcCommsContext,
+            context::RpcCommsBackend,
             message::RpcMethod,
             server::NamedProtocolService,
             Request,
@@ -182,11 +182,11 @@ impl From<RpcClient> for MockRpcClient {
     }
 }
 
-pub(super) fn create_mocked_rpc_context() -> (RpcCommsContext, ConnectivityManagerMockState) {
+pub(super) fn create_mocked_rpc_context() -> (RpcCommsBackend, ConnectivityManagerMockState) {
     let (connectivity, mock) = create_connectivity_mock();
     let mock_state = mock.get_shared_state();
     mock.spawn();
     let peer_manager = build_peer_manager();
 
-    (RpcCommsContext::new(peer_manager, connectivity), mock_state)
+    (RpcCommsBackend::new(peer_manager, connectivity), mock_state)
 }
