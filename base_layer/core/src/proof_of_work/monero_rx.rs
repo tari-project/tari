@@ -205,7 +205,8 @@ pub fn monero_difficulty(header: &BlockHeader) -> Result<Difficulty, MergeMineEr
     let input = &create_input_blob_from_parts(&monero.header, &tx_hashes)?;
     debug!(target: LOG_TARGET, "RandomX input: {}", input);
     let input = from_hex(input)?;
-    let key_bytes = from_hex(&key)?;
+    // Todo remove this eventually when we reset and we dont have quotes in the key anymore.
+    let key_bytes = from_hex(&key.replace("\"", ""))?;
     get_random_x_difficulty(&input, &key_bytes).map(|r| r.0)
 }
 
@@ -848,5 +849,12 @@ mod test {
             "f68fbc8cc85bde856cd1323e9f8e6f024483038d728835de2f8c014ff6260000"
         );
         assert_eq!(difficulty.0, 430603.into());
+    }
+
+    #[test]
+    fn test_remove_quotes() {
+        let mut key = "\"2aca6501719a5c7ab7d4acbc7cc5d277b57ad8c27c6830788c2d5a596308e5b1\"";
+        let key_bytes = from_hex(&key.replace("\"", ""));
+        assert!(key_bytes.is_ok());
     }
 }
