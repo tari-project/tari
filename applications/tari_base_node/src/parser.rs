@@ -1054,7 +1054,11 @@ impl Parser {
                             }
 
                             if let Some(dt) = peer.banned_until() {
-                                s.push(format!("BANNED until {}", format_naive_datetime(dt)));
+                                s.push(format!(
+                                    "BANNED until {}, because {}",
+                                    format_naive_datetime(dt),
+                                    peer.banned_reason
+                                ));
                             }
                             s.join(", ")
                         };
