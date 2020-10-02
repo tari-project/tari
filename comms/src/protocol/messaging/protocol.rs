@@ -113,7 +113,7 @@ pub struct MessagingProtocol {
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     internal_messaging_event_tx: mpsc::Sender<MessagingEvent>,
     internal_messaging_event_rx: Fuse<mpsc::Receiver<MessagingEvent>>,
-    shutdown_signal: Option<ShutdownSignal>,
+    shutdown_signal: ShutdownSignal,
     complete_trigger: Shutdown,
 }
 
@@ -141,7 +141,7 @@ impl MessagingProtocol {
             internal_messaging_event_rx: internal_messaging_event_rx.fuse(),
             internal_messaging_event_tx,
             inbound_message_tx,
-            shutdown_signal: Some(shutdown_signal),
+            shutdown_signal,
             complete_trigger: Shutdown::new(),
         }
     }
@@ -151,10 +151,7 @@ impl MessagingProtocol {
     }
 
     pub async fn run(mut self) {
-        let mut shutdown_signal = self
-            .shutdown_signal
-            .take()
-            .expect("Messaging initialized without shutdown_signal");
+        let mut shutdown_signal = self.shutdown_signal.clone();
 
         loop {
             futures::select! {

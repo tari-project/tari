@@ -38,7 +38,7 @@ use std::sync::{
 };
 
 use tari_crypto::tari_utilities::acquire_write_lock;
-use tari_service_framework::{reply_channel, RequestContext};
+use tari_service_framework::{reply_channel, reply_channel::RequestContext};
 use tokio::sync::{broadcast, broadcast::SendError};
 
 const LOG_TARGET: &str = "p2p::liveness_mock";

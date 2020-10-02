@@ -23,14 +23,14 @@
 use futures::{pin_mut, Future, StreamExt};
 use std::time::Duration;
 use tari_service_framework::{
-    handles::ServiceHandlesFuture,
     reply_channel,
     reply_channel::SenderService,
     ServiceInitializationError,
     ServiceInitializer,
+    ServiceInitializerContext,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::{runtime, time::delay_for};
+use tokio::time::delay_for;
 use tower::Service;
 
 pub struct ServiceB {
@@ -115,13 +115,7 @@ impl ServiceBInitializer {
 impl ServiceInitializer for ServiceBInitializer {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         let (sender, receiver) = reply_channel::unbounded();
 
         let service_b_handle = ServiceBHandle::new(sender);
@@ -129,20 +123,18 @@ impl ServiceInitializer for ServiceBInitializer {
         println!("Service B is going to wait to register its handle");
 
         println!("Service B is registering its handle now");
-        handles_fut.register(service_b_handle);
+        context.register_handle(service_b_handle);
 
         let response_msg = self.response_msg.clone();
 
-        executor.spawn(async move {
-            println!("Service B initialized waiting on Handles Future to complete");
-            let _handles = handles_fut.await;
+        println!("Service B initialized waiting on Handles Future to complete");
+        context.spawn_when_ready(move |handles| async move {
             println!("Service B got the handles");
-
-            let service = ServiceB::new(response_msg, receiver, shutdown);
-
+            let service = ServiceB::new(response_msg, receiver, handles.get_shutdown_signal());
             service.run().await;
             println!("Service B has shutdown and initializer spawned task is now ending");
         });
+
         async {
             delay_for(Duration::from_secs(10)).await;
             Ok(())

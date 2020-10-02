@@ -22,27 +22,36 @@
 
 use futures::Sink;
 use std::{error::Error, sync::Arc, time::Duration};
-use tari_comms::{peer_manager::NodeIdentity, CommsNode};
+use tari_comms::{peer_manager::NodeIdentity, protocol::messaging::MessagingEventSender, CommsNode};
 use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{InboundDomainConnector, PeerMessage},
     initialization::initialize_local_test_comms,
 };
+use tari_shutdown::ShutdownSignal;
 
 pub async fn setup_comms_services<TSink>(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
     publisher: InboundDomainConnector<TSink>,
     data_path: &str,
-) -> (CommsNode, Dht)
+    shutdown_signal: ShutdownSignal,
+) -> (CommsNode, Dht, MessagingEventSender)
 where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
     let peers = peers.into_iter().map(|ni| ni.to_peer()).collect();
-    let (comms, dht) = initialize_local_test_comms(node_identity, publisher, data_path, Duration::from_secs(1), peers)
-        .await
-        .unwrap();
+    let (comms, dht, messaging_events) = initialize_local_test_comms(
+        node_identity,
+        publisher,
+        data_path,
+        Duration::from_secs(1),
+        peers,
+        shutdown_signal,
+    )
+    .await
+    .unwrap();
 
-    (comms, dht)
+    (comms, dht, messaging_events)
 }

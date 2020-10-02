@@ -41,7 +41,7 @@ use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
 use tari_comms::peer_manager::NodeIdentity;
-use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_comms_dht::Dht;
 use tari_core::{
     base_node::proto::base_node as BaseNodeProto,
     consensus::{ConsensusConstantsBuilder, Network},
@@ -55,13 +55,12 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
-    handles::ServiceHandlesFuture,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
+    ServiceInitializerContext,
 };
-use tari_shutdown::ShutdownSignal;
-use tokio::{runtime, sync::broadcast};
+use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "wallet::transaction_service";
 const SUBSCRIPTION_LABEL: &str = "Transaction Service";
@@ -184,13 +183,7 @@ where T: TransactionBackend + Clone + 'static
 {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         let (sender, receiver) = reply_channel::unbounded();
         let transaction_stream = self.transaction_stream();
         let transaction_reply_stream = self.transaction_reply_stream();
@@ -204,7 +197,7 @@ where T: TransactionBackend + Clone + 'static
         let transaction_handle = TransactionServiceHandle::new(sender, publisher.clone());
 
         // Register handle before waiting for handles to be ready
-        handles_fut.register(transaction_handle);
+        context.register_handle(transaction_handle);
 
         let backend = self
             .backend
@@ -215,15 +208,9 @@ where T: TransactionBackend + Clone + 'static
         let factories = self.factories.clone();
         let config = self.config.clone();
         let constants = ConsensusConstantsBuilder::new(self.network).build();
-        executor.spawn(async move {
-            let handles = handles_fut.await;
-
-            let outbound_message_service = handles
-                .get_handle::<OutboundMessageRequester>()
-                .expect("OMS handle required for TransactionService");
-            let output_manager_service = handles
-                .get_handle::<OutputManagerHandle>()
-                .expect("Output Manager Service handle required for TransactionService");
+        context.spawn_when_ready(move |handles| async move {
+            let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
+            let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
 
             let service = TransactionService::new(
                 config,
@@ -244,7 +231,7 @@ where T: TransactionBackend + Clone + 'static
             )
             .start();
             futures::pin_mut!(service);
-            future::select(service, shutdown).await;
+            future::select(service, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "Transaction Service shutdown");
         });
 

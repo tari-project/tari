@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::memory_net::{
-    utilities::{get_short_name, MessagingEventRx, TestNode},
+    utilities::{get_short_name, NodeEventRx, TestNode},
     DrainBurst,
 };
 use lazy_static::lazy_static;
@@ -280,9 +280,7 @@ pub enum PythonRenderType {
 
 /// This function will drain the message event queue and then build a message propagation tree assuming the first sender
 /// is the starting node
-pub async fn track_join_message_drain_messaging_events(
-    messaging_rx: &mut MessagingEventRx,
-) -> StableGraph<NodeId, String> {
+pub async fn track_join_message_drain_messaging_events(messaging_rx: &mut NodeEventRx) -> StableGraph<NodeId, String> {
     let drain_fut = DrainBurst::new(messaging_rx);
 
     let messages = drain_fut.await;

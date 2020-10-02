@@ -44,7 +44,7 @@ use tari_comms_dht::{
     outbound::{DhtOutboundError, OutboundMessageRequester},
     DhtRequester,
 };
-use tari_service_framework::RequestContext;
+use tari_service_framework::reply_channel::RequestContext;
 use tari_shutdown::ShutdownSignal;
 use tokio::time;
 

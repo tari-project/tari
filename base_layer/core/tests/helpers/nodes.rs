@@ -26,6 +26,7 @@ use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use std::{error::Error, iter, path::Path, sync::Arc, time::Duration};
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
+    protocol::messaging::MessagingEventSender,
     transports::MemoryTransport,
     CommsNode,
 };
@@ -61,12 +62,10 @@ use tari_mmr::MmrCacheConfig;
 use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector, PeerMessage},
     initialization::initialize_local_test_comms,
-    services::{
-        comms_outbound::CommsOutboundServiceInitializer,
-        liveness::{LivenessConfig, LivenessHandle, LivenessInitializer},
-    },
+    services::liveness::{LivenessConfig, LivenessHandle, LivenessInitializer},
 };
-use tari_service_framework::StackBuilder;
+use tari_service_framework::{RegisterHandle, StackBuilder};
+use tari_shutdown::Shutdown;
 use tokio::runtime::Runtime;
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.
@@ -83,6 +82,14 @@ pub struct NodeInterfaces {
     pub liveness_handle: LivenessHandle,
     pub comms: CommsNode,
     pub mock_base_node_state_machine: MockBaseNodeStateMachine,
+    pub messaging_events: MessagingEventSender,
+    pub shutdown: Shutdown,
+}
+impl NodeInterfaces {
+    pub async fn shutdown(mut self) {
+        self.shutdown.trigger().unwrap();
+        self.comms.wait_until_shutdown().await;
+    }
 }
 
 /// The BaseNodeBuilder can be used to construct a test Base Node with all its relevant services and interfaces for
@@ -205,17 +212,7 @@ impl BaseNodeBuilder {
             mempool_validator,
         );
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
-        let (
-            outbound_nci,
-            local_nci,
-            outbound_mp_interface,
-            local_mp_interface,
-            outbound_message_service,
-            chain_metadata_handle,
-            liveness_handle,
-            comms,
-            mock_base_node_state_machine,
-        ) = setup_base_node_services(
+        let node_interfaces = setup_base_node_services(
             runtime,
             node_identity.clone(),
             self.peers.unwrap_or(Vec::new()),
@@ -229,23 +226,7 @@ impl BaseNodeBuilder {
             data_path,
         );
 
-        (
-            NodeInterfaces {
-                node_identity,
-                outbound_nci,
-                local_nci,
-                outbound_mp_interface,
-                outbound_message_service,
-                blockchain_db,
-                mempool,
-                local_mp_interface,
-                chain_metadata_handle,
-                liveness_handle,
-                comms,
-                mock_base_node_state_machine,
-            },
-            consensus_manager,
-        )
+        (node_interfaces, consensus_manager)
     }
 }
 
@@ -425,18 +406,25 @@ async fn setup_comms_services<TSink>(
     peers: Vec<Arc<NodeIdentity>>,
     publisher: InboundDomainConnector<TSink>,
     data_path: &str,
-) -> (CommsNode, Dht)
+) -> (CommsNode, Dht, MessagingEventSender, Shutdown)
 where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
     let peers = peers.into_iter().map(|p| p.to_peer()).collect();
-    let (comms, dht) =
-        initialize_local_test_comms(node_identity, publisher, data_path, Duration::from_secs(2 * 60), peers)
-            .await
-            .unwrap();
+    let shutdown = Shutdown::new();
+    let (comms, dht, messaging_events) = initialize_local_test_comms(
+        node_identity,
+        publisher,
+        data_path,
+        Duration::from_secs(2 * 60),
+        peers,
+        shutdown.to_signal(),
+    )
+    .await
+    .unwrap();
 
-    (comms, dht)
+    (comms, dht, messaging_events, shutdown)
 }
 
 // Helper function for starting the services of the Base node.
@@ -451,30 +439,20 @@ fn setup_base_node_services(
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
     data_path: &str,
-) -> (
-    OutboundNodeCommsInterface,
-    LocalNodeCommsInterface,
-    OutboundMempoolServiceInterface,
-    LocalMempoolService,
-    OutboundMessageRequester,
-    ChainMetadataHandle,
-    LivenessHandle,
-    CommsNode,
-    MockBaseNodeStateMachine,
-)
+) -> NodeInterfaces
 {
     let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100, 20);
     let subscription_factory = Arc::new(subscription_factory);
-    let (comms, dht) = runtime.block_on(setup_comms_services(node_identity, peers, publisher, data_path));
+    let (comms, dht, messaging_events, shutdown) =
+        runtime.block_on(setup_comms_services(node_identity.clone(), peers, publisher, data_path));
 
     let mock_state_machine = MockBaseNodeStateMachine::new();
 
-    let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
-        .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
+    let fut = StackBuilder::new(shutdown.to_signal())
+        .add_initializer(RegisterHandle::new(dht))
         .add_initializer(LivenessInitializer::new(
             liveness_service_config,
             Arc::clone(&subscription_factory),
-            dht.dht_requester(),
         ))
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory.clone(),
@@ -484,24 +462,38 @@ fn setup_base_node_services(
             base_node_service_config,
         ))
         .add_initializer(MempoolServiceInitializer::new(
-            subscription_factory,
-            mempool,
             mempool_service_config,
+            mempool.clone(),
+            subscription_factory,
         ))
         .add_initializer(mock_state_machine.get_initializer())
         .add_initializer(ChainMetadataServiceInitializer)
-        .finish();
+        .build();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");
-    (
-        handles.get_handle::<OutboundNodeCommsInterface>().unwrap(),
-        handles.get_handle::<LocalNodeCommsInterface>().unwrap(),
-        handles.get_handle::<OutboundMempoolServiceInterface>().unwrap(),
-        handles.get_handle::<LocalMempoolService>().unwrap(),
-        handles.get_handle::<OutboundMessageRequester>().unwrap(),
-        handles.get_handle::<ChainMetadataHandle>().unwrap(),
-        handles.get_handle::<LivenessHandle>().unwrap(),
+
+    let outbound_nci = handles.expect_handle::<OutboundNodeCommsInterface>();
+    let local_nci = handles.expect_handle::<LocalNodeCommsInterface>();
+    let outbound_mp_interface = handles.expect_handle::<OutboundMempoolServiceInterface>();
+    let local_mp_interface = handles.expect_handle::<LocalMempoolService>();
+    let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
+    let chain_metadata_handle = handles.expect_handle::<ChainMetadataHandle>();
+    let liveness_handle = handles.expect_handle::<LivenessHandle>();
+
+    NodeInterfaces {
+        node_identity,
+        outbound_nci,
+        local_nci,
+        outbound_mp_interface,
+        outbound_message_service,
+        blockchain_db,
+        mempool,
+        local_mp_interface,
+        chain_metadata_handle,
+        liveness_handle,
         comms,
-        mock_state_machine,
-    )
+        messaging_events,
+        mock_base_node_state_machine: mock_state_machine,
+        shutdown,
+    }
 }

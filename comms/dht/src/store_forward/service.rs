@@ -173,9 +173,9 @@ impl StoreAndForwardService {
         connectivity: ConnectivityRequester,
         outbound_requester: OutboundMessageRequester,
         request_rx: mpsc::Receiver<StoreAndForwardRequest>,
-        shutdown_signal: ShutdownSignal,
         saf_response_signal_rx: mpsc::Receiver<()>,
         event_publisher: DhtEventSender,
+        shutdown_signal: ShutdownSignal,
     ) -> Self
     {
         Self {
@@ -184,7 +184,7 @@ impl StoreAndForwardService {
             peer_manager,
             dht_requester,
             request_rx: request_rx.fuse(),
-            connection_events: connectivity.subscribe_event_stream().fuse(),
+            connection_events: connectivity.get_event_subscription().fuse(),
             outbound_requester,
             shutdown_signal: Some(shutdown_signal),
             num_received_saf_responses: Some(0),

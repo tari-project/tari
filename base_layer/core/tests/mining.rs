@@ -150,8 +150,5 @@ fn mining() {
             max_attempts = 10,
             interval = Duration::from_secs(1),
         );
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }

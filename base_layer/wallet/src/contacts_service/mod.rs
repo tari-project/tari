@@ -20,6 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+pub mod error;
+pub mod handle;
+pub mod service;
+pub mod storage;
+
 use crate::contacts_service::{
     handle::ContactsServiceHandle,
     service::ContactsService,
@@ -28,18 +33,11 @@ use crate::contacts_service::{
 use futures::{future, Future};
 use log::*;
 use tari_service_framework::{
-    handles::ServiceHandlesFuture,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
+    ServiceInitializerContext,
 };
-use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
-
-pub mod error;
-pub mod handle;
-pub mod service;
-pub mod storage;
 
 const LOG_TARGET: &str = "wallet::contacts_service::initializer";
 
@@ -62,30 +60,25 @@ where T: ContactsBackend + 'static
 {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         let (sender, receiver) = reply_channel::unbounded();
 
         let contacts_handle = ContactsServiceHandle::new(sender);
 
         // Register handle before waiting for handles to be ready
-        handles_fut.register(contacts_handle);
+        context.register_handle(contacts_handle);
 
         let backend = self
             .backend
             .take()
             .expect("Cannot start Contacts Service without setting a storage backend");
 
-        executor.spawn(async move {
-            let service = ContactsService::new(receiver, ContactsDatabase::new(backend)).start();
+        let shutdown_signal = context.get_shutdown_signal();
 
+        context.spawn_when_ready(move |_| async move {
+            let service = ContactsService::new(receiver, ContactsDatabase::new(backend)).start();
             futures::pin_mut!(service);
-            future::select(service, shutdown).await;
+            future::select(service, shutdown_signal).await;
             info!(target: LOG_TARGET, "Contacts service shutdown");
         });
         future::ready(Ok(()))

@@ -39,6 +39,7 @@ use tari_p2p::{
     domain_message::DomainMessage,
     initialization::initialize_local_test_comms,
 };
+use tari_shutdown::ShutdownSignal;
 
 pub fn get_next_memory_address() -> Multiaddr {
     let port = MemoryTransport::acquire_next_memsocket_port();
@@ -51,18 +52,20 @@ pub async fn setup_comms_services<TSink>(
     publisher: InboundDomainConnector<TSink>,
     database_path: String,
     discovery_request_timeout: Duration,
+    shutdown_signal: ShutdownSignal,
 ) -> (CommsNode, Dht)
 where
     TSink: Sink<Arc<PeerMessage>> + Clone + Unpin + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
     let peers = peers.into_iter().map(|ni| ni.to_peer()).collect();
-    let (comms, dht) = initialize_local_test_comms(
+    let (comms, dht, _) = initialize_local_test_comms(
         node_identity,
         publisher,
         &database_path,
         discovery_request_timeout,
         peers,
+        shutdown_signal,
     )
     .await
     .unwrap();

@@ -23,14 +23,13 @@
 use crate::services::ServiceBHandle;
 use futures::{future, pin_mut, Future, StreamExt};
 use tari_service_framework::{
-    handles::ServiceHandlesFuture,
     reply_channel,
     reply_channel::SenderService,
     ServiceInitializationError,
     ServiceInitializer,
+    ServiceInitializerContext,
 };
 use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
 use tower::Service;
 
 pub struct ServiceA {
@@ -122,31 +121,22 @@ impl ServiceAInitializer {
 impl ServiceInitializer for ServiceAInitializer {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         let (sender, receiver) = reply_channel::unbounded();
 
         let service_a_handle = ServiceAHandle::new(sender);
 
-        handles_fut.register(service_a_handle);
+        context.register_handle(service_a_handle);
 
         let response_msg = self.response_msg.clone();
 
-        executor.spawn(async move {
-            println!("Service A initialized waiting on Handles Future to complete");
-            let handles = handles_fut.await;
+        println!("Service A initialized waiting on Handles Future to complete");
+        context.spawn_when_ready(move |handles| async move {
             println!("Service A got the handles");
 
-            let service_b_handle = handles
-                .get_handle::<ServiceBHandle>()
-                .expect("Could not get service b handle");
+            let service_b_handle = handles.expect_handle::<ServiceBHandle>();
 
-            let service = ServiceA::new(response_msg, receiver, service_b_handle, shutdown);
+            let service = ServiceA::new(response_msg, receiver, service_b_handle, handles.get_shutdown_signal());
 
             service.run().await;
             println!("Service A has shutdown and initializer spawned task is now ending");

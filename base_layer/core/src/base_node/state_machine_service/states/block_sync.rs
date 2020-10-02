@@ -131,9 +131,11 @@ impl FromStr for BlockSyncStrategy {
         match s {
             "ViaBestChainMetadata" => Ok(Self::ViaBestChainMetadata(BestChainMetadataBlockSync)),
             "ViaRandomPeer" => Ok(Self::ViaRandomPeer(ForwardBlockSyncInfo)),
-            _ => Err("Unrecognized value for BlockSyncStrategy. Available values \
-                      are:ViaBestChainMetadata,ViaRandomPeer"
-                .to_string()),
+            _ => Err(format!(
+                "Unrecognized value `{}` for BlockSyncStrategy. Available values are: ViaBestChainMetadata, \
+                 ViaRandomPeer",
+                s
+            )),
         }
     }
 }
@@ -594,7 +596,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
         }
         shared.publish_event_info();
         match shared
-            .comms
+            .outbound_nci
             .request_blocks_from_peer(block_nums.to_vec(), Some(sync_peer.node_id.clone()))
             .await
         {

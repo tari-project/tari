@@ -27,6 +27,8 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
+// Enable 'impl Trait' type aliases
+#![feature(type_alias_impl_trait)]
 
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣶⣦⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣾⣿⡿⠋⠀⠀⠀⠀⠉⠛⠿⣿⣿⣶⣤⣀⠀⠀⠀⠀⠀⠀⢰⣿⣾⣾⣾⣾⣾⣾⣾⣾⣾⣿⠀⠀⠀⣾⣾⣾⡀⠀⠀⠀⠀⢰⣾⣾⣾⣾⣿⣶⣶⡀⠀⠀⠀⢸⣾⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -85,6 +87,8 @@
 #[macro_use]
 mod table;
 
+/// Base node bootstrap code
+mod bootstrap;
 /// Utilities and helpers for building the base node instance
 mod builder;
 /// The command line interface definition and configuration
@@ -95,12 +99,15 @@ mod grpc;
 mod miner;
 /// Parser module used to control user commands
 mod parser;
+/// Misc. long running base node tasks
+mod tasks;
+/// Utility functions
 mod utils;
 
 use log::*;
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
-use std::net::SocketAddr;
+use std::{net::SocketAddr, time::Duration};
 use structopt::StructOpt;
 use tari_app_utilities::{
     identity_management::setup_node_identity,
@@ -180,8 +187,10 @@ fn main_inner() -> Result<(), ExitCodes> {
         return Ok(());
     }
 
-    // Build, node, build!
+    // This is the main and only shutdown trigger for the system.
     let shutdown = Shutdown::new();
+
+    // Build, node, build!
     let ctx = rt
         .block_on(builder::configure_and_initialize_node(
             &node_config,
@@ -207,7 +216,7 @@ fn main_inner() -> Result<(), ExitCodes> {
 
         rt.spawn(run_grpc(grpc, node_config.grpc_address));
     }
-    let base_node_handle = rt.spawn(ctx.run(rt.handle().clone()));
+    let base_node_handle = rt.spawn(ctx.run());
 
     info!(
         target: LOG_TARGET,
@@ -220,6 +229,9 @@ fn main_inner() -> Result<(), ExitCodes> {
         Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
         Err(e) => error!(target: LOG_TARGET, "Node has crashed: {}", e),
     }
+
+    // Wait for all tasks to exit or a timeout, whichever comes first
+    rt.shutdown_timeout(Duration::from_secs(20));
 
     println!("Goodbye!");
     Ok(())

@@ -114,18 +114,15 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
-    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
-        service_shutdown,
         status_event_sender,
         state_change_event_publisher,
     );
@@ -195,9 +192,6 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         );
 
         check_final_state(&alice_db, &bob_db);
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -240,12 +234,10 @@ fn test_pruned_mode_sync_with_spent_utxos() {
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
-    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
@@ -256,7 +248,6 @@ fn test_pruned_mode_sync_with_spent_utxos() {
             MockValidator::new(true),
         ),
         shutdown.to_signal(),
-        service_shutdown,
         status_event_sender,
         state_change_event_publisher,
     );
@@ -361,9 +352,6 @@ fn test_pruned_mode_sync_with_spent_utxos() {
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
 
         check_final_state(&alice_db, &bob_db);
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -410,12 +398,10 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
-    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
@@ -426,7 +412,6 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
             MockValidator::new(true),
         ),
         shutdown.to_signal(),
-        service_shutdown,
         status_event_sender,
         state_change_event_publisher,
     );
@@ -508,9 +493,6 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
 
         check_final_state(&alice_db, &bob_db);
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -653,18 +635,15 @@ fn test_pruned_mode_sync_fail_final_validation() {
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _) = watch::channel(StatusInfo::new());
-    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(false)),
         shutdown.to_signal(),
-        service_shutdown,
         status_event_sender,
         state_change_event_publisher,
     );
@@ -716,18 +695,15 @@ fn test_pruned_mode_sync_fail_final_validation() {
         assert!(local_metadata.best_block.is_some());
         let (state_change_event_publisher, _) = broadcast::channel(10);
         let (status_event_sender, _) = watch::channel(StatusInfo::new());
-        let service_shutdown = Shutdown::new();
         let mut alice_state_machine = BaseNodeStateMachine::new(
             &alice_node.blockchain_db,
             &alice_node.local_nci,
             &alice_node.outbound_nci,
-            alice_node.comms.peer_manager(),
             alice_node.comms.connectivity(),
             alice_node.chain_metadata_handle.get_event_stream(),
             state_machine_config,
             SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
             shutdown.to_signal(),
-            service_shutdown,
             status_event_sender,
             state_change_event_publisher,
         );
@@ -773,8 +749,5 @@ fn test_pruned_mode_sync_fail_final_validation() {
         );
 
         check_final_state(&alice_db, &bob_db);
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }

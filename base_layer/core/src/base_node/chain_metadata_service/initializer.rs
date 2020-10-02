@@ -22,13 +22,12 @@
 
 use super::{service::ChainMetadataService, LOG_TARGET};
 use crate::base_node::{chain_metadata_service::handle::ChainMetadataHandle, comms_interface::LocalNodeCommsInterface};
-use futures::{future, future::select, pin_mut};
+use futures::{future, pin_mut};
 use log::*;
 use std::future::Future;
 use tari_p2p::services::liveness::LivenessHandle;
-use tari_service_framework::{handles::ServiceHandlesFuture, ServiceInitializationError, ServiceInitializer};
-use tari_shutdown::ShutdownSignal;
-use tokio::{runtime, sync::broadcast};
+use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::sync::broadcast;
 
 // Must be set to 1 to ensure outdated chain metadata is discarded.
 const BROADCAST_EVENT_BUFFER_SIZE: usize = 1;
@@ -38,31 +37,18 @@ pub struct ChainMetadataServiceInitializer;
 impl ServiceInitializer for ChainMetadataServiceInitializer {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         let (publisher, _) = broadcast::channel(BROADCAST_EVENT_BUFFER_SIZE);
         let handle = ChainMetadataHandle::new(publisher.clone());
-        handles_fut.register(handle);
+        context.register_handle(handle);
 
-        executor.spawn(async move {
-            let handles = handles_fut.await;
-
-            let liveness = handles
-                .get_handle::<LivenessHandle>()
-                .expect("Liveness service required to initialize ChainStateSyncService");
-
-            let base_node = handles
-                .get_handle::<LocalNodeCommsInterface>()
-                .expect("LocalNodeCommsInterface required to initialize ChainStateSyncService");
+        context.spawn_when_ready(|handles| async move {
+            let liveness = handles.expect_handle::<LivenessHandle>();
+            let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
 
             let service_run = ChainMetadataService::new(liveness, base_node, publisher).run();
             pin_mut!(service_run);
-            select(service_run, shutdown).await;
+            future::select(service_run, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "ChainMetadataService has shut down");
         });
 

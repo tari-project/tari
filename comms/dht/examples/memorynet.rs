@@ -76,13 +76,13 @@ async fn main() {
         NUM_WALLETS
     );
 
-    let (messaging_events_tx, mut messaging_events_rx) = mpsc::unbounded();
+    let (node_message_tx, mut messaging_events_rx) = mpsc::unbounded();
 
     let seed_node = vec![
         make_node(
             PeerFeatures::COMMUNICATION_NODE,
             vec![],
-            messaging_events_tx.clone(),
+            node_message_tx.clone(),
             NUM_NEIGHBOURING_NODES,
             NUM_RANDOM_NODES,
             PROPAGATION_FACTOR,
@@ -96,7 +96,7 @@ async fn main() {
             make_node(
                 PeerFeatures::COMMUNICATION_NODE,
                 vec![seed_node[0].node_identity().clone()],
-                messaging_events_tx.clone(),
+                node_message_tx.clone(),
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
                 PROPAGATION_FACTOR,
@@ -112,7 +112,7 @@ async fn main() {
             make_node(
                 PeerFeatures::COMMUNICATION_CLIENT,
                 vec![nodes[OsRng.gen_range(0, NUM_NODES - 1)].node_identity().clone()],
-                messaging_events_tx.clone(),
+                node_message_tx.clone(),
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
                 PROPAGATION_FACTOR,
@@ -219,7 +219,7 @@ async fn main() {
             random_wallet,
             &wallets,
             &nodes,
-            messaging_events_tx.clone(),
+            node_message_tx.clone(),
             &mut messaging_events_rx,
             NUM_NEIGHBOURING_NODES,
             NUM_RANDOM_NODES,

@@ -36,39 +36,28 @@ use crate::{
 };
 use futures::channel::mpsc;
 use std::fmt;
-use tari_shutdown::ShutdownSignal;
 use tower::Service;
 
 pub struct MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq> {
     event_tx: MessagingEventSender,
     pipeline: pipeline::Config<TInPipe, TOutPipe, TOutReq>,
-    shutdown_signal: ShutdownSignal,
 }
 
 impl<TInPipe, TOutPipe, TOutReq> MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq> {
-    pub fn new(
-        event_tx: MessagingEventSender,
-        pipeline: pipeline::Config<TInPipe, TOutPipe, TOutReq>,
-        shutdown_signal: ShutdownSignal,
-    ) -> Self
-    {
-        Self {
-            event_tx,
-            pipeline,
-            shutdown_signal,
-        }
+    pub fn new(event_tx: MessagingEventSender, pipeline: pipeline::Config<TInPipe, TOutPipe, TOutReq>) -> Self {
+        Self { event_tx, pipeline }
     }
 }
 
 impl<TInPipe, TOutPipe, TOutReq> ProtocolExtension for MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq>
 where
-    TOutPipe: Service<TOutReq, Response = ()> + Clone + Send + 'static,
-    TOutPipe::Error: fmt::Debug + Send,
-    TOutPipe::Future: Send + 'static,
-    TInPipe: Service<InboundMessage> + Clone + Send + 'static,
-    TInPipe::Error: fmt::Debug + Send,
-    TInPipe::Future: Send + 'static,
-    TOutReq: Send + 'static,
+    TOutPipe: Service<TOutReq, Response = ()> + Clone + Send + Sync + 'static,
+    TOutPipe::Error: fmt::Debug + Send + Sync,
+    TOutPipe::Future: Send + Sync + 'static,
+    TInPipe: Service<InboundMessage> + Clone + Send + Sync + 'static,
+    TInPipe::Error: fmt::Debug + Send + Sync,
+    TInPipe::Future: Send + Sync + 'static,
+    TOutReq: Send + Sync + 'static,
 {
     fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
         let (proto_tx, proto_rx) = mpsc::channel(consts::MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE);
@@ -84,7 +73,7 @@ where
             messaging_request_rx,
             self.event_tx,
             inbound_message_tx,
-            self.shutdown_signal.clone(),
+            context.shutdown_signal(),
         );
 
         // Spawn messaging protocol
@@ -97,7 +86,7 @@ where
             bounded_executor,
             inbound_message_rx,
             self.pipeline.inbound,
-            self.shutdown_signal,
+            context.shutdown_signal(),
         );
         task::spawn(inbound.run());
 

@@ -22,7 +22,7 @@
 
 use crate::identity_management::load_from_json;
 use log::*;
-use std::{fmt, fmt::Formatter, fs, net::SocketAddr, path::Path};
+use std::{fmt, fmt::Formatter, net::SocketAddr, path::Path};
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
     multiaddr::{Multiaddr, Protocol},
@@ -108,7 +108,7 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
             listener_address: add_to_port(listener_address, 1),
             tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
                 proxy_address,
-                authentication: tor_socks_auth.map(into_socks_authentication).unwrap_or_default(),
+                authentication: tor_socks_auth.map(convert_socks_authentication).unwrap_or_default(),
             }),
         },
         CommsTransport::TorHiddenService {
@@ -161,7 +161,7 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
         } => TransportType::Socks {
             socks_config: SocksConfig {
                 proxy_address,
-                authentication: into_socks_authentication(auth),
+                authentication: convert_socks_authentication(auth),
             },
             listener_address: add_to_port(listener_address, 1),
         },
@@ -174,66 +174,12 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
 ///
 /// ## Returns
 /// Socks authentication of type socks::Authentication
-pub fn into_socks_authentication(auth: SocksAuthentication) -> socks::Authentication {
+pub fn convert_socks_authentication(auth: SocksAuthentication) -> socks::Authentication {
     match auth {
         SocksAuthentication::None => socks::Authentication::None,
         SocksAuthentication::UsernamePassword(username, password) => {
             socks::Authentication::Password(username, password)
         },
-    }
-}
-
-/// Creates the storage location for the base node's wallet
-/// ## Parameters
-/// `wallet_path` - Reference to a file path
-///
-/// ## Returns
-/// A Result to determine if it was successful or not, string will indicate the reason on error
-pub fn create_wallet_folder<P: AsRef<Path>>(wallet_path: P) -> Result<(), String> {
-    let path = wallet_path.as_ref();
-    match fs::create_dir_all(path) {
-        Ok(_) => {
-            info!(
-                target: LOG_TARGET,
-                "Wallet directory has been created at {}",
-                path.display()
-            );
-            Ok(())
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            info!(
-                target: LOG_TARGET,
-                "Wallet directory already exists in {}",
-                path.display()
-            );
-            Ok(())
-        },
-        Err(e) => Err(format!("Could not create wallet directory: {}", e)),
-    }
-}
-
-/// Creates the directory to store the peer database
-/// ## Parameters
-/// `peer_db_path` - Reference to a file path
-///
-/// ## Returns
-/// A Result to determine if it was successful or not, string will indicate the reason on error
-pub fn create_peer_db_folder<P: AsRef<Path>>(peer_db_path: P) -> Result<(), String> {
-    let path = peer_db_path.as_ref();
-    match fs::create_dir_all(path) {
-        Ok(_) => {
-            info!(
-                target: LOG_TARGET,
-                "Peer database directory has been created in {}",
-                path.display()
-            );
-            Ok(())
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            info!(target: LOG_TARGET, "Peer database already exists in {}", path.display());
-            Ok(())
-        },
-        Err(e) => Err(format!("could not create peer db path: {}", e)),
     }
 }
 

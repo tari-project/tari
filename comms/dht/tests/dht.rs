@@ -29,7 +29,7 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures},
     pipeline,
     pipeline::SinkService,
-    protocol::messaging::MessagingEvent,
+    protocol::messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
     transports::MemoryTransport,
     types::CommsDatabase,
     wrap_in_envelope_body,
@@ -46,6 +46,7 @@ use tari_comms_dht::{
     Dht,
     DhtBuilder,
 };
+use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
@@ -57,13 +58,15 @@ use tari_test_utils::{
     random,
     unpack_enum,
 };
-use tokio::time;
+use tokio::{sync::broadcast, time};
 use tower::ServiceBuilder;
 
 struct TestNode {
     comms: CommsNode,
     dht: Dht,
-    ims_rx: mpsc::Receiver<DecryptedDhtMessage>,
+    inbound_messages: mpsc::Receiver<DecryptedDhtMessage>,
+    messaging_events: broadcast::Sender<Arc<MessagingEvent>>,
+    shutdown: Shutdown,
 }
 
 impl TestNode {
@@ -76,7 +79,12 @@ impl TestNode {
     }
 
     pub async fn next_inbound_message(&mut self, timeout: Duration) -> Option<DecryptedDhtMessage> {
-        time::timeout(timeout, self.ims_rx.next()).await.ok()?
+        time::timeout(timeout, self.inbound_messages.next()).await.ok()?
+    }
+
+    pub async fn shutdown(mut self) {
+        self.shutdown.trigger().unwrap();
+        self.comms.wait_until_shutdown().await;
     }
 }
 
@@ -105,16 +113,24 @@ async fn make_node(features: PeerFeatures, seed_peer: Option<Peer>) -> TestNode 
 }
 
 async fn make_node_with_node_identity(node_identity: Arc<NodeIdentity>, seed_peer: Option<Peer>) -> TestNode {
-    let (tx, ims_rx) = mpsc::channel(10);
-    let (comms, dht) = setup_comms_dht(
+    let (tx, inbound_messages) = mpsc::channel(10);
+    let shutdown = Shutdown::new();
+    let (comms, dht, messaging_events) = setup_comms_dht(
         node_identity,
         create_peer_storage(),
         tx,
         seed_peer.into_iter().collect(),
+        shutdown.to_signal(),
     )
     .await;
 
-    TestNode { comms, dht, ims_rx }
+    TestNode {
+        comms,
+        dht,
+        inbound_messages,
+        messaging_events,
+        shutdown,
+    }
 }
 
 async fn setup_comms_dht(
@@ -122,7 +138,8 @@ async fn setup_comms_dht(
     storage: CommsDatabase,
     inbound_tx: mpsc::Sender<DecryptedDhtMessage>,
     peers: Vec<Peer>,
-) -> (CommsNode, Dht)
+    shutdown_signal: ShutdownSignal,
+) -> (CommsNode, Dht, MessagingEventSender)
 {
     // Create inbound and outbound channels
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
@@ -131,7 +148,7 @@ async fn setup_comms_dht(
         .allow_test_addresses()
         // In this case the listener address and the public address are the same (/memory/...)
         .with_listener_address(node_identity.public_address())
-        .with_transport(MemoryTransport)
+        .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity)
         .with_peer_storage(storage)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(100)))
@@ -150,7 +167,7 @@ async fn setup_comms_dht(
     .with_database_url(DbConnectionUrl::MemoryShared(random::string(8)))
     .with_discovery_timeout(Duration::from_secs(60))
     .with_num_neighbouring_nodes(8)
-    .finish()
+    .build()
     .await
     .unwrap();
 
@@ -160,8 +177,10 @@ async fn setup_comms_dht(
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
 
+    let (event_tx, _) = broadcast::channel(100);
     let comms = comms
-        .with_messaging_pipeline(
+        .add_protocol_extension(MessagingProtocolExtension::new(
+            event_tx.clone(),
             pipeline::Builder::new()
                 .outbound_buffer_size(10)
                 .with_outbound_pipeline(outbound_rx, |sink| {
@@ -173,13 +192,13 @@ async fn setup_comms_dht(
                         .layer(dht.inbound_middleware_layer())
                         .service(SinkService::new(inbound_tx)),
                 )
-                .finish(),
-        )
-        .spawn()
+                .build(),
+        ))
+        .spawn_with_transport(MemoryTransport)
         .await
         .unwrap();
 
-    (comms, dht)
+    (comms, dht, event_tx)
 }
 
 #[tokio_macros::test]
@@ -234,9 +253,9 @@ async fn dht_join_propagation() {
         .unwrap();
     assert_eq!(node_C_peer.features, node_C.comms.node_identity().features());
 
-    node_A.comms.shutdown().await;
-    node_B.comms.shutdown().await;
-    node_C.comms.shutdown().await;
+    node_A.shutdown().await;
+    node_B.shutdown().await;
+    node_C.shutdown().await;
 }
 
 #[tokio_macros::test]
@@ -293,11 +312,6 @@ async fn dht_discover_propagation() {
     assert!(node_C_peer_manager.exists(node_B.node_identity().public_key()).await);
     assert!(node_D_peer_manager.exists(node_C.node_identity().public_key()).await);
     assert!(node_D_peer_manager.exists(node_A.node_identity().public_key()).await);
-
-    node_A.comms.shutdown().await;
-    node_B.comms.shutdown().await;
-    node_C.comms.shutdown().await;
-    node_D.comms.shutdown().await;
 }
 
 #[tokio_macros::test]
@@ -334,7 +348,7 @@ async fn dht_store_forward() {
     let secret_msg1 = b"NCZW VUSX PNYM INHZ XMQX SFWX WLKJ AHSH";
     let secret_msg2 = b"NMCO CCAK UQPM KCSM HKSE INJU SBLK";
 
-    let mut node_B_msg_events = node_B.comms.subscribe_messaging_events();
+    let mut node_B_msg_events = node_B.messaging_events.subscribe();
     node_A
         .dht
         .outbound_requester()
@@ -356,7 +370,7 @@ async fn dht_store_forward() {
 
     let mut node_C = make_node_with_node_identity(node_C_node_identity, Some(node_B.to_peer())).await;
     let mut node_C_dht_events = node_C.dht.subscribe_dht_events();
-    let mut node_C_msg_events = node_C.comms.subscribe_messaging_events();
+    let mut node_C_msg_events = node_C.messaging_events.subscribe();
     // Ask node B for messages
     node_C
         .dht
@@ -403,9 +417,9 @@ async fn dht_store_forward() {
     let event = collect_stream!(node_C_dht_events, take = 1, timeout = Duration::from_secs(20));
     unpack_enum!(DhtEvent::StoreAndForwardMessagesReceived = &**event.get(0).unwrap().as_ref().unwrap());
 
-    node_A.comms.shutdown().await;
-    node_B.comms.shutdown().await;
-    node_C.comms.shutdown().await;
+    node_A.shutdown().await;
+    node_B.shutdown().await;
+    node_C.shutdown().await;
 }
 
 #[tokio_macros::test]
@@ -443,10 +457,10 @@ async fn dht_propagate_dedup() {
     connect_nodes(&mut node_B, &mut node_C).await;
     connect_nodes(&mut node_C, &mut node_D).await;
 
-    let mut node_A_messaging = node_A.comms.subscribe_messaging_events();
-    let mut node_B_messaging = node_B.comms.subscribe_messaging_events();
-    let mut node_C_messaging = node_C.comms.subscribe_messaging_events();
-    let mut node_D_messaging = node_D.comms.subscribe_messaging_events();
+    let mut node_A_messaging = node_A.messaging_events.subscribe();
+    let mut node_B_messaging = node_B.messaging_events.subscribe();
+    let mut node_C_messaging = node_C.messaging_events.subscribe();
+    let mut node_D_messaging = node_D.messaging_events.subscribe();
 
     #[derive(Clone, PartialEq, ::prost::Message)]
     struct Person {
@@ -491,10 +505,10 @@ async fn dht_propagate_dedup() {
     let node_C_id = node_C.node_identity().node_id().clone();
     let node_D_id = node_D.node_identity().node_id().clone();
 
-    node_A.comms.shutdown().await;
-    node_B.comms.shutdown().await;
-    node_C.comms.shutdown().await;
-    node_D.comms.shutdown().await;
+    node_A.shutdown().await;
+    node_B.shutdown().await;
+    node_C.shutdown().await;
+    node_D.shutdown().await;
 
     // Check the message flow BEFORE deduping
     let received = filter_received(collect_stream!(node_A_messaging, timeout = Duration::from_secs(20)));

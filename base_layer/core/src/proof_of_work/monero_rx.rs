@@ -853,7 +853,7 @@ mod test {
 
     #[test]
     fn test_remove_quotes() {
-        let mut key = "\"2aca6501719a5c7ab7d4acbc7cc5d277b57ad8c27c6830788c2d5a596308e5b1\"";
+        let key = "\"2aca6501719a5c7ab7d4acbc7cc5d277b57ad8c27c6830788c2d5a596308e5b1\"";
         let key_bytes = from_hex(&key.replace("\"", ""));
         assert!(key_bytes.is_ok());
     }

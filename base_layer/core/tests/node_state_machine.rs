@@ -117,18 +117,15 @@ fn test_listening_lagging() {
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
-    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         BaseNodeStateMachineConfig::default(),
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
-        service_shutdown,
         status_event_sender,
         state_change_event_publisher,
     );
@@ -162,9 +159,6 @@ fn test_listening_lagging() {
             StateEvent::FallenBehind(Lagging(_, _)) => assert!(true),
             _ => assert!(false),
         }
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -176,22 +170,19 @@ fn test_event_channel() {
         BaseNodeBuilder::new(Network::Rincewind).start(&mut runtime, temp_dir.path().to_str().unwrap());
     // let shutdown = Shutdown::new();
     let db = create_mem_db(&consensus_manager);
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
     let mut mock = MockChainMetadata::new();
     let (state_change_event_publisher, mut state_change_event_subscriber) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
-    let service_shutdown = Shutdown::new();
     let state_machine = BaseNodeStateMachine::new(
         &db,
         &node.local_nci,
         &node.outbound_nci,
-        node.comms.peer_manager(),
         node.comms.connectivity(),
         mock.subscription(),
         BaseNodeStateMachineConfig::default(),
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
-        service_shutdown,
         status_event_sender,
         state_change_event_publisher,
     );
@@ -218,9 +209,7 @@ fn test_event_channel() {
             },
             _ => assert!(false),
         }
-        node.comms.shutdown().await;
     });
-    let _ = shutdown.trigger();
 }
 
 #[test]
@@ -263,19 +252,16 @@ fn test_block_sync() {
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, mut status_event_receiver) = watch::channel(StatusInfo::new());
-    let service_shutdown = Shutdown::new();
     let mut mock = MockChainMetadata::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
         mock.subscription(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
-        service_shutdown,
         status_event_sender,
         state_change_event_publisher,
     );
@@ -325,11 +311,7 @@ fn test_block_sync() {
         let _state_event = Listening { is_synced: true }.next_event(&mut alice_state_machine).await;
 
         let is_bootstrapped = status_event_receiver.recv().await.unwrap().bootstrapped;
-
         assert!(is_bootstrapped);
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -373,18 +355,15 @@ fn test_lagging_block_sync() {
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
-    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
-        service_shutdown,
         status_event_sender,
         state_change_event_publisher,
     );
@@ -421,9 +400,6 @@ fn test_lagging_block_sync() {
                 bob_node.blockchain_db.fetch_block(height).unwrap()
             );
         }
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -467,18 +443,15 @@ fn test_block_sync_recovery() {
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
-    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
-        service_shutdown,
         status_event_sender,
         state_change_event_publisher,
     );
@@ -514,10 +487,6 @@ fn test_block_sync_recovery() {
                 bob_db.fetch_block(height).unwrap().block()
             );
         }
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
-        carol_node.comms.shutdown().await;
     });
 }
 
@@ -561,18 +530,15 @@ fn test_forked_block_sync() {
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
-    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
-        service_shutdown,
         status_event_sender,
         state_change_event_publisher,
     );
@@ -620,9 +586,6 @@ fn test_forked_block_sync() {
                 bob_db.fetch_block(height).unwrap()
             );
         }
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -688,18 +651,15 @@ fn test_sync_peer_banning() {
     let shutdown = Shutdown::new();
     let (state_change_event_publisher, _) = broadcast::channel(10);
     let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
-    let service_shutdown = Shutdown::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
-        service_shutdown,
         status_event_sender,
         state_change_event_publisher,
     );
@@ -774,7 +734,7 @@ fn test_sync_peer_banning() {
         assert_eq!(alice_db.get_height().unwrap(), Some(4));
         assert_eq!(bob_db.get_height().unwrap(), Some(6));
 
-        let mut connectivity_events = alice_node.comms.connectivity().subscribe_event_stream();
+        let mut connectivity_events = alice_node.comms.connectivity().get_event_subscription();
         let network_tip = bob_db.get_chain_metadata().unwrap();
         let mut sync_peers = vec![SyncPeer {
             node_id: bob_node.node_identity.node_id().clone(),
@@ -791,8 +751,5 @@ fn test_sync_peer_banning() {
 
         let peer = alice_peer_manager.find_by_public_key(bob_public_key).await.unwrap();
         assert_eq!(peer.is_banned(), true);
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }

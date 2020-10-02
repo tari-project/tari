@@ -191,7 +191,7 @@ impl StressTestService {
             }
         }
 
-        self.comms_node.shutdown().await;
+        self.comms_node.wait_until_shutdown().await;
 
         Ok(())
     }

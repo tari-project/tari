@@ -36,15 +36,33 @@
 //! [PingPong]: ./messages/enum.PingPong.html
 
 mod config;
+pub use config::LivenessConfig;
+
 pub mod error;
+
 mod handle;
+pub use handle::{
+    LivenessEvent,
+    LivenessEventSender,
+    LivenessHandle,
+    LivenessRequest,
+    LivenessResponse,
+    PingPongEvent,
+};
+
 mod message;
 mod service;
+
 mod state;
+pub use state::Metadata;
+
+#[cfg(feature = "test-mocks")]
+pub mod mock;
 
 use self::{message::PingPongMessage, service::LivenessService, state::LivenessState};
+pub use crate::proto::liveness::MetadataKey;
 use crate::{
-    comms_connector::PeerMessage,
+    comms_connector::{PeerMessage, TopicSubscriptionFactory},
     domain_message::DomainMessage,
     services::utils::{map_decode, ok_or_skip_result},
     tari_message::TariMessageType,
@@ -52,27 +70,13 @@ use crate::{
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
-use tari_comms_dht::{outbound::OutboundMessageRequester, DhtRequester};
+use tari_comms_dht::Dht;
 use tari_service_framework::{
-    handles::ServiceHandlesFuture,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
+    ServiceInitializerContext,
 };
-use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
-
-#[cfg(feature = "test-mocks")]
-pub mod mock;
-
-// Public exports
-pub use self::{
-    config::LivenessConfig,
-    handle::{LivenessEvent, LivenessEventSender, LivenessHandle, LivenessRequest, LivenessResponse, PingPongEvent},
-    state::Metadata,
-};
-use crate::comms_connector::TopicSubscriptionFactory;
-pub use crate::proto::liveness::MetadataKey;
 use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "p2p::services::liveness";
@@ -81,7 +85,6 @@ const LOG_TARGET: &str = "p2p::services::liveness";
 pub struct LivenessInitializer {
     config: Option<LivenessConfig>,
     inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
-    dht_requester: Option<DhtRequester>,
 }
 
 impl LivenessInitializer {
@@ -89,13 +92,11 @@ impl LivenessInitializer {
     pub fn new(
         config: LivenessConfig,
         inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
-        dht_requester: DhtRequester,
     ) -> Self
     {
         Self {
             config: Some(config),
             inbound_message_subscription_factory,
-            dht_requester: Some(dht_requester),
         }
     }
 
@@ -111,18 +112,13 @@ impl LivenessInitializer {
 impl ServiceInitializer for LivenessInitializer {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         let (sender, receiver) = reply_channel::unbounded();
 
         let (publisher, _) = broadcast::channel(200);
 
-        let liveness_handle = LivenessHandle::new(sender, publisher.clone());
+        // Register handle before waiting for handles to be ready
+        context.register_handle(LivenessHandle::new(sender, publisher.clone()));
 
         // Saving a clone
         let config = self
@@ -130,37 +126,24 @@ impl ServiceInitializer for LivenessInitializer {
             .take()
             .expect("Liveness service initialized more than once.");
 
-        let dht_requester = self
-            .dht_requester
-            .take()
-            .expect("Liveness service initialized more than once.");
-
-        // Register handle before waiting for handles to be ready
-        handles_fut.register(liveness_handle);
-
         // Create a stream which receives PingPong messages from comms
         let ping_stream = self.ping_stream();
 
         // Spawn the Liveness service on the executor
-        executor.spawn(async move {
-            // Wait for all handles to become available
-            let handles = handles_fut.await;
-
-            let outbound_handle = handles
-                .get_handle::<OutboundMessageRequester>()
-                .expect("Liveness service requires CommsOutbound service handle");
-
-            let state = LivenessState::new();
+        context.spawn_when_ready(|handles| async move {
+            let dht = handles.expect_handle::<Dht>();
+            let dht_requester = dht.dht_requester();
+            let outbound_messages = dht.outbound_requester();
 
             let service = LivenessService::new(
                 config,
                 receiver,
                 ping_stream,
-                state,
+                LivenessState::new(),
                 dht_requester,
-                outbound_handle,
+                outbound_messages,
                 publisher,
-                shutdown,
+                handles.get_shutdown_signal(),
             );
             service.run().await;
             debug!(target: LOG_TARGET, "Liveness service has shut down");

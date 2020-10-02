@@ -106,8 +106,12 @@ impl ConnectivityRequester {
         Self { sender, event_tx }
     }
 
-    pub fn subscribe_event_stream(&self) -> ConnectivityEventRx {
+    pub fn get_event_subscription(&self) -> ConnectivityEventRx {
         self.event_tx.subscribe()
+    }
+
+    pub(crate) fn get_event_publisher(&self) -> ConnectivityEventTx {
+        self.event_tx.clone()
     }
 
     pub async fn dial_peer(&mut self, peer: NodeId) -> Result<PeerConnection, ConnectivityError> {
@@ -196,7 +200,7 @@ impl ConnectivityRequester {
     /// Waits for the node to get at least one connection.
     /// This is useful for testing and is not typically be needed in application code.
     pub async fn wait_for_connectivity(&mut self, timeout: Duration) -> Result<(), ConnectivityError> {
-        let mut connectivity_events = self.subscribe_event_stream();
+        let mut connectivity_events = self.get_event_subscription();
         let status = self.get_connectivity_status().await?;
         if status.is_online() {
             return Ok(());

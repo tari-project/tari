@@ -90,9 +90,9 @@ pub fn build_connection_manager(
         config.node_identity,
         peer_manager.into(),
         event_tx,
-        shutdown,
+        shutdown.into(),
     );
-    connection_manager.set_protocols(protocols);
+    connection_manager.add_protocols(protocols);
 
     runtime::current().spawn(connection_manager.run());
 

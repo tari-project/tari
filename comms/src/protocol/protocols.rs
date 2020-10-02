@@ -95,6 +95,11 @@ impl<TSubstream> Protocols<TSubstream> {
         self
     }
 
+    pub fn extend(&mut self, protocols: Self) -> &mut Self {
+        self.protocols.extend(protocols.protocols);
+        self
+    }
+
     pub fn get_supported_protocols(&self) -> Vec<ProtocolId> {
         let mut p = Vec::with_capacity(self.protocols.len() + 1);
         p.push(IDENTITY_PROTOCOL.clone());

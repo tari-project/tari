@@ -30,7 +30,7 @@ use tari_comms::{
     multiaddr::Multiaddr,
     pipeline,
     pipeline::SinkService,
-    protocol::{ProtocolNotification, Protocols},
+    protocol::{messaging::MessagingProtocolExtension, ProtocolNotification, Protocols},
     tor,
     tor::{HsFlags, TorIdentity},
     transports::{SocksConfig, TcpWithTorTransport},
@@ -43,6 +43,7 @@ use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
 };
+use tokio::sync::broadcast;
 
 pub async fn create(
     node_identity: Option<Arc<NodeIdentity>>,
@@ -95,7 +96,6 @@ pub async fn create(
 
     let builder = CommsBuilder::new()
         .allow_test_addresses()
-        .add_protocol_extensions(protocols.into())
         .with_node_identity(node_identity.clone())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_secs(0)))
         .with_peer_storage(peer_database)
@@ -104,23 +104,25 @@ pub async fn create(
 
     let (inbound_tx, inbound_rx) = mpsc::channel(100);
     let (outbound_tx, outbound_rx) = mpsc::channel(100);
+    let (event_tx, _) = broadcast::channel(1);
 
     let comms_node = if is_tcp {
         builder
             .with_listener_address(listener_addr)
-            .with_transport(TcpWithTorTransport::with_tor_socks_proxy(SocksConfig {
-                proxy_address: TOR_SOCKS_ADDR.parse().unwrap(),
-                authentication: Default::default(),
-            }))
             .build()?
-            .with_messaging_pipeline(
+            .add_protocol_extensions(protocols.into())
+            .add_protocol_extension(MessagingProtocolExtension::new(
+                event_tx,
                 pipeline::Builder::new()
                     .with_inbound_pipeline(SinkService::new(inbound_tx))
                     .max_concurrent_inbound_tasks(100)
                     .with_outbound_pipeline(outbound_rx, convert::identity)
-                    .finish(),
-            )
-            .spawn()
+                    .build(),
+            ))
+            .spawn_with_transport(TcpWithTorTransport::with_tor_socks_proxy(SocksConfig {
+                proxy_address: TOR_SOCKS_ADDR.parse().unwrap(),
+                authentication: Default::default(),
+            }))
             .await
             .unwrap()
     } else {
@@ -134,20 +136,22 @@ pub async fn create(
             hs_builder = hs_builder.with_tor_identity(tor_identity);
         }
 
-        let hs_ctl = hs_builder.finish().await?;
+        let mut hs_ctl = hs_builder.build().await?;
+        let transport = hs_ctl.initialize_transport().await?;
 
         builder
-            .configure_from_hidden_service(hs_ctl)
-            .await?
+            .with_listener_address(hs_ctl.proxied_address())
             .build()?
-            .with_messaging_pipeline(
+            .add_protocol_extensions(protocols.into())
+            .add_protocol_extension(MessagingProtocolExtension::new(
+                event_tx,
                 pipeline::Builder::new()
                     .with_inbound_pipeline(SinkService::new(inbound_tx))
                     .max_concurrent_inbound_tasks(100)
                     .with_outbound_pipeline(outbound_rx, convert::identity)
-                    .finish(),
-            )
-            .spawn()
+                    .build(),
+            ))
+            .spawn_with_transport(transport)
             .await
             .unwrap()
     };

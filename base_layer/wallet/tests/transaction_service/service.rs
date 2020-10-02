@@ -82,12 +82,9 @@ use tari_crypto::{
     common::Blake256,
     keys::{PublicKey as PK, SecretKey as SK},
 };
-use tari_p2p::{
-    comms_connector::pubsub_connector,
-    domain_message::DomainMessage,
-    services::comms_outbound::CommsOutboundServiceInitializer,
-};
-use tari_service_framework::{reply_channel, StackBuilder};
+use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage};
+use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
+use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::paths::with_temp_dir;
 use tari_wallet::{
     output_manager_service::{
@@ -146,6 +143,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static, P: AsR
     backend: T,
     database_path: P,
     discovery_request_timeout: Duration,
+    shutdown_signal: ShutdownSignal,
 ) -> (TransactionServiceHandle, OutputManagerHandle, CommsNode)
 {
     let (publisher, subscription_factory) = pubsub_connector(runtime.handle().clone(), 100, 20);
@@ -156,10 +154,11 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static, P: AsR
         publisher,
         database_path.as_ref().to_str().unwrap().to_owned(),
         discovery_request_timeout,
+        shutdown_signal.clone(),
     ));
 
-    let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
-        .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
+    let fut = StackBuilder::new(shutdown_signal)
+        .add_initializer(RegisterHandle::new(dht))
         .add_initializer(OutputManagerServiceInitializer::new(
             OutputManagerServiceConfig::default(),
             subscription_factory.clone(),
@@ -180,12 +179,12 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static, P: AsR
             factories.clone(),
             Network::Rincewind,
         ))
-        .finish();
+        .build();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");
 
-    let output_manager_handle = handles.get_handle::<OutputManagerHandle>().unwrap();
-    let transaction_service_handle = handles.get_handle::<TransactionServiceHandle>().unwrap();
+    let output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
+    let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
 
     (transaction_service_handle, output_manager_handle, comms)
 }
@@ -427,7 +426,8 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
         base_node_identity.node_id().short_str()
     );
 
-    let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, _alice_comms) = setup_transaction_service(
         &mut runtime,
         alice_node_identity.clone(),
         vec![],
@@ -435,6 +435,7 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
         alice_backend,
         database_path.clone(),
         Duration::from_secs(0),
+        shutdown.to_signal(),
     );
     runtime
         .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
@@ -452,6 +453,7 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
         bob_backend,
         database_path,
         Duration::from_secs(0),
+        shutdown.to_signal(),
     );
     runtime
         .block_on(bob_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
@@ -546,11 +548,6 @@ fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
         runtime.block_on(bob_oms.get_balance()).unwrap().available_balance,
         value
     );
-
-    runtime.block_on(async move {
-        alice_comms.shutdown().await;
-        bob_comms.shutdown().await;
-    });
 }
 
 #[test]
@@ -611,6 +608,8 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         carol_node_identity.node_id().short_str()
     );
 
+    let mut shutdown = Shutdown::new();
+
     let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
         &mut runtime,
         alice_node_identity.clone(),
@@ -619,6 +618,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         alice_backend,
         database_path.clone(),
         Duration::from_secs(60),
+        shutdown.to_signal(),
     );
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -633,6 +633,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         bob_backend,
         database_path.clone(),
         Duration::from_secs(1),
+        shutdown.to_signal(),
     );
     let mut bob_event_stream = bob_ts.get_event_stream_fused();
     runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
@@ -645,6 +646,7 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
         carol_backend,
         database_path,
         Duration::from_secs(1),
+        shutdown.to_signal(),
     );
     let mut carol_event_stream = carol_ts.get_event_stream_fused();
 
@@ -813,10 +815,11 @@ fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
     assert_eq!(carol_pending_inbound.len(), 0);
     assert_eq!(carol_completed_tx.len(), 1);
 
+    shutdown.trigger().unwrap();
     runtime.block_on(async move {
-        alice_comms.shutdown().await;
-        bob_comms.shutdown().await;
-        carol_comms.shutdown().await;
+        alice_comms.wait_until_shutdown().await;
+        bob_comms.wait_until_shutdown().await;
+        carol_comms.wait_until_shutdown().await;
     });
 }
 
@@ -1226,6 +1229,7 @@ fn discovery_async_return_test() {
         bob_node_identity.node_id().short_str(),
         carol_node_identity.node_id().short_str(),
     );
+    let mut shutdown = Shutdown::new();
 
     let (_carol_ts, _carol_oms, carol_comms) = setup_transaction_service(
         &mut runtime,
@@ -1235,6 +1239,7 @@ fn discovery_async_return_test() {
         TransactionMemoryDatabase::new(),
         db_folder.join("carol"),
         Duration::from_secs(1),
+        shutdown.to_signal(),
     );
 
     let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
@@ -1245,6 +1250,7 @@ fn discovery_async_return_test() {
         TransactionMemoryDatabase::new(),
         db_folder.join("alice"),
         Duration::from_secs(20),
+        shutdown.to_signal(),
     );
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
@@ -1343,9 +1349,10 @@ fn discovery_async_return_test() {
         }
     });
 
+    shutdown.trigger().unwrap();
     runtime.block_on(async move {
-        alice_comms.shutdown().await;
-        carol_comms.shutdown().await;
+        alice_comms.wait_until_shutdown().await;
+        carol_comms.wait_until_shutdown().await;
     });
 }
 

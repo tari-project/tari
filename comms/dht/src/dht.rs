@@ -75,6 +75,7 @@ pub enum DhtInitializationError {
 
 /// Responsible for starting the DHT actor, building the DHT middleware stack and as a factory
 /// for producing DHT requesters.
+#[derive(Clone)]
 pub struct Dht {
     /// Node identity of this node
     node_identity: Arc<NodeIdentity>,
@@ -233,9 +234,9 @@ impl Dht {
             self.connectivity.clone(),
             self.outbound_requester(),
             request_rx,
-            shutdown_signal,
             saf_response_signal_rx,
             self.event_publisher.clone(),
+            shutdown_signal,
         )
     }
 
@@ -435,7 +436,7 @@ mod test {
             shutdown.to_signal(),
         )
         .local_test()
-        .finish()
+        .build()
         .await
         .unwrap();
 
@@ -484,7 +485,7 @@ mod test {
             connectivity,
             shutdown.to_signal(),
         )
-        .finish()
+        .build()
         .await
         .unwrap();
 
@@ -535,7 +536,7 @@ mod test {
             connectivity,
             shutdown.to_signal(),
         )
-        .finish()
+        .build()
         .await
         .unwrap();
         let oms_mock_state = oms_mock.get_state();
@@ -592,7 +593,7 @@ mod test {
             connectivity,
             shutdown.to_signal(),
         )
-        .finish()
+        .build()
         .await
         .unwrap();
 

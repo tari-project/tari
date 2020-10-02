@@ -40,6 +40,7 @@ pub type SubscriptionFactory = TopicSubscriptionFactory<TariMessageType, Arc<Pee
 
 /// Connects `InboundDomainConnector` to a `tari_pubsub::TopicPublisher` through a buffered broadcast channel
 pub fn pubsub_connector(
+    // TODO: Remove this arg in favor of task::spawn
     executor: Handle,
     buf_size: usize,
     rate_limit: usize,

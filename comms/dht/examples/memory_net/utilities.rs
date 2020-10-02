@@ -38,7 +38,7 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerStorage},
     pipeline,
     pipeline::SinkService,
-    protocol::messaging::MessagingEvent,
+    protocol::messaging::{MessagingEvent, MessagingEventReceiver, MessagingEventSender, MessagingProtocolExtension},
     transports::MemoryTransport,
     types::CommsDatabase,
     CommsBuilder,
@@ -54,16 +54,17 @@ use tari_comms_dht::{
     Dht,
     DhtBuilder,
 };
+use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
 };
 use tari_test_utils::{paths::create_temporary_data_path, random};
-use tokio::{runtime, task, time};
+use tokio::{runtime, sync::broadcast, task, time};
 use tower::ServiceBuilder;
 
-pub type MessagingEventRx = mpsc::UnboundedReceiver<(NodeId, NodeId)>;
-pub type MessagingEventTx = mpsc::UnboundedSender<(NodeId, NodeId)>;
+pub type NodeEventRx = mpsc::UnboundedReceiver<(NodeId, NodeId)>;
+pub type NodeEventTx = mpsc::UnboundedSender<(NodeId, NodeId)>;
 
 #[macro_export]
 macro_rules! banner {
@@ -114,11 +115,11 @@ pub fn get_next_name() -> String {
 }
 
 pub async fn shutdown_all(nodes: Vec<TestNode>) {
-    let tasks = nodes.into_iter().map(|node| node.comms.shutdown());
+    let tasks = nodes.into_iter().map(|node| node.shutdown());
     future::join_all(tasks).await;
 }
 
-pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut MessagingEventRx, quiet_mode: bool) -> usize {
+pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEventRx, quiet_mode: bool) -> usize {
     let mut successes = 0;
     let mut total_messages = 0;
     let mut total_time = Duration::from_secs(0);
@@ -401,8 +402,8 @@ pub async fn do_store_and_forward_message_propagation(
     wallet: TestNode,
     wallets: &[TestNode],
     nodes: &[TestNode],
-    messaging_tx: MessagingEventTx,
-    messaging_rx: &mut MessagingEventRx,
+    messaging_tx: NodeEventTx,
+    messaging_rx: &mut NodeEventRx,
     num_neighbouring_nodes: usize,
     num_random_nodes: usize,
     propagation_factor: usize,
@@ -436,7 +437,7 @@ pub async fn do_store_and_forward_message_propagation(
 
     let neighbour_subs = neighbours
         .iter()
-        .map(|n| n.comms.subscribe_messaging_events())
+        .map(|n| n.messaging_events.subscribe())
         .collect::<Vec<_>>();
 
     banner!(
@@ -450,7 +451,7 @@ pub async fn do_store_and_forward_message_propagation(
             .join(", ")
     );
     banner!("😴 {} is going offline", wallet);
-    wallet.comms.shutdown().await;
+    wallet.shutdown().await;
 
     banner!(
         "🎤 All other wallets are going to attempt to broadcast messages to {} ({})",
@@ -505,16 +506,27 @@ pub async fn do_store_and_forward_message_propagation(
 
     banner!("🤓 {} is coming back online", get_name(node_identity.node_id()));
     let (tx, ims_rx) = mpsc::channel(1);
-    let (comms, dht) = setup_comms_dht(
+    let shutdown = Shutdown::new();
+    let (comms, dht, messaging_events) = setup_comms_dht(
         node_identity,
         create_peer_storage(wallets_peers),
         tx,
         num_neighbouring_nodes,
         num_random_nodes,
         propagation_factor,
+        shutdown.to_signal(),
     )
     .await;
-    let mut wallet = TestNode::new(comms, dht, vec![], ims_rx, messaging_tx, quiet_mode);
+    let mut wallet = TestNode::new(
+        comms,
+        dht,
+        vec![],
+        ims_rx,
+        messaging_tx,
+        messaging_events,
+        quiet_mode,
+        shutdown,
+    );
     let mut connectivity = wallet.comms.connectivity();
 
     connectivity
@@ -578,7 +590,7 @@ pub async fn do_store_and_forward_message_propagation(
     (total_messages, wallet)
 }
 
-pub async fn drain_messaging_events(messaging_rx: &mut MessagingEventRx, show_logs: bool) -> usize {
+pub async fn drain_messaging_events(messaging_rx: &mut NodeEventRx, show_logs: bool) -> usize {
     let drain_fut = DrainBurst::new(messaging_rx);
     if show_logs {
         let messages = drain_fut.await;
@@ -687,6 +699,8 @@ pub struct TestNode {
     pub dht: Dht,
     pub conn_man_events_rx: mpsc::Receiver<Arc<ConnectionManagerEvent>>,
     pub ims_rx: Option<mpsc::Receiver<DecryptedDhtMessage>>,
+    pub messaging_events: MessagingEventSender,
+    pub shutdown: Shutdown,
 }
 
 impl TestNode {
@@ -695,15 +709,23 @@ impl TestNode {
         dht: Dht,
         seed_peers: Vec<Peer>,
         ims_rx: mpsc::Receiver<DecryptedDhtMessage>,
-        messaging_events_tx: MessagingEventTx,
+        node_messsage_tx: NodeEventTx,
+        messaging_events: MessagingEventSender,
         quiet_mode: bool,
+        shutdown: Shutdown,
     ) -> Self
     {
         let name = get_next_name();
         register_name(comms.node_identity().node_id().clone(), name.clone());
 
         let (conn_man_events_tx, events_rx) = mpsc::channel(100);
-        Self::spawn_event_monitor(&comms, conn_man_events_tx, messaging_events_tx, quiet_mode);
+        Self::spawn_event_monitor(
+            &comms,
+            messaging_events.subscribe(),
+            conn_man_events_tx,
+            node_messsage_tx,
+            quiet_mode,
+        );
 
         Self {
             name,
@@ -712,18 +734,20 @@ impl TestNode {
             dht,
             ims_rx: Some(ims_rx),
             conn_man_events_rx: events_rx,
+            messaging_events,
+            shutdown,
         }
     }
 
     fn spawn_event_monitor(
         comms: &CommsNode,
+        messaging_events: MessagingEventReceiver,
         events_tx: mpsc::Sender<Arc<ConnectionManagerEvent>>,
-        messaging_events_tx: MessagingEventTx,
+        messaging_events_tx: NodeEventTx,
         quiet_mode: bool,
     )
     {
         let conn_man_event_sub = comms.subscribe_connection_manager_events();
-        let messaging_events = comms.subscribe_messaging_events();
         let executor = runtime::Handle::current();
 
         executor.spawn(
@@ -785,6 +809,11 @@ impl TestNode {
             }
         }
     }
+
+    pub async fn shutdown(mut self) {
+        self.shutdown.trigger().unwrap();
+        self.comms.wait_until_shutdown().await;
+    }
 }
 
 impl AsRef<TestNode> for TestNode {
@@ -832,7 +861,7 @@ fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
 pub async fn make_node(
     features: PeerFeatures,
     peer_identities: Vec<Arc<NodeIdentity>>,
-    messaging_events_tx: MessagingEventTx,
+    node_event_tx: NodeEventTx,
     num_neighbouring_nodes: usize,
     num_random_nodes: usize,
     propagation_factor: usize,
@@ -843,7 +872,7 @@ pub async fn make_node(
     make_node_from_node_identities(
         node_identity,
         peer_identities,
-        messaging_events_tx,
+        node_event_tx,
         num_neighbouring_nodes,
         num_random_nodes,
         propagation_factor,
@@ -855,7 +884,7 @@ pub async fn make_node(
 pub async fn make_node_from_node_identities(
     node_identity: Arc<NodeIdentity>,
     peer_identities: Vec<Arc<NodeIdentity>>,
-    messaging_events_tx: MessagingEventTx,
+    node_events_tx: NodeEventTx,
     num_neighbouring_nodes: usize,
     num_random_nodes: usize,
     propagation_factor: usize,
@@ -863,18 +892,29 @@ pub async fn make_node_from_node_identities(
 ) -> TestNode
 {
     let (tx, ims_rx) = mpsc::channel(1);
-    let seed_peers: Vec<Peer> = peer_identities.iter().map(|n| n.to_peer()).collect();
-    let (comms, dht) = setup_comms_dht(
+    let seed_peers = peer_identities.iter().map(|n| n.to_peer()).collect::<Vec<_>>();
+    let shutdown = Shutdown::new();
+    let (comms, dht, messaging_events) = setup_comms_dht(
         node_identity,
         create_peer_storage(seed_peers.clone()),
         tx,
         num_neighbouring_nodes,
         num_random_nodes,
         propagation_factor,
+        shutdown.to_signal(),
     )
     .await;
 
-    TestNode::new(comms, dht, seed_peers, ims_rx, messaging_events_tx, quiet_mode)
+    TestNode::new(
+        comms,
+        dht,
+        seed_peers,
+        ims_rx,
+        node_events_tx,
+        messaging_events,
+        quiet_mode,
+        shutdown,
+    )
 }
 
 pub async fn setup_comms_dht(
@@ -884,7 +924,8 @@ pub async fn setup_comms_dht(
     num_neighbouring_nodes: usize,
     num_random_nodes: usize,
     propagation_factor: usize,
-) -> (CommsNode, Dht)
+    shutdown_signal: ShutdownSignal,
+) -> (CommsNode, Dht, MessagingEventSender)
 {
     // Create inbound and outbound channels
     let (outbound_tx, outbound_rx) = mpsc::channel(10);
@@ -893,7 +934,7 @@ pub async fn setup_comms_dht(
         .allow_test_addresses()
         // In this case the listener address and the public address are the same (/memory/...)
         .with_listener_address(node_identity.public_address())
-        .with_transport(MemoryTransport)
+        .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity)
         .with_min_connectivity(0.3)
         .with_peer_storage(storage)
@@ -915,14 +956,17 @@ pub async fn setup_comms_dht(
         .with_num_neighbouring_nodes(num_neighbouring_nodes)
         .with_num_random_nodes(num_random_nodes)
         .with_propagation_factor(propagation_factor)
-        .finish()
+        .build()
         .await
         .unwrap();
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
 
+    let (messaging_events_tx, _) = broadcast::channel(100);
+
     let comms = comms
-        .with_messaging_pipeline(
+        .add_protocol_extension(MessagingProtocolExtension::new(
+            messaging_events_tx.clone(),
             pipeline::Builder::new()
                 .outbound_buffer_size(10)
                 .with_outbound_pipeline(outbound_rx, |sink| {
@@ -934,13 +978,13 @@ pub async fn setup_comms_dht(
                         .layer(dht.inbound_middleware_layer())
                         .service(SinkService::new(inbound_tx)),
                 )
-                .finish(),
-        )
-        .spawn()
+                .build(),
+        ))
+        .spawn_with_transport(MemoryTransport)
         .await
         .unwrap();
 
-    (comms, dht)
+    (comms, dht, messaging_events_tx)
 }
 
 pub async fn take_a_break(num_nodes: usize) {
