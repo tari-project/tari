@@ -1821,31 +1821,47 @@ fn try_construct_fork<T: BlockchainBackend>(
 
 /// Try to find all orphan chain tips that originate from the current orphan parent block.
 fn find_orphan_chain_tips<T: BlockchainBackend>(db: &T, parent_height: u64, parent_hash: BlockHash) -> Vec<BlockHash> {
-    let mut tip_hashes = Vec::<BlockHash>::new();
-    let mut parents = Vec::<(BlockHash, u64)>::new();
     let mut count = 0;
+    let mut orphans = Vec::<(BlockHash, BlockHash, u64)>::new();
     let start = std::time::Instant::now();
+    // we cache all data in the orphan pool, so we only have to step through once.
     db.for_each_orphan(|pair| {
         count += 1;
         let (_, block) = pair.unwrap();
-        if block.header.height == parent_height + 1 && block.header.prev_hash == parent_hash {
-            // we found a match, let save to call later
-            parents.push((block.hash(), block.header.height));
-        }
+        orphans.push((block.hash(), block.header.prev_hash, block.header.height));
     })
     .expect("Unexpected result for database query");
 
     debug!(
         target: LOG_TARGET,
-        "Searched {} orphan(s), found {} parent(s) in {:.0?}",
+        "Searched {} orphan(s) in {:.0?}",
         count,
-        parents.len(),
         start.elapsed()
     );
+    // Now lets call the actual search for tips from the cached data
+    find_orphan_chain_tips_recursive(&orphans, db, parent_height, parent_hash)
+}
+
+fn find_orphan_chain_tips_recursive<T: BlockchainBackend>(
+    orphans: &Vec<(BlockHash, BlockHash, u64)>,
+    db: &T,
+    parent_height: u64,
+    parent_hash: BlockHash,
+) -> Vec<BlockHash>
+{
+    let mut tip_hashes = Vec::<BlockHash>::new();
+    let mut parents = Vec::<(BlockHash, u64)>::new();
+    for block in orphans {
+        if block.2 == parent_height + 1 && block.1 == parent_hash {
+            // we found a match, let save to call later
+            parents.push((block.0.clone(), block.2));
+        }
+    }
+
     // we need two for loops so that we ensure we release the db read lock as this iterative call can saturate all db
     // read locks. This ensures the call only uses one read lock.
     for (parent_hash, parent_height) in parents {
-        let mut orphan_chain_tips = find_orphan_chain_tips(db, parent_height, parent_hash.clone());
+        let mut orphan_chain_tips = find_orphan_chain_tips_recursive(&orphans, db, parent_height, parent_hash.clone());
         if !orphan_chain_tips.is_empty() {
             tip_hashes.append(&mut orphan_chain_tips);
         } else {
