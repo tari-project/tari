@@ -4180,6 +4180,7 @@ dependencies = [
  "tari_test_utils",
  "thiserror",
  "tokio",
+ "tokio-macros",
  "tower",
  "tower-service",
 ]
