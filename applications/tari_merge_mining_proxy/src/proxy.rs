@@ -205,7 +205,7 @@ impl InnerService {
         for param in params.iter().map(|p| p.as_str()).filter_map(|p| p) {
             let monero_block = helpers::deserialize_monero_block_from_hex(param)?;
             let hash = match helpers::extract_tari_hash(&monero_block) {
-                Some(h) => h.clone(),
+                Some(h) => *h,
                 None => {
                     return Err(MmProxyError::MissingDataError(
                         "Could not find Tari header in coinbase".to_string(),

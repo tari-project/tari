@@ -105,7 +105,7 @@ where B: BlockchainBackend + 'static
                 node_config,
             ))
             .add_initializer(MempoolServiceInitializer::new(
-                mempool_config.clone(),
+                mempool_config,
                 self.mempool.clone(),
                 peer_message_subscriptions.clone(),
             ))

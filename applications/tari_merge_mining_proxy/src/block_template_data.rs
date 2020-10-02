@@ -38,7 +38,7 @@ impl BlockTemplateRepository {
 
     pub async fn get<T: AsRef<[u8]>>(&self, hash: T) -> Option<BlockTemplateData> {
         let b = self.blocks.read().await;
-        b.get(hash.as_ref()).map(|bt| bt.clone())
+        b.get(hash.as_ref()).cloned()
     }
 
     pub async fn save<T: AsRef<[u8]>>(&mut self, hash: T, block_template: BlockTemplateData) {

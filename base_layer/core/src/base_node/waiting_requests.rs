@@ -34,6 +34,7 @@ where R: RngCore {
 }
 
 /// WaitingRequests is used to keep track of a set of WaitingRequests.
+#[allow(clippy::type_complexity)]
 pub struct WaitingRequests<T> {
     requests: Arc<RwLock<HashMap<RequestKey, Option<(OneshotSender<T>, Instant)>>>>,
 }

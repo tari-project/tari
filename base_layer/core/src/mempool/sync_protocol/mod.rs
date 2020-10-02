@@ -181,7 +181,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
     fn handle_protocol_notification(&mut self, notification: ProtocolNotification<TSubstream>) {
         match notification.event {
             ProtocolEvent::NewInboundSubstream(node_id, substream) => {
-                self.spawn_inbound_handler(node_id.clone(), substream);
+                self.spawn_inbound_handler(node_id, substream);
             },
         }
     }
