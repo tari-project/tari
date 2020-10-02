@@ -491,7 +491,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     encrypted_body.into(),
                 ))
             },
-            OutboundEncryption::None => {
+            OutboundEncryption::ClearText => {
                 trace!(target: LOG_TARGET, "Encryption not requested for message");
 
                 if include_origin {

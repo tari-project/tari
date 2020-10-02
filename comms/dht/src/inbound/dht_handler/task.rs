@@ -245,7 +245,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             self.outbound_service
                 .send_raw(
                     SendMessageParams::new()
-                        .closest_connected(origin_node_id.clone(), self.config.num_neighbouring_nodes, vec![
+                        .closest_connected(origin_node_id.clone(), vec![
                             origin_node_id,
                             source_peer.node_id.clone(),
                         ])

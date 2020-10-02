@@ -47,7 +47,10 @@ pub struct DhtConfig {
     /// Number of random peers to include
     /// Default: [DEFAULT_NUM_RANDOM_NODES](self::DEFAULT_NUM_RANDOM_NODES)
     pub num_random_nodes: usize,
-    /// For each message to propagate, propagate to this many peers
+    /// Send to this many peers when using the broadcast strategy
+    /// Default: 8
+    pub broadcast_factor: usize,
+    /// Send to this many peers when using the propagate strategy
     /// Default: 4
     pub propagation_factor: usize,
     /// The maximum number of messages that can be stored using the Store-and-forward middleware. Default: 10_000
@@ -135,6 +138,7 @@ impl Default for DhtConfig {
             num_neighbouring_nodes: DEFAULT_NUM_NEIGHBOURING_NODES,
             num_random_nodes: DEFAULT_NUM_RANDOM_NODES,
             propagation_factor: 4,
+            broadcast_factor: 8,
             saf_num_closest_nodes: 10,
             saf_max_returned_messages: 50,
             outbound_buffer_size: 20,

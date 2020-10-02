@@ -427,7 +427,7 @@ async fn handle_outbound_request(
         .send_random(
             1,
             NodeDestination::Unknown,
-            OutboundEncryption::None,
+            OutboundEncryption::ClearText,
             OutboundDomainMessage::new(TariMessageType::MempoolRequest, service_request),
         )
         .await;
@@ -518,7 +518,7 @@ async fn handle_outbound_tx(
     let result = outbound_message_service
         .propagate(
             NodeDestination::Unknown,
-            OutboundEncryption::None,
+            OutboundEncryption::ClearText,
             exclude_peers,
             OutboundDomainMessage::new(TariMessageType::NewTransaction, ProtoTransaction::from(tx)),
         )

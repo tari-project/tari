@@ -574,7 +574,7 @@ async fn handle_outbound_block(
     outbound_message_service
         .flood(
             NodeDestination::Unknown,
-            OutboundEncryption::None,
+            OutboundEncryption::ClearText,
             exclude_peers,
             OutboundDomainMessage::new(
                 TariMessageType::NewBlock,

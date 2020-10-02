@@ -115,6 +115,11 @@ impl DhtBuilder {
         self
     }
 
+    pub fn with_broadcast_factor(mut self, broadcast_factor: usize) -> Self {
+        self.config.broadcast_factor = broadcast_factor;
+        self
+    }
+
     pub fn with_discovery_timeout(mut self, timeout: Duration) -> Self {
         self.config.discovery_request_timeout = timeout;
         self

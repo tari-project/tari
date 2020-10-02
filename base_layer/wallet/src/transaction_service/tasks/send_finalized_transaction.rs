@@ -28,7 +28,6 @@ use std::time::Duration;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
-    envelope::NodeDestination,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
 };
 use tari_core::transactions::{transaction::Transaction, transaction_protocol::proto};
@@ -148,8 +147,8 @@ async fn send_transaction_finalized_message_store_and_forward(
 ) -> Result<bool, TransactionServiceError>
 {
     match outbound_message_service
-        .broadcast(
-            NodeDestination::NodeId(Box::new(NodeId::from_key(&destination_pubkey)?)),
+        .closest_broadcast(
+            NodeId::from_public_key(&destination_pubkey),
             OutboundEncryption::EncryptFor(Box::new(destination_pubkey.clone())),
             vec![],
             OutboundDomainMessage::new(TariMessageType::TransactionFinalized, msg.clone()),

@@ -205,7 +205,7 @@ impl OutboundServiceMock {
                                 },
                             };
                         },
-                        BroadcastStrategy::Broadcast(_) => {
+                        BroadcastStrategy::Closest(_) => {
                             if behaviour.broadcast == ResponseType::Queued {
                                 let (response, mut inner_reply_tx) = self.add_call((*params).clone(), body);
                                 reply_tx.send(response).expect("Reply channel cancelled");
