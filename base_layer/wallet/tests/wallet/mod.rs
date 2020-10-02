@@ -71,7 +71,7 @@ use tari_wallet::{
     WalletSqlite,
 };
 use tempfile::tempdir;
-use tokio::time::delay_for;
+use tokio::{runtime::Runtime, time::delay_for};
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
@@ -341,10 +341,14 @@ async fn test_wallet() {
     bob_wallet.shutdown().await;
 }
 
-#[tokio_macros::test]
-async fn test_store_and_forward_send_tx() {
+#[test]
+fn test_store_and_forward_send_tx() {
     let factories = CryptoFactories::default();
     let db_tempdir = tempdir().unwrap();
+
+    let mut alice_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
+    let mut bob_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
+    let mut carol_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
 
     let alice_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
@@ -359,109 +363,107 @@ async fn test_store_and_forward_send_tx() {
         carol_identity.node_id()
     );
 
-    let mut alice_wallet = create_wallet(
+    let mut alice_wallet = alice_runtime.block_on(create_wallet(
         alice_identity.clone(),
         &db_tempdir.path(),
         "alice_db",
         factories.clone(),
-    )
-    .await;
-    let bob_wallet = create_wallet(bob_identity.clone(), &db_tempdir.path(), "bob_db", factories.clone()).await;
+    ));
+    let bob_wallet = bob_runtime.block_on(create_wallet(
+        bob_identity.clone(),
+        &db_tempdir.path(),
+        "bob_db",
+        factories.clone(),
+    ));
 
-    alice_wallet
-        .comms
-        .peer_manager()
-        .add_peer(bob_identity.to_peer())
-        .await
+    alice_runtime
+        .block_on(alice_wallet.comms.peer_manager().add_peer(bob_identity.to_peer()))
         .unwrap();
 
-    bob_wallet
-        .comms
-        .peer_manager()
-        .add_peer(carol_identity.to_peer())
-        .await
+    bob_runtime
+        .block_on(bob_wallet.comms.peer_manager().add_peer(carol_identity.to_peer()))
         .unwrap();
 
-    alice_wallet
-        .comms
-        .connectivity()
-        .dial_peer(bob_identity.node_id().clone())
-        .await
+    alice_runtime
+        .block_on(
+            alice_wallet
+                .comms
+                .connectivity()
+                .dial_peer(bob_identity.node_id().clone()),
+        )
         .unwrap();
 
     let value = MicroTari::from(1000);
     let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
 
-    alice_wallet.output_manager_service.add_output(uo1).await.unwrap();
+    alice_runtime
+        .block_on(alice_wallet.output_manager_service.add_output(uo1))
+        .unwrap();
 
-    let tx_id = alice_wallet
-        .transaction_service
-        .send_transaction(
+    let tx_id = alice_runtime
+        .block_on(alice_wallet.transaction_service.send_transaction(
             carol_identity.public_key().clone(),
             value,
             MicroTari::from(20),
             "Store and Forward!".to_string(),
-        )
-        .await
+        ))
         .unwrap();
 
     // Waiting here for a while to make sure the discovery retry is over
-    delay_for(Duration::from_secs(10)).await;
+    alice_runtime.block_on(async { delay_for(Duration::from_secs(10)).await });
 
-    alice_wallet
-        .transaction_service
-        .cancel_transaction(tx_id)
-        .await
+    alice_runtime
+        .block_on(alice_wallet.transaction_service.cancel_transaction(tx_id))
         .unwrap();
 
-    delay_for(Duration::from_secs(10)).await;
+    alice_runtime.block_on(async { delay_for(Duration::from_secs(10)).await });
 
-    let carol_wallet = create_wallet(
+    let carol_wallet = carol_runtime.block_on(create_wallet(
         carol_identity.clone(),
         &db_tempdir.path(),
         "carol_db",
         factories.clone(),
-    )
-    .await;
+    ));
 
     let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream_fused();
-    carol_wallet
-        .comms
-        .peer_manager()
-        .add_peer(create_peer(
+    carol_runtime
+        .block_on(carol_wallet.comms.peer_manager().add_peer(create_peer(
             bob_identity.public_key().clone(),
             bob_identity.public_address(),
-        ))
-        .await
+        )))
         .unwrap();
-    carol_wallet.dht_service.dht_requester().send_join().await.unwrap();
+    carol_runtime
+        .block_on(carol_wallet.dht_service.dht_requester().send_join())
+        .unwrap();
 
-    let mut delay = delay_for(Duration::from_secs(60)).fuse();
-    let mut tx_recv = false;
-    let mut tx_cancelled = false;
-    loop {
-        futures::select! {
-            event = carol_event_stream.select_next_some() => {
-                match &*event.unwrap() {
-                    TransactionEvent::ReceivedTransaction(_) => tx_recv = true,
-                        TransactionEvent::TransactionCancelled(_) => tx_cancelled = true,
-                    _ => (),
-                }
-                if tx_recv && tx_cancelled {
+    carol_runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+
+        let mut tx_recv = false;
+        let mut tx_cancelled = false;
+        loop {
+            futures::select! {
+                event = carol_event_stream.select_next_some() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::ReceivedTransaction(_) => tx_recv = true,
+                            TransactionEvent::TransactionCancelled(_) => tx_cancelled = true,
+                        _ => (),
+                    }
+                    if tx_recv && tx_cancelled {
+                        break;
+                    }
+                },
+                () = delay => {
                     break;
-                }
-            },
-            () = delay => {
-                break;
-            },
+                },
+            }
         }
-    }
-    assert!(tx_recv, "Must have received a tx from alice");
-    assert!(tx_cancelled, "Must have received a cancel tx from alice");
-
-    alice_wallet.shutdown().await;
-    bob_wallet.shutdown().await;
-    carol_wallet.shutdown().await;
+        assert!(tx_recv, "Must have received a tx from alice");
+        assert!(tx_cancelled, "Must have received a cancel tx from alice");
+    });
+    alice_runtime.block_on(alice_wallet.shutdown());
+    bob_runtime.block_on(bob_wallet.shutdown());
+    carol_runtime.block_on(carol_wallet.shutdown());
 }
 
 #[tokio_macros::test]
