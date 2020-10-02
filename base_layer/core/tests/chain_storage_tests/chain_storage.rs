@@ -71,10 +71,6 @@ use tari_mmr::{MmrCacheConfig, MutableMmr};
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
-fn init_log() {
-    let _ = env_logger::builder().is_test(true).try_init();
-}
-
 #[test]
 fn write_and_fetch_metadata() {
     let network = Network::LocalNet;
@@ -444,7 +440,6 @@ fn store_and_retrieve_block() {
 
 #[test]
 fn add_multiple_blocks() {
-    init_log();
     // Create new database with genesis block
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
@@ -645,7 +640,6 @@ fn handle_tip_reorg() {
 
 #[test]
 fn blockchain_reorgs_to_stronger_chain() {
-    let _ = env_logger::try_init();
     let mut blockchain = TestBlockchain::with_genesis("GB");
     let blocks = blockchain.builder();
     blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
