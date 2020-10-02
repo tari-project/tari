@@ -39,7 +39,7 @@ use thiserror::Error;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OutboundEncryption {
     /// Message should not be encrypted
-    None,
+    ClearText,
     /// Message should be encrypted using a shared secret derived from the given public key
     EncryptFor(Box<CommsPublicKey>),
 }
@@ -57,7 +57,7 @@ impl OutboundEncryption {
     pub fn is_encrypt(&self) -> bool {
         use OutboundEncryption::*;
         match self {
-            None => false,
+            ClearText => false,
             EncryptFor(_) => true,
         }
     }
@@ -66,7 +66,7 @@ impl OutboundEncryption {
 impl Display for OutboundEncryption {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            OutboundEncryption::None => write!(f, "None"),
+            OutboundEncryption::ClearText => write!(f, "ClearText"),
             OutboundEncryption::EncryptFor(ref key) => write!(f, "EncryptFor:{}", key.to_hex()),
         }
     }
@@ -74,7 +74,7 @@ impl Display for OutboundEncryption {
 
 impl Default for OutboundEncryption {
     fn default() -> Self {
-        OutboundEncryption::None
+        OutboundEncryption::ClearText
     }
 }
 

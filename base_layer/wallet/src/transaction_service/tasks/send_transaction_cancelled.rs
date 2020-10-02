@@ -23,7 +23,6 @@ use crate::{output_manager_service::TxId, transaction_service::error::Transactio
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
-    envelope::NodeDestination,
     outbound::{OutboundEncryption, OutboundMessageRequester},
 };
 use tari_core::transactions::transaction_protocol::proto;
@@ -47,9 +46,9 @@ pub async fn send_transaction_cancelled_message(
         .await?;
 
     let _ = outbound_message_service
-        .broadcast(
-            NodeDestination::NodeId(Box::new(NodeId::from_key(&destination_public_key)?)),
-            OutboundEncryption::EncryptFor(Box::new(destination_public_key.clone())),
+        .closest_broadcast(
+            NodeId::from_public_key(&destination_public_key),
+            OutboundEncryption::EncryptFor(Box::new(destination_public_key)),
             vec![],
             OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
         )

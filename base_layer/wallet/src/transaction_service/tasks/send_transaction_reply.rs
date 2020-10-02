@@ -32,10 +32,7 @@ use crate::transaction_service::{
 };
 use std::time::Duration;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
-use tari_comms_dht::{
-    envelope::NodeDestination,
-    outbound::{OutboundEncryption, OutboundMessageRequester},
-};
+use tari_comms_dht::outbound::{OutboundEncryption, OutboundMessageRequester};
 use tari_core::transactions::transaction_protocol::proto;
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_transaction_reply";
@@ -146,8 +143,8 @@ async fn send_transaction_reply_store_and_forward(
 ) -> Result<bool, TransactionServiceError>
 {
     match outbound_message_service
-        .broadcast(
-            NodeDestination::NodeId(Box::new(NodeId::from_key(&destination_pubkey)?)),
+        .closest_broadcast(
+            NodeId::from_public_key(&destination_pubkey),
             OutboundEncryption::EncryptFor(Box::new(destination_pubkey.clone())),
             vec![],
             OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, msg),

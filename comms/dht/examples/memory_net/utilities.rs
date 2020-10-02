@@ -295,7 +295,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
         .outbound_requester()
         .broadcast(
             NodeDestination::Unknown,
-            OutboundEncryption::None,
+            OutboundEncryption::ClearText,
             vec![],
             OutboundDomainMessage::new(0i32, PUBLIC_MESSAGE.to_string()),
         )
@@ -351,7 +351,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
                         let send_states = outbound_req
                             .propagate(
                                 NodeDestination::Unknown,
-                                OutboundEncryption::None,
+                                OutboundEncryption::ClearText,
                                 vec![msg.source_peer.node_id.clone()],
                                 OutboundDomainMessage::new(0i32, public_msg),
                             )
@@ -465,8 +465,8 @@ pub async fn do_store_and_forward_message_propagation(
         let send_states = wallet
             .dht
             .outbound_requester()
-            .broadcast(
-                node_identity.node_id().clone().into(),
+            .closest_broadcast(
+                node_identity.node_id().clone(),
                 OutboundEncryption::EncryptFor(Box::new(node_identity.public_key().clone())),
                 vec![],
                 OutboundDomainMessage::new(123i32, secret_message.clone()),

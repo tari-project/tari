@@ -295,16 +295,15 @@ impl Dht {
                 self.node_identity.node_id().short_str()
             )))
             .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
-            .layer(store_forward::ForwardLayer::new(
-                self.config.clone(),
-                self.outbound_requester(),
-                self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
-            ))
             .layer(store_forward::StoreLayer::new(
                 self.config.clone(),
                 Arc::clone(&self.peer_manager),
                 Arc::clone(&self.node_identity),
                 self.store_and_forward_requester(),
+            ))
+            .layer(store_forward::ForwardLayer::new(
+                self.outbound_requester(),
+                self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
             ))
             .layer(store_forward::MessageHandlerLayer::new(
                 self.config.clone(),
