@@ -69,12 +69,17 @@ pub mod transactions;
 pub use crypto::tari_utilities;
 pub use tari_crypto as crypto;
 
-uint::construct_uint! {
-    /// 256-bit unsigned integer.
-    pub(crate) struct U256(4);
-}
+#[allow(clippy::ptr_offset_with_cast)]
+#[allow(clippy::assign_op_pattern)]
+pub mod large_ints {
+    uint::construct_uint! {
+        /// 256-bit unsigned integer.
+        pub struct U256(4);
+    }
 
-uint::construct_uint! {
-    /// 512-bit unsigned integer.
-    pub(crate) struct U512(8);
+    uint::construct_uint! {
+        /// 512-bit unsigned integer.
+        pub struct U512(8);
+    }
 }
+pub use large_ints::{U256, U512};

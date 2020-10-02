@@ -44,7 +44,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
     type Future = future::Ready<Result<(), ServiceInitializationError>>;
 
     fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
-        let config = self.config.clone();
+        let config = self.config;
         let mempool = self.mempool.clone();
 
         context.spawn_when_ready(move |handles| async move {

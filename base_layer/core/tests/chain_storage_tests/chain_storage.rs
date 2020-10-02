@@ -34,7 +34,6 @@ use crate::helpers::{
     test_blockchain::TestBlockchain,
 };
 use croaring::Bitmap;
-use env_logger;
 use rand::{rngs::OsRng, RngCore};
 use std::thread;
 use tari_core::{

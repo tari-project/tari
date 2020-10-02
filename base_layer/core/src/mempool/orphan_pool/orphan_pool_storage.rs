@@ -80,6 +80,7 @@ impl OrphanPoolStorage {
     /// Check if the required UTXOs have been created and if the status of any of the transactions in the
     /// OrphanPoolStorage has changed. Remove valid transactions and valid transactions with time-locks from the
     /// OrphanPoolStorage.
+    #[allow(clippy::type_complexity)]
     pub fn scan_for_and_remove_unorphaned_txs(
         &mut self,
     ) -> Result<(Vec<Arc<Transaction>>, Vec<Arc<Transaction>>), OrphanPoolError> {

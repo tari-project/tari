@@ -91,6 +91,7 @@ impl OrphanPool {
 
     /// Check if the required UTXOs have been created and if the status of any of the transactions in the OrphanPool has
     /// changed. Remove valid transactions and valid transactions with time-locks from the OrphanPool.
+    #[allow(clippy::type_complexity)]
     pub fn scan_for_and_remove_unorphaned_txs(
         &self,
     ) -> Result<(Vec<Arc<Transaction>>, Vec<Arc<Transaction>>), OrphanPoolError> {

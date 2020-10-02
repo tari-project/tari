@@ -98,11 +98,8 @@ pub fn default_accept(json: &Value) -> Value {
 
 pub fn extract_tari_hash(monero: &Block) -> Option<&Hash> {
     for item in monero.miner_tx.prefix.extra.0.iter() {
-        match item {
-            SubField::MergeMining(_depth, merge_mining_hash) => {
-                return Some(merge_mining_hash);
-            },
-            _ => (),
+        if let SubField::MergeMining(_depth, merge_mining_hash) = item {
+            return Some(merge_mining_hash);
         }
     }
     None

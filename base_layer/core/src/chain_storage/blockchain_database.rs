@@ -1842,6 +1842,7 @@ fn find_orphan_chain_tips<T: BlockchainBackend>(db: &T, parent_height: u64, pare
     find_orphan_chain_tips_recursive(&orphans, db, parent_height, parent_hash)
 }
 
+#[allow(clippy::ptr_arg)]
 fn find_orphan_chain_tips_recursive<T: BlockchainBackend>(
     orphans: &Vec<(BlockHash, BlockHash, u64)>,
     db: &T,
