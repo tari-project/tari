@@ -2760,9 +2760,28 @@ fn test_transaction_cancellation<T: TransactionBackend + Clone + 'static>(backen
 
     runtime.block_on(alice_ts.cancel_transaction(tx_id)).unwrap();
 
+    // Wait for cancellation event, in an effort to nail down where the issue is for the flakey CI test
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut cancelled = false;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
+                       cancelled = true;
+                       break;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert!(cancelled, "Cancelled event should have occurred");
+    });
     // We expect 1 sent direct and via SAF
     alice_outbound_service
-        .wait_call_count(2, Duration::from_secs(30))
+        .wait_call_count(2, Duration::from_secs(60))
         .expect("alice call wait 1");
 
     let call = alice_outbound_service.pop_call().unwrap();
