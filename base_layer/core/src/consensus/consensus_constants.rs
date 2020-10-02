@@ -171,8 +171,28 @@ impl ConsensusConstants {
         let target_block_interval = 120;
         let difficulty_block_window = 90;
         vec![
+            // Due to a bug in previous code, block 1 has a high minimum difficulty which
+            // drops to 1 after block 2
             ConsensusConstants {
                 effective_from_height: 0,
+                coinbase_lock_height: 60,
+                blockchain_version: 1,
+                future_time_limit: target_block_interval * difficulty_block_window / 20,
+                target_block_interval,
+                difficulty_block_window,
+                difficulty_max_block_interval: target_block_interval * 60,
+                max_block_transaction_weight: 19500,
+                pow_algo_count: 1,
+                median_timestamp_count: 11,
+                emission_initial: 5_538_846_115 * uT,
+                emission_decay: 0.999_999_560_409_038_5,
+                emission_tail: 1 * T,
+                min_pow_difficulty: (1.into(), 60_000_000.into()),
+                max_randomx_seed_height: std::u64::MAX,
+                genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
+            },
+            ConsensusConstants {
+                effective_from_height: 2,
                 coinbase_lock_height: 60,
                 blockchain_version: 1,
                 future_time_limit: target_block_interval * difficulty_block_window / 20,
