@@ -26,7 +26,7 @@ use futures::{
     FutureExt,
 };
 use log::*;
-use std::time::Duration;
+use std::{cmp, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_core::base_node::StateMachineHandle;
 use tari_shutdown::ShutdownSignal;
@@ -59,7 +59,7 @@ pub fn spawn_transaction_protocols_and_utxo_validation(
 )
 {
     task::spawn(async move {
-        let transaction_task_fut = start_transaction_protocols_and_utxo_validation(
+        let transaction_task_fut = start_transaction_protocols_and_txo_validation(
             state_machine,
             transaction_service_handle,
             oms_handle,
@@ -79,7 +79,7 @@ pub fn spawn_transaction_protocols_and_utxo_validation(
 /// `oms_handle` - A handle to the output manager service
 /// `base_node_query_timeout` - A time after which queries to the base node times out
 /// `base_node_public_key` - The base node's public key
-pub async fn start_transaction_protocols_and_utxo_validation(
+pub async fn start_transaction_protocols_and_txo_validation(
     state_machine: StateMachineHandle,
     mut transaction_service_handle: TransactionServiceHandle,
     mut oms_handle: OutputManagerHandle,
@@ -90,7 +90,8 @@ pub async fn start_transaction_protocols_and_utxo_validation(
     let mut status_watch = state_machine.get_status_info_watch();
     debug!(
         target: LOG_TARGET,
-        "Waiting for initial sync before restarting transaction protocols and performing UTXO validation."
+        "Waiting for initial sync before performing TXO validation and restarting of broadcast and transaction \
+         protocols."
     );
     loop {
         let bootstrapped = match status_watch.recv().await {
@@ -98,33 +99,12 @@ pub async fn start_transaction_protocols_and_utxo_validation(
             Some(s) => s.bootstrapped,
         };
 
+        // Only start the transaction broadcast and TXO validation protocols once the local node is synced
         if bootstrapped {
             debug!(
                 target: LOG_TARGET,
-                "Initial sync achieved and starting with transaction and UTXO validation protocols.",
+                "Initial sync achieved, performing TXO validation and restarting protocols.",
             );
-            let _ = transaction_service_handle
-                .restart_broadcast_protocols()
-                .await
-                .map_err(|e| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Problem restarting broadcast protocols in the Transaction Service: {}", e
-                    );
-                    e
-                });
-
-            let _ = transaction_service_handle
-                .restart_transaction_protocols()
-                .await
-                .map_err(|e| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Problem restarting transaction negotiation protocols in the Transaction Service: {}", e
-                    );
-                    e
-                });
-
             let _ = oms_handle
                 .set_base_node_public_key(base_node_public_key.clone())
                 .await
@@ -136,7 +116,12 @@ pub async fn start_transaction_protocols_and_utxo_validation(
                     e
                 });
 
+            // The event monitoring timeout must not be aggressive, as the validation protocols use
+            // 'base_node_query_timeout' internally
+            let event_monitoring_timeout = Duration::from_secs(cmp::max(60, base_node_query_timeout.as_secs() * 3));
+
             loop {
+                trace!(target: LOG_TARGET, "Attempting UTXO validation for Unspent Outputs.",);
                 let _ = oms_handle
                     .validate_txos(TxoValidationType::Unspent, TxoValidationRetry::UntilSuccess)
                     .await
@@ -147,14 +132,16 @@ pub async fn start_transaction_protocols_and_utxo_validation(
                         );
                         e
                     });
-
-                trace!(target: LOG_TARGET, "Attempting UTXO validation for Unspent Outputs.",);
-                if monitor_validation_protocol(base_node_query_timeout * 2, oms_handle.get_event_stream_fused()).await {
+                if monitor_validation_protocol(event_monitoring_timeout, oms_handle.get_event_stream_fused()).await {
                     break;
                 }
             }
 
             loop {
+                trace!(
+                    target: LOG_TARGET,
+                    "Attempting Invalid TXO validation for Unspent Outputs.",
+                );
                 let _ = oms_handle
                     .validate_txos(TxoValidationType::Invalid, TxoValidationRetry::UntilSuccess)
                     .await
@@ -165,17 +152,13 @@ pub async fn start_transaction_protocols_and_utxo_validation(
                         );
                         e
                     });
-
-                trace!(
-                    target: LOG_TARGET,
-                    "Attempting Invalid TXO validation for Unspent Outputs.",
-                );
-                if monitor_validation_protocol(base_node_query_timeout * 2, oms_handle.get_event_stream_fused()).await {
+                if monitor_validation_protocol(event_monitoring_timeout, oms_handle.get_event_stream_fused()).await {
                     break;
                 }
             }
 
             loop {
+                trace!(target: LOG_TARGET, "Attempting STXO validation for Unspent Outputs.",);
                 let _ = oms_handle
                     .validate_txos(TxoValidationType::Spent, TxoValidationRetry::UntilSuccess)
                     .await
@@ -186,19 +169,43 @@ pub async fn start_transaction_protocols_and_utxo_validation(
                         );
                         e
                     });
-
-                trace!(target: LOG_TARGET, "Attempting STXO validation for Unspent Outputs.",);
-                if monitor_validation_protocol(base_node_query_timeout * 2, oms_handle.get_event_stream_fused()).await {
+                if monitor_validation_protocol(event_monitoring_timeout, oms_handle.get_event_stream_fused()).await {
                     break;
                 }
             }
+
+            // We want to ensure transaction protocols only use a fully validated TXO set, thus delaying this until
+            // after the prior validation
+            trace!(target: LOG_TARGET, "Attempting restart of the broadcast protocols.",);
+            let _ = transaction_service_handle
+                .restart_broadcast_protocols()
+                .await
+                .map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Problem restarting broadcast protocols in the Transaction Service: {}", e
+                    );
+                    e
+                });
+
+            trace!(target: LOG_TARGET, "Attempting restart of the transaction protocols.",);
+            let _ = transaction_service_handle
+                .restart_transaction_protocols()
+                .await
+                .map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Problem restarting transaction negotiation protocols in the Transaction Service: {}", e
+                    );
+                    e
+                });
 
             break;
         }
     }
     debug!(
         target: LOG_TARGET,
-        "Restarting of transaction protocols and performing UTXO validation concluded."
+        "TXO validation and restarting of broadcast and transaction protocols concluded."
     );
 }
 
@@ -224,23 +231,27 @@ async fn monitor_validation_protocol(
                     OutputManagerEvent::TxoValidationAborted(s) => {
                         trace!(
                             target: LOG_TARGET,
-                            "UTXO validation event 'TxoValidationAborted' ({}), restarting.", s,
+                            "TXO validation event 'TxoValidationAborted' ({}), restarting after 30s.", s,
                         );
+                        // This event will happen if the base node came out of sync for some reason, thus wait a bit before restarting
+                        tokio::time::delay_for(Duration::from_secs(30)).await;
                         break;
                     },
                     // Restart the protocol if failure
                     OutputManagerEvent::TxoValidationFailure(s) => {
                         trace!(
                             target: LOG_TARGET,
-                            "UTXO validation event 'TxoValidationFailure' ({}), restarting.", s,
+                            "TXO validation event 'TxoValidationFailure' ({}), restarting after 30s.", s,
                         );
+                        // This event will happen due to an unknown reason, thus wait a bit before restarting
+                        tokio::time::delay_for(Duration::from_secs(30)).await;
                         break;
                     },
                     // Exit upon success
                     OutputManagerEvent::TxoValidationSuccess(s) => {
                         trace!(
                             target: LOG_TARGET,
-                            "UTXO validation event 'TxoValidationSuccess' ({}), success.", s,
+                            "TXO validation event 'TxoValidationSuccess' ({}), success.", s,
                         );
                         success = true;
                         break;
@@ -249,7 +260,7 @@ async fn monitor_validation_protocol(
                     OutputManagerEvent::TxoValidationTimedOut(s) => {
                         trace!(
                             target: LOG_TARGET,
-                            "UTXO validation event 'TxoValidationTimedOut' ({}), waiting.", s,
+                            "TXO validation event 'TxoValidationTimedOut' ({}), waiting.", s,
                         );
                         continue;
                     }
@@ -257,7 +268,7 @@ async fn monitor_validation_protocol(
                     OutputManagerEvent::Error(s) => {
                         trace!(
                             target: LOG_TARGET,
-                            "UTXO validation event 'Error({})', waiting.", s,
+                            "TXO validation event 'Error({})', waiting.", s,
                         );
                         continue;
                     },
@@ -265,7 +276,7 @@ async fn monitor_validation_protocol(
                     _ => {
                         trace!(
                             target: LOG_TARGET,
-                            "UTXO validation unknown event, waiting.",
+                            "TXO validation unknown event, waiting.",
                         );
                         continue;
                     },
@@ -275,7 +286,7 @@ async fn monitor_validation_protocol(
             () = delay => {
                 trace!(
                     target: LOG_TARGET,
-                    "UTXO validation protocol timed out, restarting.",
+                    "TXO validation protocol timed out, restarting.",
                 );
                 break;
             },
