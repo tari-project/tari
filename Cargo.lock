@@ -954,7 +954,7 @@ dependencies = [
  "libsqlite3-sys",
  "num-bigint 0.2.6",
  "num-integer",
- "num-traits 0.1.43",
+ "num-traits 0.2.12",
  "serde_json",
 ]
 
@@ -2440,6 +2440,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b05ad05bd8977050b171b3f6b48175fea6e0565b7981059b486075e1026a9fb5"
 dependencies = [
  "num-traits 0.2.12",
+]
+
+[[package]]
+name = "num-format"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bafe4179722c2894288ee77a9f044f02811c86af699344c498b0840c698a2465"
+dependencies = [
+ "arrayvec 0.4.12",
+ "itoa",
 ]
 
 [[package]]
@@ -3999,6 +4009,7 @@ dependencies = [
  "monero",
  "newtype-ops",
  "num 0.3.0",
+ "num-format",
  "prost",
  "prost-types",
  "rand 0.7.3",
