@@ -71,6 +71,7 @@ use tokio::{
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
+const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
@@ -609,6 +610,11 @@ where
 
         debug!(
             target: LOG_TARGET,
+            "Prepared transaction (TxId: {}) to send",
+            stp.get_tx_id()?
+        );
+        debug!(
+            target: LOG_TARGET_STRESS,
             "Prepared transaction (TxId: {}) to send",
             stp.get_tx_id()?
         );

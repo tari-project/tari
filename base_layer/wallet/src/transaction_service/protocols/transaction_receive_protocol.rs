@@ -54,6 +54,7 @@ use tari_crypto::keys::SecretKey;
 use tokio::time::delay_for;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::receive_protocol";
+const LOG_TARGET_STRESS: &str = "stress_test::receive_protocol";
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionReceiveProtocolStage {
@@ -369,6 +370,12 @@ where TBackend: TransactionBackend + Clone + 'static
 
             info!(
                 target: LOG_TARGET,
+                "Finalized Transaction with TX_ID = {} received from {}",
+                self.id,
+                self.source_pubkey.clone()
+            );
+            debug!(
+                target: LOG_TARGET_STRESS,
                 "Finalized Transaction with TX_ID = {} received from {}",
                 self.id,
                 self.source_pubkey.clone()

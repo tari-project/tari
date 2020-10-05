@@ -53,6 +53,7 @@ use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_p2p::tari_message::TariMessageType;
 use tokio::{sync::broadcast, time::delay_for};
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::chain_monitoring_protocol";
+const LOG_TARGET_STRESS: &str = "stress_test::chain_monitoring_protocol";
 
 /// This protocol defines the process of monitoring a mempool and base node to detect when a Broadcast transaction is
 /// Mined or leaves the mempool in which case it should be cancelled
@@ -498,6 +499,10 @@ where TBackend: TransactionBackend + Clone + 'static
 
                 info!(
                     target: LOG_TARGET,
+                    "Transaction (TxId: {:?}) detected as mined on the Base Layer", completed_tx.tx_id
+                );
+                debug!(
+                    target: LOG_TARGET_STRESS,
                     "Transaction (TxId: {:?}) detected as mined on the Base Layer", completed_tx.tx_id
                 );
 

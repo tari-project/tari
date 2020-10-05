@@ -34,6 +34,7 @@ use tari_core::transactions::{transaction::Transaction, transaction_protocol::pr
 use tari_p2p::tari_message::TariMessageType;
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_finalized_transaction";
+const LOG_TARGET_STRESS: &str = "stress_test::send_finalized_transaction";
 
 pub async fn send_finalized_transaction_message(
     tx_id: TxId,
@@ -86,6 +87,10 @@ pub async fn send_finalized_transaction_message(
                     target: LOG_TARGET,
                     "Finalized Transaction Send Direct for TxID {} failed: {}", tx_id, err
                 );
+                debug!(
+                    target: LOG_TARGET_STRESS,
+                    "Finalized Transaction Send Direct for TxID {} failed: {}", tx_id, err
+                );
                 store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
                     tx_id,
                     destination_public_key.clone(),
@@ -131,6 +136,10 @@ pub async fn send_finalized_transaction_message(
         },
         Err(e) => {
             warn!(target: LOG_TARGET, "Direct Finalized Transaction Send failed: {:?}", e);
+            debug!(
+                target: LOG_TARGET_STRESS,
+                "Direct Finalized Transaction Send failed: {:?}", e
+            );
         },
     }
     if !direct_send_result && !store_and_forward_send_result {
@@ -163,10 +172,21 @@ async fn send_transaction_finalized_message_store_and_forward(
                 tx_id,
                 send_states.to_tags(),
             );
+            debug!(
+                target: LOG_TARGET_STRESS,
+                "Sending Finalized Transaction (TxId: {}) to Neighbours for Store and Forward successful with Message \
+                 Tags: {:?}",
+                tx_id,
+                send_states.to_tags(),
+            );
         },
         Err(e) => {
             warn!(
                 target: LOG_TARGET,
+                "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed: {:?}", tx_id, e
+            );
+            debug!(
+                target: LOG_TARGET_STRESS,
                 "Sending Finalized Transaction (TxId: {}) to neighbours for Store and Forward failed: {:?}", tx_id, e
             );
             return Ok(false);

@@ -51,7 +51,7 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
-       # An appender named "base_layer" that writes to a file with a custom pattern encoder
+  # An appender named "other" that writes to a file with a custom pattern encoder
   other:
     kind: rolling_file
     path: "log/other.log"
@@ -68,21 +68,6 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
-  mm_proxy:
-    kind: rolling_file
-    path: "log/mm_proxy.log"
-    policy:
-      kind: compound
-      trigger:
-        kind: size
-        limit: 60mb
-      roller:
-        kind: fixed_window
-        base: 1
-        count: 5
-        pattern: "log/mm_proxy.{}.log"
-    encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 # Set the default logging level to "warn" and attach the "stdout" appender to the root
 root:
   level: warn
@@ -96,12 +81,6 @@ loggers:
     appenders:
       - base_layer
     additive: false
-
-  tari_mm_proxy:
-    level: debug
-    appenders:
-      - mm_proxy
-    additive: false
   # Route log events sent to the "wallet" logger to the "base_layer" appender
   wallet:
     level: info
@@ -114,18 +93,19 @@ loggers:
     appenders:
       - network
     additive: false
+  # Route log events sent to the "p2p" logger to the "network" appender
   p2p:
     level: info
     appenders:
       - network
     additive: false
-    # Route log events sent to the "p2p" logger to the "network" appender
+   # Route log events sent to the "yamux" logger to the "network" appender
   yamux:
     level: info
     appenders:
       - network
     additive: false
- # Route log events sent to the "mio" logger to the "other" appender
+  # Route log events sent to the "mio" logger to the "network" appender
   mio:
     level: error
     appenders:
@@ -142,4 +122,16 @@ loggers:
     level: error
     appenders:
       - other
+    additive: false
+  # Route log events sent to the "tari_mm_proxy" logger to the "base_layer" appender
+  tari_mm_proxy:
+    level: info
+    appenders:
+      - base_layer
+    additive: false
+  # Route log events sent to the "stress_test" logger to the "base_layer" appender
+  stress_test:
+    level: info
+    appenders:
+      - base_layer
     additive: false
