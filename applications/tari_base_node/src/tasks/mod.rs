@@ -26,5 +26,5 @@ pub use sync_peers::sync_peers;
 mod transaction_monitor;
 pub use transaction_monitor::{
     spawn_transaction_protocols_and_utxo_validation,
-    start_transaction_protocols_and_utxo_validation,
+    start_transaction_protocols_and_txo_validation,
 };

@@ -331,7 +331,6 @@ where
         .await
         .expect("Problem setting local base node public key for transaction service.");
     let oms_handle = wallet_handles.expect_handle::<OutputManagerHandle>();
-    // Only start the transaction broadcast and UTXO validartion protocols once the local node is synced
     let state_machine = base_node_handles.expect_handle::<StateMachineHandle>();
     tasks::spawn_transaction_protocols_and_utxo_validation(
         state_machine,
