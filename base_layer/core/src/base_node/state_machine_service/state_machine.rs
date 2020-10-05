@@ -43,7 +43,7 @@ use crate::{
 use futures::{future, future::Either};
 use log::*;
 use std::{future::Future, sync::Arc};
-use tari_comms::connectivity::ConnectivityRequester;
+use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
@@ -79,6 +79,7 @@ pub struct BaseNodeStateMachine<B> {
     pub(super) local_node_interface: LocalNodeCommsInterface,
     pub(super) outbound_nci: OutboundNodeCommsInterface,
     pub(super) connectivity: ConnectivityRequester,
+    pub(super) peer_manager: Arc<PeerManager>,
     pub(super) metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StateInfo,
@@ -97,6 +98,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         local_node_interface: &LocalNodeCommsInterface,
         outbound_nci: &OutboundNodeCommsInterface,
         connectivity: ConnectivityRequester,
+        peer_manager: Arc<PeerManager>,
         metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
         config: BaseNodeStateMachineConfig,
         sync_validators: SyncValidators,
@@ -110,6 +112,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             local_node_interface: local_node_interface.clone(),
             outbound_nci: outbound_nci.clone(),
             connectivity,
+            peer_manager,
             metadata_event_stream,
             interrupt_signal,
             config,

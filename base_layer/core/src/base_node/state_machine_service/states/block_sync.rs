@@ -21,16 +21,15 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     base_node::{
+        chain_metadata_service::PeerChainMetadata,
         comms_interface::{BlockEvent, CommsInterfaceError},
         state_machine_service::{
             states::{
                 helpers::{ban_all_sync_peers, ban_sync_peer, request_headers, select_sync_peer},
-                sync_peers::SyncPeer,
                 ForwardBlockSyncInfo,
                 Listening,
                 StateEvent,
                 StateInfo,
-                SyncPeers,
             },
             BaseNodeStateMachine,
         },
@@ -80,12 +79,12 @@ pub struct BlockSyncConfig {
 pub struct BlockSyncInfo {
     pub tip_height: u64,
     pub local_height: u64,
-    pub sync_peers: SyncPeers,
+    pub sync_peers: Vec<PeerChainMetadata>,
 }
 
 impl BlockSyncInfo {
     /// Creates a new blockSyncInfo
-    pub fn new(tip_height: u64, local_height: u64, sync_peers: SyncPeers) -> BlockSyncInfo {
+    pub fn new(tip_height: u64, local_height: u64, sync_peers: Vec<PeerChainMetadata>) -> BlockSyncInfo {
         BlockSyncInfo {
             tip_height,
             local_height,
@@ -145,7 +144,7 @@ impl BlockSyncStrategy {
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
         network_tip: &ChainMetadata,
-        sync_peers: &mut SyncPeers,
+        sync_peers: &mut Vec<PeerChainMetadata>,
     ) -> StateEvent
     {
         shared.info = StateInfo::BlockSync(BlockSyncInfo::default());
@@ -216,7 +215,7 @@ impl BestChainMetadataBlockSync {
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
         network_tip: &ChainMetadata,
-        sync_peers: &mut SyncPeers,
+        sync_peers: &mut Vec<PeerChainMetadata>,
     ) -> StateEvent
     {
         if let StateInfo::BlockSync(ref mut info) = shared.info {
@@ -276,7 +275,7 @@ impl BestChainMetadataBlockSync {
 async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
     network_metadata: &ChainMetadata,
-    sync_peers: &mut SyncPeers,
+    sync_peers: &mut Vec<PeerChainMetadata>,
 ) -> Result<(), BlockSyncError>
 {
     let local_metadata = shared.db.get_chain_metadata()?;
@@ -357,7 +356,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
 // at the shared height if the local tip has a lower accumulated difficulty compared to the network tip.
 async fn check_chain_split<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut SyncPeers,
+    sync_peers: &mut Vec<PeerChainMetadata>,
     local_tip_height: u64,
     network_tip_height: u64,
     local_block_hash: &[u8],
@@ -378,7 +377,7 @@ async fn check_chain_split<B: BlockchainBackend + 'static>(
 // not common between the local and network chains.
 async fn find_chain_split_height<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut SyncPeers,
+    sync_peers: &mut Vec<PeerChainMetadata>,
     tip_height: u64,
 ) -> Result<u64, BlockSyncError>
 {
@@ -439,7 +438,7 @@ async fn find_chain_split_height<B: BlockchainBackend + 'static>(
 // Request a block from a remote sync peer and attempt to add it to the local blockchain.
 async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut SyncPeers,
+    sync_peers: &mut Vec<PeerChainMetadata>,
     mut block_nums: Vec<u64>,
 ) -> Result<(), BlockSyncError>
 {
@@ -576,9 +575,9 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
 // Request a block from a remote sync peer.
 async fn request_blocks<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut SyncPeers,
+    sync_peers: &mut Vec<PeerChainMetadata>,
     block_nums: &[u64],
-) -> Result<(Vec<Arc<Block>>, SyncPeer), BlockSyncError>
+) -> Result<(Vec<Arc<Block>>, PeerChainMetadata), BlockSyncError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=shared.config.block_sync_config.max_block_request_retry_attempts {
@@ -685,9 +684,9 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
 // Request a header from a remote sync peer.
 async fn request_header<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut SyncPeers,
+    sync_peers: &mut Vec<PeerChainMetadata>,
     height: u64,
-) -> Result<(BlockHeader, SyncPeer), BlockSyncError>
+) -> Result<(BlockHeader, PeerChainMetadata), BlockSyncError>
 {
     let (headers, sync_peer) = request_headers(
         LOG_TARGET,

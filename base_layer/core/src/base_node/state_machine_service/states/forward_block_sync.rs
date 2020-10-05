@@ -21,9 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     base_node::{
+        chain_metadata_service::PeerChainMetadata,
         comms_interface::{Broadcast, CommsInterfaceError},
         state_machine_service::{
-            states::{sync_peers::SyncPeer, StateEvent, StateInfo},
+            states::{StateEvent, StateInfo},
             BaseNodeStateMachine,
         },
     },
@@ -105,7 +106,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
         );
         if let StateInfo::BlockSync(ref mut info) = shared.info {
             // TODO: We don't have the peer's chainmetadata in this strategy - decide on a single block sync strategy
-            info.sync_peers = vec![SyncPeer {
+            info.sync_peers = vec![PeerChainMetadata {
                 node_id: current_sync_node.clone(),
                 chain_metadata: Default::default(),
             }];

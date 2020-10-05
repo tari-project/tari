@@ -81,7 +81,7 @@ pub struct MoneroData {
 
 impl Display for MoneroData {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        writeln!(fmt, "MoneroBlockHeader: {} ", self.header)?;
+        write!(fmt, "MoneroBlockHeader: {} ", self.header)?;
         writeln!(fmt, "RandomX vm key: {}", self.key)?;
         writeln!(fmt, "Monero tx count: {}", self.count.to_string())?;
         writeln!(fmt, "Monero tx root: {}", self.transaction_root.to_hex())?;

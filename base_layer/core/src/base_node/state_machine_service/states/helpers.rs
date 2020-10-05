@@ -22,11 +22,9 @@
 
 use crate::{
     base_node::{
+        chain_metadata_service::PeerChainMetadata,
         comms_interface::CommsInterfaceError,
-        state_machine_service::{
-            states::{block_sync::BlockSyncError, sync_peers::SyncPeer, SyncPeers},
-            BaseNodeStateMachine,
-        },
+        state_machine_service::{states::block_sync::BlockSyncError, BaseNodeStateMachine},
     },
     blocks::blockheader::BlockHeader,
     chain_storage::{BlockchainBackend, MmrTree},
@@ -69,7 +67,11 @@ impl Default for SyncPeerConfig {
 
 /// Selects the first sync peer or a random peer from the set of sync peers that have the current network tip depending
 /// on the selected configuration.
-pub fn select_sync_peer(config: &SyncPeerConfig, sync_peers: &[SyncPeer]) -> Result<SyncPeer, BlockSyncError> {
+pub fn select_sync_peer(
+    config: &SyncPeerConfig,
+    sync_peers: &[PeerChainMetadata],
+) -> Result<PeerChainMetadata, BlockSyncError>
+{
     if config.random_sync_peer_with_chain {
         sync_peers.choose(&mut rand::thread_rng())
     } else {
@@ -82,8 +84,8 @@ pub fn select_sync_peer(config: &SyncPeerConfig, sync_peers: &[SyncPeer]) -> Res
 /// Excluded the provided peer from the sync peers.
 pub fn exclude_sync_peer(
     log_target: &str,
-    sync_peers: &mut SyncPeers,
-    sync_peer: SyncPeer,
+    sync_peers: &mut Vec<PeerChainMetadata>,
+    sync_peer: PeerChainMetadata,
 ) -> Result<(), BlockSyncError>
 {
     trace!(target: log_target, "Excluding peer ({}) from sync peers.", sync_peer);
@@ -98,8 +100,8 @@ pub fn exclude_sync_peer(
 pub async fn ban_sync_peer_if_online(
     log_target: &str,
     connectivity: &mut ConnectivityRequester,
-    sync_peers: &mut SyncPeers,
-    sync_peer: SyncPeer,
+    sync_peers: &mut Vec<PeerChainMetadata>,
+    sync_peer: PeerChainMetadata,
     ban_duration: Duration,
     reason: String,
 ) -> Result<(), BlockSyncError>
@@ -118,8 +120,8 @@ pub async fn ban_sync_peer_if_online(
 pub async fn ban_sync_peer(
     log_target: &str,
     connectivity: &mut ConnectivityRequester,
-    sync_peers: &mut SyncPeers,
-    sync_peer: SyncPeer,
+    sync_peers: &mut Vec<PeerChainMetadata>,
+    sync_peer: PeerChainMetadata,
     ban_duration: Duration,
     reason: String,
 ) -> Result<(), BlockSyncError>
@@ -135,7 +137,7 @@ pub async fn ban_sync_peer(
 pub async fn ban_all_sync_peers<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut SyncPeers,
+    sync_peers: &mut Vec<PeerChainMetadata>,
     ban_duration: Duration,
     reason: String,
 ) -> Result<(), BlockSyncError>
@@ -158,10 +160,10 @@ pub async fn ban_all_sync_peers<B: BlockchainBackend + 'static>(
 pub async fn request_headers<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut SyncPeers,
+    sync_peers: &mut Vec<PeerChainMetadata>,
     block_nums: &[u64],
     request_retry_attempts: usize,
-) -> Result<(Vec<BlockHeader>, SyncPeer), BlockSyncError>
+) -> Result<(Vec<BlockHeader>, PeerChainMetadata), BlockSyncError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
@@ -265,11 +267,11 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
 pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut SyncPeers,
+    sync_peers: &mut Vec<PeerChainMetadata>,
     tree: MmrTree,
     height: u64,
     request_retry_attempts: usize,
-) -> Result<(u32, SyncPeer), BlockSyncError>
+) -> Result<(u32, PeerChainMetadata), BlockSyncError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
@@ -334,13 +336,13 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
 pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut SyncPeers,
+    sync_peers: &mut Vec<PeerChainMetadata>,
     tree: MmrTree,
     pos: u32,
     count: u32,
     height: u64,
     request_retry_attempts: usize,
-) -> Result<(Vec<HashOutput>, Bitmap, SyncPeer), BlockSyncError>
+) -> Result<(Vec<HashOutput>, Bitmap, PeerChainMetadata), BlockSyncError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
@@ -405,10 +407,10 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
 pub async fn request_kernels<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut SyncPeers,
+    sync_peers: &mut Vec<PeerChainMetadata>,
     hashes: Vec<HashOutput>,
     request_retry_attempts: usize,
-) -> Result<(Vec<TransactionKernel>, SyncPeer), BlockSyncError>
+) -> Result<(Vec<TransactionKernel>, PeerChainMetadata), BlockSyncError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
@@ -471,10 +473,10 @@ pub async fn request_kernels<B: BlockchainBackend + 'static>(
 pub async fn request_txos<B: BlockchainBackend + 'static>(
     log_target: &str,
     shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut SyncPeers,
+    sync_peers: &mut Vec<PeerChainMetadata>,
     hashes: &[&HashOutput],
     request_retry_attempts: usize,
-) -> Result<(Vec<TransactionOutput>, SyncPeer), BlockSyncError>
+) -> Result<(Vec<TransactionOutput>, PeerChainMetadata), BlockSyncError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {

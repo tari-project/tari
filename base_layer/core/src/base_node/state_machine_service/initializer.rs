@@ -94,7 +94,9 @@ where B: BlockchainBackend + 'static
             let outbound_interface = handles.expect_handle::<OutboundNodeCommsInterface>();
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
             let node_local_interface = handles.expect_handle::<LocalNodeCommsInterface>();
-            let connectivity_requester = handles.expect_handle::<SharedCommsContext>().connectivity();
+            let shared_comms_context = handles.expect_handle::<SharedCommsContext>();
+            let connectivity_requester = shared_comms_context.connectivity();
+            let peer_manager = shared_comms_context.peer_manager();
 
             let mut state_machine_config = BaseNodeStateMachineConfig::default();
             state_machine_config.block_sync_config.sync_strategy = sync_strategy;
@@ -109,6 +111,7 @@ where B: BlockchainBackend + 'static
                 &node_local_interface,
                 &outbound_interface,
                 connectivity_requester,
+                peer_manager,
                 chain_metadata_service.get_event_stream(),
                 state_machine_config,
                 sync_validators,

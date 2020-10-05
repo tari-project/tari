@@ -21,18 +21,12 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::state_machine_service::{
-        states::{
-            block_sync::BlockSyncError,
-            helpers,
-            sync_peers::SyncPeer,
-            BlockSyncInfo,
-            HorizonStateSync,
-            StateEvent,
-            StateInfo,
-            SyncPeers,
+    base_node::{
+        chain_metadata_service::PeerChainMetadata,
+        state_machine_service::{
+            states::{block_sync::BlockSyncError, helpers, BlockSyncInfo, HorizonStateSync, StateEvent, StateInfo},
+            BaseNodeStateMachine,
         },
-        BaseNodeStateMachine,
     },
     blocks::BlockHeader,
     chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, ChainMetadata, ChainStorageError},
@@ -50,11 +44,11 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::header_sync";
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HeaderSync {
     pub network_metadata: ChainMetadata,
-    pub sync_peers: SyncPeers,
+    pub sync_peers: Vec<PeerChainMetadata>,
 }
 
 impl HeaderSync {
-    pub fn new(network_metadata: ChainMetadata, sync_peers: SyncPeers) -> Self {
+    pub fn new(network_metadata: ChainMetadata, sync_peers: Vec<PeerChainMetadata>) -> Self {
         Self {
             network_metadata,
             sync_peers,
@@ -138,7 +132,7 @@ impl From<HorizonStateSync> for HeaderSync {
 
 struct HeaderSynchronisation<'a, 'b, B> {
     shared: &'a mut BaseNodeStateMachine<B>,
-    sync_peers: &'b mut SyncPeers,
+    sync_peers: &'b mut Vec<PeerChainMetadata>,
     sync_height: u64,
 }
 
@@ -298,7 +292,7 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
         Ok(())
     }
 
-    async fn ban_sync_peer(&mut self, sync_peer: SyncPeer, reason: String) -> Result<(), HeaderSyncError> {
+    async fn ban_sync_peer(&mut self, sync_peer: PeerChainMetadata, reason: String) -> Result<(), HeaderSyncError> {
         helpers::ban_sync_peer(
             LOG_TARGET,
             &mut self.shared.connectivity,

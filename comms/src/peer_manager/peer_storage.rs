@@ -425,7 +425,7 @@ where DS: KeyValueStore<PeerId, Peer>
             .map_err(PeerManagerError::DatabaseError)?
             .expect("public_key_index is out of sync with peer db");
 
-        if peer.banned_until.is_some() {
+        if peer.banned_until().is_some() {
             peer.unban();
             self.peer_db
                 .insert(peer_key, peer)

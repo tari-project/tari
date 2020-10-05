@@ -21,17 +21,19 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::state_machine_service::states::{
-        BlockSyncInfo,
-        BlockSyncStrategy,
-        HeaderSync,
-        HorizonStateSync,
-        Listening,
-        ListeningInfo,
-        Shutdown,
-        Starting,
-        SyncPeers,
-        Waiting,
+    base_node::{
+        chain_metadata_service::PeerChainMetadata,
+        state_machine_service::states::{
+            BlockSyncInfo,
+            BlockSyncStrategy,
+            HeaderSync,
+            HorizonStateSync,
+            Listening,
+            ListeningInfo,
+            Shutdown,
+            Starting,
+            Waiting,
+        },
     },
     chain_storage::ChainMetadata,
     proof_of_work::Difficulty,
@@ -43,7 +45,7 @@ pub enum BaseNodeState {
     Starting(Starting),
     HeaderSync(HeaderSync),
     HorizonStateSync(HorizonStateSync),
-    BlockSync(BlockSyncStrategy, ChainMetadata, SyncPeers),
+    BlockSync(BlockSyncStrategy, ChainMetadata, Vec<PeerChainMetadata>),
     // The best network chain metadata
     Listening(Listening),
     // We're in a paused state, and will return to Listening after a timeout
@@ -81,9 +83,9 @@ impl<E: std::error::Error> From<E> for StateEvent {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SyncStatus {
     // We are behind the chain tip.
-    Lagging(ChainMetadata, SyncPeers),
+    Lagging(ChainMetadata, Vec<PeerChainMetadata>),
     // We are behind the pruning horizon.
-    LaggingBehindHorizon(ChainMetadata, SyncPeers),
+    LaggingBehindHorizon(ChainMetadata, Vec<PeerChainMetadata>),
     UpToDate,
 }
 

@@ -101,6 +101,10 @@ impl PeerManager {
         self.peer_storage.read().await.exists_node_id(node_id)
     }
 
+    pub async fn is_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
+        Ok(self.peer_storage.read().await.find_by_node_id(node_id)?.is_banned())
+    }
+
     /// Returns all peers
     pub async fn all(&self) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage.read().await.all()

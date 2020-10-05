@@ -24,7 +24,7 @@ use crate::{
     base_node::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
         state_machine_service::{
-            states::{StateEvent, StateEvent::FatalError, StateInfo, SyncPeers, SyncStatus, Waiting},
+            states::{StateEvent, StateEvent::FatalError, StateInfo, SyncStatus, Waiting},
             BaseNodeStateMachine,
         },
     },
@@ -94,10 +94,28 @@ impl Listening {
                                 return FatalError(msg);
                             },
                         };
+
+                        let mut peers = vec![];
+                        for peer in peer_metadata_list {
+                            let is_banned = match shared.peer_manager.is_banned(&peer.node_id).await {
+                                Ok(b) => b,
+                                Err(err) => {
+                                    warn!(
+                                        target: LOG_TARGET,
+                                        "Error getting ban status for {}, assuming banned: {:?}", peer.node_id, err
+                                    );
+                                    true
+                                },
+                            };
+
+                            if !is_banned {
+                                peers.push(peer.clone());
+                            }
+                        }
                         // Find the best network metadata and set of sync peers with the best tip.
-                        let best_metadata = best_metadata(peer_metadata_list.as_slice());
+                        let best_metadata = best_metadata(peers.as_slice());
                         let local_tip_height = local.height_of_longest_chain();
-                        let sync_peers = select_sync_peers(local_tip_height, &best_metadata, &peer_metadata_list);
+                        let sync_peers = select_sync_peers(local_tip_height, &best_metadata, peers.as_slice());
 
                         let sync_mode = determine_sync_mode(&local, best_metadata, sync_peers);
                         if !shared.bootstrapped_sync && sync_mode == SyncStatus::UpToDate {
@@ -177,7 +195,12 @@ fn best_metadata(metadata_list: &[PeerChainMetadata]) -> ChainMetadata {
 }
 
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
-fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers: SyncPeers) -> SyncStatus {
+fn determine_sync_mode(
+    local: &ChainMetadata,
+    network: ChainMetadata,
+    sync_peers: Vec<PeerChainMetadata>,
+) -> SyncStatus
+{
     use crate::base_node::state_machine_service::states::SyncStatus::*;
     match network.accumulated_difficulty {
         None => {
