@@ -23,7 +23,7 @@
 #[cfg(feature = "base_node")]
 mod blake_pow;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
-mod difficulty;
+pub(crate) mod difficulty;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 mod error;
 #[cfg(feature = "base_node")]
