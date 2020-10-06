@@ -182,6 +182,7 @@ mod discovery_ready {
         let peer_manager = build_peer_manager();
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let (connectivity, connectivity_mock) = create_connectivity_mock();
+        let (event_tx, _) = broadcast::channel(1);
         let context = NetworkDiscoveryContext {
             config: DhtConfig {
                 network_discovery: config,
@@ -191,6 +192,7 @@ mod discovery_ready {
             connectivity,
             node_identity: node_identity.clone(),
             num_rounds: Default::default(),
+            event_tx,
         };
 
         let ready = match last_discovery {
@@ -209,7 +211,7 @@ mod discovery_ready {
         let (_, _, _, mut ready) = setup(config, None);
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::BeginDiscovery(params) = state_event);
-        assert_eq!(params.num_peers_to_request, 100);
+        assert!(params.num_peers_to_request.is_none());
     }
 
     #[tokio_macros::test_basic]
@@ -219,8 +221,29 @@ mod discovery_ready {
             idle_after_num_rounds: 0,
             ..Default::default()
         };
-        let (_, _, _, mut ready) = setup(config, Some(Default::default()));
+        let (_, _, _, mut ready) = setup(
+            config,
+            Some(DhtNetworkDiscoveryRoundInfo {
+                num_new_neighbours: 1,
+                num_new_peers: 1,
+                num_duplicate_peers: 0,
+                num_succeeded: 1,
+                sync_peers: vec![],
+            }),
+        );
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::Idle = state_event);
+    }
+
+    #[tokio_macros::test_basic]
+    async fn it_transitions_to_on_connect() {
+        let config = NetworkDiscoveryConfig {
+            min_desired_peers: 0,
+            idle_after_num_rounds: 0,
+            ..Default::default()
+        };
+        let (_, _, _, mut ready) = setup(config, Some(Default::default()));
+        let state_event = ready.next_event().await;
+        unpack_enum!(StateEvent::OnConnectMode = state_event);
     }
 }

@@ -58,6 +58,8 @@ pub enum RpcError {
     PeerManagerError(#[from] PeerManagerError),
     #[error("Connectivity error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
+    #[error(transparent)]
+    UnknownError(#[from] anyhow::Error),
 }
 
 impl RpcError {

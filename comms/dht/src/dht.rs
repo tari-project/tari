@@ -151,10 +151,7 @@ impl Dht {
 
     /// Create a DHT RPC service
     pub fn rpc_service(&self) -> rpc::DhtService<rpc::DhtRpcServiceImpl> {
-        rpc::DhtService::new(rpc::DhtRpcServiceImpl::new(
-            self.node_identity.clone(),
-            self.peer_manager.clone(),
-        ))
+        rpc::DhtService::new(rpc::DhtRpcServiceImpl::new(self.peer_manager.clone()))
     }
 
     /// Create a DHT actor
