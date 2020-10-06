@@ -23,7 +23,7 @@
 #[cfg(feature = "base_node")]
 pub(crate) mod chain_strength_comparer;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
-mod consensus_constants;
+pub mod consensus_constants;
 #[cfg(feature = "base_node")]
 mod consensus_manager;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
