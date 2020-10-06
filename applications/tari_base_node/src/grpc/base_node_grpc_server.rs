@@ -38,6 +38,7 @@ use tari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
 };
+use tari_core::base_node::{state_machine_service::states::BlockSyncInfo, StateMachineHandle};
 use tari_crypto::tari_utilities::Hashable;
 use tokio::{runtime, sync::mpsc};
 use tonic::{Request, Response, Status};
@@ -65,14 +66,22 @@ pub struct BaseNodeGrpcServer {
     executor: runtime::Handle,
     node_service: LocalNodeCommsInterface,
     node_config: GlobalConfig,
+    state_machine: StateMachineHandle,
 }
 
 impl BaseNodeGrpcServer {
-    pub fn new(executor: runtime::Handle, local_node: LocalNodeCommsInterface, node_config: GlobalConfig) -> Self {
+    pub fn new(
+        executor: runtime::Handle,
+        local_node: LocalNodeCommsInterface,
+        node_config: GlobalConfig,
+        state_machine: StateMachineHandle,
+    ) -> Self
+    {
         Self {
             executor,
             node_service: local_node,
             node_config,
+            state_machine,
         }
     }
 }
@@ -637,6 +646,43 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         debug!(target: LOG_TARGET, "Sending GetTokensInCirculation response to client");
         Ok(Response::new(rx))
+    }
+
+    async fn get_sync_info(
+        &self,
+        _request: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status>
+    {
+        debug!(target: LOG_TARGET, "Incoming GRPC request for BN sync data");
+
+        let mut channel = self.state_machine.get_status_info_watch();
+
+        let mut sync_info: Option<BlockSyncInfo> = None;
+
+        if let Some(info) = channel.recv().await {
+            sync_info = info.state_info.get_block_sync_info();
+        }
+
+        let mut response = tari_rpc::SyncInfoResponse {
+            tip_height: 0,
+            local_height: 0,
+            peer_node_id: vec![],
+        };
+
+        if let Some(info) = sync_info {
+            let mut node_ids = Vec::new();
+            info.sync_peers
+                .iter()
+                .for_each(|x| node_ids.push(x.node_id.to_string().as_bytes().to_vec()));
+            response = tari_rpc::SyncInfoResponse {
+                tip_height: info.tip_height,
+                local_height: info.local_height,
+                peer_node_id: node_ids,
+            };
+        }
+
+        debug!(target: LOG_TARGET, "Sending SyncData response to client");
+        Ok(Response::new(response))
     }
 }
 

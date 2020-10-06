@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/">
+        <file>images/splash_gem_big.png</file>
+        <file>images/splash_gem_small.png</file>
+        <file>images/green_dot.png</file>
+        <file>images/red_dot.png</file>
+    </qresource>
+</RCC>

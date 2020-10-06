@@ -218,6 +218,7 @@ fn main_inner() -> Result<(), ExitCodes> {
             rt.handle().clone(),
             ctx.local_node(),
             node_config.clone(),
+            ctx.state_machine(),
         );
 
         rt.spawn(run_grpc(grpc, node_config.grpc_address, shutdown.to_signal()));

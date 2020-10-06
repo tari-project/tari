@@ -54,6 +54,8 @@ service BaseNode {
     rpc GetNewBlock(NewBlockTemplate) returns (GetNewBlockResult);
     // Submit a new block for propogation
     rpc SubmitBlock(Block) returns (Empty);
+    // Get the base node sync information
+    rpc GetSyncInfo(Empty) returns (SyncInfoResponse);
     // Get the base node tip information
     rpc GetTipInfo(Empty) returns (TipInfoResponse);
     // Search for blocks containing the specified kernels
@@ -187,6 +189,12 @@ message MetaData {
         uint64 pruning_horizon = 4;
         // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
         uint64 accumulated_difficulty = 5;
+}
+
+message SyncInfoResponse {
+        uint64 tip_height = 1;
+        uint64 local_height = 2;
+        repeated bytes peer_node_id = 3;
 }
 
 // This is the message that is returned for a miner after it asks for a new block.

@@ -166,6 +166,15 @@ pub enum StateInfo {
     Listening(ListeningInfo),
 }
 
+impl StateInfo {
+    pub fn get_block_sync_info(&self) -> Option<BlockSyncInfo> {
+        match self {
+            Self::BlockSync(info) => Some(info.clone()),
+            _ => None,
+        }
+    }
+}
+
 impl Display for StateInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         match self {
