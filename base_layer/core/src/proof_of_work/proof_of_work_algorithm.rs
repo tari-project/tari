@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Hash, Eq)]
 pub enum PowAlgorithm {
     Monero = 0,
     Blake = 1,

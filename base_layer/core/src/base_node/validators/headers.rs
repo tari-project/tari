@@ -84,9 +84,9 @@ impl<B: BlockchainBackend> HeaderValidator<B> {
             get_target_difficulty(
                 target_difficulties,
                 constants.get_difficulty_block_window() as usize,
-                constants.get_diff_target_block_interval(),
+                constants.get_diff_target_block_interval(pow_algo),
                 constants.min_pow_difficulty(pow_algo),
-                constants.get_difficulty_max_block_interval(),
+                constants.get_difficulty_max_block_interval(pow_algo),
             )
             .map_err(|err| {
                 error!(

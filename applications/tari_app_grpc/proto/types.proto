@@ -208,8 +208,7 @@ message ConsensusConstants {
     /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is excepted.
     /// We use TxN/20 where T = target time = 60 seconds, and N = block_window = 150
     uint64 future_time_limit = 3;
-    /// This is the our target time in seconds between blocks
-    uint64 target_block_interval = 4;
+    
     /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
     uint64 difficulty_block_window = 5;
     /// When doing difficulty adjustments, this is the maximum block time allowed
