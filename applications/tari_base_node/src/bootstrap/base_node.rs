@@ -131,6 +131,7 @@ where B: BlockchainBackend + 'static
                 self.rules,
                 self.factories,
                 sync_strategy,
+                config.orphan_db_clean_out_threshold,
             ))
             .build()
             .await?;

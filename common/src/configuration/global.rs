@@ -56,6 +56,7 @@ pub struct GlobalConfig {
     pub db_type: DatabaseType,
     pub db_config: LMDBConfig,
     pub orphan_storage_capacity: usize,
+    pub orphan_db_clean_out_threshold: usize,
     pub pruning_horizon: u64,
     pub pruned_mode_cleanup_interval: u64,
     pub core_threads: usize,
@@ -194,6 +195,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
 
     let key = config_string("base_node", &net_str, "orphan_storage_capacity");
     let orphan_storage_capacity = cfg
+        .get_int(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+
+    let key = config_string("base_node", &net_str, "orphan_db_clean_out_threshold");
+    let orphan_db_clean_out_threshold = cfg
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
@@ -436,6 +442,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         db_type,
         db_config,
         orphan_storage_capacity,
+        orphan_db_clean_out_threshold,
         pruning_horizon,
         pruned_mode_cleanup_interval,
         core_threads,

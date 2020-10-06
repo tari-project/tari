@@ -37,7 +37,7 @@ fn test_genesis_block() {
         FullConsensusValidator::new(rules.clone()),
         StatelessBlockValidator::new(rules.clone(), factories),
     );
-    let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
+    let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap();
     let block = rules.get_genesis_block();
     let result = db.add_block(block.into()).unwrap();
     assert_eq!(result, BlockAddResult::BlockExists);

@@ -110,6 +110,9 @@ pub struct ConfigBootstrap {
     /// Single input command
     #[structopt(long)]
     pub command: Option<String>,
+    /// This will clean out the orphans db at startup
+    #[structopt(long, alias("clean_orphans_db"))]
+    pub clean_orphans_db: bool,
 }
 
 impl Default for ConfigBootstrap {
@@ -124,6 +127,7 @@ impl Default for ConfigBootstrap {
             rebuild_db: false,
             input_file: None,
             command: None,
+            clean_orphans_db: false,
         }
     }
 }
@@ -280,6 +284,7 @@ mod test {
             "--init",
             "--create-id",
             "--rebuild_db",
+            "--clean_orphans_db",
             "--base-path",
             "no-temp-path-created",
             "--log-config",
@@ -293,6 +298,7 @@ mod test {
         assert!(bootstrap.init);
         assert!(bootstrap.create_id);
         assert!(bootstrap.rebuild_db);
+        assert!(bootstrap.clean_orphans_db);
         assert_eq!(bootstrap.base_path.to_str(), Some("no-temp-path-created"));
         assert_eq!(bootstrap.log_config.to_str(), Some("no-log-config-file-created"));
         assert_eq!(bootstrap.config.to_str(), Some("no-config-file-created"));

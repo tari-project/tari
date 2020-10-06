@@ -139,6 +139,9 @@ db_type = "lmdb"
 
 # The maximum number of orphans that can be stored in the Orphan block pool. Default value is "720".
 #orphan_storage_capacity = 720
+# The size that the orphan pool will be allowed to grow before it is cleaned out, with threshold being tested every
+# time before fetch and add blocks. Default value is "0", which indicates the orphan pool will not be cleaned out.
+#orphan_db_clean_out_threshold = 0
 # The pruning horizon that indicates how many full blocks without pruning must be kept by the base node. Default value
 # is "0", which indicates an archival node without any pruning.
 #pruning_horizon = 0
@@ -267,6 +270,9 @@ wallet_tor_identity_file = ".\\config\\wallet-tor.json"
 
 # The maximum number of orphans that can be stored in the Orphan block pool. Default value is "720".
 #orphan_storage_capacity = 720
+# The size that the orphan pool will be allowed to grow before it is cleaned out, with threshold being tested every
+# time before fetch and add blocks. Default value is "0", which indicates the orphan pool will not be cleaned out.
+#orphan_db_clean_out_threshold = 0
 # The pruning horizon that indicates how many full blocks without pruning must be kept by the base node. Default value
 # is "0", which indicates an archival node without any pruning.
 #pruning_horizon = 0
