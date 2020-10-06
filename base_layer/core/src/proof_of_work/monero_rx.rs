@@ -20,7 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::BlockHeader, proof_of_work::Difficulty, tari_utilities::ByteArray, U256};
+use crate::{
+    blocks::BlockHeader,
+    proof_of_work::{
+        difficulty::{big_endian_difficulty, little_endian_difficulty},
+        Difficulty,
+    },
+    tari_utilities::ByteArray,
+};
 use log::*;
 use monero::{
     blockdata::{
@@ -41,8 +48,6 @@ use tari_crypto::tari_utilities::hex::{from_hex, Hex, HexError};
 use thiserror::Error;
 
 pub const LOG_TARGET: &str = "c::pow::monero_rx";
-
-const MAX_TARGET: U256 = U256::MAX;
 
 #[derive(Debug, Error)]
 pub enum MergeMineError {
@@ -207,10 +212,11 @@ pub fn monero_difficulty(header: &BlockHeader) -> Result<Difficulty, MergeMineEr
     let input = from_hex(input)?;
     // Todo remove this eventually when we reset and we dont have quotes in the key anymore.
     let key_bytes = from_hex(&key.replace("\"", ""))?;
-    get_random_x_difficulty(&input, &key_bytes).map(|r| r.0)
+    get_random_x_difficulty(&input, &key_bytes, header.height).map(|r| r.0)
 }
 
-fn get_random_x_difficulty(input: &[u8], key: &[u8]) -> Result<(Difficulty, Vec<u8>), MergeMineError> {
+// this swops from big_endian to little at height 108000
+fn get_random_x_difficulty(input: &[u8], key: &[u8], height: u64) -> Result<(Difficulty, Vec<u8>), MergeMineError> {
     let flags = RandomXFlag::get_recommended_flags();
     let cache = RandomXCache::new(flags, &key)?;
     let dataset = RandomXDataset::new(flags, &cache, 0)?;
@@ -222,9 +228,12 @@ fn get_random_x_difficulty(input: &[u8], key: &[u8]) -> Result<(Difficulty, Vec<
         hash.to_hex(),
         Vec::from(key).to_hex()
     );
-    let scalar = U256::from_little_endian(&hash); // Little endian so the hash has trailing zeroes
-    let result = MAX_TARGET / scalar;
-    let difficulty = Difficulty::from(result.low_u64());
+    // ToDo remove this post testnet. This is to fix wrongly calculated monero blocks
+    let difficulty = if height > 108000 {
+        little_endian_difficulty(&hash)
+    } else {
+        big_endian_difficulty(&hash)
+    };
     Ok((difficulty, hash))
 }
 
@@ -843,7 +852,7 @@ mod test {
         .unwrap();
         let key = from_hex("2aca6501719a5c7ab7d4acbc7cc5d277b57ad8c27c6830788c2d5a596308e5b1").unwrap();
 
-        let difficulty = get_random_x_difficulty(&input, &key).unwrap();
+        let difficulty = get_random_x_difficulty(&input, &key, 108001).unwrap();
         assert_eq!(
             difficulty.1.to_hex(),
             "f68fbc8cc85bde856cd1323e9f8e6f024483038d728835de2f8c014ff6260000"
