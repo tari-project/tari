@@ -147,3 +147,41 @@ fn test_block_34947() {
     assert!(validator.validate(&block).is_ok());
     assert!(block.header.achieved_difficulty().unwrap() > Difficulty::from(448647867));
 }
+
+/// Block 89485 fails validation tests when syncing a blockchain.
+///   [c::cs::database] WARN  Block #89485 (1eaab07fdf1535a25497659d9afbf12b032b672103a66cf01685754edeb83215) failed
+/// validation -   Block validation error: A transaction in the block failed to validate: `Invalid coinbase in body`
+/// This test checks to see that this issue has been resolved.
+#[test]
+fn test_block_89485() {
+    let _ = env_logger::try_init();
+    let block_str = r#"
+    {"header":{"version":1,"height":89485,"prev_hash":"998f336c54e84f8e555806b1b5d33fa3cbdc9a73599917fd37ea64ac23e16a1c","timestamp":1599135332,"output_mr":"108297c36a7b231bcb3e3e93a6e1f946587a93b77194537a54e14efbb27d9ad7","range_proof_mr":"94afd1e7be51cfc706518be319def14de83cfe71fbe21b12947093f862eb5bd8","kernel_mr":"048721cc92af29dd3f281c85fae4b554df6acb7d87156102a3111737f98b5d1b","total_kernel_offset":"0000000000000000000000000000000000000000000000000000000000000000","nonce":18080772298843196477,"pow":{"accumulated_monero_difficulty":142,"accumulated_blake_difficulty":785127184716027,"target_difficulty":628034018,"pow_algo":"Blake","pow_data":[]}},"body":{"sorted":true,"inputs":[],"outputs":[{"features":{"flags":{"bits":1},"maturity":89545},"commitment":"14174ca85f4aee8decfc250a6614ddc110ff52e3d079ede9007e29fc4d00363e","proof":"f8a5ce1ed043f46e869471aadc58351c94ed9b43e8a2915ccdf6b33afcb26b26422b2efe5b3cba81f6a85fe7ea5e2c65d1cab1afee380f9596381376d765306812193eb47d5515d8a8399cfad055441691a007da85f9855fe4e8b1a3549c7b58fe25314cb720b80e9d6d93786d224989412c769cea374b2db51a656c1b4e7703b8f63f721c2e999d18b55786f4e080bbbe7c9ad0c784e6f58f2faf49b9c51a0dea1c1df50526af69d4f71e5cb6081ebf59c769125d13d7aa2ef6ad2366c2050f808b9979d96854ee1b06d2340076039e48025547ae8eed2237f5e9762125520d22ef85f7a3981996a2f720bc6bc9cc4a384c453c954a25ee62500668b7ac04282e60bd2c22a61dc5e936b36358bf8cae060d70a53880932256ff3c752e477f0560c78e9be8c8d1fbc4ff2c3243878824b366df19e6b2044d14f502c7423358595c56c486b1e205212fe9a1fcd7637f876045fad817f898ae23117dd75cb05634fe3be0a3c22deb3751327458eade254052b5afd12fab5a796cb984add1d9ae4830ef0a2bb082a3895f5ad3695cd4e64f808724dba0fbfc884c442fb6ab50d5400ea1f7e60653d662b2f5f54a244e0d1badc9910915c651b7da0ade37cd0d280084280ffe75b1a0f30d5da88b4a1acb0d3d7f1ef5212d1ed3c14f8484e1fa1b19b2e806ec09a66b578ba0b4ddab891aa634feb4d9aede1c9e0d7047bee194fa2cd40c238e80e7a8ba169fe67e4a25cfe100cd3d7574fd4a2df2a69414af34c76674d5ee30c260656ea51f2b2d39d57a1f3e8f2d01272eebb0f8612ac7d9a9483894da6014c2aa5d059cceb38772ff61a777ab56bd59e668a5d4815167cf764f7141e99b99785ae9d1e0811e13ed583b828a661ab2113c889c24359c83f6a9ff0e3b545fd06c5d89f85830a9d109438d0b9406b96c78e3d32086804079d796310e"}],"kernels":[{"features":{"bits":1},"fee":0,"lock_height":0,"meta_info":null,"linked_kernel":null,"excess":"0089cc20035f873602cb911cfb45f9c45e5ffec18f5868cab624703bcd441472","excess_sig":{"public_nonce":"eac5ae1da6508406402b20032920d37572c6ac899782ee2bbd8216c5ca50af11","signature":"5b9e182219a0651d3facff6eebac1c2a7b4606b48cf71fe706f5cf1654b0c008"}}]}}
+    "#;
+    let block = Block::from_json(block_str).unwrap();
+    let rules = ConsensusManagerBuilder::new(Network::Rincewind).build();
+    let factories = CryptoFactories::default();
+    println!("{}", block);
+    let validator = StatelessBlockValidator::new(rules, factories);
+    assert!(validator.validate(&block).is_ok());
+    assert!(block.header.achieved_difficulty().unwrap() > Difficulty::from(448647867));
+}
+
+/// Block 89567 fails validation tests when syncing a blockchain.
+///   [c::cs::database] WARN  Block #89567 (3bc037cacd89a062f99c33f8ffae1a147325e96b8d20cd301ca2c8a04a268ec7) failed
+/// validation -   Block validation error: A transaction in the block failed to validate: `Invalid coinbase in body`
+/// This test checks to see that this issue has been resolved.
+#[test]
+fn test_block_89567() {
+    let _ = env_logger::try_init();
+    let block_str = r#"
+    {"header":{"version":1,"height":89567,"prev_hash":"5cbbd9be2a2ba99b50a01d943b39a028c5eb3c0321edacfa5c0b6a8ad21e3107","timestamp":1599146808,"output_mr":"87f4bf2fbfcbb36a2744d6728a2649bd7d8c4b838db707cf960f013a7e513ad4","range_proof_mr":"ac29ba4b3755c3b12bc3b8f79b4d0c0f3f86f76c657aea6f9793621c139fe66c","kernel_mr":"7c0b5bce0014198fd6cc04e834785963d02713f6c0a08f27acb3dee6e8a7fd7e","total_kernel_offset":"0000000000000000000000000000000000000000000000000000000000000000","nonce":15511383920751240777,"pow":{"accumulated_monero_difficulty":147,"accumulated_blake_difficulty":785375641651837,"target_difficulty":449417640,"pow_algo":"Blake","pow_data":[]}},"body":{"sorted":true,"inputs":[],"outputs":[{"features":{"flags":{"bits":1},"maturity":89627},"commitment":"b6847ecabac804522da20987ca175d9be61ee0c6a5c7822c54e709006823e122","proof":"10acee2261730810ab8fa7979750583be5b689b12a828ff0d1c250d8dfa90a19844c2313afd31b0fb99c0622dbced215c484c1b3f4c9f1cbead9af85360b2b60301dadf343cfe67c858d25072beb66988619082507d001f51e75fed97898516cb0db3b1ec43ca738a00341b93971fc27d6d140352bfcc38c0d0d7eea17404174985c5b8bdf99f43cd3b0f8be4f5d765d1527638ad6a42bd15d8305d2da08a60a110f4c4338f92460c27593e07a0e6d6ef879d43642f12fccb64bc3d36f3f89026e662841b77e89c12d061f2f52ac9647c33fe1582d3e9e2827b995acdb79f0041efbc6e9acdff84ea0971542e80a8c6053688e0374535ff829d953923b7f1a6eb6a8e2fcd5bf7ff8dd1c347dbb2b61b54f213fd064e3317b002cfc942ad5195e429743c5141ab1a5c1f2f37a5fe232ae3046cc79341e7991e68268fc78898f480035c975621a639039037f59d995d72d67899533e77b0dd4ee9507f36b1c234b2e57b1dcab22a1d678482c3fe74194c2f5e8390d833b5150753d9299c2ee6c496ac3fc3f2188a1b8a1171d747f3a0c04fb37b5007bfad68e1f6b3f8e0eb9e5510293e9ab6d7017a39ace7bfc3332a068486a4acffe0db9cb4519d7bc2505923b8e36712ba942b0ecf82e2bbeb8131116587a88631365f9f852d8972d5e1edd0034d8d18594ff7241d8c365c1fa5ce3e1a95815e53c3070d06663602d00e9a8430cd8846ede7aa01b1bc2197e6f812a49f6caa8500795ef69f97e67802edd1c5e5409f383529bae7cf4ff5a5552cb7003abcb9f9a9152440731afb1807c6e7d60ee53717a776668615eb6e888041f0d84c0492b2ed85a868072484c1ef75c425bd4636b865ea762fa9c7d5b36a080ce1941302b0a4a2c27e1cd2e9441dcaf0e0f83073c1d2136aa02916d617c857c47de06fe01ccc42bf68c57ff0bc95abf480a"}],"kernels":[{"features":{"bits":1},"fee":0,"lock_height":0,"meta_info":null,"linked_kernel":null,"excess":"5cfacd4f27ccc2ea5bbfde9aeed8fd551fb4c5ebaddae14a46681aca1aa90b0f","excess_sig":{"public_nonce":"9cfae004e775d37e33c80993e3964ebb096b389356c440ce4b0afbae91b4fb52","signature":"c0817871260942b1edb1038ee273af71010a9d8dbcadca296da7fbe524bbc101"}}]}}
+    "#;
+    let block = Block::from_json(block_str).unwrap();
+    let rules = ConsensusManagerBuilder::new(Network::Rincewind).build();
+    let factories = CryptoFactories::default();
+    println!("{}", block);
+    let validator = StatelessBlockValidator::new(rules, factories);
+    assert!(validator.validate(&block).is_ok());
+    assert!(block.header.achieved_difficulty().unwrap() > Difficulty::from(448647867));
+}
