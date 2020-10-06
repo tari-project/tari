@@ -73,6 +73,10 @@ impl RpcRequestMock {
         let context = RequestContext::new(node_id, Box::new(self.comms_provider.clone()));
         Request::with_context(context, 0.into(), msg)
     }
+
+    pub fn request_no_context<T>(&self, msg: T) -> Request<T> {
+        Request::new(0.into(), msg)
+    }
 }
 
 /// # RpcMock trait

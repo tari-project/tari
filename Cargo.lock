@@ -4021,6 +4021,7 @@ dependencies = [
  "tari_common",
  "tari_comms",
  "tari_comms_dht",
+ "tari_comms_rpc_macros",
  "tari_crypto",
  "tari_infra_derive",
  "tari_mmr",

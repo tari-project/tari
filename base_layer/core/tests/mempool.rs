@@ -509,7 +509,7 @@ fn request_response_get_stats() {
 }
 
 #[test]
-fn request_response_get_tx_state_with_excess_sig() {
+fn request_response_get_tx_state_by_excess_sig() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
@@ -554,7 +554,7 @@ fn request_response_get_tx_state_with_excess_sig() {
         assert_eq!(
             alice_node
                 .outbound_mp_interface
-                .get_tx_state_with_excess_sig(tx_excess_sig)
+                .get_tx_state_by_excess_sig(tx_excess_sig)
                 .await
                 .unwrap(),
             TxStorageResponse::PendingPool
@@ -562,7 +562,7 @@ fn request_response_get_tx_state_with_excess_sig() {
         assert_eq!(
             alice_node
                 .outbound_mp_interface
-                .get_tx_state_with_excess_sig(unpublished_tx_excess_sig)
+                .get_tx_state_by_excess_sig(unpublished_tx_excess_sig)
                 .await
                 .unwrap(),
             TxStorageResponse::NotStored
@@ -570,7 +570,7 @@ fn request_response_get_tx_state_with_excess_sig() {
         assert_eq!(
             alice_node
                 .outbound_mp_interface
-                .get_tx_state_with_excess_sig(orphan_tx_excess_sig)
+                .get_tx_state_by_excess_sig(orphan_tx_excess_sig)
                 .await
                 .unwrap(),
             TxStorageResponse::OrphanPool

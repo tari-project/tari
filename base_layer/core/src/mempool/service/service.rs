@@ -41,10 +41,7 @@ use crate::{
     transactions::{proto::types::Transaction as ProtoTransaction, transaction::Transaction},
 };
 use futures::{
-    channel::{
-        mpsc::{channel, Receiver, Sender, UnboundedReceiver},
-        oneshot::Sender as OneshotSender,
-    },
+    channel::{mpsc, oneshot::Sender as OneshotSender},
     pin_mut,
     stream::StreamExt,
     SinkExt,
@@ -61,43 +58,21 @@ use tari_comms_dht::{
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
-use tari_service_framework::reply_channel::RequestContext;
+use tari_service_framework::{reply_channel, reply_channel::RequestContext};
 use tokio::task;
 
 const LOG_TARGET: &str = "c::mempool::service::service";
 
 /// A convenience struct to hold all the Mempool service streams
 pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq> {
-    outbound_request_stream: SOutReq,
-    outbound_tx_stream: UnboundedReceiver<(Transaction, Vec<NodeId>)>,
-    inbound_request_stream: SInReq,
-    inbound_response_stream: SInRes,
-    inbound_transaction_stream: STxIn,
-    local_request_stream: SLocalReq,
-    block_event_stream: BlockEventReceiver,
-}
-
-impl<SOutReq, SInReq, SInRes, STxIn, SLocalReq> MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq> {
-    pub fn new(
-        outbound_request_stream: SOutReq,
-        outbound_tx_stream: UnboundedReceiver<(Transaction, Vec<NodeId>)>,
-        inbound_request_stream: SInReq,
-        inbound_response_stream: SInRes,
-        inbound_transaction_stream: STxIn,
-        local_request_stream: SLocalReq,
-        block_event_stream: BlockEventReceiver,
-    ) -> Self
-    {
-        Self {
-            outbound_request_stream,
-            outbound_tx_stream,
-            inbound_request_stream,
-            inbound_response_stream,
-            inbound_transaction_stream,
-            local_request_stream,
-            block_event_stream,
-        }
-    }
+    pub outbound_request_stream: SOutReq,
+    pub outbound_tx_stream: mpsc::UnboundedReceiver<(Transaction, Vec<NodeId>)>,
+    pub inbound_request_stream: SInReq,
+    pub inbound_response_stream: SInRes,
+    pub inbound_transaction_stream: STxIn,
+    pub local_request_stream: SLocalReq,
+    pub block_event_stream: BlockEventReceiver,
+    pub request_receiver: reply_channel::TryReceiver<MempoolRequest, MempoolResponse, MempoolServiceError>,
 }
 
 /// The Mempool Service is responsible for handling inbound requests and responses and for sending new requests to the
@@ -106,8 +81,8 @@ pub struct MempoolService {
     outbound_message_service: OutboundMessageRequester,
     inbound_handlers: MempoolInboundHandlers,
     waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>>,
-    timeout_sender: Sender<RequestKey>,
-    timeout_receiver_stream: Option<Receiver<RequestKey>>,
+    timeout_sender: mpsc::Sender<RequestKey>,
+    timeout_receiver_stream: Option<mpsc::Receiver<RequestKey>>,
     config: MempoolServiceConfig,
     state_machine: StateMachineHandle,
 }
@@ -120,7 +95,7 @@ impl MempoolService {
         state_machine: StateMachineHandle,
     ) -> Self
     {
-        let (timeout_sender, timeout_receiver) = channel(100);
+        let (timeout_sender, timeout_receiver) = mpsc::channel(100);
         Self {
             outbound_message_service,
             inbound_handlers,
@@ -145,8 +120,7 @@ impl MempoolService {
     {
         let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
-        let outbound_tx_stream = streams.outbound_tx_stream.fuse();
-        pin_mut!(outbound_tx_stream);
+        let mut outbound_tx_stream = streams.outbound_tx_stream.fuse();
         let inbound_request_stream = streams.inbound_request_stream.fuse();
         pin_mut!(inbound_request_stream);
         let inbound_response_stream = streams.inbound_response_stream.fuse();
@@ -155,17 +129,22 @@ impl MempoolService {
         pin_mut!(inbound_transaction_stream);
         let local_request_stream = streams.local_request_stream.fuse();
         pin_mut!(local_request_stream);
-        let block_event_stream = streams.block_event_stream.fuse();
-        pin_mut!(block_event_stream);
-        let timeout_receiver_stream = self
+        let mut block_event_stream = streams.block_event_stream.fuse();
+        let mut timeout_receiver_stream = self
             .timeout_receiver_stream
             .take()
             .expect("Mempool Service initialized without timeout_receiver_stream")
             .fuse();
-        pin_mut!(timeout_receiver_stream);
+        let mut request_receiver = streams.request_receiver;
 
         loop {
             futures::select! {
+                // Requests sent from the handle
+                request = request_receiver.select_next_some() => {
+                    let (request, reply) = request.split();
+                    let _ = reply.send(self.handle_request(request).await);
+                },
+
                 // Outbound request messages from the OutboundMempoolServiceInterface
                 outbound_request_context = outbound_request_stream.select_next_some() => {
                     self.spawn_handle_outbound_request(outbound_request_context);
@@ -215,6 +194,11 @@ impl MempoolService {
             }
         }
         Ok(())
+    }
+
+    async fn handle_request(&mut self, request: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
+        // TODO: Move db calls into MempoolService
+        self.inbound_handlers.handle_request(request).await
     }
 
     fn spawn_handle_outbound_request(
@@ -411,7 +395,7 @@ async fn handle_incoming_response(
 async fn handle_outbound_request(
     mut outbound_message_service: OutboundMessageRequester,
     waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>>,
-    timeout_sender: Sender<RequestKey>,
+    timeout_sender: mpsc::Sender<RequestKey>,
     reply_tx: OneshotSender<Result<MempoolResponse, MempoolServiceError>>,
     request: MempoolRequest,
     config: MempoolServiceConfig,
@@ -541,7 +525,7 @@ async fn handle_block_event(
     Ok(())
 }
 
-fn spawn_request_timeout(mut timeout_sender: Sender<RequestKey>, request_key: RequestKey, timeout: Duration) {
+fn spawn_request_timeout(mut timeout_sender: mpsc::Sender<RequestKey>, request_key: RequestKey, timeout: Duration) {
     task::spawn(async move {
         tokio::time::delay_for(timeout).await;
         let _ = timeout_sender.send(request_key).await;

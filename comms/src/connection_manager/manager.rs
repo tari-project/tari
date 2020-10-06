@@ -249,7 +249,15 @@ where
         self.run_listener();
         self.run_dialer();
 
-        debug!(target: LOG_TARGET, "Connection manager started");
+        debug!(
+            target: LOG_TARGET,
+            "Connection manager started. Protocols supported by this node: {}",
+            self.protocols
+                .iter()
+                .map(|p| String::from_utf8_lossy(p))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         loop {
             futures::select! {
                 event = self.internal_event_rx.select_next_some() => {

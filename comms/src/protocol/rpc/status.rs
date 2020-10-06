@@ -70,6 +70,10 @@ impl RpcStatus {
         }
     }
 
+    pub fn general_default() -> Self {
+        Self::general("General error")
+    }
+
     pub fn timed_out<T: ToString>(details: T) -> Self {
         Self {
             code: RpcStatusCode::Timeout,
@@ -110,8 +114,8 @@ impl From<RpcError> for RpcStatus {
             RpcError::DecodeError(_) => Self::bad_request("Failed to decode request"),
             RpcError::RequestFailed(status) => status,
             err => {
-                error!(target: LOG_TARGET, "Request failed: {}", err);
-                Self::general("Internal server error")
+                error!(target: LOG_TARGET, "Internal error: {}", err);
+                Self::general_default()
             },
         }
     }

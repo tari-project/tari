@@ -20,14 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{proto::mempool::TxStorageResponse as ProtoTxStorageResponse, TxStorageResponse};
+use crate::mempool::{proto::mempool as proto, TxStorageResponse};
 use std::convert::TryFrom;
 
-impl TryFrom<ProtoTxStorageResponse> for TxStorageResponse {
+impl TryFrom<proto::TxStorageResponse> for TxStorageResponse {
     type Error = String;
 
-    fn try_from(tx_storage: ProtoTxStorageResponse) -> Result<Self, Self::Error> {
-        use ProtoTxStorageResponse::*;
+    fn try_from(tx_storage: proto::TxStorageResponse) -> Result<Self, Self::Error> {
+        use proto::TxStorageResponse::*;
         Ok(match tx_storage {
             None => return Err("TxStorageResponse not provided".to_string()),
             UnconfirmedPool => TxStorageResponse::UnconfirmedPool,
@@ -39,15 +39,23 @@ impl TryFrom<ProtoTxStorageResponse> for TxStorageResponse {
     }
 }
 
-impl From<TxStorageResponse> for ProtoTxStorageResponse {
-    fn from(tree: TxStorageResponse) -> Self {
+impl From<TxStorageResponse> for proto::TxStorageResponse {
+    fn from(resp: TxStorageResponse) -> Self {
         use TxStorageResponse::*;
-        match tree {
-            UnconfirmedPool => ProtoTxStorageResponse::UnconfirmedPool,
-            OrphanPool => ProtoTxStorageResponse::OrphanPool,
-            PendingPool => ProtoTxStorageResponse::PendingPool,
-            ReorgPool => ProtoTxStorageResponse::ReorgPool,
-            NotStored => ProtoTxStorageResponse::NotStored,
+        match resp {
+            UnconfirmedPool => proto::TxStorageResponse::UnconfirmedPool,
+            OrphanPool => proto::TxStorageResponse::OrphanPool,
+            PendingPool => proto::TxStorageResponse::PendingPool,
+            ReorgPool => proto::TxStorageResponse::ReorgPool,
+            NotStored => proto::TxStorageResponse::NotStored,
+        }
+    }
+}
+
+impl From<TxStorageResponse> for proto::TxStorage {
+    fn from(resp: TxStorageResponse) -> Self {
+        Self {
+            response: proto::TxStorageResponse::from(resp) as i32,
         }
     }
 }

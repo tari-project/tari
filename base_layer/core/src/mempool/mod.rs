@@ -20,14 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(all(test, feature = "base_node"))]
+pub mod test_utils;
+
 #[cfg(feature = "base_node")]
 mod config;
 #[cfg(feature = "base_node")]
 mod consts;
 #[cfg(feature = "base_node")]
 mod error;
-#[allow(clippy::module_inception)]
 #[cfg(feature = "base_node")]
+#[allow(clippy::module_inception)]
 mod mempool;
 #[cfg(feature = "base_node")]
 mod mempool_storage;
@@ -39,6 +42,12 @@ mod pending_pool;
 mod priority;
 #[cfg(feature = "base_node")]
 mod reorg_pool;
+#[cfg(feature = "base_node")]
+mod rpc;
+#[cfg(feature = "base_node")]
+pub use rpc::create_mempool_rpc_service;
+#[cfg(feature = "base_node")]
+pub use rpc::{MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolService};
 #[cfg(feature = "base_node")]
 mod unconfirmed_pool;
 

@@ -30,6 +30,7 @@ use crate::{
     },
     transactions::transaction::TransactionError,
 };
+use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -52,4 +53,6 @@ pub enum MempoolError {
     BlockingTaskSpawnError(String),
     #[error("A problem has been encountered with the storage backend: `{0}`")]
     BackendError(String),
+    #[error("Internal reply channel error: `{0}`")]
+    TransportChannelError(#[from] TransportChannelError),
 }
