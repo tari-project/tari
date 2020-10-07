@@ -23,7 +23,6 @@
 use crate::memory_net::DrainBurst;
 use futures::{channel::mpsc, future, StreamExt};
 use lazy_static::lazy_static;
-use prettytable::{cell, row, Table};
 use rand::{rngs::OsRng, Rng};
 use std::{
     collections::HashMap,
@@ -119,7 +118,7 @@ pub async fn shutdown_all(nodes: Vec<TestNode>) {
     future::join_all(tasks).await;
 }
 
-pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEventRx, quiet_mode: bool) -> usize {
+pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEventRx) -> usize {
     let mut successes = 0;
     let mut total_messages = 0;
     let mut total_time = Duration::from_secs(0);
@@ -128,10 +127,6 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
         let wallet2 = wallets.get(i + 1).unwrap();
 
         banner!("🌎 '{}' is going to try discover '{}'.", wallet1, wallet2);
-
-        if !quiet_mode {
-            peer_list_summary(&[wallet1, wallet2]).await;
-        }
 
         let start = Instant::now();
         let discovery_result = wallet1
@@ -181,39 +176,6 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
         total_messages
     );
     total_messages
-}
-
-pub async fn peer_list_summary<'a, I: IntoIterator<Item = T>, T: AsRef<TestNode>>(network: I) {
-    for node in network {
-        let node_identity = node.as_ref().comms.node_identity();
-        let peers = node
-            .as_ref()
-            .comms
-            .peer_manager()
-            .closest_peers(node_identity.node_id(), 10, &[], None)
-            .await
-            .unwrap();
-        let mut table = Table::new();
-        table.add_row(row![
-            format!("{} closest peers (MAX: 10)", node.as_ref()),
-            "Distance".to_string(),
-            "Kind",
-        ]);
-        table.add_empty_row();
-        for peer in peers {
-            table.add_row(row![
-                get_name(&peer.node_id),
-                node_identity.node_id().distance(&peer.node_id),
-                if peer.features.contains(PeerFeatures::COMMUNICATION_NODE) {
-                    "BaseNode"
-                } else {
-                    "Wallet"
-                }
-            ]);
-        }
-        table.printstd();
-        println!();
-    }
 }
 
 pub async fn network_peer_list_stats(nodes: &[TestNode], wallets: &[TestNode]) {

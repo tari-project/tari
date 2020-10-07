@@ -990,17 +990,6 @@ dependencies = [
 
 [[package]]
 name = "dirs"
-version = "1.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fd78930633bd1c6e35c4b42b1df7b0cbc6bc191146e512bb3bedf243fcc3901"
-dependencies = [
- "libc",
- "redox_users",
- "winapi 0.3.9",
-]
-
-[[package]]
-name = "dirs"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13aea89a5c93364a98e9b37b2fa237effbb694d5cfe01c5b70941f7eb087d5e3"
@@ -1052,12 +1041,6 @@ name = "either"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd56b59865bce947ac5958779cfa508f6c3b9497cc762b7e24a12d11ccde2c4f"
-
-[[package]]
-name = "encode_unicode"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a357d28ed41a50f9c765dbfe56cbc04a64e53e5fc58ba79fbc34c10ef3df831f"
 
 [[package]]
 name = "encoding_rs"
@@ -2754,20 +2737,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c36fa947111f5c62a733b652544dd0016a43ce89619538a8ef92724a6f501a20"
 
 [[package]]
-name = "prettytable-rs"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fd04b170004fa2daccf418a7f8253aaf033c27760b5f225889024cf66d7ac2e"
-dependencies = [
- "atty",
- "csv",
- "encode_unicode",
- "lazy_static 1.4.0",
- "term",
- "unicode-width",
-]
-
-[[package]]
 name = "primitive-types"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3776,7 +3745,7 @@ dependencies = [
 name = "tari_app_utilities"
 version = "0.5.5"
 dependencies = [
- "dirs 2.0.2",
+ "dirs",
  "log 0.4.11",
  "qrcode",
  "rand 0.7.3",
@@ -3797,7 +3766,7 @@ dependencies = [
  "chrono",
  "chrono-english",
  "config",
- "dirs 2.0.2",
+ "dirs",
  "futures 0.3.5",
  "git2",
  "log 0.4.11",
@@ -3838,7 +3807,7 @@ version = "0.2.5"
 dependencies = [
  "anyhow",
  "config",
- "dirs 2.0.2",
+ "dirs",
  "get_if_addrs",
  "log 0.4.11",
  "log4rs",
@@ -3919,7 +3888,6 @@ dependencies = [
  "log 0.4.11",
  "petgraph",
  "pin-project",
- "prettytable-rs",
  "prost",
  "prost-types",
  "rand 0.7.3",
@@ -3966,7 +3934,7 @@ dependencies = [
  "chrono",
  "config",
  "crossterm",
- "dirs 2.0.2",
+ "dirs",
  "lazy_static 1.4.0",
  "log 0.4.11",
  "qrcode",
@@ -4351,17 +4319,6 @@ dependencies = [
  "rand 0.7.3",
  "redox_syscall",
  "remove_dir_all",
- "winapi 0.3.9",
-]
-
-[[package]]
-name = "term"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edd106a334b7657c10b7c540a0106114feadeb4dc314513e97df481d5d966f42"
-dependencies = [
- "byteorder",
- "dirs 1.0.5",
  "winapi 0.3.9",
 ]
 

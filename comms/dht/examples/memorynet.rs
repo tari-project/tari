@@ -208,7 +208,7 @@ async fn main() {
     take_a_break(NUM_NODES).await;
 
     log::info!("------------------------------- DISCOVERY -------------------------------");
-    total_messages += discovery(&wallets, &mut messaging_events_rx, QUIET_MODE).await;
+    total_messages += discovery(&wallets, &mut messaging_events_rx).await;
 
     total_messages += drain_messaging_events(&mut messaging_events_rx, false).await;
 
