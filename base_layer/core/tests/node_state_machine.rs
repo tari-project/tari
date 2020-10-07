@@ -672,7 +672,7 @@ fn test_sync_peer_banning() {
         let bob_db = &bob_node.blockchain_db;
         let bob_public_key = &bob_node.node_identity.public_key();
         for height in 1..=2 {
-            let coinbase_value = consensus_manager.emission_schedule().block_reward(height);
+            let coinbase_value = consensus_manager.emission_schedule(0).block_reward(height);
             let (mut coinbase_utxo, coinbase_kernel, mut coinbase) = create_coinbase(
                 &factories,
                 coinbase_value,
@@ -699,7 +699,7 @@ fn test_sync_peer_banning() {
         // Alice fork
         let mut alice_prev_block = prev_block.clone();
         for height in 3..=4 {
-            let coinbase_value = consensus_manager.emission_schedule().block_reward(height);
+            let coinbase_value = consensus_manager.emission_schedule(0).block_reward(height);
             let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
                 &factories,
                 coinbase_value,
