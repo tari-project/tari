@@ -30,7 +30,7 @@ use tari_common::GlobalConfig;
 use tari_core::{
     base_node::{comms_interface::Broadcast, LocalNodeCommsInterface},
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    consensus::{emission::EmissionSchedule, ConsensusManagerBuilder, Network},
+    consensus::{ConsensusManagerBuilder, Network},
     proof_of_work::PowAlgorithm,
 };
 
@@ -320,7 +320,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let response = tari_rpc::NewBlockTemplateResponse {
             new_block_template: Some(new_template.into()),
-            block_reward: cm.emission_schedule().block_reward(height).0,
+            block_reward: cm.emission_schedule(height).block_reward(height).0,
         };
 
         debug!(target: LOG_TARGET, "Sending GetNewBlockTemplate response to client");
@@ -590,21 +590,23 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
             .collect();
         let network: Network = self.node_config.network.into();
-        let constants = network.create_consensus_constants().pop().unwrap();
+        let consensus_manager = ConsensusManagerBuilder::new(network).build();
+        // let constants = network.create_consensus_constants().pop().unwrap();
         let (mut tx, rx) = mpsc::channel(GET_TOKENS_IN_CIRCULATION_PAGE_SIZE);
         self.executor.spawn(async move {
             let mut page: Vec<u64> = heights
                 .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_PAGE_SIZE))
                 .collect();
-            let (initial, decay, tail) = constants.emission_amounts();
-            let schedule = EmissionSchedule::new(initial, decay, tail);
             while !page.is_empty() {
                 let values: Vec<tari_rpc::ValueAtHeightResponse> = page
                     .clone()
                     .into_iter()
                     .map(|height| tari_rpc::ValueAtHeightResponse {
                         height,
-                        value: schedule.supply_at_block(height).into(),
+                        value: consensus_manager
+                            .emission_schedule(height)
+                            .supply_at_block(height)
+                            .into(),
                     })
                     .collect();
                 let result_size = values.len();

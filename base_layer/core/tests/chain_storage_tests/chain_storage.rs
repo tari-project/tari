@@ -1199,7 +1199,7 @@ fn invalid_block() {
             from: vec![outputs[0][0].clone()],
             to: vec![10 * T, 5 * T, 10 * T, 15 * T]
         )];
-        let coinbase_value = consensus_manager.emission_schedule().block_reward(1);
+        let coinbase_value = consensus_manager.emission_schedule(1).block_reward(1);
         assert_eq!(
             generate_new_block_with_coinbase(
                 &mut store,
@@ -1229,7 +1229,7 @@ fn invalid_block() {
 
         // Invalid Block 2 - Double spends genesis block output
         let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
-        let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
+        let coinbase_value = consensus_manager.emission_schedule(2).block_reward(2);
         unpack_enum!(
             ChainStorageError::UnspendableInput = generate_new_block_with_coinbase(
                 &mut store,
@@ -1257,7 +1257,7 @@ fn invalid_block() {
 
         // Valid Block 2
         let txs = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![4 * T, 4 * T])];
-        let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
+        let coinbase_value = consensus_manager.emission_schedule(0).block_reward(2);
         assert_eq!(
             generate_new_block_with_coinbase(
                 &mut store,
@@ -1622,7 +1622,7 @@ fn pruned_mode_is_stxo() {
 
     // Block 1
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![50 * T])];
-    let coinbase_value = consensus_manager.emission_schedule().block_reward(1);
+    let coinbase_value = consensus_manager.emission_schedule(0).block_reward(1);
     assert_eq!(
         generate_new_block_with_coinbase(
             &mut store,
@@ -1648,7 +1648,7 @@ fn pruned_mode_is_stxo() {
 
     // Block 2
     let txs = vec![txn_schema!(from: vec![outputs[1][1].clone()], to: vec![40 * T])];
-    let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
+    let coinbase_value = consensus_manager.emission_schedule(0).block_reward(2);
     assert_eq!(
         generate_new_block_with_coinbase(
             &mut store,
@@ -1677,7 +1677,7 @@ fn pruned_mode_is_stxo() {
 
     // Block 3
     let txs = vec![txn_schema!(from: vec![outputs[2][2].clone()], to: vec![30 * T])];
-    let coinbase_value = consensus_manager.emission_schedule().block_reward(3);
+    let coinbase_value = consensus_manager.emission_schedule(0).block_reward(3);
     assert_eq!(
         generate_new_block_with_coinbase(
             &mut store,
@@ -1709,7 +1709,7 @@ fn pruned_mode_is_stxo() {
 
     // Block 4
     let txs = vec![txn_schema!(from: vec![outputs[3][1].clone()], to: vec![20 * T])];
-    let coinbase_value = consensus_manager.emission_schedule().block_reward(4);
+    let coinbase_value = consensus_manager.emission_schedule(0).block_reward(4);
     assert_eq!(
         generate_new_block_with_coinbase(
             &mut store,

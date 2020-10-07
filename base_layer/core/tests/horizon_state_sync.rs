@@ -272,7 +272,7 @@ fn test_pruned_mode_sync_with_spent_utxos() {
 
         // Spend coinbases before horizon height
         {
-            let supply = consensus_manager.emission_schedule().supply_at_block(4);
+            let supply = consensus_manager.emission_schedule(4).supply_at_block(4);
             let fee = Fee::calculate(25 * uT, 5, 5, 2);
             let schema = txn_schema!(from: outputs, to: vec![supply - fee], fee: 25 * uT);
             let (tx, _, _) = spend_utxos(schema);
@@ -307,7 +307,7 @@ fn test_pruned_mode_sync_with_spent_utxos() {
 
         // Spend the other coinbases (why not?)
         {
-            let supply = consensus_manager.emission_schedule().supply_at_block(4);
+            let supply = consensus_manager.emission_schedule(0).supply_at_block(4);
             let fee = Fee::calculate(25 * uT, 5, 5, 2);
             let schema = txn_schema!(from: outputs, to: vec![supply - fee], fee: 25 * uT);
             let (tx, _, _) = spend_utxos(schema);

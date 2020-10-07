@@ -52,6 +52,8 @@ pub struct ConsensusConstants {
     pub(in crate::consensus) emission_initial: MicroTari,
     /// This is the emission curve delay
     pub(in crate::consensus) emission_decay: f64,
+    /// This is the emission curve delay for the int
+    pub(in crate::consensus) emission_decay_int: &'static [u64],
     /// This is the emission curve tail amount
     pub(in crate::consensus) emission_tail: MicroTari,
     /// The offset relative to the expected genesis coinbase value
@@ -85,6 +87,11 @@ impl ConsensusConstants {
     /// This gets the emission curve values as (initial, decay, tail)
     pub fn emission_amounts(&self) -> (MicroTari, f64, MicroTari) {
         (self.emission_initial, self.emission_decay, self.emission_tail)
+    }
+
+    /// This gets the emission curve values as (initial, decay, tail)
+    pub fn emission_amounts_int(&self) -> (MicroTari, &[u64], MicroTari) {
+        (self.emission_initial, self.emission_decay_int, self.emission_tail)
     }
 
     /// The min height maturity a coinbase utxo must have.
@@ -237,6 +244,7 @@ impl ConsensusConstants {
                 median_timestamp_count: 11,
                 emission_initial: 5_538_846_115 * uT,
                 emission_decay: 0.999_999_560_409_038_5,
+                emission_decay_int: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
@@ -252,6 +260,7 @@ impl ConsensusConstants {
                 median_timestamp_count: 11,
                 emission_initial: 5_538_846_115 * uT,
                 emission_decay: 0.999_999_560_409_038_5,
+                emission_decay_int: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
@@ -269,6 +278,7 @@ impl ConsensusConstants {
                 median_timestamp_count: 11,
                 emission_initial: 5_538_846_115 * uT,
                 emission_decay: 0.999_999_560_409_038_5,
+                emission_decay_int: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
@@ -276,7 +286,7 @@ impl ConsensusConstants {
             },
             // set max difficulty_max_block_interval to target_time * 6
             ConsensusConstants {
-                effective_from_height: 120000,
+                effective_from_height: 120_000,
                 coinbase_lock_height: 60,
                 blockchain_version: 1,
                 future_time_limit: 540,
@@ -285,6 +295,7 @@ impl ConsensusConstants {
                 median_timestamp_count: 11,
                 emission_initial: 5_538_846_115 * uT,
                 emission_decay: 0.999_999_560_409_038_5,
+                emission_decay_int: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
@@ -316,6 +327,7 @@ impl ConsensusConstants {
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
             emission_decay: 0.999,
+            emission_decay_int: &EMISSION_DECAY,
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
             genesis_coinbase_value_offset: 0.into(),
@@ -347,6 +359,7 @@ impl ConsensusConstants {
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
             emission_decay: 0.999,
+            emission_decay_int: &EMISSION_DECAY,
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
             genesis_coinbase_value_offset: 0.into(),
@@ -354,6 +367,8 @@ impl ConsensusConstants {
         }]
     }
 }
+
+static EMISSION_DECAY: [u64; 5] = [22, 23, 24, 26, 27];
 
 /// Class to create custom consensus constants
 pub struct ConsensusConstantsBuilder {

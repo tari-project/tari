@@ -166,7 +166,7 @@ mod test {
 
         // BUG: Mainnet value was committed to in the Rincewind genesis block coinbase
         let consensus_manager = ConsensusManagerBuilder::new(Network::MainNet).build();
-        let supply = consensus_manager.emission_schedule().supply_at_block(0);
+        let supply = consensus_manager.emission_schedule(0).supply_at_block(0);
         let expected_kernel =
             &coinbase.commitment - &factories.commitment.commit_value(&PrivateKey::default(), supply.into());
         assert_eq!(coinbase_kernel.excess, expected_kernel);

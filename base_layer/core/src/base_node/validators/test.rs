@@ -147,7 +147,7 @@ fn chain_balance_validation() {
 
     //---------------------------------- Add a new coinbase and header --------------------------------------------//
     let mut txn = DbTransaction::new();
-    let coinbase_value = consensus_manager.emission_schedule().block_reward(1);
+    let coinbase_value = consensus_manager.emission_schedule(1).block_reward(1);
     let (coinbase, coinbase_key) = create_utxo(coinbase_value, &factories, Some(OutputFeatures::create_coinbase(1)));
     let coinbase_hash = coinbase.hash();
     txn.insert_utxo(coinbase.clone());
@@ -183,7 +183,7 @@ fn chain_balance_validation() {
         txn.insert_kernel(kernel.clone());
     }
 
-    let v = consensus_manager.emission_schedule().block_reward(2) + fee;
+    let v = consensus_manager.emission_schedule(2).block_reward(2) + fee;
     let (coinbase, key) = create_utxo(v, &factories, Some(OutputFeatures::create_coinbase(1)));
     txn.insert_utxo(coinbase.clone());
     let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
@@ -219,7 +219,7 @@ fn chain_balance_validation() {
         txn.insert_kernel(kernel.clone());
     }
 
-    let v = consensus_manager.emission_schedule().block_reward(3) + fee;
+    let v = consensus_manager.emission_schedule(3).block_reward(3) + fee;
     let (coinbase, key) = create_utxo(v, &factories, Some(OutputFeatures::create_coinbase(1)));
     txn.insert_utxo(coinbase.clone());
     let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
@@ -242,7 +242,7 @@ fn chain_balance_validation() {
     //---------------------------------- Try to inflate --------------------------------------------//
     let mut txn = DbTransaction::new();
 
-    let v = consensus_manager.emission_schedule().block_reward(4) + 1 * uT;
+    let v = consensus_manager.emission_schedule(4).block_reward(4) + 1 * uT;
     let (coinbase, key) = create_utxo(v, &factories, Some(OutputFeatures::create_coinbase(1)));
     txn.insert_utxo(coinbase.clone());
     let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
