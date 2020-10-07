@@ -57,7 +57,7 @@ use tari_common::GlobalConfig;
 use tari_comms::{
     connection_manager::ConnectionManagerRequester,
     connectivity::ConnectivityRequester,
-    peer_manager::{NodeId, PeerFeatures, PeerManager, PeerQuery},
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
     types::CommsPublicKey,
     NodeIdentity,
 };
@@ -105,6 +105,7 @@ pub enum BaseNodeCommand {
     BanPeer,
     UnbanPeer,
     UnbanAllPeers,
+    ListBannedPeers,
     ListConnections,
     ListHeaders,
     CheckDb,
@@ -312,6 +313,9 @@ impl Parser {
             UnbanAllPeers => {
                 self.process_unban_all_peers();
             },
+            ListBannedPeers => {
+                self.process_list_banned_peers();
+            },
             ListConnections => {
                 self.process_list_connections();
             },
@@ -422,6 +426,9 @@ impl Parser {
             },
             UnbanAllPeers => {
                 println!("Unbans all peers");
+            },
+            ListBannedPeers => {
+                println!("Lists peers that have been banned by the node or wallet");
             },
             CheckDb => {
                 println!("Checks the blockchain database for missing blocks and headers");
@@ -1240,6 +1247,45 @@ impl Parser {
             println!("Unbanned {} peer(s) from node", n);
             let n = unban_all(&wallet_peer_manager).await;
             println!("Unbanned {} peer(s) from wallet", n);
+        });
+    }
+
+    fn process_list_banned_peers(&mut self) {
+        let peer_manager = self.peer_manager.clone();
+        let wallet_peer_manager = self.wallet_peer_manager.clone();
+        self.executor.spawn(async move {
+            async fn banned_peers(pm: &PeerManager) -> Result<Vec<Peer>, PeerManagerError> {
+                let query = PeerQuery::new().select_where(|p| p.is_banned());
+                pm.perform_query(query).await
+            }
+
+            match banned_peers(&peer_manager).await {
+                Ok(banned) => {
+                    if banned.is_empty() {
+                        println!("No peers banned from node.")
+                    } else {
+                        println!("Peers banned from node ({}):", banned.len());
+                        for peer in banned {
+                            println!("{}", peer);
+                        }
+                    }
+                },
+                Err(e) => println!("Error listing peers: {}", e),
+            }
+
+            match banned_peers(&wallet_peer_manager).await {
+                Ok(banned) => {
+                    if banned.is_empty() {
+                        println!("No peers banned from wallet.")
+                    } else {
+                        println!("Peers banned from wallet ({}):", banned.len());
+                        for peer in banned {
+                            println!("{}", peer);
+                        }
+                    }
+                },
+                Err(e) => println!("Error listing peers: {}", e),
+            }
         });
     }
 
