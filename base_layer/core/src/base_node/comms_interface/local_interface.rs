@@ -33,7 +33,6 @@ use crate::{
     proof_of_work::PowAlgorithm,
     transactions::types::{Commitment, HashOutput, Signature},
 };
-use futures::{stream::Fuse, StreamExt};
 use std::sync::Arc;
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
@@ -67,10 +66,6 @@ impl LocalNodeCommsInterface {
 
     pub fn get_block_event_stream(&self) -> BlockEventReceiver {
         self.block_event_sender.subscribe()
-    }
-
-    pub fn get_block_event_stream_fused(&self) -> Fuse<BlockEventReceiver> {
-        self.get_block_event_stream().fuse()
     }
 
     /// Request metadata from the current local node.

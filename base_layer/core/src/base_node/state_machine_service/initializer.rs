@@ -38,7 +38,7 @@ use crate::{
 };
 use futures::{future, Future};
 use log::*;
-use tari_p2p::initialization::SharedCommsContext;
+use tari_comms::connectivity::ConnectivityRequester;
 use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
 
@@ -94,7 +94,7 @@ where B: BlockchainBackend + 'static
             let outbound_interface = handles.expect_handle::<OutboundNodeCommsInterface>();
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
             let node_local_interface = handles.expect_handle::<LocalNodeCommsInterface>();
-            let connectivity_requester = handles.expect_handle::<SharedCommsContext>().connectivity();
+            let connectivity_requester = handles.expect_handle::<ConnectivityRequester>();
 
             let mut state_machine_config = BaseNodeStateMachineConfig::default();
             state_machine_config.block_sync_config.sync_strategy = sync_strategy;

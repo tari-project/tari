@@ -30,8 +30,6 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{error::Error, future::Future, iter, path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
     backoff::ConstantBackoff,
-    connection_manager::ConnectionManagerRequester,
-    connectivity::ConnectivityRequester,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerManagerError},
     pipeline,
     pipeline::SinkService,
@@ -441,7 +439,9 @@ impl ServiceInitializer for P2pInitializer {
             let (comms, dht) = configure_comms_and_dht(builder, config, connector).await?;
             add_all_peers(&comms.peer_manager(), &comms.node_identity(), peers).await?;
 
-            context.register_handle(SharedCommsContext::from_unspawned_comms(&comms));
+            context.register_handle(comms.connectivity());
+            context.register_handle(comms.peer_manager());
+            context.register_handle(CommsProtocols::new());
             context.register_handle(comms);
             context.register_handle(dht);
 
@@ -450,25 +450,17 @@ impl ServiceInitializer for P2pInitializer {
     }
 }
 
-/// Shared comms context that is made available by the P2pInitializer as a handle to other services.
+/// CommsProtocols is made available by the P2pInitializer.
 /// This should be used to hook up protocols to comms and is made available in the initialization phase before comms has
 /// spawned.
-#[derive(Clone)]
-pub struct SharedCommsContext {
+#[derive(Clone, Default)]
+pub struct CommsProtocols {
     protocols: Arc<Mutex<Protocols<Substream>>>,
-    connectivity: ConnectivityRequester,
-    connection_manager: ConnectionManagerRequester,
-    peer_manager: Arc<PeerManager>,
 }
 
-impl SharedCommsContext {
-    pub fn from_unspawned_comms(node: &UnspawnedCommsNode) -> Self {
-        Self {
-            protocols: Default::default(),
-            connectivity: node.connectivity(),
-            connection_manager: node.connection_manager(),
-            peer_manager: node.peer_manager(),
-        }
+impl CommsProtocols {
+    pub fn new() -> Self {
+        Default::default()
     }
 
     /// Register an mpsc channel to be notified whenever a peer wants to speak any of the given protocols.
@@ -479,17 +471,5 @@ impl SharedCommsContext {
     )
     {
         self.protocols.lock().await.add(protocols, notifier);
-    }
-
-    pub fn peer_manager(&self) -> Arc<PeerManager> {
-        self.peer_manager.clone()
-    }
-
-    pub fn connectivity(&self) -> ConnectivityRequester {
-        self.connectivity.clone()
-    }
-
-    pub fn connection_manager(&self) -> ConnectionManagerRequester {
-        self.connection_manager.clone()
     }
 }

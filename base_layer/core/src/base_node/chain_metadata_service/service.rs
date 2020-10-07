@@ -69,8 +69,8 @@ impl ChainMetadataService {
 
     /// Run the service
     pub async fn run(mut self) {
-        let mut liveness_event_stream = self.liveness.get_event_stream_fused();
-        let mut block_event_stream = self.base_node.get_block_event_stream_fused();
+        let mut liveness_event_stream = self.liveness.get_event_stream().fuse();
+        let mut block_event_stream = self.base_node.get_block_event_stream().fuse();
 
         log_if_error!(
             target: LOG_TARGET,
@@ -173,7 +173,6 @@ impl ChainMetadataService {
                 // and have allocated space for their replies
                 self.resize_chainstate_buffer(*num_peers);
             },
-            _ => {},
         }
 
         Ok(())
@@ -347,7 +346,6 @@ mod test {
             metadata,
             node_id: node_id.clone(),
             latency: None,
-            is_monitored: false,
         };
 
         let (base_node, _) = create_base_node_nci();
@@ -378,7 +376,6 @@ mod test {
             metadata,
             node_id,
             latency: None,
-            is_monitored: false,
         };
 
         let (base_node, _) = create_base_node_nci();
@@ -401,7 +398,6 @@ mod test {
             metadata,
             node_id,
             latency: None,
-            is_monitored: false,
         };
 
         let (base_node, _) = create_base_node_nci();

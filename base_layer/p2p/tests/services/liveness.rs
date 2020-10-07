@@ -53,6 +53,7 @@ pub async fn setup_liveness_service(
 
     let handles = StackBuilder::new(comms.shutdown_signal())
         .add_initializer(RegisterHandle::new(dht.clone()))
+        .add_initializer(RegisterHandle::new(comms.connectivity()))
         .add_initializer(LivenessInitializer::new(
             Default::default(),
             Arc::clone(&subscription_factory),
@@ -98,8 +99,8 @@ async fn end_to_end() {
     )
     .await;
 
-    let mut liveness1_event_stream = liveness1.get_event_stream_fused();
-    let mut liveness2_event_stream = liveness2.get_event_stream_fused();
+    let mut liveness1_event_stream = liveness1.get_event_stream();
+    let mut liveness2_event_stream = liveness2.get_event_stream();
 
     for _ in 0..5 {
         liveness2.send_ping(node_1_identity.node_id().clone()).await.unwrap();

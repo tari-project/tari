@@ -121,7 +121,6 @@ where B: BlockchainBackend + 'static
                 LivenessConfig {
                     auto_ping_interval: Some(Duration::from_secs(30)),
                     refresh_neighbours_interval: Duration::from_secs(3 * 60),
-                    random_peer_selection_ratio: 0.4,
                     ..Default::default()
                 },
                 peer_message_subscriptions,

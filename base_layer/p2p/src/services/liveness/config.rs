@@ -31,8 +31,7 @@ pub struct LivenessConfig {
     pub refresh_neighbours_interval: Duration,
     /// The length of time between querying peer manager for random neighbours. (default: 2 hours)
     pub refresh_random_pool_interval: Duration,
-    /// The ratio of random to neighbouring peers to include in ping rounds (Default: 0)
-    pub random_peer_selection_ratio: f32,
+    pub num_peers_per_round: usize,
 }
 
 impl Default for LivenessConfig {
@@ -41,7 +40,7 @@ impl Default for LivenessConfig {
             auto_ping_interval: None,
             refresh_neighbours_interval: Duration::from_secs(2 * 60),
             refresh_random_pool_interval: Duration::from_secs(2 * 60 * 60),
-            random_peer_selection_ratio: 0.0,
+            num_peers_per_round: 8,
         }
     }
 }
