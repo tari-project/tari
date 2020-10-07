@@ -55,7 +55,6 @@ use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_common::GlobalConfig;
 use tari_comms::{
-    connection_manager::ConnectionManagerRequester,
     connectivity::ConnectivityRequester,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
     types::CommsPublicKey,
@@ -140,7 +139,6 @@ pub struct Parser {
     base_node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
     wallet_peer_manager: Arc<PeerManager>,
-    connection_manager: ConnectionManagerRequester,
     connectivity: ConnectivityRequester,
     wallet_connectivity: ConnectivityRequester,
     commands: Vec<String>,
@@ -201,7 +199,6 @@ impl Parser {
             base_node_identity: ctx.base_node_identity(),
             peer_manager: ctx.base_node_comms().peer_manager(),
             wallet_peer_manager: ctx.wallet_comms().peer_manager(),
-            connection_manager: ctx.base_node_comms().connection_manager(),
             connectivity: ctx.base_node_comms().connectivity(),
             wallet_connectivity: ctx.wallet_comms().connectivity(),
             commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
@@ -1310,11 +1307,11 @@ impl Parser {
 
     /// Function to process the list-connections command
     fn process_list_connections(&self) {
-        let mut connection_manager = self.connection_manager.clone();
+        let mut connectivity = self.connectivity.clone();
         let peer_manager = self.peer_manager.clone();
 
         self.executor.spawn(async move {
-            match connection_manager.get_active_connections().await {
+            match connectivity.get_active_connections().await {
                 Ok(conns) if conns.is_empty() => {
                     println!("No active peer connections.");
                 },

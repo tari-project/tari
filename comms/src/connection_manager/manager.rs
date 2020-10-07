@@ -24,9 +24,8 @@ use super::{
     dialer::{Dialer, DialerRequest},
     error::ConnectionManagerError,
     listener::PeerListener,
-    peer_connection::{ConnectionId, PeerConnection},
+    peer_connection::PeerConnection,
     requester::ConnectionManagerRequest,
-    types::ConnectionDirection,
 };
 use crate::{
     backoff::Backoff,
@@ -49,7 +48,7 @@ use futures::{
 };
 use log::*;
 use multiaddr::Multiaddr;
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{fmt, sync::Arc};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use time::Duration;
 use tokio::{sync::broadcast, task, time};
@@ -65,7 +64,6 @@ pub enum ConnectionManagerEvent {
     PeerConnected(PeerConnection),
     PeerDisconnected(Box<NodeId>),
     PeerConnectFailed(Box<NodeId>, ConnectionManagerError),
-    PeerConnectWillClose(ConnectionId, Box<NodeId>, ConnectionDirection),
     PeerInboundConnectFailed(ConnectionManagerError),
 
     // Listener
@@ -83,13 +81,6 @@ impl fmt::Display for ConnectionManagerEvent {
             PeerConnected(conn) => write!(f, "PeerConnected({})", conn),
             PeerDisconnected(node_id) => write!(f, "PeerDisconnected({})", node_id.short_str()),
             PeerConnectFailed(node_id, err) => write!(f, "PeerConnectFailed({}, {:?})", node_id.short_str(), err),
-            PeerConnectWillClose(id, node_id, direction) => write!(
-                f,
-                "PeerConnectWillClose({}, {}, {})",
-                id,
-                node_id.short_str(),
-                direction
-            ),
             PeerInboundConnectFailed(err) => write!(f, "PeerInboundConnectFailed({:?})", err),
             Listening(addr) => write!(f, "Listening({})", addr),
             ListenFailed(err) => write!(f, "ListenFailed({:?})", err),
@@ -154,8 +145,6 @@ pub struct ConnectionManager<TTransport, TBackoff> {
     dialer: Option<Dialer<TTransport, TBackoff>>,
     listener: Option<PeerListener<TTransport>>,
     peer_manager: Arc<PeerManager>,
-    node_identity: Arc<NodeIdentity>,
-    active_connections: HashMap<NodeId, PeerConnection>,
     shutdown_signal: Option<ShutdownSignal>,
     protocols: Protocols<Substream>,
     listener_address: Option<Multiaddr>,
@@ -199,7 +188,7 @@ where
 
         let dialer = Dialer::new(
             config,
-            Arc::clone(&node_identity),
+            node_identity,
             peer_manager.clone(),
             transport,
             noise_config,
@@ -212,14 +201,12 @@ where
         Self {
             shutdown_signal: Some(shutdown_signal),
             request_rx: request_rx.fuse(),
-            node_identity,
             peer_manager,
             protocols: Protocols::new(),
             internal_event_rx: internal_event_rx.fuse(),
             dialer_tx,
             dialer: Some(dialer),
             listener: Some(listener),
-            active_connections: Default::default(),
             listener_address: None,
             listening_notifiers: Vec::new(),
             connection_manager_events_tx,
@@ -270,37 +257,9 @@ where
 
                 _ = shutdown => {
                     info!(target: LOG_TARGET, "ConnectionManager is shutting down because it received the shutdown signal");
-                    self.disconnect_all().await;
                     break;
                 }
             }
-        }
-    }
-
-    async fn disconnect_all(&mut self) {
-        let mut node_ids = Vec::with_capacity(self.active_connections.len());
-        for (node_id, mut conn) in self.active_connections.drain() {
-            if !conn.is_connected() {
-                continue;
-            }
-
-            match conn.disconnect_silent().await {
-                Ok(_) => {
-                    node_ids.push(node_id);
-                },
-                Err(err) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "In disconnect_all: Error when disconnecting peer '{}' because '{:?}'",
-                        node_id.short_str(),
-                        err
-                    );
-                },
-            }
-        }
-
-        for node_id in node_ids {
-            self.publish_event(ConnectionManagerEvent::PeerDisconnected(Box::new(node_id)));
         }
     }
 
@@ -328,22 +287,7 @@ where
         use ConnectionManagerRequest::*;
         trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
         match request {
-            DialPeer(node_id, reply_tx) => match self.get_active_connection(&node_id) {
-                Some(conn) => {
-                    debug!(target: LOG_TARGET, "Found existing active connection: {}", conn);
-                    let _ = reply_tx.send(Ok(conn.clone()));
-                },
-                None => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "[ThisNode={}] Existing peer connection NOT found. Attempting to establish a new connection \
-                         to peer '{}'.",
-                        self.node_identity.node_id().short_str(),
-                        node_id.short_str()
-                    );
-                    self.dial_peer(node_id, reply_tx).await
-                },
-            },
+            DialPeer(node_id, reply) => self.dial_peer(node_id, reply).await,
             CancelDial(node_id) => {
                 if let Err(err) = self.dialer_tx.send(DialerRequest::CancelPendingDial(node_id)).await {
                     error!(
@@ -352,58 +296,19 @@ where
                     );
                 }
             },
-            NotifyListening(reply_tx) => match self.listener_address.as_ref() {
+            NotifyListening(reply) => match self.listener_address.as_ref() {
                 Some(addr) => {
-                    let _ = reply_tx.send(addr.clone());
+                    let _ = reply.send(addr.clone());
                 },
                 None => {
-                    self.listening_notifiers.push(reply_tx);
+                    self.listening_notifiers.push(reply);
                 },
-            },
-            GetActiveConnection(node_id, reply_tx) => {
-                let _ = reply_tx.send(self.active_connections.get(&node_id).map(Clone::clone));
-            },
-            GetActiveConnections(reply_tx) => {
-                let _ = reply_tx.send(
-                    self.active_connections
-                        .values()
-                        .filter(|conn| conn.is_connected())
-                        .cloned()
-                        .collect(),
-                );
-            },
-            GetNumActiveConnections(reply_tx) => {
-                let _ = reply_tx.send(
-                    self.active_connections
-                        .values()
-                        .filter(|conn| conn.is_connected())
-                        .count(),
-                );
-            },
-            DisconnectPeer(node_id) => {
-                if let Some(mut conn) = self.active_connections.remove(&node_id) {
-                    if let Err(err) = conn.disconnect().await {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error when disconnecting peer {}: {:?}",
-                            conn.peer_node_id(),
-                            err
-                        );
-                    }
-                }
             },
         }
     }
 
     async fn handle_event(&mut self, event: ConnectionManagerEvent) {
         use ConnectionManagerEvent::*;
-
-        trace!(
-            target: LOG_TARGET,
-            "[ThisNode = {}] Received internal event '{}'",
-            self.node_identity.node_id().short_str(),
-            event
-        );
 
         match event {
             Listening(addr) => {
@@ -432,113 +337,11 @@ where
                     );
                 }
             },
-            PeerConnected(mut new_conn) => {
-                let node_id = new_conn.peer_node_id().clone();
-                let _ = self
-                    .dialer_tx
-                    .send(DialerRequest::CancelPendingDial(node_id.clone()))
-                    .await;
 
-                match self.active_connections.get(&node_id) {
-                    Some(existing_conn) => {
-                        if !existing_conn.is_connected() {
-                            // This is a "weird" situation, but let's handle it appropriately
-                            debug!(
-                                target: LOG_TARGET,
-                                "Tie break: Existing connection was not connected, resolving tie break by using the \
-                                 new connection. (New={}, Existing={})",
-                                new_conn,
-                                existing_conn,
-                            );
-                            // Replace existing connection with new one
-                            self.active_connections
-                                .insert(node_id, new_conn.clone())
-                                .expect("Already checked");
-
-                            self.publish_event(PeerConnected(new_conn));
-                            return;
-                        }
-
-                        if self.tie_break_existing_connection(existing_conn, &new_conn) {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Tie break: (Peer = {}) Keep new {} connection, Disconnect existing {} connection",
-                                new_conn.peer_node_id().short_str(),
-                                new_conn.direction(),
-                                existing_conn.direction()
-                            );
-
-                            self.publish_event(PeerConnectWillClose(
-                                existing_conn.id(),
-                                Box::new(existing_conn.peer_node_id().clone()),
-                                existing_conn.direction(),
-                            ));
-
-                            // Replace existing connection with new one
-                            let mut existing_conn = self
-                                .active_connections
-                                .insert(node_id, new_conn.clone())
-                                .expect("Already checked");
-
-                            // self.delayed_disconnect(existing_conn);
-                            // Can ignore the error here, the error is already logged by peer connection
-                            let _ = existing_conn.disconnect_silent().await;
-                            self.publish_event(PeerConnected(new_conn));
-                        } else {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Tie break: (Peer = {}) Keeping existing {} connection, Disconnecting new {} \
-                                 connection",
-                                existing_conn.peer_node_id().short_str(),
-                                existing_conn.direction(),
-                                new_conn.direction(),
-                            );
-
-                            // Can ignore the error here, the error is already logged by peer connection
-                            let _ = new_conn.disconnect_silent().await;
-                            // self.delayed_disconnect(new_conn);
-                        }
-                    },
-                    None => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Adding new {} peer connection for peer '{}'",
-                            new_conn.direction(),
-                            new_conn.peer_node_id().short_str()
-                        );
-                        self.active_connections.insert(node_id, new_conn.clone());
-                        self.publish_event(PeerConnected(new_conn));
-                    },
-                }
-            },
-            PeerDisconnected(node_id) => {
-                debug!(target: LOG_TARGET, "Peer `{}` disconnected", node_id.short_str());
-                self.active_connections.remove(&node_id);
-                self.publish_event(PeerDisconnected(node_id));
-            },
-            PeerConnectFailed(node_id, ConnectionManagerError::DialCancelled) => {
-                // The dial can be cancelled for a simultaneous dial if an inbound connection already exists. We only
-                // want to publish the PeerConnectFailed event if this is not the case.
-                if self
-                    .active_connections
-                    .get(&node_id)
-                    .filter(|c| c.is_connected() && c.direction().is_inbound())
-                    .is_none()
-                {
-                    self.publish_event(PeerConnectFailed(node_id, ConnectionManagerError::DialCancelled));
-                }
-            },
             event => {
                 self.publish_event(event);
             },
         }
-
-        trace!(
-            target: LOG_TARGET,
-            "[ThisNode={}] {} active connection(s)",
-            self.node_identity.node_id().short_str(),
-            self.active_connections.len()
-        );
     }
 
     #[inline]
@@ -548,53 +351,25 @@ where
         }
     }
 
-    /// Two connections to the same peer have been created. This function deterministically determines which peer
-    /// connection to close. It does this by comparing our NodeId to that of the peer. This rule enables both sides to
-    /// agree which connection to disconnect
-    ///
-    /// Returns true if the existing connection should close, otherwise false if the new connection should be closed.
-    fn tie_break_existing_connection(&self, existing_conn: &PeerConnection, new_conn: &PeerConnection) -> bool {
-        debug_assert_eq!(existing_conn.peer_node_id(), new_conn.peer_node_id());
-        let peer_node_id = existing_conn.peer_node_id();
-        let our_node_id = self.node_identity.node_id();
-
-        use ConnectionDirection::*;
-        match (existing_conn.direction(), new_conn.direction()) {
-            // They connected to us twice for some reason. Drop the older connection
-            (Inbound, Inbound) => true,
-            // They connected to us at the same time we connected to them
-            (Inbound, Outbound) => peer_node_id > our_node_id,
-            // We connected to them at the same time as they connected to us
-            (Outbound, Inbound) => our_node_id > peer_node_id,
-            // We connected to them twice for some reason. Drop the newer connection.
-            (Outbound, Outbound) => false,
-        }
-    }
-
     fn publish_event(&self, event: ConnectionManagerEvent) {
         // Error on no subscribers can be ignored
         let _ = self.connection_manager_events_tx.send(Arc::new(event));
     }
 
-    #[inline]
-    fn get_active_connection(&self, node_id: &NodeId) -> Option<&PeerConnection> {
-        self.active_connections.get(node_id)
-    }
-
     async fn dial_peer(
         &mut self,
         node_id: NodeId,
-        reply_tx: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
+        reply: oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>,
     )
     {
         match self.peer_manager.find_by_node_id(&node_id).await {
             Ok(peer) => {
-                self.send_dialer_request(DialerRequest::Dial(Box::new(peer), reply_tx))
+                self.send_dialer_request(DialerRequest::Dial(Box::new(peer), reply))
                     .await;
             },
             Err(err) => {
                 warn!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);
-                let _ = reply_tx.send(Err(ConnectionManagerError::PeerManagerError(err)));
+                let _ = reply.send(Err(ConnectionManagerError::PeerManagerError(err)));
             },
         }
     }

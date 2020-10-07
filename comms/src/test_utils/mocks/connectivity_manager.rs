@@ -135,22 +135,22 @@ impl ConnectivityManagerMock {
         use ConnectivityRequest::*;
         self.state.add_call(format!("{:?}", req)).await;
         match req {
-            DialPeer(node_id, reply_tx) => {
+            DialPeer(node_id, reply) => {
                 // Send Ok(conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
-                reply_tx
+                reply
                     .send(
                         self.state
                             .active_conns
                             .lock()
                             .await
                             .get(&node_id)
-                            .map(Clone::clone)
+                            .cloned()
                             .ok_or_else(|| ConnectionManagerError::DialConnectFailedAllAddresses),
                     )
                     .unwrap();
             },
-            GetConnectivityStatus(reply_tx) => {
-                reply_tx.send(*self.state.connectivity_status.lock().await).unwrap();
+            GetConnectivityStatus(reply) => {
+                reply.send(*self.state.connectivity_status.lock().await).unwrap();
             },
             AddManagedPeers(peers) => {
                 // TODO: we should not have to implement behaviour of the actor in the mock
@@ -169,16 +169,21 @@ impl ConnectivityManagerMock {
                     lock.remove(pos);
                 }
             },
-            SelectConnections(_, reply_tx) => {
-                reply_tx.send(Ok(self.state.get_selected_connections().await)).unwrap();
+            SelectConnections(_, reply) => {
+                reply.send(Ok(self.state.get_selected_connections().await)).unwrap();
             },
-            GetConnection(node_id, reply_tx) => {
-                reply_tx
+            GetConnection(node_id, reply) => {
+                reply
                     .send(self.state.active_conns.lock().await.get(&node_id).cloned())
                     .unwrap();
             },
             GetAllConnectionStates(_) => unimplemented!(),
             BanPeer(_, _, _) => unimplemented!(),
+            GetActiveConnections(reply) => {
+                reply
+                    .send(self.state.active_conns.lock().await.values().cloned().collect())
+                    .unwrap();
+            },
         }
     }
 }

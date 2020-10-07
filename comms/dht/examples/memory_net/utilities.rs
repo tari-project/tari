@@ -218,7 +218,7 @@ pub async fn network_connectivity_stats(nodes: &[TestNode], wallets: &[TestNode]
         let mut total = 0;
         let mut avg = Vec::new();
         for node in nodes {
-            let conns = node.comms.connection_manager().get_active_connections().await.unwrap();
+            let conns = node.comms.connectivity().get_active_connections().await.unwrap();
             total += conns.len();
             avg.push(conns.len());
 
@@ -265,10 +265,11 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
         .unwrap();
     let num_connections = random_node
         .comms
-        .connection_manager()
-        .get_num_active_connections()
+        .connectivity()
+        .get_active_connections()
         .await
-        .unwrap();
+        .unwrap()
+        .len();
     let (success, failed) = send_states.wait_all().await;
     println!(
         "🦠 {} broadcast to {}/{} peer(s) ({} connection(s))",
@@ -286,7 +287,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
         .enumerate()
         .map(|(idx, node)| {
             let mut outbound_req = node.dht.outbound_requester();
-            let mut conn_man = node.comms.connection_manager();
+            let mut connectivity = node.comms.connectivity();
             let mut ims_rx = node.ims_rx.take().unwrap();
             let start = Instant::now();
             let start_global = start_global.clone();
@@ -319,7 +320,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
                             )
                             .await
                             .unwrap();
-                        let num_connections = conn_man.get_num_active_connections().await.unwrap();
+                        let num_connections = connectivity.get_active_connections().await.unwrap().len();
                         let (success, failed) = send_states.wait_all().await;
                         println!(
                             "🦠 {} propagated to {}/{} peer(s) ({} connection(s))",
@@ -496,12 +497,7 @@ pub async fn do_store_and_forward_message_propagation(
         .await
         .unwrap();
     take_a_break(nodes.len()).await;
-    let connections = wallet
-        .comms
-        .connection_manager()
-        .get_active_connections()
-        .await
-        .unwrap();
+    let connections = wallet.comms.connectivity().get_active_connections().await.unwrap();
     println!(
         "{} has {} connections to {}",
         wallet,
@@ -624,14 +620,6 @@ fn connection_manager_logger(
                     node_name,
                     get_name(node_id),
                     err
-                );
-            },
-            PeerConnectWillClose(_, node_id, direction) => {
-                println!(
-                    "'{}' will disconnect {} connection to '{}'",
-                    get_name(node_id),
-                    direction,
-                    node_name,
                 );
             },
             PeerInboundConnectFailed(err) => {

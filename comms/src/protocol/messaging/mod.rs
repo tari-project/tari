@@ -40,7 +40,6 @@ pub use protocol::{
     MessagingProtocol,
     MessagingRequest,
     SendFailReason,
-    MESSAGING_PROTOCOL,
 };
 
 #[cfg(test)]
