@@ -28,7 +28,7 @@ use tari_comms::connectivity::ConnectivityError;
 const LOG_TARGET: &str = "comms::dht::network_discovery";
 
 #[derive(Debug)]
-pub struct Initializing<'a> {
+pub(super) struct Initializing<'a> {
     context: &'a mut NetworkDiscoveryContext,
 }
 

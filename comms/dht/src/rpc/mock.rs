@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    proto::rpc::{GetPeersRequest, GetPeersResponse},
+    proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse},
     rpc::DhtRpcService,
 };
 use tari_comms::protocol::rpc::{
@@ -34,6 +34,7 @@ use tari_comms::protocol::rpc::{
 // TODO: This mock can be generated
 #[derive(Debug, Clone, Default)]
 pub struct DhtRpcServiceMock {
+    pub get_closer_peers: RpcMockMethodState<GetCloserPeersRequest, Vec<GetPeersResponse>>,
     pub get_peers: RpcMockMethodState<GetPeersRequest, Vec<GetPeersResponse>>,
 }
 
@@ -45,6 +46,14 @@ impl DhtRpcServiceMock {
 
 #[tari_comms::async_trait]
 impl DhtRpcService for DhtRpcServiceMock {
+    async fn get_closer_peers(
+        &self,
+        request: Request<GetCloserPeersRequest>,
+    ) -> Result<Streaming<GetPeersResponse>, RpcStatus>
+    {
+        self.server_streaming(request, &self.get_closer_peers).await
+    }
+
     async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
         self.server_streaming(request, &self.get_peers).await
     }

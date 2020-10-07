@@ -209,7 +209,7 @@ impl RpcClientConfig {
 impl Default for RpcClientConfig {
     fn default() -> Self {
         Self {
-            deadline: Some(Duration::from_secs(100)),
+            deadline: Some(Duration::from_secs(30)),
             deadline_grace_period: Duration::from_secs(10),
         }
     }
@@ -366,7 +366,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                 Ok(resp) => {
                     trace!(
                         target: LOG_TARGET,
-                        "Received response from request {} (method={}) in {:.0?} ms",
+                        "Received response from request #{} (method={}) in {:.0?}",
                         request_id,
                         method,
                         start.elapsed()

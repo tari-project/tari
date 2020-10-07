@@ -33,7 +33,7 @@ use tari_comms::peer_manager::{NodeId, PeerFeatures};
 const LOG_TARGET: &str = "comms::dht::network_discovery";
 
 #[derive(Debug)]
-pub struct DiscoveryReady {
+pub(super) struct DiscoveryReady {
     context: NetworkDiscoveryContext,
     last_discovery: Option<DhtNetworkDiscoveryRoundInfo>,
 }
@@ -75,8 +75,8 @@ impl DiscoveryReady {
                 )
                 .await?;
             return Ok(StateEvent::BeginDiscovery(DiscoveryParams {
-                max_accept_closer_peers: 100,
-                num_peers_to_request: 100,
+                // All peers
+                num_peers_to_request: None,
                 peers: peers.into_iter().map(|p| p.node_id).collect(),
             }));
         }
@@ -85,6 +85,15 @@ impl DiscoveryReady {
             // A discovery round just completed
             let round_num = self.context.increment_num_rounds();
             debug!(target: LOG_TARGET, "Completed peer round #{} ({})", round_num + 1, info);
+
+            if !info.has_new_neighbours() {
+                debug!(
+                    target: LOG_TARGET,
+                    "No new neighbours found this round {}. Going to on connect mode", info,
+                );
+                return Ok(StateEvent::OnConnectMode);
+            }
+
             // If the last round was a success, but we didnt get any new peers, let's IDLE
             if info.is_success() && !info.has_new_peers() && self.context.num_rounds() > 0 {
                 self.context.reset_num_rounds();
@@ -102,40 +111,50 @@ impl DiscoveryReady {
                 let num_peers_to_select =
                     cmp::min(stats.num_new_neighbours, self.config().network_discovery.max_sync_peers);
 
-                self.context
-                    .peer_manager
-                    .closest_peers(
-                        self.context.node_identity.node_id(),
-                        num_peers_to_select,
-                        self.previous_sync_peers(),
-                        Some(PeerFeatures::COMMUNICATION_NODE),
-                    )
-                    .await?
+                if stats.has_new_neighbours() {
+                    self.context
+                        .peer_manager
+                        .closest_peers(
+                            self.context.node_identity.node_id(),
+                            num_peers_to_select,
+                            self.previous_sync_peers(),
+                            Some(PeerFeatures::COMMUNICATION_NODE),
+                        )
+                        .await?
+                        .into_iter()
+                        .map(|p| p.node_id)
+                        .collect()
+                } else {
+                    // As soon as we cannot find any more neighbours, enter passive mode
+                    return Ok(StateEvent::OnConnectMode);
+                }
             },
-            None => {
-                self.context
-                    .peer_manager
-                    .random_peers(
-                        self.config().network_discovery.max_sync_peers,
-                        self.previous_sync_peers(),
-                    )
-                    .await?
-            },
+            None => self
+                .context
+                .peer_manager
+                .random_peers(
+                    self.config().network_discovery.max_sync_peers,
+                    self.previous_sync_peers(),
+                )
+                .await?
+                .into_iter()
+                .map(|p| p.node_id)
+                .collect(),
         };
 
-        let max_accept_closer_peers = cmp::max(
-            // Want to get to the min_desired_peers as quickly as possible
-            self.config()
-                .network_discovery
-                .min_desired_peers
-                .saturating_sub(num_peers),
-            // Otherwise we want to be a bit more 'cautious' about accepting neighbouring peers
-            self.config().num_neighbouring_nodes,
-        );
+        // let max_accept_closer_peers = cmp::max(
+        //     // Want to get to the min_desired_peers as quickly as possible
+        //     self.config()
+        //         .network_discovery
+        //         .min_desired_peers
+        //         .saturating_sub(num_peers),
+        //     // Otherwise we want to be a bit more 'cautious' about accepting neighbouring peers
+        //     self.config().num_neighbouring_nodes,
+        // );
         Ok(StateEvent::BeginDiscovery(DiscoveryParams {
-            max_accept_closer_peers,
-            num_peers_to_request: max_accept_closer_peers,
-            peers: peers.into_iter().map(|p| p.node_id).collect(),
+            // Request all peers
+            num_peers_to_request: None,
+            peers,
         }))
     }
 

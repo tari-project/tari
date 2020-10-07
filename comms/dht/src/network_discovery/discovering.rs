@@ -38,7 +38,7 @@ use tari_comms::{
 const LOG_TARGET: &str = "comms::dht::network_discovery";
 
 #[derive(Debug)]
-pub struct Discovering {
+pub(super) struct Discovering {
     params: DiscoveryParams,
     context: NetworkDiscoveryContext,
     candidate_peers: Vec<PeerConnection>,
@@ -141,11 +141,18 @@ impl Discovering {
     {
         debug!(
             target: LOG_TARGET,
-            "Requesting {} peers from `{}`", self.params.num_peers_to_request, sync_peer
+            "Requesting {} peers from `{}`",
+            self.params
+                .num_peers_to_request
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "∞".into()),
+            sync_peer
         );
         match client
             .get_peers(GetPeersRequest {
-                n: self.params.num_peers_to_request as u32,
+                n: self.params.num_peers_to_request.map(|v| v as u32).unwrap_or_default(),
+                include_clients: true,
             })
             .await
         {

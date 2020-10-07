@@ -27,9 +27,6 @@
 #[cfg(test)]
 mod test;
 
-mod state_machine;
-pub use state_machine::{DhtNetworkDiscovery, DhtNetworkDiscoveryRoundInfo};
-
 mod config;
 pub use config::NetworkDiscoveryConfig;
 
@@ -39,5 +36,10 @@ mod error;
 pub use error::NetworkDiscoveryError;
 
 mod initializing;
+mod on_connect;
 mod ready;
+
+mod state_machine;
+pub use state_machine::{DhtNetworkDiscovery, DhtNetworkDiscoveryRoundInfo};
+
 mod waiting;

@@ -25,6 +25,7 @@ use crate::{
     network_discovery::{
         discovering::Discovering,
         initializing::Initializing,
+        on_connect::OnConnect,
         ready::DiscoveryReady,
         waiting::Waiting,
         NetworkDiscoveryError,
@@ -54,6 +55,7 @@ enum State {
     Ready(DiscoveryReady),
     Discovering(Discovering),
     Waiting(Waiting),
+    OnConnect(OnConnect),
     Shutdown,
 }
 
@@ -65,6 +67,7 @@ impl Display for State {
             Ready(_) => write!(f, "Ready"),
             Discovering(_) => write!(f, "Discovering"),
             Waiting(w) => write!(f, "Waiting({:.0?})", w.duration()),
+            OnConnect(_) => write!(f, "OnConnect"),
             Shutdown => write!(f, "Shutdown"),
         }
     }
@@ -85,6 +88,7 @@ pub enum StateEvent {
     BeginDiscovery(DiscoveryParams),
     Ready,
     Idle,
+    OnConnectMode,
     DiscoveryComplete(DhtNetworkDiscoveryRoundInfo),
     Errored(NetworkDiscoveryError),
     Shutdown,
@@ -100,6 +104,7 @@ impl Display for StateEvent {
             Idle => write!(f, "Idle"),
             DiscoveryComplete(stats) => write!(f, "DiscoveryComplete({})", stats),
             Errored(err) => write!(f, "Errored({})", err),
+            OnConnectMode => write!(f, "OnConnectMode"),
             Shutdown => write!(f, "Shutdown"),
         }
     }
@@ -112,12 +117,13 @@ impl<E: Into<NetworkDiscoveryError>> From<E> for StateEvent {
 }
 
 #[derive(Debug, Clone)]
-pub struct NetworkDiscoveryContext {
+pub(super) struct NetworkDiscoveryContext {
     pub config: DhtConfig,
     pub peer_manager: Arc<PeerManager>,
     pub connectivity: ConnectivityRequester,
     pub node_identity: Arc<NodeIdentity>,
     pub num_rounds: Arc<AtomicUsize>,
+    pub event_tx: broadcast::Sender<Arc<DhtEvent>>,
 }
 
 impl NetworkDiscoveryContext {
@@ -135,11 +141,14 @@ impl NetworkDiscoveryContext {
     pub fn reset_num_rounds(&self) {
         self.num_rounds.store(0, Ordering::Release);
     }
+
+    pub fn publish_event(&self, event: DhtEvent) {
+        let _ = self.event_tx.send(Arc::new(event));
+    }
 }
 
 pub struct DhtNetworkDiscovery {
     context: NetworkDiscoveryContext,
-    event_tx: broadcast::Sender<Arc<DhtEvent>>,
     shutdown_signal: ShutdownSignal,
 }
 
@@ -160,18 +169,20 @@ impl DhtNetworkDiscovery {
                 connectivity,
                 node_identity,
                 num_rounds: Default::default(),
+                event_tx,
             },
-            event_tx,
             shutdown_signal,
         }
     }
 
     async fn get_next_event(&mut self, state: &mut State) -> StateEvent {
+        use State::*;
         match state {
-            State::Initializing => Initializing::new(&mut self.context).next_event().await,
-            State::Ready(ready) => ready.next_event().await,
-            State::Discovering(discovering) => discovering.next_event().await,
-            State::Waiting(idling) => idling.next_event().await,
+            Initializing => self::Initializing::new(&mut self.context).next_event().await,
+            Ready(ready) => ready.next_event().await,
+            Discovering(discovering) => discovering.next_event().await,
+            OnConnect(on_connect) => on_connect.next_event().await,
+            Waiting(idling) => idling.next_event().await,
             _ => StateEvent::Shutdown,
         }
     }
@@ -190,11 +201,13 @@ impl DhtNetworkDiscovery {
             (State::Ready(_), StateEvent::BeginDiscovery(params)) => {
                 State::Discovering(Discovering::new(params, self.context.clone()))
             },
-
+            (State::Ready(_), StateEvent::OnConnectMode) => State::OnConnect(OnConnect::new(self.context.clone())),
             (State::Discovering(_), StateEvent::DiscoveryComplete(stats)) => {
                 if stats.has_new_peers() {
-                    self.publish_event(DhtEvent::NetworkDiscoveryPeersAdded(stats.clone()));
+                    self.context
+                        .publish_event(DhtEvent::NetworkDiscoveryPeersAdded(stats.clone()));
                 }
+
                 if !stats.is_success() {
                     return State::Waiting(self.config().network_discovery.on_failure_idle_period.into());
                 }
@@ -218,10 +231,6 @@ impl DhtNetworkDiscovery {
                 state
             },
         }
-    }
-
-    fn publish_event(&self, event: DhtEvent) {
-        let _ = self.event_tx.send(Arc::new(event));
     }
 
     #[inline]
@@ -269,18 +278,19 @@ where Fut: Future<Output = StateEvent> + Unpin {
 #[derive(Debug, Clone)]
 pub struct DiscoveryParams {
     pub peers: Vec<NodeId>,
-    pub num_peers_to_request: usize,
-    pub max_accept_closer_peers: usize,
+    pub num_peers_to_request: Option<usize>,
 }
 
 impl Display for DiscoveryParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "DiscoveryParams({} peer(s) selected, num_peers_to_request = {}, max_accept_closer_peers = {})",
+            "DiscoveryParams({} peer(s) selected, num_peers_to_request = {})",
             self.peers.len(),
-            self.num_peers_to_request,
-            self.max_accept_closer_peers
+            self.num_peers_to_request
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "∞".into()),
         )
     }
 }

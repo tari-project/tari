@@ -35,9 +35,13 @@ pub fn build_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
 }
 
 pub fn ordered_node_identities(n: usize, features: PeerFeatures) -> Vec<Arc<NodeIdentity>> {
-    let mut ids = (0..n).map(|_| build_node_identity(features)).collect::<Vec<_>>();
+    let mut ids = build_many_node_identities(n, features);
     ids.sort_unstable_by(|a, b| a.node_id().cmp(b.node_id()));
     ids
+}
+
+pub fn build_many_node_identities(n: usize, features: PeerFeatures) -> Vec<Arc<NodeIdentity>> {
+    (0..n).map(|_| build_node_identity(features)).collect()
 }
 
 pub fn ordered_node_identities_by_distance(
@@ -46,7 +50,7 @@ pub fn ordered_node_identities_by_distance(
     features: PeerFeatures,
 ) -> Vec<Arc<NodeIdentity>>
 {
-    let mut ids = (0..n).map(|_| build_node_identity(features)).collect::<Vec<_>>();
+    let mut ids = build_many_node_identities(n, features);
     ids.sort_unstable_by(|a, b| a.node_id().distance(node_id).cmp(&b.node_id().distance(node_id)));
     ids
 }

@@ -2,10 +2,20 @@ syntax = "proto3";
 
 package tari.dht.rpc;
 
-// GET peers request
-message GetPeersRequest {
+// `get_closer_peers` request
+message GetCloserPeersRequest {
   // The number of peers to return
   uint32 n = 1;
+  repeated bytes excluded = 2;
+  bytes closer_to = 3;
+  bool include_clients = 4;
+}
+
+// `get_peers` request
+message GetPeersRequest {
+  // The number of peers to return, 0 for all peers
+  uint32 n = 1;
+  bool include_clients = 2;
 }
 
 // GET peers response
