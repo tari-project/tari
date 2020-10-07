@@ -104,6 +104,7 @@ pub enum BaseNodeCommand {
     ResetOfflinePeers,
     BanPeer,
     UnbanPeer,
+    UnbanAllPeers,
     ListConnections,
     ListHeaders,
     CheckDb,
@@ -308,6 +309,9 @@ impl Parser {
             UnbanPeer => {
                 self.process_ban_peer(args, false);
             },
+            UnbanAllPeers => {
+                self.process_unban_all_peers();
+            },
             ListConnections => {
                 self.process_list_connections();
             },
@@ -414,7 +418,10 @@ impl Parser {
                 println!("Bans a peer");
             },
             UnbanPeer => {
-                println!("Removes the peer ban");
+                println!("Removes a peer ban");
+            },
+            UnbanAllPeers => {
+                println!("Unbans all peers");
             },
             CheckDb => {
                 println!("Checks the blockchain database for missing blocks and headers");
@@ -1203,6 +1210,36 @@ impl Parser {
                     },
                 }
             }
+        });
+    }
+
+    fn process_unban_all_peers(&mut self) {
+        let peer_manager = self.peer_manager.clone();
+        let wallet_peer_manager = self.wallet_peer_manager.clone();
+        self.executor.spawn(async move {
+            async fn unban_all(pm: &PeerManager) -> usize {
+                let query = PeerQuery::new().select_where(|p| p.is_banned());
+                match pm.perform_query(query).await {
+                    Ok(peers) => {
+                        let num_peers = peers.len();
+                        for peer in peers {
+                            if let Err(err) = pm.unban_peer(&peer.node_id).await {
+                                println!("Failed to unban peer: {}", err);
+                            }
+                        }
+                        num_peers
+                    },
+                    Err(err) => {
+                        println!("Failed to unban peers: {}", err);
+                        0
+                    },
+                }
+            }
+
+            let n = unban_all(&peer_manager).await;
+            println!("Unbanned {} peer(s) from node", n);
+            let n = unban_all(&wallet_peer_manager).await;
+            println!("Unbanned {} peer(s) from wallet", n);
         });
     }
 
