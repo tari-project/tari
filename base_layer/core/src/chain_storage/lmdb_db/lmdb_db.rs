@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     blocks::{
         blockheader::{BlockHash, BlockHeader},
@@ -77,7 +76,7 @@ use croaring::Bitmap;
 use digest::Digest;
 use lmdb_zero::{Database, Environment, WriteTransaction};
 use log::*;
-use std::{collections::VecDeque, path::Path, sync::Arc, time::Instant};
+use std::{collections::VecDeque, fs, path::Path, sync::Arc, time::Instant};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 use tari_mmr::{
     functions::{calculate_pruned_mmr_root, prune_mutable_mmr, PrunedMutableMmr},
@@ -535,6 +534,29 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     LMDBDatabase::<HashDigest>::new(lmdb_store, mmr_cache_config)
+}
+
+pub fn create_recovery_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), ChainStorageError> {
+    let new_path = path.as_ref().join("temp_recovery");
+    let _ = fs::create_dir_all(&new_path);
+
+    let data_file = path.as_ref().join("data.mdb");
+    let lock_file = path.as_ref().join("lock.mdb");
+
+    let new_data_file = new_path.join("data.mdb");
+    let new_lock_file = new_path.join("lock.mdb");
+
+    fs::rename(data_file, new_data_file)
+        .map_err(|err| ChainStorageError::CriticalError(format!("Could not copy LMDB store:{}", err)))?;
+    fs::rename(lock_file, new_lock_file)
+        .map_err(|err| ChainStorageError::CriticalError(format!("Could not copy LMDB store:{}", err)))?;
+    Ok(())
+}
+
+pub fn remove_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), ChainStorageError> {
+    fs::remove_dir_all(&path)
+        .map_err(|err| ChainStorageError::CriticalError(format!("Could not remove LMDB store:{}", err)))?;
+    Ok(())
 }
 
 impl<D> BlockchainBackend for LMDBDatabase<D>

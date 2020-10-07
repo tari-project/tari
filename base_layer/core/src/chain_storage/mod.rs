@@ -65,6 +65,8 @@ pub use historical_block::HistoricalBlock;
 mod lmdb_db;
 pub use lmdb_db::{
     create_lmdb_database,
+    create_recovery_lmdb_database,
+    remove_lmdb_database,
     LMDBDatabase,
     LMDB_DB_BLOCK_HASHES,
     LMDB_DB_HEADERS,
