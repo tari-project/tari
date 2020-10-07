@@ -59,17 +59,21 @@ pub use state::Metadata;
 #[cfg(feature = "test-mocks")]
 pub mod mock;
 
-use self::{message::PingPongMessage, service::LivenessService, state::LivenessState};
+use self::{message::PingPongMessage, service::LivenessService};
 pub use crate::proto::liveness::MetadataKey;
 use crate::{
     comms_connector::{PeerMessage, TopicSubscriptionFactory},
     domain_message::DomainMessage,
-    services::utils::{map_decode, ok_or_skip_result},
+    services::{
+        liveness::state::LivenessState,
+        utils::{map_decode, ok_or_skip_result},
+    },
     tari_message::TariMessageType,
 };
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
+use tari_comms::connectivity::ConnectivityRequester;
 use tari_comms_dht::Dht;
 use tari_service_framework::{
     reply_channel,
@@ -132,7 +136,7 @@ impl ServiceInitializer for LivenessInitializer {
         // Spawn the Liveness service on the executor
         context.spawn_when_ready(|handles| async move {
             let dht = handles.expect_handle::<Dht>();
-            let dht_requester = dht.dht_requester();
+            let connectivity = handles.expect_handle::<ConnectivityRequester>();
             let outbound_messages = dht.outbound_requester();
 
             let service = LivenessService::new(
@@ -140,7 +144,7 @@ impl ServiceInitializer for LivenessInitializer {
                 receiver,
                 ping_stream,
                 LivenessState::new(),
-                dht_requester,
+                connectivity,
                 outbound_messages,
                 publisher,
                 handles.get_shutdown_signal(),

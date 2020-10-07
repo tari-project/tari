@@ -23,7 +23,6 @@
 use crate::services::liveness::{
     error::LivenessError,
     handle::LivenessEventSender,
-    state::NodeStats,
     LivenessEvent,
     LivenessHandle,
     LivenessRequest,
@@ -137,19 +136,6 @@ impl LivenessMock {
             },
             SetPongMetadata(_, _) => {
                 reply_tx.send(Ok(LivenessResponse::Ok)).unwrap();
-            },
-            AddNodeId(_n) => reply_tx.send(Ok(LivenessResponse::NodeIdAdded)).unwrap(),
-            GetNodeIdStats(_n) => reply_tx
-                .send(Ok(LivenessResponse::NodeIdStats(NodeStats::new())))
-                .unwrap(),
-            RemoveNodeId(_) => {
-                reply_tx.send(Ok(LivenessResponse::NodeIdRemoved)).unwrap();
-            },
-            ClearNodeIds => {
-                reply_tx.send(Ok(LivenessResponse::NodeIdsCleared)).unwrap();
-            },
-            GetBestMonitoredNodeId => {
-                reply_tx.send(Ok(LivenessResponse::BestMonitoredNodeId(None))).unwrap();
             },
         }
     }

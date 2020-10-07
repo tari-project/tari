@@ -261,7 +261,7 @@ mod pingpong {
     type CursiveSignal = crossbeam_channel::Sender<Box<dyn CbFunc>>;
 
     async fn update_ui(update_sink: CursiveSignal, mut liveness_handle: LivenessHandle, mut shutdown: ShutdownSignal) {
-        let mut event_stream = liveness_handle.get_event_stream_fused();
+        let mut event_stream = liveness_handle.get_event_stream().fuse();
         let ping_count = liveness_handle.get_ping_count().await.unwrap_or(0);
         let pong_count = liveness_handle.get_pong_count().await.unwrap_or(0);
 

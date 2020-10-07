@@ -447,9 +447,9 @@ fn propagate_and_forward_many_valid_blocks() {
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
     });
 
-    let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
-    let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
-    let mut dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
+    let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream();
+    let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream();
+    let mut dan_block_event_stream = dan_node.local_nci.get_block_event_stream();
 
     let blocks = construct_chained_blocks(&alice_node.blockchain_db, block0, &rules, 5);
 
@@ -662,9 +662,9 @@ fn propagate_and_forward_invalid_block() {
     let block1_hash = block1.hash();
 
     runtime.block_on(async {
-        let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
-        let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
-        let mut dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
+        let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream();
+        let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream();
+        let mut dan_block_event_stream = dan_node.local_nci.get_block_event_stream();
 
         assert!(alice_node
             .outbound_nci
@@ -800,7 +800,7 @@ fn local_submit_block() {
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
 
     let db = &node.blockchain_db;
-    let mut event_stream = node.local_nci.get_block_event_stream_fused();
+    let mut event_stream = node.local_nci.get_block_event_stream();
     let block0 = db.fetch_block(0).unwrap().block().clone();
     let block1 = db
         .calculate_mmr_roots(chain_block(&block0, vec![], &consensus_manager))

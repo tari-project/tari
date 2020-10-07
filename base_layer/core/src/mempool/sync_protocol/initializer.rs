@@ -26,7 +26,8 @@ use crate::mempool::{
     MempoolServiceConfig,
 };
 use futures::{channel::mpsc, future};
-use tari_p2p::initialization::SharedCommsContext;
+use tari_comms::connectivity::ConnectivityRequester;
+use tari_p2p::initialization::CommsProtocols;
 use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 
 pub struct MempoolSyncInitializer {
@@ -48,14 +49,15 @@ impl ServiceInitializer for MempoolSyncInitializer {
         let mempool = self.mempool.clone();
 
         context.spawn_when_ready(move |handles| async move {
-            let comms = handles.expect_handle::<SharedCommsContext>();
+            let protocols = handles.expect_handle::<CommsProtocols>();
+            let connectivity = handles.expect_handle::<ConnectivityRequester>();
 
             let (notif_tx, notif_rx) = mpsc::channel(3);
-            comms
+            protocols
                 .add_protocol_notifier(&[MEMPOOL_SYNC_PROTOCOL.clone()], notif_tx)
                 .await;
 
-            MempoolSyncProtocol::new(config, notif_rx, comms.connectivity().get_event_subscription(), mempool)
+            MempoolSyncProtocol::new(config, notif_rx, connectivity.get_event_subscription(), mempool)
                 .run()
                 .await;
         });
