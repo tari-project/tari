@@ -229,6 +229,11 @@ impl BestChainMetadataBlockSync {
         match synchronize_blocks(shared, network_tip, sync_peers).await {
             Ok(_) => {
                 info!(target: LOG_TARGET, "Block sync state has synchronised.");
+                if !shared.bootstrapped_sync {
+                    debug!(target: LOG_TARGET, "Initial sync achieved, bootstrap done",);
+                    shared.bootstrapped_sync = true;
+                    shared.publish_event_info();
+                }
                 StateEvent::BlocksSynchronized
             },
             Err(BlockSyncError::MaxRequestAttemptsReached) => {
