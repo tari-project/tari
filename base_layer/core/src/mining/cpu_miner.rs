@@ -32,17 +32,14 @@ use std::{
     time::{Duration, Instant},
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
-pub const LOG_TARGET: &str = "c::m::blake_miner";
+pub const LOG_TARGET: &str = "c::m::Cpu_miner";
 
-/// A simple Blake2b-based proof of work. This is currently intended to be used for testing and perhaps Testnet until
-/// Monero merge-mining is active.
-///
-/// The proof of work difficulty is given by `H256(H512(header || nonce))` where Hnnn is the Blake2b digest of length
-/// `nnn` bits.
+/// A simple CPU-based proof of work.
+/// The proof of work difficulty is given by pow algorithm inside of the header which will map to the relevant pow file.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct CpuBlakePow;
+pub struct CpuPow;
 
-impl CpuBlakePow {
+impl CpuPow {
     /// A simple miner. It starts with a random nonce and iterates until it finds a header hash that meets the desired
     /// target
     pub fn mine(mut header: BlockHeader, stop_flag: Arc<AtomicBool>, hashrate: Arc<AtomicU64>) -> Option<BlockHeader> {

@@ -22,7 +22,7 @@ tari_common = { version = "^0.2", path = "../../common"}
 tari_comms = { version = "^0.2", path = "../../comms"}
 tari_comms_dht = { version = "^0.2.1", path = "../../comms/dht"}
 tari_comms_rpc_macros = { version = "^0.1", path = "../../comms/rpc_macros"}
-tari_crypto = { version = "^0.5" }
+tari_crypto = { version = "^0.8" }
 tari_infra_derive = { version = "^0.0",  path = "../../infrastructure/derive" }
 tari_mmr = { version = "^0.2", path = "../../base_layer/mmr", optional = true }
 tari_p2p = { version = "^0.2", path = "../../base_layer/p2p" }
@@ -33,6 +33,7 @@ tari_storage = { version = "^0.2", path = "../../infrastructure/storage" }
 bincode = "1.1.4"
 bitflags = "1.0.4"
 blake2 = "^0.8.0"
+sha3 = "0.9"
 bytes = "0.4.12"
 chrono = { version = "0.4.6", features = ["serde"]}
 croaring = { version = "=0.4.5", optional = true }

@@ -71,6 +71,7 @@ message PowAlgo {
     enum PowAlgos {
         POW_ALGOS_MONERO = 0;
         POW_ALGOS_BLAKE = 1;
+        POW_ALGOS_SHA3 = 2;
     }
     PowAlgos pow_algo = 1;
 }

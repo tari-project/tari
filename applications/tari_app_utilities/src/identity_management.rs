@@ -27,10 +27,9 @@ use std::{clone::Clone, fs, path::Path, string::ToString, sync::Arc};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_core::transactions::types::PrivateKey;
 use tari_crypto::{
-    keys::SecretKey as SecretKeyTrait,
+    keys::SecretKey,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
 };
-
 pub const LOG_TARGET: &str = "tari_application";
 
 /// Loads the node identity, or creates a new one if the --create-id flag was specified

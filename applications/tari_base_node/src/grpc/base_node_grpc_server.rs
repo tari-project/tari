@@ -351,6 +351,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let pow = match new_block.header.pow.pow_algo {
             PowAlgorithm::Monero => 0,
             PowAlgorithm::Blake => 1,
+            PowAlgorithm::Sha3 => 2,
         };
         let target_difficulty = new_block.header.pow.target_difficulty;
         let reward = cm.calculate_coinbase_and_fees(&new_block);
