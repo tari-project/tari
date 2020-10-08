@@ -101,6 +101,9 @@ pub struct ConfigBootstrap {
     /// Run in daemon mode, with no interface
     #[structopt(short, long, alias("daemon"))]
     pub daemon_mode: bool,
+    /// This will rebuild the db, adding block for block in
+    #[structopt(long, alias("rebuild_db"))]
+    pub rebuild_db: bool,
 }
 
 impl Default for ConfigBootstrap {
@@ -112,6 +115,7 @@ impl Default for ConfigBootstrap {
             init: false,
             create_id: false,
             daemon_mode: false,
+            rebuild_db: false,
         }
     }
 }
@@ -267,6 +271,7 @@ mod test {
             "",
             "--init",
             "--create-id",
+            "--rebuild_db",
             "--base-path",
             "no-temp-path-created",
             "--log-config",
@@ -277,6 +282,7 @@ mod test {
         .expect("failed to process arguments");
         assert!(bootstrap.init);
         assert!(bootstrap.create_id);
+        assert!(bootstrap.rebuild_db);
         assert_eq!(bootstrap.base_path.to_str(), Some("no-temp-path-created"));
         assert_eq!(bootstrap.log_config.to_str(), Some("no-log-config-file-created"));
         assert_eq!(bootstrap.config.to_str(), Some("no-config-file-created"));

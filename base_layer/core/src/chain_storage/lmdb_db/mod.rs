@@ -23,7 +23,7 @@
 mod lmdb;
 #[allow(clippy::module_inception)]
 mod lmdb_db;
-pub use lmdb_db::{create_lmdb_database, LMDBDatabase};
+pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, remove_lmdb_database, LMDBDatabase};
 
 mod lmdb_vec;
 pub use lmdb_vec::{LMDBVec, LMDBVecError};

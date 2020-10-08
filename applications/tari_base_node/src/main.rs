@@ -103,6 +103,8 @@ mod parser;
 mod tasks;
 /// Utility functions
 mod utils;
+// recovery mode
+mod recovery;
 
 use log::*;
 use parser::Parser;
@@ -181,14 +183,20 @@ fn main_inner() -> Result<(), ExitCodes> {
         );
         return Ok(());
     }
+    // This is the main and only shutdown trigger for the system.
+    let shutdown = Shutdown::new();
+
+    if bootstrap.rebuild_db {
+        info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
+        recovery::initiate_recover_db(&node_config)?;
+        let _ = rt.block_on(recovery::run_recovery(&node_config));
+        return Ok(());
+    };
 
     if bootstrap.init {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
         return Ok(());
     }
-
-    // This is the main and only shutdown trigger for the system.
-    let shutdown = Shutdown::new();
 
     // Build, node, build!
     let ctx = rt
@@ -202,7 +210,6 @@ fn main_inner() -> Result<(), ExitCodes> {
             error!(target: LOG_TARGET, "{}", err);
             ExitCodes::UnknownError
         })?;
-
     // Run, node, run!
     let parser = Parser::new(rt.handle().clone(), &ctx, &node_config);
 
@@ -222,9 +229,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         target: LOG_TARGET,
         "Node has been successfully configured and initialized. Starting CLI loop."
     );
-
     cli_loop(parser, shutdown);
-
     match rt.block_on(base_node_handle) {
         Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
         Err(e) => error!(target: LOG_TARGET, "Node has crashed: {}", e),
