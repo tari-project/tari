@@ -48,7 +48,7 @@ use tari_storage::{
 const LOG_TARGET: &str = "comms::peer_manager::migrations::v2";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct PeerV2 {
+pub struct PeerV3 {
     id: Option<PeerId>,
     public_key: CommsPublicKey,
     #[serde(serialize_with = "serialize_to_hex")]
@@ -57,6 +57,7 @@ pub struct PeerV2 {
     addresses: MultiaddressesWithStats,
     flags: PeerFlags,
     banned_until: Option<NaiveDateTime>,
+    banned_reason: String,
     offline_at: Option<NaiveDateTime>,
     features: PeerFeatures,
     connection_stats: PeerConnectionStats,
@@ -64,14 +65,14 @@ pub struct PeerV2 {
     added_at: NaiveDateTime,
     user_agent: String,
 }
-/// This migration is to add banned_reason field
-pub struct MigrationV2;
+/// This migration is to the metadata field
+pub struct MigrationV3;
 
-impl Migration<LMDBDatabase> for MigrationV2 {
+impl Migration<LMDBDatabase> for MigrationV3 {
     type Error = LMDBError;
 
     fn migrate(&self, db: &LMDBDatabase) -> Result<(), Self::Error> {
-        db.for_each::<PeerId, PeerV2, _>(|old_peer| {
+        db.for_each::<PeerId, PeerV3, _>(|old_peer| {
             match old_peer {
                 Ok((key, peer)) => {
                     debug!(target: LOG_TARGET, "Migrating peer `{}`", peer.node_id.short_str());
