@@ -31,7 +31,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::types::CryptoFactories,
     validation::{
-        helpers::{check_achieved_and_target_difficulty, check_median_timestamp, is_stxo},
+        helpers::{check_achieved_and_target_difficulty, check_median_timestamp, is_utxo_in_mmr},
         StatefulValidation,
         Validation,
         ValidationError,
@@ -115,7 +115,7 @@ impl<B: BlockchainBackend> StatefulValidation<Block, B> for FullConsensusValidat
     fn validate(&self, block: &Block, db: &B) -> Result<(), ValidationError> {
         let block_id = format!("block #{} ({})", block.header.height, block.hash().to_hex());
         check_inputs_are_utxos(block, db)?;
-        check_not_stxos(block, db)?;
+        check_outputs_are_not_existing_hashes(block, db)?;
         trace!(
             target: LOG_TARGET,
             "Block validation: All inputs and outputs are valid for {}",
@@ -299,25 +299,15 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result
     Ok(())
 }
 
-// This function checks that the inputs and outputs do not exist in the STxO set.
-fn check_not_stxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
-    for input in block.body.inputs() {
-        if is_stxo(db, input.hash())? {
-            // we dont want to log this as a node or wallet might retransmit a transaction
-            debug!(
-                target: LOG_TARGET,
-                "Block validation failed due to already spent input: {}", input
-            );
-            return Err(ValidationError::ContainsSTxO);
-        }
-    }
+// This function checks that the outputs do not exist in the STxO set.
+fn check_outputs_are_not_existing_hashes<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     for output in block.body.outputs() {
-        if is_stxo(db, output.hash())? {
+        if is_utxo_in_mmr(db, output.hash())? {
             debug!(
                 target: LOG_TARGET,
-                "Block validation failed due to previously spent output: {}", output
+                "Block validation failed due to hash already in MMR: {}", output
             );
-            return Err(ValidationError::ContainsSTxO);
+            return Err(ValidationError::ContainsKnownTxO);
         }
     }
     Ok(())

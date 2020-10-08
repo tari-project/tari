@@ -51,6 +51,8 @@ pub enum ValidationError {
     InvalidAccountingBalance,
     #[error("Transaction contains already spent inputs")]
     ContainsSTxO,
+    #[error("Transaction contains duplicate already existing Transactional output")]
+    ContainsKnownTxO,
     #[error("The recorded chain accumulated difficulty was stronger")]
     WeakerAccumulatedDifficulty,
     #[error("Invalid output merkle root")]

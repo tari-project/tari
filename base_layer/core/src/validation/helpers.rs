@@ -161,6 +161,16 @@ pub fn is_stxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, V
     }
 }
 
+pub fn is_utxo_in_mmr<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ValidationError> {
+    // Check if the UTXO MMR contains the specified UTXO hash, the backend stxo_db is not used for this task as
+    // archival nodes and pruning nodes might have different STXOs in their stxo_db as horizon state STXOs are
+    // discarded by pruned nodes.
+    match db.fetch_mmr_leaf_index(MmrTree::Utxo, &hash)? {
+        Some(_v) => Ok(true),
+        None => Ok(false),
+    }
+}
+
 pub fn is_utxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ValidationError> {
     db.contains(&DbKey::UnspentOutput(hash)).map_err(Into::into)
 }
