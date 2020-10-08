@@ -37,7 +37,7 @@ use bitflags::bitflags;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Display, time::Duration};
+use std::{collections::HashMap, fmt::Display, time::Duration};
 use tari_crypto::tari_utilities::hex::serialize_to_hex;
 
 bitflags! {
@@ -84,6 +84,9 @@ pub struct Peer {
     pub added_at: NaiveDateTime,
     /// User agent advertised by the peer
     pub user_agent: String,
+    /// Metadata field. This field is for use by upstream clients to record extra info about a peer.
+    /// We use a hashmap here so that we can use more than one "info set"
+    pub metadata: HashMap<u8, Vec<u8>>,
 }
 
 impl Peer {
@@ -112,6 +115,7 @@ impl Peer {
             added_at: Utc::now().naive_utc(),
             supported_protocols: supported_protocols.into_iter().cloned().collect(),
             user_agent,
+            metadata: HashMap::new(),
         }
     }
 
@@ -246,6 +250,17 @@ impl Peer {
         } else {
             self.offline_at = None;
         }
+    }
+
+    /// This will store metadata inside of the metadata field in the peer.
+    /// It will return None if the value was empty and the old value if the value was updated
+    pub fn set_metadata(&mut self, key: u8, data: Vec<u8>) -> Option<Vec<u8>> {
+        self.metadata.insert(key, data)
+    }
+
+    /// This will return the value in the metadata field. It will return None if the key is not present
+    pub fn get_metadata(&mut self, key: u8) -> Option<&Vec<u8>> {
+        self.metadata.get(&key)
     }
 }
 
