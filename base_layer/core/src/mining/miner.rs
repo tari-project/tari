@@ -28,7 +28,7 @@ use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     consensus::ConsensusManager,
     mempool::MempoolStateEvent,
-    mining::{blake_miner::CpuBlakePow, error::MinerError, MinerInstruction},
+    mining::{cpu_miner::CpuPow, error::MinerError, MinerInstruction},
     proof_of_work::PowAlgorithm,
     transactions::{
         transaction::UnblindedOutput,
@@ -192,7 +192,7 @@ impl Miner {
             let mut tx_channel = tx.clone();
             trace!("spawning mining thread");
             spawn_blocking(move || {
-                let result = CpuBlakePow::mine(header, stop_mining_flag, thread_hash_rate);
+                let result = CpuPow::mine(header, stop_mining_flag, thread_hash_rate);
                 // send back what the miner found, None will be sent if the miner did not find a nonce
                 if let Err(e) = tx_channel.try_send(result) {
                     warn!(target: LOG_TARGET, "Could not return mining result: {}", e);

@@ -24,6 +24,7 @@ use crate::{
     proof_of_work::{
         blake_pow::blake_difficulty,
         monero_rx::{monero_difficulty, MoneroData},
+        sha3_pow::sha3_difficulty,
         Difficulty,
         PowAlgorithm,
         PowError,
@@ -104,6 +105,7 @@ impl ProofOfWork {
         match header.pow.pow_algo {
             PowAlgorithm::Monero => Ok(monero_difficulty(header)?),
             PowAlgorithm::Blake => Ok(blake_difficulty(header)),
+            PowAlgorithm::Sha3 => Ok(sha3_difficulty(header)),
         }
     }
 
@@ -143,6 +145,10 @@ impl ProofOfWork {
                 pow.accumulated_blake_difficulty,
             ),
             PowAlgorithm::Blake => (
+                pow.accumulated_monero_difficulty,
+                pow.accumulated_blake_difficulty + added_difficulty,
+            ),
+            PowAlgorithm::Sha3 => (
                 pow.accumulated_monero_difficulty,
                 pow.accumulated_blake_difficulty + added_difficulty,
             ),
@@ -192,6 +198,7 @@ impl Display for PowAlgorithm {
         let algo = match self {
             PowAlgorithm::Monero => "Monero",
             PowAlgorithm::Blake => "Blake",
+            PowAlgorithm::Sha3 => "Sha3",
         };
         fmt.write_str(&algo.to_string())
     }
@@ -210,11 +217,11 @@ impl Display for ProofOfWork {
             self.accumulated_monero_difficulty, self.accumulated_blake_difficulty
         )?;
         match self.pow_algo {
-            PowAlgorithm::Blake => writeln!(fmt, "Pow data: {}", self.pow_data.to_hex()),
             PowAlgorithm::Monero => match MoneroData::new_from_pow(&self.pow_data) {
                 Ok(v) => writeln!(fmt, "Pow data: {}", v),
                 Err(_) => writeln!(fmt, "Pow data: MALFORMED DATA"),
             },
+            _ => writeln!(fmt, "Pow data: {}", self.pow_data.to_hex()),
         }
     }
 }

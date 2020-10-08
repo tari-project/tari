@@ -27,6 +27,7 @@ use std::convert::TryFrom;
 pub enum PowAlgorithm {
     Monero = 0,
     Blake = 1,
+    Sha3 = 2,
 }
 
 impl TryFrom<u64> for PowAlgorithm {
@@ -36,6 +37,7 @@ impl TryFrom<u64> for PowAlgorithm {
         match v {
             0 => Ok(PowAlgorithm::Monero),
             1 => Ok(PowAlgorithm::Blake),
+            2 => Ok(PowAlgorithm::Sha3),
             _ => Err("Invalid PoWAlgorithm".into()),
         }
     }
