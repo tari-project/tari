@@ -45,7 +45,7 @@ use tari_storage::{
     IterationResult,
 };
 
-const LOG_TARGET: &str = "comms::peer_manager::migrations::v2";
+const LOG_TARGET: &str = "comms::peer_manager::migrations::v3";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PeerV3 {

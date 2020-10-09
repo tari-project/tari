@@ -288,6 +288,18 @@ impl PeerManager {
         let peer = self.find_by_node_id(node_id).await?;
         Ok(peer.features)
     }
+
+    /// This will store metadata inside of the metadata field in the peer provided by the nodeID.
+    /// It will return None if the value was empty and the old value if the value was updated
+    pub async fn set_peer_metadata(
+        &self,
+        node_id: &NodeId,
+        key: u8,
+        data: Vec<u8>,
+    ) -> Result<Option<Vec<u8>>, PeerManagerError>
+    {
+        self.peer_storage.write().await.set_peer_metadata(node_id, key, data)
+    }
 }
 
 impl fmt::Debug for PeerManager {

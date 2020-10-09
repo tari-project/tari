@@ -511,6 +511,31 @@ where DS: KeyValueStore<PeerId, Peer>
             .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
     }
+
+    /// This will store metadata inside of the metadata field in the peer provided by the nodeID.
+    /// It will return None if the value was empty and the old value if the value was updated
+    pub fn set_peer_metadata(
+        &self,
+        node_id: &NodeId,
+        key: u8,
+        data: Vec<u8>,
+    ) -> Result<Option<Vec<u8>>, PeerManagerError>
+    {
+        let peer_key = *self
+            .node_id_index
+            .get(&node_id)
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+        let mut peer: Peer = self
+            .peer_db
+            .get(&peer_key)
+            .map_err(PeerManagerError::DatabaseError)?
+            .expect("node_id_index is out of sync with peer db");
+        let result = peer.set_metadata(key, data);
+        self.peer_db
+            .insert(peer_key, peer)
+            .map_err(PeerManagerError::DatabaseError)?;
+        Ok(result)
+    }
 }
 
 impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {

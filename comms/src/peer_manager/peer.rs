@@ -259,7 +259,7 @@ impl Peer {
     }
 
     /// This will return the value in the metadata field. It will return None if the key is not present
-    pub fn get_metadata(&mut self, key: u8) -> Option<&Vec<u8>> {
+    pub fn get_metadata(&self, key: u8) -> Option<&Vec<u8>> {
         self.metadata.get(&key)
     }
 }

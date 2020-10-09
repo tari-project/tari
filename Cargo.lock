@@ -3846,6 +3846,7 @@ name = "tari_base_node"
 version = "0.5.5"
 dependencies = [
  "anyhow",
+ "bincode",
  "chrono",
  "chrono-english",
  "config",
