@@ -38,7 +38,8 @@ use crate::{
 };
 use futures::{future, Future};
 use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, CommsNode};
+use std::sync::Arc;
+use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
 
@@ -76,6 +77,7 @@ where B: BlockchainBackend + 'static
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
     fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+        trace!(target: LOG_TARGET, "init of base_node");
         let (state_event_publisher, _) = broadcast::channel(10);
         let (status_event_sender, status_event_receiver) = watch::channel(StatusInfo::new());
 
@@ -95,8 +97,7 @@ where B: BlockchainBackend + 'static
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
             let node_local_interface = handles.expect_handle::<LocalNodeCommsInterface>();
             let connectivity_requester = handles.expect_handle::<ConnectivityRequester>();
-            let base_node_comms = handles.expect_handle::<CommsNode>();
-            let peer_manager = base_node_comms.peer_manager();
+            let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
             let mut state_machine_config = BaseNodeStateMachineConfig::default();
             state_machine_config.block_sync_config.sync_strategy = sync_strategy;
