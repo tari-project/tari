@@ -75,7 +75,7 @@ mod horizon_state_sync;
 pub use horizon_state_sync::{HorizonStateSync, HorizonSyncConfig};
 
 mod listening;
-pub use listening::{Listening, ListeningInfo};
+pub use listening::{Listening, ListeningInfo, PeerMetadata};
 
 mod shutdown_state;
 pub use shutdown_state::Shutdown;

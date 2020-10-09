@@ -31,15 +31,33 @@ use crate::{
     chain_storage::{async_db, BlockchainBackend, ChainMetadata},
     proof_of_work::Difficulty,
 };
+
 use futures::StreamExt;
 use log::*;
+use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Formatter},
     ops::Deref,
 };
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
+
+/// This struct contains the info of the peer, and is used to serialised and deserialised.
+#[derive(Serialize, Deserialize)]
+pub struct PeerMetadata {
+    pub metadata: ChainMetadata,
+    pub last_updated: EpochTime,
+}
+
+impl PeerMetadata {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        bincode::serialize_into(&mut buf, self).unwrap(); // this should not fail
+        buf
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 /// This struct contains info that is use full for external viewing of state info
@@ -94,6 +112,19 @@ impl Listening {
                                 return FatalError(msg);
                             },
                         };
+                        // lets update the peer data from the chain meta data
+                        for peer in peer_metadata_list {
+                            let peer_data = PeerMetadata {
+                                metadata: peer.chain_metadata.clone(),
+                                last_updated: EpochTime::now(),
+                            };
+                            // If this fails, its not the end of the world, we just want to keep record of the stats of
+                            // the peer
+                            let _ = shared
+                                .peer_manager
+                                .set_peer_metadata(&peer.node_id, 1, peer_data.to_bytes())
+                                .await;
+                        }
                         // Find the best network metadata and set of sync peers with the best tip.
                         let best_metadata = best_metadata(peer_metadata_list.as_slice());
                         let local_tip_height = local.height_of_longest_chain();

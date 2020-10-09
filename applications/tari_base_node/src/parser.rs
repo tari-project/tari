@@ -63,7 +63,10 @@ use tari_comms::{
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::{
-    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface},
+    base_node::{
+        state_machine_service::states::{PeerMetadata, StatusInfo},
+        LocalNodeCommsInterface,
+    },
     blocks::BlockHeader,
     mempool::service::LocalMempoolService,
     mining::MinerInstruction,
@@ -1057,6 +1060,7 @@ impl Parser {
                         "Role",
                         "User Agent",
                         "Status",
+                        "Base node data",
                         "Added at",
                     ]);
 
@@ -1076,6 +1080,20 @@ impl Parser {
                             }
                             s.join(", ")
                         };
+                        let base_node_data_str = {
+                            let mut s = Vec::new();
+                            match peer.get_metadata(1) {
+                                Some(v) => match bincode::deserialize::<PeerMetadata>(v) {
+                                    Ok(peerdata) => {
+                                        s.push(format!("Last updated: {}", peerdata.last_updated));
+                                        s.push(format!("Meta data: {}", peerdata.metadata));
+                                    },
+                                    _ => s.push("Base node data malformed".to_string()),
+                                },
+                                _ => s.push("No base node information".to_string()),
+                            };
+                            s.join(", ")
+                        };
                         table.add_row(row![
                             peer.node_id,
                             peer.public_key,
@@ -1092,6 +1110,7 @@ impl Parser {
                                 .unwrap(),
                             status_str,
                             peer.added_at.date(),
+                            base_node_data_str,
                         ]);
                     }
                     table.print_std();
