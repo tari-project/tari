@@ -39,8 +39,8 @@ pub enum LivenessRequest {
     GetPongCount,
     /// Get average latency for node ID
     GetAvgLatency(NodeId),
-    /// Set the metadata attached to each pong message
-    SetPongMetadata(MetadataKey, Vec<u8>),
+    /// Set the metadata attached to each ping/pong message
+    SetMetadataEntry(MetadataKey, Vec<u8>),
 }
 
 /// Response type for `LivenessService`
@@ -138,8 +138,12 @@ impl LivenessHandle {
     }
 
     /// Set metadata entry for the pong message
-    pub async fn set_pong_metadata_entry(&mut self, key: MetadataKey, value: Vec<u8>) -> Result<(), LivenessError> {
-        match self.handle.call(LivenessRequest::SetPongMetadata(key, value)).await?? {
+    pub async fn set_metadata_entry(&mut self, key: MetadataKey, value: Vec<u8>) -> Result<(), LivenessError> {
+        match self
+            .handle
+            .call(LivenessRequest::SetMetadataEntry(key, value))
+            .await??
+        {
             LivenessResponse::Ok => Ok(()),
             _ => Err(LivenessError::UnexpectedApiResponse),
         }

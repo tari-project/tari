@@ -88,13 +88,13 @@ impl LivenessMockState {
 }
 
 pub struct LivenessMock {
-    receiver: reply_channel::Receiver<LivenessRequest, Result<LivenessResponse, LivenessError>>,
+    receiver: reply_channel::TryReceiver<LivenessRequest, LivenessResponse, LivenessError>,
     mock_state: LivenessMockState,
 }
 
 impl LivenessMock {
     pub fn new(
-        receiver: reply_channel::Receiver<LivenessRequest, Result<LivenessResponse, LivenessError>>,
+        receiver: reply_channel::TryReceiver<LivenessRequest, LivenessResponse, LivenessError>,
         mock_state: LivenessMockState,
     ) -> Self
     {
@@ -110,6 +110,7 @@ impl LivenessMock {
     }
 
     pub async fn run(mut self) {
+        debug!(target: LOG_TARGET, "LivenessMock mockin");
         while let Some(req) = self.receiver.next().await {
             self.handle_request(req).await;
         }
@@ -117,25 +118,25 @@ impl LivenessMock {
 
     async fn handle_request(&self, req: RequestContext<LivenessRequest, Result<LivenessResponse, LivenessError>>) {
         use LivenessRequest::*;
-        let (req, reply_tx) = req.split();
+        let (req, reply) = req.split();
         trace!(target: LOG_TARGET, "LivenessMock received request {:?}", req);
         self.mock_state.add_request_call(req.clone());
         // TODO: Make these responses configurable
         match req {
             SendPing(_) => {
-                reply_tx.send(Ok(LivenessResponse::Ok)).unwrap();
+                reply.send(Ok(LivenessResponse::Ok)).unwrap();
             },
             GetPingCount => {
-                reply_tx.send(Ok(LivenessResponse::Count(1))).unwrap();
+                reply.send(Ok(LivenessResponse::Count(1))).unwrap();
             },
             GetPongCount => {
-                reply_tx.send(Ok(LivenessResponse::Count(1))).unwrap();
+                reply.send(Ok(LivenessResponse::Count(1))).unwrap();
             },
             GetAvgLatency(_) => {
-                reply_tx.send(Ok(LivenessResponse::AvgLatency(None))).unwrap();
+                reply.send(Ok(LivenessResponse::AvgLatency(None))).unwrap();
             },
-            SetPongMetadata(_, _) => {
-                reply_tx.send(Ok(LivenessResponse::Ok)).unwrap();
+            SetMetadataEntry(_, _) => {
+                reply.send(Ok(LivenessResponse::Ok)).unwrap();
             },
         }
     }

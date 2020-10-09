@@ -235,7 +235,7 @@ where
                 let latency = self.state.get_avg_latency_ms(&node_id);
                 Ok(LivenessResponse::AvgLatency(latency))
             },
-            SetPongMetadata(key, value) => {
+            SetMetadataEntry(key, value) => {
                 self.state.set_metadata_entry(key, value);
                 Ok(LivenessResponse::Ok)
             },
