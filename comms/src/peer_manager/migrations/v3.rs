@@ -49,21 +49,21 @@ const LOG_TARGET: &str = "comms::peer_manager::migrations::v3";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PeerV3 {
-    id: Option<PeerId>,
-    public_key: CommsPublicKey,
+    pub id: Option<PeerId>,
+    pub public_key: CommsPublicKey,
     #[serde(serialize_with = "serialize_to_hex")]
     #[serde(deserialize_with = "deserialize_node_id_from_hex")]
-    node_id: NodeId,
-    addresses: MultiaddressesWithStats,
-    flags: PeerFlags,
-    banned_until: Option<NaiveDateTime>,
-    banned_reason: String,
-    offline_at: Option<NaiveDateTime>,
-    features: PeerFeatures,
-    connection_stats: PeerConnectionStats,
-    supported_protocols: Vec<ProtocolId>,
-    added_at: NaiveDateTime,
-    user_agent: String,
+    pub node_id: NodeId,
+    pub addresses: MultiaddressesWithStats,
+    pub flags: PeerFlags,
+    pub banned_until: Option<NaiveDateTime>,
+    pub banned_reason: String,
+    pub offline_at: Option<NaiveDateTime>,
+    pub features: PeerFeatures,
+    pub connection_stats: PeerConnectionStats,
+    pub supported_protocols: Vec<ProtocolId>,
+    pub added_at: NaiveDateTime,
+    pub user_agent: String,
 }
 /// This migration is to the metadata field
 pub struct MigrationV3;
