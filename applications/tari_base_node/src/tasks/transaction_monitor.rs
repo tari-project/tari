@@ -93,12 +93,12 @@ async fn start_transaction_protocols_and_txo_validation(
 {
     let mut status_watch = state_machine.get_status_info_watch();
 
+    debug!(
+        target: LOG_TARGET,
+        "Waiting for initial sync before performing TXO validation and restarting of broadcast and transaction \
+         protocols."
+    );
     loop {
-        debug!(
-            target: LOG_TARGET,
-            "Waiting for initial sync before performing TXO validation and restarting of broadcast and transaction \
-             protocols."
-        );
         // Only start the transaction broadcast and TXO validation protocols once the local node is synced
         match status_watch.recv().await {
             // Status watch has closed
