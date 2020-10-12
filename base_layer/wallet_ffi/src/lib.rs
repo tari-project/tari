@@ -2641,6 +2641,10 @@ pub unsafe extern "C" fn comms_config_create(
                         listener_liveness_allowlist_cidrs: Vec::new(),
                         listener_liveness_max_sessions: 0,
                         user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
+                        dns_seeds_name_server: "1.1.1.1:53".parse().unwrap(),
+                        peer_seeds: Default::default(),
+                        dns_seeds: Default::default(),
+                        dns_seeds_use_dnssec: true,
                     };
 
                     Box::into_raw(Box::new(config))

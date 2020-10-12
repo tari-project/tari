@@ -81,7 +81,8 @@ impl ServiceInitializerContext {
     pub fn spawn_when_ready<F, Fut>(self, f: F) -> task::JoinHandle<Fut::Output>
     where
         F: FnOnce(ServiceHandles) -> Fut + Send + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
+        Fut: Future + Send + 'static,
+        Fut::Output: Send,
     {
         task::spawn(self.wait_ready().then(f))
     }
@@ -183,7 +184,7 @@ impl ServiceHandles {
     where H: Clone + 'static {
         match self.get_handle_by_type_id(TypeId::of::<H>()) {
             Some(h) => h,
-            None => panic!("Handle `{}` was never registered", any::type_name::<H>()),
+            None => panic!("Service handle `{}` is not registered", any::type_name::<H>()),
         }
     }
 

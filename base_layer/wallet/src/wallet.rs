@@ -174,7 +174,7 @@ where
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
         let mut stack = StackBuilder::new(shutdown_signal)
-            .add_initializer(P2pInitializer::new(config.comms_config, publisher, vec![]))
+            .add_initializer(P2pInitializer::new(config.comms_config, publisher))
             .add_initializer(OutputManagerServiceInitializer::new(
                 OutputManagerServiceConfig::default(),
                 peer_message_subscription_factory.clone(),

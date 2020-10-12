@@ -7,12 +7,12 @@
 #![deny(unknown_lints)]
 #![recursion_limit = "512"]
 use log::*;
-use rand::{rngs::OsRng, seq::SliceRandom};
-use std::{fs, sync::Arc};
+use rand::{rngs::OsRng, Rng};
+use std::{fs, str::FromStr, sync::Arc};
 use structopt::StructOpt;
 use tari_app_utilities::{
     identity_management::setup_node_identity,
-    utilities::{parse_peer_seeds, setup_wallet_transport_type, ExitCodes},
+    utilities::{setup_wallet_transport_type, ExitCodes},
 };
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig, Network};
 use tari_comms::{
@@ -21,7 +21,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_core::{consensus::Network as NetworkType, transactions::types::CryptoFactories};
-use tari_p2p::initialization::CommsConfig;
+use tari_p2p::{initialization::CommsConfig, seed_peer::SeedPeer, DEFAULT_DNS_SEED_RESOLVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
@@ -145,29 +145,29 @@ fn main_inner() -> Result<(), ExitCodes> {
 }
 
 fn get_base_node_peer(config: &GlobalConfig) -> Result<Peer, ExitCodes> {
+    // base node service peer is defined, so use that
+    if let Ok(base_node) = SeedPeer::from_str(&config.wallet_base_node_service_peer).map(Peer::from) {
+        return Ok(base_node);
+    }
+
     // pick a random peer from peer seeds config
     // todo: strategy for picking peer seed: random or lowest latency
-    let peer_seeds = parse_peer_seeds(&config.peer_seeds);
-    let peer_seed = peer_seeds.choose(&mut OsRng);
+    let mut peer_seeds = config
+        .peer_seeds
+        .iter()
+        .map(|s| SeedPeer::from_str(s))
+        .map(|r| r.map(Peer::from))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| ExitCodes::ConfigError(format!("Malformed seed peer: {}", err)))?;
 
-    // get the configured base node service peer
-    let base_node_peers = parse_peer_seeds(&[config.wallet_base_node_service_peer.clone()]);
-    let base_node = base_node_peers.first();
+    if !peer_seeds.is_empty() {
+        let idx = OsRng.gen_range(0, peer_seeds.len());
+        return Ok(peer_seeds.remove(idx));
+    }
 
-    let peer = match (peer_seed, base_node) {
-        // base node service peer is defined, so use that
-        (_, Some(node)) => node.clone(),
-        // only peer seeds were provided in config
-        (Some(seed), None) => seed.clone(),
-        // invalid configuration
-        _ => {
-            return Err(ExitCodes::ConfigError(
-                "No peer seeds or base node peer defined in config!".to_string(),
-            ))
-        },
-    };
-
-    Ok(peer)
+    Err(ExitCodes::ConfigError(
+        "No peer seeds or base node peer defined in config!".to_string(),
+    ))
 }
 
 fn wallet_mode(bootstrap: ConfigBootstrap) -> WalletMode {
@@ -230,6 +230,10 @@ async fn setup_wallet(
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
+        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        peer_seeds: Default::default(),
+        dns_seeds: Default::default(),
+        dns_seeds_use_dnssec: true,
     };
 
     let network = match &config.network {

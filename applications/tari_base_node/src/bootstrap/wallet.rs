@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use anyhow::anyhow;
+use futures::future;
 use log::*;
 use std::{cmp, fs, net::SocketAddr, sync::Arc, time::Duration};
 use tari_app_utilities::{identity_management, utilities};
@@ -33,6 +34,7 @@ use tari_comms::{
     tor::TorIdentity,
     transports::SocksConfig,
     NodeIdentity,
+    PeerManager,
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
@@ -44,7 +46,7 @@ use tari_p2p::{
     services::liveness::{LivenessConfig, LivenessInitializer},
     transport::{TorConfig, TransportType},
 };
-use tari_service_framework::{ServiceHandles, StackBuilder};
+use tari_service_framework::{ServiceHandles, ServiceInitializerContext, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::{
@@ -122,13 +124,19 @@ impl WalletBootstrapper {
         let comms_config = self.create_comms_config();
         let transport_type = comms_config.transport_type.clone();
 
-        let mut seed_peers = utilities::parse_peer_seeds(&config.peer_seeds);
-        seed_peers.push(self.base_node_peer);
+        let base_node_peer = self.base_node_peer;
 
-        let mut handles = StackBuilder::new( self.interrupt_signal)
-            .add_initializer(P2pInitializer::new(comms_config, publisher, seed_peers))
+        let mut handles = StackBuilder::new(self.interrupt_signal)
+            .add_initializer(P2pInitializer::new(comms_config, publisher))
+            .add_initializer_fn(move |context: ServiceInitializerContext| {
+                context.spawn_when_ready(move |context|async move {
+                    let pm = context.expect_handle::<Arc<PeerManager>>();
+                    pm.add_peer(base_node_peer).await.unwrap();
+                });
+                future::ready(Ok(()))
+            })
             .add_initializer(LivenessInitializer::new(
-                LivenessConfig{
+                LivenessConfig {
                     auto_ping_interval: Some(Duration::from_secs(60)),
                     ..Default::default()
                 },
@@ -136,15 +144,15 @@ impl WalletBootstrapper {
             ))
             // Wallet services
             .add_initializer(OutputManagerServiceInitializer::new(
-                OutputManagerServiceConfig{
+                OutputManagerServiceConfig {
                     base_node_query_timeout: config.base_node_query_timeout,
                     prevent_fee_gt_amount: config.prevent_fee_gt_amount,
                     ..Default::default()
                 },
-               peer_message_subscriptions.clone(),
-                OutputManagerSqliteDatabase::new(wallet_db_conn.clone(),None),
+                peer_message_subscriptions.clone(),
+                OutputManagerSqliteDatabase::new(wallet_db_conn.clone(), None),
                 self.factories.clone(),
-                config.network.into()
+                config.network.into(),
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 TransactionServiceConfig {
@@ -158,7 +166,7 @@ impl WalletBootstrapper {
                 transaction_db,
                 self.node_identity.clone(),
                 self.factories,
-                config.network.into()
+                config.network.into(),
             ))
             .build()
             .await?;
@@ -201,6 +209,10 @@ impl WalletBootstrapper {
             allow_test_addresses: false,
             listener_liveness_allowlist_cidrs: Vec::new(),
             listener_liveness_max_sessions: 0,
+            dns_seeds_name_server: self.config.dns_seeds_name_server,
+            peer_seeds: self.config.peer_seeds.clone(),
+            dns_seeds: self.config.dns_seeds.clone(),
+            dns_seeds_use_dnssec: self.config.dns_seeds_use_dnssec,
         }
     }
 

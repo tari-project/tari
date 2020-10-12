@@ -38,13 +38,14 @@
 mod test_utils;
 
 pub mod comms_connector;
+pub mod dns_seed;
 pub mod domain_message;
 pub mod initialization;
 pub mod peer;
 pub mod proto;
+pub mod seed_peer;
 pub mod services;
 pub mod tari_message;
 pub mod transport;
 
-#[cfg(feature = "dns-seed")]
-pub mod dns_seed;
+pub const DEFAULT_DNS_SEED_RESOLVER: &str = "1.1.1.1:53";

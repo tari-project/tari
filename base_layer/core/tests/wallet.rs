@@ -51,7 +51,12 @@ use tari_core::{
     transactions::{tari_amount::MicroTari, transaction::Transaction, types::CryptoFactories},
 };
 use tari_mmr::MmrCacheConfig;
-use tari_p2p::{initialization::CommsConfig, services::liveness::LivenessConfig, transport::TransportType};
+use tari_p2p::{
+    initialization::CommsConfig,
+    services::liveness::LivenessConfig,
+    transport::TransportType,
+    DEFAULT_DNS_SEED_RESOLVER,
+};
 use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert_eventually;
 use tari_wallet::{
@@ -159,6 +164,10 @@ fn wallet_base_node_integration_test() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
+        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        peer_seeds: Default::default(),
+        dns_seeds: Default::default(),
+        dns_seeds_use_dnssec: false,
     };
     let alice_wallet_config = WalletConfig::new(
         alice_comms_config,
@@ -213,6 +222,10 @@ fn wallet_base_node_integration_test() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
+        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        peer_seeds: Default::default(),
+        dns_seeds: Default::default(),
+        dns_seeds_use_dnssec: false,
     };
     let bob_wallet_config = WalletConfig::new(bob_comms_config, factories.clone(), None, Network::Rincewind, None);
 
