@@ -131,13 +131,17 @@ impl Listening {
                         let sync_peers = select_sync_peers(local_tip_height, &best_metadata, &peer_metadata_list);
 
                         let sync_mode = determine_sync_mode(&local, best_metadata, sync_peers);
-                        if !shared.bootstrapped_sync && sync_mode == SyncStatus::UpToDate {
-                            shared.bootstrapped_sync = true;
-                        }
                         if sync_mode.is_lagging() {
                             debug!(target: LOG_TARGET, "{}", sync_mode);
                             return StateEvent::FallenBehind(sync_mode);
                         } else {
+                            if !shared.bootstrapped_sync && sync_mode == SyncStatus::UpToDate {
+                                shared.bootstrapped_sync = true;
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Initial sync achieved, bootstrap done: {}", sync_mode
+                                );
+                            }
                             self.is_synced = true;
                             shared
                                 .set_state_info(StateInfo::Listening(ListeningInfo::new(true)))

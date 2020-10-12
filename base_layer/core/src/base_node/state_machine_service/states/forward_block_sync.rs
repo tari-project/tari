@@ -67,6 +67,11 @@ impl ForwardBlockSyncInfo {
         match synchronize_blocks(shared, sync_peers).await {
             Ok(StateEvent::BlocksSynchronized) => {
                 info!(target: LOG_TARGET, "Block sync state has synchronised");
+                if !shared.bootstrapped_sync {
+                    debug!(target: LOG_TARGET, "Initial sync achieved, bootstrap done",);
+                    shared.bootstrapped_sync = true;
+                    shared.publish_event_info();
+                }
                 StateEvent::BlocksSynchronized
             },
             Ok(state_event) => state_event,

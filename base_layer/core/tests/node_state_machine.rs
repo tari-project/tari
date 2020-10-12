@@ -277,6 +277,9 @@ fn test_block_sync() {
         }
 
         // Sync Blocks from genesis block to tip
+        let is_bootstrapped = status_event_receiver.recv().await.unwrap().bootstrapped;
+        assert!(!is_bootstrapped);
+
         let mut network_tip = bob_db.get_chain_metadata().unwrap();
         let mut sync_peers = vec![SyncPeer {
             node_id: bob_node.node_identity.node_id().clone(),
@@ -295,9 +298,10 @@ fn test_block_sync() {
             );
         }
 
+        // Bootstrap status changed to true after initial sync was achieved
         let is_bootstrapped = status_event_receiver.recv().await.unwrap().bootstrapped;
+        assert!(is_bootstrapped);
 
-        assert!(!is_bootstrapped);
         // Publish on the metadata that will indicate we are synced in the Listening state
         let _ = mock
             .publish_chain_metadata(bob_node.node_identity.node_id(), &network_tip)
@@ -313,6 +317,7 @@ fn test_block_sync() {
         // Run the listening State
         let _state_event = Listening { is_synced: true }.next_event(&mut alice_state_machine).await;
 
+        // Bootstrap status remains unchanged
         let is_bootstrapped = status_event_receiver.recv().await.unwrap().bootstrapped;
         assert!(is_bootstrapped);
     });
