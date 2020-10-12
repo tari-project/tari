@@ -287,8 +287,8 @@ async fn simultaneous_dial_events() {
         .collect::<Vec<_>>();
 
     // TODO: Investigate why two PeerDisconnected events are sometimes received
-    // assert!(count_string_occurrences(&events1, &["PeerDisconnected", "PeerConnectWillClose"]) >= 1);
-    // assert!(count_string_occurrences(&events2, &["PeerDisconnected", "PeerConnectWillClose"]) >= 1);
+    // assert!(count_string_occurrences(&events1, &["PeerDisconnected"]) >= 1);
+    // assert!(count_string_occurrences(&events2, &["PeerDisconnected"]) >= 1);
 }
 
 #[tokio_macros::test_basic]

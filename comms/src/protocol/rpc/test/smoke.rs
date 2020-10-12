@@ -215,7 +215,7 @@ async fn timeout() {
     let framed = framing::canonical(socket, 1024);
     let mut client = GreetingClient::builder()
         .with_deadline(Duration::from_millis(100))
-        .with_deadline_grace_period(Duration::from_secs(100))
+        .with_deadline_grace_period(Duration::from_secs(1))
         .connect(framed)
         .await
         .unwrap();

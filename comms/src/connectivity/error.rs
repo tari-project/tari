@@ -20,10 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError};
+use crate::{connection_manager::ConnectionManagerError, peer_manager::PeerManagerError, PeerConnectionError};
 use thiserror::Error;
 
-#[derive(Debug, Error, Clone)]
+#[derive(Debug, Error)]
 pub enum ConnectivityError {
     #[error("Cannot send request because ConnectivityActor disconnected")]
     ActorDisconnected,
@@ -31,6 +31,8 @@ pub enum ConnectivityError {
     ActorResponseCancelled,
     #[error("PeerManagerError: {0}")]
     PeerManagerError(#[from] PeerManagerError),
+    #[error("Peer connection error: {0}")]
+    PeerConnectionError(#[from] PeerConnectionError),
     #[error("ConnectionFailed: {0}")]
     ConnectionFailed(ConnectionManagerError),
     #[error("Connectivity event stream closed unexpectedly")]

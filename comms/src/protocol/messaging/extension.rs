@@ -26,7 +26,7 @@ use crate::{
     message::InboundMessage,
     pipeline,
     protocol::{
-        messaging::{consts, MessagingEventSender, MESSAGING_PROTOCOL},
+        messaging::{consts, protocol::MESSAGING_PROTOCOL, MessagingEventSender},
         ProtocolExtension,
         ProtocolExtensionContext,
         ProtocolExtensionError,

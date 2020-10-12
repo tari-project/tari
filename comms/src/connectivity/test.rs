@@ -70,6 +70,7 @@ fn setup_connectivity_manager(
         config,
         event_tx,
         request_rx,
+        node_identity: node_identity.clone(),
         connection_manager: cm_requester,
         peer_manager: peer_manager.clone(),
         shutdown_signal: shutdown.to_signal(),

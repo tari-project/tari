@@ -54,7 +54,7 @@ use std::{collections::HashSet, convert::identity, hash::Hash, time::Duration};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_storage::HashmapDatabase;
 use tari_test_utils::{collect_stream, unpack_enum};
-use tokio::sync::broadcast;
+use tokio::{sync::broadcast, task};
 
 async fn spawn_node(
     protocols: Protocols<Substream>,
@@ -282,6 +282,7 @@ async fn peer_to_peer_messaging() {
 
 #[runtime::test_basic]
 async fn peer_to_peer_messaging_simultaneous() {
+    env_logger::init();
     const NUM_MSGS: usize = 10;
     let shutdown = Shutdown::new();
 
@@ -327,8 +328,7 @@ async fn peer_to_peer_messaging_simultaneous() {
         .unwrap();
 
     // Simultaneously send messages between the two nodes
-    let rt_handle = runtime::current();
-    let handle1 = rt_handle.spawn(async move {
+    let handle1 = task::spawn(async move {
         for i in 0..NUM_MSGS {
             let outbound_msg = OutboundMessage::new(
                 node_identity2.node_id().clone(),
@@ -338,7 +338,7 @@ async fn peer_to_peer_messaging_simultaneous() {
         }
     });
 
-    let handle2 = rt_handle.spawn(async move {
+    let handle2 = task::spawn(async move {
         for i in 0..NUM_MSGS {
             let outbound_msg = OutboundMessage::new(
                 node_identity1.node_id().clone(),

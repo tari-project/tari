@@ -20,13 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{error::MessagingProtocolError, MessagingEvent, MessagingProtocol, SendFailReason, MESSAGING_PROTOCOL};
+use super::{error::MessagingProtocolError, MessagingEvent, MessagingProtocol, SendFailReason};
 use crate::{
     connection_manager::{NegotiatedSubstream, PeerConnection},
     connectivity::{ConnectivityError, ConnectivityRequester},
     message::OutboundMessage,
     multiplexing::Substream,
     peer_manager::NodeId,
+    protocol::messaging::protocol::MESSAGING_PROTOCOL,
 };
 use futures::{channel::mpsc, future::Either, SinkExt, StreamExt};
 use log::*;
@@ -127,33 +128,9 @@ impl OutboundMessaging {
                 },
             }
         };
-        debug_assert_eq!(substream.protocol, MESSAGING_PROTOCOL);
-        self.start_forwarding_messages(substream.stream).await?;
+        self.start_forwarding_messages(substream).await?;
 
         Ok(())
-    }
-
-    async fn try_establish(&mut self) -> Result<NegotiatedSubstream<Substream>, MessagingProtocolError> {
-        debug!(
-            target: LOG_TARGET,
-            "Attempting to establish messaging protocol connection to peer `{}`",
-            self.peer_node_id.short_str()
-        );
-        let start = Instant::now();
-        let conn = self.try_dial_peer().await?;
-        debug!(
-            target: LOG_TARGET,
-            "Connection succeeded for peer `{}` in {:.0?}",
-            self.peer_node_id.short_str(),
-            start.elapsed()
-        );
-        let substream = self.try_open_substream(conn).await?;
-        debug!(
-            target: LOG_TARGET,
-            "Substream established for peer `{}`",
-            self.peer_node_id.short_str(),
-        );
-        Ok(substream)
     }
 
     async fn try_dial_peer(&mut self) -> Result<PeerConnection, MessagingProtocolError> {
@@ -183,6 +160,29 @@ impl OutboundMessaging {
         }
     }
 
+    async fn try_establish(&mut self) -> Result<NegotiatedSubstream<Substream>, MessagingProtocolError> {
+        debug!(
+            target: LOG_TARGET,
+            "Attempting to establish messaging protocol connection to peer `{}`",
+            self.peer_node_id.short_str()
+        );
+        let start = Instant::now();
+        let conn = self.try_dial_peer().await?;
+        debug!(
+            target: LOG_TARGET,
+            "Connection succeeded for peer `{}` in {:.0?}",
+            self.peer_node_id.short_str(),
+            start.elapsed()
+        );
+        let substream = self.try_open_substream(conn).await?;
+        debug!(
+            target: LOG_TARGET,
+            "Substream established for peer `{}`",
+            self.peer_node_id.short_str(),
+        );
+        Ok(substream)
+    }
+
     async fn try_open_substream(
         &mut self,
         mut conn: PeerConnection,
@@ -191,9 +191,9 @@ impl OutboundMessaging {
         match conn.open_substream(&MESSAGING_PROTOCOL).await {
             Ok(substream) => Ok(substream),
             Err(err) => {
-                error!(
+                debug!(
                     target: LOG_TARGET,
-                    "MessagingProtocol failed to open a substream to peer '{}' because '{:?}'",
+                    "MessagingProtocol failed to open a substream to peer '{}' because '{}'",
                     self.peer_node_id.short_str(),
                     err
                 );
@@ -202,12 +202,18 @@ impl OutboundMessaging {
         }
     }
 
-    async fn start_forwarding_messages(self, substream: Substream) -> Result<(), MessagingProtocolError> {
+    async fn start_forwarding_messages(
+        self,
+        substream: NegotiatedSubstream<Substream>,
+    ) -> Result<(), MessagingProtocolError>
+    {
         debug!(
             target: LOG_TARGET,
             "Starting direct message forwarding for peer `{}`",
             self.peer_node_id.short_str()
         );
+        let substream = substream.stream;
+
         let (sink, _) = MessagingProtocol::framed(substream).split();
 
         let Self {

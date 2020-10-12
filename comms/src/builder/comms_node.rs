@@ -168,6 +168,7 @@ impl UnspawnedCommsNode {
             request_rx: connectivity_rx,
             event_tx: connectivity_requester.get_event_publisher(),
             connection_manager: connection_manager_requester.clone(),
+            node_identity: node_identity.clone(),
             peer_manager: peer_manager.clone(),
             shutdown_signal: shutdown_signal.clone(),
         };

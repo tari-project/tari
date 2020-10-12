@@ -26,7 +26,11 @@ use super::{
     manager::ConnectivityStatus,
     ConnectivitySelection,
 };
-use crate::{connection_manager::ConnectionManagerError, peer_manager::NodeId, PeerConnection};
+use crate::{
+    connection_manager::{ConnectionDirection, ConnectionManagerError},
+    peer_manager::NodeId,
+    PeerConnection,
+};
 use futures::{
     channel::{mpsc, oneshot},
     SinkExt,
@@ -54,6 +58,7 @@ pub enum ConnectivityEvent {
     ManagedPeerConnectFailed(NodeId),
     PeerBanned(NodeId),
     PeerOffline(NodeId),
+    PeerConnectionWillClose(NodeId, ConnectionDirection),
 
     ConnectivityStateInitialized,
     ConnectivityStateOnline(usize),
@@ -72,6 +77,9 @@ impl fmt::Display for ConnectivityEvent {
             ManagedPeerConnectFailed(node_id) => write!(f, "ManagedPeerConnectFailed({})", node_id),
             PeerBanned(node_id) => write!(f, "PeerBanned({})", node_id),
             PeerOffline(node_id) => write!(f, "PeerOffline({})", node_id),
+            PeerConnectionWillClose(node_id, direction) => {
+                write!(f, "PeerConnectionWillClose({}, {})", node_id, direction)
+            },
             ConnectivityStateInitialized => write!(f, "ConnectivityStateInitialized"),
             ConnectivityStateOnline(n) => write!(f, "ConnectivityStateOnline({})", n),
             ConnectivityStateDegraded(n) => write!(f, "ConnectivityStateDegraded({})", n),
@@ -92,6 +100,7 @@ pub enum ConnectivityRequest {
     ),
     GetConnection(NodeId, oneshot::Sender<Option<PeerConnection>>),
     GetAllConnectionStates(oneshot::Sender<Vec<PeerConnectionState>>),
+    GetActiveConnections(oneshot::Sender<Vec<PeerConnection>>),
     BanPeer(NodeId, Duration, String),
 }
 
@@ -178,6 +187,15 @@ impl ConnectivityRequester {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(ConnectivityRequest::GetAllConnectionStates(reply_tx))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+    }
+
+    pub async fn get_active_connections(&mut self) -> Result<Vec<PeerConnection>, ConnectivityError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(ConnectivityRequest::GetActiveConnections(reply_tx))
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)

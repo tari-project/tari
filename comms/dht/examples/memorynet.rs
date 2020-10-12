@@ -198,10 +198,11 @@ async fn main() {
         let count = seed_node[0].comms.peer_manager().count().await;
         let num_connections = seed_node[0]
             .comms
-            .connection_manager()
-            .get_num_active_connections()
+            .connectivity()
+            .get_active_connections()
             .await
-            .unwrap();
+            .unwrap()
+            .len();
         println!("Seed node knows {} peers ({} connections)", count, num_connections);
     }
 
