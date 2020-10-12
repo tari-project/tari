@@ -24,10 +24,9 @@ use crate::{
     net_address::MultiaddressesWithStats,
     peer_manager::{
         connection_stats::PeerConnectionStats,
-        migrations::Migration,
+        migrations::{v3::PeerV3, Migration},
         node_id::deserialize_node_id_from_hex,
         NodeId,
-        Peer,
         PeerFeatures,
         PeerFlags,
         PeerId,
@@ -38,7 +37,6 @@ use crate::{
 use chrono::NaiveDateTime;
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tari_crypto::tari_utilities::hex::serialize_to_hex;
 use tari_storage::{
     lmdb_store::{LMDBDatabase, LMDBError},
@@ -49,20 +47,20 @@ const LOG_TARGET: &str = "comms::peer_manager::migrations::v2";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PeerV2 {
-    id: Option<PeerId>,
-    public_key: CommsPublicKey,
+    pub id: Option<PeerId>,
+    pub public_key: CommsPublicKey,
     #[serde(serialize_with = "serialize_to_hex")]
     #[serde(deserialize_with = "deserialize_node_id_from_hex")]
-    node_id: NodeId,
-    addresses: MultiaddressesWithStats,
-    flags: PeerFlags,
-    banned_until: Option<NaiveDateTime>,
-    offline_at: Option<NaiveDateTime>,
-    features: PeerFeatures,
-    connection_stats: PeerConnectionStats,
-    supported_protocols: Vec<ProtocolId>,
-    added_at: NaiveDateTime,
-    user_agent: String,
+    pub node_id: NodeId,
+    pub addresses: MultiaddressesWithStats,
+    pub flags: PeerFlags,
+    pub banned_until: Option<NaiveDateTime>,
+    pub offline_at: Option<NaiveDateTime>,
+    pub features: PeerFeatures,
+    pub connection_stats: PeerConnectionStats,
+    pub supported_protocols: Vec<ProtocolId>,
+    pub added_at: NaiveDateTime,
+    pub user_agent: String,
 }
 /// This migration is to add banned_reason field
 pub struct MigrationV2;
@@ -75,7 +73,7 @@ impl Migration<LMDBDatabase> for MigrationV2 {
             match old_peer {
                 Ok((key, peer)) => {
                     debug!(target: LOG_TARGET, "Migrating peer `{}`", peer.node_id.short_str());
-                    let result = db.insert(&key, &Peer {
+                    let result = db.insert(&key, &PeerV3 {
                         id: peer.id,
                         public_key: peer.public_key,
                         node_id: peer.node_id,
@@ -89,7 +87,6 @@ impl Migration<LMDBDatabase> for MigrationV2 {
                         supported_protocols: peer.supported_protocols,
                         added_at: peer.added_at,
                         user_agent: peer.user_agent,
-                        metadata: HashMap::new(),
                     });
 
                     if let Err(err) = result {

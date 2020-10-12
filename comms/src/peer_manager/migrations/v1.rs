@@ -24,10 +24,9 @@ use crate::{
     net_address::MultiaddressesWithStats,
     peer_manager::{
         connection_stats::PeerConnectionStats,
-        migrations::Migration,
+        migrations::{v2::PeerV2, Migration},
         node_id::deserialize_node_id_from_hex,
         NodeId,
-        Peer,
         PeerFeatures,
         PeerFlags,
         PeerId,
@@ -38,7 +37,6 @@ use crate::{
 use chrono::NaiveDateTime;
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tari_crypto::tari_utilities::hex::serialize_to_hex;
 use tari_storage::{
     lmdb_store::{LMDBDatabase, LMDBError},
@@ -75,21 +73,19 @@ impl Migration<LMDBDatabase> for MigrationV1 {
             match old_peer {
                 Ok((key, peer)) => {
                     debug!(target: LOG_TARGET, "Migrating peer `{}`", peer.node_id.short_str());
-                    let result = db.insert(&key, &Peer {
+                    let result = db.insert(&key, &PeerV2 {
                         id: peer.id,
                         public_key: peer.public_key,
                         node_id: peer.node_id,
                         addresses: peer.addresses,
                         flags: peer.flags,
                         banned_until: peer.banned_until,
-                        banned_reason: "".to_string(),
                         offline_at: peer.offline_at,
                         features: peer.features,
                         connection_stats: peer.connection_stats,
                         supported_protocols: peer.supported_protocols,
                         added_at: peer.added_at,
                         user_agent: String::new(),
-                        metadata: HashMap::new(),
                     });
 
                     if let Err(err) = result {
