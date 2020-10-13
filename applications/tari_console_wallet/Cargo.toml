@@ -13,6 +13,7 @@ tari_comms = { version = "^0.2", path = "../../comms"}
 tari_comms_dht = { version = "^0.2", path = "../../comms/dht"}
 tari_p2p = { version= "^0.2", path = "../../base_layer/p2p" }
 tari_app_grpc = {  path = "../tari_app_grpc" }
+tari_shutdown = { version= "^0.2", path = "../../infrastructure/shutdown" }
 
 chrono = { version = "0.4.6", features = ["serde"]}
 chrono-english = "0.1"

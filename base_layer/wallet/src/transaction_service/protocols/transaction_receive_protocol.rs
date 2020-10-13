@@ -63,7 +63,7 @@ pub enum TransactionReceiveProtocolStage {
 }
 
 pub struct TransactionReceiveProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     id: u64,
     source_pubkey: CommsPublicKey,
@@ -75,7 +75,7 @@ where TBackend: TransactionBackend + Clone + 'static
 }
 
 impl<TBackend> TransactionReceiveProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     pub fn new(
         id: u64,

@@ -18,6 +18,7 @@ use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_core::{consensus::Network as NetworkType, transactions::types::CryptoFactories};
 use tari_p2p::initialization::CommsConfig;
+use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_wallet::{
     error::WalletError,
     storage::sqlite_utilities::initialize_sqlite_database_backends,
@@ -26,7 +27,6 @@ use tari_wallet::{
     Wallet,
     WalletSqlite,
 };
-use tokio::sync::RwLock;
 
 #[macro_use]
 extern crate lazy_static;
@@ -54,6 +54,14 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitCodes> {
+    let mut runtime = tokio::runtime::Builder::new()
+        .threaded_scheduler()
+        .enable_all()
+        .build()
+        .expect("Failed to build a runtime!");
+
+    let mut shutdown = Shutdown::new();
+
     // Parse and validate command-line arguments
     let mut bootstrap = ConfigBootstrap::from_args();
 
@@ -74,7 +82,7 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
     // Load or create the Node identity
-    let wallet_identity = setup_node_identity(
+    let node_identity = setup_node_identity(
         &config.wallet_identity_file,
         &config.public_address,
         bootstrap.create_id ||
@@ -97,28 +105,33 @@ fn main_inner() -> Result<(), ExitCodes> {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
         return Ok(());
     }
-    let mut runtime = tokio::runtime::Builder::new()
-        .threaded_scheduler()
-        .enable_all()
-        .build()
-        .unwrap();
 
-    let wallet = runtime.block_on(setup_wallet(&config, wallet_identity))?;
+    let wallet = runtime.block_on(setup_wallet(&config, node_identity, shutdown.to_signal()))?;
+
     debug!(target: LOG_TARGET, "Starting app");
 
     let node_identity = wallet.comms.node_identity().as_ref().clone();
-    let wallet = Arc::new(RwLock::new(wallet));
-    let grpc = crate::grpc::WalletGrpcServer::new(wallet.clone());
 
-    match wallet_mode(bootstrap) {
-        WalletMode::Tui => tui_mode(runtime, grpc, config, node_identity, wallet),
-        WalletMode::Grpc => grpc_mode(runtime, grpc, config),
-        WalletMode::Script(path) => script_mode(runtime, path, wallet, config),
-        WalletMode::Command(command) => command_mode(runtime, command, wallet, config),
+    let handle = runtime.handle().clone();
+    let result = match wallet_mode(bootstrap) {
+        WalletMode::Tui => tui_mode(handle, config, node_identity, wallet.clone()),
+        WalletMode::Grpc => grpc_mode(handle, wallet.clone(), config),
+        WalletMode::Script(path) => script_mode(handle, path, wallet.clone(), config),
+        WalletMode::Command(command) => command_mode(handle, command, wallet.clone(), config),
         WalletMode::Invalid => Err(ExitCodes::InputError(
             "Invalid wallet mode - are you trying too many command options at once?".to_string(),
         )),
+    };
+
+    print!("Shutting down wallet... ");
+    if shutdown.trigger().is_ok() {
+        runtime.block_on(wallet.wait_until_shutdown());
+    } else {
+        error!(target: LOG_TARGET, "No listeners for the shutdown signal!");
     }
+    println!("Done.");
+
+    result
 }
 
 fn wallet_mode(bootstrap: ConfigBootstrap) -> WalletMode {
@@ -137,7 +150,12 @@ fn wallet_mode(bootstrap: ConfigBootstrap) -> WalletMode {
 }
 
 /// Setup the app environment and state for use by the UI
-async fn setup_wallet(config: &GlobalConfig, node_identity: Arc<NodeIdentity>) -> Result<WalletSqlite, ExitCodes> {
+async fn setup_wallet(
+    config: &GlobalConfig,
+    node_identity: Arc<NodeIdentity>,
+    shutdown_signal: ShutdownSignal,
+) -> Result<WalletSqlite, ExitCodes>
+{
     fs::create_dir_all(
         &config
             .wallet_db_file
@@ -200,6 +218,7 @@ async fn setup_wallet(config: &GlobalConfig, node_identity: Arc<NodeIdentity>) -
         transaction_backend.clone(),
         output_manager_backend,
         contacts_backend,
+        shutdown_signal,
     )
     .await
     .map_err(|e| {

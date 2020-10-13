@@ -1,42 +1,13 @@
-use std::sync::Arc;
 use tari_app_grpc::tari_rpc::{wallet_server, GetCoinbaseRequest, GetCoinbaseResponse};
-use tari_wallet::{
-    contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
-    output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::sqlite_db::WalletSqliteDatabase,
-    transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
-    Wallet,
-};
-use tokio::sync::RwLock;
+use tari_wallet::WalletSqlite;
 use tonic::{Request, Response, Status};
 
 pub struct WalletGrpcServer {
-    wallet: Arc<
-        RwLock<
-            Wallet<
-                WalletSqliteDatabase,
-                TransactionServiceSqliteDatabase,
-                OutputManagerSqliteDatabase,
-                ContactsServiceSqliteDatabase,
-            >,
-        >,
-    >,
+    wallet: WalletSqlite,
 }
 
 impl WalletGrpcServer {
-    pub fn new(
-        wallet: Arc<
-            RwLock<
-                Wallet<
-                    WalletSqliteDatabase,
-                    TransactionServiceSqliteDatabase,
-                    OutputManagerSqliteDatabase,
-                    ContactsServiceSqliteDatabase,
-                >,
-            >,
-        >,
-    ) -> Self
-    {
+    pub fn new(wallet: WalletSqlite) -> Self {
         Self { wallet }
     }
 }
@@ -48,13 +19,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<GetCoinbaseResponse>, Status>
     {
         let request = request.into_inner();
-        let response = self
-            .wallet
-            .write()
-            .await
-            .transaction_service
+
+        let mut tx_service = self.wallet.transaction_service.clone();
+        let response = tx_service
             .generate_coinbase_transaction(request.reward.into(), request.fee.into(), request.height)
             .await;
+
         match response {
             Ok(resp) => Ok(Response::new(GetCoinbaseResponse {
                 transaction: Some(resp.into()),

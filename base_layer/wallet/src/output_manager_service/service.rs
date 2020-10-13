@@ -78,7 +78,7 @@ const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
 /// outputs. When the outputs are detected on the blockchain the Transaction service will call this Service to confirm
 /// them to be moved to the spent and unspent output lists respectively.
 pub struct OutputManagerService<TBackend, BNResponseStream>
-where TBackend: OutputManagerBackend + Clone + 'static
+where TBackend: OutputManagerBackend + 'static
 {
     resources: OutputManagerResources<TBackend>,
     key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
@@ -91,7 +91,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
 
 impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream>
 where
-    TBackend: OutputManagerBackend + Clone + 'static,
+    TBackend: OutputManagerBackend + 'static,
     BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
 {
     #[allow(clippy::too_many_arguments)]
@@ -945,7 +945,7 @@ impl fmt::Display for Balance {
 /// This struct is a collection of the common resources that a async task in the service requires.
 #[derive(Clone)]
 pub struct OutputManagerResources<TBackend>
-where TBackend: OutputManagerBackend + Clone + 'static
+where TBackend: OutputManagerBackend + 'static
 {
     pub config: OutputManagerServiceConfig,
     pub db: OutputManagerDatabase<TBackend>,

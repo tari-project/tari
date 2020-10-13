@@ -59,7 +59,7 @@ const LOG_TARGET_STRESS: &str = "stress_test::chain_monitoring_protocol";
 /// Mined or leaves the mempool in which case it should be cancelled
 
 pub struct TransactionChainMonitoringProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     id: u64,
     tx_id: TxId,
@@ -72,7 +72,7 @@ where TBackend: TransactionBackend + Clone + 'static
 }
 
 impl<TBackend> TransactionChainMonitoringProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(

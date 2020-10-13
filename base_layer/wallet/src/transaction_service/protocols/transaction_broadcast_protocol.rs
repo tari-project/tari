@@ -56,7 +56,7 @@ const LOG_TARGET_STRESS: &str = "stress_test::broadcast_protocol";
 /// This protocol defines the process of monitoring a mempool and base node to detect when a Completed transaction is
 /// Broadcast to the mempool or potentially Mined
 pub struct TransactionBroadcastProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     id: u64,
     resources: TransactionServiceResources<TBackend>,
@@ -68,7 +68,7 @@ where TBackend: TransactionBackend + Clone + 'static
 }
 
 impl<TBackend> TransactionBroadcastProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     pub fn new(
         id: u64,
