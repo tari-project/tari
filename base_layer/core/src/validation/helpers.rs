@@ -81,7 +81,6 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
 pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
     db: &B,
     block_header: &BlockHeader,
-    height: u64,
     rules: ConsensusManager,
 ) -> Result<(), ValidationError>
 {
@@ -106,7 +105,7 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
     let target = if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
         let constants = rules.consensus_constants(block_header.height);
         let block_window = constants.get_difficulty_block_window() as usize;
-        let target_difficulties = db.fetch_target_difficulties(pow_algo, height, block_window)?;
+        let target_difficulties = db.fetch_target_difficulties(pow_algo, block_header.height, block_window)?;
         get_target_difficulty(
             target_difficulties,
             block_window,
