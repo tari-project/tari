@@ -153,7 +153,7 @@ impl<B: BlockchainBackend> StatefulValidation<BlockHeader, B> for FullConsensusV
             "BlockHeader validation: Median timestamp is ok for {} ",
             &header_id
         );
-        check_achieved_and_target_difficulty(db, header, self.rules.clone())?;
+        check_achieved_and_target_difficulty(db, header, tip_height, self.rules.clone())?;
         trace!(
             target: LOG_TARGET,
             "BlockHeader validation: Achieved difficulty is ok for {} ",

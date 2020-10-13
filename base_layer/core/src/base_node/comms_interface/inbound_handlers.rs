@@ -523,6 +523,10 @@ where T: BlockchainBackend + 'static
         height: u64,
     ) -> Result<Difficulty, CommsInterfaceError>
     {
+        let height_of_longest_chain = async_db::get_chain_metadata(self.blockchain_db.clone())
+            .await?
+            .height_of_longest_chain
+            .ok_or_else(|| CommsInterfaceError::UnexpectedApiResponse)?;
         trace!(
             target: LOG_TARGET,
             "Calculating target difficulty at height:{} for PoW:{}",
@@ -531,9 +535,9 @@ where T: BlockchainBackend + 'static
         );
         let constants = self.consensus_manager.consensus_constants(height);
         let block_window = constants.get_difficulty_block_window() as usize;
-        let target_difficulties = self
-            .blockchain_db
-            .fetch_target_difficulties(pow_algo, height, block_window)?;
+        let target_difficulties =
+            self.blockchain_db
+                .fetch_target_difficulties(pow_algo, height_of_longest_chain, block_window)?;
 
         let target = get_target_difficulty(
             target_difficulties,
