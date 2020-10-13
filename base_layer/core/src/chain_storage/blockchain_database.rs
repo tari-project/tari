@@ -1114,9 +1114,7 @@ fn store_new_block(txn: &mut DbTransaction, block: Block) -> Result<(), ChainSto
     let (header, inputs, outputs, kernels) = block.dissolve();
     let height = header.height;
     let best_block = header.hash();
-    let accumulated_difficulty =
-        ProofOfWork::new_from_difficulty(&header.pow, ProofOfWork::achieved_difficulty(&header)?)
-            .total_accumulated_difficulty();
+    let accumulated_difficulty = header.get_proof_of_work()?.total_accumulated_difficulty();
     // Build all the DB queries needed to add the block and the add it atomically
 
     // Update metadata
