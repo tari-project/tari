@@ -58,8 +58,6 @@ pub struct GlobalConfig {
     pub orphan_storage_capacity: usize,
     pub pruning_horizon: u64,
     pub pruned_mode_cleanup_interval: u64,
-    pub core_threads: usize,
-    pub blocking_threads: usize,
     pub identity_file: PathBuf,
     pub public_address: Multiaddr,
     pub grpc_enabled: bool,
@@ -79,6 +77,8 @@ pub struct GlobalConfig {
     pub buffer_size_base_node_wallet: usize,
     pub buffer_rate_limit_base_node: usize,
     pub buffer_rate_limit_base_node_wallet: usize,
+    pub fetch_blocks_timeout: Duration,
+    pub base_node_service_request_timeout: Duration,
     pub base_node_query_timeout: Duration,
     pub transaction_broadcast_monitoring_timeout: Duration,
     pub transaction_chain_monitoring_timeout: Duration,
@@ -204,17 +204,6 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let pruned_mode_cleanup_interval = cfg
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64;
-
-    // Thread counts
-    let key = config_string("base_node", &net_str, "core_threads");
-    let core_threads = cfg
-        .get_int(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
-
-    let key = config_string("base_node", &net_str, "blocking_threads");
-    let blocking_threads = cfg
-        .get_int(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
     // NodeIdentity path
     let key = config_string("base_node", &net_str, "identity_file");
@@ -382,6 +371,18 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         cfg.get_int(&key)
             .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
+    let key = "common.fetch_blocks_timeout";
+    let fetch_blocks_timeout = Duration::from_secs(
+        cfg.get_int(&key)
+            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
+    );
+
+    let key = "common.base_node_service_request_timeout";
+    let base_node_service_request_timeout = Duration::from_secs(
+        cfg.get_int(&key)
+            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
+    );
+
     let key = config_string("merge_mining_proxy", &net_str, "monerod_url");
     let monerod_url = cfg
         .get_str(&key)
@@ -422,8 +423,6 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         orphan_storage_capacity,
         pruning_horizon,
         pruned_mode_cleanup_interval,
-        core_threads,
-        blocking_threads,
         identity_file,
         public_address,
         grpc_enabled,
@@ -443,6 +442,8 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         buffer_size_base_node_wallet,
         buffer_rate_limit_base_node,
         buffer_rate_limit_base_node_wallet,
+        fetch_blocks_timeout,
+        base_node_service_request_timeout,
         base_node_query_timeout,
         transaction_broadcast_monitoring_timeout,
         transaction_chain_monitoring_timeout,

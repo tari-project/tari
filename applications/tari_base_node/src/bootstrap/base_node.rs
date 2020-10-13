@@ -39,6 +39,7 @@ use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
 use tari_core::{
     base_node::{
         chain_metadata_service::ChainMetadataServiceInitializer,
+        consts::{BASE_NODE_SERVICE_REQUEST_MIN_TIMEOUT, FETCH_BLOCKS_SERVICE_REQUEST_MIN_TIMEOUT},
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
         state_machine_service::initializer::BaseNodeStateMachineInitializer,
     },
@@ -92,7 +93,14 @@ where B: BlockchainBackend + 'static
             pubsub_connector(runtime::Handle::current(), buf_size, config.buffer_rate_limit_base_node);
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
 
-        let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
+        let node_config = BaseNodeServiceConfig {
+            fetch_blocks_timeout: cmp::max(FETCH_BLOCKS_SERVICE_REQUEST_MIN_TIMEOUT, config.fetch_blocks_timeout),
+            request_timeout: cmp::max(
+                BASE_NODE_SERVICE_REQUEST_MIN_TIMEOUT,
+                config.base_node_service_request_timeout,
+            ),
+            ..Default::default()
+        };
         let mempool_config = MempoolServiceConfig::default(); // TODO - make this configurable
 
         let comms_config = self.create_comms_config();
@@ -131,6 +139,7 @@ where B: BlockchainBackend + 'static
                 self.rules,
                 self.factories,
                 sync_strategy,
+                config.fetch_blocks_timeout,
             ))
             .build()
             .await?;

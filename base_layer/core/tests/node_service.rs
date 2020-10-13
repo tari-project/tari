@@ -704,6 +704,7 @@ fn service_request_timeout() {
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let base_node_service_config = BaseNodeServiceConfig {
         request_timeout: Duration::from_millis(1),
+        fetch_blocks_timeout: Default::default(),
         desired_response_fraction: BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
     };
     let temp_dir = tempdir().unwrap();

@@ -63,6 +63,9 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("common.buffer_rate_limit_base_node", 1_000).unwrap();
     cfg.set_default("common.buffer_rate_limit_base_node_wallet", 1_000)
         .unwrap();
+    cfg.set_default("common.fetch_blocks_timeout", 30).unwrap();
+    cfg.set_default("common.base_node_service_request_timeout", 600)
+        .unwrap();
 
     // Wallet settings
     cfg.set_default("wallet.grpc_enabled", false).unwrap();

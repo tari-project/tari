@@ -23,10 +23,11 @@
 use crate::{
     base_node::{
         chain_metadata_service::ChainMetadataHandle,
+        consts::FETCH_BLOCKS_SERVICE_REQUEST_MIN_TIMEOUT,
         state_machine_service::{
             handle::StateMachineHandle,
             state_machine::{BaseNodeStateMachine, BaseNodeStateMachineConfig},
-            states::{BlockSyncStrategy, StatusInfo},
+            states::{BlockSyncConfig, BlockSyncStrategy, StatusInfo},
         },
         LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
@@ -38,7 +39,7 @@ use crate::{
 };
 use futures::{future, Future};
 use log::*;
-use std::sync::Arc;
+use std::{cmp, sync::Arc, time::Duration};
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
@@ -50,6 +51,7 @@ pub struct BaseNodeStateMachineInitializer<B> {
     rules: ConsensusManager,
     factories: CryptoFactories,
     sync_strategy: BlockSyncStrategy,
+    fetch_blocks_timeout: Duration,
 }
 
 impl<B> BaseNodeStateMachineInitializer<B>
@@ -60,6 +62,7 @@ where B: BlockchainBackend + 'static
         rules: ConsensusManager,
         factories: CryptoFactories,
         sync_strategy: BlockSyncStrategy,
+        fetch_blocks_timeout: Duration,
     ) -> Self
     {
         Self {
@@ -67,6 +70,7 @@ where B: BlockchainBackend + 'static
             rules,
             factories,
             sync_strategy,
+            fetch_blocks_timeout,
         }
     }
 }
@@ -92,6 +96,7 @@ where B: BlockchainBackend + 'static
         let sync_strategy = self.sync_strategy;
         let rules = self.rules.clone();
         let db = self.db.clone();
+        let fetch_blocks_timeout = self.fetch_blocks_timeout.clone();
         context.spawn_when_ready(move |handles| async move {
             let outbound_interface = handles.expect_handle::<OutboundNodeCommsInterface>();
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
@@ -99,7 +104,13 @@ where B: BlockchainBackend + 'static
             let connectivity_requester = handles.expect_handle::<ConnectivityRequester>();
             let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
-            let mut state_machine_config = BaseNodeStateMachineConfig::default();
+            let mut state_machine_config = BaseNodeStateMachineConfig {
+                block_sync_config: BlockSyncConfig {
+                    fetch_blocks_timeout: cmp::max(FETCH_BLOCKS_SERVICE_REQUEST_MIN_TIMEOUT, fetch_blocks_timeout),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
             state_machine_config.block_sync_config.sync_strategy = sync_strategy;
 
             // TODO: This should move to checking each time

@@ -29,9 +29,14 @@ use crate::{
             NodeCommsRequest,
             NodeCommsResponse,
         },
-        consts::{BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION, BASE_NODE_SERVICE_REQUEST_TIMEOUT},
+        consts::{
+            BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
+            BASE_NODE_SERVICE_REQUEST_TIMEOUT,
+            FETCH_BLOCKS_SERVICE_REQUEST_TIMEOUT,
+        },
         generate_request_key,
         proto,
+        proto::base_node::base_node_service_request::Request,
         service::error::BaseNodeServiceError,
         state_machine_service::states::StateInfo,
         RequestKey,
@@ -73,6 +78,8 @@ const LOG_TARGET: &str = "c::bn::base_node_service::service";
 pub struct BaseNodeServiceConfig {
     /// The allocated waiting time for a request waiting for service responses from remote base nodes.
     pub request_timeout: Duration,
+    /// The allocated waiting time for a block sync request waiting for service responses from remote base nodes.
+    pub fetch_blocks_timeout: Duration,
     /// The fraction of responses that need to be received for a corresponding service request to be finalize.
     pub desired_response_fraction: f32,
 }
@@ -81,6 +88,7 @@ impl Default for BaseNodeServiceConfig {
     fn default() -> Self {
         Self {
             request_timeout: BASE_NODE_SERVICE_REQUEST_TIMEOUT,
+            fetch_blocks_timeout: FETCH_BLOCKS_SERVICE_REQUEST_TIMEOUT,
             desired_response_fraction: BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
         }
     }
@@ -511,7 +519,7 @@ async fn handle_outbound_request(
     let send_result = outbound_message_service
         .send_message(
             send_msg_params.finish(),
-            OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
+            OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request.clone()),
         )
         .await?;
 
@@ -530,7 +538,33 @@ async fn handle_outbound_request(
             // Wait for matching responses to arrive
             waiting_requests.insert(request_key, reply_tx).await;
             // Spawn timeout for waiting_request
-            spawn_request_timeout(timeout_sender, request_key, config.request_timeout);
+            match service_request.request.clone() {
+                Some(r) => match r {
+                    Request::FetchBlocks(_) |
+                    Request::FetchBlocksWithHashes(_) |
+                    Request::FetchBlocksWithKernels(_) |
+                    Request::FetchBlocksWithStxos(_) |
+                    Request::FetchBlocksWithUtxos(_) => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Timeout for service request ({}) at {:?}",
+                            request_key,
+                            config.fetch_blocks_timeout
+                        );
+                        spawn_request_timeout(timeout_sender, request_key, config.fetch_blocks_timeout)
+                    },
+                    _ => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Timeout for service request ({}) at {:?}",
+                            request_key,
+                            config.request_timeout
+                        );
+                        spawn_request_timeout(timeout_sender, request_key, config.request_timeout)
+                    },
+                },
+                _ => (),
+            };
             // Log messages
             let msg_tag = send_states[0].tag;
             debug!(

@@ -23,6 +23,12 @@
 use std::time::Duration;
 
 /// The allocated waiting time for a request waiting for service responses from remote base nodes.
-pub const BASE_NODE_SERVICE_REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
+pub const BASE_NODE_SERVICE_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// The minimum allocated waiting time for a request waiting for service responses from remote base nodes.
+pub const BASE_NODE_SERVICE_REQUEST_MIN_TIMEOUT: Duration = Duration::from_secs(10);
+/// The allocated waiting time for a fetch blocks request waiting for service responses from remote base nodes.
+pub const FETCH_BLOCKS_SERVICE_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// The minimum allocated waiting time for a fetch blocks request waiting for service responses from remote base nodes.
+pub const FETCH_BLOCKS_SERVICE_REQUEST_MIN_TIMEOUT: Duration = Duration::from_secs(10);
 /// The fraction of responses that need to be received for a corresponding service request to be finalize.
 pub const BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION: f32 = 0.6;

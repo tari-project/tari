@@ -22,6 +22,7 @@
 use crate::{
     base_node::{
         comms_interface::{BlockEvent, CommsInterfaceError},
+        consts::FETCH_BLOCKS_SERVICE_REQUEST_TIMEOUT,
         state_machine_service::{
             states::{
                 helpers::{ban_all_sync_peers, ban_sync_peer, request_headers, select_sync_peer},
@@ -44,6 +45,7 @@ use std::{
     fmt::{Display, Formatter},
     str::FromStr,
     sync::Arc,
+    time::{Duration, Instant},
 };
 use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
@@ -54,14 +56,14 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::block_sync";
 // The maximum number of retry attempts a node can perform to request a particular block from remote nodes.
 const MAX_METADATA_REQUEST_RETRY_ATTEMPTS: usize = 3;
 const MAX_HEADER_REQUEST_RETRY_ATTEMPTS: usize = 5;
-const MAX_BLOCK_REQUEST_RETRY_ATTEMPTS: usize = 5;
+const MAX_BLOCK_REQUEST_RETRY_ATTEMPTS: usize = 20;
 // The maximum number of retry attempts for attempting to validly request and add the block at a specific block height
 // to the chain.
 const MAX_ADD_BLOCK_RETRY_ATTEMPTS: usize = 3;
 // The number of headers that can be requested in a single query.
-const HEADER_REQUEST_SIZE: usize = 100;
+const HEADER_REQUEST_SIZE: usize = 1024;
 // The number of blocks that can be requested in a single query.
-const BLOCK_REQUEST_SIZE: usize = 5;
+const BLOCK_REQUEST_SIZE: usize = 256;
 
 /// Configuration for the Block Synchronization.
 #[derive(Clone, Copy)]
@@ -73,6 +75,7 @@ pub struct BlockSyncConfig {
     pub max_add_block_retry_attempts: usize,
     pub header_request_size: usize,
     pub block_request_size: usize,
+    pub fetch_blocks_timeout: Duration,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -114,6 +117,7 @@ impl Default for BlockSyncConfig {
             max_add_block_retry_attempts: MAX_ADD_BLOCK_RETRY_ATTEMPTS,
             header_request_size: HEADER_REQUEST_SIZE,
             block_request_size: BLOCK_REQUEST_SIZE,
+            fetch_blocks_timeout: FETCH_BLOCKS_SERVICE_REQUEST_TIMEOUT,
         }
     }
 }
@@ -186,8 +190,6 @@ impl PartialEq for BlockSyncStrategy {
 pub enum BlockSyncError {
     #[error("Maximum request attempts reached error")]
     MaxRequestAttemptsReached,
-    #[error("Maximum add block attempts reached error")]
-    MaxAddBlockAttemptsReached,
     #[error("Fork chain not linked error")]
     ForkChainNotLinked,
     #[error("Invalid chain link error")]
@@ -240,13 +242,6 @@ impl BestChainMetadataBlockSync {
                 warn!(
                     target: LOG_TARGET,
                     "Maximum unsuccessful header/block request attempts reached."
-                );
-                StateEvent::BlockSyncFailure
-            },
-            Err(BlockSyncError::MaxAddBlockAttemptsReached) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Maximum unsuccessful block request and add attempts reached."
                 );
                 StateEvent::BlockSyncFailure
             },
@@ -327,21 +322,67 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                 info.tip_height = network_tip_height;
             }
 
+            let mut attempts = 0;
+            let mut block_window = shared.config.block_sync_config.block_request_size;
             while sync_height <= network_tip_height {
+                attempts += 1;
+                if attempts > shared.config.block_sync_config.max_block_request_retry_attempts {
+                    return Err(BlockSyncError::MaxRequestAttemptsReached);
+                }
+
                 if let StateInfo::BlockSync(ref mut info) = shared.info {
                     info.local_height = sync_height;
                 }
 
                 shared.publish_event_info();
 
-                let max_height = min(
-                    sync_height + (shared.config.block_sync_config.block_request_size - 1) as u64,
-                    network_tip_height,
-                );
+                let max_height = min(sync_height + (block_window - 1) as u64, network_tip_height);
                 let block_nums: Vec<u64> = (sync_height..=max_height).collect();
-                let block_nums_count = block_nums.len() as u64;
-                request_and_add_blocks(shared, sync_peers, block_nums).await?;
-                sync_height += block_nums_count;
+                if block_nums.is_empty() {
+                    break;
+                }
+                let timer = Instant::now();
+                let blocks_synced = request_and_add_blocks(shared, sync_peers, block_nums).await?;
+                if blocks_synced > 0 {
+                    // if we synced at least one block, reset the attempt counter
+                    attempts = 0;
+                    // if we took less than half the timeout, try doubling the
+                    // blocks we request
+                    if timer.elapsed() < FETCH_BLOCKS_SERVICE_REQUEST_TIMEOUT / 2 {
+                        block_window = blocks_synced * 2;
+                    } else {
+                        // Otherwise, request the same number of blocks. `request_and_add_blocks` automatically
+                        // scales down
+                        block_window = blocks_synced;
+                    }
+                }
+                if blocks_synced > 0 {
+                    // if we synced at least one block, reset the attempt counter
+                    attempts = 0;
+                    // if we took less than half the timeout, try doubling the
+                    // blocks we request
+                    if timer.elapsed() < shared.config.block_sync_config.fetch_blocks_timeout / 2 {
+                        block_window = blocks_synced * 2;
+                    } else {
+                        // Otherwise, request the same number of blocks. `request_and_add_blocks` automatically
+                        // scales down
+                        block_window = blocks_synced;
+                    }
+                }
+                if blocks_synced > 0 {
+                    // if we synced at least one block, reset the attempt counter
+                    attempts = 0;
+                    // if we took less than half the timeout, try doubling the
+                    // blocks we request
+                    if timer.elapsed() < shared.config.block_sync_config.fetch_blocks_timeout / 2 {
+                        block_window = blocks_synced * 2;
+                    } else {
+                        // Otherwise, request the same number of blocks. `request_and_add_blocks` automatically
+                        // scales down
+                        block_window = blocks_synced;
+                    }
+                }
+                sync_height += blocks_synced as u64;
             }
             let metadata = async_db::get_chain_metadata(shared.db()).await?;
             let last_block = async_db::fetch_block(shared.db(), metadata.height_of_longest_chain()).await?;
@@ -446,137 +487,128 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
     sync_peers: &mut SyncPeers,
     mut block_nums: Vec<u64>,
-) -> Result<(), BlockSyncError>
+) -> Result<usize, BlockSyncError>
 {
-    if block_nums.is_empty() {
-        return Ok(());
+    let original_size = block_nums.len();
+    if original_size == 0 {
+        return Ok(0);
     }
-    let config = shared.config.block_sync_config;
-    for attempt in 0..config.max_add_block_retry_attempts {
-        let (blocks, sync_peer) = request_blocks(shared, sync_peers, &block_nums).await?;
+    let (blocks, sync_peer) = request_blocks(shared, sync_peers, &block_nums).await?;
+    if let StateInfo::BlockSync(ref mut info) = shared.info {
+        // assuming the numbers are ordered
+        info.tip_height = block_nums[block_nums.len() - 1];
+    }
+    shared.publish_event_info();
+
+    for block in blocks {
+        let block_height = block.header.height;
+        let block_hash_hex = block.hash().to_hex();
         if let StateInfo::BlockSync(ref mut info) = shared.info {
-            // assuming the numbers are ordered
-            info.tip_height = block_nums[block_nums.len() - 1];
+            info.local_height = block_height;
         }
+
         shared.publish_event_info();
+        info!(target: LOG_TARGET, "Adding block to db: {}", block);
+        match async_db::add_block(shared.db.clone(), block.clone()).await {
+            Ok(BlockAddResult::Ok) => {
+                info!(
+                    target: LOG_TARGET,
+                    "Block #{} ({}) successfully added to database", block_height, block_hash_hex
+                );
+                block_nums.remove(0);
+            },
+            Ok(BlockAddResult::OrphanBlock) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Received orphan block #{} ({}) from peer `{}`", block_height, block_hash_hex, sync_peer.node_id
+                );
+                block_nums.remove(0);
+            },
+            Ok(BlockAddResult::ChainReorg(removed, added)) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Block #{} ({}) caused a reorg during block sync. (#removed = {}, #added = {})",
+                    block_height,
+                    block_hash_hex,
+                    removed.len(),
+                    added.len()
+                );
+                block_nums.remove(0);
+            },
+            Ok(BlockAddResult::BlockExists) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Block #{} ({}) already exists.", block_height, block_hash_hex
+                );
+                block_nums.remove(0);
+            },
+            Err(ChainStorageError::InvalidBlock) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Invalid block {} received from peer.", block_hash_hex,
+                );
+                debug!(
+                    target: LOG_TARGET,
+                    "Banning peer {} from local node, because they supplied invalid block", sync_peer
+                );
 
-        for block in blocks {
-            let block_height = block.header.height;
-            let block_hash_hex = block.hash().to_hex();
-            if let StateInfo::BlockSync(ref mut info) = shared.info {
-                info.local_height = block_height;
-            }
+                ban_sync_peer(
+                    LOG_TARGET,
+                    &mut shared.connectivity,
+                    sync_peers,
+                    sync_peer.clone(),
+                    shared.config.sync_peer_config.peer_ban_duration,
+                    "Peer supplied an invalid block".to_string(),
+                )
+                .await?;
 
-            shared.publish_event_info();
-            info!(target: LOG_TARGET, "Adding block to db: {}", block);
-            match async_db::add_block(shared.db.clone(), block.clone()).await {
-                Ok(BlockAddResult::Ok) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "Block #{} ({}) successfully added to database", block_height, block_hash_hex
-                    );
-                    block_nums.remove(0);
-                },
-                Ok(BlockAddResult::OrphanBlock) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Received orphan block #{} ({}) from peer `{}`",
-                        block_height,
-                        block_hash_hex,
-                        sync_peer.node_id
-                    );
-                    block_nums.remove(0);
-                },
-                Ok(BlockAddResult::ChainReorg(removed, added)) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Block #{} ({}) caused a reorg during block sync. (#removed = {}, #added = {})",
-                        block_height,
-                        block_hash_hex,
-                        removed.len(),
-                        added.len()
-                    );
-                    block_nums.remove(0);
-                },
-                Ok(BlockAddResult::BlockExists) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Block #{} ({}) already exists.", block_height, block_hash_hex
-                    );
-                    block_nums.remove(0);
-                },
-                Err(ChainStorageError::InvalidBlock) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Invalid block {} received from peer.", block_hash_hex,
-                    );
-                    debug!(
-                        target: LOG_TARGET,
-                        "Banning peer {} from local node, because they supplied invalid block", sync_peer
-                    );
+                break;
+            },
+            Err(ChainStorageError::ValidationError { source }) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Validation on block {} from peer failed due to: {:?}.", block_hash_hex, source,
+                );
+                debug!(
+                    target: LOG_TARGET,
+                    "Banning peer {} from local node, because they supplied invalid block", sync_peer
+                );
+                ban_sync_peer(
+                    LOG_TARGET,
+                    &mut shared.connectivity,
+                    sync_peers,
+                    sync_peer.clone(),
+                    shared.config.sync_peer_config.peer_ban_duration,
+                    format!("Peer supplied an invalid block that failed validation: {}", source),
+                )
+                .await?;
+                break;
+            },
 
-                    ban_sync_peer(
-                        LOG_TARGET,
-                        &mut shared.connectivity,
-                        sync_peers,
-                        sync_peer.clone(),
-                        shared.config.sync_peer_config.peer_ban_duration,
-                        "Peer supplied an invalid block".to_string(),
-                    )
-                    .await?;
-
-                    break;
-                },
-                Err(ChainStorageError::ValidationError { source }) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Validation on block {} from peer failed due to: {:?}.", block_hash_hex, source,
-                    );
-                    debug!(
-                        target: LOG_TARGET,
-                        "Banning peer {} from local node, because they supplied invalid block", sync_peer
-                    );
-                    ban_sync_peer(
-                        LOG_TARGET,
-                        &mut shared.connectivity,
-                        sync_peers,
-                        sync_peer.clone(),
-                        shared.config.sync_peer_config.peer_ban_duration,
-                        format!("Peer supplied an invalid block that failed validation: {}", source),
-                    )
-                    .await?;
-                    break;
-                },
-
-                Err(ChainStorageError::ProofOfWorkError { source }) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Validation on block {} from peer failed due to: {:?}.", block_hash_hex, source,
-                    );
-                    debug!(
-                        target: LOG_TARGET,
-                        "Banning peer {} from local node, because they supplied invalid block", sync_peer
-                    );
-                    ban_sync_peer(
-                        LOG_TARGET,
-                        &mut shared.connectivity,
-                        sync_peers,
-                        sync_peer.clone(),
-                        shared.config.sync_peer_config.peer_ban_duration,
-                        format!("Peer supplied an invalid block that failed validation: {}", source),
-                    )
-                    .await?;
-                    break;
-                },
-                Err(e) => return Err(e.into()),
-            }
+            Err(ChainStorageError::ProofOfWorkError { source }) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Validation on block {} from peer failed due to: {:?}.", block_hash_hex, source,
+                );
+                debug!(
+                    target: LOG_TARGET,
+                    "Banning peer {} from local node, because they supplied invalid block", sync_peer
+                );
+                ban_sync_peer(
+                    LOG_TARGET,
+                    &mut shared.connectivity,
+                    sync_peers,
+                    sync_peer.clone(),
+                    shared.config.sync_peer_config.peer_ban_duration,
+                    format!("Peer supplied an invalid block that failed validation: {}", source),
+                )
+                .await?;
+                break;
+            },
+            Err(e) => return Err(e.into()),
         }
-        if block_nums.is_empty() {
-            return Ok(());
-        }
-        debug!(target: LOG_TARGET, "Retrying block add. Attempt {}", attempt);
     }
-    Err(BlockSyncError::MaxAddBlockAttemptsReached)
+    Ok(original_size - block_nums.len())
 }
 
 // Request a block from a remote sync peer.
@@ -587,7 +619,14 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
 ) -> Result<(Vec<Arc<Block>>, SyncPeer), BlockSyncError>
 {
     let config = shared.config.sync_peer_config;
-    for attempt in 1..=shared.config.block_sync_config.max_block_request_retry_attempts {
+    let mut window_throttle_size = block_nums.len();
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        if attempt > shared.config.block_sync_config.max_block_request_retry_attempts {
+            break;
+        }
+
         let sync_peer = select_sync_peer(&config, sync_peers)?;
         if block_nums.is_empty() {
             return Ok((Vec::new(), sync_peer));
@@ -598,18 +637,21 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
         );
         if let StateInfo::BlockSync(ref mut info) = shared.info {
             info.local_height = block_nums[0];
-            info.tip_height = block_nums[block_nums.len() - 1];
+            info.tip_height = block_nums[window_throttle_size - 1];
         }
         shared.publish_event_info();
         match shared
             .outbound_nci
-            .request_blocks_from_peer(block_nums.to_vec(), Some(sync_peer.node_id.clone()))
+            .request_blocks_from_peer(
+                block_nums[0..window_throttle_size].to_vec(),
+                Some(sync_peer.node_id.clone()),
+            )
             .await
         {
             Ok(hist_blocks) => {
                 debug!(target: LOG_TARGET, "Received {} blocks from peer", hist_blocks.len());
-                if block_nums.len() == hist_blocks.len() {
-                    if (0..block_nums.len()).all(|i| hist_blocks[i].block().header.height == block_nums[i]) {
+                if hist_blocks.len() == window_throttle_size {
+                    if (0..window_throttle_size).all(|i| hist_blocks[i].block().header.height == block_nums[i]) {
                         let blocks = hist_blocks
                             .into_iter()
                             .map(|hist_block| Arc::new(hist_block.into_block()))
@@ -617,7 +659,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                         return Ok((blocks, sync_peer));
                     }
 
-                    debug!(
+                    warn!(
                         target: LOG_TARGET,
                         "Banning peer {} from local node, because they supplied the incorrect blocks", sync_peer
                     );
@@ -637,7 +679,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                         block_nums.len(),
                         hist_blocks.len()
                     );
-                    debug!(
+                    warn!(
                         target: LOG_TARGET,
                         "Banning peer {} from local node, because they supplied the incorrect number of blocks",
                         sync_peer
@@ -654,7 +696,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                 }
             },
             Err(CommsInterfaceError::UnexpectedApiResponse) => {
-                debug!(target: LOG_TARGET, "Remote node provided an unexpected api response.",);
+                warn!(target: LOG_TARGET, "Remote node provided an unexpected api response.",);
                 ban_sync_peer(
                     LOG_TARGET,
                     &mut shared.connectivity,
@@ -666,24 +708,35 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                 .await?;
             },
             Err(CommsInterfaceError::RequestTimedOut) => {
-                debug!(
+                window_throttle_size = window_throttle_size / 2;
+                if window_throttle_size < 1 {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to fetch blocks from peer: {:?} within timeout. Banning peer",
+                        CommsInterfaceError::RequestTimedOut
+                    );
+                    ban_sync_peer(
+                        LOG_TARGET,
+                        &mut shared.connectivity,
+                        sync_peers,
+                        sync_peer.clone(),
+                        config.short_term_peer_ban_duration,
+                        "Failed to fetch blocks from peer".to_string(),
+                    )
+                    .await?;
+                    return Ok((Vec::new(), sync_peer));
+                }
+                info!(
                     target: LOG_TARGET,
-                    "Failed to fetch blocks from peer: {:?}. Retrying.",
+                    "Failed to fetch blocks from peer: {:?}. Retrying to request {} blocks",
                     CommsInterfaceError::RequestTimedOut,
+                    window_throttle_size
                 );
-                ban_sync_peer(
-                    LOG_TARGET,
-                    &mut shared.connectivity,
-                    sync_peers,
-                    sync_peer.clone(),
-                    config.short_term_peer_ban_duration,
-                    "Failed to fetch blocks from peer".to_string(),
-                )
-                .await?;
+                attempt = 0;
             },
             Err(e) => return Err(BlockSyncError::CommsInterfaceError(e)),
         }
-        debug!(target: LOG_TARGET, "Retrying block download. Attempt {}", attempt);
+        info!(target: LOG_TARGET, "Retrying block download. Attempt {}", attempt);
     }
     Err(BlockSyncError::MaxRequestAttemptsReached)
 }

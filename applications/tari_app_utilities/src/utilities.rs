@@ -189,23 +189,10 @@ pub fn convert_socks_authentication(auth: SocksAuthentication) -> socks::Authent
 ///
 /// ## Returns
 /// A result containing the runtime on success, string indicating the error on failure
-pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
-    let num_core_threads = config.core_threads;
-    let num_blocking_threads = config.blocking_threads;
-    let num_mining_threads = config.num_mining_threads;
-
-    info!(
-        target: LOG_TARGET,
-        "Configuring the node to run on {} core threads, {} blocking worker threads and {} mining threads.",
-        num_core_threads,
-        num_blocking_threads,
-        num_mining_threads
-    );
+pub fn setup_runtime() -> Result<Runtime, String> {
     tokio::runtime::Builder::new()
         .threaded_scheduler()
         .enable_all()
-        .max_threads(num_core_threads + num_blocking_threads + num_mining_threads)
-        .core_threads(num_core_threads)
         .build()
         .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
 }

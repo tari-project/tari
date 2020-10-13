@@ -52,6 +52,15 @@
 # - Rate limit for the base node wallet (min value = 5, default value = 20).
 #buffer_rate_limit_base_node_wallet = 20
 
+# The timeout (s) for requesting blocks from a peer during blockchain sync. If this timeout expires, a new block
+# request will be sent with a smaller amount of blocks, until the amount of blocks requested are returned within
+# the timeout limit. Whenever the actual time taken are much less than the timeout, more blocks will be requested
+# next time round. (min value = 10 s, default value = 30 s)
+#fetch_blocks_timeout = 30
+
+# The timeout (s) for requesting other base node services (min value = 10 s, default value = 600 s).
+#base_node_service_request_timeout = 600
+
 ########################################################################################################################
 #                                                                                                                      #
 #                                          Wallet Configuration Options                                                #

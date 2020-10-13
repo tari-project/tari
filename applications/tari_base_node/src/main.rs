@@ -154,7 +154,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
 
     // Set up the Tokio runtime
-    let mut rt = setup_runtime(&node_config).map_err(|err| {
+    let mut rt = setup_runtime().map_err(|err| {
         error!(target: LOG_TARGET, "{}", err);
         ExitCodes::UnknownError
     })?;
