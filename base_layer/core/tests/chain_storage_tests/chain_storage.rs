@@ -1794,8 +1794,7 @@ fn pruned_mode_fetch_insert_and_commit() {
 
     // Sync headers
     let bob_height = bob_metadata.height_of_longest_chain.unwrap();
-    let block_nums = (bob_height + 1..=sync_horizon_height).collect::<Vec<u64>>();
-    let headers = alice_store.fetch_headers(block_nums).unwrap();
+    let headers = alice_store.fetch_headers(bob_height + 1, sync_horizon_height).unwrap();
     assert!(bob_store.insert_valid_headers(headers).is_ok());
 
     // Sync kernels
@@ -1905,9 +1904,12 @@ fn pruned_mode_fetch_insert_and_commit() {
     assert_eq!(bob_metadata.best_block, Some(sync_height_header.hash()));
 
     // Check headers
-    let block_nums = (0..=bob_metadata.height_of_longest_chain.unwrap()).collect::<Vec<u64>>();
-    let alice_headers = alice_store.fetch_headers(block_nums.clone()).unwrap();
-    let bob_headers = bob_store.fetch_headers(block_nums).unwrap();
+    let alice_headers = alice_store
+        .fetch_headers(0, bob_metadata.height_of_longest_chain())
+        .unwrap();
+    let bob_headers = bob_store
+        .fetch_headers(0, bob_metadata.height_of_longest_chain())
+        .unwrap();
     assert_eq!(alice_headers, bob_headers);
     // Check Kernel MMR nodes
     let alice_num_kernels = alice_store

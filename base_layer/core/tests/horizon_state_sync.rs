@@ -518,9 +518,8 @@ fn check_final_state<B: BlockchainBackend>(alice_db: &BlockchainDatabase<B>, bob
 
     // Check headers
     let network_tip_height = network_tip.height_of_longest_chain.unwrap_or(0);
-    let block_nums = (0..=network_tip_height).collect::<Vec<u64>>();
-    let alice_headers = alice_db.fetch_headers(block_nums.clone()).unwrap();
-    let bob_headers = bob_db.fetch_headers(block_nums).unwrap();
+    let alice_headers = alice_db.fetch_headers(0, network_tip_height).unwrap();
+    let bob_headers = bob_db.fetch_headers(0, network_tip_height).unwrap();
     assert_eq!(alice_headers, bob_headers);
 
     // Check Kernel MMR nodes

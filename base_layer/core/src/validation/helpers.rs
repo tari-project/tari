@@ -53,8 +53,7 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
             .consensus_constants(block_header.height)
             .get_median_timestamp_count() as u64,
     );
-    let block_nums = (min_height..=height).collect();
-    let timestamps = fetch_headers(db, block_nums)?
+    let timestamps = fetch_headers(db, min_height, height)?
         .iter()
         .map(|h| h.timestamp)
         .collect::<Vec<_>>();
