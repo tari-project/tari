@@ -510,9 +510,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.0.60"
+version = "1.0.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef611cc68ff783f18535d77ddd080185275713d852c4f5cbb6122c462a7a825c"
+checksum = "ed67cbde08356238e75fc4656be4749481eeffb09e19f320a25237d5221c985d"
 
 [[package]]
 name = "cexpr"
@@ -806,7 +806,7 @@ dependencies = [
  "crossterm_winapi",
  "lazy_static 1.4.0",
  "libc",
- "mio 0.7.2",
+ "mio 0.7.3",
  "parking_lot",
  "signal-hook",
  "winapi 0.3.9",
@@ -2227,9 +2227,9 @@ dependencies = [
 
 [[package]]
 name = "miniz_oxide"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c60c0dfe32c10b43a144bad8fc83538c52f58302c92300ea7ec7bf7b38d5a7b9"
+checksum = "0f2d26ec3309788e423cfbf68ad1800f061638098d76a83681af979dc4eda19d"
 dependencies = [
  "adler",
  "autocfg",
@@ -2256,9 +2256,9 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d5fc35678fa91ff960494e4bd72a0e1f8e72e035460887a2005de51915993cd"
+checksum = "e53a6ea5f38c0a48ca42159868c6d8e1bd56c0451238856cc08d58563643bdc3"
 dependencies = [
  "libc",
  "log 0.4.11",
@@ -3576,7 +3576,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "604508c1418b99dfe1925ca9224829bb2a8a9a04dda655cc01fcad46f4ab05ed"
 dependencies = [
  "libc",
- "mio 0.7.2",
+ "mio 0.7.3",
  "signal-hook-registry",
 ]
 
@@ -3672,9 +3672,9 @@ checksum = "6446ced80d6c486436db5c078dde11a9f73d42b57fb273121e160b84f63d894c"
 
 [[package]]
 name = "structopt"
-version = "0.3.18"
+version = "0.3.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a33f6461027d7f08a13715659b2948e1602c31a3756aeae9378bfe7518c72e82"
+checksum = "a7a7159e7d0dbcab6f9c980d7971ef50f3ff5753081461eeda120d5974a4ee95"
 dependencies = [
  "clap",
  "lazy_static 1.4.0",
@@ -3683,9 +3683,9 @@ dependencies = [
 
 [[package]]
 name = "structopt-derive"
-version = "0.4.11"
+version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c92e775028122a4b3dd55d58f14fc5120289c69bee99df1d117ae30f84b225c9"
+checksum = "8fc47de4dfba76248d1e9169ccff240eea2a4dc1e34e309b95b2393109b4b383"
 dependencies = [
  "heck",
  "proc-macro-error",
@@ -3696,15 +3696,9 @@ dependencies = [
 
 [[package]]
 name = "strum"
-version = "0.17.1"
+version = "0.19.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "530efb820d53b712f4e347916c5e7ed20deb76a4f0457943b3182fb889b06d2c"
-
-[[package]]
-name = "strum"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57bd81eb48f4c437cadc685403cad539345bf703d78e63707418431cecd4522b"
+checksum = "b89a286a7e3b5720b9a477b23253bc50debac207c8d21505f8e70b36792f11b5"
 
 [[package]]
 name = "strum_macros"
@@ -3723,6 +3717,18 @@ name = "strum_macros"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87c85aa3f8ea653bfd3ddf25f7ee357ee4d204731f6aa9ad04002306f6e2774c"
+dependencies = [
+ "heck",
+ "proc-macro2 1.0.24",
+ "quote 1.0.7",
+ "syn 1.0.42",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.19.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e61bb0be289045cb80bfce000512e32d09f8337e54c186725da381377ad1f8d5"
 dependencies = [
  "heck",
  "proc-macro2 1.0.24",
@@ -3829,15 +3835,20 @@ name = "tari_app_utilities"
 version = "0.5.7"
 dependencies = [
  "dirs",
+ "futures 0.3.6",
  "log 0.4.11",
  "qrcode",
  "rand 0.7.3",
  "serde_json",
+ "strum",
+ "strum_macros 0.19.4",
  "tari_common",
  "tari_comms",
  "tari_core",
  "tari_crypto",
  "tari_p2p",
+ "tari_wallet",
+ "thiserror",
  "tokio",
 ]
 
@@ -3865,7 +3876,7 @@ dependencies = [
  "serde 1.0.116",
  "serde_json",
  "structopt",
- "strum 0.18.0",
+ "strum",
  "strum_macros 0.18.0",
  "tari_app_grpc",
  "tari_app_utilities",
@@ -3879,6 +3890,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_wallet",
+ "thiserror",
  "tokio",
  "toml 0.5.6",
  "tonic",
@@ -4016,14 +4028,18 @@ name = "tari_console_wallet"
 version = "0.5.7"
 dependencies = [
  "chrono",
+ "chrono-english",
  "config",
  "crossterm",
  "dirs",
+ "futures 0.3.6",
  "lazy_static 1.4.0",
  "log 0.4.11",
  "qrcode",
  "rand 0.7.3",
  "structopt",
+ "strum",
+ "strum_macros 0.19.4",
  "tari_app_grpc",
  "tari_app_utilities",
  "tari_common",
@@ -4034,6 +4050,7 @@ dependencies = [
  "tari_p2p",
  "tari_wallet",
  "thiserror",
+ "time",
  "tokio",
  "tonic",
  "tui",
@@ -4049,6 +4066,7 @@ dependencies = [
  "bitflags 1.2.1",
  "blake2",
  "bytes 0.4.12",
+ "cfg-if",
  "chrono",
  "config",
  "croaring",
@@ -4069,7 +4087,7 @@ dependencies = [
  "serde 1.0.116",
  "serde_json",
  "sha3 0.9.1",
- "strum 0.17.1",
+ "strum",
  "strum_macros 0.17.1",
  "tari_common",
  "tari_comms",
@@ -4909,9 +4927,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-subscriber"
-version = "0.2.12"
+version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82bb5079aa76438620837198db8a5c529fb9878c730bc2b28179b0241cf04c10"
+checksum = "4ef0a5e15477aa303afbfac3a44cba9b6430fdaad52423b1e6c0dbbe28c3eedd"
 dependencies = [
  "ansi_term 0.12.1",
  "chrono",
@@ -4923,6 +4941,7 @@ dependencies = [
  "sharded-slab",
  "smallvec",
  "thread_local",
+ "tracing",
  "tracing-core",
  "tracing-log",
  "tracing-serde",

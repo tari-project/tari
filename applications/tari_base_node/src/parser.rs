@@ -53,11 +53,11 @@ use std::{
 };
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
+use tari_app_utilities::utilities::{parse_emoji_id_or_public_key, parse_emoji_id_or_public_key_or_node_id};
 use tari_common::GlobalConfig;
 use tari_comms::{
     connectivity::ConnectivityRequester,
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
-    types::CommsPublicKey,
+    peer_manager::{Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
     NodeIdentity,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
@@ -1812,7 +1812,7 @@ impl Parser {
             Some(k) => k.to_string(),
             None => {
                 println!("Command entered incorrectly, please use the following format: ");
-                println!("send_tari [amount of tari to send] [public key or emoji id to send to]");
+                println!("send_tari [amount of tari to send] [public key or emoji id to send to] [optional message]");
                 return;
             },
         };
@@ -1825,7 +1825,7 @@ impl Parser {
             },
         };
 
-        // Use the rest of the command line as my message
+        // Use the rest of the command line as the message
         let msg = args.collect::<Vec<&str>>().join(" ");
 
         let wallet_transaction_service = self.wallet_transaction_service.clone();
@@ -2003,20 +2003,6 @@ impl Parser {
             }
         });
     }
-}
-
-/// Returns a CommsPublicKey from either a emoji id or a public key
-fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
-    EmojiId::str_to_pubkey(&key.trim().replace('|', ""))
-        .or_else(|_| CommsPublicKey::from_hex(key))
-        .ok()
-}
-
-/// Returns a CommsPublicKey from either a emoji id, a public key or node id
-fn parse_emoji_id_or_public_key_or_node_id(key: &str) -> Option<Either<CommsPublicKey, NodeId>> {
-    parse_emoji_id_or_public_key(key)
-        .map(Either::Left)
-        .or_else(|| NodeId::from_hex(key).ok().map(Either::Right))
 }
 
 /// Function to process the send transaction command

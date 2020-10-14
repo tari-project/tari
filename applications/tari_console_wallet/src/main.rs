@@ -5,9 +5,9 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
-use crate::{grpc::WalletGrpcServer, ui::App};
+use automation::wallet_modes::{command_mode, grpc_mode, script_mode, tui_mode, WalletMode};
 use log::*;
-use std::{fs, io::Stdout, net::SocketAddr, sync::Arc};
+use std::{fs, sync::Arc};
 use structopt::StructOpt;
 use tari_app_utilities::{
     identity_management::setup_node_identity,
@@ -27,8 +27,6 @@ use tari_wallet::{
     WalletSqlite,
 };
 use tokio::sync::RwLock;
-use tonic::transport::Server;
-use tui::backend::CrosstermBackend;
 
 #[macro_use]
 extern crate lazy_static;
@@ -37,6 +35,7 @@ pub const LOG_TARGET: &str = "wallet::app::main";
 /// The minimum buffer size for a tari application pubsub_connector channel
 const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
 
+mod automation;
 mod dummy_data;
 mod grpc;
 mod ui;
@@ -68,19 +67,19 @@ fn main_inner() -> Result<(), ExitCodes> {
     bootstrap.initialize_logging()?;
 
     // Populate the configuration struct
-    let node_config = GlobalConfig::convert_from(cfg).map_err(|err| {
+    let config = GlobalConfig::convert_from(cfg).map_err(|err| {
         error!(target: LOG_TARGET, "The configuration file has an error. {}", err);
         ExitCodes::ConfigError
     })?;
 
-    debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
+    debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
     // Load or create the Node identity
     let wallet_identity = setup_node_identity(
-        &node_config.wallet_identity_file,
-        &node_config.public_address,
+        &config.wallet_identity_file,
+        &config.public_address,
         bootstrap.create_id ||
             // If the base node identity exists, we want to be sure that the wallet identity exists
-            node_config.identity_file.exists(),
+            config.identity_file.exists(),
         PeerFeatures::COMMUNICATION_CLIENT,
     )?;
 
@@ -89,7 +88,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         info!(
             target: LOG_TARGET,
             "Node ID created at '{}'. Done.",
-            node_config.identity_file.to_string_lossy()
+            config.identity_file.to_string_lossy()
         );
         return Ok(());
     }
@@ -104,36 +103,36 @@ fn main_inner() -> Result<(), ExitCodes> {
         .build()
         .unwrap();
 
-    let wallet = runtime.block_on(setup_wallet(&node_config, wallet_identity))?;
+    let wallet = runtime.block_on(setup_wallet(&config, wallet_identity))?;
     debug!(target: LOG_TARGET, "Starting app");
 
     let node_identity = wallet.comms.node_identity().as_ref().clone();
     let wallet = Arc::new(RwLock::new(wallet));
     let grpc = crate::grpc::WalletGrpcServer::new(wallet.clone());
 
-    if !bootstrap.daemon_mode {
-        runtime.spawn(run_grpc(grpc, node_config.grpc_wallet_address));
-        let app = App::<CrosstermBackend<Stdout>>::new(
-            "Tari Console Wallet".into(),
-            &node_identity,
-            wallet,
-            node_config.network,
-        );
-        runtime.handle().enter(|| ui::run(app))?;
-        println!("The wallet is shutting down.");
-        info!(
-            target: LOG_TARGET,
-            "Termination signal received from user. Shutting wallet down."
-        );
-        // TODO: Shutdown wallet
-        Ok(())
-    } else {
-        println!("Starting grpc server");
-        runtime
-            .block_on(run_grpc(grpc, node_config.grpc_wallet_address))
-            .map_err(ExitCodes::GrpcError)?;
-        println!("Shutting down");
-        Ok(())
+    match wallet_mode(bootstrap) {
+        WalletMode::Tui => tui_mode(runtime, grpc, config, node_identity, wallet),
+        WalletMode::Grpc => grpc_mode(runtime, grpc, config),
+        WalletMode::Script(path) => script_mode(runtime, path, wallet, config),
+        WalletMode::Command(command) => command_mode(runtime, command, wallet, config),
+        WalletMode::Invalid => Err(ExitCodes::InputError(
+            "Invalid wallet mode - are you trying too many command options at once?".to_string(),
+        )),
+    }
+}
+
+fn wallet_mode(bootstrap: ConfigBootstrap) -> WalletMode {
+    match (bootstrap.daemon_mode, bootstrap.input_file, bootstrap.command) {
+        // TUI mode
+        (false, None, None) => WalletMode::Tui,
+        // GRPC daemon mode
+        (true, None, None) => WalletMode::Grpc,
+        // Script mode
+        (false, Some(path), None) => WalletMode::Script(path),
+        // Command mode
+        (false, None, Some(command)) => WalletMode::Command(command),
+        // Invalid combinations
+        _ => WalletMode::Invalid,
     }
 }
 
@@ -230,16 +229,4 @@ async fn setup_wallet(config: &GlobalConfig, node_identity: Arc<NodeIdentity>) -
     }
 
     Ok(wallet)
-}
-
-async fn run_grpc(grpc: WalletGrpcServer, grpc_address: SocketAddr) -> Result<(), String> {
-    info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
-
-    Server::builder()
-        .add_service(tari_app_grpc::tari_rpc::wallet_server::WalletServer::new(grpc))
-        .serve(grpc_address)
-        .await
-        .map_err(|e| format!("GRPC server returned error:{}", e))?;
-    info!(target: LOG_TARGET, "Stopping GRPC");
-    Ok(())
 }

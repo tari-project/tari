@@ -33,6 +33,9 @@ extern crate lazy_static;
 pub mod schema;
 // pub mod text_message_service;
 
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
 pub use wallet::Wallet;
 
 use crate::{
@@ -41,9 +44,13 @@ use crate::{
     storage::sqlite_db::WalletSqliteDatabase,
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
+
 pub type WalletSqlite = Wallet<
     WalletSqliteDatabase,
     TransactionServiceSqliteDatabase,
     OutputManagerSqliteDatabase,
     ContactsServiceSqliteDatabase,
 >;
+
+// todo: to be removed when wallet code is refactored to remove the Arc<RwLock<..>>
+pub type WalletArcRwLock = Arc<RwLock<WalletSqlite>>;

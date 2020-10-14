@@ -104,6 +104,12 @@ pub struct ConfigBootstrap {
     /// This will rebuild the db, adding block for block in
     #[structopt(long, alias("rebuild_db"))]
     pub rebuild_db: bool,
+    /// Path to input file of commands
+    #[structopt(short, long, alias("input"), parse(from_os_str))]
+    pub input_file: Option<PathBuf>,
+    /// Single input command
+    #[structopt(long)]
+    pub command: Option<String>,
 }
 
 impl Default for ConfigBootstrap {
@@ -116,6 +122,8 @@ impl Default for ConfigBootstrap {
             create_id: false,
             daemon_mode: false,
             rebuild_db: false,
+            input_file: None,
+            command: None,
         }
     }
 }
@@ -278,6 +286,8 @@ mod test {
             "no-log-config-file-created",
             "--config",
             "no-config-file-created",
+            "--command",
+            "no-command-provided",
         ])
         .expect("failed to process arguments");
         assert!(bootstrap.init);
@@ -286,6 +296,7 @@ mod test {
         assert_eq!(bootstrap.base_path.to_str(), Some("no-temp-path-created"));
         assert_eq!(bootstrap.log_config.to_str(), Some("no-log-config-file-created"));
         assert_eq!(bootstrap.config.to_str(), Some("no-config-file-created"));
+        assert_eq!(bootstrap.command.unwrap(), "no-command-provided");
 
         // Test command line argument aliases
         let bootstrap = ConfigBootstrap::from_iter_safe(vec![

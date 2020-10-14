@@ -9,13 +9,18 @@ tari_comms = { version = "^0.2", path = "../../comms"}
 tari_crypto = { version = "^0.8" }
 tari_common = { version= "^0.2", path = "../../common" }
 tari_p2p = { version= "^0.2", path = "../../base_layer/p2p" }
+tari_wallet = { path = "../../base_layer/wallet" }
 
+futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}
 qrcode = { version = "0.12" }
 dirs = "2.0.2"
 serde_json = "1.0"
 log = { version = "0.4.8", features = ["std"] }
 rand = "0.7.2"
 tokio = { version="0.2.10", features = ["signal"] }
+strum = "^0.19"
+strum_macros = "^0.19"
+thiserror = "^1.0.20"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
