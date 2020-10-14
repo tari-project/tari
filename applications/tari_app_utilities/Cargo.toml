@@ -1,6 +1,6 @@
 [package]
 name = "tari_app_utilities"
-version = "0.5.6"
+version = "0.5.7"
 authors = ["Philip Robinson <simian@tari.com>"]
 edition = "2018"
 
