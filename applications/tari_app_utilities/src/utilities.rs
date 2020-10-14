@@ -45,7 +45,7 @@ pub const LOG_TARGET: &str = "tari::application";
 /// Enum to show failure information
 #[derive(Debug, Clone)]
 pub enum ExitCodes {
-    ConfigError,
+    ConfigError(String),
     UnknownError,
     InterfaceError,
     WalletError(String),
@@ -57,7 +57,7 @@ pub enum ExitCodes {
 impl ExitCodes {
     pub fn as_i32(&self) -> i32 {
         match self {
-            Self::ConfigError => 101,
+            Self::ConfigError(_) => 101,
             Self::UnknownError => 102,
             Self::InterfaceError => 103,
             Self::WalletError(_) => 104,
@@ -71,13 +71,14 @@ impl ExitCodes {
 impl From<tari_common::ConfigError> for ExitCodes {
     fn from(err: tari_common::ConfigError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
-        Self::ConfigError
+        Self::ConfigError(err.to_string())
     }
 }
 
 impl fmt::Display for ExitCodes {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ExitCodes::ConfigError(e) => write!(f, "Config Error ({}): {}", self.as_i32(), e),
             ExitCodes::WalletError(e) => write!(f, "Wallet Error ({}): {}", self.as_i32(), e),
             ExitCodes::GrpcError(e) => write!(f, "GRPC Error ({}): {}", self.as_i32(), e),
             ExitCodes::InputError(e) => write!(f, "Input Error ({}): {}", self.as_i32(), e),

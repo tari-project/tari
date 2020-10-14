@@ -69,7 +69,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // Populate the configuration struct
     let config = GlobalConfig::convert_from(cfg).map_err(|err| {
         error!(target: LOG_TARGET, "The configuration file has an error. {}", err);
-        ExitCodes::ConfigError
+        ExitCodes::ConfigError(format!("The configuration file has an error. {}", err))
     })?;
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
@@ -180,6 +180,7 @@ async fn setup_wallet(config: &GlobalConfig, node_identity: Arc<NodeIdentity>) -
     let network = match &config.network {
         Network::MainNet => NetworkType::MainNet,
         Network::Rincewind => NetworkType::Rincewind,
+        Network::LocalNet => NetworkType::LocalNet,
     };
 
     let factories = CryptoFactories::default();

@@ -1,0 +1,16 @@
+{
+  "name": "integration_tests",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "test": "mocha --file=hooks.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@grpc/proto-loader": "^0.5.5",
+    "grpc": "^1.24.3",
+    "grpc-promise": "^1.4.0",
+    "mocha": "^8.1.3"
+  }
+}

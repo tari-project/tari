@@ -188,6 +188,9 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.rincewind.enable_mining", false).unwrap();
     cfg.set_default("base_node.rincewind.num_mining_threads", 1).unwrap();
 
+    cfg.set_default("base_node.localnet.peer_seeds", Vec::<String>::new())
+        .unwrap();
+
     set_transport_defaults(&mut cfg);
     set_merge_mining_defaults(&mut cfg);
 
