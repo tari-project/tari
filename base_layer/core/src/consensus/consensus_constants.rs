@@ -257,7 +257,7 @@ impl ConsensusConstants {
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 proof_of_work: algos1,
-                faucet_value: 0 * T,
+                faucet_value: MicroTari::from(0),
             },
             ConsensusConstants {
                 effective_from_height: 2,
@@ -272,7 +272,7 @@ impl ConsensusConstants {
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 proof_of_work: algos2,
-                faucet_value: 0 * T,
+                faucet_value: MicroTari::from(0),
             },
             // min_pow_difficulty increased. Previous blocks would treat this value as 1 because of
             // a bug that was fixed.
@@ -289,7 +289,7 @@ impl ConsensusConstants {
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 proof_of_work: algos3,
-                faucet_value: 0 * T,
+                faucet_value: MicroTari::from(0),
             },
             // set max difficulty_max_block_interval to target_time * 6
             ConsensusConstants {
@@ -305,7 +305,7 @@ impl ConsensusConstants {
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 proof_of_work: algos4,
-                faucet_value: 0 * T,
+                faucet_value: MicroTari::from(0),
             },
         ]
     }
@@ -338,7 +338,7 @@ impl ConsensusConstants {
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
             proof_of_work: algos,
-            faucet_value: 0 * T,
+            faucet_value: MicroTari::from(0),
         }]
     }
 
@@ -404,7 +404,7 @@ impl ConsensusConstants {
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
             proof_of_work: algos,
-            faucet_value: 0 * T,
+            faucet_value: MicroTari::from(0),
         }]
     }
 }
