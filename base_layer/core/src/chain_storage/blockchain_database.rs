@@ -392,10 +392,10 @@ where B: BlockchainBackend
         insert_headers(&mut *db, headers)
     }
 
-    /// Returns the set of block headers specified by the block numbers.
-    pub fn fetch_headers(&self, block_nums: Vec<u64>) -> Result<Vec<BlockHeader>, ChainStorageError> {
+    /// Returns the set of block headers between `start` and up to and including `end_inclusive`
+    pub fn fetch_headers(&self, start: u64, end_inclusive: u64) -> Result<Vec<BlockHeader>, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_headers(&*db, block_nums)
+        fetch_headers(&*db, start, end_inclusive)
     }
 
     /// Returns the block header corresponding` to the provided BlockHash
@@ -977,14 +977,16 @@ pub fn fetch_header<T: BlockchainBackend>(db: &T, block_num: u64) -> Result<Bloc
 
 pub fn fetch_headers<T: BlockchainBackend>(
     db: &T,
-    block_nums: Vec<u64>,
+    start: u64,
+    end_inclusive: u64,
 ) -> Result<Vec<BlockHeader>, ChainStorageError>
 {
-    let mut headers = Vec::<BlockHeader>::with_capacity(block_nums.len());
-    for block_num in block_nums {
-        headers.push(fetch_header(db, block_num)?);
+    if start > end_inclusive {
+        // Allow the headers to be returned in reverse order
+        (end_inclusive..=start).rev().map(|h| fetch_header(db, h)).collect()
+    } else {
+        (start..=end_inclusive).map(|h| fetch_header(db, h)).collect()
     }
-    Ok(headers)
 }
 
 fn insert_headers<T: BlockchainBackend>(db: &mut T, headers: Vec<BlockHeader>) -> Result<(), ChainStorageError> {

@@ -71,7 +71,7 @@ impl<Idx: PartialOrd> NonOverlappingIntegerPairIter<Idx> {
     }
 }
 
-macro_rules! edge_chunk_impl {
+macro_rules! non_overlapping_iter_impl {
     ($ty:ty) => {
         impl Iterator for NonOverlappingIntegerPairIter<$ty> {
             type Item = ($ty, $ty);
@@ -94,9 +94,9 @@ macro_rules! edge_chunk_impl {
     };
 }
 
-edge_chunk_impl!(u32);
-edge_chunk_impl!(u64);
-edge_chunk_impl!(usize);
+non_overlapping_iter_impl!(u32);
+non_overlapping_iter_impl!(u64);
+non_overlapping_iter_impl!(usize);
 
 #[cfg(test)]
 mod test {

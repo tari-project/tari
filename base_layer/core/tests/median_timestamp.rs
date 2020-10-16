@@ -37,8 +37,7 @@ use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 pub fn get_header_timestamps<B: BlockchainBackend>(db: &B, height: u64, timestamp_count: u64) -> Vec<EpochTime> {
     let min_height = height.checked_sub(timestamp_count).unwrap_or(0);
-    let block_nums = (min_height..=height).collect();
-    fetch_headers(db, block_nums)
+    fetch_headers(db, min_height, height)
         .unwrap()
         .iter()
         .map(|h| h.timestamp)
