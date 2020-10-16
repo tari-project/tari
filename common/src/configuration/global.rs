@@ -96,15 +96,15 @@ pub struct GlobalConfig {
 
 impl GlobalConfig {
     pub fn convert_from(mut cfg: Config) -> Result<Self, ConfigurationError> {
+        // Add in settings from the environment (with a prefix of TARI_NODE)
+        // Eg.. `TARI_NODE_DEBUG=1 ./target/app` would set the `debug` key
+        cfg.merge(Environment::with_prefix("tari").separator("__"))
+            .map_err(|e| ConfigurationError::new("environment variable", &e.to_string()))?;
         let network = cfg
             .get_str("base_node.network")
             .map_err(|e| ConfigurationError::new("base_node.network", &e.to_string()))?
             .parse()?;
 
-        // Add in settings from the environment (with a prefix of TARI_NODE)
-        // Eg.. `TARI_NODE_DEBUG=1 ./target/app` would set the `debug` key
-        cfg.merge(Environment::with_prefix("tari").separator("__"))
-            .map_err(|e| ConfigurationError::new("environment variable", &e.to_string()))?;
         convert_node_config(network, cfg)
     }
 }
@@ -575,6 +575,7 @@ fn config_string(prefix: &str, network: &str, key: &str) -> String {
 pub enum Network {
     MainNet,
     Rincewind,
+    LocalNet,
 }
 
 impl FromStr for Network {
@@ -584,6 +585,7 @@ impl FromStr for Network {
         match value.to_lowercase().as_str() {
             "rincewind" => Ok(Self::Rincewind),
             "mainnet" => Ok(Self::MainNet),
+            "localnet" => Ok(Self::LocalNet),
             invalid => Err(ConfigurationError::new(
                 "network",
                 &format!("Invalid network option: {}", invalid),
@@ -597,6 +599,7 @@ impl Display for Network {
         let msg = match self {
             Self::MainNet => "mainnet",
             Self::Rincewind => "rincewind",
+            Self::LocalNet => "localnet",
         };
         f.write_str(msg)
     }
