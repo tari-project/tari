@@ -32,7 +32,7 @@ use tari_comms::types::{CommsPublicKey, CommsSecretKey};
 const LOG_TARGET: &str = "wallet::database";
 
 /// This trait defines the functionality that a database backend need to provide for the Contacts Service
-pub trait WalletBackend: Send + Sync {
+pub trait WalletBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError>;
     /// Modify the state the of the backend with a write operation
@@ -64,6 +64,7 @@ pub enum WriteOperation {
     Remove(DbKey),
 }
 
+#[derive(Clone)]
 pub struct WalletDatabase<T>
 where T: WalletBackend + 'static
 {

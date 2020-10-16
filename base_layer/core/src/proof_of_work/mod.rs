@@ -50,7 +50,7 @@ pub use sha3_pow::test as sha3_test;
 #[cfg(feature = "base_node")]
 pub mod lwma_diff;
 #[cfg(feature = "base_node")]
-pub use blake_pow::{blake_difficulty, blake_difficulty_with_hash};
+pub use blake_pow::blake_difficulty;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 pub use difficulty::{Difficulty, DifficultyAdjustment};
 #[cfg(any(feature = "base_node", feature = "transactions"))]

@@ -32,6 +32,7 @@ use tari_comms_dht::DhtConfig;
 use tari_core::transactions::{tari_amount::MicroTari, types::CryptoFactories};
 use tari_crypto::keys::PublicKey;
 use tari_p2p::initialization::CommsConfig;
+use tari_shutdown::{Shutdown, ShutdownSignal};
 
 use crate::support::comms_and_services::get_next_memory_address;
 use aes_gcm::{
@@ -90,6 +91,7 @@ async fn create_wallet(
     data_path: &Path,
     database_name: &str,
     factories: CryptoFactories,
+    shutdown_signal: ShutdownSignal,
 ) -> WalletSqlite
 {
     let comms_config = CommsConfig {
@@ -143,6 +145,7 @@ async fn create_wallet(
         transaction_backend,
         output_manager_backend,
         contacts_backend,
+        shutdown_signal,
     )
     .await
     .unwrap();
@@ -151,6 +154,8 @@ async fn create_wallet(
 
 #[tokio_macros::test]
 async fn test_wallet() {
+    let shutdown_a = Shutdown::new();
+    let shutdown_b = Shutdown::new();
     let db_tempdir = tempdir().unwrap();
 
     let factories = CryptoFactories::default();
@@ -167,9 +172,18 @@ async fn test_wallet() {
         &db_tempdir.path(),
         "alice_db",
         factories.clone(),
+        shutdown_a.to_signal(),
     )
     .await;
-    let bob_wallet = create_wallet(bob_identity.clone(), &db_tempdir.path(), "bob_db", factories.clone()).await;
+
+    let bob_wallet = create_wallet(
+        bob_identity.clone(),
+        &db_tempdir.path(),
+        "bob_db",
+        factories.clone(),
+        shutdown_b.to_signal(),
+    )
+    .await;
 
     alice_wallet
         .comms
@@ -337,12 +351,15 @@ async fn test_wallet() {
     let comms_private_key = backup_wallet_db.get_comms_secret_key().await.unwrap();
     assert!(comms_private_key.is_none());
 
-    alice_wallet.shutdown().await;
-    bob_wallet.shutdown().await;
+    alice_wallet.wait_until_shutdown().await;
+    bob_wallet.wait_until_shutdown().await;
 }
 
 #[test]
 fn test_store_and_forward_send_tx() {
+    let shutdown_a = Shutdown::new();
+    let shutdown_b = Shutdown::new();
+    let shutdown_c = Shutdown::new();
     let factories = CryptoFactories::default();
     let db_tempdir = tempdir().unwrap();
 
@@ -368,12 +385,14 @@ fn test_store_and_forward_send_tx() {
         &db_tempdir.path(),
         "alice_db",
         factories.clone(),
+        shutdown_a.to_signal(),
     ));
     let bob_wallet = bob_runtime.block_on(create_wallet(
         bob_identity.clone(),
         &db_tempdir.path(),
         "bob_db",
         factories.clone(),
+        shutdown_b.to_signal(),
     ));
 
     alice_runtime
@@ -423,6 +442,7 @@ fn test_store_and_forward_send_tx() {
         &db_tempdir.path(),
         "carol_db",
         factories.clone(),
+        shutdown_c.to_signal(),
     ));
 
     let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream_fused();
@@ -461,13 +481,14 @@ fn test_store_and_forward_send_tx() {
         assert!(tx_recv, "Must have received a tx from alice");
         assert!(tx_cancelled, "Must have received a cancel tx from alice");
     });
-    alice_runtime.block_on(alice_wallet.shutdown());
-    bob_runtime.block_on(bob_wallet.shutdown());
-    carol_runtime.block_on(carol_wallet.shutdown());
+    alice_runtime.block_on(alice_wallet.wait_until_shutdown());
+    bob_runtime.block_on(bob_wallet.wait_until_shutdown());
+    carol_runtime.block_on(carol_wallet.wait_until_shutdown());
 }
 
 #[tokio_macros::test]
 async fn test_import_utxo() {
+    let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
     let alice_identity = NodeIdentity::random(
         &mut OsRng,
@@ -505,6 +526,7 @@ async fn test_import_utxo() {
         TransactionMemoryDatabase::new(),
         OutputManagerMemoryDatabase::new(),
         ContactsServiceMemoryDatabase::new(),
+        shutdown.to_signal(),
     )
     .await
     .unwrap();
@@ -539,6 +561,7 @@ async fn test_import_utxo() {
 #[cfg(feature = "test_harness")]
 #[tokio_macros::test]
 async fn test_data_generation() {
+    let shutdown = Shutdown::new();
     use tari_wallet::testnet_utils::generate_wallet_test_data;
     let factories = CryptoFactories::default();
     let node_id =
@@ -573,6 +596,7 @@ async fn test_data_generation() {
         transaction_backend.clone(),
         OutputManagerMemoryDatabase::new(),
         ContactsServiceMemoryDatabase::new(),
+        shutdown.to_signal(),
     )
     .await
     .unwrap();
@@ -597,5 +621,5 @@ async fn test_data_generation() {
     let completed_tx = wallet.transaction_service.get_completed_transactions().await.unwrap();
     assert!(completed_tx.len() > 0);
 
-    wallet.shutdown().await;
+    wallet.wait_until_shutdown().await;
 }

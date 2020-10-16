@@ -31,7 +31,7 @@ use tari_core::transactions::tari_amount::uT;
 use tari_wallet::{
     output_manager_service::TxId,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
-    WalletArcRwLock,
+    WalletSqlite,
 };
 use tokio::{
     runtime::Handle,
@@ -300,15 +300,15 @@ pub async fn monitor_transactions(
 pub async fn command_runner(
     handle: Handle,
     commands: Vec<ParsedCommand>,
-    wallet: WalletArcRwLock,
+    wallet: WalletSqlite,
     config: GlobalConfig,
 ) -> Result<(), CommandError>
 {
     let wait_stage = TransactionStage::from_str(&config.wallet_command_send_wait_stage)
         .map_err(|e| CommandError::Config(e.to_string()))?;
 
-    let transaction_service = wallet.read().await.transaction_service.clone();
-    let mut output_service = wallet.read().await.output_manager_service.clone();
+    let transaction_service = wallet.transaction_service.clone();
+    let mut output_service = wallet.output_manager_service.clone();
 
     let mut tx_ids = Vec::new();
 

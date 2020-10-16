@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2020, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,31 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Needed to make futures::select! work
-#![recursion_limit = "256"]
-// Used to eliminate the need for boxing futures in many cases.
-// Tracking issue: https://github.com/rust-lang/rust/issues/63063
-#![feature(type_alias_impl_trait)]
-#![cfg_attr(not(debug_assertions), deny(unused_variables))]
-#![cfg_attr(not(debug_assertions), deny(unused_imports))]
-#![cfg_attr(not(debug_assertions), deny(dead_code))]
-#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
-#![deny(unused_must_use)]
-#![deny(unreachable_patterns)]
-#![deny(unknown_lints)]
+use trust_dns_client::{error::ClientError, proto::error::ProtoError};
 
-#[cfg(test)]
-#[macro_use]
-mod test_utils;
-
-pub mod comms_connector;
-pub mod domain_message;
-pub mod initialization;
-pub mod peer;
-pub mod proto;
-pub mod services;
-pub mod tari_message;
-pub mod transport;
-
-#[cfg(feature = "dns-seed")]
-pub mod dns_seed;
+#[derive(Debug, thiserror::Error)]
+pub enum DnsSeedError {
+    #[error("Client error: {0}")]
+    ClientError(#[from] ClientError),
+    #[error("Client error: {0}")]
+    ProtoError(#[from] ProtoError),
+}

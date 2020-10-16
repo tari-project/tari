@@ -76,7 +76,7 @@ where T: OutputManagerBackend
 }
 
 impl<T> OutputManagerServiceInitializer<T>
-where T: OutputManagerBackend + Clone + 'static
+where T: OutputManagerBackend + 'static
 {
     pub fn new(
         config: OutputManagerServiceConfig,
@@ -110,7 +110,7 @@ where T: OutputManagerBackend + Clone + 'static
 }
 
 impl<T> ServiceInitializer for OutputManagerServiceInitializer<T>
-where T: OutputManagerBackend + Clone + 'static
+where T: OutputManagerBackend + 'static
 {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 

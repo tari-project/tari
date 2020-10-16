@@ -148,7 +148,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // Populate the configuration struct
     let node_config = GlobalConfig::convert_from(cfg).map_err(|err| {
         error!(target: LOG_TARGET, "The configuration file has an error. {}", err);
-        ExitCodes::ConfigError
+        ExitCodes::ConfigError(format!("The configuration file has an error. {}", err))
     })?;
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);

@@ -78,3 +78,6 @@ applications/build-tari_node_controller-Desktop_Qt_5_13_0_clang_64bit-Debug/node
 applications/build-tari_node_controller-Desktop_Qt_5_13_0_clang_64bit-Debug/systray-6b0e9f60.o.tmp
 applications/build-tari_node_controller-Desktop_Qt_5_13_0_clang_64bit-Debug/ui_nodeedit.h
 applications/build-tari_node_controller-Desktop_Qt_5_13_0_clang_64bit-Debug/ui_nodelist.h
+/integration_tests/node_modules/
+/integration_tests/temp
+

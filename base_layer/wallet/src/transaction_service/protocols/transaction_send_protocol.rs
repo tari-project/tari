@@ -65,7 +65,7 @@ pub enum TransactionSendProtocolStage {
 }
 
 pub struct TransactionSendProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     id: u64,
     dest_pubkey: CommsPublicKey,
@@ -80,7 +80,7 @@ where TBackend: TransactionBackend + Clone + 'static
 
 #[allow(clippy::too_many_arguments)]
 impl<TBackend> TransactionSendProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     pub fn new(
         id: u64,
@@ -448,7 +448,7 @@ where TBackend: TransactionBackend + Clone + 'static
     /// Attempt to send the transaction to the recipient both directly and via Store-and-forward. If both fail to send
     /// the transaction will be cancelled.
     /// # Argumentswallet_sync_with_base_node
-    /// `msg`: The transaction data message to be sent     
+    /// `msg`: The transaction data message to be sent
     async fn send_transaction(
         &mut self,
         msg: SingleRoundSenderData,

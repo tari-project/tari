@@ -74,7 +74,7 @@ use tari_p2p::{
     initialization::{CommsConfig, P2pInitializer},
 };
 use tari_service_framework::StackBuilder;
-use tari_shutdown::Shutdown;
+use tari_shutdown::ShutdownSignal;
 use tokio::runtime;
 
 const LOG_TARGET: &str = "wallet";
@@ -112,15 +112,15 @@ impl WalletConfig {
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
+#[derive(Clone)]
 pub struct Wallet<T, U, V, W>
 where
     T: WalletBackend + 'static,
-    U: TransactionBackend + Clone + 'static,
-    V: OutputManagerBackend + Clone + 'static,
+    U: TransactionBackend + 'static,
+    V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
 {
     pub comms: CommsNode,
-    pub shutdown: Shutdown,
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
@@ -138,8 +138,8 @@ where
 impl<T, U, V, W> Wallet<T, U, V, W>
 where
     T: WalletBackend + 'static,
-    U: TransactionBackend + Clone + 'static,
-    V: OutputManagerBackend + Clone + 'static,
+    U: TransactionBackend + 'static,
+    V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
 {
     pub async fn new(
@@ -148,9 +148,9 @@ where
         transaction_backend: U,
         output_manager_backend: V,
         contacts_backend: W,
+        shutdown_signal: ShutdownSignal,
     ) -> Result<Wallet<T, U, V, W>, WalletError>
     {
-        let shutdown = Shutdown::new();
         let db = WalletDatabase::new(wallet_backend);
 
         // Persist the Comms Private Key provided to this function
@@ -168,7 +168,7 @@ where
         let node_identity = config.comms_config.node_identity.clone();
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
-        let mut handles = StackBuilder::new(shutdown.to_signal())
+        let mut handles = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(config.comms_config, publisher, vec![]))
             .add_initializer(OutputManagerServiceInitializer::new(
                 OutputManagerServiceConfig::default(),
@@ -203,7 +203,6 @@ where
 
         Ok(Wallet {
             comms,
-            shutdown,
             dht_service: dht,
             store_and_forward_requester,
             output_manager_service: output_manager_handle,
@@ -221,11 +220,7 @@ where
 
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
     /// exiting.
-    pub async fn shutdown(mut self) {
-        self.shutdown.trigger().expect(
-            "No one is listening for shutdown trigger. If you are seeing this error then the shutdown signals have \
-             not been wired up correctly.",
-        );
+    pub async fn wait_until_shutdown(self) {
         self.comms.wait_until_shutdown().await;
     }
 

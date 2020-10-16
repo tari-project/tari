@@ -49,6 +49,7 @@ impl From<GlobalNetwork> for Network {
         match global_network {
             GlobalNetwork::MainNet => Network::MainNet,
             GlobalNetwork::Rincewind => Network::Rincewind,
+            GlobalNetwork::LocalNet => Network::LocalNet,
         }
     }
 }

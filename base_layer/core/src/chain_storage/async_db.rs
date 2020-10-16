@@ -32,6 +32,8 @@ use crate::{
         InProgressHorizonSyncState,
         MmrTree,
     },
+    proof_of_work::{Difficulty, PowAlgorithm},
+    tari_utilities::epoch_time::EpochTime,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::{Commitment, HashOutput, Signature},
@@ -108,6 +110,7 @@ make_async!(fetch_header(block_num: u64) -> BlockHeader, "fetch_header");
 make_async!(fetch_header_by_block_hash(hash: HashOutput) -> BlockHeader, "fetch_header_by_block_hash");
 make_async!(fetch_tip_header() -> BlockHeader, "fetch_header");
 make_async!(insert_valid_headers(headers: Vec<BlockHeader>) -> (), "insert_valid_headers");
+make_async!(fetch_target_difficulties(pow_algo: PowAlgorithm, height: u64, block_window: usize) -> Vec<(EpochTime, Difficulty)>, "fetch_target_difficulties");
 
 //---------------------------------- MMR --------------------------------------------//
 make_async!(calculate_mmr_root(tree: MmrTree,additions: Vec<HashOutput>,deletions: Vec<HashOutput>) -> HashOutput, "calculate_mmr_root");

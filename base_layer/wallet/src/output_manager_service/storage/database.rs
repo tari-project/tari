@@ -47,7 +47,7 @@ const LOG_TARGET: &str = "wallet::output_manager_service::database";
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. If new data types are
 /// required to be supported by the backends then these enums can be updated to reflect this requirement and the trait
 /// will remain the same
-pub trait OutputManagerBackend: Send + Sync {
+pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError>;
     /// Modify the state the of the backend with a write operation
@@ -172,13 +172,13 @@ macro_rules! fetch {
 /// data access logic required by the module built onto the functionality defined by the trait
 #[derive(Clone)]
 pub struct OutputManagerDatabase<T>
-where T: OutputManagerBackend + Clone + 'static
+where T: OutputManagerBackend + 'static
 {
     db: Arc<T>,
 }
 
 impl<T> OutputManagerDatabase<T>
-where T: OutputManagerBackend + Clone + 'static
+where T: OutputManagerBackend + 'static
 {
     pub fn new(db: T) -> Self {
         Self { db: Arc::new(db) }

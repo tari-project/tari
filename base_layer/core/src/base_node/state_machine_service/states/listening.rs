@@ -181,17 +181,19 @@ fn select_sync_peers(
     peer_metadata_list: &[PeerChainMetadata],
 ) -> Vec<PeerChainMetadata>
 {
-    let mut sync_peers = Vec::new();
-    for peer_metadata in peer_metadata_list {
-        let peer_tip_height = peer_metadata.chain_metadata.height_of_longest_chain;
-        let peer_horizon_height = peer_metadata.chain_metadata.horizon_block(peer_tip_height.unwrap_or(0));
-        if (peer_horizon_height <= local_tip_height) &&
-            (peer_metadata.chain_metadata.best_block == best_metadata.best_block)
-        {
-            sync_peers.push(peer_metadata.clone());
-        }
-    }
-    sync_peers
+    peer_metadata_list
+        .iter()
+        // Metadata sanity checks
+        .filter(|p| p.chain_metadata.accumulated_difficulty.is_some() && p.chain_metadata.best_block.is_some())
+        // Check if the peer can provide blocks higher than the local tip height
+        .filter(|p| {
+            let peer_horizon_height = p.chain_metadata.effective_pruned_height;
+            local_tip_height >= peer_horizon_height
+        })
+        // Filter for peers that match the best metadata
+        .filter(|p| p.chain_metadata.best_block == best_metadata.best_block)
+        .cloned()
+        .collect()
 }
 
 /// Determine the best metadata from a set of metadata received from the network.
@@ -300,7 +302,13 @@ mod test {
         ); // Archival node
         let peer2 = PeerChainMetadata::new(
             node_id2,
-            ChainMetadata::new(network_tip_height, block_hash1.clone(), 500, 0, accumulated_difficulty1),
+            ChainMetadata::new(
+                network_tip_height,
+                block_hash1.clone(),
+                500,
+                5000 - 500,
+                accumulated_difficulty1,
+            ),
         ); // Pruning horizon is to short to sync from
         let peer3 = PeerChainMetadata::new(
             node_id3.clone(),
@@ -308,13 +316,19 @@ mod test {
                 network_tip_height,
                 block_hash1.clone(),
                 1440,
-                0,
+                5000 - 1440,
                 accumulated_difficulty1,
             ),
         );
         let peer4 = PeerChainMetadata::new(
             node_id4,
-            ChainMetadata::new(network_tip_height, block_hash2, 2880, 0, accumulated_difficulty2),
+            ChainMetadata::new(
+                network_tip_height,
+                block_hash2,
+                2880,
+                5000 - 2880,
+                accumulated_difficulty2,
+            ),
         ); // Node running a fork
         let peer5 = PeerChainMetadata::new(
             node_id5.clone(),
@@ -322,7 +336,7 @@ mod test {
                 network_tip_height,
                 block_hash1.clone(),
                 2880,
-                0,
+                5000 - 2880,
                 accumulated_difficulty1,
             ),
         );
