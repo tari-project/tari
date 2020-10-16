@@ -247,8 +247,8 @@ pub async fn generate_wallet_test_data<
     let alice_temp_dir = data_path.as_ref().join(random_string(8));
     let _ = std::fs::create_dir(&alice_temp_dir);
 
-    let shutdown_a = Shutdown::new();
-    let shutdown_b = Shutdown::new();
+    let mut shutdown_a = Shutdown::new();
+    let mut shutdown_b = Shutdown::new();
     let mut wallet_alice = create_wallet(
         generated_contacts[0].0.clone(),
         generated_contacts[0].1.clone(),
@@ -699,6 +699,8 @@ pub async fn generate_wallet_test_data<
 
     delay_for(Duration::from_secs(1)).await;
 
+    shutdown_a.trigger().unwrap();
+    shutdown_b.trigger().unwrap();
     wallet_alice.wait_until_shutdown().await;
     wallet_bob.wait_until_shutdown().await;
 
