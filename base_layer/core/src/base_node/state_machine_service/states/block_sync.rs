@@ -37,6 +37,7 @@ use crate::{
     },
     blocks::{blockheader::BlockHeader, Block},
     chain_storage::{async_db, BlockAddResult, BlockchainBackend, ChainMetadata, ChainStorageError},
+    proof_of_work::PowError,
 };
 use core::cmp::min;
 use log::*;
@@ -150,7 +151,7 @@ impl BlockSyncStrategy {
     {
         shared.info = StateInfo::BlockSync(BlockSyncInfo::default());
         if let StateInfo::BlockSync(ref mut info) = shared.info {
-            info.sync_peers = Clone::clone(&*sync_peers);
+            info.sync_peers = sync_peers.clone();
         }
         shared.publish_event_info();
         match self {
@@ -206,6 +207,8 @@ pub enum BlockSyncError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("Comms interface error: `{0}`")]
     CommsInterfaceError(#[from] CommsInterfaceError),
+    #[error("PowError: `{0}`")]
+    PowError(#[from] PowError),
 }
 
 #[derive(Clone, Debug, PartialEq, Copy)]
@@ -219,12 +222,6 @@ impl BestChainMetadataBlockSync {
         sync_peers: &mut SyncPeers,
     ) -> StateEvent
     {
-        if let StateInfo::BlockSync(ref mut info) = shared.info {
-            info.sync_peers.clear();
-            info.sync_peers.append(&mut sync_peers.clone());
-        }
-        shared.publish_event_info();
-
         info!(target: LOG_TARGET, "Synchronizing missing blocks.");
         match synchronize_blocks(shared, network_tip, sync_peers).await {
             Ok(_) => {
@@ -345,6 +342,9 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             }
             let metadata = async_db::get_chain_metadata(shared.db()).await?;
             let last_block = async_db::fetch_block(shared.db(), metadata.height_of_longest_chain()).await?;
+
+            check_actual_difficulty_matches_advertised(shared, &last_block.block.header, sync_peers).await?;
+
             shared
                 .local_node_interface
                 .publish_block_event(BlockEvent::BlockSyncComplete(Arc::new(last_block.block)));
@@ -353,6 +353,56 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
         return Err(BlockSyncError::EmptyNetworkBestBlock);
     }
     Err(BlockSyncError::EmptyBlockchain)
+}
+
+async fn check_actual_difficulty_matches_advertised<B: BlockchainBackend + 'static>(
+    shared: &mut BaseNodeStateMachine<B>,
+    tip_header: &BlockHeader,
+    sync_peers: &mut SyncPeers,
+) -> Result<(), BlockSyncError>
+{
+    let actual_acc_difficulty = tip_header.get_proof_of_work()?.total_accumulated_difficulty();
+    // Clone peers that need to be banned, this is done because of the mutable reference to sync peers that
+    // ban_sync_peer requires. TODO: Sync peer management should be correctly encapsulated
+    let peers_to_ban = sync_peers
+        .iter()
+        .filter_map(|p| {
+            let peer_acc_difficulty = p.chain_metadata.accumulated_difficulty.as_ref().expect(
+                "accumulated_difficulty was None in block sync. This is a bug in the component that provided the sync \
+                 peers.",
+            );
+
+            if peer_acc_difficulty > &actual_acc_difficulty {
+                warn!(
+                    target: LOG_TARGET,
+                    "Peer `{}` advertised a higher difficulty than it was able to provide. Advertised: {} Actual: {}. \
+                     Banning peer",
+                    p.node_id,
+                    peer_acc_difficulty,
+                    actual_acc_difficulty
+                );
+                Some((p.clone(), *peer_acc_difficulty))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    for (peer, peer_acc_difficulty) in peers_to_ban {
+        ban_sync_peer(
+            LOG_TARGET,
+            &mut shared.connectivity,
+            sync_peers,
+            &peer,
+            shared.config.sync_peer_config.peer_ban_duration,
+            format!(
+                "Calculated difficulty ({}) differed from advertised difficulty ({})",
+                actual_acc_difficulty, peer_acc_difficulty
+            ),
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 // Perform a basic check to determine if a chain split has occurred between the local and network chain. The
@@ -416,7 +466,7 @@ async fn find_chain_split_height<B: BlockchainBackend + 'static>(
                         LOG_TARGET,
                         &mut shared.connectivity,
                         sync_peers,
-                        sync_peer.clone(),
+                        &sync_peer,
                         shared.config.sync_peer_config.short_term_peer_ban_duration,
                         "Peer supplied invalid chain link".to_string(),
                     )
@@ -519,7 +569,7 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
                         LOG_TARGET,
                         &mut shared.connectivity,
                         sync_peers,
-                        sync_peer.clone(),
+                        &sync_peer,
                         shared.config.sync_peer_config.peer_ban_duration,
                         "Peer supplied an invalid block".to_string(),
                     )
@@ -540,7 +590,7 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
                         LOG_TARGET,
                         &mut shared.connectivity,
                         sync_peers,
-                        sync_peer.clone(),
+                        &sync_peer,
                         shared.config.sync_peer_config.peer_ban_duration,
                         format!("Peer supplied an invalid block that failed validation: {}", source),
                     )
@@ -561,7 +611,7 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
                         LOG_TARGET,
                         &mut shared.connectivity,
                         sync_peers,
-                        sync_peer.clone(),
+                        &sync_peer,
                         shared.config.sync_peer_config.peer_ban_duration,
                         format!("Peer supplied an invalid block that failed validation: {}", source),
                     )
@@ -625,7 +675,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                         LOG_TARGET,
                         &mut shared.connectivity,
                         sync_peers,
-                        sync_peer.clone(),
+                        &sync_peer,
                         config.short_term_peer_ban_duration,
                         "Peer supplied the incorrect blocks".to_string(),
                     )
@@ -646,7 +696,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                         LOG_TARGET,
                         &mut shared.connectivity,
                         sync_peers,
-                        sync_peer.clone(),
+                        &sync_peer,
                         config.short_term_peer_ban_duration,
                         "Peer supplied the incorrect number of blocks".to_string(),
                     )
@@ -659,7 +709,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                     LOG_TARGET,
                     &mut shared.connectivity,
                     sync_peers,
-                    sync_peer.clone(),
+                    &sync_peer,
                     config.peer_ban_duration,
                     "Remote node provided an unexpected api response".to_string(),
                 )
@@ -675,7 +725,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
                     LOG_TARGET,
                     &mut shared.connectivity,
                     sync_peers,
-                    sync_peer.clone(),
+                    &sync_peer,
                     config.short_term_peer_ban_duration,
                     "Failed to fetch blocks from peer".to_string(),
                 )
