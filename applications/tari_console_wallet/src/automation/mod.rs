@@ -23,4 +23,3 @@
 pub mod command_parser;
 pub mod commands;
 pub mod error;
-pub mod wallet_modes;

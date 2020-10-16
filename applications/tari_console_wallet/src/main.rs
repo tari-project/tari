@@ -5,7 +5,6 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
-use automation::wallet_modes::{command_mode, grpc_mode, script_mode, tui_mode, WalletMode};
 use log::*;
 use std::{fs, sync::Arc};
 use structopt::StructOpt;
@@ -27,6 +26,7 @@ use tari_wallet::{
     Wallet,
     WalletSqlite,
 };
+use wallet_modes::{command_mode, grpc_mode, script_mode, tui_mode, WalletMode};
 
 #[macro_use]
 extern crate lazy_static;
@@ -40,6 +40,7 @@ mod dummy_data;
 mod grpc;
 mod ui;
 mod utils;
+pub mod wallet_modes;
 
 /// Application entry point
 fn main() {

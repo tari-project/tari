@@ -26,18 +26,15 @@ use tari_app_utilities::utilities::ExitCodes;
 
 mod app;
 mod components;
-pub mod multi_column_list;
-mod selected_transaction_list;
-mod send_input_mode;
+mod widgets;
+
 pub mod state;
-mod stateful_list;
+
 mod ui_contact;
 mod ui_error;
 
 pub use app::*;
-pub use selected_transaction_list::*;
-pub use send_input_mode::*;
-pub use stateful_list::*;
+
 pub use ui_contact::*;
 pub use ui_error::*;
 
@@ -51,12 +48,15 @@ use std::io::{stdout, Stdout, Write};
 use tokio::runtime::Handle;
 use tui::{backend::CrosstermBackend, Terminal};
 
-const MAX_WIDTH: u16 = 133;
+pub const MAX_WIDTH: u16 = 133;
 
 pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
     let mut app = app;
     Handle::current()
-        .block_on(app.refresh_state())
+        .block_on(app.app_state.refresh_transaction_state())
+        .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
+    Handle::current()
+        .block_on(app.app_state.refresh_contacts_state())
         .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
     crossterm_loop(app)
 }
@@ -82,28 +82,25 @@ fn crossterm_loop(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
     })?;
 
     loop {
-        terminal
-            .draw(|f| Handle::current().block_on(app.draw(f)))
-            .map_err(|e| {
-                error!(target: LOG_TARGET, "Error drawing interface. {}", e);
-                ExitCodes::InterfaceError
-            })?;
-
+        terminal.draw(|f| app.draw(f)).map_err(|e| {
+            error!(target: LOG_TARGET, "Error drawing interface. {}", e);
+            ExitCodes::InterfaceError
+        })?;
         match events.next().map_err(|e| {
             error!(target: LOG_TARGET, "Error reading input event: {}", e);
             ExitCodes::InterfaceError
         })? {
             Event::Input(event) => match (event.code, event.modifiers) {
-                (KeyCode::Char(c), KeyModifiers::CONTROL) => Handle::current().block_on(app.on_control_key(c)),
-                (KeyCode::Char(c), _) => Handle::current().block_on(app.on_key(c)),
-                (KeyCode::Left, _) => Handle::current().block_on(app.on_left()),
-                (KeyCode::Up, _) => Handle::current().block_on(app.on_up()),
-                (KeyCode::Right, _) => Handle::current().block_on(app.on_right()),
-                (KeyCode::Down, _) => Handle::current().block_on(app.on_down()),
-                (KeyCode::Esc, _) => Handle::current().block_on(app.on_esc()),
-                (KeyCode::Backspace, _) => Handle::current().block_on(app.on_backspace()),
-                (KeyCode::Enter, _) => Handle::current().block_on(app.on_key('\n')),
-                (KeyCode::Tab, _) => Handle::current().block_on(app.on_key('\t')),
+                (KeyCode::Char(c), KeyModifiers::CONTROL) => app.on_control_key(c),
+                (KeyCode::Char(c), _) => app.on_key(c),
+                (KeyCode::Left, _) => app.on_left(),
+                (KeyCode::Up, _) => app.on_up(),
+                (KeyCode::Right, _) => app.on_right(),
+                (KeyCode::Down, _) => app.on_down(),
+                (KeyCode::Esc, _) => app.on_esc(),
+                (KeyCode::Backspace, _) => app.on_backspace(),
+                (KeyCode::Enter, _) => app.on_key('\n'),
+                (KeyCode::Tab, _) => app.on_key('\t'),
                 _ => {},
             },
             Event::Tick => {

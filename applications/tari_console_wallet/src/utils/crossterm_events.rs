@@ -22,11 +22,14 @@
 
 use crate::utils::events::{Event, EventStream};
 use crossterm::event::{self, Event as CEvent, KeyEvent};
+use log::*;
 use std::{
     sync::mpsc,
     thread,
     time::{Duration, Instant},
 };
+
+pub const LOG_TARGET: &str = "wallet::app::crossterm_events";
 
 /// A small event handler that wrap Crossterm input and tick events. Each event
 /// type is handled in its own thread and returned to a common `Receiver`
@@ -65,7 +68,9 @@ impl CrosstermEvents {
                     }
                 }
                 if last_tick.elapsed() >= config.tick_rate {
-                    tx.send(Event::Tick).unwrap();
+                    if let Err(e) = tx.send(Event::Tick) {
+                        warn!(target: LOG_TARGET, "Error sending Tick event on MPSC channel: {}", e);
+                    }
                     last_tick = Instant::now();
                 }
             }

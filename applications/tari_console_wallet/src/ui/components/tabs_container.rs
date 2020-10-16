@@ -81,7 +81,7 @@ impl<B: Backend> TabsContainer<B> {
         f.render_widget(tabs, area);
     }
 
-    pub fn draw_content(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
+    pub fn draw_content(&mut self, f: &mut Frame<B>, area: Rect, app_state: &mut AppState) {
         self.tabs[self.index].draw(f, area, app_state);
     }
 }

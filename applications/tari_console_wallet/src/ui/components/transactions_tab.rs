@@ -1,8 +1,7 @@
 use crate::ui::{
     components::{balance::Balance, Component},
-    multi_column_list::MultiColumnList,
     state::AppState,
-    SelectedTransactionList,
+    widgets::{MultiColumnList, WindowedListState},
     MAX_WIDTH,
 };
 use tari_wallet::transaction_service::storage::models::{TransactionDirection, TransactionStatus};
@@ -11,41 +10,37 @@ use tui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, ListItem, Paragraph, Wrap},
     Frame,
 };
 
 pub struct TransactionsTab {
     balance: Balance,
     selected_tx_list: SelectedTransactionList,
-    pending_txs_state: ListState,
-    completed_txs_state: ListState,
+    pending_list_state: WindowedListState,
+    completed_list_state: WindowedListState,
 }
 
 impl TransactionsTab {
     pub fn new() -> Self {
         Self {
             balance: Balance::new(),
-            selected_tx_list: SelectedTransactionList::PendingTxs,
-            pending_txs_state: ListState::default(),
-            completed_txs_state: ListState::default(),
+            selected_tx_list: SelectedTransactionList::CompletedTxs,
+            pending_list_state: WindowedListState::new(),
+            completed_list_state: WindowedListState::new(),
         }
     }
 
     fn draw_transaction_lists<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
-        let total = app_state.pending_txs.len() + app_state.completed_txs.len();
         let (pending_constraint, completed_constaint) = if app_state.pending_txs.len() == 0 {
-            (Constraint::Min(4), Constraint::Min(4))
-        } else if app_state.pending_txs.len() as f32 / total as f32 > 0.25 {
-            (
-                Constraint::Ratio(app_state.pending_txs.len() as u32, total as u32),
-                Constraint::Ratio(app_state.completed_txs.len() as u32, total as u32),
-            )
+            (Constraint::Max(3), Constraint::Min(4))
         } else {
-            (Constraint::Max(5), Constraint::Min(4))
+            (
+                Constraint::Length((3 + app_state.pending_txs.len()).min(7) as u16),
+                Constraint::Min(4),
+            )
         };
-
         let list_areas = Layout::default()
             .constraints([pending_constraint, completed_constaint].as_ref())
             .split(area);
@@ -73,11 +68,19 @@ impl TransactionsTab {
             .title(Span::styled("(P)ending Transactions", style));
         f.render_widget(block, list_areas[0]);
 
+        let mut pending_list_state = self.pending_list_state.get_list_state(
+            app_state.pending_txs.len(),
+            (list_areas[0].height as usize).saturating_sub(3),
+            app_state.pending_txs.selected(),
+        );
+        let window = self.pending_list_state.get_start_end();
+        let windowed_view = app_state.pending_txs.get_item_slice(window.0, window.1);
+
         let mut column0_items = Vec::new();
         let mut column1_items = Vec::new();
         let mut column2_items = Vec::new();
         let mut column3_items = Vec::new();
-        for t in app_state.pending_txs.items.iter() {
+        for t in windowed_view.iter() {
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::raw(format!("{}", t.destination_public_key))));
                 column1_items.push(ListItem::new(Span::styled(
@@ -106,7 +109,7 @@ impl TransactionsTab {
             .add_column(Some("Amount"), Some(18), column1_items)
             .add_column(Some("Timestamp"), Some(20), column2_items)
             .add_column(Some("Message"), None, column3_items);
-        column_list.render(f, list_areas[0], &mut self.pending_txs_state);
+        column_list.render(f, list_areas[0], &mut pending_list_state);
 
         //  Completed Transactions
         let style = if self.selected_tx_list == SelectedTransactionList::CompletedTxs {
@@ -119,11 +122,19 @@ impl TransactionsTab {
             .title(Span::styled("(C)ompleted Transactions", style));
         f.render_widget(block, list_areas[1]);
 
+        let mut completed_list_state = self.completed_list_state.get_list_state(
+            app_state.completed_txs.len(),
+            (list_areas[1].height as usize).saturating_sub(3),
+            app_state.completed_txs.selected(),
+        );
+        let window = self.completed_list_state.get_start_end();
+        let windowed_view = app_state.completed_txs.get_item_slice(window.0, window.1);
+
         let mut column0_items = Vec::new();
         let mut column1_items = Vec::new();
         let mut column2_items = Vec::new();
         let mut column3_items = Vec::new();
-        for t in app_state.completed_txs.items.iter() {
+        for t in windowed_view.iter() {
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::raw(format!("{}", t.destination_public_key))));
                 column1_items.push(ListItem::new(Span::styled(
@@ -152,7 +163,8 @@ impl TransactionsTab {
             .add_column(Some("Amount"), Some(18), column1_items)
             .add_column(Some("Timestamp"), Some(20), column2_items)
             .add_column(Some("Status"), None, column3_items);
-        column_list.render(f, list_areas[1], &mut self.completed_txs_state);
+
+        column_list.render(f, list_areas[1], &mut completed_list_state);
     }
 
     fn draw_detailed_transaction<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
@@ -297,13 +309,15 @@ impl<B: Backend> Component<B> for TransactionsTab {
         match c {
             'p' => {
                 self.selected_tx_list = SelectedTransactionList::PendingTxs;
-                app_state.pending_txs.select_first();
-                app_state.completed_txs.unselect();
+                if app_state.pending_txs.selected().is_none() {
+                    app_state.pending_txs.select_first();
+                }
             },
             'c' => {
                 self.selected_tx_list = SelectedTransactionList::CompletedTxs;
-                app_state.pending_txs.unselect();
-                app_state.completed_txs.select_first();
+                if app_state.completed_txs.selected().is_none() {
+                    app_state.completed_txs.select_first();
+                }
             },
             '\n' => match self.selected_tx_list {
                 SelectedTransactionList::PendingTxs => {
@@ -342,4 +356,10 @@ impl<B: Backend> Component<B> for TransactionsTab {
             },
         }
     }
+}
+
+#[derive(PartialEq)]
+pub enum SelectedTransactionList {
+    PendingTxs,
+    CompletedTxs,
 }

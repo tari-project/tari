@@ -42,6 +42,6 @@ default-features = false
 features = ["transactions", "mempool_proto", "base_node_proto"]
 
 [dependencies.tui]
-version = "0.10"
+version = "0.12"
 default-features = false
 features = ["crossterm"]
