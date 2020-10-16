@@ -154,8 +154,8 @@ async fn create_wallet(
 
 #[tokio_macros::test]
 async fn test_wallet() {
-    let shutdown_a = Shutdown::new();
-    let shutdown_b = Shutdown::new();
+    let mut shutdown_a = Shutdown::new();
+    let mut shutdown_b = Shutdown::new();
     let db_tempdir = tempdir().unwrap();
 
     let factories = CryptoFactories::default();
@@ -351,15 +351,17 @@ async fn test_wallet() {
     let comms_private_key = backup_wallet_db.get_comms_secret_key().await.unwrap();
     assert!(comms_private_key.is_none());
 
+    shutdown_a.trigger().unwrap();
+    shutdown_b.trigger().unwrap();
     alice_wallet.wait_until_shutdown().await;
     bob_wallet.wait_until_shutdown().await;
 }
 
 #[test]
 fn test_store_and_forward_send_tx() {
-    let shutdown_a = Shutdown::new();
-    let shutdown_b = Shutdown::new();
-    let shutdown_c = Shutdown::new();
+    let mut shutdown_a = Shutdown::new();
+    let mut shutdown_b = Shutdown::new();
+    let mut shutdown_c = Shutdown::new();
     let factories = CryptoFactories::default();
     let db_tempdir = tempdir().unwrap();
 
@@ -481,6 +483,9 @@ fn test_store_and_forward_send_tx() {
         assert!(tx_recv, "Must have received a tx from alice");
         assert!(tx_cancelled, "Must have received a cancel tx from alice");
     });
+    shutdown_a.trigger().unwrap();
+    shutdown_b.trigger().unwrap();
+    shutdown_c.trigger().unwrap();
     alice_runtime.block_on(alice_wallet.wait_until_shutdown());
     bob_runtime.block_on(bob_wallet.wait_until_shutdown());
     carol_runtime.block_on(carol_wallet.wait_until_shutdown());
@@ -561,7 +566,7 @@ async fn test_import_utxo() {
 #[cfg(feature = "test_harness")]
 #[tokio_macros::test]
 async fn test_data_generation() {
-    let shutdown = Shutdown::new();
+    let mut shutdown = Shutdown::new();
     use tari_wallet::testnet_utils::generate_wallet_test_data;
     let factories = CryptoFactories::default();
     let node_id =
@@ -621,5 +626,6 @@ async fn test_data_generation() {
     let completed_tx = wallet.transaction_service.get_completed_transactions().await.unwrap();
     assert!(completed_tx.len() > 0);
 
+    shutdown.trigger().unwrap();
     wallet.wait_until_shutdown().await;
 }
