@@ -20,42 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::rngs::OsRng;
-use std::sync::atomic::{AtomicU64, Ordering};
-use tari_core::transactions::types::PublicKey;
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
-use tari_wallet::contacts_service::storage::database::Contact;
+mod list_state;
+mod multi_column_list;
+mod stateful_list;
+mod utilities;
 
-lazy_static! {
-    static ref BN_SYNC_CALLS: AtomicU64 = AtomicU64::new(0);
-}
-
-pub fn get_dummy_base_node_status() -> Option<u64> {
-    let seconds = BN_SYNC_CALLS.fetch_add(1, Ordering::SeqCst) / 4;
-
-    if seconds / 6 % 2 == 0 {
-        None
-    } else {
-        Some(123456 + seconds / 10)
-    }
-}
-
-pub fn _get_dummy_contacts() -> Vec<Contact> {
-    let mut contacts = Vec::new();
-    let names = [
-        "Alice".to_string(),
-        "Bob".to_string(),
-        "Carol".to_string(),
-        "Dave".to_string(),
-        "Elvis".to_string(),
-    ];
-    for n in names.iter() {
-        let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-
-        contacts.push(Contact {
-            alias: n.clone(),
-            public_key,
-        });
-    }
-    contacts
-}
+pub use list_state::*;
+pub use multi_column_list::*;
+pub use stateful_list::*;
+pub use utilities::*;

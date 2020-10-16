@@ -31,15 +31,12 @@ use crate::{
             Component,
         },
         state::AppState,
-        UiError,
         MAX_WIDTH,
     },
 };
-use std::sync::Arc;
 use tari_common::Network;
 use tari_comms::NodeIdentity;
-use tari_wallet::{transaction_service::storage::models::CompletedTransaction, WalletSqlite};
-use tokio::sync::RwLock;
+use tari_wallet::WalletSqlite;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout},
@@ -54,9 +51,8 @@ pub const LOG_TARGET: &str = "wallet::ui::app";
 pub struct App<B: Backend> {
     pub title: String,
     pub should_quit: bool,
-    pub wallet: WalletSqlite,
     // Cached state this will need to be cleaned up into a threadsafe container
-    pub app_state: Arc<RwLock<AppState>>,
+    pub app_state: AppState,
     // Ui working state
     pub tabs: TabsContainer<B>,
 }
@@ -66,7 +62,7 @@ impl<B: Backend> App<B> {
         // TODO: It's probably better to read the node_identity from the wallet, but that requires
         // taking a read lock and making this method async, which adds some read/write cycles,
         // so it's easier to just ask for it right now
-        let app_state = Arc::new(RwLock::new(AppState::new(&node_identity, network)));
+        let app_state = AppState::new(&node_identity, network, wallet);
 
         let tabs = TabsContainer::<B>::new(title.clone())
             .add("Transactions".into(), Box::new(TransactionsTab::new()))
@@ -75,7 +71,7 @@ impl<B: Backend> App<B> {
 
         Self {
             title,
-            wallet,
+
             should_quit: false,
             app_state,
             // tabs: TabsState::new(vec!["Transactions".into(), "Send/Receive".into(), "Network".into()]),
@@ -83,13 +79,13 @@ impl<B: Backend> App<B> {
         }
     }
 
-    pub async fn on_control_key(&mut self, c: char) {
+    pub fn on_control_key(&mut self, c: char) {
         if let 'c' = c {
             self.should_quit = true;
         }
     }
 
-    pub async fn on_key(&mut self, c: char) {
+    pub fn on_key(&mut self, c: char) {
         match c {
             'q' => {
                 self.should_quit = true;
@@ -97,85 +93,41 @@ impl<B: Backend> App<B> {
             '\t' => {
                 self.tabs.next();
             },
-            _ => {
-                let mut app_state = self.app_state.write().await;
-                self.tabs.on_key(&mut app_state, c)
-            },
+            _ => self.tabs.on_key(&mut self.app_state, c),
         }
     }
 
-    pub async fn on_up(&mut self) {
-        let mut app_state = self.app_state.write().await;
-        self.tabs.on_up(&mut app_state);
+    pub fn on_up(&mut self) {
+        self.tabs.on_up(&mut self.app_state);
     }
 
-    pub async fn on_down(&mut self) {
-        let mut app_state = self.app_state.write().await;
-        self.tabs.on_down(&mut app_state);
+    pub fn on_down(&mut self) {
+        self.tabs.on_down(&mut self.app_state);
     }
 
-    pub async fn on_right(&mut self) {
+    pub fn on_right(&mut self) {
         // This currently doesn't need app_state, but is async
         // to match others
         self.tabs.next();
     }
 
-    pub async fn on_left(&mut self) {
+    pub fn on_left(&mut self) {
         // This currently doesn't need app_state, but is async
         // to match others
         self.tabs.previous();
     }
 
-    pub async fn on_esc(&mut self) {
-        let mut app_state = self.app_state.write().await;
-        self.tabs.on_esc(&mut app_state);
+    pub fn on_esc(&mut self) {
+        self.tabs.on_esc(&mut self.app_state);
     }
 
-    pub async fn on_backspace(&mut self) {
-        let mut app_state = self.app_state.write().await;
-        self.tabs.on_backspace(&mut app_state);
+    pub fn on_backspace(&mut self) {
+        self.tabs.on_backspace(&mut self.app_state);
     }
 
     pub fn on_tick(&mut self) {}
 
-    pub async fn refresh_state(&mut self) -> Result<(), UiError> {
-        let mut pending_transactions: Vec<CompletedTransaction> = Vec::new();
-        pending_transactions.extend(
-            self.wallet
-                .transaction_service
-                .get_pending_inbound_transactions()
-                .await?
-                .values()
-                .map(|t| CompletedTransaction::from(t.clone()))
-                .collect::<Vec<CompletedTransaction>>(),
-        );
-        pending_transactions.extend(
-            self.wallet
-                .transaction_service
-                .get_pending_inbound_transactions()
-                .await?
-                .values()
-                .map(|t| CompletedTransaction::from(t.clone()))
-                .collect::<Vec<CompletedTransaction>>(),
-        );
-
-        pending_transactions.sort_by(|a: &CompletedTransaction, b: &CompletedTransaction| {
-            b.timestamp.partial_cmp(&a.timestamp).unwrap()
-        });
-        self.app_state.write().await.pending_txs.items = pending_transactions;
-        let completed_transactions = self
-            .wallet
-            .transaction_service
-            .get_completed_transactions()
-            .await?
-            .values()
-            .cloned()
-            .collect();
-        self.app_state.write().await.completed_txs.items = completed_transactions;
-        Ok(())
-    }
-
-    pub async fn draw(&mut self, f: &mut Frame<'_, B>) {
+    pub fn draw(&mut self, f: &mut Frame<'_, B>) {
         let max_width_layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(MAX_WIDTH), Constraint::Min(0)].as_ref())
@@ -189,7 +141,6 @@ impl<B: Backend> App<B> {
             .split(title_chunks[0]);
 
         self.tabs.draw_titles(f, title_halves[0]);
-        let app_state = self.app_state.read().await;
 
         let chain_meta_data = match get_dummy_base_node_status() {
             None => Spans::from(vec![
@@ -210,6 +161,6 @@ impl<B: Backend> App<B> {
             )));
         f.render_widget(chain_meta_data_paragraph, title_halves[1]);
 
-        self.tabs.draw_content(f, title_chunks[1], &app_state);
+        self.tabs.draw_content(f, title_chunks[1], &mut self.app_state);
     }
 }
