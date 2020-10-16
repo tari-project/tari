@@ -157,14 +157,12 @@ use tari_crypto::{
     tari_utilities::ByteArray,
 };
 use tari_p2p::transport::{TorConfig, TransportType};
+use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
-    contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
+    contacts_service::storage::database::Contact,
     error::WalletError,
-    output_manager_service::{
-        protocols::txo_validation_protocol::TxoValidationRetry,
-        storage::sqlite_db::OutputManagerSqliteDatabase,
-    },
+    output_manager_service::protocols::txo_validation_protocol::TxoValidationRetry,
     storage::{
         database::WalletDatabase,
         sqlite_db::WalletSqliteDatabase,
@@ -195,7 +193,6 @@ use tari_wallet::{
                 TransactionDirection,
                 TransactionStatus,
             },
-            sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
     util::emoji::{emoji_set, EmojiId},
@@ -212,7 +209,7 @@ use log4rs::append::{
     Append,
 };
 use tari_core::consensus::Network;
-use tari_wallet::output_manager_service::protocols::txo_validation_protocol::TxoValidationType;
+use tari_wallet::{output_manager_service::protocols::txo_validation_protocol::TxoValidationType, WalletSqlite};
 use tokio::runtime::Runtime;
 
 const LOG_TARGET: &str = "wallet_ffi";
@@ -248,13 +245,9 @@ pub struct EmojiSet(Vec<ByteVector>);
 pub struct TariSeedWords(Vec<String>);
 
 pub struct TariWallet {
-    wallet: tari_wallet::wallet::Wallet<
-        WalletSqliteDatabase,
-        TransactionServiceSqliteDatabase,
-        OutputManagerSqliteDatabase,
-        ContactsServiceSqliteDatabase,
-    >,
+    wallet: WalletSqlite,
     runtime: Runtime,
+    shutdown: Shutdown,
 }
 
 /// -------------------------------- Strings ------------------------------------------------ ///
@@ -2925,6 +2918,8 @@ pub unsafe extern "C" fn wallet_create(
             // TODO remove after next TestNet
             transaction_backend.migrate((*config).node_identity.public_key().clone());
 
+            let shutdown = Shutdown::new();
+
             w = runtime.block_on(Wallet::new(
                 WalletConfig::new(
                     (*config).clone(),
@@ -2939,6 +2934,7 @@ pub unsafe extern "C" fn wallet_create(
                 transaction_backend.clone(),
                 output_manager_backend,
                 contacts_backend,
+                shutdown.to_signal(),
             ));
 
             match w {
@@ -2972,7 +2968,11 @@ pub unsafe extern "C" fn wallet_create(
                         );
                     }
 
-                    let tari_wallet = TariWallet { wallet: w, runtime };
+                    let tari_wallet = TariWallet {
+                        wallet: w,
+                        runtime,
+                        shutdown,
+                    };
 
                     Box::into_raw(Box::new(tari_wallet))
                 },
@@ -4945,8 +4945,11 @@ pub unsafe extern "C" fn emoji_set_destroy(emoji_set: *mut EmojiSet) {
 #[no_mangle]
 pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
     if !wallet.is_null() {
-        let mut m = Box::from_raw(wallet);
-        m.runtime.block_on(m.wallet.shutdown());
+        let mut w = Box::from_raw(wallet);
+        match w.shutdown.trigger() {
+            Err(_) => error!(target: LOG_TARGET, "No listeners for the shutdown signal!"),
+            Ok(()) => w.runtime.block_on(w.wallet.wait_until_shutdown()),
+        }
     }
 }
 

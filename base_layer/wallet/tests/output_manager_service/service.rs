@@ -89,7 +89,7 @@ use tokio::{
     time::delay_for,
 };
 
-pub fn setup_output_manager_service<T: OutputManagerBackend + Clone + 'static>(
+pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     runtime: &mut Runtime,
     backend: T,
 ) -> (
@@ -251,7 +251,7 @@ fn sending_transaction_and_confirmation_sqlite_db() {
     sending_transaction_and_confirmation(OutputManagerSqliteDatabase::new(connection, None));
 }
 
-fn send_not_enough_funds<T: OutputManagerBackend + Clone + 'static>(backend: T) {
+fn send_not_enough_funds<T: OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
@@ -294,7 +294,7 @@ fn send_not_enough_funds_sqlite_db() {
     send_not_enough_funds(OutputManagerSqliteDatabase::new(connection, None));
 }
 
-fn send_no_change<T: OutputManagerBackend + Clone + 'static>(backend: T) {
+fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
@@ -370,7 +370,7 @@ fn send_no_change_sqlite_db() {
     send_no_change(OutputManagerSqliteDatabase::new(connection, None));
 }
 
-fn send_not_enough_for_change<T: OutputManagerBackend + Clone + 'static>(backend: T) {
+fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
 
     let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
@@ -415,7 +415,7 @@ fn send_not_enough_for_change_sqlite_db() {
     send_not_enough_for_change(OutputManagerSqliteDatabase::new(connection, None));
 }
 
-fn receiving_and_confirmation<T: OutputManagerBackend + Clone + 'static>(backend: T) {
+fn receiving_and_confirmation<T: OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
@@ -459,7 +459,7 @@ fn receiving_and_confirmation_sqlite_db() {
     receiving_and_confirmation(OutputManagerSqliteDatabase::new(connection, None));
 }
 
-fn cancel_transaction<T: OutputManagerBackend + Clone + 'static>(backend: T) {
+fn cancel_transaction<T: OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
@@ -509,7 +509,7 @@ fn cancel_transaction_sqlite_db() {
     cancel_transaction(OutputManagerSqliteDatabase::new(connection, None));
 }
 
-fn timeout_transaction<T: OutputManagerBackend + Clone + 'static>(backend: T) {
+fn timeout_transaction<T: OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
@@ -564,7 +564,7 @@ fn timeout_transaction_sqlite_db() {
     timeout_transaction(OutputManagerSqliteDatabase::new(connection, None));
 }
 
-fn test_get_balance<T: OutputManagerBackend + Clone + 'static>(backend: T) {
+fn test_get_balance<T: OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
@@ -617,7 +617,7 @@ fn test_get_balance_sqlite_db() {
     test_get_balance(OutputManagerSqliteDatabase::new(connection, None));
 }
 
-fn test_confirming_received_output<T: OutputManagerBackend + Clone + 'static>(backend: T) {
+fn test_confirming_received_output<T: OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();

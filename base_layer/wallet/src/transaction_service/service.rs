@@ -115,7 +115,7 @@ pub struct TransactionService<
     BNResponseStream,
     TBackend,
     TTxCancelledStream,
-> where TBackend: TransactionBackend + Clone + 'static
+> where TBackend: TransactionBackend + 'static
 {
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
@@ -161,7 +161,7 @@ where
     MReplyStream: Stream<Item = DomainMessage<MempoolProto::MempoolServiceResponse>>,
     BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
     TTxCancelledStream: Stream<Item = DomainMessage<proto::TransactionCancelledMessage>>,
-    TBackend: TransactionBackend + Clone + 'static,
+    TBackend: TransactionBackend + 'static,
 {
     pub fn new(
         config: TransactionServiceConfig,
@@ -2011,7 +2011,7 @@ where
 /// This struct is a collection of the common resources that a protocol in the service requires.
 #[derive(Clone)]
 pub struct TransactionServiceResources<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     pub db: TransactionDatabase<TBackend>,
     pub output_manager_service: OutputManagerHandle,

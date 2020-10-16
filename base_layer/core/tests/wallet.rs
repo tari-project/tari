@@ -105,6 +105,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
 
 #[test]
 fn wallet_base_node_integration_test() {
+    let shutdown = Shutdown::new();
     let temp_dir = tempdir().unwrap();
     let factories = CryptoFactories::default();
 
@@ -176,6 +177,7 @@ fn wallet_base_node_integration_test() {
             TransactionMemoryDatabase::new(),
             OutputManagerMemoryDatabase::new(),
             ContactsServiceMemoryDatabase::new(),
+            shutdown.to_signal(),
         ))
         .unwrap();
     let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
@@ -219,6 +221,7 @@ fn wallet_base_node_integration_test() {
             TransactionMemoryDatabase::new(),
             OutputManagerMemoryDatabase::new(),
             ContactsServiceMemoryDatabase::new(),
+            shutdown.to_signal(),
         ))
         .unwrap();
 

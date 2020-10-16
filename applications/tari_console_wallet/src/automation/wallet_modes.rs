@@ -31,8 +31,8 @@ use tari_app_utilities::utilities::ExitCodes;
 use tari_common::GlobalConfig;
 use tari_comms::NodeIdentity;
 
-use tari_wallet::WalletArcRwLock;
-use tokio::runtime::Runtime;
+use tari_wallet::WalletSqlite;
+use tokio::runtime::Handle;
 use tonic::transport::Server;
 use tui::backend::CrosstermBackend;
 
@@ -48,28 +48,21 @@ pub enum WalletMode {
 }
 
 pub fn command_mode(
-    mut runtime: Runtime,
+    handle: Handle,
     command: String,
-    wallet: WalletArcRwLock,
+    wallet: WalletSqlite,
     config: GlobalConfig,
 ) -> Result<(), ExitCodes>
 {
     let commands = vec![parse_command(&command)?];
     info!("Starting wallet command mode");
-    let handle = runtime.handle().clone();
-    runtime.block_on(command_runner(handle, commands, wallet, config))?;
+    handle.block_on(command_runner(handle.clone(), commands, wallet, config))?;
     info!("Shutting down wallet command mode");
 
     Ok(())
 }
 
-pub fn script_mode(
-    mut runtime: Runtime,
-    path: PathBuf,
-    wallet: WalletArcRwLock,
-    config: GlobalConfig,
-) -> Result<(), ExitCodes>
-{
+pub fn script_mode(handle: Handle, path: PathBuf, wallet: WalletSqlite, config: GlobalConfig) -> Result<(), ExitCodes> {
     info!(target: LOG_TARGET, "Starting wallet script mode");
     println!("Starting wallet script mode");
     let script = fs::read_to_string(path).map_err(|e| ExitCodes::InputError(e.to_string()))?;
@@ -90,42 +83,43 @@ pub fn script_mode(
     }
     println!("{} commands parsed successfully.", commands.len());
 
-    let handle = runtime.handle().clone();
     println!("Starting the command runner!");
-    runtime.block_on(command_runner(handle, commands, wallet, config))?;
+    handle.block_on(command_runner(handle.clone(), commands, wallet, config))?;
 
     info!(target: LOG_TARGET, "Completed wallet script mode");
     Ok(())
 }
 
 pub fn tui_mode(
-    runtime: Runtime,
-    grpc: WalletGrpcServer,
+    handle: Handle,
     node_config: GlobalConfig,
     node_identity: NodeIdentity,
-    wallet: WalletArcRwLock,
+    wallet: WalletSqlite,
 ) -> Result<(), ExitCodes>
 {
-    runtime.spawn(run_grpc(grpc, node_config.grpc_wallet_address));
+    let grpc = WalletGrpcServer::new(wallet.clone());
+    handle.spawn(run_grpc(grpc, node_config.grpc_wallet_address));
+
     let app = App::<CrosstermBackend<Stdout>>::new(
         "Tari Console Wallet".into(),
         &node_identity,
         wallet,
         node_config.network,
     );
-    runtime.handle().enter(|| run(app))?;
-    println!("The wallet is shutting down.");
+    handle.enter(|| run(app))?;
+
     info!(
         target: LOG_TARGET,
         "Termination signal received from user. Shutting wallet down."
     );
-    // TODO: Shutdown wallet
+
     Ok(())
 }
 
-pub fn grpc_mode(mut runtime: Runtime, grpc: WalletGrpcServer, node_config: GlobalConfig) -> Result<(), ExitCodes> {
+pub fn grpc_mode(handle: Handle, wallet: WalletSqlite, node_config: GlobalConfig) -> Result<(), ExitCodes> {
     println!("Starting grpc server");
-    runtime
+    let grpc = WalletGrpcServer::new(wallet);
+    handle
         .block_on(run_grpc(grpc, node_config.grpc_wallet_address))
         .map_err(ExitCodes::GrpcError)?;
     println!("Shutting down");

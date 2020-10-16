@@ -37,7 +37,7 @@ pub struct Contact {
 }
 
 /// This trait defines the functionality that a database backend need to provide for the Contacts Service
-pub trait ContactsBackend: Send + Sync {
+pub trait ContactsBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ContactsServiceStorageError>;
     /// Modify the state the of the backend with a write operation

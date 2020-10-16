@@ -38,13 +38,7 @@ use crate::{
 use std::sync::Arc;
 use tari_common::Network;
 use tari_comms::NodeIdentity;
-use tari_wallet::{
-    contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
-    output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::sqlite_db::WalletSqliteDatabase,
-    transaction_service::storage::{models::CompletedTransaction, sqlite_db::TransactionServiceSqliteDatabase},
-    Wallet,
-};
+use tari_wallet::{transaction_service::storage::models::CompletedTransaction, WalletSqlite};
 use tokio::sync::RwLock;
 use tui::{
     backend::Backend,
@@ -60,16 +54,7 @@ pub const LOG_TARGET: &str = "wallet::ui::app";
 pub struct App<B: Backend> {
     pub title: String,
     pub should_quit: bool,
-    pub wallet: Arc<
-        RwLock<
-            Wallet<
-                WalletSqliteDatabase,
-                TransactionServiceSqliteDatabase,
-                OutputManagerSqliteDatabase,
-                ContactsServiceSqliteDatabase,
-            >,
-        >,
-    >,
+    pub wallet: WalletSqlite,
     // Cached state this will need to be cleaned up into a threadsafe container
     pub app_state: Arc<RwLock<AppState>>,
     // Ui working state
@@ -77,22 +62,7 @@ pub struct App<B: Backend> {
 }
 
 impl<B: Backend> App<B> {
-    pub fn new(
-        title: String,
-        node_identity: &NodeIdentity,
-        wallet: Arc<
-            RwLock<
-                Wallet<
-                    WalletSqliteDatabase,
-                    TransactionServiceSqliteDatabase,
-                    OutputManagerSqliteDatabase,
-                    ContactsServiceSqliteDatabase,
-                >,
-            >,
-        >,
-        network: Network,
-    ) -> Self
-    {
+    pub fn new(title: String, node_identity: &NodeIdentity, wallet: WalletSqlite, network: Network) -> Self {
         // TODO: It's probably better to read the node_identity from the wallet, but that requires
         // taking a read lock and making this method async, which adds some read/write cycles,
         // so it's easier to just ask for it right now
@@ -172,8 +142,6 @@ impl<B: Backend> App<B> {
         let mut pending_transactions: Vec<CompletedTransaction> = Vec::new();
         pending_transactions.extend(
             self.wallet
-                .write()
-                .await
                 .transaction_service
                 .get_pending_inbound_transactions()
                 .await?
@@ -183,8 +151,6 @@ impl<B: Backend> App<B> {
         );
         pending_transactions.extend(
             self.wallet
-                .write()
-                .await
                 .transaction_service
                 .get_pending_inbound_transactions()
                 .await?
@@ -199,8 +165,6 @@ impl<B: Backend> App<B> {
         self.app_state.write().await.pending_txs.items = pending_transactions;
         let completed_transactions = self
             .wallet
-            .write()
-            .await
             .transaction_service
             .get_completed_transactions()
             .await?

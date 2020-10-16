@@ -4123,6 +4123,7 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_p2p",
+ "tari_shutdown",
  "tari_wallet",
  "thiserror",
  "time",
