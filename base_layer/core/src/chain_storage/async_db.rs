@@ -126,6 +126,7 @@ make_async!(rewind_to_height(height: u64) -> Vec<Arc<Block>>, "rewind_to_height"
 
 //---------------------------------- Block --------------------------------------------//
 make_async!(add_block(block: Arc<Block>) -> BlockAddResult, "add_block");
+make_async!(cleanup_all_orphans() -> (), "cleanup_all_orphans");
 make_async!(block_exists(block_hash: BlockHash) -> bool, "block_exists");
 make_async!(fetch_block(height: u64) -> HistoricalBlock, "fetch_block");
 make_async!(fetch_orphan(hash: HashOutput) -> Block, "fetch_orphan");

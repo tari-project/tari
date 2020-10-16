@@ -90,6 +90,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.mainnet.db_type", "lmdb").unwrap();
     cfg.set_default("base_node.mainnet.orphan_storage_capacity", 720)
         .unwrap();
+    cfg.set_default("base_node.mainnet.orphan_db_clean_out_threshold", 0)
+        .unwrap();
     cfg.set_default("base_node.mainnet.pruning_horizon", 0).unwrap();
     cfg.set_default("base_node.mainnet.pruned_mode_cleanup_interval", 50)
         .unwrap();
@@ -139,6 +141,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 
     cfg.set_default("base_node.rincewind.db_type", "lmdb").unwrap();
     cfg.set_default("base_node.rincewind.orphan_storage_capacity", 720)
+        .unwrap();
+    cfg.set_default("base_node.rincewind.orphan_db_clean_out_threshold", 0)
         .unwrap();
     cfg.set_default("base_node.rincewind.pruning_horizon", 0).unwrap();
     cfg.set_default("base_node.rincewind.pruned_mode_cleanup_interval", 50)

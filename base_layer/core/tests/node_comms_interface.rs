@@ -416,7 +416,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let db = MemoryDatabase::<HashDigest>::default();
     let mut config = BlockchainDatabaseConfig::default();
     config.pruning_horizon = 2;
-    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
     let mempool_validator = MempoolValidators::new(
         TxInputAndMaturityValidator::new(store.clone()),
         TxInputAndMaturityValidator::new(store.clone()),

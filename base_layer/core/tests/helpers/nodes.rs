@@ -202,7 +202,8 @@ impl BaseNodeBuilder {
             .unwrap_or(ConsensusManagerBuilder::new(self.network).build());
         let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
         let blockchain_db_config = self.blockchain_db_config.unwrap_or(BlockchainDatabaseConfig::default());
-        let blockchain_db = BlockchainDatabase::new(db, &consensus_manager, validators, blockchain_db_config).unwrap();
+        let blockchain_db =
+            BlockchainDatabase::new(db, &consensus_manager, validators, blockchain_db_config, false).unwrap();
         let mempool_validator = MempoolValidators::new(
             TxInputAndMaturityValidator::new(blockchain_db.clone()),
             TxInputAndMaturityValidator::new(blockchain_db.clone()),

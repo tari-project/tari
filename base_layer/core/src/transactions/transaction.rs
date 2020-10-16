@@ -399,7 +399,7 @@ impl Display for TransactionOutput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let proof = self.proof.to_hex();
         fmt.write_str(&format!(
-            "{} [{:?}] Proof: {}..{}\n",
+            "({} [{:?}] Proof: {}..{})",
             self.commitment.to_hex(),
             self.features,
             proof[0..16].to_string(),

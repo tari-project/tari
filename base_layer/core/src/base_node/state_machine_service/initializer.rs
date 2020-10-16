@@ -26,7 +26,7 @@ use crate::{
         state_machine_service::{
             handle::StateMachineHandle,
             state_machine::{BaseNodeStateMachine, BaseNodeStateMachineConfig},
-            states::{BlockSyncStrategy, StatusInfo},
+            states::{BlockSyncConfig, BlockSyncStrategy, StatusInfo},
         },
         LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
@@ -50,6 +50,7 @@ pub struct BaseNodeStateMachineInitializer<B> {
     rules: ConsensusManager,
     factories: CryptoFactories,
     sync_strategy: BlockSyncStrategy,
+    orphan_db_clean_out_threshold: usize,
 }
 
 impl<B> BaseNodeStateMachineInitializer<B>
@@ -60,6 +61,7 @@ where B: BlockchainBackend + 'static
         rules: ConsensusManager,
         factories: CryptoFactories,
         sync_strategy: BlockSyncStrategy,
+        orphan_db_clean_out_threshold: usize,
     ) -> Self
     {
         Self {
@@ -67,6 +69,7 @@ where B: BlockchainBackend + 'static
             rules,
             factories,
             sync_strategy,
+            orphan_db_clean_out_threshold,
         }
     }
 }
@@ -92,6 +95,7 @@ where B: BlockchainBackend + 'static
         let sync_strategy = self.sync_strategy;
         let rules = self.rules.clone();
         let db = self.db.clone();
+        let orphan_db_clean_out_threshold = self.orphan_db_clean_out_threshold;
         context.spawn_when_ready(move |handles| async move {
             let outbound_interface = handles.expect_handle::<OutboundNodeCommsInterface>();
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
@@ -99,7 +103,13 @@ where B: BlockchainBackend + 'static
             let connectivity_requester = handles.expect_handle::<ConnectivityRequester>();
             let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
-            let mut state_machine_config = BaseNodeStateMachineConfig::default();
+            let mut state_machine_config = BaseNodeStateMachineConfig {
+                block_sync_config: BlockSyncConfig {
+                    orphan_db_clean_out_threshold,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
             state_machine_config.block_sync_config.sync_strategy = sync_strategy;
 
             // TODO: This should move to checking each time

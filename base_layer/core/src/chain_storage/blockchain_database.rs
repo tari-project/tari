@@ -269,7 +269,14 @@ macro_rules! fetch {
 /// let db = MemoryDatabase::<HashDigest>::default();
 /// let network = Network::LocalNet;
 /// let rules = ConsensusManagerBuilder::new(network).build();
-/// let db = BlockchainDatabase::new(db_backend, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
+/// let db = BlockchainDatabase::new(
+///     db_backend,
+///     &rules,
+///     validators,
+///     BlockchainDatabaseConfig::default(),
+///     false,
+/// )
+/// .unwrap();
 /// // Do stuff with db
 /// ```
 pub struct BlockchainDatabase<B> {
@@ -288,6 +295,7 @@ where B: BlockchainBackend
         consensus_manager: &ConsensusManager,
         validators: Validators<B>,
         config: BlockchainDatabaseConfig,
+        cleanup_orphans_at_startup: bool,
     ) -> Result<Self, ChainStorageError>
     {
         debug!(
@@ -305,6 +313,15 @@ where B: BlockchainBackend
             let genesis_block = consensus_manager.get_genesis_block();
             blockchain_db.store_new_block(genesis_block)?;
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
+        }
+        if cleanup_orphans_at_startup {
+            match blockchain_db.cleanup_all_orphans() {
+                Ok(_) => info!(target: LOG_TARGET, "Orphan database cleaned out at startup.",),
+                Err(e) => warn!(
+                    target: LOG_TARGET,
+                    "Orphan database could not be cleaned out at startup: ({}).", e
+                ),
+            }
         }
         if config.pruning_horizon != metadata.pruning_horizon {
             debug!(
@@ -663,6 +680,13 @@ where B: BlockchainBackend
             &new_height
         );
         Ok(block_add_result)
+    }
+
+    /// Clean out the entire orphan pool
+    pub fn cleanup_all_orphans(&self) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        let _ = cleanup_orphans(&mut *db, 0)?;
+        Ok(())
     }
 
     fn store_new_block(&self, block: Block) -> Result<(), ChainStorageError> {
@@ -1510,6 +1534,8 @@ fn handle_reorg<T: BlockchainBackend>(
     // Try and find all orphaned chain tips that can be linked to the new orphan block, if no better orphan chain
     // tips can be found then the new_block is a tip.
     let new_block_hash = new_block.hash();
+    // TODO: Improve efficiency of `find_orphan_chain_tips -> for_each_orphan -> lmdb_for_each` as this wastes
+    // TODO:   multiple seconds for each block to be added during a large sync
     let orphan_chain_tips = find_orphan_chain_tips(db, new_block.header.height, new_block_hash.clone());
     trace!(
         target: LOG_TARGET,

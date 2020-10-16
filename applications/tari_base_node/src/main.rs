@@ -206,6 +206,7 @@ fn main_inner() -> Result<(), ExitCodes> {
             node_identity,
             wallet_identity,
             shutdown.to_signal(),
+            bootstrap.clean_orphans_db,
         ))
         .map_err(|err| {
             error!(target: LOG_TARGET, "{}", err);

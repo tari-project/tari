@@ -172,6 +172,6 @@ pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
         .with_block(block0.clone())
         .build();
     let db = create_lmdb_database(path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
-    let db = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let db = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
     (db, vec![block0], vec![vec![output]], consensus_manager)
 }

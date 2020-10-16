@@ -74,6 +74,7 @@ pub struct BlockSyncConfig {
     pub max_add_block_retry_attempts: usize,
     pub header_request_size: usize,
     pub block_request_size: usize,
+    pub orphan_db_clean_out_threshold: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -115,6 +116,7 @@ impl Default for BlockSyncConfig {
             max_add_block_retry_attempts: MAX_ADD_BLOCK_RETRY_ATTEMPTS,
             header_request_size: HEADER_REQUEST_SIZE,
             block_request_size: BLOCK_REQUEST_SIZE,
+            orphan_db_clean_out_threshold: 0,
         }
     }
 }
@@ -322,6 +324,28 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
 
             if let StateInfo::BlockSync(ref mut info) = shared.info {
                 info.tip_height = network_tip_height;
+            }
+
+            // Searching through the orphan database for every block to be added during a large block sync can
+            // be inefficient - this is one way to optimize it by clearing out the database before hand
+            if shared.config.block_sync_config.orphan_db_clean_out_threshold > 0 &&
+                network_tip_height as i64 - sync_height as i64 >
+                    shared.config.block_sync_config.orphan_db_clean_out_threshold as i64
+            {
+                match async_db::cleanup_all_orphans(shared.db.clone()).await {
+                    Ok(_) => info!(
+                        target: LOG_TARGET,
+                        "Orphan database cleaned out in preparation for multiple blocks sync ({} blocks)",
+                        network_tip_height as i64 - sync_height as i64
+                    ),
+                    Err(e) => warn!(
+                        target: LOG_TARGET,
+                        "Orphan database could not be cleaned out ({} blocks) in preparation for multiple blocks \
+                         sync: {:?}.",
+                        network_tip_height as i64 - sync_height as i64,
+                        e,
+                    ),
+                }
             }
 
             while sync_height <= network_tip_height {

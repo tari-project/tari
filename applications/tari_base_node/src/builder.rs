@@ -230,16 +230,33 @@ pub async fn configure_and_initialize_node(
     node_identity: Arc<NodeIdentity>,
     wallet_node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
+    cleanup_orphans_at_startup: bool,
 ) -> Result<BaseNodeContext, anyhow::Error>
 {
     let result = match &config.db_type {
         DatabaseType::Memory => {
             let backend = MemoryDatabase::<HashDigest>::default();
-            build_node_context(backend, node_identity, wallet_node_identity, config, interrupt_signal).await?
+            build_node_context(
+                backend,
+                node_identity,
+                wallet_node_identity,
+                config,
+                interrupt_signal,
+                cleanup_orphans_at_startup,
+            )
+            .await?
         },
         DatabaseType::LMDB(p) => {
             let backend = create_lmdb_database(&p, config.db_config.clone(), MmrCacheConfig::default())?;
-            build_node_context(backend, node_identity, wallet_node_identity, config, interrupt_signal).await?
+            build_node_context(
+                backend,
+                node_identity,
+                wallet_node_identity,
+                config,
+                interrupt_signal,
+                cleanup_orphans_at_startup,
+            )
+            .await?
         },
     };
     Ok(result)
@@ -262,6 +279,7 @@ async fn build_node_context<B>(
     wallet_node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
     interrupt_signal: ShutdownSignal,
+    cleanup_orphans_at_startup: bool,
 ) -> Result<BaseNodeContext, anyhow::Error>
 where
     B: BlockchainBackend + 'static,
@@ -279,7 +297,7 @@ where
         pruning_horizon: config.pruning_horizon,
         pruning_interval: config.pruned_mode_cleanup_interval,
     };
-    let db = BlockchainDatabase::new(backend, &rules, validators, db_config)?;
+    let db = BlockchainDatabase::new(backend, &rules, validators, db_config, cleanup_orphans_at_startup)?;
     let mempool_validator = MempoolValidators::new(
         TxInternalConsistencyValidator::new(factories.clone()).and_then(TxInputAndMaturityValidator::new(db.clone())),
         TxInputAndMaturityValidator::new(db.clone()),
