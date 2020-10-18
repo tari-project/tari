@@ -58,6 +58,7 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
     Handle::current()
         .block_on(app.app_state.refresh_contacts_state())
         .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
+    Handle::current().block_on(app.app_state.start_event_monitor());
     crossterm_loop(app)
 }
 /// This is the main loop of the application UI using Crossterm based events

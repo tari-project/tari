@@ -5,7 +5,9 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
+#![recursion_limit = "256"]
 use log::*;
+use rand::{rngs::OsRng, RngCore};
 use std::{fs, sync::Arc};
 use structopt::StructOpt;
 use tari_app_utilities::{
@@ -31,7 +33,7 @@ use wallet_modes::{command_mode, grpc_mode, script_mode, tui_mode, WalletMode};
 #[macro_use]
 extern crate lazy_static;
 
-pub const LOG_TARGET: &str = "wallet::app::main";
+pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 /// The minimum buffer size for a tari application pubsub_connector channel
 const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
 
@@ -225,9 +227,9 @@ async fn setup_wallet(
     .await
     .map_err(|e| {
         if let WalletError::CommsInitializationError(ce) = e {
-            ExitCodes::WalletError(format!("Error initializing Comms: {}", ce.to_friendly_string()))
+            ExitCodes::WalletError(format!("Error initializing Comms: {}", ce))
         } else {
-            ExitCodes::WalletError(format!("Error creating Wallet Container: {:?}", e))
+            ExitCodes::WalletError(format!("Error creating Wallet Container: {}", e))
         }
     })?;
 
@@ -236,10 +238,11 @@ async fn setup_wallet(
     // TODO update this to come from an explicit config field. This will be replaced by gRPC interface.
     if !config.peer_seeds.is_empty() {
         let seed_peers = parse_peer_seeds(&config.peer_seeds);
+        let random_seed_peer = OsRng.next_u32() as usize % seed_peers.len();
         wallet
             .set_base_node_peer(
-                seed_peers[0].public_key.clone(),
-                seed_peers[0]
+                seed_peers[random_seed_peer].public_key.clone(),
+                seed_peers[random_seed_peer]
                     .addresses
                     .first()
                     .expect("The seed peers should have an address")
@@ -247,6 +250,14 @@ async fn setup_wallet(
             )
             .await
             .map_err(|e| ExitCodes::WalletError(format!("Error setting wallet base node peer. {}", e)))?;
+    }
+
+    // Restart transaction protocols
+    if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {
+        error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
+    }
+    if let Err(e) = wallet.transaction_service.restart_broadcast_protocols().await {
+        error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
     }
 
     Ok(wallet)

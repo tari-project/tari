@@ -500,6 +500,7 @@ where
                     self.db.get_pending_outbound_transactions().await?,
                 ))
             },
+
             TransactionServiceRequest::GetCompletedTransactions => Ok(
                 TransactionServiceResponse::CompletedTransactions(self.db.get_completed_transactions().await?),
             ),
@@ -523,6 +524,9 @@ where
                     self.db.get_completed_transaction(tx_id).await?,
                 )))
             },
+            TransactionServiceRequest::GetAnyTransaction(tx_id) => Ok(TransactionServiceResponse::AnyTransaction(
+                Box::new(self.db.get_any_transaction(tx_id).await?),
+            )),
             TransactionServiceRequest::SetBaseNodePublicKey(public_key) => {
                 self.set_base_node_public_key(public_key);
                 Ok(TransactionServiceResponse::BaseNodePublicKeySet)

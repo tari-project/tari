@@ -37,6 +37,7 @@ use crate::{
 use tari_common::Network;
 use tari_comms::NodeIdentity;
 use tari_wallet::WalletSqlite;
+use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout},
@@ -74,7 +75,6 @@ impl<B: Backend> App<B> {
 
             should_quit: false,
             app_state,
-            // tabs: TabsState::new(vec!["Transactions".into(), "Send/Receive".into(), "Network".into()]),
             tabs,
         }
     }
@@ -125,7 +125,10 @@ impl<B: Backend> App<B> {
         self.tabs.on_backspace(&mut self.app_state);
     }
 
-    pub fn on_tick(&mut self) {}
+    pub fn on_tick(&mut self) {
+        Handle::current().block_on(self.app_state.update_cache());
+        self.tabs.on_tick(&mut self.app_state);
+    }
 
     pub fn draw(&mut self, f: &mut Frame<'_, B>) {
         let max_width_layout = Layout::default()

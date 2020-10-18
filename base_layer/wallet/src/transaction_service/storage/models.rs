@@ -337,3 +337,20 @@ impl From<InboundTransaction> for CompletedTransaction {
         }
     }
 }
+
+#[derive(Debug)]
+pub enum WalletTransaction {
+    PendingInbound(InboundTransaction),
+    PendingOutbound(OutboundTransaction),
+    Completed(CompletedTransaction),
+}
+
+impl From<WalletTransaction> for CompletedTransaction {
+    fn from(tx: WalletTransaction) -> Self {
+        match tx {
+            WalletTransaction::PendingInbound(tx) => CompletedTransaction::from(tx),
+            WalletTransaction::PendingOutbound(tx) => CompletedTransaction::from(tx),
+            WalletTransaction::Completed(tx) => tx,
+        }
+    }
+}

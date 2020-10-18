@@ -55,5 +55,7 @@ pub use request::{MempoolRequest, MempoolServiceRequest};
 mod response;
 pub use response::{MempoolResponse, MempoolServiceResponse};
 
+#[cfg(feature = "base_node")]
 mod handle;
+#[cfg(feature = "base_node")]
 pub use handle::MempoolHandle;
