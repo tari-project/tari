@@ -332,7 +332,7 @@ mod test {
 
         // Check if home_dir is used by default
         assert_eq!(
-            dirs::home_dir().unwrap().join(".tari"),
+            dirs_next::home_dir().unwrap().join(".tari"),
             dir_utils::default_path("", None)
         );
 
