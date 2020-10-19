@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "This crate is to provide a single source for all cross application grpc files and conversions to and from tari::core"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.5.7"
+version = "0.5.8"
 edition = "2018"
 
 [dependencies]
