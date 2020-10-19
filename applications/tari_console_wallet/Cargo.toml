@@ -27,7 +27,7 @@ log = { version = "0.4.8", features = ["std"] }
 structopt = { version = "0.3.13", default_features = false }
 config = { version = "0.9.3" }
 qrcode = { version = "0.12" }
-dirs = "2.0.2"
+dirs-next = "1.0.2"
 strum = "^0.19"
 strum_macros = "^0.19"
 time = "0.1.38"
