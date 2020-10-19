@@ -72,7 +72,7 @@ It should also be fairly clear that basic Mimblewimble does not have the feature
 
 Extensions to Mimblewimble have been proposed for most of these features, for example, David Burkett's one-sided payment
 proposal for LiteCoin ([LIP-004]), this project's [HTLC RFC](RFC-0230_HTLC.md), the pegging proposals for the
-Clacks side-chain, and [Scriptless script]s.
+Clacks side-chain, and [Scriptless script]s.
 
 This RFC makes the case that if Tari were to implement a scripting language similar to Bitcoin script, then all of these
 use cases collapse and can be achieved under a single set of (relatively minor) modifications and additions to the
@@ -98,7 +98,7 @@ to be no plans to include general scripting into the protocol.
 
 ### Scriptless scripts
 
-[Scriptless script] is a wonderfully elegant technology and inclusion of Tari script does not preclude the use of
+[Scriptless script] is a wonderfully elegant technology and inclusion of Tari script does not preclude the use of
 Scriptless script in Tari. However, scriptless scripts are difficult to reason about and development of them are best
 left to experts in cryptographic proofs, leaving the development of Mimblewimble smart contracts in the hands of a very
 select group of people.
@@ -167,7 +167,7 @@ Therefore, it's imperative the UTXO creator sign the script.
 Further, this signature must be present in the _kernel_ in some form, otherwise miners will be able to remove the script
 via cut-through, whereas kernels never get pruned.
 
-One approach to commit to the script hashes is to modify the output commitments using a variation of the [data commitments] approach
+One approach to commit to the script hashes is to modify the output commitments using a variation of the [data commitments] approach
 first suggested by [Phyro](https://github.com/phyro). In this approach, when creating a new UTXO, the owner also calculates
 the hash of the locking script, _s_, such that `s = H(script)`. The script hash gets stored in the UTXO itself.
 
@@ -196,7 +196,7 @@ pub struct TransactionOutput {
 ```
 
 Under Tari script, this definition does not change. The information making up the commitment does change slightly, but
-from the perspective of the block and transaction storage, an output is identical pre- and post- Tari script. 
+from the perspective of the block and transaction storage, an output is identical pre- and post- Tari script.
 
 
 Now when calculating the transaction or block balance, we calculate a different set of commitments. The current commitment,
@@ -215,7 +215,7 @@ L_a &= k_{a'}. G \\\\
 \end{align}
 $$
 
-Transaction participants will sign the kernel and build the range proof with 
+Transaction participants will sign the kernel and build the range proof with
 $$ k_a  + k_{a'}\sigma_a $$
 rather than just \\( k \\).
 
@@ -236,7 +236,7 @@ For Tari script, we require the addition of an additional field:
 
 The script key, \\( L_i \\) is the public counterpart of a key chosen by the creator of the UTXO.
 The secret portion of the script key, \\( k_{i'} \\) effectively locks the script hash and prevents third parties from modifying the script portion of the output commitment without detection.
-This was a vulnerability in the original [data commitments] scheme which is resolved with this modification.
+This was a vulnerability in the original [data commitments] scheme which is resolved with this modification.
 
 ### Script section
 
@@ -244,13 +244,13 @@ A new section in the Mimblewimble aggregate body is an array of script objects. 
 (sum of the) number of non-default script hashes in the kernel(s).
 
 A script object consists of:
-* `script`: The serialised binary representation of the script. The hash of this data MUST equal one of the script 
-   hashes supplied in the kernel input script hash array,
+* `script`: The serialised binary representation of the script. The hash of this data MUST equal one of the script
+  hashes supplied in the kernel input script hash array,
 * `data`: The serialised representation of the data to push onto the stack prior to executing of the script,
 * `signature`: A signature of the script + data verified, signed by \\( k_{a'} \\).
 
-The default script, `PUSH(0)` is trivially and universally satisfied. Its hash is known _a priori_ and is 
- easily identified in the kernel. Therefore, to save space, we omit these scripts from the script section.
+The default script, `PUSH(0)` is trivially and universally satisfied. Its hash is known _a priori_ and is
+easily identified in the kernel. Therefore, to save space, we omit these scripts from the script section.
 
 It's possible to have duplicate, non-trivial script hashes in the kernel. Since it is possible to have different inputs
 to the script and still be a valid spend condition, these scripts MUST be repeated in the script section, even if they
@@ -265,9 +265,9 @@ Given a set of inputs, outputs, the transaction fee, \\( f \\), and the transact
 
 $$
 \begin{align}
-  \sum\mathrm{Inputs} - \sum\mathrm{Outputs} - \mathrm{fee}.H &\stackrel?= \mathrm{Excess} + \sum\mathrm{script~hashes} + \mathrm{offset}.G  \\\\
- \Rightarrow \sum \pm\hat{C_i} - f.H  &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G  \\\\
- \Rightarrow \sum \pm C_i \pm L_i\sigma_i - f.H &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G
+\sum\mathrm{Inputs} - \sum\mathrm{Outputs} - \mathrm{fee}.H &\stackrel?= \mathrm{Excess} + \sum\mathrm{script~hashes} + \mathrm{offset}.G  \\\\
+\Rightarrow \sum \pm\hat{C_i} - f.H  &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G  \\\\
+\Rightarrow \sum \pm C_i \pm L_i\sigma_i - f.H &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G
 \end{align}
 $$
 
@@ -277,15 +277,15 @@ If the accounting is correct, all values will cancel out:
 
 $$
 \begin{align}
-  \sum(\pm k_i.G \pm L_i.\sigma_i) &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G \\\\
-  \sum \pm P_i + \sum \pm L_i.\sigma_i &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G \\\\
+\sum(\pm k_i.G \pm L_i.\sigma_i) &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G \\\\
+\sum \pm P_i + \sum \pm L_i.\sigma_i &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G \\\\
 \end{align}
 $$
 
 Given that \\(  \sum \pm P_i = X_s + \delta.G \\), the left hand side becomes, with the offset terms cancelling:
 
 $$
-  X_s + \sum\pm L_i\sigma_i \stackrel?= X_s + \sum \pm L_i\sigma_i
+X_s + \sum\pm L_i\sigma_i \stackrel?= X_s + \sum \pm L_i\sigma_i
 $$
 
 and the balance holds.
@@ -298,14 +298,14 @@ $$
 \begin{align}
 s_i &= r_i + e.\pm \bigl(k_i + k_{i'}\sigma_i \bigr) \\\\
 s_i.G &= r_i.G + e.\pm \bigl(k_i + k_{i'}\sigma_i \bigr).G \\\\
-      &= R_i + e.\pm \bigl(P_i + L_i\sigma_i \bigr) \\\\
-    s &= \sum s_i \\\\
-    s.G  &= \sum R_i + e.\bigl( \sum \pm P_i \pm \sum L_i\sigma_i \bigr) \\\\
-         &= \sum R_i + e.\bigl( X_s + \sum \pm L_i\sigma_i \bigr) \\\\
+&= R_i + e.\pm \bigl(P_i + L_i\sigma_i \bigr) \\\\
+s &= \sum s_i \\\\
+s.G  &= \sum R_i + e.\bigl( \sum \pm P_i \pm \sum L_i\sigma_i \bigr) \\\\
+&= \sum R_i + e.\bigl( X_s + \sum \pm L_i\sigma_i \bigr) \\\\
 \end{align}
 $$
 
-The exercise above demonstrates that $$x_s + \sum \pm L_i\sigma_i$$ signs the kernel correctly. 
+The exercise above demonstrates that $$x_s + \sum \pm L_i\sigma_i$$ signs the kernel correctly.
 
 The same treatment extends to be block validation check. Note that since the individual kernel excesses can still be
 summed to obtain the overall block balance.
@@ -318,9 +318,9 @@ In addition to the changes given above, there are consensus rule changes for tra
 
 For every valid block or transaction,
 
-1. Every script hash in the kernel MUST be a default script hash or match a script in the script section. If there are 
+1. Every script hash in the kernel MUST be a default script hash or match a script in the script section. If there are
    duplicate non-trivial script hashes present, there MUST be a script entry for every duplicate.
-2. The script and its input data, if any, MUST execute successfully, i.e. without any errors. After execution, the stack 
+2. The script and its input data, if any, MUST execute successfully, i.e. without any errors. After execution, the stack
    MUST have exactly one element and its value MUST be exactly zero.
 3. The Coinbase output MUST use a default script.
 
@@ -339,14 +339,14 @@ First, Bob simply tries to modify the kernel, replacing one of the kernel script
 
 #### Changing commitment
 
-Bob then tries to apply the attack described in [data commitments], and tries to modify the UTXO commitment as follows:
+Bob then tries to apply the attack described in [data commitments], and tries to modify the UTXO commitment as follows:
 
 $$
 \begin{align}
-  \hat{C} &= k_i.G + k_{a'}\sigma_a.G + v.H  \\\\
-  \Rightarrow \hat{C_b} &= k_i.G + k_{a'}\sigma_a.G + v.H - k_{a'}\sigma_a.G + k_{b'}\sigma_a.G \\\\
-            &= k_i.G + v.H + k_{b'}.G \\\\
-            &= C_a + L_b\sigma_b
+\hat{C} &= k_i.G + k_{a'}\sigma_a.G + v.H  \\\\
+\Rightarrow \hat{C_b} &= k_i.G + k_{a'}\sigma_a.G + v.H - k_{a'}\sigma_a.G + k_{b'}\sigma_a.G \\\\
+&= k_i.G + v.H + k_{b'}.G \\\\
+&= C_a + L_b\sigma_b
 \end{align}
 $$
 
@@ -354,10 +354,10 @@ So far, so bad. But Bob is still required to produce a signature. Bob needs to r
 with his script:
 
 $$
-  s \Rightarrow s^* = s - k_{a'}\sigma_a.e + k_{b'}\sigma_b.e
+s \Rightarrow s^* = s - k_{a'}\sigma_a.e + k_{b'}\sigma_b.e
 $$
 
-To do this, Bob must know the value of \\( k_{a'} \\) which requires him to find the discrete log of \\( L_a \\), an 
+To do this, Bob must know the value of \\( k_{a'} \\) which requires him to find the discrete log of \\( L_a \\), an
 infeasable exercise.
 
 #### Rogue script hash attack
@@ -366,13 +366,13 @@ Now Bob wishes to replace a script on an output with one of their own, \(( \sigm
 
 $$
 \begin{align}
-  (L_1, \sigma_1) &\rightarrow (L_1, \sigma_*) \\\\
-  (L_2, \sigma_2) &\rightarrow (L_1, \sigma_2 - \sigma_* + \sigma_1)
+(L_1, \sigma_1) &\rightarrow (L_1, \sigma_*) \\\\
+(L_2, \sigma_2) &\rightarrow (L_1, \sigma_2 - \sigma_* + \sigma_1)
 \end{align}
 $$
 
 Here the overall balance still holds. Unfortunately for Bob, there's no corresponding entry in the script section for the
-second script hash that he modified, nor will there be any valid witness signature for the script.  
+second script hash that he modified, nor will there be any valid witness signature for the script.
 
 In general, any modification to the Public script key, or script hash will invalidate the overall balance, the script
 section, or both.
@@ -380,7 +380,7 @@ section, or both.
 #### Changing script input data
 
 The presence of the witness signature in the script section prevents anyone from changing the script input data unless
-you know the script key. 
+you know the script key.
 
 ### Cut-through
 
@@ -412,14 +412,14 @@ Assuming a moderately busy network processing 1,000 transactions per day, with a
 this would produce growth of around 400 MB per year. The addition of TariScript, using these same assumptions, adds another 67 MB
 to the chain, or an increase of about 17%.
 
-The scripts and the input data will further bloat the chain until they are pruned, but do not add to the size of the 
+The scripts and the input data will further bloat the chain until they are pruned, but do not add to the size of the
 blockchain in the long term.
 
 There is the possibility of reducing the chain size increase. If the input script hashes in the kernel _references_
 the kernel that created the output with an index to the relevant script hash, rather than duplicating the \\( L_a, \sigma_a \\)
-pair, we could almost halve the kernel size increase, and achieve an annual chain size increase of about 9% using the same 
+pair, we could almost halve the kernel size increase, and achieve an annual chain size increase of about 9% using the same
 assumptions as before.
- 
+
 However, this approach adds a significant degree of linkage to the chain data and so it is debatable whether the space savings
 are worthwhile.
 
@@ -427,6 +427,18 @@ The other key drawback of TariScript is the additional information that is hande
 analysis. Even though the script hashes are decoupled from the outputs themselves, one may be able to draw inferences
 from the distribution of the script hashes committed into the chain. These privacy concerns are relatively minor, but they
 certainly add a level of heterogeneity to the blockchain data, which can only serve to aid chainalysis efforts.
+
+## Notation
+
+| Symbol            | Definition                                                                 |
+|:------------------|:---------------------------------------------------------------------------|
+| \\( s_a \\)       | An output script for output _a_, serialised to binary                      |
+| \\( \sigma_a \\)  | The 256-bit Blake2b hash of an output script, \\( s_a \\)                  |
+| \\( k_{a'} \\)    | The script private key                                                     |
+| \\( L_a \\)       | The script public key, i.e. \\( k_{a'}.G \\)                               |
+| \\( C_a \\)       | A Pedersen commitment, i.e. \\( k_a.G + v_a.H \\)                          |
+| \\( \hat{C_a} \\) | A script-modified Pedersen commitment, i.e. \\( (k_a + k_{a'}).G + v.H \\) |
+| \\( \delta \\)    | The transaction offset                                                     |
 
 ## Tari Script semantics
 
@@ -441,54 +453,241 @@ The main properties of Tari script are
   on the stack with a value of zero. In other words, the script fails if the stack is empty, or contains more than one
   element, or aborts early.
 * It is not Turing complete, so there are no loops or timing functions.
-* The opcodes enforce type safety. e.g. A public key cannot be added to an integer scalar. Errors of this kind MUST cause 
+* The opcodes enforce type safety. e.g. A public key cannot be added to an integer scalar. Errors of this kind MUST cause
   the script to fail. The Rust implementation of Tari Script automatically applies the type safety rules.
 
-### Opcodes
+### Failure modes
+
+A script can fail for a variety of reasons. Most failures are not context-dependent, i.e. they will fail irrespective of
+the state of the blockchain.
+
+Some scripts' execution result, such as those that make comparisons to the block height, are dependent on the execution
+context. If a script fails, it can fail in a `Failure` mode, indicating that the script will always fail, or it can fail
+in `ContextFailure` mode, meaning it is possible that the script could pass in a different context.
+
+The context is invariant in block validations, and so both failure modes are treated identically: The script, and block are
+both invalid and MUST be rejected.
+
+But in transaction validations, the mempool SHOULD move a transaction to the Pending pool if a transaction fails
+with `ContextFailure`. It MUST reject the transaction if it fails with `Failure`.
+
+Not all context-dependent failures will fail with `ContextFailure`. For example, `CheckHeight(height) ZeroVerify` will
+fail with `Faiure` even though this script might pass in future. This is because the `CheckHeight(height)` does not have
+a context failure mode. The TariScript VM is not smart enough to know that the `ZeroVerify` opcode is context-dependent
+by virtue of the preceding instruction. If you wish to write context-dependent scripts, then use opcode that can
+fail immediately with the `ContextFailure` state.
+
+### Constraints
+
+* The maximum length of a script when serialised is 1,024 bytes.
+* The maximum length of a script's input is 1,024 bytes.
+* The maximum stack height is 255.
+
+## Opcodes
 
 Tari Script opcodes range from 0 to 255 and are represented as a single unsigned byte. The opcode set is
-initially limited to allow for the applications specified in this RFC, but can be expanded in the future.
+limited to allow for the applications specified in this RFC, but can be expanded in the future.
 
-The maximum length of a script when serialised is 2,048 bytes.
+### Block height checks
 
-```rust,ignore
-pub enum Opcode {
-    /// Push the current chain height onto the stack
-    PushHeight,
-    /// Push the associated 32-byte value onto the stack
-    PushHash(Box<HashValue>),
-    /// Hash the top stack element with the Blake256 hash function and push the result to the stack
-    HashBlake256,
-    /// Fail the script immediately. (Must be executed.)
-    Return,
-    /// Drops the top stack item
-    Drop,
-    /// Duplicates the top stack item
-    Dup,
-    /// Reverse rotation. The top stack item moves into 3rd place, abc => bca
-    RevRot,
-    /// Pop two items and push their sum
-    Add,
-    /// Pop two items and push the second minus the top
-    Sub,
-    /// Pop the public key and then the signature. If the signature signs the script, push 0 to the stack, otherwise
-    /// push 1
-    CheckSig,
-    /// As for CheckSig, but aborts immediately if the signature is invalid. As opposed to Bitcoin, it pushes a zero
-    /// to the stack if successful
-    CheckSigVerify,
-    /// Pushes 0, if the inputs are exactly equal, 1 otherwise
-    Equal,
-    /// Pushes 0, if the inputs are exactly equal, aborts otherwise
-    EqualVerify,
-}
-```
+All these opcodes test the current block height (or, if running the script as part of a transaction
+validation, the next earliest block height) against a given value.
 
-### Input data
+##### CheckHeightVerify(height)
 
-The maximum length of a script input data is 2,048 bytes.
+Compare this block's height to `height`. This is a no-op opcode.
 
-### Serialisation
+Fails with `ContextFailure` if:
+* the height < `height`.
+
+##### CheckHeight(height)
+
+Compare this block's height to `height`. Push the value of (`height` - the current height) to the stack
+if the height <= `height`, otherwise push zero to the stack. In other words, the top of the stack will hold the height
+difference between `height` and the current height (with a minimum of zero).
+
+Fails with `Failure` if:
+* the stack would exceed the max stack height.
+
+##### CompareHeightVerify
+
+Pop the top of the stack as `height`. The result of this opcode is a no-op.
+
+Fails with `ContextFailure` if:
+* the height < `height`.
+
+Fails with `Failure` if:
+* there is not a valid integer value on top of the stack,
+* the stack is empty.
+
+##### CompareHeight
+
+Pop the top of the stack as `height`. Push the value of (`height` - the current height) to the stack if the height
+<= `height`, otherwise push zero to the stack. In other words, this opcode replaces the top of the stack with the
+difference between that value and the current height.
+
+Fails with `Failure` if:
+* there is not a valid integer value on top of the stack,
+* the stack is empty.
+
+### Stack manipulation
+
+##### PushZero
+
+Pushes a zero onto the stack. This is a very common opcode and has the same effect as `PushInt(0)` but is more compact.
+
+The default script is a single `PushZero`.
+
+##### PushOne
+
+Pushes a one onto the stack. This is a very common opcode and has the same effect as `PushInt(1)` but is more compact.
+
+`PushOne` can be used in conditionals and to represent `false` or a failure condition. For example,
+
+    PushOne
+
+is a burn script, meaning that no-one can spend the output, since the script will always fail, similar to `Return`
+
+##### PushHash(HashValue)
+
+Push the associated 32-byte value onto the stack.
+
+Fails with `Failure` if:
+* HashValue is not a valid 32 byte sequence
+* the stack would exceed the max stack height.
+
+##### PushInt(i64)
+
+Push the associated 64 bit signed integer onto the stack
+
+Fails with `Failure` if:
+* HashValue is not a valid 8 byte sequence
+* the stack would exceed the max stack height.
+
+##### PushPubKey(PublicKey)
+
+Push the associated 32-byte value onto the stack. It will be interpreted as a public key or a commitment.
+
+Fails with `Failure` if:
+* PublicKey is not a valid 32 byte sequence
+* the stack would exceed the max stack height.
+
+##### Drop
+
+Drops the top stack item.
+
+Fails with `Failure` if:
+* The stack is empty
+
+##### Dup
+
+Duplicates the top stack item.
+
+Fails with `Failure` if:
+* The stack is empty
+* the stack would exceed the max stack height.
+
+##### RevRot,
+
+Reverse rotation. The top stack item moves into 3rd place, e.g. `abc => bca`.
+
+Fails with `Failure` if:
+* The stack has two or fewer elements
+
+### Math operations
+
+##### Add
+
+Pop two items and push their sum
+
+Fails with `Failure` if:
+* The stack has a height of one or less
+
+##### Sub
+
+Pop two items and push the second minus the top
+
+Fails with `Failure` if:
+* The stack has a height of one or less
+
+##### Equal
+
+Pops the top two items, and pushes 0 to the stack if the inputs are exactly equal, 1 otherwise.
+
+Fails with `Failure` if:
+* The stack height is one or less
+
+##### EqualVerify
+
+Pops the top two items, and compare their values.
+
+Fails with `Failure` if:
+* The stack height is one or less,
+* The top two stack elements are not equal
+
+### Boolean logic
+
+#### Or(n)
+
+`n` items are popped from the stack. The top item must match at least one of those items.
+
+Fails with `Failure` if:
+* The stack has height `n` or less
+* The top value does not match any of the popped items
+
+### Cryptographic operations
+
+##### HashBlake256
+
+Pop the top element, hash it with the Blake256 hash function and push the result to the stack.
+
+Fails with `Failure` if:
+* The stack is empty
+
+##### CheckSig,
+
+Pop the public key and then the signature. If the signature signs the script, push 0 to the stack, otherwise
+push 1.
+
+Fails with `Failure` if:
+* The stack is of height one or less
+* The top stack element is not a PublicKey or Commitment
+* The second stack element is not a Signature
+
+##### CheckSigVerify,
+
+Pop the public key and then the signature. A successful execution does not manipulate the stack an further.
+
+Fails with `Failure` if:
+* The stack is of height one or less
+* The top stack element is not a PublicKey or Commitment
+* The second stack element is not a Signature
+* The signature does not sign the script
+
+### Miscellaneous
+
+##### Return
+
+Always fails with `Failure`.
+
+##### If-then-else
+
+The if-then-else clause is marked with the `IFTHEN` opcode.
+When the `IFTHEN` opcode is reached, the top element of the stack is popped into `pred`.
+If `pred` is zero, the instructions between `IFTHEN` and `ELSE` are executed. The instructions from `ELSE` to `ENDIF` are
+then popped without being executed.
+
+If `pred` is not zero, instructions are popped until `ELSE` or `ENDIF` is encountered.
+If `ELSE` is encountered, instructions are executed until `ENDIF` is reached.
+`ENDIF` is a marker opcode and a no-op.
+
+Fails with `Failure` if:
+* The instruction stack is empty before encountering `ENDIF`
+
+If any instruction during execution of the clause causes a failure, the script fails with the same mode.
+
+
+## Serialisation
 
 Tari Script and the execution stack are serialised into byte strings using a simple linear parser. Since all opcodes are
 a single byte, it's very easy to read and write script byte strings. If an opcode has a parameter associated with it,
@@ -516,9 +715,8 @@ The types of input parameters that are accepted are:
 
 ```rust,ignore
 pub enum StackItem {
-    Number(i64),
+    Integer(i64),
     Hash(HashValue),
-    Commitment(PedersenCommitment),
     PublicKey(RistrettoPublicKey),
     Signature(RistrettoSchnorr),
 }
@@ -530,7 +728,7 @@ pub enum StackItem {
 
 Tari script places restrictions on _who_ can spend UTXOs. It will also be useful for Tari digital asset applications to
 restrict _how_ or _where_ UTXOs may be spent in some cases. The general term for these sorts of restrictions are termed
-_covenants_. The [Handshake white paper] has a fairly good description of how covenants work.
+_covenants_. The [Handshake white paper] has a fairly good description of how covenants work.
 
 It is beyond the scope of this RFC, but it's anticipated that Tari Script would play a key role in the introduction of
 generalised covenant support into Tari.
@@ -540,8 +738,8 @@ generalised covenant support into Tari.
 The current Tari protocol has an issue with Transaction Output Maturity malleability. This output feature is enforced in
 the consensus rules but it is actually possible for a miner to change the value without invalidating the transaction.
 
-We could simply remove all output features, except the coinbase feature and rely on Tari script to reliably enforce
-UTXO lock times instead.
+With TariScript, we can simply remove all the output features, except the coinbase feature completely and rely on
+TariScript to reliably enforce UTXO lock times instead and any other features instead.
 
 ## Applications
 
@@ -563,13 +761,13 @@ In particular, if Alice is sending some Tari to Bob, she generates a shared priv
 
 $$ k_s = \mathrm{H}(k_a P_b) $$
 
-where \\( P_b \\) is Bob's Tari node address, or any other public key that Bob has shared with Alice. Alice can generate
+where \\( P_b \\) is Bob's Tari node address, or any other public key Bob has shared with Alice. Alice can generate
 an ephemeral public-private keypair, \\( P_a = k_a. G \\) for this transaction.
 
 Alice then locks the output with the following script:
 
 ```text
-Dup PushPubkey(P_B) EqualVerify CheckSig Add
+Dup PushPubkey(P_B) EqualVerify CheckSig
 ```
 
 where `P_B` is Bob's public key. As one can see, this Tari script is very similar to Bitcoin script.
@@ -577,11 +775,58 @@ The interpretation of this script is, "Given a Public key, and a signature of th
 script, the public key must be equal to the one in the locking script, and the signature must be valid using the same
 public key".
 
-This is in effect the same as Bitcoin's P2PK script. To increase privacy, Alice could also lock the UTXO with a P2PKH
+This is in effect the same as Bitcoin's P2PK script.
+
+This script would be executed with Bob supplying his public key and signature signing the script above.
+
+To illustrate the execution process, we show the script running on the left, and resulting stack on the right:
+
+| Initial script    | Initial Stack         |
+|:------------------|:----------------------|
+| `Dup`             | Bob's Pubkey          |
+| `PushPubkey(P_B)` | Bob's signature (R,s) |
+| `EqualVerify`     |                       |
+| `CheckSig`        |                       |
+
+Copy Bob's pubkey:
+
+| `Dup`             |                       |
+|:------------------|:----------------------|
+| `PushPubkey(P_B)` | Bob's Pubkey          |
+| `EqualVerify`     | Bob's Pubkey          |
+| `CheckSig`        | Bob's signature (R,s) |
+
+Push the pubkey we need to the stack:
+
+| `PushPubkey(P_B)` |                       |
+|:------------------|:----------------------|
+| `EqualVerify`     | P_b                   |
+| `CheckSig`        | Bob's Pubkey          |
+|                   | Bob's Pubkey          |
+|                   | Bob's signature (R,s) |
+
+
+Is `P_b` equal to `Bob's pubkey`?
+
+| `EqualVerify` |                       |
+|:--------------|:----------------------|
+| `CheckSig`    | Bob's Pubkey          |
+|               | Bob's signature (R,s) |
+
+Check the signature, and if it is correct:
+
+| `CheckSig` |     |
+|:-----------|:----|
+|            | `0` |
+|            |     |
+
+The script has completed and is succesful.
+
+To increase privacy, Alice could also lock the UTXO with a P2PKH
 script:
 
 ```text
-Dup HashBlake256 PushHash(HB) EqualVerify CheckSig Add
+Dup HashBlake256 PushHash(HB) EqualVerify CheckSig
 ```
 
 where `HB` is the hash of Bob's public key.
@@ -593,18 +838,135 @@ Since the script is committed to and cannot be cut-through, only Bob will be abl
 able to discover the private key from the public key information (the discrete log assumption), or if the majority of
 miners collude to not honour the consensus rules governing the successful evaluation of the script (the 51% assumption).
 
-## Notation
+### Non-malleable lock_height
 
-| Symbol             | Definition                                                                 |
-|--------------------|----------------------------------------------------------------------------|
-| \\( s_a \\)        | An output script for output _a_, serialised to binary                      |
-| \\( \sigma_a \\)   | The 256-bit Blake2b hash of an output script, \\( s_a \\)                  |
-| \\( k_{a'} \\)     | The script private key                                                     |
-| \\( L_a \\)        | The script public key, i.e. \\( k_{a'}.G \\)                               |
-| \\( C_a \\)        | A Pedersen commitment, i.e. \\( k_a.G + v_a.H \\)                          |
-| \\( \hat{C_a} \\)  | A script-modified Pedersen commitment, i.e. \\( (k_a + k_{a'}).G + v.H \\) |
-| \\( \delta \\)     | The transaction offset                                                     |
+A simple lock height script, of the "you can only spend this UTXO after block 420" variety:
 
+```text
+checkHeightVerify(420) PushZero
+```
+
+Note that we need the `PushZero` opcode, since the `xxxVerify` opCodes do not push any results to the stack.
+
+###  Hash time-lock contract
+
+Alice sends some Tari to Bob. If he doesn't spend it within a certain timeframe (up till block 4000), then she is also
+able to spend it back to herself.
+
+```text
+Dup PushPubkey(P_b) CheckHeight(4000) IFTHEN PushPubkey(P_a) Or(2) Drop ELSE EqualVerify ENDIF CheckSig
+```
+
+Let's run through this script assuming it's block 3999 and Bob is spending the UTXO. We'll only print the stack this
+time:
+
+| Initial Stack   |
+|:----------------|
+| Bob's pubkey    |
+| Bob's signature |
+
+`Dup`:
+
+| Stack           |
+|:----------------|
+| Bob's pubkey    |
+| Bob's pubkey    |
+| Bob's signature |
+
+`PushPubkey(P_b)`:
+
+| Stack           |
+|:----------------|
+| `P_b`           |
+| Bob's pubkey    |
+| Bob's pubkey    |
+| Bob's signature |
+
+`CheckHeight(4000)`. The block height height is 3999, so `max(0, 4000 - 3999)` is pushed to the stack:
+
+| Stack           |
+|:----------------|
+| 1               |
+| `P_b`           |
+| Bob's pubkey    |
+| Bob's pubkey    |
+| Bob's signature |
+
+`IFTHEN` compares the top of the stack to zero. It is not a match, so it will execute the `ELSE` branch:
+
+`EqualVerify` checks that `P_b` is equal to Bob's pubkey:
+
+| Stack           |
+|:----------------|
+| Bob's pubkey    |
+| Bob's signature |
+
+
+The `ENDIF` is a no-op, so the last instruction checks the given signature against Bob's pubkey:
+
+`CheckSig`:
+
+| Stack |
+|:------|
+| 0     |
+
+Similarly, if it is after block 4000, and Alice tries to spend the UTXO, the sequence is:
+
+| Initial Stack     |
+|:------------------|
+| Alice's pubkey    |
+| Alice's signature |
+
+`Dup` and `PushPubkey(P_b)` as before:
+
+| Stack             |
+|:------------------|
+| `P_b`             |
+| Alice's pubkey    |
+| Alice's pubkey    |
+| Alice's signature |
+
+`CheckHeight(4000)` calculates `max(0, 4000 - 4001)` and pushes 0 to the stack:
+
+| Stack             |
+|:------------------|
+| 0                 |
+| `P_b`             |
+| Alice's pubkey    |
+| Alice's pubkey    |
+| Alice's signature |
+
+The top of the stack is zero, so `IFTHEN` executes the first branch, `PushPubkey(P_a)`:
+
+| Stack             |
+|:------------------|
+| `P_a`             |
+| `P_b`             |
+| Alice's pubkey    |
+| Alice's pubkey    |
+| Alice's signature |
+
+`Or(2)` compares the 3rd element, Alice's pubkey, with the 2 top items that were popped. There is a match, so the script
+continues.
+
+| Stack             |
+|:------------------|
+| Alice's pubkey    |
+| Alice's pubkey    |
+| Alice's signature |
+
+`Drop`:
+
+| Stack             |
+|:------------------|
+| Alice's pubkey    |
+| Alice's signature |
+
+`CheckSig`:
+
+| Stack |
+|:------|
+| 0     |
 
 ### Credits
 
@@ -615,3 +977,4 @@ and contributions to this RFC.
 [LIP-004]: https://github.com/DavidBurkett/lips/blob/master/lip-0004.mediawiki
 [Scriptless script]: https://tlu.tarilabs.com/cryptography/scriptless-scripts/introduction-to-scriptless-scripts.html
 [Handshake white paper]: https://handshake.org/files/handshake.txt
+
