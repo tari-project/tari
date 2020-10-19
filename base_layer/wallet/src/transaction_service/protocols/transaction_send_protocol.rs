@@ -154,51 +154,66 @@ where TBackend: TransactionBackend + 'static
             store_and_forward_send_result,
         } = self.send_transaction(msg).await?;
 
+        if direct_send_result || store_and_forward_send_result {
+            self.resources
+                .output_manager_service
+                .confirm_pending_transaction(self.id)
+                .await
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+
+            let fee = self
+                .sender_protocol
+                .get_fee_amount()
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+            let outbound_tx = OutboundTransaction::new(
+                tx_id,
+                self.dest_pubkey.clone(),
+                self.amount,
+                fee,
+                self.sender_protocol.clone(),
+                TransactionStatus::Pending,
+                self.message.clone(),
+                Utc::now().naive_utc(),
+                direct_send_result,
+            );
+            info!(
+                target: LOG_TARGET,
+                "Pending Outbound Transaction TxId: {:?} added. Waiting for Reply or Cancellation", self.id,
+            );
+            self.resources
+                .db
+                .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx)
+                .await
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+
+            self.resources
+                .db
+                .increment_send_count(self.id)
+                .await
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+        }
+
+        let _ = self
+            .resources
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionDirectSendResult(
+                self.id,
+                direct_send_result,
+            )));
+        let _ = self
+            .resources
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionStoreForwardSendResult(
+                self.id,
+                store_and_forward_send_result,
+            )));
+
         if !direct_send_result && !store_and_forward_send_result {
             return Err(TransactionServiceProtocolError::new(
                 self.id,
                 TransactionServiceError::OutboundSendFailure,
             ));
         }
-
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(self.id)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-
-        let fee = self
-            .sender_protocol
-            .get_fee_amount()
-            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-        let outbound_tx = OutboundTransaction::new(
-            tx_id,
-            self.dest_pubkey.clone(),
-            self.amount,
-            fee,
-            self.sender_protocol.clone(),
-            TransactionStatus::Pending,
-            self.message.clone(),
-            Utc::now().naive_utc(),
-            direct_send_result,
-        );
-
-        self.resources
-            .db
-            .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-
-        self.resources
-            .db
-            .increment_send_count(self.id)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-
-        info!(
-            target: LOG_TARGET,
-            "Pending Outbound Transaction TxId: {:?} added. Waiting for Reply or Cancellation", self.id,
-        );
 
         Ok(())
     }
@@ -500,6 +515,10 @@ where TBackend: TransactionBackend + 'static
                     store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
                 },
                 SendMessageResponse::PendingDiscovery(rx) => {
+                    let _ = self
+                        .resources
+                        .event_publisher
+                        .send(Arc::new(TransactionEvent::TransactionDiscoveryInProgress(self.id)));
                     store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
                     // now wait for discovery to complete
                     match rx.await {
@@ -533,21 +552,6 @@ where TBackend: TransactionBackend + 'static
                 debug!(target: LOG_TARGET_STRESS, "Direct Transaction Send failed: {:?}", e);
             },
         }
-
-        let _ = self
-            .resources
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionDirectSendResult(
-                self.id,
-                direct_send_result,
-            )));
-        let _ = self
-            .resources
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionStoreForwardSendResult(
-                self.id,
-                store_and_forward_send_result,
-            )));
 
         if !direct_send_result && !store_and_forward_send_result {
             error!(

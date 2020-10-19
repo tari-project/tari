@@ -1,16 +1,16 @@
 use crate::{
     ui::{
         components::{balance::Balance, Component},
-        state::AppState,
+        state::{AppState, UiTransactionSendStatus},
         widgets::{centered_rect_absolute, MultiColumnList, WindowedListState},
         MAX_WIDTH,
     },
     utils::formatting::display_compressed_string,
 };
-use tokio::runtime::Handle;
+use tokio::{runtime::Handle, sync::watch};
 use tui::{
     backend::Backend,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, Clear, ListItem, Paragraph, Wrap},
@@ -26,10 +26,14 @@ pub struct SendReceiveTab {
     show_edit_contact: bool,
     to_field: String,
     amount_field: String,
+    message_field: String,
     alias_field: String,
     public_key_field: String,
-    error: Option<String>,
+    error_message: Option<String>,
+    success_message: Option<String>,
+
     contacts_list_state: WindowedListState,
+    send_result_watch: Option<watch::Receiver<UiTransactionSendStatus>>,
 }
 
 impl SendReceiveTab {
@@ -42,10 +46,14 @@ impl SendReceiveTab {
             show_edit_contact: false,
             to_field: "".to_string(),
             amount_field: "".to_string(),
+            message_field: "".to_string(),
             alias_field: "".to_string(),
             public_key_field: "".to_string(),
-            error: None,
+            error_message: None,
+            success_message: None,
+
             contacts_list_state: WindowedListState::new(),
+            send_result_watch: None,
         }
     }
 
@@ -57,7 +65,15 @@ impl SendReceiveTab {
         ));
         f.render_widget(block, area);
         let vert_chunks = Layout::default()
-            .constraints([Constraint::Length(2), Constraint::Length(3), Constraint::Length(3)].as_ref())
+            .constraints(
+                [
+                    Constraint::Length(2),
+                    Constraint::Length(3),
+                    Constraint::Length(3),
+                    Constraint::Length(3),
+                ]
+                .as_ref(),
+            )
             .margin(1)
             .split(area);
         let instructions = Paragraph::new(Spans::from(vec![
@@ -98,6 +114,14 @@ impl SendReceiveTab {
             .block(Block::default().borders(Borders::ALL).title("(A)mount (uT):"));
         f.render_widget(amount_input, vert_chunks[2]);
 
+        let message_input = Paragraph::new(self.message_field.as_ref())
+            .style(match self.send_input_mode {
+                SendInputMode::Message => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(Block::default().borders(Borders::ALL).title("(M)essage:"));
+        f.render_widget(message_input, vert_chunks[3]);
+
         match self.send_input_mode {
             SendInputMode::None => (),
             SendInputMode::To => f.set_cursor(
@@ -111,6 +135,12 @@ impl SendReceiveTab {
                 vert_chunks[2].x + self.amount_field.width() as u16 + 1,
                 // Move one line down, from the border to the input line
                 vert_chunks[2].y + 1,
+            ),
+            SendInputMode::Message => f.set_cursor(
+                // Put cursor past the end of the input text
+                vert_chunks[3].x + self.message_field.width() as u16 + 1,
+                // Move one line down, from the border to the input line
+                vert_chunks[3].y + 1,
             ),
         }
     }
@@ -134,7 +164,7 @@ impl SendReceiveTab {
             .margin(1)
             .split(help_body_area[0]);
 
-        let qr_code = Paragraph::new(app_state.my_identity.qr_code.as_str())
+        let qr_code = Paragraph::new(app_state.get_identity().qr_code.as_str())
             .block(Block::default())
             .wrap(Wrap { trim: true });
         f.render_widget(qr_code, chunks[0]);
@@ -161,7 +191,7 @@ impl SendReceiveTab {
             .constraints([Constraint::Length(1)].as_ref())
             .margin(1)
             .split(info_chunks[0]);
-        let public_key = Paragraph::new(app_state.my_identity.public_key.as_str());
+        let public_key = Paragraph::new(app_state.get_identity().public_key.as_str());
         f.render_widget(public_key, label_layout[0]);
 
         // Public Address
@@ -173,7 +203,7 @@ impl SendReceiveTab {
             .constraints([Constraint::Length(1)].as_ref())
             .margin(1)
             .split(info_chunks[1]);
-        let public_address = Paragraph::new(app_state.my_identity.public_address.as_str());
+        let public_address = Paragraph::new(app_state.get_identity().public_address.as_str());
         f.render_widget(public_address, label_layout[0]);
 
         // Emoji ID
@@ -185,7 +215,7 @@ impl SendReceiveTab {
             .constraints([Constraint::Length(1)].as_ref())
             .margin(1)
             .split(info_chunks[2]);
-        let emoji_id = Paragraph::new(app_state.my_identity.emoji_id.as_str());
+        let emoji_id = Paragraph::new(app_state.get_identity().emoji_id.as_str());
         f.render_widget(emoji_id, label_layout[0]);
     }
 
@@ -216,14 +246,12 @@ impl SendReceiveTab {
         ]))
         .wrap(Wrap { trim: true });
         f.render_widget(instructions, list_areas[0]);
-
-        let mut list_state = self.contacts_list_state.get_list_state(
-            app_state.contacts.len(),
-            (list_areas[1].height as usize).saturating_sub(3),
-            app_state.contacts.selected(),
-        );
+        self.contacts_list_state.set_num_items(app_state.get_contacts().len());
+        let mut list_state = self
+            .contacts_list_state
+            .get_list_state((list_areas[1].height as usize).saturating_sub(3));
         let window = self.contacts_list_state.get_start_end();
-        let windowed_view = app_state.contacts.get_item_slice(window.0, window.1);
+        let windowed_view = app_state.get_contacts_slice(window.0, window.1);
 
         let mut column0_items = Vec::new();
         let mut column1_items = Vec::new();
@@ -312,26 +340,36 @@ impl SendReceiveTab {
         }
     }
 
-    fn draw_error_dialog<B>(&mut self, f: &mut Frame<B>, area: Rect, _app_state: &AppState, message: String)
-    where B: Backend {
+    fn draw_dialog<B>(
+        &mut self,
+        f: &mut Frame<B>,
+        area: Rect,
+        _app_state: &AppState,
+        title: String,
+        message: String,
+        color: Color,
+    ) where
+        B: Backend,
+    {
         let popup_area = centered_rect_absolute(120, 10, area);
 
         f.render_widget(Clear, popup_area);
 
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            "Error!",
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            title.as_str(),
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
         ));
         f.render_widget(block, popup_area);
 
-        let center_area = centered_rect_absolute(80, 2, area);
+        let center_area = centered_rect_absolute(110, 2, area);
 
-        let error = Paragraph::new(Spans::from(vec![Span::styled(
+        let text = Paragraph::new(Spans::from(vec![Span::styled(
             message.as_str(),
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
         )]))
-        .block(Block::default());
-        f.render_widget(error, center_area);
+        .block(Block::default())
+        .alignment(Alignment::Center);
+        f.render_widget(text, center_area);
     }
 }
 
@@ -341,7 +379,7 @@ impl<B: Backend> Component<B> for SendReceiveTab {
             .constraints(
                 [
                     Constraint::Length(3),
-                    Constraint::Length(10),
+                    Constraint::Length(13),
                     Constraint::Min(42),
                     Constraint::Length(1),
                 ]
@@ -361,17 +399,58 @@ impl<B: Backend> Component<B> for SendReceiveTab {
             self.draw_whoami(f, balance_main_area[2], app_state);
         }
 
-        if let Some(msg) = self.error.clone() {
-            self.draw_error_dialog(f, area, app_state, msg);
+        let rx_option = self.send_result_watch.take();
+        if let Some(rx) = rx_option {
+            let status = match (*rx.borrow()).clone() {
+                UiTransactionSendStatus::Initiated => "Initiated",
+                UiTransactionSendStatus::DiscoveryInProgress => "Discovery In Progress",
+                UiTransactionSendStatus::Error(e) => {
+                    self.error_message = Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
+                    return;
+                },
+                UiTransactionSendStatus::SentDirect | UiTransactionSendStatus::SentViaSaf => {
+                    self.success_message =
+                        Some("Transaction successfully sent! Please press Enter to continue".to_string());
+                    return;
+                },
+            };
+            self.draw_dialog(
+                f,
+                area,
+                app_state,
+                "Please Wait".to_string(),
+                format!("Transaction Send Status: {}", status),
+                Color::Green,
+            );
+            self.send_result_watch = Some(rx);
+        }
+
+        if let Some(msg) = self.success_message.clone() {
+            self.draw_dialog(f, area, app_state, "Success!".to_string(), msg, Color::Green);
+        }
+
+        if let Some(msg) = self.error_message.clone() {
+            self.draw_dialog(f, area, app_state, "Error!".to_string(), msg, Color::Red);
         }
     }
 
     fn on_key(&mut self, app_state: &mut AppState, c: char) {
-        if self.error.is_some() {
+        if self.error_message.is_some() {
             if let '\n' = c {
-                self.error = None;
+                self.error_message = None;
                 return;
             }
+        }
+
+        if self.success_message.is_some() {
+            if let '\n' = c {
+                self.success_message = None;
+                return;
+            }
+        }
+
+        if self.send_result_watch.is_some() {
+            return;
         }
 
         if self.send_input_mode != SendInputMode::None {
@@ -387,11 +466,18 @@ impl<B: Backend> Component<B> for SendReceiveTab {
                     },
                 },
                 SendInputMode::Amount => match c {
-                    '\n' => self.send_input_mode = SendInputMode::None,
+                    '\n' => self.send_input_mode = SendInputMode::Message,
                     c => {
                         if c.is_numeric() {
                             self.amount_field.push(c);
                         }
+                        return;
+                    },
+                },
+                SendInputMode::Message => match c {
+                    '\n' => self.send_input_mode = SendInputMode::None,
+                    c => {
+                        self.message_field.push(c);
                         return;
                     },
                 },
@@ -419,8 +505,11 @@ impl<B: Backend> Component<B> for SendReceiveTab {
                         if let Err(_e) = Handle::current()
                             .block_on(app_state.upsert_contact(self.alias_field.clone(), self.public_key_field.clone()))
                         {
-                            self.error =
-                                Some("Invalid Public key or Emoji ID provided, Press Enter to continue.".to_string());
+                            self.error_message = Some(
+                                "Invalid Public key or Emoji ID provided, Press Enter to
+        continue."
+                                    .to_string(),
+                            );
                         }
 
                         self.alias_field = "".to_string();
@@ -438,17 +527,27 @@ impl<B: Backend> Component<B> for SendReceiveTab {
         if self.show_contacts {
             match c {
                 'd' => {
-                    if let Some(c) = app_state.contacts.selected_item().cloned() {
+                    if let Some(c) = self
+                        .contacts_list_state
+                        .selected()
+                        .and_then(|i| app_state.get_contact(i))
+                        .cloned()
+                    {
                         if let Err(_e) = Handle::current().block_on(app_state.delete_contact(c.public_key)) {
-                            self.error =
+                            self.error_message =
                                 Some("Could not delete selected contact, Press Enter to continue.".to_string());
                         }
                     }
                     return;
                 },
                 '\n' => {
-                    if let Some(c) = app_state.contacts.selected_item() {
-                        self.to_field = c.public_key.clone();
+                    if let Some(c) = self
+                        .contacts_list_state
+                        .selected()
+                        .and_then(|i| app_state.get_contact(i))
+                        .cloned()
+                    {
+                        self.to_field = c.public_key;
                         self.send_input_mode = SendInputMode::Amount;
                         self.show_contacts = false;
                     }
@@ -471,12 +570,17 @@ impl<B: Backend> Component<B> for SendReceiveTab {
                     self.edit_contact_mode = ContactInputMode::Alias;
                     self.public_key_field = "".to_string();
                     self.amount_field = "".to_string();
+                    self.message_field = "".to_string();
                     self.send_input_mode = SendInputMode::None;
                 }
             },
 
             'e' => {
-                if let Some(c) = app_state.contacts.selected_item() {
+                if let Some(c) = self
+                    .contacts_list_state
+                    .selected()
+                    .and_then(|i| app_state.get_contact(i))
+                {
                     self.public_key_field = c.public_key.clone();
                     self.alias_field = c.alias.clone();
                     if self.show_contacts {
@@ -487,9 +591,10 @@ impl<B: Backend> Component<B> for SendReceiveTab {
             },
             't' => self.send_input_mode = SendInputMode::To,
             'a' => self.send_input_mode = SendInputMode::Amount,
+            'm' => self.send_input_mode = SendInputMode::Message,
             's' => {
                 if self.amount_field.is_empty() || self.to_field.is_empty() {
-                    self.error = Some(
+                    self.error_message = Some(
                         "Destination Public Key/Emoji ID and Amount required, Press Enter to continue.".to_string(),
                     );
                     return;
@@ -497,11 +602,28 @@ impl<B: Backend> Component<B> for SendReceiveTab {
                 let amount = if let Ok(v) = self.amount_field.parse::<u64>() {
                     v
                 } else {
-                    self.error = Some("Amount should be an integer, Press Enter to continue.".to_string());
+                    self.error_message = Some("Amount should be an integer, Press Enter to continue.".to_string());
                     return;
                 };
-                if let Err(e) = Handle::current().block_on(app_state.send_transaction(self.to_field.clone(), amount)) {
-                    self.error = Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
+
+                let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
+
+                match Handle::current().block_on(app_state.send_transaction(
+                    self.to_field.clone(),
+                    amount,
+                    self.message_field.clone(),
+                    tx,
+                )) {
+                    Err(e) => {
+                        self.error_message = Some(format!("Error sending transaction: {}, Press Enter to continue.", e))
+                    },
+                    Ok(_) => {
+                        self.to_field = "".to_string();
+                        self.amount_field = "".to_string();
+                        self.message_field = "".to_string();
+                        self.send_input_mode = SendInputMode::None;
+                        self.send_result_watch = Some(rx);
+                    },
                 }
             },
             _ => {},
@@ -509,11 +631,13 @@ impl<B: Backend> Component<B> for SendReceiveTab {
     }
 
     fn on_up(&mut self, app_state: &mut AppState) {
-        app_state.contacts.previous();
+        self.contacts_list_state.set_num_items(app_state.get_contacts().len());
+        self.contacts_list_state.previous();
     }
 
     fn on_down(&mut self, app_state: &mut AppState) {
-        app_state.contacts.next();
+        self.contacts_list_state.set_num_items(app_state.get_contacts().len());
+        self.contacts_list_state.next();
     }
 
     fn on_esc(&mut self, _: &mut AppState) {
@@ -528,6 +652,9 @@ impl<B: Backend> Component<B> for SendReceiveTab {
             },
             SendInputMode::Amount => {
                 let _ = self.amount_field.pop();
+            },
+            SendInputMode::Message => {
+                let _ = self.message_field.pop();
             },
             SendInputMode::None => {},
         }
@@ -549,6 +676,7 @@ pub enum SendInputMode {
     None,
     To,
     Amount,
+    Message,
 }
 
 #[derive(PartialEq, Debug)]

@@ -22,10 +22,8 @@
 
 mod list_state;
 mod multi_column_list;
-mod stateful_list;
 mod utilities;
 
 pub use list_state::*;
 pub use multi_column_list::*;
-pub use stateful_list::*;
 pub use utilities::*;
