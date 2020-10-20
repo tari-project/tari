@@ -5,7 +5,7 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{fs, sync::Arc};
