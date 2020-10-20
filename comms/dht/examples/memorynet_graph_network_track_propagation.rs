@@ -74,7 +74,6 @@ use crate::{
 };
 use env_logger::Env;
 use futures::channel::mpsc;
-use std::time::Duration;
 use tari_comms::peer_manager::PeerFeatures;
 
 #[tokio_macros::main]
@@ -149,37 +148,32 @@ async fn main() {
             .await,
         );
         println!("Node: {}", nodes[i]);
-        take_a_break(1).await;
     }
 
     // Wait for all the nodes to startup and connect to seed node
-    take_a_break(NUM_NODES).await;
+    take_a_break(NUM_NODES * 5).await;
 
-    log::info!("------------------------------- BASE NODE JOIN -------------------------------");
-    for index in 0..NUM_NODES {
-        {
-            let node = nodes.get_mut(index).expect("Couldn't get TestNode");
-            println!(
-                "Node '{}' is joining the network via the seed node '{}'",
-                node,
-                node.seed_peers[0].node_id.short_str(),
-            );
-            node.comms
-                .connectivity()
-                .wait_for_connectivity(Duration::from_secs(10))
-                .await
-                .unwrap();
-
-            node.dht.dht_requester().send_join().await.unwrap();
-        }
-
-        // Let the network settle before taking the snapshot.
-        take_a_break(1).await;
-    }
-
-    take_a_break(NUM_NODES).await;
-    take_a_break(NUM_NODES).await;
-    take_a_break(NUM_NODES).await;
+    // log::info!("------------------------------- BASE NODE JOIN -------------------------------");
+    // for index in 0..NUM_NODES {
+    //     {
+    //         let node = nodes.get_mut(index).expect("Couldn't get TestNode");
+    //         println!(
+    //             "Node '{}' is joining the network via the seed node '{}'",
+    //             node,
+    //             node.seed_peers[0].node_id.short_str(),
+    //         );
+    //         node.comms
+    //             .connectivity()
+    //             .wait_for_connectivity(Duration::from_secs(10))
+    //             .await
+    //             .unwrap();
+    //
+    //         node.dht.dht_requester().send_join().await.unwrap();
+    //     }
+    //
+    //     // Let the network settle before taking the snapshot.
+    //     take_a_break(1).await;
+    // }
 
     let _ = drain_messaging_events(&mut messaging_events_rx, false).await;
 
@@ -204,6 +198,10 @@ async fn main() {
     ) {
         println!("Error rendering graphs: {}", e);
     }
+    println!(
+        "Wrote graph output to {}/{}",
+        DEFAULT_GRAPH_OUTPUT_DIR, "join_propagation"
+    );
     banner!("That's it folks! Network is shutting down...");
     log::info!("------------------------------- SHUTDOWN -------------------------------");
     shutdown_all(nodes).await;

@@ -148,23 +148,23 @@ async fn main() {
     // Wait for all the nodes to startup and connect to seed node
     take_a_break(NUM_NODES).await;
 
-    log::info!("------------------------------- BASE NODE JOIN -------------------------------");
-    for index in 0..nodes.len() {
-        {
-            let node = nodes.get_mut(index).expect("Couldn't get TestNode");
-            println!(
-                "Node '{}' is joining the network via the seed node '{}'",
-                node, seed_node[0]
-            );
-            node.comms
-                .connectivity()
-                .wait_for_connectivity(Duration::from_secs(10))
-                .await
-                .unwrap();
-
-            node.dht.dht_requester().send_join().await.unwrap();
-        }
-    }
+    // log::info!("------------------------------- BASE NODE JOIN -------------------------------");
+    // for index in 0..nodes.len() {
+    //     {
+    //         let node = nodes.get_mut(index).expect("Couldn't get TestNode");
+    //         println!(
+    //             "Node '{}' is joining the network via the seed node '{}'",
+    //             node, seed_node[0]
+    //         );
+    //         node.comms
+    //             .connectivity()
+    //             .wait_for_connectivity(Duration::from_secs(10))
+    //             .await
+    //             .unwrap();
+    //
+    //         node.dht.dht_requester().send_join().await.unwrap();
+    //     }
+    // }
 
     take_a_break(NUM_NODES).await;
 

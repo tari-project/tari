@@ -89,7 +89,13 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         // No more protocols to negotiate - let the peer know
         self.write_frame_flush(&[], Flags::TERMINATE).await?;
 
-        Err(ProtocolError::ProtocolOutboundNegotiationFailed)
+        Err(ProtocolError::ProtocolOutboundNegotiationFailed(
+            selected_protocols
+                .iter()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+        ))
     }
 
     /// Negotiate a protocol to speak. Since this node is initiating this interation, send each protocol this node
@@ -248,7 +254,7 @@ mod test {
         .await;
 
         unpack_enum!(ProtocolError::ProtocolNegotiationTerminatedByPeer = in_proto.unwrap_err());
-        unpack_enum!(ProtocolError::ProtocolOutboundNegotiationFailed = out_proto.unwrap_err());
+        unpack_enum!(ProtocolError::ProtocolOutboundNegotiationFailed(_s) = out_proto.unwrap_err());
     }
 
     #[runtime::test_basic]
