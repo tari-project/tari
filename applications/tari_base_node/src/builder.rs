@@ -325,7 +325,7 @@ where
     //---------------------------------- Wallet --------------------------------------------//
     let wallet_handles = WalletBootstrapper {
         node_identity: wallet_node_identity,
-        config,
+        config: config.clone(),
         interrupt_signal: interrupt_signal.clone(),
         base_node_peer: base_node_comms.node_identity().to_peer(),
         factories,

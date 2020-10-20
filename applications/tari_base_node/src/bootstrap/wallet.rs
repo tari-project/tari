@@ -66,15 +66,15 @@ const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node wallet pubsub_connector channel
 const BASE_NODE_WALLET_BUFFER_MIN_SIZE: usize = 300;
 
-pub struct WalletBootstrapper<'a> {
-    pub config: &'a GlobalConfig,
+pub struct WalletBootstrapper {
+    pub config: GlobalConfig,
     pub node_identity: Arc<NodeIdentity>,
     pub interrupt_signal: ShutdownSignal,
     pub factories: CryptoFactories,
     pub base_node_peer: Peer,
 }
 
-impl WalletBootstrapper<'_> {
+impl WalletBootstrapper {
     async fn connect_wallet_db(&self) -> Result<WalletDbConnection, anyhow::Error> {
         fs::create_dir_all(
             self.config
@@ -102,8 +102,10 @@ impl WalletBootstrapper<'_> {
         Ok(transaction_db)
     }
 
-    pub async fn bootstrap(self) -> Result<ServiceHandles, anyhow::Error> {
-        let config = self.config;
+    pub async fn bootstrap(mut self) -> Result<ServiceHandles, anyhow::Error> {
+        self.change_config_for_wallet();
+
+        let config = &self.config;
         let wallet_db_conn = self.connect_wallet_db().await?;
         let transaction_db = self.setup_transaction_db(wallet_db_conn.clone()).await?;
 
@@ -202,27 +204,46 @@ impl WalletBootstrapper<'_> {
         }
     }
 
-    /// Creates a transport type for the base node's wallet using the provided configuration
-    /// ## Paramters
-    /// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
-    ///
-    /// ##Returns
-    /// TransportType based on the configuration
-    pub fn create_transport_type(&self) -> TransportType {
-        let config = self.config;
-        debug!(
-            target: LOG_TARGET,
-            "Wallet transport is set to '{:?}'", config.comms_transport
-        );
-
-        let add_to_port = |addr: Multiaddr, n| -> Multiaddr {
+    fn change_config_for_wallet(&mut self) {
+        // TODO: These are temporary fixes until the wallet can be split from the base node.
+        fn add_to_port(addr: &Multiaddr, n: u16) -> Multiaddr {
             addr.iter()
                 .map(|p| match p {
                     Protocol::Tcp(port) => Protocol::Tcp(port + n),
                     p => p,
                 })
                 .collect()
-        };
+        }
+
+        match self.config.comms_transport {
+            CommsTransport::Tcp {
+                ref mut listener_address,
+                ..
+            } |
+            CommsTransport::Socks5 {
+                ref mut listener_address,
+                ..
+            } => {
+                *listener_address = add_to_port(listener_address, 1);
+                let public_addr = self.node_identity.public_address();
+                self.node_identity.set_public_address(add_to_port(&public_addr, 1));
+            },
+            _ => {},
+        }
+    }
+
+    /// Creates a transport type for the base node's wallet using the provided configuration
+    /// ## Paramters
+    /// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
+    ///
+    /// ##Returns
+    /// TransportType based on the configuration
+    fn create_transport_type(&self) -> TransportType {
+        let config = &self.config;
+        debug!(
+            target: LOG_TARGET,
+            "Wallet transport is set to '{:?}'", config.comms_transport
+        );
 
         match config.comms_transport.clone() {
             CommsTransport::Tcp {
@@ -230,7 +251,7 @@ impl WalletBootstrapper<'_> {
                 tor_socks_address,
                 tor_socks_auth,
             } => TransportType::Tcp {
-                listener_address: add_to_port(listener_address, 1),
+                listener_address,
                 tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
                     proxy_address,
                     authentication: tor_socks_auth
@@ -291,7 +312,7 @@ impl WalletBootstrapper<'_> {
                     proxy_address,
                     authentication: utilities::convert_socks_authentication(auth),
                 },
-                listener_address: add_to_port(listener_address, 1),
+                listener_address,
             },
         }
     }
