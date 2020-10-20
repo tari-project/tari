@@ -333,23 +333,25 @@ where TBackend: TransactionBackend + 'static
                         break;
                     }
                 },
-                _ = cancellation_receiver => {
-                    info!(target: LOG_TARGET, "Cancelling Transaction Send Protocol (TxId: {})", self.id);
-                    let _ = send_transaction_cancelled_message(self.id,self.dest_pubkey.clone(), self.resources.outbound_message_service.clone(), ).await.map_err(|e| {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error sending Transaction Cancelled (TxId: {}) message: {:?}", self.id, e
-                        )
-                    });
-                    self.resources
-                        .db
-                        .increment_send_count(self.id)
-                        .await
-                        .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-                    return Err(TransactionServiceProtocolError::new(
-                        self.id,
-                        TransactionServiceError::TransactionCancelled,
-                    ));
+                result = cancellation_receiver => {
+                    if result.is_ok() {
+                        info!(target: LOG_TARGET, "Cancelling Transaction Send Protocol (TxId: {})", self.id);
+                        let _ = send_transaction_cancelled_message(self.id,self.dest_pubkey.clone(), self.resources.outbound_message_service.clone(), ).await.map_err(|e| {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Error sending Transaction Cancelled (TxId: {}) message: {:?}", self.id, e
+                            )
+                        });
+                        self.resources
+                            .db
+                            .increment_send_count(self.id)
+                            .await
+                            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+                        return Err(TransactionServiceProtocolError::new(
+                            self.id,
+                            TransactionServiceError::TransactionCancelled,
+                        ));
+                    }
                 },
                 () = resend_timeout => {
                     if let Err(e) = self.send_transaction(outbound_tx.sender_protocol.get_single_round_message().map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?).await {
