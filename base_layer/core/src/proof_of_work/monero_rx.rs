@@ -23,7 +23,7 @@
 use crate::{
     blocks::BlockHeader,
     proof_of_work::{
-        difficulty::{big_endian_difficulty, little_endian_difficulty},
+        difficulty::{util::big_endian_difficulty, util::little_endian_difficulty},
         Difficulty,
     },
     tari_utilities::ByteArray,

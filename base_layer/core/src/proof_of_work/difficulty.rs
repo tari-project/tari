@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{proof_of_work::error::DifficultyAdjustmentError, U256};
+use crate::{proof_of_work::error::DifficultyAdjustmentError};
 use newtype_ops::newtype_ops;
 use num_format::{Locale, ToFormattedString};
 use serde::{Deserialize, Serialize};
@@ -30,9 +30,6 @@ use tari_crypto::tari_utilities::epoch_time::EpochTime;
 /// Minimum difficulty, enforced in diff retargetting
 /// avoids getting stuck when trying to increase difficulty subject to dampening
 pub const MIN_DIFFICULTY: u64 = 1;
-
-/// Maximum target for use by calculating difficulty.
-const MAX_TARGET: U256 = U256::MAX;
 
 /// The difficulty is defined as the maximum target divided by the block hash.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Deserialize, Serialize)]
@@ -114,20 +111,25 @@ pub trait DifficultyAdjustment {
     fn get_difficulty(&self) -> Difficulty;
 }
 
-/// This will provide the difficulty of the hash assuming the hash is big_endian
-pub fn big_endian_difficulty(hash: &[u8]) -> Difficulty {
-    let scalar = U256::from_big_endian(hash); // Big endian so the hash has leading zeroes
-    let result = MAX_TARGET / scalar;
-    result.low_u64().into()
-}
+#[cfg(feature = "base_node")]
+pub mod util {
+    use crate::U256;
+    use super::*;
 
-/// This will provide the difficulty of the hash assuming the hash is little_endian
-pub fn little_endian_difficulty(hash: &[u8]) -> Difficulty {
-    let scalar = U256::from_little_endian(&hash); // Little endian so the hash has trailing zeroes
-    let result = MAX_TARGET / scalar;
-    result.low_u64().into()
-}
+    /// This will provide the difficulty of the hash assuming the hash is big_endian
+    pub(crate) fn big_endian_difficulty(hash: &[u8]) -> Difficulty {
+        let scalar = U256::from_big_endian(hash); // Big endian so the hash has leading zeroes
+        let result = U256::MAX / scalar;
+        result.low_u64().into()
+    }
 
+    /// This will provide the difficulty of the hash assuming the hash is little_endian
+    pub(crate) fn little_endian_difficulty(hash: &[u8]) -> Difficulty {
+        let scalar = U256::from_little_endian(&hash); // Little endian so the hash has trailing zeroes
+        let result = U256::MAX / scalar;
+        result.low_u64().into()
+    }
+}
 #[cfg(test)]
 mod test {
     use crate::proof_of_work::difficulty::Difficulty;
