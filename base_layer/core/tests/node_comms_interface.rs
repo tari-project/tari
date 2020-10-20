@@ -439,18 +439,15 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
     let _block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
 
-    if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
+    assert!(inbound_nch
         .handle_request(&NodeCommsRequest::FetchBlocks(vec![1]))
         .await
-    {
-        assert_eq!(received_blocks.len(), 0);
-    } else {
-        assert!(false);
-    }
+        .is_err());
 
-    if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
+    if let NodeCommsResponse::HistoricalBlocks(received_blocks) = inbound_nch
         .handle_request(&NodeCommsRequest::FetchBlocks(vec![2]))
         .await
+        .unwrap()
     {
         assert_eq!(received_blocks.len(), 1);
         assert_eq!(*received_blocks[0].block(), block2);

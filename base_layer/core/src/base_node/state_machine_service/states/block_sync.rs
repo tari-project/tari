@@ -77,7 +77,7 @@ pub struct BlockSyncConfig {
     pub orphan_db_clean_out_threshold: usize,
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq)]
 /// This struct contains info that is use full for external viewing of state info
 pub struct BlockSyncInfo {
     pub tip_height: u64,
@@ -151,11 +151,6 @@ impl BlockSyncStrategy {
         sync_peers: &mut SyncPeers,
     ) -> StateEvent
     {
-        shared.info = StateInfo::BlockSync(BlockSyncInfo::default());
-        if let StateInfo::BlockSync(ref mut info) = shared.info {
-            info.sync_peers = sync_peers.clone();
-        }
-        shared.publish_event_info();
         match self {
             BlockSyncStrategy::ViaBestChainMetadata(sync) => sync.next_event(shared, network_tip, sync_peers).await,
             BlockSyncStrategy::ViaRandomPeer(sync) => sync.next_event(shared).await,
@@ -322,9 +317,12 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                 );
             }
 
-            if let StateInfo::BlockSync(ref mut info) = shared.info {
-                info.tip_height = network_tip_height;
-            }
+            shared.info = StateInfo::BlockSync(BlockSyncInfo::new(
+                network_tip_height,
+                local_tip_height,
+                sync_peers.clone(),
+            ));
+            shared.publish_event_info();
 
             // Searching through the orphan database for every block to be added during a large block sync can
             // be inefficient - this is one way to optimize it by clearing out the database before hand
@@ -349,10 +347,11 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             }
 
             while sync_height <= network_tip_height {
-                if let StateInfo::BlockSync(ref mut info) = shared.info {
-                    info.local_height = sync_height;
-                }
-
+                shared.info = StateInfo::BlockSync(BlockSyncInfo::new(
+                    network_tip_height,
+                    local_tip_height,
+                    sync_peers.clone(),
+                ));
                 shared.publish_event_info();
 
                 let max_height = min(
