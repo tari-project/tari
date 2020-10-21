@@ -134,25 +134,27 @@ pub fn get_rincewind_gen_header() -> BlockHeader {
     get_rincewind_genesis_block().header
 }
 
-/// This will get the rincewind gen block
+/// This will get the ridcully gen block
+// TODO create new faucet utxos and add them here
 pub fn get_ridcully_genesis_block() -> Block {
     // lets get the block
-    let block = get_ridcully_genesis_block_raw();
-    // Lets load in the ridcully faucet tx's
-    // TODO add faucets
-    // let mut utxos = Vec::new();
-    // let file = include_str!("faucets/alphanet_faucet.json");
-    // for line in file.lines() {
-    //     let utxo: TransactionOutput = serde_json::from_str(line).unwrap();
-    //     utxos.push(utxo);
-    // }
-    // // fix headers to new mmr roots after adding utxos
-    // block.header.output_mr = from_hex("f9bfcc0bfae8f90991ea7cc9a625a411dd757cce088cbf740848570daa43daff").unwrap();
-    // block.header.range_proof_mr =
-    // from_hex("fbadbae2bf8c7289d77af52edc80490cb476a917abd0afeab8821913791b678f").unwrap(); block.header.kernel_mr
-    // = from_hex("a40db2278709c3fb0e03044ca0f5090ffca616b708850d1437af4d584e17b97a").unwrap(); block.body.
-    // add_outputs(&mut utxos);
-    block
+    // let block = get_ridcully_genesis_block_raw();
+    // // Lets load in the ridcully faucet tx's
+    // // TODO add faucets
+    // // let mut utxos = Vec::new();
+    // // let file = include_str!("faucets/alphanet_faucet.json");
+    // // for line in file.lines() {
+    // //     let utxo: TransactionOutput = serde_json::from_str(line).unwrap();
+    // //     utxos.push(utxo);
+    // // }
+    // // // fix headers to new mmr roots after adding utxos
+    // // block.header.output_mr =
+    // from_hex("f9bfcc0bfae8f90991ea7cc9a625a411dd757cce088cbf740848570daa43daff").unwrap(); // block.header.
+    // range_proof_mr = // from_hex("fbadbae2bf8c7289d77af52edc80490cb476a917abd0afeab8821913791b678f").unwrap();
+    // block.header.kernel_mr // = from_hex("a40db2278709c3fb0e03044ca0f5090ffca616b708850d1437af4d584e17b97a").
+    // unwrap(); block.body. // add_outputs(&mut utxos);
+    // block
+    get_ridcully_genesis_block_raw()
 }
 
 pub fn get_ridcully_genesis_block_raw() -> Block {
@@ -232,7 +234,6 @@ mod test {
     #[test]
     fn rincewind_genesis_sanity_check() {
         let block = get_rincewind_genesis_block();
-        println!("{}", &block);
         assert_eq!(block.body.outputs().len(), 4001);
 
         let factories = CryptoFactories::default();

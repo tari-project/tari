@@ -54,8 +54,6 @@ pub struct ConsensusConstants {
     pub(in crate::consensus) emission_decay: &'static [u64],
     /// This is the emission curve tail amount
     pub(in crate::consensus) emission_tail: MicroTari,
-    /// The offset relative to the expected genesis coinbase value
-    genesis_coinbase_value_offset: MicroTari,
     /// This is the maximum age a monero merge mined seed can be reused
     max_randomx_seed_height: u64,
     /// This keeps track of the block split targets and which algo is accepted
@@ -156,11 +154,6 @@ impl ConsensusConstants {
         self.median_timestamp_count
     }
 
-    /// The offset relative to apply to the expected genesis block coinbase emission
-    pub fn get_genesis_coinbase_value_offset(&self) -> MicroTari {
-        self.genesis_coinbase_value_offset
-    }
-
     /// This is the min initial difficulty that can be requested for the pow
     pub fn min_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
         match self.proof_of_work.get(&pow_algo) {
@@ -239,7 +232,6 @@ impl ConsensusConstants {
                 emission_decay: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
-                genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
                 proof_of_work: algos1,
             },
             ConsensusConstants {
@@ -254,7 +246,6 @@ impl ConsensusConstants {
                 emission_decay: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
-                genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
                 proof_of_work: algos2,
             },
             // min_pow_difficulty increased. Previous blocks would treat this value as 1 because of
@@ -271,7 +262,6 @@ impl ConsensusConstants {
                 emission_decay: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
-                genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
                 proof_of_work: algos3,
             },
             // set max difficulty_max_block_interval to target_time * 6
@@ -287,7 +277,6 @@ impl ConsensusConstants {
                 emission_decay: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
-                genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
                 proof_of_work: algos4,
             },
         ]
@@ -318,7 +307,6 @@ impl ConsensusConstants {
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
-            genesis_coinbase_value_offset: 0.into(),
             proof_of_work: algos,
         }]
     }
@@ -349,7 +337,6 @@ impl ConsensusConstants {
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
-            genesis_coinbase_value_offset: 0 * uT,
             proof_of_work: algos,
         }]
     }
@@ -380,7 +367,6 @@ impl ConsensusConstants {
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
-            genesis_coinbase_value_offset: 0.into(),
             proof_of_work: algos,
         }]
     }
@@ -421,11 +407,6 @@ impl ConsensusConstantsBuilder {
         self.consensus.emission_initial = intial_amount;
         self.consensus.emission_decay = decay;
         self.consensus.emission_tail = tail_amount;
-        self
-    }
-
-    pub fn with_genesis_coinbase_value_offset(mut self, value: MicroTari) -> Self {
-        self.consensus.genesis_coinbase_value_offset = value;
         self
     }
 
