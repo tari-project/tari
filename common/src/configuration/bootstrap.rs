@@ -23,7 +23,7 @@
 //! // Initialise the logger
 //! bootstrap.initialize_logging()?;
 //! assert_eq!(config.network, Network::MainNet);
-//! assert_eq!(config.blocking_threads, 4);
+//! assert_eq!(config.core_threads, Some(4));
 //! ```
 //!
 //! ```shell

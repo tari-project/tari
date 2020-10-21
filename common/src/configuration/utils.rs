@@ -99,8 +99,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.mainnet.block_sync_strategy", "ViaBestChainMetadata")
         .unwrap();
-    cfg.set_default("base_node.mainnet.blocking_threads", 4).unwrap();
-    cfg.set_default("base_node.mainnet.core_threads", 6).unwrap();
     cfg.set_default(
         "base_node.mainnet.data_dir",
         default_subdir("mainnet/", Some(&bootstrap.base_path)),
@@ -151,8 +149,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.rincewind.block_sync_strategy", "ViaBestChainMetadata")
         .unwrap();
-    cfg.set_default("base_node.rincewind.blocking_threads", 4).unwrap();
-    cfg.set_default("base_node.rincewind.core_threads", 4).unwrap();
     cfg.set_default(
         "base_node.rincewind.data_dir",
         default_subdir("rincewind/", Some(&bootstrap.base_path)),
