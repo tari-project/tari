@@ -30,7 +30,7 @@ use tari_core::{
 #[test]
 fn test_genesis_block() {
     let factories = CryptoFactories::default();
-    let network = Network::LocalNet;
+    let network = Network::Ridcully;
     let rules = ConsensusManagerBuilder::new(network).build();
     let backend = MemoryDatabase::<HashDigest>::default();
     let validators = Validators::new(

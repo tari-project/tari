@@ -50,10 +50,8 @@ pub struct ConsensusConstants {
     median_timestamp_count: usize,
     /// This is the initial emission curve amount
     pub(in crate::consensus) emission_initial: MicroTari,
-    /// This is the emission curve delay
-    pub(in crate::consensus) emission_decay: f64,
     /// This is the emission curve delay for the int
-    pub(in crate::consensus) emission_decay_int: &'static [u64],
+    pub(in crate::consensus) emission_decay: &'static [u64],
     /// This is the emission curve tail amount
     pub(in crate::consensus) emission_tail: MicroTari,
     /// The offset relative to the expected genesis coinbase value
@@ -85,13 +83,8 @@ impl ConsensusConstants {
     }
 
     /// This gets the emission curve values as (initial, decay, tail)
-    pub fn emission_amounts(&self) -> (MicroTari, f64, MicroTari) {
+    pub fn emission_amounts(&self) -> (MicroTari, &[u64], MicroTari) {
         (self.emission_initial, self.emission_decay, self.emission_tail)
-    }
-
-    /// This gets the emission curve values as (initial, decay, tail)
-    pub fn emission_amounts_int(&self) -> (MicroTari, &[u64], MicroTari) {
-        (self.emission_initial, self.emission_decay_int, self.emission_tail)
     }
 
     /// The min height maturity a coinbase utxo must have.
@@ -243,8 +236,7 @@ impl ConsensusConstants {
                 max_block_transaction_weight: 19500,
                 median_timestamp_count: 11,
                 emission_initial: 5_538_846_115 * uT,
-                emission_decay: 0.999_999_560_409_038_5,
-                emission_decay_int: &EMISSION_DECAY,
+                emission_decay: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
@@ -259,8 +251,7 @@ impl ConsensusConstants {
                 max_block_transaction_weight: 19500,
                 median_timestamp_count: 11,
                 emission_initial: 5_538_846_115 * uT,
-                emission_decay: 0.999_999_560_409_038_5,
-                emission_decay_int: &EMISSION_DECAY,
+                emission_decay: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
@@ -277,8 +268,7 @@ impl ConsensusConstants {
                 max_block_transaction_weight: 19500,
                 median_timestamp_count: 11,
                 emission_initial: 5_538_846_115 * uT,
-                emission_decay: 0.999_999_560_409_038_5,
-                emission_decay_int: &EMISSION_DECAY,
+                emission_decay: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
@@ -294,8 +284,7 @@ impl ConsensusConstants {
                 max_block_transaction_weight: 19500,
                 median_timestamp_count: 11,
                 emission_initial: 5_538_846_115 * uT,
-                emission_decay: 0.999_999_560_409_038_5,
-                emission_decay_int: &EMISSION_DECAY,
+                emission_decay: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
@@ -326,11 +315,41 @@ impl ConsensusConstants {
             max_block_transaction_weight: 19500,
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
-            emission_decay: 0.999,
-            emission_decay_int: &EMISSION_DECAY,
+            emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
             genesis_coinbase_value_offset: 0.into(),
+            proof_of_work: algos,
+        }]
+    }
+
+    pub fn ridcully() -> Vec<Self> {
+        let difficulty_block_window = 90;
+        let mut algos = HashMap::new();
+        // seting sha3/moneor to 40/60 split
+        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
+            max_target_time: 1800,
+            min_difficulty: 60_000_000.into(),
+            target_time: 300,
+        });
+        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 1200,
+            min_difficulty: 59_000.into(),
+            target_time: 200,
+        });
+        vec![ConsensusConstants {
+            effective_from_height: 0,
+            coinbase_lock_height: 1,
+            blockchain_version: 1,
+            future_time_limit: 540,
+            difficulty_block_window,
+            max_block_transaction_weight: 19500,
+            median_timestamp_count: 11,
+            emission_initial: 5_538_846_115 * uT,
+            emission_decay: &EMISSION_DECAY,
+            emission_tail: 100.into(),
+            max_randomx_seed_height: std::u64::MAX,
+            genesis_coinbase_value_offset: 0 * uT,
             proof_of_work: algos,
         }]
     }
@@ -358,8 +377,7 @@ impl ConsensusConstants {
             max_block_transaction_weight: 19500,
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
-            emission_decay: 0.999,
-            emission_decay_int: &EMISSION_DECAY,
+            emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
             genesis_coinbase_value_offset: 0.into(),
@@ -393,7 +411,13 @@ impl ConsensusConstantsBuilder {
         self
     }
 
-    pub fn with_emission_amounts(mut self, intial_amount: MicroTari, decay: f64, tail_amount: MicroTari) -> Self {
+    pub fn with_emission_amounts(
+        mut self,
+        intial_amount: MicroTari,
+        decay: &'static [u64],
+        tail_amount: MicroTari,
+    ) -> Self
+    {
         self.consensus.emission_initial = intial_amount;
         self.consensus.emission_decay = decay;
         self.consensus.emission_tail = tail_amount;

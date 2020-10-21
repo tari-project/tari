@@ -35,9 +35,6 @@ use crate::transactions::{
 };
 use tari_crypto::tari_utilities::{hash::Hashable, hex::*};
 
-// TODO: see issue #1145
-// The values contain in these blocks are temporary. They should be replaced by the actual values before test net.
-
 pub fn get_mainnet_genesis_block() -> Block {
     unimplemented!()
 }
@@ -137,18 +134,105 @@ pub fn get_rincewind_gen_header() -> BlockHeader {
     get_rincewind_genesis_block().header
 }
 
+/// This will get the rincewind gen block
+pub fn get_ridcully_genesis_block() -> Block {
+    // lets get the block
+    let block = get_ridcully_genesis_block_raw();
+    // Lets load in the ridcully faucet tx's
+    // TODO add faucets
+    // let mut utxos = Vec::new();
+    // let file = include_str!("faucets/alphanet_faucet.json");
+    // for line in file.lines() {
+    //     let utxo: TransactionOutput = serde_json::from_str(line).unwrap();
+    //     utxos.push(utxo);
+    // }
+    // // fix headers to new mmr roots after adding utxos
+    // block.header.output_mr = from_hex("f9bfcc0bfae8f90991ea7cc9a625a411dd757cce088cbf740848570daa43daff").unwrap();
+    // block.header.range_proof_mr =
+    // from_hex("fbadbae2bf8c7289d77af52edc80490cb476a917abd0afeab8821913791b678f").unwrap(); block.header.kernel_mr
+    // = from_hex("a40db2278709c3fb0e03044ca0f5090ffca616b708850d1437af4d584e17b97a").unwrap(); block.body.
+    // add_outputs(&mut utxos);
+    block
+}
+
+pub fn get_ridcully_genesis_block_raw() -> Block {
+    let sig = Signature::new(
+        PublicKey::from_hex("3abaff058dede56934138bb0be37c271b94d250c0a99ee93c530324ac99c667a").unwrap(),
+        PrivateKey::from_hex("7f93d02b23bf3613e1a05513ab729bed90269691f29dfe5af07f8164c254f009").unwrap(),
+    );
+    let mut body = AggregateBody::new(
+        vec![],
+        vec![TransactionOutput {
+            features: OutputFeatures {
+                flags: OutputFlags::COINBASE_OUTPUT,
+                maturity: 60,
+            },
+            commitment: Commitment::from_hex(
+                "d69bc7eccbe3b78a80ee4ebbf6936afd88c268db1573916180b3cc37e7966e75",
+            )
+                .unwrap(),
+            proof: BulletRangeProof::from_hex("3a52dc09c729bd4a570a6255f0303670c4d642c1a3959788a3cf1668555ea130b25f16b9d7ae7c7def0aa445c458d064066797a031331f50b6b875da5c4ee0709e64bcabd209b76a1a897e265937b6af063ddba3e6b11a95a31fccb6e97a6b224ab4d1964858a8e50335696fdb205f99bf33ad656d3671a7386629c232ee047b68aebf4a155bd7b493586e39dff246465eff812502f2a6dad4170d32e1614f00f44fe42e0ac7380d6ae0b14ffcab9968d3b0863b7fe59d7516ce13f275f4d40ae335e7f5b5cddccb9198043131f47a9326a68f0b25d0a3db8c7444beaeb9f80da40dbeac6371d4a0b822a1e7bd11199ebd3937dc11da35f48624ee74faacb36414208c51e117e152ad1187207c6082ad8d1378e274d83ca0cdeb8103aeb9eb211a8b960859dd3e61488bcc13e8ef0bdcccb2ec30d7a8d0ff12c5fbf774ef2c164265722ad843ed4779f070c7d55b85e2410951f7dacb5be4dd269a6c6ee5a95e9cd2a66b1f71e95fe1571b78382ea6ced1add2cc30b4620a5310692a8b0936601e7ed76706d1bd770ac454057d577075b7804bd2eecb8283321299db09b6a529e23a4ca6dc1512e763c121ced26326ceb605840dbf1fe74729ec972faa744c3c3ab81bc2cd372890a20e8e7d7a95506d5fdf4414336efabdc5bb8623a8918f29f6ec3f4d89cc8ac47eae8b2d4bae21a81e206ca6b88c78fe06e715fea3bee870fc214919b8ffec2f7fb1fb3ae5648b0e3057890933b35beee75c7ebb1054d80d88b472d7bcf2fbe61b1384aacdcd975dbac45315192f51c611757f399f72c33e78baadeb34a27cd84f51f2dde1a2c70cf7644011e2a2a4c04b835582de15e931be091e841cb409992a623c29de75299aa826384df6874bfaf52ad3c834925307b874b935797fc8b75d5d0564e0e9527953f36fde52010a312b9a0825a5c9bd0e").unwrap(),
+        }],
+        vec![TransactionKernel {
+            features: KernelFeatures::COINBASE_KERNEL,
+            fee: MicroTari(0),
+            lock_height: 0,
+            meta_info: None,
+            linked_kernel: None,
+            excess: Commitment::from_hex(
+                "4c8271842e2ed17adedd7e1e510e204c5069f83cda38327782a5da0e1cebb528",
+            )
+                .unwrap(),
+            excess_sig: sig,
+        }],
+    );
+    body.sort();
+    Block {
+        header: BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: vec![
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            ],
+            timestamp: 1_603_843_200.into(), // 10/28/2020 @ 12:00am (UTC) //Todo Swop this before reset
+            // timestamp: 1_603_287_362.into(),
+            output_mr: from_hex("511aaaed95b87d4ae5ddfa04f578ab6c402d5751263e842403f2dbf676c2edde").unwrap(),
+            range_proof_mr: from_hex("4c2f3ab2013da57c2e4b9a284f236554154a5d76be81c744cb20df87d4c7f7fa").unwrap(),
+            kernel_mr: from_hex("875f3c92cd17b4b634bc21fc578958f59717e8cfc517327d26ab996c0449a77a").unwrap(),
+            total_kernel_offset: PrivateKey::from_hex(
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .unwrap(),
+            nonce: 0,
+            pow: ProofOfWork {
+                accumulated_monero_difficulty: 1.into(),
+                accumulated_blake_difficulty: 1.into(),
+                target_difficulty: 1.into(),
+                pow_algo: PowAlgorithm::Sha3,
+                pow_data: vec![],
+            },
+        },
+        body,
+    }
+}
+
+pub fn get_ridcully_block_hash() -> Vec<u8> {
+    get_ridcully_genesis_block().hash()
+}
+
+pub fn get_ridcully_gen_header() -> BlockHeader {
+    get_ridcully_genesis_block().header
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        consensus::{ConsensusManagerBuilder, Network},
-        transactions::types::CryptoFactories,
-    };
-    use tari_crypto::commitment::HomomorphicCommitmentFactory;
+    use crate::transactions::types::CryptoFactories;
 
     #[test]
     fn rincewind_genesis_sanity_check() {
         let block = get_rincewind_genesis_block();
+        println!("{}", &block);
         assert_eq!(block.body.outputs().len(), 4001);
 
         let factories = CryptoFactories::default();
@@ -162,14 +246,32 @@ mod test {
 
         let coinbase_kernel = block.body.kernels().first().unwrap();
         assert!(coinbase_kernel.features.contains(KernelFeatures::COINBASE_KERNEL));
-        let coinbase = block.body.outputs().iter().find(|o| o.is_coinbase()).unwrap();
+        // I am leaving this here as a reminder. This the value is also changed as the emission curve has been swopped
+        // from a floating point on to a integer one. BUG: Mainnet value was committed to in the Rincewind
+        // let coinbase = block.body.outputs().iter().find(|o| o.is_coinbase()).unwrap();
+        // genesis block coinbase let consensus_manager =
+        // ConsensusManagerBuilder::new(Network::MainNet).build(); let supply =
+        // consensus_manager.emission_schedule().supply_at_block(0); let expected_kernel =
+        //     &coinbase.commitment - &factories.commitment.commit_value(&PrivateKey::default(), supply.into());
+        // assert_eq!(coinbase_kernel.excess, expected_kernel);
+    }
 
-        // BUG: Mainnet value was committed to in the Rincewind genesis block coinbase
-        let consensus_manager = ConsensusManagerBuilder::new(Network::MainNet).build();
-        let supply = consensus_manager.emission_schedule(0).supply_at_block(0);
-        let expected_kernel =
-            &coinbase.commitment - &factories.commitment.commit_value(&PrivateKey::default(), supply.into());
-        assert_eq!(coinbase_kernel.excess, expected_kernel);
+    #[test]
+    fn ridcully_genesis_sanity_check() {
+        let block = get_ridcully_genesis_block();
+        assert_eq!(block.body.outputs().len(), 1);
+
+        let factories = CryptoFactories::default();
+        let coinbase = block.body.outputs().first().unwrap();
+        assert!(coinbase.is_coinbase());
+        coinbase.verify_range_proof(&factories.range_proof).unwrap();
+        assert_eq!(block.body.kernels().len(), 1);
+        for kernel in block.body.kernels() {
+            kernel.verify_signature().unwrap();
+        }
+
+        let coinbase_kernel = block.body.kernels().first().unwrap();
+        assert!(coinbase_kernel.features.contains(KernelFeatures::COINBASE_KERNEL));
     }
 
     #[test]

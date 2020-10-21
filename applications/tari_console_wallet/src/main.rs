@@ -201,6 +201,7 @@ async fn setup_wallet(
     let network = match &config.network {
         Network::MainNet => NetworkType::MainNet,
         Network::Rincewind => NetworkType::Rincewind,
+        Network::Ridcully => NetworkType::Ridcully,
         Network::LocalNet => NetworkType::LocalNet,
     };
 

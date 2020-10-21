@@ -223,7 +223,7 @@ message ConsensusConstants {
     /// This is the initial emission curve amount
     uint64 emission_initial = 10;
     /// This is the emission curve delay
-    double emission_decay = 11;
+    repeated uint64 emission_decay = 11;
     /// This is the emission curve tail amount
     uint64 emission_tail = 12;
     /// This is the initial min difficulty for the difficulty adjustment

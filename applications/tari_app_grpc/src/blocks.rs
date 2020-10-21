@@ -122,6 +122,7 @@ impl From<BlockHeader> for grpc::BlockHeader {
                 pow_algo: match h.pow.pow_algo {
                     PowAlgorithm::Monero => 0,
                     PowAlgorithm::Blake => 1,
+                    PowAlgorithm::Sha3 => 2,
                 },
                 accumulated_monero_difficulty: h.pow.accumulated_monero_difficulty.into(),
                 accumulated_blake_difficulty: h.pow.accumulated_blake_difficulty.into(),
@@ -143,6 +144,7 @@ impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
                 pow_algo: match block.header.pow.pow_algo {
                     PowAlgorithm::Monero => 0,
                     PowAlgorithm::Blake => 1,
+                    PowAlgorithm::Sha3 => 1,
                 },
                 accumulated_monero_difficulty: block.header.pow.accumulated_monero_difficulty.into(),
                 accumulated_blake_difficulty: block.header.pow.accumulated_blake_difficulty.into(),

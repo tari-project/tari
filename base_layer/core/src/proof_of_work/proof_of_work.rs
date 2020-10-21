@@ -213,7 +213,7 @@ impl Display for ProofOfWork {
         )?;
         writeln!(
             fmt,
-            "Total accumulated difficulty:\nMonero={}, Blake={}",
+            "Total accumulated difficulty:\nMonero={}, Sha3={}",
             self.accumulated_monero_difficulty, self.accumulated_blake_difficulty
         )?;
         match self.pow_algo {
@@ -238,7 +238,7 @@ mod test {
         let pow = ProofOfWork::default();
         assert_eq!(
             &format!("{}", pow),
-            "Mining algorithm: Blake, Target difficulty: 1\nTotal accumulated difficulty:\nMonero=1, Blake=1\nPow \
+            "Mining algorithm: Blake, Target difficulty: 1\nTotal accumulated difficulty:\nMonero=1, Sha3=1\nPow \
              data: \n"
         );
     }
