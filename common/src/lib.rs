@@ -72,7 +72,7 @@
 //! let config = args.load_configuration().unwrap();
 //! let global = GlobalConfig::convert_from(config).unwrap();
 //! assert_eq!(global.network, Network::Rincewind);
-//! assert_eq!(global.blocking_threads, 4);
+//! assert!(global.max_threads.is_none());
 //! # std::fs::remove_dir_all(temp_dir).unwrap();
 //! ```
 

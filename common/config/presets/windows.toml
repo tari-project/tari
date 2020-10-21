@@ -195,13 +195,12 @@ peer_seeds = [
 # it is recommended to leave this setting as it. Available values are ViaBestChainMetadata and ViaRandomPeer.
 #block_sync_strategy="ViaBestChainMetadata"
 
-# Configure the number of threads to spawn for long-running tasks, like block and transaction validation. A good choice
-# for this value is somewhere between n/2 and n - 1, where n is the number of cores on your machine.
-blocking_threads = 4
+# Configure the maximum number of threads available for base node operation. These threads are spawned lazily, so a higher
+# number is recommended.
+# max_threads = 512
 
-# Configure the number of threads for the overall node work-stealing scheduler. A good value here is between 3 and
-# n - blocking_threads, where n is the number of cores on your machine, and blocking_thread is set above.
- core_threads = 4
+# The number of threads to spawn and keep active at all times. The default is the number of cores available on this node.
+# core_threads = <number of cores>
 
 # The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
 # peers can find you.
@@ -292,13 +291,12 @@ wallet_tor_identity_file = ".\\config\\wallet-tor.json"
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = []
 
-# Configure the number of threads to spawn for long-running tasks, like block and transaction validation. A good choice
-# for this value is somewhere between n/2 and n - 1, where n is the number of cores on your machine.
-#blocking_threads = 4
+# Configure the maximum number of threads available for base node operation. These threads are spawned lazily, so a higher
+# number is recommended.
+# max_threads = 512
 
-# Configure the number of threads for the overall node work-stealing scheduler. A good value here is between 3 and
-# n - blocking_threads, where n is the number of cores on your machine, and blocking_thread is set above.
- #core_threads = 6
+# The number of threads to spawn and keep active at all times. The default is the number of cores available on this node.
+# core_threads = <number of cores>
 
 # Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
 #grpc_enabled = false

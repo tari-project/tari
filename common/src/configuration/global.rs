@@ -59,8 +59,8 @@ pub struct GlobalConfig {
     pub orphan_db_clean_out_threshold: usize,
     pub pruning_horizon: u64,
     pub pruned_mode_cleanup_interval: u64,
-    pub core_threads: usize,
-    pub blocking_threads: usize,
+    pub core_threads: Option<usize>,
+    pub max_threads: Option<usize>,
     pub identity_file: PathBuf,
     pub public_address: Multiaddr,
     pub grpc_enabled: bool,
@@ -215,14 +215,12 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
 
     // Thread counts
     let key = config_string("base_node", &net_str, "core_threads");
-    let core_threads = cfg
-        .get_int(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+    let core_threads =
+        optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
-    let key = config_string("base_node", &net_str, "blocking_threads");
-    let blocking_threads = cfg
-        .get_int(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+    let key = config_string("base_node", &net_str, "max_threads");
+    let max_threads =
+        optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     // NodeIdentity path
     let key = config_string("base_node", &net_str, "identity_file");
@@ -446,7 +444,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         pruning_horizon,
         pruned_mode_cleanup_interval,
         core_threads,
-        blocking_threads,
+        max_threads,
         identity_file,
         public_address,
         grpc_enabled,
@@ -480,6 +478,15 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         monerod_password,
         monerod_use_auth,
     })
+}
+
+/// Changes ConfigError::NotFound into None
+fn optional<T>(result: Result<T, ConfigError>) -> Result<Option<T>, ConfigError> {
+    match result {
+        Ok(v) => Ok(Some(v)),
+        Err(ConfigError::NotFound(_)) => Ok(None),
+        Err(err) => Err(err),
+    }
 }
 
 fn network_transport_config(cfg: &Config, network: &str) -> Result<CommsTransport, ConfigurationError> {

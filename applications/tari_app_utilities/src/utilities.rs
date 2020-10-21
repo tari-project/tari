@@ -38,7 +38,7 @@ use tari_core::transactions::types::PublicKey;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
 use tari_wallet::util::emoji::EmojiId;
-use tokio::runtime::Runtime;
+use tokio::{runtime, runtime::Runtime};
 
 pub const LOG_TARGET: &str = "tari::application";
 
@@ -200,22 +200,27 @@ pub fn convert_socks_authentication(auth: SocksAuthentication) -> socks::Authent
 /// ## Returns
 /// A result containing the runtime on success, string indicating the error on failure
 pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
-    let num_core_threads = config.core_threads;
-    let num_blocking_threads = config.blocking_threads;
-    let num_mining_threads = config.num_mining_threads;
-
     info!(
         target: LOG_TARGET,
-        "Configuring the node to run on {} core threads, {} blocking worker threads and {} mining threads.",
-        num_core_threads,
-        num_blocking_threads,
-        num_mining_threads
+        "Configuring the node to run on up to {} core threads and {} mining threads.",
+        config.max_threads.unwrap_or(512),
+        config.num_mining_threads
     );
-    tokio::runtime::Builder::new()
+
+    let mut builder = runtime::Builder::new();
+
+    if let Some(max_threads) = config.max_threads {
+        // Ensure that there are always enough threads for mining.
+        // e.g if the user sets max_threads = 2, mining_threads = 5 then 7 threads are available in total
+        builder.max_threads(max_threads + config.num_mining_threads);
+    }
+    if let Some(core_threads) = config.core_threads {
+        builder.core_threads(core_threads);
+    }
+
+    builder
         .threaded_scheduler()
         .enable_all()
-        .max_threads(num_core_threads + num_blocking_threads + num_mining_threads)
-        .core_threads(num_core_threads)
         .build()
         .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
 }
