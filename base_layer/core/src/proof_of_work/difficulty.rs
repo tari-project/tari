@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{proof_of_work::error::DifficultyAdjustmentError};
+use crate::proof_of_work::error::DifficultyAdjustmentError;
 use newtype_ops::newtype_ops;
 use num_format::{Locale, ToFormattedString};
 use serde::{Deserialize, Serialize};
@@ -113,8 +113,8 @@ pub trait DifficultyAdjustment {
 
 #[cfg(feature = "base_node")]
 pub mod util {
-    use crate::U256;
     use super::*;
+    use crate::U256;
 
     /// This will provide the difficulty of the hash assuming the hash is big_endian
     pub(crate) fn big_endian_difficulty(hash: &[u8]) -> Difficulty {
