@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{difficulty::big_endian_difficulty, Difficulty},
+    proof_of_work::{difficulty::util::big_endian_difficulty, Difficulty},
 };
 use blake2::Blake2b;
 use digest::Digest;
