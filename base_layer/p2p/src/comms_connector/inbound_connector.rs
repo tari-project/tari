@@ -21,9 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::peer_message::PeerMessage;
+use anyhow::anyhow;
 use futures::{task::Context, Future, Sink, SinkExt};
 use log::*;
-use std::{error::Error, pin::Pin, sync::Arc, task::Poll};
+use std::{pin::Pin, sync::Arc, task::Poll};
 use tari_comms::pipeline::PipelineError;
 use tari_comms_dht::{domain_message::MessageHeader, inbound::DecryptedDhtMessage};
 use tower::Service;
@@ -45,7 +46,7 @@ impl<TSink> InboundDomainConnector<TSink> {
 impl<TSink> Service<DecryptedDhtMessage> for InboundDomainConnector<TSink>
 where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone,
-    TSink::Error: Error + Send + Sync + 'static,
+    TSink::Error: std::error::Error + Send + Sync + 'static,
 {
     type Error = PipelineError;
     type Response = ();
@@ -53,9 +54,7 @@ where
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.sink)
-            .poll_ready(cx)
-            .map_err(PipelineError::from_debug)
+        Pin::new(&mut self.sink).poll_ready(cx).map_err(Into::into)
     }
 
     fn call(&mut self, msg: DecryptedDhtMessage) -> Self::Future {
@@ -64,9 +63,7 @@ where
             let peer_message = Self::construct_peer_message(msg)?;
             // If this fails there is something wrong with the sink and the pubsub middleware should not
             // continue
-            sink.send(Arc::new(peer_message))
-                .await
-                .map_err(PipelineError::from_debug)?;
+            sink.send(Arc::new(peer_message)).await?;
 
             Ok(())
         }
@@ -77,15 +74,14 @@ impl<TSink> InboundDomainConnector<TSink> {
     fn construct_peer_message(mut inbound_message: DecryptedDhtMessage) -> Result<PeerMessage, PipelineError> {
         let envelope_body = inbound_message
             .success_mut()
-            .ok_or_else(|| "Message failed to decrypt")?;
+            .ok_or_else(|| anyhow!("Message failed to decrypt"))?;
         let header = envelope_body
-            .decode_part::<MessageHeader>(0)
-            .map_err(PipelineError::from_debug)?
-            .ok_or_else(|| "envelope body did not contain a header")?;
+            .decode_part::<MessageHeader>(0)?
+            .ok_or_else(|| anyhow!("envelope body did not contain a header"))?;
 
         let msg_bytes = envelope_body
             .take_part(1)
-            .ok_or_else(|| "envelope body did not contain a message body")?;
+            .ok_or_else(|| anyhow!("envelope body did not contain a message body"))?;
 
         let DecryptedDhtMessage {
             source_peer,
@@ -114,33 +110,25 @@ impl<TSink> InboundDomainConnector<TSink> {
 impl<TSink> Sink<DecryptedDhtMessage> for InboundDomainConnector<TSink>
 where
     TSink: Sink<Arc<PeerMessage>> + Unpin,
-    TSink::Error: Error + Send + Sync + 'static,
+    TSink::Error: Into<PipelineError> + Send + Sync + 'static,
 {
     type Error = PipelineError;
 
     fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.sink)
-            .poll_ready(cx)
-            .map_err(PipelineError::from_debug)
+        Pin::new(&mut self.sink).poll_ready(cx).map_err(Into::into)
     }
 
     fn start_send(mut self: Pin<&mut Self>, item: DecryptedDhtMessage) -> Result<(), Self::Error> {
         let item = Self::construct_peer_message(item)?;
-        Pin::new(&mut self.sink)
-            .start_send(Arc::new(item))
-            .map_err(PipelineError::from_debug)
+        Pin::new(&mut self.sink).start_send(Arc::new(item)).map_err(Into::into)
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.sink)
-            .poll_flush(cx)
-            .map_err(PipelineError::from_debug)
+        Pin::new(&mut self.sink).poll_flush(cx).map_err(Into::into)
     }
 
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.sink)
-            .poll_close(cx)
-            .map_err(PipelineError::from_debug)
+        Pin::new(&mut self.sink).poll_close(cx).map_err(Into::into)
     }
 }
 

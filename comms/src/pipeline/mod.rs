@@ -35,9 +35,6 @@
 mod builder;
 pub use builder::{Builder, Config, PipelineBuilderError};
 
-mod error;
-pub use error::PipelineError;
-
 mod sink;
 pub use sink::SinkService;
 
@@ -49,3 +46,5 @@ pub(crate) use outbound::Outbound;
 
 mod translate_sink;
 pub use translate_sink::TranslateSink;
+
+pub type PipelineError = anyhow::Error;

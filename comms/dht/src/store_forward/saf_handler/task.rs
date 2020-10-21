@@ -122,9 +122,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         match message.dht_header.message_type {
             DhtMessageType::SafRequestMessages => {
                 if self.node_identity.has_peer_features(PeerFeatures::DHT_STORE_FORWARD) {
-                    self.handle_stored_messages_request(message)
-                        .await
-                        .map_err(PipelineError::from_debug)?
+                    self.handle_stored_messages_request(message).await?
                 } else {
                     // TODO: #banheuristics - requester should not have requested store and forward messages from this
                     //       node
@@ -139,10 +137,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 }
             },
 
-            DhtMessageType::SafStoredMessages => self
-                .handle_stored_messages(message)
-                .await
-                .map_err(PipelineError::from_debug)?,
+            DhtMessageType::SafStoredMessages => self.handle_stored_messages(message).await?,
             // Not a SAF message, call downstream middleware
             _ => {
                 trace!(

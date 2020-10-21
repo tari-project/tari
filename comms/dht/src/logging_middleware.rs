@@ -23,6 +23,7 @@
 use futures::{task::Context, Future, TryFutureExt};
 use log::*;
 use std::{borrow::Cow, fmt::Display, marker::PhantomData, task::Poll};
+use tari_comms::pipeline::PipelineError;
 use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::middleware::message_logging";
@@ -45,7 +46,7 @@ impl<'a, R> MessageLoggingLayer<'a, R> {
 impl<'a, S, R> Layer<S> for MessageLoggingLayer<'a, R>
 where
     S: Service<R>,
-    S::Error: std::error::Error + Send + Sync + 'static,
+    S::Error: Into<PipelineError> + Send + Sync + 'static,
     R: Display,
 {
     type Service = MessageLoggingService<'a, S>;
@@ -73,10 +74,10 @@ impl<'a, S> MessageLoggingService<'a, S> {
 impl<S, R> Service<R> for MessageLoggingService<'_, S>
 where
     S: Service<R> + Clone,
-    S::Error: std::error::Error + Send + Sync + 'static,
+    S::Error: Into<PipelineError> + Send + Sync + 'static,
     R: Display,
 {
-    type Error = S::Error;
+    type Error = PipelineError;
     type Response = S::Response;
 
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;

@@ -373,7 +373,7 @@ impl Dht {
                          supported by this node. Discarding message.",
                         msg.source_peer.public_key
                     );
-                    future::ready(Err(PipelineError::from_debug(
+                    future::ready(Err(anyhow::anyhow!(
                         "Message filtered out because store and forward is not supported by this node",
                     )))
                 },

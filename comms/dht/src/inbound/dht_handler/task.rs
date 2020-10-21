@@ -97,12 +97,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message.dht_header.message_tag
         );
         match message.dht_header.message_type {
-            DhtMessageType::Join => self.handle_join(message).await.map_err(PipelineError::from_debug)?,
-            DhtMessageType::Discovery => self.handle_discover(message).await.map_err(PipelineError::from_debug)?,
-            DhtMessageType::DiscoveryResponse => self
-                .handle_discover_response(message)
-                .await
-                .map_err(PipelineError::from_debug)?,
+            DhtMessageType::Join => self.handle_join(message).await?,
+            DhtMessageType::Discovery => self.handle_discover(message).await?,
+            DhtMessageType::DiscoveryResponse => self.handle_discover_response(message).await?,
             // Not a DHT message, call downstream middleware
             _ => {
                 trace!(
