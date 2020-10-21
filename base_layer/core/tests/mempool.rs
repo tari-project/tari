@@ -32,6 +32,7 @@ use helpers::{
         generate_block,
         generate_new_block,
     },
+    database::create_mem_db,
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::create_new_blockchain,
 };
@@ -45,7 +46,6 @@ use tari_core::{
     },
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     mempool::{
         Mempool,
         MempoolConfig,

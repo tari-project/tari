@@ -233,7 +233,8 @@ impl WalletBootstrapper {
     }
 
     /// Creates a transport type for the base node's wallet using the provided configuration
-    /// ## Paramters
+    ///
+    /// ## Parameters
     /// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
     ///
     /// ##Returns

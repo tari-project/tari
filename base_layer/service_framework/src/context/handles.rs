@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::context::LazyService;
-use futures::{Future, FutureExt};
+use futures::{future, future::Either, Future, FutureExt};
 use std::{
     any,
     any::{Any, TypeId},
@@ -97,6 +97,27 @@ impl ServiceInitializerContext {
         Fut: Future<Output = ()> + Send + 'static,
     {
         task::spawn(self.wait_ready().then(f))
+    }
+
+    /// Spawn a task once handles are ready. The resolved handles are passed into this closure.
+    /// The future returned from the closure is polled on a new task until the shutdown signal is triggered.
+    pub fn spawn_until_shutdown<F, Fut>(self, f: F) -> task::JoinHandle<Option<Fut::Output>>
+    where
+        F: FnOnce(ServiceHandles) -> Fut + Send + 'static,
+        Fut: Future + Send + 'static,
+        Fut::Output: Send + 'static,
+    {
+        task::spawn(async move {
+            let shutdown_signal = self.get_shutdown_signal();
+            let _ = self.ready_signal.await;
+            let fut = f(self.inner);
+            futures::pin_mut!(fut);
+            let either = future::select(shutdown_signal, fut).await;
+            match either {
+                Either::Left((_, _)) => None,
+                Either::Right((res, _)) => Some(res),
+            }
+        })
     }
 
     /// Wait until the service handle are ready and return them when they are.

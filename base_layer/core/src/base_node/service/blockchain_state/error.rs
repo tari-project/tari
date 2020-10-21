@@ -20,4 +20,34 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod mock;
+use crate::chain_storage::ChainStorageError;
+use futures::channel::{mpsc, oneshot};
+
+#[derive(Debug, thiserror::Error)]
+pub enum BlockchainStateServiceError {
+    #[error("Request channel unexpectedly disconnected")]
+    RequestChannelDisconnected,
+    #[error("Sender canceled reply")]
+    SenderReplyCanceled,
+    #[error("Chain storage error: {0}")]
+    ChainStorageError(#[from] ChainStorageError),
+    #[error("Invalid argument `{arg}` in function `{func}`: {message}")]
+    InvalidArguments {
+        func: &'static str,
+        arg: &'static str,
+        message: String,
+    },
+}
+
+impl From<mpsc::SendError> for BlockchainStateServiceError {
+    fn from(_: mpsc::SendError) -> Self {
+        Self::RequestChannelDisconnected
+    }
+}
+
+// Assume here that a oneshot::Canceled error can only come from the handle
+impl From<oneshot::Canceled> for BlockchainStateServiceError {
+    fn from(_: oneshot::Canceled) -> Self {
+        Self::SenderReplyCanceled
+    }
+}

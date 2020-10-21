@@ -20,4 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod mock;
+mod error;
+pub use error::BlockchainStateServiceError;
+
+mod handle;
+pub use handle::{BlockchainStateRequest, BlockchainStateServiceHandle};
+
+mod initializer;
+pub use initializer::BlockchainStateServiceInitializer;
+
+mod service;
+
+#[cfg(test)]
+mod mock;
+#[cfg(test)]
+pub use mock::{create_blockchain_state_service_mock, BlockchainStateMockState};
+#[cfg(test)]
+mod tests;

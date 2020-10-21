@@ -156,7 +156,7 @@ mod test {
     use super::*;
     use crate::{
         consensus::{ConsensusManagerBuilder, Network},
-        helpers::create_orphan_block,
+        test_helpers::create_orphan_block,
         transactions::tari_amount::MicroTari,
         tx,
     };

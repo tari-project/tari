@@ -98,6 +98,44 @@ pub struct MmrNodes {
     #[prost(bytes, tag = "2")]
     pub deleted: std::vec::Vec<u8>,
 }
+/// Request message used to initiate a sync
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SyncBlocksRequest {
+    /// Start sending from this hash (exclusive)
+    #[prost(bytes, tag = "1")]
+    pub start_hash: std::vec::Vec<u8>,
+    /// Number of blocks to send. If this is zero (empty) the peer SHOULD send to their tip height
+    #[prost(uint64, tag = "2")]
+    pub count: u64,
+}
+/// Request message used to initiate a sync
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SyncHeadersRequest {
+    /// Start sending from this hash (exclusive)
+    #[prost(bytes, tag = "1")]
+    pub start_hash: std::vec::Vec<u8>,
+    /// Number of blocks to send. If this is zero (empty) the peer SHOULD send to their tip height
+    #[prost(uint64, tag = "2")]
+    pub count: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FindChainSplitRequest {
+    #[prost(bytes, repeated, tag = "1")]
+    pub block_hashes: ::std::vec::Vec<std::vec::Vec<u8>>,
+    #[prost(uint64, tag = "2")]
+    pub count: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FindChainSplitResponse {
+    /// An ordered list of headers starting from next header after the matching hash, up until
+    /// `FindChainSplitRequest::count`
+    #[prost(message, repeated, tag = "1")]
+    pub headers: ::std::vec::Vec<super::core::BlockHeader>,
+    /// The index of the hash that matched from `FindChainSplitRequest::block_hashes`. This value could also be used to
+    /// know how far back a split occurs.
+    #[prost(uint32, tag = "2")]
+    pub found_hash_index: u32,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum MmrTree {

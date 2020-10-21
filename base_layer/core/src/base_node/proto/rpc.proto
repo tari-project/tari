@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+import "block.proto";
+
+package tari.base_node;
+
+// Request message used to initiate a sync
+message SyncBlocksRequest {
+  // Start sending from this hash (exclusive)
+  bytes start_hash = 1;
+  // Number of blocks to send. If this is zero (empty) the peer SHOULD send to their tip height
+  uint64 count = 2;
+}
+
+// Request message used to initiate a sync
+message SyncHeadersRequest {
+  // Start sending from this hash (exclusive)
+  bytes start_hash = 1;
+  // Number of blocks to send. If this is zero (empty) the peer SHOULD send to their tip height
+  uint64 count = 2;
+}
+
+message FindChainSplitRequest {
+  repeated bytes block_hashes = 1;
+  uint64 count = 2;
+}
+
+message FindChainSplitResponse {
+  // An ordered list of headers starting from next header after the matching hash, up until `FindChainSplitRequest::count`
+  repeated tari.core.BlockHeader headers = 1;
+  // The index of the hash that matched from `FindChainSplitRequest::block_hashes`. This value could also be used to know how far back a split occurs.
+  uint32 found_hash_index = 2;
+}

@@ -20,4 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod mock;
+use crate::{
+    blocks::{Block, BlockHeader, NewBlockTemplate},
+    chain_storage::{BlockchainDatabase, MemoryDatabase},
+    consensus::{
+        chain_strength_comparer::ChainStrengthComparerBuilder,
+        ConsensusConstantsBuilder,
+        ConsensusManagerBuilder,
+        Network,
+    },
+    transactions::types::HashDigest,
+};
+
+/// Create a new blockchain database containing no blocks.
+pub fn create_new_blockchain() -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
+    let network = Network::LocalNet;
+    let consensus_constants = ConsensusConstantsBuilder::new(network).build();
+    let genesis = genesis_template();
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants)
+        .with_block(Block {
+            header: genesis.header.into(),
+            body: genesis.body,
+        })
+        .on_ties(ChainStrengthComparerBuilder::new().by_height().build())
+        .build();
+    super::create_mem_db(&consensus_manager)
+}
+
+fn genesis_template() -> NewBlockTemplate {
+    let header = BlockHeader::new(0);
+    header.into_builder().build().into()
+}

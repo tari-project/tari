@@ -43,6 +43,10 @@ pub mod service;
 #[cfg(feature = "base_node")]
 pub mod state_machine_service;
 #[cfg(feature = "base_node")]
+mod sync_rpc;
+#[cfg(feature = "base_node")]
+pub use sync_rpc::{create_base_node_sync_rpc_service, BaseNodeSyncService};
+#[cfg(feature = "base_node")]
 mod validators;
 #[cfg(feature = "base_node")]
 pub use validators::{ChainBalanceValidator, HeaderValidator, SyncValidators};

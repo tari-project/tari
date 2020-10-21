@@ -25,12 +25,12 @@ mod helpers;
 
 use helpers::{
     block_builders::chain_block,
+    database::create_mem_db,
     pow_blockchain::{append_to_pow_blockchain, create_test_pow_blockchain},
 };
 use tari_core::{
     chain_storage::{fetch_headers, BlockchainBackend},
     consensus::{ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     proof_of_work::{get_median_timestamp, PowAlgorithm},
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;

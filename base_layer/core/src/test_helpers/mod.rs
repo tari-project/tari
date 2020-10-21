@@ -23,6 +23,7 @@
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
 
+pub mod blockchain;
 mod mock_backend;
 
 use crate::{
@@ -34,11 +35,23 @@ use crate::{
 };
 
 pub use mock_backend::MockBackend;
+use rand::{distributions::Alphanumeric, Rng};
+use std::{iter, path::Path, sync::Arc};
+use tari_comms::PeerManager;
+use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
 pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, consensus: &ConsensusManager) -> Block {
-    let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version());
+    create_block(
+        consensus.consensus_constants(block_height).blockchain_version(),
+        block_height,
+        transactions,
+    )
+}
+
+pub fn create_block(block_version: u16, block_height: u64, transactions: Vec<Transaction>) -> Block {
+    let mut header = BlockHeader::new(block_version);
     header.height = block_height;
     header.into_builder().with_transactions(transactions).build()
 }
@@ -54,4 +67,24 @@ pub fn create_mem_db(consensus_manager: &ConsensusManager) -> BlockchainDatabase
         false,
     )
     .unwrap()
+}
+
+pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
+    let peer_database_name = {
+        let mut rng = rand::thread_rng();
+        iter::repeat(())
+            .map(|_| rng.sample(Alphanumeric))
+            .take(8)
+            .collect::<String>()
+    };
+    std::fs::create_dir_all(&data_path).unwrap();
+    let datastore = LMDBBuilder::new()
+        .set_path(data_path)
+        .set_env_config(Default::default())
+        .set_max_number_of_databases(1)
+        .add_database(&peer_database_name, lmdb_zero::db::CREATE)
+        .build()
+        .unwrap();
+    let peer_database = datastore.get_handle(&peer_database_name).unwrap();
+    Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database))).unwrap())
 }

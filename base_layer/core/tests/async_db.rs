@@ -26,6 +26,7 @@ mod helpers;
 
 use helpers::{
     block_builders::chain_block,
+    database::create_orphan_block,
     sample_blockchains::{create_blockchain_db_no_cut_through, create_new_blockchain},
 };
 use std::ops::Deref;
@@ -33,7 +34,6 @@ use tari_core::{
     blocks::Block,
     chain_storage::{async_db, BlockAddResult, MmrTree},
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
-    helpers::create_orphan_block,
     transactions::{
         helpers::schema_to_transaction,
         tari_amount::T,
