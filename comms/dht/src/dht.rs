@@ -312,7 +312,6 @@ impl Dht {
                 self.saf_response_signal_sender.clone(),
             ))
             .layer(inbound::DhtHandlerLayer::new(
-                self.config.clone(),
                 Arc::clone(&self.node_identity),
                 Arc::clone(&self.peer_manager),
                 self.discovery_service_requester(),

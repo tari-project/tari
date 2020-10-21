@@ -97,19 +97,19 @@ impl ConnectivityManager {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectivityStatus {
     Initializing,
-    Online,
-    Degraded,
+    Online(usize),
+    Degraded(usize),
     Offline,
 }
 
 impl ConnectivityStatus {
     is_fn!(is_initializing, ConnectivityStatus::Initializing);
 
-    is_fn!(is_online, ConnectivityStatus::Online);
+    is_fn!(is_online, ConnectivityStatus::Online(_));
 
     is_fn!(is_offline, ConnectivityStatus::Offline);
 
-    is_fn!(is_degraded, ConnectivityStatus::Degraded);
+    is_fn!(is_degraded, ConnectivityStatus::Degraded(_));
 }
 
 impl fmt::Display for ConnectivityStatus {
@@ -704,21 +704,21 @@ impl ConnectivityManagerActor {
 
         match num_connected_nodes {
             n if n >= min_peers => {
-                self.transition(ConnectivityStatus::Online, n, min_peers);
+                self.transition(ConnectivityStatus::Online(n), min_peers);
             },
             n if n > 0 && n < min_peers => {
-                self.transition(ConnectivityStatus::Degraded, n, min_peers);
+                self.transition(ConnectivityStatus::Degraded(n), min_peers);
             },
             n if n == 0 => {
                 if self.pool.count_failed() > 0 {
-                    self.transition(ConnectivityStatus::Offline, n, min_peers);
+                    self.transition(ConnectivityStatus::Offline, min_peers);
                 }
             },
             _ => unreachable!("num_connected is unsigned and only negative pattern covered on this branch"),
         }
     }
 
-    fn transition(&mut self, next_status: ConnectivityStatus, num_peers: usize, required_num_peers: usize) {
+    fn transition(&mut self, next_status: ConnectivityStatus, required_num_peers: usize) {
         use ConnectivityStatus::*;
         if self.status != next_status {
             debug!(
@@ -728,20 +728,29 @@ impl ConnectivityManagerActor {
         }
 
         match (self.status, next_status) {
-            (Online, Online) => {},
-            (_, Online) => {
+            (Online(_), Online(_)) => {},
+            (_, Online(n)) => {
                 info!(
                     target: LOG_TARGET,
-                    "Connectivity is ONLINE ({}/{} connections)", num_peers, required_num_peers
+                    "Connectivity is ONLINE ({}/{} connections)", n, required_num_peers
                 );
-                self.publish_event(ConnectivityEvent::ConnectivityStateOnline(num_peers));
+                self.publish_event(ConnectivityEvent::ConnectivityStateOnline(n));
             },
-            (_, Degraded) => {
+            (Degraded(m), Degraded(n)) => {
                 info!(
                     target: LOG_TARGET,
-                    "Connectivity is DEGRADED ({}/{} connections)", num_peers, required_num_peers
+                    "Connectivity is DEGRADED ({}/{} connections)", n, required_num_peers
                 );
-                self.publish_event(ConnectivityEvent::ConnectivityStateDegraded(num_peers));
+                if m != n {
+                    self.publish_event(ConnectivityEvent::ConnectivityStateDegraded(n));
+                }
+            },
+            (_, Degraded(n)) => {
+                info!(
+                    target: LOG_TARGET,
+                    "Connectivity is DEGRADED ({}/{} connections)", n, required_num_peers
+                );
+                self.publish_event(ConnectivityEvent::ConnectivityStateDegraded(n));
             },
             (Offline, Offline) => {},
             (_, Offline) => {

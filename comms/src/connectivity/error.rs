@@ -27,7 +27,7 @@ use thiserror::Error;
 pub enum ConnectivityError {
     #[error("Cannot send request because ConnectivityActor disconnected")]
     ActorDisconnected,
-    #[error("Response was unexpectedly cancelled")]
+    #[error("Internal actor response was unexpectedly cancelled")]
     ActorResponseCancelled,
     #[error("PeerManagerError: {0}")]
     PeerManagerError(#[from] PeerManagerError),

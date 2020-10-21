@@ -132,7 +132,7 @@ mod state_machine {
             .await;
 
         connectivity_mock
-            .set_connectivity_status(ConnectivityStatus::Online)
+            .set_connectivity_status(ConnectivityStatus::Online(NUM_PEERS))
             .await;
         connectivity_mock.add_active_connection(connection).await;
 
