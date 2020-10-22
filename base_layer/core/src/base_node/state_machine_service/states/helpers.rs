@@ -94,26 +94,6 @@ pub fn exclude_sync_peer(
     Ok(())
 }
 
-/// Ban and disconnect the provided sync peer if this node is online
-pub async fn ban_sync_peer_if_online(
-    log_target: &str,
-    connectivity: &mut ConnectivityRequester,
-    sync_peers: &mut SyncPeers,
-    sync_peer: &SyncPeer,
-    ban_duration: Duration,
-    reason: String,
-) -> Result<(), BlockSyncError>
-{
-    if !connectivity.get_connectivity_status().await?.is_online() {
-        warn!(
-            target: log_target,
-            "Unable to ban peer {} because local node is offline.", sync_peer
-        );
-        return Ok(());
-    }
-    ban_sync_peer(log_target, connectivity, sync_peers, sync_peer, ban_duration, reason).await
-}
-
 /// Ban and disconnect the provided sync peer.
 pub async fn ban_sync_peer(
     log_target: &str,
@@ -243,7 +223,7 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
                     "Failed to fetch header from peer: {:?}. Retrying.",
                     CommsInterfaceError::RequestTimedOut,
                 );
-                ban_sync_peer_if_online(
+                ban_sync_peer(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
@@ -308,7 +288,7 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
                     "Failed to fetch mmr node count from peer: {:?}. Retrying.",
                     CommsInterfaceError::RequestTimedOut,
                 );
-                ban_sync_peer_if_online(
+                ban_sync_peer(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
@@ -383,7 +363,7 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
                     "Failed to fetch mmr nodes from peer: {:?}. Retrying.",
                     CommsInterfaceError::RequestTimedOut,
                 );
-                ban_sync_peer_if_online(
+                ban_sync_peer(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
@@ -449,7 +429,7 @@ pub async fn request_kernels<B: BlockchainBackend + 'static>(
                     "Failed to fetch kernels from peer: {:?}. Retrying.",
                     CommsInterfaceError::RequestTimedOut,
                 );
-                ban_sync_peer_if_online(
+                ban_sync_peer(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
@@ -522,7 +502,7 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
                     "Failed to fetch kernels from peer: {:?}. Retrying.",
                     CommsInterfaceError::RequestTimedOut,
                 );
-                ban_sync_peer_if_online(
+                ban_sync_peer(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
