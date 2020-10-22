@@ -148,7 +148,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 message.tag,
                 message.dht_header.message_tag
             );
-            self.forward(&message).await.map_err(PipelineError::from_debug)?;
+            self.forward(&message).await?;
         }
 
         // The message has been forwarded, but other middleware may be interested (i.e. StoreMiddleware)
