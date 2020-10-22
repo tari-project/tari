@@ -209,10 +209,10 @@ pub fn monero_difficulty(header: &BlockHeader) -> Result<Difficulty, MergeMineEr
     let input = from_hex(input)?;
     // Todo remove this eventually when we reset and we dont have quotes in the key anymore.
     let key_bytes = from_hex(&key.replace("\"", ""))?;
-    get_random_x_difficulty(&input, &key_bytes, header.height).map(|r| r.0)
+    get_random_x_difficulty(&input, &key_bytes).map(|r| r.0)
 }
 
-fn get_random_x_difficulty(input: &[u8], key: &[u8], height: u64) -> Result<(Difficulty, Vec<u8>), MergeMineError> {
+fn get_random_x_difficulty(input: &[u8], key: &[u8]) -> Result<(Difficulty, Vec<u8>), MergeMineError> {
     let flags = RandomXFlag::get_recommended_flags();
     let cache = RandomXCache::new(flags, &key)?;
     let dataset = RandomXDataset::new(flags, &cache, 0)?;
@@ -840,7 +840,7 @@ mod test {
         .unwrap();
         let key = from_hex("2aca6501719a5c7ab7d4acbc7cc5d277b57ad8c27c6830788c2d5a596308e5b1").unwrap();
 
-        let difficulty = get_random_x_difficulty(&input, &key, 108001).unwrap();
+        let difficulty = get_random_x_difficulty(&input, &key).unwrap();
         assert_eq!(
             difficulty.1.to_hex(),
             "f68fbc8cc85bde856cd1323e9f8e6f024483038d728835de2f8c014ff6260000"
