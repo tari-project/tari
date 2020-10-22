@@ -3880,7 +3880,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_grpc"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "prost",
  "prost-types",
@@ -3892,7 +3892,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_utilities"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "dirs-next",
  "futures 0.3.6",
@@ -3914,7 +3914,7 @@ dependencies = [
 
 [[package]]
 name = "tari_base_node"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "anyhow",
  "bincode",
@@ -3959,7 +3959,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "anyhow",
  "config",
@@ -3982,7 +3982,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "0.2.7"
+version = "0.2.10"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4025,7 +4025,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "0.2.7"
+version = "0.2.10"
 dependencies = [
  "anyhow",
  "bitflags 1.2.1",
@@ -4085,7 +4085,7 @@ dependencies = [
 
 [[package]]
 name = "tari_console_wallet"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "chrono",
  "chrono-english",
@@ -4121,7 +4121,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "bincode",
  "bitflags 1.2.1",
@@ -4223,7 +4223,7 @@ dependencies = [
 
 [[package]]
 name = "tari_merge_mining_proxy"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "bincode",
  "bytes 0.5.6",
@@ -4279,7 +4279,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "anyhow",
  "bytes 0.4.12",
@@ -4394,7 +4394,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "aes-gcm",
  "blake2",
@@ -4433,7 +4433,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet_ffi"
-version = "0.16.7"
+version = "0.16.8"
 dependencies = [
  "chrono",
  "env_logger 0.7.1",
@@ -4492,7 +4492,7 @@ dependencies = [
 
 [[package]]
 name = "test_faucet"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "rand 0.7.3",
  "serde 1.0.116",
