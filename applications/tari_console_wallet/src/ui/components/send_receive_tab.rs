@@ -2,7 +2,7 @@ use crate::{
     ui::{
         components::{balance::Balance, Component},
         state::{AppState, UiTransactionSendStatus},
-        widgets::{centered_rect_absolute, MultiColumnList, WindowedListState},
+        widgets::{centered_rect_absolute, draw_dialog, MultiColumnList, WindowedListState},
         MAX_WIDTH,
     },
     utils::formatting::display_compressed_string,
@@ -10,7 +10,7 @@ use crate::{
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
     backend::Backend,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
     widgets::{Block, Borders, Clear, ListItem, Paragraph, Wrap},
@@ -31,9 +31,9 @@ pub struct SendReceiveTab {
     public_key_field: String,
     error_message: Option<String>,
     success_message: Option<String>,
-
     contacts_list_state: WindowedListState,
     send_result_watch: Option<watch::Receiver<UiTransactionSendStatus>>,
+    confirmation_dialog: Option<ConfirmationDialogType>,
 }
 
 impl SendReceiveTab {
@@ -51,9 +51,9 @@ impl SendReceiveTab {
             public_key_field: "".to_string(),
             error_message: None,
             success_message: None,
-
             contacts_list_state: WindowedListState::new(),
             send_result_watch: None,
+            confirmation_dialog: None,
         }
     }
 
@@ -339,38 +339,6 @@ impl SendReceiveTab {
             ),
         }
     }
-
-    fn draw_dialog<B>(
-        &mut self,
-        f: &mut Frame<B>,
-        area: Rect,
-        _app_state: &AppState,
-        title: String,
-        message: String,
-        color: Color,
-    ) where
-        B: Backend,
-    {
-        let popup_area = centered_rect_absolute(120, 10, area);
-
-        f.render_widget(Clear, popup_area);
-
-        let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            title.as_str(),
-            Style::default().fg(color).add_modifier(Modifier::BOLD),
-        ));
-        f.render_widget(block, popup_area);
-
-        let center_area = centered_rect_absolute(110, 2, area);
-
-        let text = Paragraph::new(Spans::from(vec![Span::styled(
-            message.as_str(),
-            Style::default().fg(color).add_modifier(Modifier::BOLD),
-        )]))
-        .block(Block::default())
-        .alignment(Alignment::Center);
-        f.render_widget(text, center_area);
-    }
 }
 
 impl<B: Backend> Component<B> for SendReceiveTab {
@@ -410,47 +378,131 @@ impl<B: Backend> Component<B> for SendReceiveTab {
                 },
                 UiTransactionSendStatus::SentDirect | UiTransactionSendStatus::SentViaSaf => {
                     self.success_message =
-                        Some("Transaction successfully sent! Please press Enter to continue".to_string());
+                        Some("Transaction successfully sent!\nPlease press Enter to continue".to_string());
                     return;
                 },
             };
-            self.draw_dialog(
+            draw_dialog(
                 f,
                 area,
-                app_state,
                 "Please Wait".to_string(),
                 format!("Transaction Send Status: {}", status),
                 Color::Green,
+                120,
+                10,
             );
             self.send_result_watch = Some(rx);
         }
 
         if let Some(msg) = self.success_message.clone() {
-            self.draw_dialog(f, area, app_state, "Success!".to_string(), msg, Color::Green);
+            draw_dialog(f, area, "Success!".to_string(), msg, Color::Green, 120, 9);
         }
 
         if let Some(msg) = self.error_message.clone() {
-            self.draw_dialog(f, area, app_state, "Error!".to_string(), msg, Color::Red);
+            draw_dialog(f, area, "Error!".to_string(), msg, Color::Red, 120, 9);
+        }
+
+        match self.confirmation_dialog {
+            None => (),
+            Some(ConfirmationDialogType::ConfirmSend) => {
+                draw_dialog(
+                    f,
+                    area,
+                    "Confirm Sending Transaction".to_string(),
+                    "Are you sure you want to send this transaction?\n(Y)es / (N)o".to_string(),
+                    Color::Red,
+                    120,
+                    9,
+                );
+            },
+            Some(ConfirmationDialogType::ConfirmDeleteContact) => {
+                draw_dialog(
+                    f,
+                    area,
+                    "Confirm Delete".to_string(),
+                    "Are you sure you want to delete this contact?\n(Y)es / (N)o".to_string(),
+                    Color::Red,
+                    120,
+                    9,
+                );
+            },
         }
     }
 
     fn on_key(&mut self, app_state: &mut AppState, c: char) {
-        if self.error_message.is_some() {
-            if let '\n' = c {
-                self.error_message = None;
-                return;
-            }
+        if self.error_message.is_some() && '\n' == c {
+            self.error_message = None;
+            return;
         }
 
-        if self.success_message.is_some() {
-            if let '\n' = c {
-                self.success_message = None;
-                return;
-            }
+        if self.success_message.is_some() && '\n' == c {
+            self.success_message = None;
+            return;
         }
 
         if self.send_result_watch.is_some() {
             return;
+        }
+
+        if self.confirmation_dialog.is_some() {
+            if 'n' == c {
+                self.confirmation_dialog = None;
+                return;
+            }
+            match self.confirmation_dialog {
+                None => (),
+                Some(ConfirmationDialogType::ConfirmSend) => {
+                    if 'y' == c {
+                        let amount = if let Ok(v) = self.amount_field.parse::<u64>() {
+                            v
+                        } else {
+                            self.error_message =
+                                Some("Amount should be an integer\nPress Enter to continue.".to_string());
+                            return;
+                        };
+
+                        let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
+
+                        match Handle::current().block_on(app_state.send_transaction(
+                            self.to_field.clone(),
+                            amount,
+                            self.message_field.clone(),
+                            tx,
+                        )) {
+                            Err(e) => {
+                                self.error_message =
+                                    Some(format!("Error sending transaction:\n{}\nPress Enter to continue.", e))
+                            },
+                            Ok(_) => {
+                                self.to_field = "".to_string();
+                                self.amount_field = "".to_string();
+                                self.message_field = "".to_string();
+                                self.send_input_mode = SendInputMode::None;
+                                self.send_result_watch = Some(rx);
+                            },
+                        }
+                        self.confirmation_dialog = None;
+                        return;
+                    }
+                },
+                Some(ConfirmationDialogType::ConfirmDeleteContact) => {
+                    if 'y' == c {
+                        if let Some(c) = self
+                            .contacts_list_state
+                            .selected()
+                            .and_then(|i| app_state.get_contact(i))
+                            .cloned()
+                        {
+                            if let Err(_e) = Handle::current().block_on(app_state.delete_contact(c.public_key)) {
+                                self.error_message =
+                                    Some("Could not delete selected contact\nPress Enter to continue.".to_string());
+                            }
+                        }
+                        self.confirmation_dialog = None;
+                        return;
+                    }
+                },
+            }
         }
 
         if self.send_input_mode != SendInputMode::None {
@@ -505,11 +557,8 @@ impl<B: Backend> Component<B> for SendReceiveTab {
                         if let Err(_e) = Handle::current()
                             .block_on(app_state.upsert_contact(self.alias_field.clone(), self.public_key_field.clone()))
                         {
-                            self.error_message = Some(
-                                "Invalid Public key or Emoji ID provided, Press Enter to
-        continue."
-                                    .to_string(),
-                            );
+                            self.error_message =
+                                Some("Invalid Public key or Emoji ID provided\n Press Enter to continue.".to_string());
                         }
 
                         self.alias_field = "".to_string();
@@ -527,17 +576,7 @@ impl<B: Backend> Component<B> for SendReceiveTab {
         if self.show_contacts {
             match c {
                 'd' => {
-                    if let Some(c) = self
-                        .contacts_list_state
-                        .selected()
-                        .and_then(|i| app_state.get_contact(i))
-                        .cloned()
-                    {
-                        if let Err(_e) = Handle::current().block_on(app_state.delete_contact(c.public_key)) {
-                            self.error_message =
-                                Some("Could not delete selected contact, Press Enter to continue.".to_string());
-                        }
-                    }
+                    self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmDeleteContact);
                     return;
                 },
                 '\n' => {
@@ -595,36 +634,16 @@ impl<B: Backend> Component<B> for SendReceiveTab {
             's' => {
                 if self.amount_field.is_empty() || self.to_field.is_empty() {
                     self.error_message = Some(
-                        "Destination Public Key/Emoji ID and Amount required, Press Enter to continue.".to_string(),
+                        "Destination Public Key/Emoji ID and Amount required\nPress Enter to continue.".to_string(),
                     );
                     return;
                 }
-                let amount = if let Ok(v) = self.amount_field.parse::<u64>() {
-                    v
-                } else {
-                    self.error_message = Some("Amount should be an integer, Press Enter to continue.".to_string());
+                if self.amount_field.parse::<u64>().is_err() {
+                    self.error_message = Some("Amount should be an integer\nPress Enter to continue.".to_string());
                     return;
                 };
 
-                let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
-
-                match Handle::current().block_on(app_state.send_transaction(
-                    self.to_field.clone(),
-                    amount,
-                    self.message_field.clone(),
-                    tx,
-                )) {
-                    Err(e) => {
-                        self.error_message = Some(format!("Error sending transaction: {}, Press Enter to continue.", e))
-                    },
-                    Ok(_) => {
-                        self.to_field = "".to_string();
-                        self.amount_field = "".to_string();
-                        self.message_field = "".to_string();
-                        self.send_input_mode = SendInputMode::None;
-                        self.send_result_watch = Some(rx);
-                    },
-                }
+                self.confirmation_dialog = Some(ConfirmationDialogType::ConfirmSend);
             },
             _ => {},
         }
@@ -684,4 +703,10 @@ pub enum ContactInputMode {
     None,
     Alias,
     PubkeyEmojiId,
+}
+
+#[derive(PartialEq, Debug)]
+pub enum ConfirmationDialogType {
+    ConfirmSend,
+    ConfirmDeleteContact,
 }
