@@ -37,7 +37,7 @@ pub struct ConnectivityConfig {
     /// established from being reaped due to inactivity.
     pub reaper_min_inactive_age: Duration,
     /// The number of connection failures before a peer is considered offline
-    /// Default: 2
+    /// Default: 1
     pub max_failures_mark_offline: usize,
     /// The length of time to wait before disconnecting a connection that failed tie breaking.
     /// Default: 1s
@@ -51,7 +51,7 @@ impl Default for ConnectivityConfig {
             connection_pool_refresh_interval: Duration::from_secs(30),
             reaper_min_inactive_age: Duration::from_secs(60),
             is_connection_reaping_enabled: true,
-            max_failures_mark_offline: 2,
+            max_failures_mark_offline: 1,
             connection_tie_break_linger: Duration::from_secs(2),
         }
     }

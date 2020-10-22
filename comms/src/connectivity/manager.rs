@@ -507,9 +507,16 @@ impl ConnectivityManagerActor {
                 node_id.short_str(),
                 num_failed
             );
-            self.peer_manager.set_offline(node_id, true).await?;
+            if self.peer_manager.set_offline(node_id, true).await? {
+                warn!(
+                    target: LOG_TARGET,
+                    "Peer `{}` was marked as offline but was already offline.", node_id
+                );
+            } else {
+                // Only publish the `PeerOffline` event if we changed the offline state from online to offline
+                self.publish_event(ConnectivityEvent::PeerOffline(node_id.clone()));
+            }
             self.connection_stats.remove(node_id);
-            self.publish_event(ConnectivityEvent::PeerOffline(node_id.clone()));
         }
 
         Ok(())

@@ -45,7 +45,10 @@ use std::{
 };
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, NodeIdentity, PeerManager};
 use tari_shutdown::ShutdownSignal;
-use tokio::{sync::broadcast, task};
+use tokio::{
+    sync::{broadcast, RwLock},
+    task,
+};
 
 const LOG_TARGET: &str = "comms::dht::network_discovery";
 
@@ -124,11 +127,12 @@ pub(super) struct NetworkDiscoveryContext {
     pub node_identity: Arc<NodeIdentity>,
     pub num_rounds: Arc<AtomicUsize>,
     pub event_tx: broadcast::Sender<Arc<DhtEvent>>,
+    pub last_round: Arc<RwLock<Option<DhtNetworkDiscoveryRoundInfo>>>,
 }
 
 impl NetworkDiscoveryContext {
     /// Increment the number of rounds by 1
-    pub fn increment_num_rounds(&self) -> usize {
+    pub(super) fn increment_num_rounds(&self) -> usize {
         self.num_rounds.fetch_add(1, Ordering::AcqRel)
     }
 
@@ -138,12 +142,20 @@ impl NetworkDiscoveryContext {
     }
 
     /// Reset the number of rounds to 0
-    pub fn reset_num_rounds(&self) {
+    pub(super) fn reset_num_rounds(&self) {
         self.num_rounds.store(0, Ordering::Release);
     }
 
-    pub fn publish_event(&self, event: DhtEvent) {
+    pub(super) fn publish_event(&self, event: DhtEvent) {
         let _ = self.event_tx.send(Arc::new(event));
+    }
+
+    pub(super) async fn set_last_round(&self, last_round: DhtNetworkDiscoveryRoundInfo) {
+        *self.last_round.write().await = Some(last_round);
+    }
+
+    pub async fn last_round(&self) -> Option<DhtNetworkDiscoveryRoundInfo> {
+        self.last_round.read().await.as_ref().cloned()
     }
 }
 
@@ -169,6 +181,7 @@ impl DhtNetworkDiscovery {
                 connectivity,
                 node_identity,
                 num_rounds: Default::default(),
+                last_round: Default::default(),
                 event_tx,
             },
             shutdown_signal,
@@ -187,17 +200,15 @@ impl DhtNetworkDiscovery {
         }
     }
 
-    fn transition(&mut self, current_state: State, next_event: StateEvent) -> State {
+    async fn transition(&mut self, current_state: State, next_event: StateEvent) -> State {
         let config = &self.config().network_discovery;
         debug!(
             target: LOG_TARGET,
             "Transition triggered from current state `{}` by event `{}`", current_state, next_event
         );
         match (current_state, next_event) {
-            (State::Initializing, StateEvent::Initialized) => {
-                State::Ready(DiscoveryReady::initial(self.context.clone()))
-            },
-            (_, StateEvent::Ready) => State::Ready(DiscoveryReady::initial(self.context.clone())),
+            (State::Initializing, StateEvent::Initialized) => State::Ready(DiscoveryReady::new(self.context.clone())),
+            (_, StateEvent::Ready) => State::Ready(DiscoveryReady::new(self.context.clone())),
             (State::Ready(_), StateEvent::BeginDiscovery(params)) => {
                 State::Discovering(Discovering::new(params, self.context.clone()))
             },
@@ -207,12 +218,13 @@ impl DhtNetworkDiscovery {
                     self.context
                         .publish_event(DhtEvent::NetworkDiscoveryPeersAdded(stats.clone()));
                 }
-
-                if !stats.is_success() {
+                let is_success = stats.is_success();
+                self.context.set_last_round(stats).await;
+                if !is_success {
                     return State::Waiting(self.config().network_discovery.on_failure_idle_period.into());
                 }
 
-                State::Ready(DiscoveryReady::new(self.context.clone(), stats))
+                State::Ready(DiscoveryReady::new(self.context.clone()))
             },
             (State::Ready(_), StateEvent::Idle) => State::Waiting(config.idle_period.into()),
             (_, StateEvent::Shutdown) => State::Shutdown,
@@ -259,7 +271,7 @@ impl DhtNetworkDiscovery {
                 futures::pin_mut!(fut);
                 or_shutdown(shutdown_signal, fut).await
             };
-            state = self.transition(state, next_event);
+            state = self.transition(state, next_event).await;
             if state.is_shutdown() {
                 break;
             }
@@ -285,8 +297,9 @@ impl Display for DiscoveryParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "DiscoveryParams({} peer(s) selected, num_peers_to_request = {})",
+            "DiscoveryParams({} peer(s) ({}), num_peers_to_request = {})",
             self.peers.len(),
+            self.peers.iter().map(|p| format!("{}, ", p)).collect::<String>(),
             self.num_peers_to_request
                 .as_ref()
                 .map(ToString::to_string)

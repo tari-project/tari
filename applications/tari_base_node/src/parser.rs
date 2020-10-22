@@ -1050,46 +1050,53 @@ impl Parser {
                     let num_peers = peers.len();
                     println!();
                     let mut table = Table::new();
-                    table.set_titles(vec![
-                        "NodeId",
-                        "Public Key",
-                        "Flags",
-                        "Role",
-                        "User Agent",
-                        "Status",
-                        "Base node data",
-                        "Added at",
-                    ]);
+                    table.set_titles(vec!["NodeId", "Public Key", "Flags", "Role", "User Agent", "Info"]);
 
                     for peer in peers {
-                        let status_str = {
-                            let mut s = Vec::new();
-                            if let Some(offline_at) = peer.offline_at.as_ref() {
-                                s.push(format!("OFFLINE since {}", format_naive_datetime(offline_at)));
+                        let info_str = {
+                            let mut s = vec![];
+
+                            if peer.is_offline() {
+                                if !peer.is_banned() {
+                                    s.push("OFFLINE".to_string());
+                                }
+                            } else if let Some(dt) = peer.last_seen() {
+                                s.push(format!(
+                                    "LAST_SEEN = {}",
+                                    Utc::now()
+                                        .signed_duration_since(dt)
+                                        .to_std()
+                                        .map(format_duration_basic)
+                                        .unwrap_or_else(|_| "?".into())
+                                ));
                             }
 
                             if let Some(dt) = peer.banned_until() {
                                 s.push(format!(
-                                    "BANNED until {}, because {}",
-                                    format_naive_datetime(dt),
+                                    "BANNED({}, {})",
+                                    dt.signed_duration_since(Utc::now().naive_utc())
+                                        .to_std()
+                                        .map(format_duration_basic)
+                                        .unwrap_or_else(|_| "∞".to_string()),
                                     peer.banned_reason
                                 ));
                             }
-                            s.join(", ")
-                        };
-                        let base_node_data_str = {
-                            let mut s = Vec::new();
-                            match peer.get_metadata(1) {
-                                Some(v) => match bincode::deserialize::<PeerMetadata>(v) {
-                                    Ok(peerdata) => {
-                                        s.push(format!("Last updated: {}", peerdata.last_updated));
-                                        s.push(format!("Meta data: {}", peerdata.metadata));
-                                    },
-                                    _ => s.push("Base node data malformed".to_string()),
-                                },
-                                _ => s.push("No base node information".to_string()),
-                            };
-                            s.join(", ")
+
+                            if let Some(metadata) = peer
+                                .get_metadata(1)
+                                .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
+                            {
+                                s.push(format!(
+                                    "chain height = {}",
+                                    metadata.metadata.height_of_longest_chain()
+                                ));
+                            }
+
+                            if s.is_empty() {
+                                "--".to_string()
+                            } else {
+                                s.join(", ")
+                            }
                         };
                         table.add_row(row![
                             peer.node_id,
@@ -1105,9 +1112,7 @@ impl Parser {
                             Some(peer.user_agent)
                                 .map(|ua| if ua.is_empty() { "<unknown>".to_string() } else { ua })
                                 .unwrap(),
-                            status_str,
-                            peer.added_at.date(),
-                            base_node_data_str,
+                            info_str,
                         ]);
                     }
                     table.print_std();

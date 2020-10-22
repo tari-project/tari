@@ -44,6 +44,8 @@ use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "comms::dht::network_discovery:onconnect";
 
+const NUM_FETCH_PEERS: u32 = 1000;
+
 #[derive(Debug)]
 pub(super) struct OnConnect {
     context: NetworkDiscoveryContext,
@@ -108,13 +110,15 @@ impl OnConnect {
 
     async fn sync_peers(&self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {
         let mut client = conn.connect_rpc::<rpc::DhtClient>().await?;
-        let mut peer_stream = client
+        let peer_stream = client
             .get_peers(GetPeersRequest {
-                // Sync all peers
-                n: 0,
-                include_clients: true,
+                n: NUM_FETCH_PEERS,
+                include_clients: false,
             })
             .await?;
+
+        // Take up to `NUM_FETCH_PEERS` then close the stream.
+        let mut peer_stream = peer_stream.take(NUM_FETCH_PEERS as usize);
 
         let sync_peer = conn.peer_node_id();
         let mut num_added = 0;
@@ -157,6 +161,9 @@ impl OnConnect {
     }
 
     async fn validate_and_add_peer(&self, sync_peer: &NodeId, peer: Peer) -> Result<bool, NetworkDiscoveryError> {
+        if self.context.node_identity.node_id() == &peer.node_id {
+            return Ok(false);
+        }
         let peer_manager = &self.context.peer_manager;
         if peer_manager.exists_node_id(&peer.node_id).await {
             return Ok(false);

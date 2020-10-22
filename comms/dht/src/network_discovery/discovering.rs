@@ -185,6 +185,11 @@ impl Discovering {
     }
 
     async fn validate_and_add_peer(&mut self, sync_peer: &NodeId, peer: Peer) -> Result<(), NetworkDiscoveryError> {
+        if self.context.node_identity.node_id() == &peer.node_id {
+            debug!(target: LOG_TARGET, "Received our own node from peer sync. Ignoring.");
+            return Ok(());
+        }
+
         let peer_manager = &self.context.peer_manager;
         if peer_manager.exists_node_id(&peer.node_id).await {
             self.stats.num_duplicate_peers += 1;
@@ -205,7 +210,7 @@ impl Discovering {
                     self.stats.num_new_neighbours += 1;
                     debug!(
                         target: LOG_TARGET,
-                        "Adding new neighbouring peer `{}`. {} (inclusive) have been added this round.",
+                        "Adding new neighbouring peer `{}`. A total of {} have been added this round.",
                         peer.node_id,
                         self.stats.num_new_neighbours
                     );

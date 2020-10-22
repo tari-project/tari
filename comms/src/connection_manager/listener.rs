@@ -355,6 +355,7 @@ where
             known_peer,
             authenticated_public_key,
             peer_identity,
+            None,
             allow_test_addresses,
         )
         .await?;

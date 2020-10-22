@@ -476,8 +476,8 @@ where DS: KeyValueStore<PeerId, Peer>
         Ok(node_id)
     }
 
-    /// Changes the OFFLINE flag bit of the peer
-    pub fn set_offline(&mut self, node_id: &NodeId, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
+    /// Changes the OFFLINE flag bit of the peer.
+    pub fn set_offline(&mut self, node_id: &NodeId, offline: bool) -> Result<bool, PeerManagerError> {
         let peer_key = *self
             .node_id_index
             .get(&node_id)
@@ -487,12 +487,12 @@ where DS: KeyValueStore<PeerId, Peer>
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .expect("node_id_index is out of sync with peer db");
-        peer.set_offline(ban_flag);
-        let node_id = peer.node_id.clone();
+        let was_offline = peer.is_offline();
+        peer.set_offline(offline);
         self.peer_db
             .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)?;
-        Ok(node_id)
+        Ok(was_offline)
     }
 
     /// Enables Thread safe access - Adds a new net address to the peer if it doesn't yet exist
