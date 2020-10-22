@@ -48,7 +48,6 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
             excess_sig,
             fee: MicroTari::from(kernel.fee),
             lock_height: kernel.lock_height,
-            meta_info: Some(kernel.meta_info),
         })
     }
 }
@@ -59,7 +58,6 @@ impl From<TransactionKernel> for grpc::TransactionKernel {
             features: kernel.features.bits() as u32,
             fee: kernel.fee.0,
             lock_height: kernel.lock_height,
-            meta_info: kernel.meta_info.as_ref().cloned().unwrap_or_default(),
             excess: Vec::from(kernel.excess.as_bytes()),
             excess_sig: Some(grpc::Signature {
                 public_nonce: Vec::from(kernel.excess_sig.get_public_nonce().as_bytes()),

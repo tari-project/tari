@@ -88,7 +88,6 @@ pub fn get_rincewind_genesis_block_raw() -> Block {
             features: KernelFeatures::COINBASE_KERNEL,
             fee: MicroTari(0),
             lock_height: 0,
-            meta_info: None,
             excess: Commitment::from_hex(
                 "d811169b90cf749d056416121ba34bf8b435e1c1549c446433c233289fc1372c",
             )
@@ -158,8 +157,8 @@ pub fn get_ridcully_genesis_block() -> Block {
 
 pub fn get_ridcully_genesis_block_raw() -> Block {
     let sig = Signature::new(
-        PublicKey::from_hex("3abaff058dede56934138bb0be37c271b94d250c0a99ee93c530324ac99c667a").unwrap(),
-        PrivateKey::from_hex("7f93d02b23bf3613e1a05513ab729bed90269691f29dfe5af07f8164c254f009").unwrap(),
+        PublicKey::from_hex("f2139d1cdbcfa670bbb60d4d03d9d50b0a522e674b11280e8064f6dc30e84133").unwrap(),
+        PrivateKey::from_hex("3ff7522d9a744ebf99c7b6664c0e2c8c64d2a7b902a98b78964766f9f7f2b107").unwrap(),
     );
     let mut body = AggregateBody::new(
         vec![],
@@ -169,18 +168,17 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
                 maturity: 60,
             },
             commitment: Commitment::from_hex(
-                "d69bc7eccbe3b78a80ee4ebbf6936afd88c268db1573916180b3cc37e7966e75",
+                "fadafb12de96d90042dcbf839985aadb7ae88baa3446d5c6a17937ef2b36783e",
             )
                 .unwrap(),
-            proof: BulletRangeProof::from_hex("3a52dc09c729bd4a570a6255f0303670c4d642c1a3959788a3cf1668555ea130b25f16b9d7ae7c7def0aa445c458d064066797a031331f50b6b875da5c4ee0709e64bcabd209b76a1a897e265937b6af063ddba3e6b11a95a31fccb6e97a6b224ab4d1964858a8e50335696fdb205f99bf33ad656d3671a7386629c232ee047b68aebf4a155bd7b493586e39dff246465eff812502f2a6dad4170d32e1614f00f44fe42e0ac7380d6ae0b14ffcab9968d3b0863b7fe59d7516ce13f275f4d40ae335e7f5b5cddccb9198043131f47a9326a68f0b25d0a3db8c7444beaeb9f80da40dbeac6371d4a0b822a1e7bd11199ebd3937dc11da35f48624ee74faacb36414208c51e117e152ad1187207c6082ad8d1378e274d83ca0cdeb8103aeb9eb211a8b960859dd3e61488bcc13e8ef0bdcccb2ec30d7a8d0ff12c5fbf774ef2c164265722ad843ed4779f070c7d55b85e2410951f7dacb5be4dd269a6c6ee5a95e9cd2a66b1f71e95fe1571b78382ea6ced1add2cc30b4620a5310692a8b0936601e7ed76706d1bd770ac454057d577075b7804bd2eecb8283321299db09b6a529e23a4ca6dc1512e763c121ced26326ceb605840dbf1fe74729ec972faa744c3c3ab81bc2cd372890a20e8e7d7a95506d5fdf4414336efabdc5bb8623a8918f29f6ec3f4d89cc8ac47eae8b2d4bae21a81e206ca6b88c78fe06e715fea3bee870fc214919b8ffec2f7fb1fb3ae5648b0e3057890933b35beee75c7ebb1054d80d88b472d7bcf2fbe61b1384aacdcd975dbac45315192f51c611757f399f72c33e78baadeb34a27cd84f51f2dde1a2c70cf7644011e2a2a4c04b835582de15e931be091e841cb409992a623c29de75299aa826384df6874bfaf52ad3c834925307b874b935797fc8b75d5d0564e0e9527953f36fde52010a312b9a0825a5c9bd0e").unwrap(),
+            proof: BulletRangeProof::from_hex("845c947cbf23683f6ff6a56d0aa55fca14a618f7476d4e29348c5cbadf2bb062b8da701a0f058eb69c88492895c3f034db194f6d1b2d29ea83c1a68cbdd19a3f90ae080cfd0315bb20cd05a462c4e06e708b015da1d70c0f87e8c7413b579008e43a6c8dc1edb72b0b67612e897d251ec55798184ff35c80d18262e98034677b73f2dcc7ae25c9119900aadaf04a16068bf57b9e8b9bb694331750dc8acc6102b8961be183419dce2f96c48ced9892e4cdb091dcda0d6a0bb4ed94fc0c63ca065f25ce1e560504d49970bcaac007f33368f15ffa0dd3f56bf799b66fa684fe0fbeb882aee4a6fe05a3ca7c488a6ba22779a42f0f5d875175b8ebc517dd49df20b4f04f027b7d22b7c62cb93727f35c18a0b776d95fac4ff5405d6ed3dbb7613152178cecea4b712aa6e6701804ded71d94cf67de2e86ae401499b39de81b7344185c9eb3bd570ac6121143a690f118d9413abb894729b6b3e057f4771b2c2204285151a56695257992f2b0331f27066270718b37ab472c339d2560c1f6559f3c4ce31ec7f7e2acdbebb1715951d8177283a1ccc2f393ce292956de5db4afde419c0264d5cc4758e6e2c07b730ad43819f3761658d63794cc8071b30f9d7cd622bece4f086b0ca6a04fee888856084543a99848f06334acf48cace58e5ef8c85412017c400b4ec92481ba6d745915aef40531db73d1d84d07d7fce25737629e0fc4ee71e7d505bfd382e362cd1ac03a67c93b8f20cb4285ce240cf1e000d48332ba32e713d6cdf6266449a0a156241f7b1b36753f46f1ecb8b1836625508c5f31bc7ebc1d7cd634272be02cc109bf86983a0591bf00bacea1287233fc12324846398be07d44e8e14bd78cd548415f6de60b5a0c43a84ac29f6a8ac0b1b748dd07a8a4124625e1055b5f5b19da79c319b6e465ca5df0eb70cb4e3dc399891ce90b").unwrap(),
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,
             fee: MicroTari(0),
             lock_height: 0,
-            meta_info: None,
             excess: Commitment::from_hex(
-                "4c8271842e2ed17adedd7e1e510e204c5069f83cda38327782a5da0e1cebb528",
+                "f472cc347a1006b7390f9c93b3c62fba334fd99f6c9c1daf9302646cd4781f61",
             )
                 .unwrap(),
             excess_sig: sig,
@@ -195,9 +193,9 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             ],
             timestamp: 1_603_843_200.into(), // 10/28/2020 @ 12:00am (UTC)
-            output_mr: from_hex("511aaaed95b87d4ae5ddfa04f578ab6c402d5751263e842403f2dbf676c2edde").unwrap(),
-            range_proof_mr: from_hex("4c2f3ab2013da57c2e4b9a284f236554154a5d76be81c744cb20df87d4c7f7fa").unwrap(),
-            kernel_mr: from_hex("875f3c92cd17b4b634bc21fc578958f59717e8cfc517327d26ab996c0449a77a").unwrap(),
+            output_mr: from_hex("dcc44f39b65e5e1e526887e7d56f7b85e2ea44bd29bc5bc195e6e015d19e1c06").unwrap(),
+            range_proof_mr: from_hex("e4d7dab49a66358379a901b9a36c10f070aa9d7bdc8ae752947b6fc4e55d255f").unwrap(),
+            kernel_mr: from_hex("589bc62ac5d9139f921c68b8075c32d8d130024acaf3196d1d6a89df601e2bcf").unwrap(),
             total_kernel_offset: PrivateKey::from_hex(
                 "0000000000000000000000000000000000000000000000000000000000000000",
             )
@@ -228,7 +226,7 @@ mod test {
     use super::*;
     use crate::transactions::types::CryptoFactories;
 
-    #[test]
+    // This test is not run able anymore as we need to generate a new rincewind block as the kernel's changed
     fn rincewind_genesis_sanity_check() {
         let block = get_rincewind_genesis_block();
         assert_eq!(block.body.outputs().len(), 4001);

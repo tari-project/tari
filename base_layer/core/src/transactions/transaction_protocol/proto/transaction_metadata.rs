@@ -29,7 +29,6 @@ impl From<proto::TransactionMetadata> for TransactionMetadata {
         Self {
             fee: metadata.fee.into(),
             lock_height: metadata.lock_height,
-            meta_info: metadata.meta_info.map(Into::into),
         }
     }
 }
@@ -41,8 +40,6 @@ impl From<TransactionMetadata> for proto::TransactionMetadata {
             fee: metadata.fee.into(),
             // The earliest block this transaction can be mined
             lock_height: metadata.lock_height,
-            // This is an optional field used by committing to additional tx meta data between the two parties
-            meta_info: metadata.meta_info.map(Into::into),
         }
     }
 }

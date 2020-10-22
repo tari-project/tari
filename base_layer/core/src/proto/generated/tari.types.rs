@@ -42,10 +42,6 @@ pub struct TransactionKernel {
     /// The max lock_height of all *inputs* to this transaction
     #[prost(uint64, tag = "3")]
     pub lock_height: u64,
-    /// This is an optional field used by committing to additional tx meta data between the two parties
-    #[prost(message, optional, tag = "4")]
-    pub meta_info: ::std::option::Option<HashOutput>,
-
     /// Remainder of the sum of all transaction commitments. If the transaction
     /// is well formed, amounts components should sum to zero and the excess
     /// is hence a valid public key.

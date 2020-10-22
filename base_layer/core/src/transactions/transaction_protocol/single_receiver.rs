@@ -149,7 +149,6 @@ mod test {
         let m = TransactionMetadata {
             fee: MicroTari(100),
             lock_height: 0,
-            meta_info: None,
         };
         let info = SingleRoundSenderData {
             tx_id: 500,

@@ -21,9 +21,6 @@ pub struct TransactionMetadata {
     /// The earliest block this transaction can be mined
     #[prost(uint64, tag = "2")]
     pub lock_height: u64,
-    /// This is an optional field used by committing to additional tx meta data between the two parties
-    #[prost(message, optional, tag = "3")]
-    pub meta_info: ::std::option::Option<super::types::HashOutput>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SingleRoundSenderData {
