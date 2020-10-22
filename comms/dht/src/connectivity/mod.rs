@@ -222,7 +222,7 @@ impl DhtConnectivity {
             new_neighbours.len(),
             new_neighbours
                 .iter()
-                .map(ToString::to_string)
+                .map(|n| format!("{}, ", n))
                 .collect::<Vec<_>>()
                 .join(", ")
         );

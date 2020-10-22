@@ -171,14 +171,13 @@ mod discovery_ready {
 
     fn setup(
         config: NetworkDiscoveryConfig,
-        last_discovery: Option<DhtNetworkDiscoveryRoundInfo>,
     ) -> (
         Arc<NodeIdentity>,
         Arc<PeerManager>,
         ConnectivityManagerMock,
         DiscoveryReady,
-    )
-    {
+        NetworkDiscoveryContext,
+    ) {
         let peer_manager = build_peer_manager();
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let (connectivity, connectivity_mock) = create_connectivity_mock();
@@ -193,13 +192,11 @@ mod discovery_ready {
             node_identity: node_identity.clone(),
             num_rounds: Default::default(),
             event_tx,
+            last_round: Default::default(),
         };
 
-        let ready = match last_discovery {
-            Some(r) => DiscoveryReady::new(context, r),
-            None => DiscoveryReady::initial(context),
-        };
-        (node_identity, peer_manager, connectivity_mock, ready)
+        let ready = DiscoveryReady::new(context.clone());
+        (node_identity, peer_manager, connectivity_mock, ready, context)
     }
 
     #[tokio_macros::test_basic]
@@ -208,7 +205,7 @@ mod discovery_ready {
             min_desired_peers: 10,
             ..Default::default()
         };
-        let (_, _, _, mut ready) = setup(config, None);
+        let (_, _, _, mut ready, _) = setup(config);
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::BeginDiscovery(params) = state_event);
         assert!(params.num_peers_to_request.is_none());
@@ -221,16 +218,16 @@ mod discovery_ready {
             idle_after_num_rounds: 0,
             ..Default::default()
         };
-        let (_, _, _, mut ready) = setup(
-            config,
-            Some(DhtNetworkDiscoveryRoundInfo {
+        let (_, _, _, mut ready, context) = setup(config);
+        context
+            .set_last_round(DhtNetworkDiscoveryRoundInfo {
                 num_new_neighbours: 1,
                 num_new_peers: 1,
                 num_duplicate_peers: 0,
                 num_succeeded: 1,
                 sync_peers: vec![],
-            }),
-        );
+            })
+            .await;
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::Idle = state_event);
     }
@@ -242,7 +239,8 @@ mod discovery_ready {
             idle_after_num_rounds: 0,
             ..Default::default()
         };
-        let (_, _, _, mut ready) = setup(config, Some(Default::default()));
+        let (_, _, _, mut ready, context) = setup(config);
+        context.set_last_round(Default::default()).await;
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::OnConnectMode = state_event);
     }

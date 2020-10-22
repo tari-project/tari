@@ -212,7 +212,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             self.outbound_service
                 .send_raw(
                     SendMessageParams::new()
-                        .closest_connected(origin_node_id.clone(), vec![
+                        .propagate(origin_node_id.clone().into(), vec![
                             origin_node_id,
                             source_peer.node_id.clone(),
                         ])

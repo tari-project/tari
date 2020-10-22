@@ -106,7 +106,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
             )));
         }
 
-        let excluded = message
+        let mut excluded = message
             .excluded
             .iter()
             .filter_map(|node_id| NodeId::from_bytes(node_id).ok())
@@ -115,6 +115,9 @@ impl DhtRpcService for DhtRpcServiceImpl {
         if excluded.len() != message.excluded.len() {
             return Err(RpcStatus::bad_request("Invalid NodeId in excluded list"));
         }
+
+        // Don't return the requesting peer back to itself
+        excluded.push(request.context().peer_node_id().clone());
 
         let mut features = Some(PeerFeatures::COMMUNICATION_NODE);
         if message.include_clients {
@@ -140,9 +143,14 @@ impl DhtRpcService for DhtRpcServiceImpl {
 
     async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
         let message = request.message();
+        let requester_node_id = request.context().peer_node_id();
 
-        let mut query = PeerQuery::new()
-            .select_where(|peer| (message.include_clients || !peer.features.is_client()) && !peer.is_banned());
+        let mut query = PeerQuery::new().select_where(|peer| {
+            &peer.node_id != requester_node_id &&
+                (message.include_clients || !peer.features.is_client()) &&
+                !peer.is_banned()
+        });
+
         if message.n > 0 {
             query = query.limit(message.n as usize);
         }
