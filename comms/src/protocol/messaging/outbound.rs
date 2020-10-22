@@ -147,7 +147,7 @@ impl OutboundMessaging {
                     continue;
                 },
                 Err(err) => {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "MessagingProtocol failed to dial peer '{}' because '{:?}'",
                         self.peer_node_id.short_str(),

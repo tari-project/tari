@@ -46,8 +46,8 @@ use tari_comms::connectivity::ConnectivityRequester;
 const RANDOM_SYNC_PEER_WITH_CHAIN: bool = true;
 // The default length of time to ban a misbehaving/malfunctioning sync peer (24 hours)
 const DEFAULT_PEER_BAN_DURATION: Duration = Duration::from_secs(24 * 60 * 60);
-// The length of time for a short term ban of a misbehaving/malfunctioning sync peer (5 min)
-const SHORT_TERM_PEER_BAN_DURATION: Duration = Duration::from_secs(5 * 60);
+// The length of time for a short term ban of a misbehaving/malfunctioning sync peer
+const SHORT_TERM_PEER_BAN_DURATION: Duration = Duration::from_secs(30 * 60);
 
 /// Configuration for the Sync Peer Selection and Banning.
 #[derive(Clone, Copy)]
