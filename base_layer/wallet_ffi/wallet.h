@@ -539,6 +539,56 @@ void wallet_apply_encryption(struct TariWallet *wallet, const char *passphrase, 
 // be removed. If it is not encrypted then this function will still succeed to make the operation idempotent
 void wallet_remove_encryption(struct TariWallet *wallet, int* error_out);
 
+/// Set a Key Value in the Wallet storage used for Client Key Value store
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `key` - The pointer to a Utf8 string representing the Key
+/// `value` - The pointer to a Utf8 string representing the Value ot be stored
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Return a boolean value indicating the operation's success or failure. The error_ptr will hold the error
+/// code if there was a failure
+///
+/// # Safety
+/// None
+bool wallet_set_key_value(struct TariWallet *wallet, const char* key, const char* value, int* error_out);
+
+/// get a stored Value that was previously stored in the Wallet storage used for Client Key Value store
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `key` - The pointer to a Utf8 string representing the Key
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array of the Value string. Note that it returns an null pointer if an
+/// error occured.
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+const char *wallet_get_value(struct TariWallet *wallet, const char* key, int* error_out);
+
+/// Clears a Value for the provided Key Value in the Wallet storage used for Client Key Value store
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `key` - The pointer to a Utf8 string representing the Key
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Return a boolean value indicating the operation's success or failure. The error_ptr will hold the error
+/// code if there was a failure
+///
+/// # Safety
+/// None
+bool wallet_clear_value(struct TariWallet *wallet, const char* key, int* error_out);
+
+
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
 

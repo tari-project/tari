@@ -25,19 +25,24 @@ use crate::{
     storage::database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
 };
 use aes_gcm::Aes256Gcm;
-use std::sync::{Arc, RwLock};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 use tari_comms::types::{CommsPublicKey, CommsSecretKey};
 use tari_crypto::keys::PublicKey;
 
 #[derive(Default)]
 pub struct InnerDatabase {
     comms_private_key: Option<CommsSecretKey>,
+    client_key_values: HashMap<String, String>,
 }
 
 impl InnerDatabase {
     pub fn new() -> Self {
         Self {
             comms_private_key: None,
+            client_key_values: HashMap::new(),
         }
     }
 }
@@ -70,6 +75,7 @@ impl WalletBackend for WalletMemoryDatabase {
                 .comms_private_key
                 .clone()
                 .map(|sk| DbValue::CommsPublicKey(CommsPublicKey::from_secret_key(&sk))),
+            DbKey::ClientKey(k) => db.client_key_values.get(k).map(|v| DbValue::ClientValue(v.clone())),
         };
 
         Ok(result)
@@ -82,6 +88,9 @@ impl WalletBackend for WalletMemoryDatabase {
                 DbKeyValuePair::CommsSecretKey(secret) => {
                     db.comms_private_key = Some(secret);
                 },
+                DbKeyValuePair::ClientKeyValue(k, v) => {
+                    db.client_key_values.insert(k, v);
+                },
             },
             WriteOperation::Remove(k) => match k {
                 DbKey::CommsSecretKey => {
@@ -89,6 +98,13 @@ impl WalletBackend for WalletMemoryDatabase {
                 },
                 DbKey::CommsPublicKey => {
                     return Err(WalletStorageError::OperationNotSupported);
+                },
+                DbKey::ClientKey(k) => {
+                    if db.client_key_values.remove(&k).is_some() {
+                        return Ok(Some(DbValue::ValueCleared));
+                    } else {
+                        return Ok(None);
+                    }
                 },
             },
         }

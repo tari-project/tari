@@ -1,4 +1,11 @@
 table! {
+    client_key_values (key) {
+        key -> Text,
+        value -> Text,
+    }
+}
+
+table! {
     completed_transactions (tx_id) {
         tx_id -> BigInt,
         source_public_key -> Binary,
@@ -96,6 +103,7 @@ table! {
 }
 
 allow_tables_to_appear_in_same_query!(
+    client_key_values,
     completed_transactions,
     contacts,
     inbound_transactions,
