@@ -69,6 +69,7 @@ use tokio::runtime;
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
 const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
+const SERVICE_REQUEST_MINIMUM_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct BaseNodeBootstrapper<'a, B> {
     pub config: &'a GlobalConfig,
@@ -93,7 +94,12 @@ where B: BlockchainBackend + 'static
             pubsub_connector(runtime::Handle::current(), buf_size, config.buffer_rate_limit_base_node);
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
 
-        let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
+        let node_config = BaseNodeServiceConfig {
+            fetch_blocks_timeout: cmp::max(SERVICE_REQUEST_MINIMUM_TIMEOUT, config.fetch_blocks_timeout),
+            service_request_timeout: cmp::max(SERVICE_REQUEST_MINIMUM_TIMEOUT, config.service_request_timeout),
+            fetch_utxos_timeout: cmp::max(SERVICE_REQUEST_MINIMUM_TIMEOUT, config.fetch_utxos_timeout),
+            ..Default::default()
+        };
         let mempool_config = MempoolServiceConfig::default(); // TODO - make this configurable
 
         let comms_config = self.create_comms_config();
@@ -133,6 +139,7 @@ where B: BlockchainBackend + 'static
                 self.factories,
                 sync_strategy,
                 config.orphan_db_clean_out_threshold,
+                cmp::max(SERVICE_REQUEST_MINIMUM_TIMEOUT, config.fetch_blocks_timeout),
             ))
             .build()
             .await?;

@@ -52,6 +52,15 @@
 # - Rate limit for the base node wallet (min value = 5, default value = 20).
 #buffer_rate_limit_base_node_wallet = 20
 
+# The timeout (s) for requesting blocks from a peer during blockchain sync (min value = 10 s, default value = 150 s).
+#fetch_blocks_timeout = 150
+
+# The timeout (s) for requesting UTXOs from a base node (min value = 10 s, default value = 600 s).
+#fetch_utxos_timeout = 600
+
+# The timeout (s) for requesting other base node services (min value = 10 s, default value = 180 s).
+#service_request_timeout = 180
+
 ########################################################################################################################
 #                                                                                                                      #
 #                                          Wallet Configuration Options                                                #
@@ -337,9 +346,6 @@ peer_seeds = []
 ########################################################################################################################
 [mempool.testnet]
 
-# The maximum period the mempool will wait for responses to requests made to base nodes [default: 60 seconds].
-# request_timeout = 60
-
 # The maximum number of transactions that can be stored in the Unconfirmed Transaction pool. This is the main waiting
 # area in the mempool and almost all transactions will end up in this pool before being mined. It's for this reason
 # that this parameter will have the greatest impact on actual memory usage by your mempool. If you are not mining,
@@ -385,9 +391,6 @@ peer_seeds = []
 #weight_tx_skip_count = 20
 
 [mempool.mainnet]
-
-# The maximum period the mempool will wait for responses to requests made to base nodes [default: 60 seconds].
-# request_timeout = 60
 
 # The maximum number of transactions that can be stored in the Unconfirmed Transaction pool. This is the main waiting
 # area in the mempool and almost all transactions will end up in this pool before being mined. It's for this reason

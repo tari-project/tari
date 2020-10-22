@@ -37,8 +37,6 @@ pub mod chain_metadata_service;
 #[cfg(feature = "base_node")]
 pub mod comms_interface;
 #[cfg(feature = "base_node")]
-pub mod consts;
-#[cfg(feature = "base_node")]
 pub mod service;
 #[cfg(feature = "base_node")]
 pub mod state_machine_service;

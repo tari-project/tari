@@ -38,7 +38,7 @@ use crate::{
 };
 use futures::{future, Future};
 use log::*;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
@@ -51,6 +51,7 @@ pub struct BaseNodeStateMachineInitializer<B> {
     factories: CryptoFactories,
     sync_strategy: BlockSyncStrategy,
     orphan_db_clean_out_threshold: usize,
+    fetch_blocks_timeout: Duration,
 }
 
 impl<B> BaseNodeStateMachineInitializer<B>
@@ -62,6 +63,7 @@ where B: BlockchainBackend + 'static
         factories: CryptoFactories,
         sync_strategy: BlockSyncStrategy,
         orphan_db_clean_out_threshold: usize,
+        fetch_blocks_timeout: Duration,
     ) -> Self
     {
         Self {
@@ -70,6 +72,7 @@ where B: BlockchainBackend + 'static
             factories,
             sync_strategy,
             orphan_db_clean_out_threshold,
+            fetch_blocks_timeout,
         }
     }
 }
@@ -96,6 +99,7 @@ where B: BlockchainBackend + 'static
         let rules = self.rules.clone();
         let db = self.db.clone();
         let orphan_db_clean_out_threshold = self.orphan_db_clean_out_threshold;
+        let fetch_blocks_timeout = self.fetch_blocks_timeout;
         context.spawn_when_ready(move |handles| async move {
             let outbound_interface = handles.expect_handle::<OutboundNodeCommsInterface>();
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
@@ -106,6 +110,7 @@ where B: BlockchainBackend + 'static
             let mut state_machine_config = BaseNodeStateMachineConfig {
                 block_sync_config: BlockSyncConfig {
                     orphan_db_clean_out_threshold,
+                    fetch_blocks_timeout,
                     ..Default::default()
                 },
                 ..Default::default()

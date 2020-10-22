@@ -49,7 +49,6 @@ use tari_comms::protocol::messaging::MessagingEvent;
 use tari_core::{
     base_node::{
         comms_interface::{BlockEvent, Broadcast, CommsInterfaceError},
-        consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
         service::BaseNodeServiceConfig,
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
@@ -703,8 +702,10 @@ fn service_request_timeout() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let base_node_service_config = BaseNodeServiceConfig {
-        request_timeout: Duration::from_millis(1),
-        desired_response_fraction: BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
+        service_request_timeout: Duration::from_millis(1),
+        fetch_blocks_timeout: Default::default(),
+        fetch_utxos_timeout: Default::default(),
+        desired_response_fraction: Default::default(),
     };
     let temp_dir = tempdir().unwrap();
     let (mut alice_node, bob_node, _consensus_manager) = create_network_with_2_base_nodes_with_config(
