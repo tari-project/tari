@@ -150,7 +150,6 @@ mod test {
             fee: MicroTari(100),
             lock_height: 0,
             meta_info: None,
-            linked_kernel: None,
         };
         let info = SingleRoundSenderData {
             tx_id: 500,

@@ -89,7 +89,6 @@ pub fn get_rincewind_genesis_block_raw() -> Block {
             fee: MicroTari(0),
             lock_height: 0,
             meta_info: None,
-            linked_kernel: None,
             excess: Commitment::from_hex(
                 "d811169b90cf749d056416121ba34bf8b435e1c1549c446433c233289fc1372c",
             )
@@ -180,7 +179,6 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
             fee: MicroTari(0),
             lock_height: 0,
             meta_info: None,
-            linked_kernel: None,
             excess: Commitment::from_hex(
                 "4c8271842e2ed17adedd7e1e510e204c5069f83cda38327782a5da0e1cebb528",
             )
@@ -196,8 +194,7 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
             prev_hash: vec![
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             ],
-            timestamp: 1_603_843_200.into(), // 10/28/2020 @ 12:00am (UTC) //Todo Swop this before reset
-            // timestamp: 1_603_287_362.into(),
+            timestamp: 1_603_843_200.into(), // 10/28/2020 @ 12:00am (UTC)
             output_mr: from_hex("511aaaed95b87d4ae5ddfa04f578ab6c402d5751263e842403f2dbf676c2edde").unwrap(),
             range_proof_mr: from_hex("4c2f3ab2013da57c2e4b9a284f236554154a5d76be81c744cb20df87d4c7f7fa").unwrap(),
             kernel_mr: from_hex("875f3c92cd17b4b634bc21fc578958f59717e8cfc517327d26ab996c0449a77a").unwrap(),

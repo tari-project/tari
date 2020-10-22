@@ -24,10 +24,6 @@ pub struct TransactionMetadata {
     /// This is an optional field used by committing to additional tx meta data between the two parties
     #[prost(message, optional, tag = "3")]
     pub meta_info: ::std::option::Option<super::types::HashOutput>,
-    /// This is an optional field and is the hash of the kernel this kernel is linked to.
-    /// This field is for example for relative time-locked transactions
-    #[prost(message, optional, tag = "4")]
-    pub linked_kernel: ::std::option::Option<super::types::HashOutput>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SingleRoundSenderData {

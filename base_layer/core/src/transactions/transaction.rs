@@ -425,9 +425,6 @@ pub struct TransactionKernel {
     pub lock_height: u64,
     /// This is an optional field used by committing to additional tx metadata between the two parties
     pub meta_info: Option<HashOutput>,
-    /// This is an optional field and is the hash of the kernel this kernel is linked to.
-    /// This field is for example for relative time-locked transactions
-    pub linked_kernel: Option<HashOutput>,
     /// Remainder of the sum of all transaction commitments (minus an offset). If the transaction is well-formed,
     /// amounts plus fee will sum to zero, and the excess is hence a valid public key.
     pub excess: Commitment,
@@ -442,7 +439,6 @@ pub struct KernelBuilder {
     fee: MicroTari,
     lock_height: u64,
     meta_info: Option<MessageHash>,
-    linked_kernel: Option<MessageHash>,
     excess: Option<Commitment>,
     excess_sig: Option<Signature>,
 }
@@ -484,11 +480,6 @@ impl KernelBuilder {
         self
     }
 
-    pub fn with_linked_kernel(mut self, linked_kernel_hash: MessageHash) -> KernelBuilder {
-        self.linked_kernel = Some(linked_kernel_hash);
-        self
-    }
-
     pub fn with_meta_info(mut self, meta_info: MessageHash) -> KernelBuilder {
         self.meta_info = Some(meta_info);
         self
@@ -502,7 +493,6 @@ impl KernelBuilder {
             features: self.features,
             fee: self.fee,
             lock_height: self.lock_height,
-            linked_kernel: self.linked_kernel,
             meta_info: self.meta_info,
             excess: self.excess.unwrap(),
             excess_sig: self.excess_sig.unwrap(),
@@ -516,7 +506,6 @@ impl Default for KernelBuilder {
             features: KernelFeatures::empty(),
             fee: MicroTari::from(0),
             lock_height: 0,
-            linked_kernel: None,
             meta_info: None,
             excess: None,
             excess_sig: None,
@@ -532,7 +521,6 @@ impl TransactionKernel {
             lock_height: self.lock_height,
             fee: self.fee,
             meta_info: None,
-            linked_kernel: None,
         };
         let c = build_challenge(r, &m);
         if self.excess_sig.verify_challenge(excess, &c) {
@@ -555,7 +543,6 @@ impl Hashable for TransactionKernel {
             .chain(self.excess_sig.get_public_nonce().as_bytes())
             .chain(self.excess_sig.get_signature().as_bytes())
             .chain(self.meta_info.as_ref().unwrap_or(&vec![0]))
-            .chain(self.linked_kernel.as_ref().unwrap_or(&vec![0]))
             .result()
             .to_vec()
     }
@@ -564,8 +551,7 @@ impl Hashable for TransactionKernel {
 impl Display for TransactionKernel {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let msg = format!(
-            "Fee: {}\nLock height: {}\nFeatures: {:?}\nExcess: {}\nExcess signature: {}\nMeta_info: \
-             {}\nLinked_kernel: {}\n",
+            "Fee: {}\nLock height: {}\nFeatures: {:?}\nExcess: {}\nExcess signature: {}\nMeta_info: {}\n",
             self.fee,
             self.lock_height,
             self.features,
@@ -574,10 +560,6 @@ impl Display for TransactionKernel {
                 .to_json()
                 .unwrap_or_else(|_| "Failed to serialize signature".into()),
             match &self.meta_info {
-                None => "None".to_string(),
-                Some(v) => v.to_hex(),
-            },
-            match &self.linked_kernel {
                 None => "None".to_string(),
                 Some(v) => v.to_hex(),
             },
@@ -887,13 +869,11 @@ mod test {
         let r = PublicKey::from_hex("5c6bfaceaa1c83fa4482a816b5f82ca3975cb9b61b6e8be4ee8f01c5f1bee561").unwrap();
         let sig = Signature::new(r, s);
         let excess = Commitment::from_hex("e0bd3f743b566272277c357075b0584fc840d79efac49e9b3b6dbaa8a351bc0c").unwrap();
-        let linked_kernel = Vec::from_hex("e605e109a5723053181e22e9a14cb9a9981dc8a2368d5aa3d09d9261e340e928").unwrap();
         let meta = Vec::from_hex("c45d3f7903471c55e0fe77f644c1ed9b87151b50c0394f806187138eb36a4200").unwrap();
         let k = KernelBuilder::new()
             .with_signature(&sig)
             .with_fee(100.into())
             .with_excess(&excess)
-            .with_linked_kernel(linked_kernel)
             .with_meta_info(meta)
             .with_lock_height(500)
             .build()

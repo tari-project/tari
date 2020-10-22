@@ -68,7 +68,6 @@ impl TryFrom<proto::TransactionKernel> for TransactionKernel {
             excess,
             excess_sig,
             fee: MicroTari::from(kernel.fee),
-            linked_kernel: kernel.linked_kernel.map(Into::into),
             lock_height: kernel.lock_height,
             meta_info: kernel.meta_info.map(Into::into),
         })
@@ -82,7 +81,6 @@ impl From<TransactionKernel> for proto::TransactionKernel {
             excess: Some(kernel.excess.into()),
             excess_sig: Some(kernel.excess_sig.into()),
             fee: kernel.fee.into(),
-            linked_kernel: kernel.linked_kernel.map(Into::into),
             lock_height: kernel.lock_height,
             meta_info: kernel.meta_info.map(Into::into),
         }

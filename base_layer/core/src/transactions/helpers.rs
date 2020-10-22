@@ -117,7 +117,6 @@ pub fn create_signature(k: PrivateKey, fee: MicroTari, lock_height: u64) -> Sign
         fee,
         lock_height,
         meta_info: None,
-        linked_kernel: None,
     };
     let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
     Signature::sign(k, r, &e).unwrap()
@@ -137,7 +136,6 @@ pub fn create_random_signature_from_s_key(
         fee,
         lock_height,
         meta_info: None,
-        linked_kernel: None,
     };
     let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
     (p, Signature::sign(s_key, r, &e).unwrap())

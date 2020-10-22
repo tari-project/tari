@@ -45,10 +45,7 @@ pub struct TransactionKernel {
     /// This is an optional field used by committing to additional tx meta data between the two parties
     #[prost(message, optional, tag = "4")]
     pub meta_info: ::std::option::Option<HashOutput>,
-    /// This is an optional field and is the hash of the kernel this kernel is linked to.
-    /// This field is for example for relative time-locked transactions
-    #[prost(message, optional, tag = "5")]
-    pub linked_kernel: ::std::option::Option<HashOutput>,
+
     /// Remainder of the sum of all transaction commitments. If the transaction
     /// is well formed, amounts components should sum to zero and the excess
     /// is hence a valid public key.
