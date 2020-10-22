@@ -22,10 +22,7 @@
 
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{
-        difficulty::util::{big_endian_difficulty, little_endian_difficulty},
-        Difficulty,
-    },
+    proof_of_work::{difficulty::util::little_endian_difficulty, Difficulty},
     tari_utilities::ByteArray,
 };
 use log::*;
@@ -215,7 +212,6 @@ pub fn monero_difficulty(header: &BlockHeader) -> Result<Difficulty, MergeMineEr
     get_random_x_difficulty(&input, &key_bytes, header.height).map(|r| r.0)
 }
 
-// this swops from big_endian to little at height 108000
 fn get_random_x_difficulty(input: &[u8], key: &[u8], height: u64) -> Result<(Difficulty, Vec<u8>), MergeMineError> {
     let flags = RandomXFlag::get_recommended_flags();
     let cache = RandomXCache::new(flags, &key)?;
@@ -229,11 +225,7 @@ fn get_random_x_difficulty(input: &[u8], key: &[u8], height: u64) -> Result<(Dif
         Vec::from(key).to_hex()
     );
     // ToDo remove this post testnet. This is to fix wrongly calculated monero blocks
-    let difficulty = if height > 108000 {
-        little_endian_difficulty(&hash)
-    } else {
-        big_endian_difficulty(&hash)
-    };
+    let difficulty = little_endian_difficulty(&hash);
     Ok((difficulty, hash))
 }
 
@@ -283,10 +275,6 @@ pub fn from_hashes_to_array<T: IntoIterator<Item = Hash>>(hashes: T) -> Vec<[u8;
 }
 
 fn verify_root(monero_data: &MoneroData) -> Result<(), MergeMineError> {
-    // let mut hashes = Vec::with_capacity(monero_data.transaction_hashes.len());
-    // for item in &monero_data.transaction_hashes {
-    //     hashes.push(Hash::from(item));
-    // }
     let hashes = monero_data
         .transaction_hashes
         .iter()
