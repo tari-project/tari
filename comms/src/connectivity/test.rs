@@ -33,7 +33,7 @@ use crate::{
     runtime::task,
     test_utils::{
         mocks::{create_connection_manager_mock, create_peer_connection_mock_pair, ConnectionManagerMockState},
-        node_identity::{build_node_identity, ordered_node_identities},
+        node_identity::{build_many_node_identities, build_node_identity},
         test_node::build_peer_manager,
     },
     ConnectionManagerEvent,
@@ -43,7 +43,7 @@ use crate::{
 use futures::{channel::mpsc, future};
 use std::{sync::Arc, time::Duration};
 use tari_shutdown::Shutdown;
-use tari_test_utils::{collect_stream, unpack_enum};
+use tari_test_utils::{collect_stream, streams, unpack_enum};
 use tokio::sync::broadcast;
 
 fn setup_connectivity_manager(
@@ -89,7 +89,7 @@ fn setup_connectivity_manager(
 }
 
 async fn add_test_peers(peer_manager: &PeerManager, n: usize) -> Vec<Peer> {
-    let node_identities = ordered_node_identities(n, PeerFeatures::COMMUNICATION_NODE);
+    let node_identities = build_many_node_identities(n, PeerFeatures::COMMUNICATION_NODE);
     let peer_iter = node_identities.iter().map(|n| n.to_peer());
 
     let mut peers = Vec::with_capacity(n);
@@ -212,6 +212,107 @@ async fn add_many_managed_peers() {
         assert_eq!(state.status(), ConnectionStatus::Failed);
         assert!(state.connection().is_none());
     }
+}
+
+#[runtime::test_basic]
+async fn online_then_offline() {
+    let (mut connectivity, mut event_stream, node_identity, peer_manager, cm_mock_state, _shutdown) =
+        setup_connectivity_manager(Default::default());
+    let peers = add_test_peers(&peer_manager, 8).await;
+    let clients = build_many_node_identities(2, PeerFeatures::COMMUNICATION_CLIENT);
+    for peer in &clients {
+        peer_manager.add_peer(peer.to_peer()).await.unwrap();
+    }
+
+    let client_connections = future::join_all(
+        clients
+            .iter()
+            .map(|peer| create_peer_connection_mock_pair(1, node_identity.to_peer(), peer.to_peer())),
+    )
+    .await
+    .into_iter()
+    .map(|(conn, _, _, _)| conn)
+    .collect::<Vec<_>>();
+
+    let connections = future::join_all(
+        (0..5)
+            .map(|i| peers[i].clone())
+            .map(|peer| create_peer_connection_mock_pair(1, node_identity.to_peer(), peer)),
+    )
+    .await
+    .into_iter()
+    .map(|(conn, _, _, _)| conn)
+    .collect::<Vec<_>>();
+
+    connectivity
+        .add_managed_peers(peers.iter().map(|p| p.node_id.clone()).collect())
+        .await
+        .unwrap();
+    connectivity
+        .add_managed_peers(clients.iter().map(|p| p.node_id().clone()).collect())
+        .await
+        .unwrap();
+
+    let mut events = collect_stream!(event_stream, take = 1, timeout = Duration::from_secs(10));
+    unpack_enum!(ConnectivityEvent::ConnectivityStateInitialized = &*events.remove(0).unwrap());
+
+    for conn in connections.iter().skip(1) {
+        cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnected(conn.clone()));
+    }
+    for conn in &client_connections {
+        cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnected(conn.clone()));
+    }
+
+    connectivity
+        .wait_for_connectivity(Duration::from_secs(10))
+        .await
+        .unwrap();
+    cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnectFailed(
+        connections[0].peer_node_id().clone().into(),
+        ConnectionManagerError::InvalidStaticPublicKey,
+    ));
+
+    for conn in connections.iter().skip(1) {
+        cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(
+            conn.peer_node_id().clone().into(),
+        ));
+    }
+
+    streams::assert_in_stream(
+        &mut event_stream,
+        |item| match &*item.unwrap() {
+            ConnectivityEvent::ConnectivityStateDegraded(2) => true,
+            _ => false,
+        },
+        Duration::from_secs(10),
+    )
+    .await;
+
+    // Still online because we have client connections
+    assert_eq!(
+        connectivity.get_connectivity_status().await.unwrap().is_offline(),
+        false
+    );
+
+    // Disconnect client connections
+    for conn in &client_connections {
+        cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(
+            conn.peer_node_id().clone().into(),
+        ));
+    }
+
+    streams::assert_in_stream(
+        &mut event_stream,
+        |item| match &*item.unwrap() {
+            ConnectivityEvent::ConnectivityStateOffline => true,
+            _ => false,
+        },
+        Duration::from_secs(10),
+    )
+    .await;
+
+    let is_offline = connectivity.get_connectivity_status().await.unwrap().is_offline();
+    assert!(is_offline);
 }
 
 #[runtime::test_basic]
