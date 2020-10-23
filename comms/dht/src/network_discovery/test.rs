@@ -167,7 +167,7 @@ mod discovery_ready {
         state_machine::{NetworkDiscoveryContext, StateEvent},
         DhtNetworkDiscoveryRoundInfo,
     };
-    use tari_comms::test_utils::mocks::ConnectivityManagerMock;
+    use tari_comms::test_utils::{mocks::ConnectivityManagerMock, node_identity::build_many_node_identities};
 
     fn setup(
         config: NetworkDiscoveryConfig,
@@ -201,14 +201,21 @@ mod discovery_ready {
 
     #[tokio_macros::test_basic]
     async fn it_begins_aggressive_discovery() {
-        let config = NetworkDiscoveryConfig {
-            min_desired_peers: 10,
-            ..Default::default()
-        };
-        let (_, _, _, mut ready, _) = setup(config);
+        let (_, pm, _, mut ready, _) = setup(Default::default());
+        let peers = build_many_node_identities(1, PeerFeatures::COMMUNICATION_NODE);
+        for peer in peers {
+            pm.add_peer(peer.to_peer()).await.unwrap();
+        }
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::BeginDiscovery(params) = state_event);
         assert!(params.num_peers_to_request.is_none());
+    }
+
+    #[tokio_macros::test_basic]
+    async fn it_idles_if_no_sync_peers() {
+        let (_, _, _, mut ready, _) = setup(Default::default());
+        let state_event = ready.next_event().await;
+        unpack_enum!(StateEvent::Idle = state_event);
     }
 
     #[tokio_macros::test_basic]
