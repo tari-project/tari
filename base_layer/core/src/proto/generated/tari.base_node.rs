@@ -11,8 +11,8 @@ pub struct ChainMetadata {
     #[prost(uint64, tag = "4")]
     pub pruning_horizon: u64,
     /// The current geometric mean of the pow of the chain tip, or `None` if there is no chain
-    #[prost(message, optional, tag = "5")]
-    pub accumulated_difficulty: ::std::option::Option<u64>,
+    #[prost(bytes, tag = "5")]
+    pub accumulated_difficulty: std::vec::Vec<u8>,
     /// The effective height of the pruning horizon. This indicates from what height
     /// a full block can be provided (exclusive).
     /// If `effective_pruned_height` is equal to the `height_of_longest_chain` no blocks can be provided.

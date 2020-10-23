@@ -71,7 +71,6 @@ use tari_core::{
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     helpers::create_mem_db,
     mempool::MempoolServiceConfig,
-    proof_of_work::Difficulty,
     transactions::{helpers::spend_utxos, types::CryptoFactories},
     txn_schema,
     validation::{block_validators::MockStatelessBlockValidator, mocks::MockValidator},
@@ -194,7 +193,7 @@ fn test_event_channel() {
     let PeerChainMetadata {
         node_id,
         chain_metadata,
-    } = random_peer_metadata(10, 5_000.into());
+    } = random_peer_metadata(10, 5_000);
     runtime
         .block_on(mock.publish_chain_metadata(&node_id, &chain_metadata))
         .expect("Could not publish metadata");
@@ -206,7 +205,7 @@ fn test_event_channel() {
         match *event.unwrap().unwrap() {
             StateEvent::FallenBehind(SyncStatus::Lagging(ref data, ref peers)) => {
                 assert_eq!(data.height_of_longest_chain, Some(10));
-                assert_eq!(data.accumulated_difficulty, Some(5_000.into()));
+                assert_eq!(data.accumulated_difficulty, Some(5_000));
                 assert_eq!(peers[0].node_id, node_id);
             },
             _ => assert!(false),
@@ -307,7 +306,7 @@ fn test_block_sync() {
             .publish_chain_metadata(bob_node.node_identity.node_id(), &network_tip)
             .await;
         // Publish a second event saying that we are lagging again so that we will leave the Listening state
-        let higher_difficulty = Difficulty::from(u64::MAX);
+        let higher_difficulty = std::u128::MAX;
         network_tip.accumulated_difficulty = Some(higher_difficulty);
 
         let _ = mock

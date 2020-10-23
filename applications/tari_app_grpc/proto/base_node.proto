@@ -186,7 +186,7 @@ message MetaData {
         // tracked (i.e. the database is in full archival mode).
         uint64 pruning_horizon = 4;
         // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
-        uint64 accumulated_difficulty = 5;
+        bytes accumulated_difficulty = 5;
 }
 
 // This is the message that is returned for a miner after it asks for a new block.

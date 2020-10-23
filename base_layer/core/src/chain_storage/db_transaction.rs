@@ -22,7 +22,6 @@
 use crate::{
     blocks::{blockheader::BlockHash, Block, BlockHeader},
     chain_storage::{error::ChainStorageError, InProgressHorizonSyncState},
-    proof_of_work::Difficulty,
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -264,7 +263,7 @@ impl fmt::Display for MetadataKey {
 pub enum MetadataValue {
     ChainHeight(Option<u64>),
     BestBlock(Option<BlockHash>),
-    AccumulatedWork(Option<Difficulty>),
+    AccumulatedWork(Option<u128>),
     PruningHorizon(u64),
     EffectivePrunedHeight(u64),
     HorizonSyncState(InProgressHorizonSyncState),
