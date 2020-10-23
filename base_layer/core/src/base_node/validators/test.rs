@@ -24,14 +24,14 @@ use super::{header_iter::HeaderIter, ChainBalanceValidator, HeaderValidator};
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
     chain_storage::{ChainStorageError, DbTransaction},
-    consensus::{ConsensusManagerBuilder, Network},
+    consensus::{consensus_constants::ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     helpers::create_mem_db,
     proof_of_work::PowError,
     transactions::{
         fee::Fee,
         helpers::{create_random_signature_from_s_key, create_utxo, spend_utxos},
         tari_amount::uT,
-        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, UnblindedOutput},
+        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel, UnblindedOutput},
         types::{Commitment, CryptoFactories},
     },
     txn_schema,
@@ -130,16 +130,32 @@ fn chain_balance_validation() {
     let mut genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
     let (faucet_utxo, faucet_key) = create_utxo(faucet_value, &factories, None);
+    let (pk, sig) = create_random_signature_from_s_key(faucet_key.clone(), 0.into(), 0);
+    let excess = Commitment::from_public_key(&pk);
+    let kernel = TransactionKernel {
+        features: KernelFeatures::empty(),
+        fee: 0 * uT,
+        lock_height: 0,
+        excess,
+        excess_sig: sig,
+    };
     let faucet_hash = faucet_utxo.hash();
     genesis.body.add_output(faucet_utxo);
+    genesis.body.add_kernels(&mut vec![kernel]);
+    let total_faucet = faucet_value + consensus_manager.consensus_constants(0).faucet_value();
+    let constants = ConsensusConstantsBuilder::new(Network::LocalNet)
+        .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
+        .with_faucet_value(total_faucet)
+        .build();
     // Create a LocalNet consensus manager that uses rincewind consensus constants and has a custom rincewind genesis
     // block that contains an extra faucet utxo
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
-        .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
+        .with_consensus_constants(constants)
         .build();
 
     let db = create_mem_db(&consensus_manager);
+
     let validator = ChainBalanceValidator::new(db.clone(), consensus_manager.clone(), factories.clone());
     // Validate the genesis state
     validator.validate(&0).unwrap();

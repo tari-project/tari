@@ -53,12 +53,9 @@ impl<B: BlockchainBackend> Validation<u64> for ChainBalanceValidator<B> {
         let total_offset = self.fetch_total_offset_commitment(*horizon_height)?;
         let emission_h = self.get_emission_commitment_at(*horizon_height);
         let kernel_excess = self.db.fetch_kernel_commitment_sum()?;
-        let genesis_input_commit = self.get_aggregate_genesis_commitment();
         let output = self.db.fetch_utxo_commitment_sum()?;
 
-        // Validate: ∑UTXO_i ?= Emission + ∑GENESIS_COMMIT_i + ∑KERNEL_EXCESS_i + ∑OFFSET_i
-        let agg_excess = &kernel_excess + &genesis_input_commit;
-        let input = &(&emission_h + &agg_excess) + &total_offset;
+        let input = &(&emission_h + &kernel_excess) + &total_offset;
 
         if output != input {
             return Err(ValidationError::ChainBalanceValidationFailed(*horizon_height));
@@ -84,7 +81,8 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
     }
 
     fn get_emission_commitment_at(&self, height: u64) -> Commitment {
-        let total_supply = self.rules.get_emission_reward_at(height);
+        let total_supply =
+            self.rules.get_emission_reward_at(height) + self.rules.consensus_constants(height).faucet_value();
         trace!(
             target: LOG_TARGET,
             "Expected emission at height {} is {}",
@@ -92,18 +90,6 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
             total_supply
         );
         self.commit_value(total_supply)
-    }
-
-    fn get_aggregate_genesis_commitment(&self) -> Commitment {
-        // Get the sum of unspent genesis block UTXOs (excl coinbase)
-        self.rules
-            .get_genesis_block()
-            .body
-            .outputs()
-            .iter()
-            .filter(|u| !u.is_coinbase())
-            .map(|u| &u.commitment)
-            .sum()
     }
 
     #[inline]

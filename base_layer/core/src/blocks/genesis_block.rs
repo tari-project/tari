@@ -133,26 +133,31 @@ pub fn get_rincewind_gen_header() -> BlockHeader {
 }
 
 /// This will get the ridcully gen block
-// TODO create new faucet utxos and add them here
 pub fn get_ridcully_genesis_block() -> Block {
     // lets get the block
-    // let block = get_ridcully_genesis_block_raw();
-    // // Lets load in the ridcully faucet tx's
-    // // TODO add faucets
-    // // let mut utxos = Vec::new();
-    // // let file = include_str!("faucets/alphanet_faucet.json");
-    // // for line in file.lines() {
-    // //     let utxo: TransactionOutput = serde_json::from_str(line).unwrap();
-    // //     utxos.push(utxo);
-    // // }
-    // // // fix headers to new mmr roots after adding utxos
-    // // block.header.output_mr =
-    // from_hex("f9bfcc0bfae8f90991ea7cc9a625a411dd757cce088cbf740848570daa43daff").unwrap(); // block.header.
-    // range_proof_mr = // from_hex("fbadbae2bf8c7289d77af52edc80490cb476a917abd0afeab8821913791b678f").unwrap();
-    // block.header.kernel_mr // = from_hex("a40db2278709c3fb0e03044ca0f5090ffca616b708850d1437af4d584e17b97a").
-    // unwrap(); block.body. // add_outputs(&mut utxos);
-    // block
-    get_ridcully_genesis_block_raw()
+    let mut block = get_ridcully_genesis_block_raw();
+    // Lets load in the ridcully faucet tx's
+    let mut utxos = Vec::new();
+    let file = include_str!("faucets/ridcully_faucet.json");
+    // last 2 lines are used for the kernel creation
+    let mut kernel: Option<TransactionKernel> = None;
+    let mut counter = 1;
+    for line in file.lines() {
+        if counter < 4001 {
+            let utxo: TransactionOutput = serde_json::from_str(line).unwrap();
+            utxos.push(utxo);
+        } else {
+            kernel = Some(serde_json::from_str(line).unwrap());
+        }
+        counter += 1;
+    }
+    // fix headers to new mmr roots after adding utxos
+    block.header.output_mr = from_hex("a939fda2579fb0b6fd906111f61e37c5ea23eccd8b737eb7da517fde71a98078").unwrap();
+    block.header.range_proof_mr = from_hex("90a557390ce185318375546cb1244ffda3bb62274cce591880e2d012c38b1755").unwrap();
+    block.header.kernel_mr = from_hex("f5e08e66e9c0e5e3818d96a694f4f6eafd689f38cea2e52e771eab2cc7a3941a").unwrap();
+    block.body.add_outputs(&mut utxos);
+    block.body.add_kernels(&mut vec![kernel.unwrap()]);
+    block
 }
 
 pub fn get_ridcully_genesis_block_raw() -> Block {
@@ -227,7 +232,7 @@ mod test {
     use crate::transactions::types::CryptoFactories;
 
     // This test is not run able anymore as we need to generate a new rincewind block as the kernel's changed
-    fn rincewind_genesis_sanity_check() {
+    pub fn rincewind_genesis_sanity_check() {
         let block = get_rincewind_genesis_block();
         assert_eq!(block.body.outputs().len(), 4001);
 
@@ -255,30 +260,18 @@ mod test {
     #[test]
     fn ridcully_genesis_sanity_check() {
         let block = get_ridcully_genesis_block();
-        assert_eq!(block.body.outputs().len(), 1);
+        assert_eq!(block.body.outputs().len(), 4001);
 
         let factories = CryptoFactories::default();
         let coinbase = block.body.outputs().first().unwrap();
         assert!(coinbase.is_coinbase());
         coinbase.verify_range_proof(&factories.range_proof).unwrap();
-        assert_eq!(block.body.kernels().len(), 1);
+        assert_eq!(block.body.kernels().len(), 2);
         for kernel in block.body.kernels() {
             kernel.verify_signature().unwrap();
         }
 
         let coinbase_kernel = block.body.kernels().first().unwrap();
         assert!(coinbase_kernel.features.contains(KernelFeatures::COINBASE_KERNEL));
-    }
-
-    #[test]
-    fn load_rincewind_mmrs() {
-        let block = get_rincewind_genesis_block();
-        let output_mr = from_hex("f9bfcc0bfae8f90991ea7cc9a625a411dd757cce088cbf740848570daa43daff").unwrap();
-        let range_proof_mr = from_hex("fbadbae2bf8c7289d77af52edc80490cb476a917abd0afeab8821913791b678f").unwrap();
-        let kernel_mr = from_hex("a40db2278709c3fb0e03044ca0f5090ffca616b708850d1437af4d584e17b97a").unwrap();
-
-        assert_eq!(output_mr, block.header.output_mr);
-        assert_eq!(range_proof_mr, block.header.range_proof_mr);
-        assert_eq!(kernel_mr, block.header.kernel_mr);
     }
 }

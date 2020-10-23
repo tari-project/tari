@@ -59,6 +59,8 @@ pub struct ConsensusConstants {
     /// This keeps track of the block split targets and which algo is accepted
     /// Ideally this should count up to 100. If this does not you will reduce your target time.
     proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>,
+    /// This is to keep track of the value inside of the genesis block
+    faucet_value: MicroTari,
 }
 
 /// This is just a convenience  wrapper to put all the info into a hashmap per diff algo
@@ -162,6 +164,11 @@ impl ConsensusConstants {
         }
     }
 
+    /// This will return the value of the genesis block faucets
+    pub fn faucet_value(&self) -> MicroTari {
+        self.faucet_value
+    }
+
     // This is the maximum age a monero merge mined seed can be reused
     pub fn max_randomx_seed_height(&self) -> u64 {
         self.max_randomx_seed_height
@@ -233,6 +240,7 @@ impl ConsensusConstants {
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 proof_of_work: algos1,
+                faucet_value: 0 * T,
             },
             ConsensusConstants {
                 effective_from_height: 2,
@@ -247,6 +255,7 @@ impl ConsensusConstants {
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 proof_of_work: algos2,
+                faucet_value: 0 * T,
             },
             // min_pow_difficulty increased. Previous blocks would treat this value as 1 because of
             // a bug that was fixed.
@@ -263,6 +272,7 @@ impl ConsensusConstants {
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 proof_of_work: algos3,
+                faucet_value: 0 * T,
             },
             // set max difficulty_max_block_interval to target_time * 6
             ConsensusConstants {
@@ -278,6 +288,7 @@ impl ConsensusConstants {
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
                 proof_of_work: algos4,
+                faucet_value: 0 * T,
             },
         ]
     }
@@ -308,13 +319,14 @@ impl ConsensusConstants {
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
             proof_of_work: algos,
+            faucet_value: 0 * T,
         }]
     }
 
     pub fn ridcully() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
-        // seting sha3/moneor to 40/60 split
+        // seting sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
@@ -322,7 +334,7 @@ impl ConsensusConstants {
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
-            min_difficulty: 59_000.into(),
+            min_difficulty: 60_000.into(),
             target_time: 200,
         });
         vec![ConsensusConstants {
@@ -338,6 +350,7 @@ impl ConsensusConstants {
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
             proof_of_work: algos,
+            faucet_value: (5000 * 4000) * T,
         }]
     }
 
@@ -368,6 +381,7 @@ impl ConsensusConstants {
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
             proof_of_work: algos,
+            faucet_value: 0 * T,
         }]
     }
 }
@@ -394,6 +408,16 @@ impl ConsensusConstantsBuilder {
 
     pub fn with_coinbase_lockheight(mut self, height: u64) -> Self {
         self.consensus.coinbase_lock_height = height;
+        self
+    }
+
+    pub fn with_consensus_constants(mut self, consensus: ConsensusConstants) -> Self {
+        self.consensus = consensus;
+        self
+    }
+
+    pub fn with_faucet_value(mut self, value: MicroTari) -> Self {
+        self.consensus.faucet_value = value;
         self
     }
 
