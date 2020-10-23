@@ -25,6 +25,8 @@ use crate::{
         genesis_block::{
             get_mainnet_block_hash,
             get_mainnet_genesis_block,
+            get_ridcully_block_hash,
+            get_ridcully_genesis_block,
             get_rincewind_block_hash,
             get_rincewind_genesis_block,
         },
@@ -33,7 +35,7 @@ use crate::{
     chain_storage::ChainStorageError,
     consensus::{
         chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
-        emission::{Emission, EmissionSchedule, EmissionScheduleOld},
+        emission::{Emission, EmissionSchedule},
         network::Network,
         ConsensusConstants,
     },
@@ -70,6 +72,7 @@ impl ConsensusManager {
         match self.inner.network {
             Network::MainNet => get_mainnet_genesis_block(),
             Network::Rincewind => get_rincewind_genesis_block(),
+            Network::Ridcully => get_ridcully_genesis_block(),
             Network::LocalNet => self.inner.gen_block.clone().unwrap_or_else(get_rincewind_genesis_block),
         }
     }
@@ -79,6 +82,7 @@ impl ConsensusManager {
         match self.inner.network {
             Network::MainNet => get_mainnet_block_hash(),
             Network::Rincewind => get_rincewind_block_hash(),
+            Network::Ridcully => get_ridcully_block_hash(),
             Network::LocalNet => self
                 .inner
                 .gen_block
@@ -91,25 +95,15 @@ impl ConsensusManager {
     /// Get a pointer to the emission schedule
     /// The height provided here, decides the emission curve to use. It swaps to the integer curve upon reaching
     /// 1_000_000_000
-    pub fn emission_schedule(&self, height: u64) -> &dyn Emission {
-        if height >= EMISSION_HEIGHT_SWAP {
-            &self.inner.emission_int
-        } else {
-            &self.inner.emission
-        }
+    pub fn emission_schedule(&self) -> &dyn Emission {
+        &self.inner.emission
     }
 
     // Get a pointer to the emission schedule
     /// The height provided here, decides the emission curve to use. It swaps to the integer curve upon reaching
     /// 1_000_000_000
     pub fn get_emission_reward_at(&self, height: u64) -> MicroTari {
-        if height >= EMISSION_HEIGHT_SWAP {
-            self.inner.emission_int.supply_at_block(height) -
-                self.inner.emission_int.supply_at_block(EMISSION_HEIGHT_SWAP - 1) +
-                self.inner.emission.supply_at_block(EMISSION_HEIGHT_SWAP - 1)
-        } else {
-            self.inner.emission.supply_at_block(height)
-        }
+        self.inner.emission.supply_at_block(height)
     }
 
     /// Get a pointer to the consensus constants
@@ -126,9 +120,7 @@ impl ConsensusManager {
 
     /// Creates a total_coinbase offset containing all fees for the validation from block
     pub fn calculate_coinbase_and_fees(&self, block: &Block) -> MicroTari {
-        let coinbase = self
-            .emission_schedule(block.header.height)
-            .block_reward(block.header.height);
+        let coinbase = self.emission_schedule().block_reward(block.header.height);
         coinbase + block.calculate_fees()
     }
 
@@ -142,8 +134,6 @@ impl ConsensusManager {
     }
 }
 
-static EMISSION_HEIGHT_SWAP: u64 = 120_000;
-
 /// This is the used to control all consensus values.
 #[derive(Debug)]
 struct ConsensusManagerInner {
@@ -151,10 +141,8 @@ struct ConsensusManagerInner {
     pub consensus_constants: Vec<ConsensusConstants>,
     /// The configured chain network.
     pub network: Network,
-    /// The configuration for the emission schedule.
-    pub emission: EmissionScheduleOld,
     /// The configuration for the emission schedule for integer only.
-    pub emission_int: EmissionSchedule,
+    pub emission: EmissionSchedule,
     /// This allows the user to set a custom Genesis block
     pub gen_block: Option<Block>,
     /// The comparer used to determine which chain is stronger for reorgs.
@@ -204,22 +192,15 @@ impl ConsensusManagerBuilder {
         }
         // TODO: Check that constants is not empty
 
-        // Use the first constants for now.
-        let emission = EmissionScheduleOld::new(
+        let emission = EmissionSchedule::new(
             self.consensus_constants[0].emission_initial,
-            self.consensus_constants[0].emission_decay,
-            self.consensus_constants[0].emission_tail,
-        );
-        let emission_int = EmissionSchedule::new(
-            self.consensus_constants[0].emission_initial,
-            &self.consensus_constants[0].emission_decay_int,
+            &self.consensus_constants[0].emission_decay,
             self.consensus_constants[0].emission_tail,
         );
         let inner = ConsensusManagerInner {
             consensus_constants: self.consensus_constants,
             network: self.network,
             emission,
-            emission_int,
             gen_block: self.gen_block,
             chain_strength_comparer: self.chain_strength_comparer.unwrap_or_else(|| {
                 strongest_chain()

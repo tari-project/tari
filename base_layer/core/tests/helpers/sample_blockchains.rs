@@ -45,6 +45,8 @@ use tari_core::{
 use tari_mmr::MmrCacheConfig;
 use tari_storage::lmdb_store::LMDBConfig;
 
+static EMISSION: [u64; 2] = [10, 10];
+
 /// Create a simple 6 block memory-backed database.
 /// Genesis block:
 ///    100_000_000 -> utxo_0 (0.0)
@@ -138,7 +140,7 @@ pub fn create_new_blockchain(
 ) {
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -164,7 +166,7 @@ pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
 {
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
