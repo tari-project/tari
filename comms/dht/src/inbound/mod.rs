@@ -29,6 +29,9 @@ pub use deserialize::DeserializeLayer;
 mod dht_handler;
 pub use dht_handler::DhtHandlerLayer;
 
+mod metrics;
+pub use metrics::MetricsLayer;
+
 mod error;
 
 mod message;

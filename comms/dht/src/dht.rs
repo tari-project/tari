@@ -23,11 +23,11 @@
 use self::outbound::OutboundMessageRequester;
 use crate::{
     actor::{DhtActor, DhtRequest, DhtRequester},
-    connectivity::DhtConnectivity,
+    connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     event::{DhtEventReceiver, DhtEventSender},
     inbound,
-    inbound::{DecryptedDhtMessage, DhtInboundMessage},
+    inbound::{DecryptedDhtMessage, DhtInboundMessage, MetricsLayer},
     logging_middleware::MessageLoggingLayer,
     network_discovery::DhtNetworkDiscovery,
     outbound,
@@ -97,6 +97,8 @@ pub struct Dht {
     connectivity: ConnectivityRequester,
     /// Event stream sender
     event_publisher: DhtEventSender,
+    /// Used by MetricsLayer to collect metrics and to inform heuristics for peer banning
+    metrics_collector: MetricsCollectorHandle,
 }
 
 impl Dht {
@@ -115,9 +117,12 @@ impl Dht {
         let (saf_response_signal_sender, saf_response_signal_receiver) = mpsc::channel(DHT_SAF_SERVICE_CHANNEL_SIZE);
         let (event_publisher, _) = broadcast::channel(DHT_EVENT_BROADCAST_CHANNEL_SIZE);
 
+        let metrics_collector = MetricsCollector::spawn();
+
         let dht = Self {
             node_identity,
             peer_manager,
+            metrics_collector,
             config,
             outbound_tx,
             dht_sender,
@@ -199,6 +204,7 @@ impl Dht {
             self.connectivity.clone(),
             self.dht_requester(),
             self.event_publisher.subscribe(),
+            self.metrics_collector.clone(),
             shutdown_signal,
         )
     }
@@ -283,6 +289,7 @@ impl Dht {
         // FIXME: There is an unresolved stack overflow issue on windows in debug mode during runtime, but not in
         //        release mode, related to the amount of layers. (issue #1416)
         ServiceBuilder::new()
+            .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
             .layer(inbound::ValidateLayer::new(self.config.network))
             .layer(DedupLayer::new(self.dht_requester()))

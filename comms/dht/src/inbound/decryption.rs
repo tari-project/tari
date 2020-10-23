@@ -140,7 +140,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
             self.inner.clone(),
             Arc::clone(&self.node_identity),
             self.connectivity.clone(),
-            self.config.short_ban_duration,
+            self.config.ban_duration,
             msg,
         )
     }
