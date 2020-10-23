@@ -106,7 +106,7 @@ pub async fn ban_sync_peer(
 {
     info!(target: log_target, "Banning peer {} from local node.", sync_peer);
     connectivity
-        .ban_peer(sync_peer.node_id.clone(), ban_duration, reason)
+        .ban_peer_until(sync_peer.node_id.clone(), ban_duration, reason)
         .await?;
     exclude_sync_peer(log_target, sync_peers, &sync_peer)
 }

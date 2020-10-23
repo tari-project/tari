@@ -102,6 +102,7 @@ pub struct DhtConfig {
     pub network: Network,
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
+    pub short_ban_duration: Duration,
 }
 
 impl DhtConfig {
@@ -158,6 +159,7 @@ impl Default for DhtConfig {
             join_cooldown_interval: Duration::from_secs(10 * 60),
             network: Network::TestNet,
             network_discovery: Default::default(),
+            short_ban_duration: Duration::from_secs(30 * 60),
         }
     }
 }

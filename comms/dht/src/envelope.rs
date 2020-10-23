@@ -28,7 +28,7 @@ use std::{
     fmt,
     fmt::Display,
 };
-use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey, NodeIdentity};
 use tari_utilities::{ByteArray, ByteArrayError};
 use thiserror::Error;
 
@@ -256,6 +256,23 @@ impl NodeDestination {
             NodeDestination::Unknown => true,
             _ => false,
         }
+    }
+
+    #[inline]
+    pub fn equals_node_identity(&self, other: &NodeIdentity) -> bool {
+        self == other.node_id() || self == other.public_key()
+    }
+}
+
+impl PartialEq<CommsPublicKey> for NodeDestination {
+    fn eq(&self, other: &CommsPublicKey) -> bool {
+        self.public_key().map(|pk| pk == other).unwrap_or(false)
+    }
+}
+
+impl PartialEq<NodeId> for NodeDestination {
+    fn eq(&self, other: &NodeId) -> bool {
+        self.node_id().map(|node_id| node_id == other).unwrap_or(false)
     }
 }
 

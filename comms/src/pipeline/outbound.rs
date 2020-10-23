@@ -27,7 +27,7 @@ use crate::{
 };
 use futures::{channel::mpsc, future, future::Either, stream::FusedStream, SinkExt, Stream, StreamExt};
 use log::*;
-use std::fmt::Debug;
+use std::fmt::Display;
 use tokio::runtime;
 use tower::{Service, ServiceExt};
 
@@ -47,7 +47,7 @@ where
     TStream: Stream + FusedStream + Unpin + Send + 'static,
     TStream::Item: Send + 'static,
     TPipeline: Service<TStream::Item, Response = ()> + Clone + Send + 'static,
-    TPipeline::Error: Debug + Send,
+    TPipeline::Error: Display + Send,
     TPipeline::Future: Send,
 {
     pub fn new(
@@ -72,7 +72,7 @@ where
                     let pipeline = self.config.pipeline.clone();
                     self.executor.spawn(async move {
                         if let Err(err) = pipeline.oneshot(msg).await {
-                            error!(target: LOG_TARGET, "Outbound pipeline returned an error: '{:?}'", err);
+                            error!(target: LOG_TARGET, "Outbound pipeline returned an error: '{}'", err);
                         }
                     });
                 },

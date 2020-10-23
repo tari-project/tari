@@ -30,7 +30,7 @@
 use crate::{
     broadcast_strategy::BroadcastStrategy,
     discovery::DhtDiscoveryError,
-    outbound::{OutboundMessageRequester, SendMessageParams},
+    outbound::{DhtOutboundError, OutboundMessageRequester, SendMessageParams},
     proto::{dht::JoinMessage, envelope::DhtMessageType},
     storage::{DbConnection, DhtDatabase, DhtMetadataKey, StorageError},
     DhtConfig,
@@ -70,7 +70,7 @@ pub enum DhtActorError {
     #[error("PeerManagerError: {0}")]
     PeerManagerError(#[from] PeerManagerError),
     #[error("Failed to broadcast join message: {0}")]
-    FailedToBroadcastJoinMessage(String),
+    FailedToBroadcastJoinMessage(DhtOutboundError),
     #[error("DiscoveryError: {0}")]
     DiscoveryError(#[from] DhtDiscoveryError),
     #[error("StorageError: {0}")]
@@ -358,9 +358,7 @@ impl DhtActor {
                 message,
             )
             .await
-            .map_err(|err| {
-                DhtActorError::FailedToBroadcastJoinMessage(format!("Failed to send join message: {}", err))
-            })?;
+            .map_err(DhtActorError::FailedToBroadcastJoinMessage)?;
 
         Ok(())
     }
