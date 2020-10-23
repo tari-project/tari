@@ -41,7 +41,7 @@ pub fn install_default_config_file(path: &Path) -> Result<(), std::io::Error> {
 
 /// Generate the global Tari configuration instance.
 ///
-/// The `Config` object that is returned holds _all_ the default values possible in the `~/.tari.config.toml` file.
+/// The `Config` object that is returned holds _all_ the default values possible in the `~/.tari/config.toml` file.
 /// These will typically be overridden by userland settings in envars, the config file, or the command line.
 pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     let mut cfg = Config::new();
@@ -186,6 +186,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.rincewind.grpc_wallet_address", "127.0.0.1:18143")
         .unwrap();
     cfg.set_default("base_node.rincewind.enable_mining", false).unwrap();
+    cfg.set_default("base_node.rincewind.enable_wallet", true).unwrap();
     cfg.set_default("base_node.rincewind.num_mining_threads", 1).unwrap();
 
     cfg.set_default("base_node.localnet.peer_seeds", Vec::<String>::new())

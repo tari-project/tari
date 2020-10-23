@@ -70,6 +70,7 @@ pub struct GlobalConfig {
     pub peer_db_path: PathBuf,
     pub block_sync_strategy: String,
     pub enable_mining: bool,
+    pub enable_wallet: bool,
     pub num_mining_threads: usize,
     pub tor_identity_file: PathBuf,
     pub wallet_db_file: PathBuf,
@@ -308,6 +309,12 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_bool(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
 
+    // set base node wallet
+    let key = config_string("base_node", &net_str, "enable_wallet");
+    let enable_wallet = cfg
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
+
     let key = config_string("base_node", &net_str, "num_mining_threads");
     let num_mining_threads = cfg
         .get_int(&key)
@@ -454,6 +461,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         peer_db_path,
         block_sync_strategy,
         enable_mining,
+        enable_wallet,
         num_mining_threads,
         tor_identity_file,
         wallet_identity_file,
