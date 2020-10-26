@@ -25,7 +25,7 @@ use crate::chain_storage::ChainMetadata;
 
 impl From<proto::ChainMetadata> for ChainMetadata {
     fn from(metadata: proto::ChainMetadata) -> Self {
-        let accumulated_difficulty = if metadata.accumulated_difficulty.len() != 16 {
+        let accumulated_difficulty = if metadata.accumulated_difficulty.len() == 16 {
             let mut accumulated_difficulty_array = [0; 16];
             accumulated_difficulty_array.copy_from_slice(&metadata.accumulated_difficulty[0..16]);
             Some(u128::from_be_bytes(accumulated_difficulty_array))
