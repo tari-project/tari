@@ -336,7 +336,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block");
         let block_template: NewBlockTemplate = request
             .try_into()
-            .map_err(|_| Status::internal("Failed to convert arguments".to_string()))?;
+            .map_err(|s| Status::invalid_argument(format!("Invalid block template:{}", s)))?;
 
         let mut handler = self.node_service.clone();
 
@@ -375,7 +375,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         let block: Block = request
             .try_into()
-            .map_err(|_| Status::internal("Failed to convert arguments".to_string()))?;
+            .map_err(|_| Status::invalid_argument("Failed to convert arguments. Invalid block.".to_string()))?;
 
         let mut handler = self.node_service.clone();
         handler

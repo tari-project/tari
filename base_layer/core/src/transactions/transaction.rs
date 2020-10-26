@@ -158,7 +158,7 @@ bitflags! {
 pub enum TransactionError {
     #[error("Error validating the transaction: {0}")]
     ValidationError(String),
-    #[error("Signature could not be verified")]
+    #[error("Signature is invalid")]
     InvalidSignatureError,
     #[error("Transaction kernel does not contain a signature")]
     NoSignatureError,
