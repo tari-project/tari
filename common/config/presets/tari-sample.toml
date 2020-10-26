@@ -3,7 +3,7 @@
 #peer_database = "~/.tari/peers"
 
 [base_node]
-network = "rincewind"
+network = "ridcully"
 
 [base_node.rincewind]
 db_type = "lmdb"
