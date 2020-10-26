@@ -3687,7 +3687,7 @@ fn test_handling_coinbase_transactions() {
                 BaseNodeRequestProto::GetChainMetadata(_c) => {
                     chain_metadata_request.insert(bsr.request_key);
                 },
-                BaseNodeRequestProto::FetchUtxos(f) => {
+                BaseNodeRequestProto::FetchMatchingUtxos(f) => {
                     fetch_utxo_request.insert(bsr.request_key, f);
                 },
                 _ => (),
@@ -3885,7 +3885,7 @@ fn test_handling_coinbase_transactions() {
                     }
                     metadata_count += 1;
                 },
-                BaseNodeRequestProto::FetchUtxos(_f) => {
+                BaseNodeRequestProto::FetchMatchingUtxos(_f) => {
                     if request_key == 0 {
                         request_key = bsr.request_key;
                     } else {

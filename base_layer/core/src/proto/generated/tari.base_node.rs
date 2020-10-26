@@ -170,12 +170,12 @@ pub mod base_node_service_request {
         /// Indicates a FetchHeadersWithHashes request.
         #[prost(message, tag = "5")]
         FetchHeadersWithHashes(super::HashOutputs),
-        /// Indicates a FetchUtxos request.
+        /// Indicates a FetchMatchingUtxos request.
         #[prost(message, tag = "6")]
-        FetchUtxos(super::HashOutputs),
-        /// Indicates a FetchBlocks request.
+        FetchMatchingUtxos(super::HashOutputs),
+        /// Indicates a FetchMatchingBlocks request.
         #[prost(message, tag = "7")]
-        FetchBlocks(super::BlockHeights),
+        FetchMatchingBlocks(super::BlockHeights),
         /// Indicates a FetchBlocksWithHashes request.
         #[prost(message, tag = "8")]
         FetchBlocksWithHashes(super::HashOutputs),
@@ -191,12 +191,12 @@ pub mod base_node_service_request {
         /// Indicates a FetchMmrNodeCount request.
         #[prost(message, tag = "13")]
         FetchMmrNodeCount(super::FetchMmrNodeCount),
-        /// Indicates a FetchMmrNodes request.
+        /// Indicates a FetchMatchingMmrNodes request.
         #[prost(message, tag = "14")]
-        FetchMmrNodes(super::FetchMmrNodes),
-        /// Indicates a FetchTxos request.
+        FetchMatchingMmrNodes(super::FetchMatchingMmrNodes),
+        /// Indicates a FetchMatchingTxos request.
         #[prost(message, tag = "15")]
-        FetchTxos(super::HashOutputs),
+        FetchMatchingTxos(super::HashOutputs),
         /// Indicates a Fetch block with kernels request
         #[prost(message, tag = "16")]
         FetchBlocksWithKernels(super::Signatures),
@@ -243,7 +243,7 @@ pub struct FetchMmrNodeCount {
     pub height: u64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct FetchMmrNodes {
+pub struct FetchMatchingMmrNodes {
     #[prost(enumeration = "MmrTree", tag = "1")]
     pub tree: i32,
     #[prost(uint32, tag = "2")]

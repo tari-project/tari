@@ -1586,8 +1586,8 @@ impl Parser {
                             missing_blocks.push(height);
                         },
                         Ok(mut data) => match data.pop() {
-                            // We need to check the data it self, as FetchBlocks will suppress any error, only logging
-                            // it.
+                            // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
+                            // logging it.
                             Some(_historical_block) => {},
                             None => missing_blocks.push(height),
                         },
@@ -1666,8 +1666,8 @@ impl Parser {
                         break;
                     },
                     Ok(mut data) => match data.pop() {
-                        // We need to check the data it self, as FetchBlocks will suppress any error, only logging
-                        // it.
+                        // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
+                        // logging it.
                         Some(historical_block) => historical_block.block,
                         None => {
                             println!("Error in db, could not get block");
@@ -1681,8 +1681,8 @@ impl Parser {
                         break;
                     },
                     Ok(mut data) => match data.pop() {
-                        // We need to check the data it self, as FetchBlocks will suppress any error, only logging
-                        // it.
+                        // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
+                        // logging it.
                         Some(historical_block) => historical_block.block,
                         None => {
                             println!("Error in db, could not get block");
