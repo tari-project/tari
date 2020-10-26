@@ -38,7 +38,7 @@ pub enum ValidationError {
     MaturityError,
     #[error("Contains unknown inputs")]
     UnknownInputs,
-    #[error("The transaction has some transaction error")]
+    #[error("The transaction is invalid: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("Error: {0}")]
     CustomError(String),

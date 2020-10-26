@@ -33,7 +33,8 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
     type Error = String;
 
     fn try_from(kernel: grpc::TransactionKernel) -> Result<Self, Self::Error> {
-        let excess = Commitment::from_bytes(&kernel.excess).map_err(|err| err.to_string())?;
+        let excess = Commitment::from_bytes(&kernel.excess)
+            .map_err(|err| format!("Excess could not be converted:{}", err.to_string()))?;
 
         let excess_sig = kernel
             .excess_sig

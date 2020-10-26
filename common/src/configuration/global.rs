@@ -289,10 +289,14 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
 
     // Peer seeds
     let key = config_string("base_node", &net_str, "peer_seeds");
-    let peer_seeds = cfg
-        .get_array(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-    let peer_seeds = peer_seeds.into_iter().map(|v| v.into_str().unwrap()).collect();
+    // Peer seeds can be an array or a comma separated list (e.g. in an ENVVAR)
+    let peer_seeds = match cfg.get_array(&key) {
+        Ok(seeds) => seeds.into_iter().map(|v| v.into_str().unwrap()).collect(),
+        Err(..) => match cfg.get_str(&key) {
+            Ok(s) => s.split(',').map(|v| v.to_string()).collect(),
+            Err(err) => return Err(ConfigurationError::new(&key, &err.to_string())),
+        },
+    };
 
     // Peer DB path
     let peer_db_path = data_dir.join("peer_db");

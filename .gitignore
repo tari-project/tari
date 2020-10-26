@@ -38,5 +38,5 @@ base_layer/wallet_ffi/build.config
 base_layer/wallet_ffi/.cargo/config
 
 keys.json
-/integration_tests/node_modules/
+node_modules
 /integration_tests/temp

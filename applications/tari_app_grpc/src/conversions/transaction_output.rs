@@ -38,7 +38,8 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .map(TryInto::try_into)
             .ok_or_else(|| "transaction output features not provided".to_string())??;
 
-        let commitment = Commitment::from_bytes(&output.commitment).map_err(|err| err.to_string())?;
+        let commitment = Commitment::from_bytes(&output.commitment)
+            .map_err(|err| format!("Invalid output commitment: {}", err.to_string()))?;
         Ok(Self {
             features,
             commitment,

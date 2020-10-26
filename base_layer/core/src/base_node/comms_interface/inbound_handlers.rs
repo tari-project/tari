@@ -588,6 +588,7 @@ where T: BlockchainBackend + 'static
             block_window,
             constants.get_diff_target_block_interval(pow_algo),
             constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
             constants.get_difficulty_max_block_interval(pow_algo),
         )?;
         debug!(target: LOG_TARGET, "Target difficulty:{} for PoW:{}", target, pow_algo);
