@@ -141,6 +141,13 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), UiError> {
+        let inner = self.inner.write().await;
+        let mut tx_service_handle = inner.wallet.transaction_service.clone();
+        tx_service_handle.cancel_transaction(tx_id).await?;
+        Ok(())
+    }
+
     pub fn get_identity(&self) -> &MyIdentity {
         &self.cached_data.my_identity
     }

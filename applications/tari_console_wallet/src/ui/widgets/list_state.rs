@@ -122,11 +122,15 @@ impl WindowedListState {
     }
 
     pub fn set_num_items(&mut self, num_items: usize) {
+        if num_items < self.num_items {
+            let new_offset = self.offset.saturating_sub(self.num_items - num_items);
+            self.offset = new_offset;
+        }
         self.num_items = num_items;
         if num_items > 0 {
             if let Some(p) = self.selected {
                 if p > num_items - 1 {
-                    self.selected = Some(num_items - 1)
+                    self.selected = Some(num_items - 1);
                 }
             }
         } else {
@@ -168,5 +172,21 @@ mod test {
         assert_eq!(state.selected(), Some(height - 1));
         let window = list_state.get_start_end();
         assert_eq!(slist[window.0..window.1], [7, 8, 9, 10]);
+    }
+
+    #[test]
+    fn test_removing_last_selected_items() {
+        let mut list_state = WindowedListState::new();
+        list_state.set_num_items(11);
+        for _ in 0..11 {
+            list_state.next();
+            let _state = list_state.get_list_state(4);
+        }
+
+        list_state.set_num_items(9);
+
+        let _state = list_state.get_list_state(4);
+        let window = list_state.get_start_end();
+        assert_eq!(window, (5, 9));
     }
 }
