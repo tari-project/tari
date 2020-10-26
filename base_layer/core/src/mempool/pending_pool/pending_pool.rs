@@ -246,8 +246,8 @@ impl PendingPool {
 mod test {
     use crate::{
         consensus::{ConsensusManagerBuilder, Network},
-        helpers::create_orphan_block,
         mempool::pending_pool::{PendingPool, PendingPoolConfig},
+        test_helpers::create_orphan_block,
         transactions::tari_amount::MicroTari,
         tx,
     };

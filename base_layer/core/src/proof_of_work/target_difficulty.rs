@@ -33,6 +33,7 @@ pub fn get_target_difficulty(
     block_window: usize,
     target_time: u64,
     min_difficulty: Difficulty,
+    max_difficulty: Difficulty,
     max_block_time: u64,
 ) -> Result<Difficulty, ConsensusManagerError>
 {
@@ -41,6 +42,6 @@ pub fn get_target_difficulty(
         lwma.add(epoch, difficulty)?;
     }
     let mut target_difficulty = lwma.get_difficulty();
-    target_difficulty = cmp::max(target_difficulty, min_difficulty);
+    target_difficulty = cmp::min(max_difficulty, cmp::max(target_difficulty, min_difficulty));
     Ok(target_difficulty)
 }

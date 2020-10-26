@@ -26,7 +26,7 @@ fn welcome() -> String {
 
 // Following config is loading from key `my_node.{network}` where
 // `{network} = my_node.use_network` parameter.
-// This achieved with DefaultConfigLoader trait, which inhertis default impl
+// This achieved with DefaultConfigLoader trait, which inherits default impl
 // when struct implements Serialize, Deserialize, Default and NetworkConfigPath.
 // ```ignore
 // let my_config = MyNodeConfig::try_from(&config)?

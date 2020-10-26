@@ -69,6 +69,7 @@ pub struct PowAlgorithmConstants {
     /// NB this is very important to set this as 6 * the target time
     pub max_target_time: u64,
     pub min_difficulty: Difficulty,
+    pub max_difficulty: Difficulty,
     /// target time is calculated as desired chain target time / block %.
     /// example 120/0.5 = 240 for a 50% of the blocks, chain target time of 120.
     pub target_time: u64,
@@ -169,6 +170,13 @@ impl ConsensusConstants {
         self.faucet_value
     }
 
+    pub fn max_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
+        match self.proof_of_work.get(&pow_algo) {
+            Some(v) => v.max_difficulty,
+            _ => 0.into(),
+        }
+    }
+
     // This is the maximum age a monero merge mined seed can be reused
     pub fn max_randomx_seed_height(&self) -> u64 {
         self.max_randomx_seed_height
@@ -181,11 +189,14 @@ impl ConsensusConstants {
         algos1.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
             max_target_time: 7200,
             min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
             target_time: 120,
         });
         algos1.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 7200,
             min_difficulty: 1.into(),
+
+            max_difficulty: u64::MAX.into(),
             target_time: 120,
         });
 
@@ -193,11 +204,13 @@ impl ConsensusConstants {
         algos2.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
             max_target_time: 7200,
             min_difficulty: 1.into(),
+            max_difficulty: u64::MAX.into(),
             target_time: 120,
         });
         algos2.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 7200,
             min_difficulty: 1.into(),
+            max_difficulty: u64::MAX.into(),
             target_time: 120,
         });
 
@@ -205,11 +218,13 @@ impl ConsensusConstants {
         algos3.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
             max_target_time: 7200,
             min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
             target_time: 120,
         });
         algos3.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 7200,
             min_difficulty: 59_000.into(),
+            max_difficulty: u64::MAX.into(),
             target_time: 120,
         });
 
@@ -217,11 +232,13 @@ impl ConsensusConstants {
         algos4.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
             max_target_time: 720,
             min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
             target_time: 120,
         });
         algos4.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 720,
             min_difficulty: 59_000.into(),
+            max_difficulty: u64::MAX.into(),
             target_time: 120,
         });
         vec![
@@ -299,11 +316,13 @@ impl ConsensusConstants {
         algos.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
             max_target_time: 720,
             min_difficulty: 1.into(),
+            max_difficulty: 1.into(),
             target_time: 120,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 720,
             min_difficulty: 1.into(),
+            max_difficulty: 1.into(),
             target_time: 120,
         });
         vec![ConsensusConstants {
@@ -330,11 +349,13 @@ impl ConsensusConstants {
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
             min_difficulty: 60_000.into(),
+            max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
         vec![ConsensusConstants {
@@ -361,11 +382,13 @@ impl ConsensusConstants {
         algos.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 800,
             min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
         vec![ConsensusConstants {

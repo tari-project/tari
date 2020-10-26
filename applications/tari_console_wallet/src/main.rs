@@ -5,7 +5,7 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
-#![recursion_limit = "256"]
+#![recursion_limit = "512"]
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{fs, sync::Arc};
@@ -227,8 +227,8 @@ async fn setup_wallet(
     )
     .await
     .map_err(|e| {
-        if let WalletError::CommsInitializationError(ce) = e {
-            ExitCodes::WalletError(format!("Error initializing Comms: {}", ce))
+        if let WalletError::CommsInitializationError(e) = e {
+            ExitCodes::WalletError(e.to_friendly_string())
         } else {
             ExitCodes::WalletError(format!("Error creating Wallet Container: {}", e))
         }

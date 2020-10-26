@@ -24,7 +24,10 @@ use crate::{
     base_node::{
         comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
         proto,
-        service::service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
+        service::{
+            blockchain_state::BlockchainStateServiceInitializer,
+            service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
+        },
         StateMachineHandle,
     },
     blocks::NewBlock,
@@ -33,7 +36,7 @@ use crate::{
     mempool::Mempool,
     proto as shared_protos,
 };
-use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, future, Future, Stream, StreamExt};
+use futures::{channel::mpsc, future, Future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
 use tari_comms_dht::Dht;
@@ -152,7 +155,7 @@ where T: BlockchainBackend + 'static
         let inbound_block_stream = self.inbound_block_stream();
         // Connect InboundNodeCommsInterface and OutboundNodeCommsInterface to BaseNodeService
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
-        let (outbound_block_sender_service, outbound_block_stream) = futures_mpsc_channel_unbounded();
+        let (outbound_block_sender_service, outbound_block_stream) = mpsc::unbounded();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
         let (local_block_sender_service, local_block_stream) = reply_channel::unbounded();
         let outbound_nci =
@@ -176,7 +179,7 @@ where T: BlockchainBackend + 'static
         context.register_handle(outbound_nci);
         context.register_handle(local_nci);
 
-        context.spawn_when_ready(move |handles| async move {
+        context.clone().spawn_when_ready(move |handles| async move {
             let dht = handles.expect_handle::<Dht>();
             let outbound_message_service = dht.outbound_requester();
 
@@ -198,6 +201,10 @@ where T: BlockchainBackend + 'static
             info!(target: LOG_TARGET, "Base Node Service shutdown");
         });
 
-        future::ready(Ok(()))
+        // TODO: Do a base node service cleanup once the dust has settled. The new service uses it's own initializer to
+        //       keep it isolated from existing code that needs to be cleaned up. Since this can be considered a "child"
+        //       service of the base node, the base node service initializer could bring other smaller services together
+        //       and wrap that in a handle.
+        BlockchainStateServiceInitializer::new(self.blockchain_db.clone()).initialize(context)
     }
 }

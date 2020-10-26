@@ -34,6 +34,7 @@ use helpers::{
         find_header_with_achieved_difficulty,
     },
     chain_metadata::{random_peer_metadata, MockChainMetadata},
+    database::create_mem_db,
     nodes::{
         create_network_with_2_base_nodes_with_config,
         create_network_with_3_base_nodes_with_config,
@@ -69,7 +70,6 @@ use tari_core::{
     },
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     mempool::MempoolServiceConfig,
     transactions::{helpers::spend_utxos, types::CryptoFactories},
     txn_schema,

@@ -23,7 +23,10 @@
 #[allow(dead_code)]
 mod helpers;
 
-use helpers::pow_blockchain::{calculate_accumulated_difficulty, create_test_pow_blockchain};
+use helpers::{
+    database::create_mem_db,
+    pow_blockchain::{calculate_accumulated_difficulty, create_test_pow_blockchain},
+};
 use std::collections::HashMap;
 use tari_core::{
     consensus::{
@@ -32,7 +35,6 @@ use tari_core::{
         ConsensusManagerBuilder,
         Network,
     },
-    helpers::create_mem_db,
     proof_of_work::{get_target_difficulty, PowAlgorithm},
 };
 
@@ -69,6 +71,7 @@ fn test_target_difficulty_at_tip() {
             block_window,
             target_time,
             constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
             max_block_time
         )
         .unwrap(),
@@ -83,6 +86,7 @@ fn test_target_difficulty_at_tip() {
             block_window,
             target_time,
             constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
             max_block_time
         )
         .unwrap(),
@@ -117,6 +121,7 @@ fn test_target_difficulty_with_height() {
             block_window,
             target_time,
             constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
             max_block_time
         )
         .unwrap(),
@@ -130,6 +135,7 @@ fn test_target_difficulty_with_height() {
             block_window,
             target_time,
             constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
             max_block_time
         )
         .unwrap(),
@@ -143,6 +149,7 @@ fn test_target_difficulty_with_height() {
             block_window,
             target_time,
             constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
             max_block_time
         )
         .unwrap(),
@@ -156,6 +163,7 @@ fn test_target_difficulty_with_height() {
             block_window,
             target_time,
             constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
             max_block_time
         )
         .unwrap(),
@@ -168,6 +176,7 @@ fn test_target_difficulty_with_height() {
             block_window,
             target_time,
             constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
             max_block_time
         )
         .unwrap(),
@@ -181,6 +190,7 @@ fn test_target_difficulty_with_height() {
             block_window,
             target_time,
             constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
             max_block_time
         )
         .unwrap(),
@@ -194,11 +204,13 @@ fn test_target_block_interval() {
     algos.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
         max_target_time: 240 * 6,
         min_difficulty: 60_000_000.into(),
+        max_difficulty: u64::MAX.into(),
         target_time: 240,
     });
     algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
         max_target_time: 240 * 6,
         min_difficulty: 60_000_000.into(),
+        max_difficulty: u64::MAX.into(),
         target_time: 240,
     });
     let constants_2_equal = ConsensusConstantsBuilder::new(Network::LocalNet)
@@ -209,11 +221,13 @@ fn test_target_block_interval() {
     algos.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
         max_target_time: 300 * 6,
         min_difficulty: 60_000_000.into(),
+        max_difficulty: u64::MAX.into(),
         target_time: 300,
     });
     algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
         max_target_time: 200 * 6,
         min_difficulty: 60_000_000.into(),
+        max_difficulty: u64::MAX.into(),
         target_time: 200,
     });
     let constants_2_split = ConsensusConstantsBuilder::new(Network::LocalNet)
@@ -224,6 +238,7 @@ fn test_target_block_interval() {
     algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
         max_target_time: 120 * 6,
         min_difficulty: 60_000_000.into(),
+        max_difficulty: u64::MAX.into(),
         target_time: 120,
     });
     let constants_1 = ConsensusConstantsBuilder::new(Network::LocalNet)

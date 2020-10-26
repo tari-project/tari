@@ -18,10 +18,10 @@ message BaseNodeServiceRequest {
         BlockHeights fetch_headers = 4;
         // Indicates a FetchHeadersWithHashes request.
         HashOutputs fetch_headers_with_hashes = 5;
-        // Indicates a FetchUtxos request.
-        HashOutputs fetch_utxos = 6;
-        // Indicates a FetchBlocks request.
-        BlockHeights fetch_blocks = 7;
+        // Indicates a FetchMatchingUtxos request.
+        HashOutputs fetch_matching_utxos = 6;
+        // Indicates a FetchMatchingBlocks request.
+        BlockHeights fetch_matching_blocks = 7;
         // Indicates a FetchBlocksWithHashes request.
         HashOutputs fetch_blocks_with_hashes = 8;
         // Indicates a GetNewBlockTemplate request.
@@ -32,10 +32,10 @@ message BaseNodeServiceRequest {
         FetchHeadersAfter fetch_headers_after = 12;
         // Indicates a FetchMmrNodeCount request.
         FetchMmrNodeCount fetch_mmr_node_count = 13;
-        // Indicates a FetchMmrNodes request.
-        FetchMmrNodes fetch_mmr_nodes = 14;
-        // Indicates a FetchTxos request.
-        HashOutputs fetch_txos = 15;
+        // Indicates a FetchMatchingMmrNodes request.
+        FetchMatchingMmrNodes fetch_matching_mmr_nodes = 14;
+        // Indicates a FetchMatchingTxos request.
+        HashOutputs fetch_matching_txos = 15;
         // Indicates a Fetch block with kernels request
         Signatures fetch_blocks_with_kernels = 16;
         // Indicates a Fetch block with kernels request
@@ -71,7 +71,7 @@ message FetchMmrNodeCount {
     uint64 height = 2;
 }
 
-message FetchMmrNodes{
+message FetchMatchingMmrNodes{
     MmrTree tree = 1;
     uint32 pos = 2;
     uint32 count = 3;

@@ -80,7 +80,7 @@ impl LocalNodeCommsInterface {
     pub async fn get_blocks(&mut self, block_heights: Vec<u64>) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchBlocks(block_heights))
+            .call(NodeCommsRequest::FetchMatchingBlocks(block_heights))
             .await??
         {
             NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),
@@ -150,7 +150,7 @@ impl LocalNodeCommsInterface {
     {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchMmrNodes(tree, pos, count, hist_height))
+            .call(NodeCommsRequest::FetchMatchingMmrNodes(tree, pos, count, hist_height))
             .await??
         {
             NodeCommsResponse::MmrNodes(added, deleted) => Ok((added, deleted)),

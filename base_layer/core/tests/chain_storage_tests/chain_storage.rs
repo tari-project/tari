@@ -30,6 +30,7 @@ use crate::helpers::{
         generate_new_block_with_achieved_difficulty,
         generate_new_block_with_coinbase,
     },
+    database::{create_mem_db, create_orphan_block},
     sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb},
     test_blockchain::TestBlockchain,
 };
@@ -53,7 +54,6 @@ use tari_core::{
         Validators,
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
-    helpers::{create_mem_db, create_orphan_block},
     proof_of_work::Difficulty,
     transactions::{
         helpers::{create_test_kernel, create_utxo, spend_utxos},

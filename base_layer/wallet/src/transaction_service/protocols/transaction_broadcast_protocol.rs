@@ -175,7 +175,7 @@ where TBackend: TransactionBackend + 'static
                 hashes.push(o.hash());
             }
 
-            let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
+            let request = BaseNodeRequestProto::FetchMatchingUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
             let service_request = BaseNodeProto::BaseNodeServiceRequest {
                 request_key: self.id,
                 request: Some(request),

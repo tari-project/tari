@@ -20,7 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tui::layout::{Constraint, Direction, Layout, Rect};
+use tui::{
+    backend::Backend,
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Span, Spans},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    Frame,
+};
 
 /// Help function to create a centered rectangle with absolute dimensions
 pub fn centered_rect_absolute(width: u16, height: u16, r: Rect) -> Rect {
@@ -49,4 +56,49 @@ pub fn centered_rect_absolute(width: u16, height: u16, r: Rect) -> Rect {
             .as_ref(),
         )
         .split(popup_layout[1])[1]
+}
+
+pub fn draw_dialog<B>(
+    f: &mut Frame<B>,
+    full_area: Rect,
+    title: String,
+    message: String,
+    color: Color,
+    width: u16,
+    height: u16,
+) where
+    B: Backend,
+{
+    let popup_area = centered_rect_absolute(width.min(full_area.width), height.min(full_area.height), full_area);
+
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::default().borders(Borders::ALL).title(Span::styled(
+        title.as_str(),
+        Style::default().fg(color).add_modifier(Modifier::BOLD),
+    ));
+    f.render_widget(block, popup_area);
+
+    let lines = message.as_str().lines();
+
+    let mut spans = Vec::new();
+    for l in lines {
+        spans.push(Spans::from(Span::styled(
+            l,
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        )));
+    }
+    let center_area = centered_rect_absolute(
+        width.min(full_area.width).saturating_sub(2),
+        ((spans.len()) as u16).max(2).min(full_area.height),
+        full_area,
+    );
+
+    let text = Paragraph::new(spans)
+        .style(Style::default().fg(color))
+        .block(Block::default())
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: true });
+
+    f.render_widget(text, center_area);
 }

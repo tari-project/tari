@@ -1,7 +1,7 @@
 use crate::ui::{
     components::{balance::Balance, Component},
     state::AppState,
-    widgets::{MultiColumnList, WindowedListState},
+    widgets::{draw_dialog, MultiColumnList, WindowedListState},
     MAX_WIDTH,
 };
 use tari_crypto::tari_utilities::hex::Hex;
@@ -10,6 +10,7 @@ use tari_wallet::transaction_service::storage::models::{
     TransactionDirection,
     TransactionStatus,
 };
+use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -25,6 +26,8 @@ pub struct TransactionsTab {
     pending_list_state: WindowedListState,
     completed_list_state: WindowedListState,
     detailed_transaction: Option<CompletedTransaction>,
+    error_message: Option<String>,
+    confirmation_dialog: bool,
 }
 
 impl TransactionsTab {
@@ -35,12 +38,15 @@ impl TransactionsTab {
             pending_list_state: WindowedListState::new(),
             completed_list_state: WindowedListState::new(),
             detailed_transaction: None,
+            error_message: None,
+            confirmation_dialog: false,
         }
     }
 
     fn draw_transaction_lists<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let (pending_constraint, completed_constaint) = if app_state.get_pending_txs().is_empty() {
+            self.selected_tx_list = SelectedTransactionList::CompletedTxs;
             (Constraint::Max(3), Constraint::Min(4))
         } else {
             (
@@ -52,19 +58,6 @@ impl TransactionsTab {
             .constraints([pending_constraint, completed_constaint].as_ref())
             .split(area);
 
-        let instructions = Paragraph::new(Spans::from(vec![
-            Span::raw(" Use "),
-            Span::styled("P/C", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to move between transaction lists, "),
-            Span::styled("Up/Down Arrow Keys", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to select a transaction, "),
-            Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to open Transaction Details."),
-        ]))
-        .wrap(Wrap { trim: true });
-        f.render_widget(instructions, list_areas[0]);
-
-        // Pending Transactions
         let style = if self.selected_tx_list == SelectedTransactionList::PendingTxs {
             Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
         } else {
@@ -75,6 +68,7 @@ impl TransactionsTab {
             .title(Span::styled("(P)ending Transactions", style));
         f.render_widget(block, list_areas[0]);
 
+        // Pending Transactions
         self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
         let mut pending_list_state = self
             .pending_list_state
@@ -125,7 +119,7 @@ impl TransactionsTab {
         };
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(Span::styled("(C)ompleted Transactions", style));
+            .title(Span::styled("Completed (T)ransactions", style));
         f.render_widget(block, list_areas[1]);
 
         self.completed_list_state
@@ -327,15 +321,88 @@ impl TransactionsTab {
 impl<B: Backend> Component<B> for TransactionsTab {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
         let balance_main_area = Layout::default()
-            .constraints([Constraint::Length(3), Constraint::Min(10), Constraint::Length(12)].as_ref())
+            .constraints(
+                [
+                    Constraint::Length(3),
+                    Constraint::Length(1),
+                    Constraint::Min(10),
+                    Constraint::Length(12),
+                ]
+                .as_ref(),
+            )
             .split(area);
 
         self.balance.draw(f, balance_main_area[0], app_state);
-        self.draw_transaction_lists(f, balance_main_area[1], app_state);
-        self.draw_detailed_transaction(f, balance_main_area[2], app_state);
+
+        let mut span_vec = if app_state.get_pending_txs().is_empty() {
+            vec![]
+        } else {
+            vec![
+                Span::raw(" Use "),
+                Span::styled("P/T", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to move between transaction lists, "),
+            ]
+        };
+
+        span_vec.push(Span::styled(
+            "Up/Down Arrow Keys",
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
+        span_vec.push(Span::raw(" to select a transaction, "));
+        span_vec.push(Span::styled("C", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" to cancel a selected Pending Tx."));
+
+        let instructions = Paragraph::new(Spans::from(span_vec)).wrap(Wrap { trim: true });
+        f.render_widget(instructions, balance_main_area[1]);
+
+        self.draw_transaction_lists(f, balance_main_area[2], app_state);
+        self.draw_detailed_transaction(f, balance_main_area[3], app_state);
+
+        if let Some(msg) = self.error_message.clone() {
+            draw_dialog(f, area, "Error!".to_string(), msg, Color::Red, 120, 9);
+        }
+
+        if self.confirmation_dialog {
+            draw_dialog(
+                f,
+                area,
+                "Confirm Cancellation".to_string(),
+                "Are you sure you want to cancel this pending transaction? \n(Y)es / (N)o".to_string(),
+                Color::Red,
+                120,
+                9,
+            );
+        }
     }
 
     fn on_key(&mut self, app_state: &mut AppState, c: char) {
+        if self.error_message.is_some() && '\n' == c {
+            self.error_message = None;
+            return;
+        }
+
+        if self.confirmation_dialog {
+            if 'n' == c {
+                self.confirmation_dialog = false;
+                return;
+            } else if 'y' == c {
+                if self.selected_tx_list == SelectedTransactionList::PendingTxs {
+                    if let Some(i) = self.pending_list_state.selected() {
+                        if let Some(pending_tx) = app_state.get_pending_tx(i).cloned() {
+                            if let Err(e) = Handle::current().block_on(app_state.cancel_transaction(pending_tx.tx_id)) {
+                                self.error_message = Some(format!(
+                                    "Could not cancel pending transaction.\n{}\nPress Enter to continue.",
+                                    e
+                                ));
+                            }
+                        }
+                    }
+                }
+                self.confirmation_dialog = false;
+                return;
+            }
+        }
+
         match c {
             'p' => {
                 self.selected_tx_list = SelectedTransactionList::PendingTxs;
@@ -344,12 +411,18 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     self.pending_list_state.select_first();
                 }
             },
-            'c' => {
+            't' => {
                 self.selected_tx_list = SelectedTransactionList::CompletedTxs;
                 self.completed_list_state
                     .set_num_items(app_state.get_completed_txs().len());
                 if self.completed_list_state.selected().is_none() {
                     self.completed_list_state.select_first();
+                }
+            },
+            'c' => {
+                if self.selected_tx_list == SelectedTransactionList::PendingTxs {
+                    self.confirmation_dialog = true;
+                    return;
                 }
             },
             '\n' => match self.selected_tx_list {

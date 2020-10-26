@@ -23,10 +23,10 @@
 use super::{header_iter::HeaderIter, ChainBalanceValidator, HeaderValidator};
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
-    chain_storage::{ChainStorageError, DbTransaction},
-    consensus::{consensus_constants::ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
+    chain_storage::DbTransaction,
+    consensus::{ConsensusManagerBuilder, Network},
     proof_of_work::PowError,
+    test_helpers::create_mem_db,
     transactions::{
         fee::Fee,
         helpers::{create_random_signature_from_s_key, create_utxo, spend_utxos},
@@ -36,7 +36,7 @@ use crate::{
     },
     txn_schema,
     validation::{Validation, ValidationError},
-};
+};use crate::consensus::consensus_constants::ConsensusConstantsBuilder;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, Hashable};
 use tari_test_utils::unpack_enum;
 
@@ -53,9 +53,8 @@ fn header_iter_empty_and_invalid_height() {
 
     // Invalid header height
     let iter = HeaderIter::new(&db, 1, 10);
-    let headers = iter.collect::<Vec<_>>();
+    let headers = iter.collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(headers.len(), 1);
-    unpack_enum!(ChainStorageError::ValueNotFound { .. } = headers[0].as_ref().unwrap_err());
 }
 
 #[test]

@@ -134,25 +134,25 @@ pub enum BaseNodeCommand {
 #[derive(Helper, Validator, Highlighter)]
 pub struct Parser {
     executor: runtime::Handle,
-    wallet_node_identity: Arc<NodeIdentity>,
     discovery_service: DhtDiscoveryRequester,
     base_node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
-    wallet_peer_manager: Arc<PeerManager>,
     connectivity: ConnectivityRequester,
-    wallet_connectivity: ConnectivityRequester,
     commands: Vec<String>,
     hinter: HistoryHinter,
-    wallet_output_service: OutputManagerHandle,
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
-    wallet_transaction_service: TransactionServiceHandle,
     enable_miner: Arc<AtomicBool>,
     mining_status: Arc<AtomicBool>,
     miner_hashrate: Arc<AtomicU64>,
     miner_instructions: syncSender<MinerInstruction>,
     miner_thread_count: u64,
     state_machine_info: watch::Receiver<StatusInfo>,
+    wallet_transaction_service: Option<TransactionServiceHandle>,
+    wallet_node_identity: Option<Arc<NodeIdentity>>,
+    wallet_peer_manager: Option<Arc<PeerManager>>,
+    wallet_connectivity: Option<ConnectivityRequester>,
+    wallet_output_service: Option<OutputManagerHandle>,
 }
 
 // Import the auto-generated const values from the Manifest and Git
@@ -194,25 +194,25 @@ impl Parser {
     pub fn new(executor: runtime::Handle, ctx: &BaseNodeContext, config: &GlobalConfig) -> Self {
         Parser {
             executor,
-            wallet_node_identity: ctx.wallet_node_identity(),
             discovery_service: ctx.base_node_dht().discovery_service_requester(),
             base_node_identity: ctx.base_node_identity(),
             peer_manager: ctx.base_node_comms().peer_manager(),
-            wallet_peer_manager: ctx.wallet_comms().peer_manager(),
             connectivity: ctx.base_node_comms().connectivity(),
-            wallet_connectivity: ctx.wallet_comms().connectivity(),
             commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
             hinter: HistoryHinter {},
-            wallet_output_service: ctx.output_manager(),
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
-            wallet_transaction_service: ctx.wallet_transaction_service(),
             enable_miner: ctx.miner_enabled(),
             mining_status: ctx.mining_status(),
             miner_hashrate: ctx.miner_hashrate(),
             miner_instructions: ctx.miner_instruction_events(),
             miner_thread_count: config.num_mining_threads as u64,
             state_machine_info: ctx.get_state_machine_info_channel(),
+            wallet_node_identity: ctx.wallet_node_identity(),
+            wallet_peer_manager: ctx.wallet_comms().map(|wc| wc.peer_manager()),
+            wallet_connectivity: ctx.wallet_comms().map(|wc| wc.connectivity()),
+            wallet_output_service: ctx.output_manager(),
+            wallet_transaction_service: ctx.wallet_transaction_service(),
         }
     }
 
@@ -520,17 +520,20 @@ impl Parser {
 
     /// Function to process the get-balance command
     fn process_get_balance(&mut self) {
-        let mut handler = self.wallet_output_service.clone();
-        self.executor.spawn(async move {
-            match handler.get_balance().await {
-                Err(e) => {
-                    println!("Something went wrong");
-                    warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
-                    return;
-                },
-                Ok(data) => println!("Balances:\n{}", data),
-            };
-        });
+        if let Some(mut handler) = self.wallet_output_service.clone() {
+            self.executor.spawn(async move {
+                match handler.get_balance().await {
+                    Err(e) => {
+                        println!("Something went wrong");
+                        warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
+                        return;
+                    },
+                    Ok(data) => println!("Balances:\n{}", data),
+                };
+            });
+        } else {
+            println!("Cannot complete command, Wallet is disabled");
+        }
     }
 
     /// Function process the version command
@@ -558,211 +561,223 @@ impl Parser {
 
     /// Function to process the list utxos command
     fn process_list_unspent_outputs(&mut self) {
-        let mut handler1 = self.node_service.clone();
-        let mut handler2 = self.wallet_output_service.clone();
-        self.executor.spawn(async move {
-            let current_height = match handler1.get_metadata().await {
-                Err(err) => {
-                    println!("Failed to retrieve chain metadata: {:?}", err);
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err);
-                    return;
-                },
-                Ok(data) => data.height_of_longest_chain.unwrap() as i64,
-            };
-            match handler2.get_unspent_outputs().await {
-                Err(e) => {
-                    println!("Something went wrong");
-                    warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
-                    return;
-                },
-                Ok(unspent_outputs) => {
-                    if !unspent_outputs.is_empty() {
-                        println!(
-                            "\nYou have {} UTXOs: (value, commitment, mature in ? blocks, flags)",
-                            unspent_outputs.len()
-                        );
-                        let factory = PedersenCommitmentFactory::default();
-                        for uo in unspent_outputs.iter() {
-                            let mature_in = std::cmp::max(uo.features.maturity as i64 - current_height, 0);
+        if let Some(mut handler2) = self.wallet_output_service.clone() {
+            let mut handler1 = self.node_service.clone();
+
+            self.executor.spawn(async move {
+                let current_height = match handler1.get_metadata().await {
+                    Err(err) => {
+                        println!("Failed to retrieve chain metadata: {:?}", err);
+                        warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err);
+                        return;
+                    },
+                    Ok(data) => data.height_of_longest_chain.unwrap() as i64,
+                };
+                match handler2.get_unspent_outputs().await {
+                    Err(e) => {
+                        println!("Something went wrong");
+                        warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
+                        return;
+                    },
+                    Ok(unspent_outputs) => {
+                        if !unspent_outputs.is_empty() {
                             println!(
-                                "   {}, {}, {:>3}, {:?}",
-                                uo.value,
-                                uo.as_transaction_input(&factory, OutputFeatures::default())
-                                    .commitment
-                                    .to_hex(),
-                                mature_in,
-                                uo.features.flags
+                                "\nYou have {} UTXOs: (value, commitment, mature in ? blocks, flags)",
+                                unspent_outputs.len()
                             );
+                            let factory = PedersenCommitmentFactory::default();
+                            for uo in unspent_outputs.iter() {
+                                let mature_in = std::cmp::max(uo.features.maturity as i64 - current_height, 0);
+                                println!(
+                                    "   {}, {}, {:>3}, {:?}",
+                                    uo.value,
+                                    uo.as_transaction_input(&factory, OutputFeatures::default())
+                                        .commitment
+                                        .to_hex(),
+                                    mature_in,
+                                    uo.features.flags
+                                );
+                            }
+                            println!();
+                        } else {
+                            println!("\nNo valid UTXOs found at this time\n");
                         }
-                        println!();
-                    } else {
-                        println!("\nNo valid UTXOs found at this time\n");
-                    }
-                },
-            };
-        });
+                    },
+                };
+            });
+        } else {
+            println!("Cannot complete command, Wallet is disabled");
+        }
     }
 
     fn process_list_transactions(&mut self) {
-        let mut transactions = self.wallet_transaction_service.clone();
+        if let Some(mut transactions) = self.wallet_transaction_service.clone() {
+            self.executor.spawn(async move {
+                println!("Inbound Transactions");
+                match transactions.get_pending_inbound_transactions().await {
+                    Ok(transactions) => {
+                        if transactions.is_empty() {
+                            println!("No pending inbound transactions found.");
+                        } else {
+                            let mut table = Table::new();
+                            table.set_titles(vec![
+                                "Transaction ID",
+                                "Source Public Key",
+                                "Amount",
+                                "Status",
+                                "Receiver State",
+                                "Timestamp",
+                                "Message",
+                            ]);
+                            for (tx_id, txn) in transactions {
+                                table.add_row(row![
+                                    tx_id,
+                                    txn.source_public_key,
+                                    txn.amount,
+                                    txn.status,
+                                    txn.receiver_protocol.state,
+                                    format_naive_datetime(&txn.timestamp),
+                                    txn.message
+                                ]);
+                            }
 
-        self.executor.spawn(async move {
-            println!("Inbound Transactions");
-            match transactions.get_pending_inbound_transactions().await {
-                Ok(transactions) => {
-                    if transactions.is_empty() {
-                        println!("No pending inbound transactions found.");
-                    } else {
+                            table.print_std();
+                        }
+                    },
+                    Err(err) => {
+                        println!("Failed to retrieve inbound transactions: {:?}", err);
+                        return;
+                    },
+                }
+
+                println!();
+                println!("Outbound Transactions");
+                match transactions.get_pending_outbound_transactions().await {
+                    Ok(transactions) => {
+                        if transactions.is_empty() {
+                            println!("No pending outbound transactions found.");
+                            return;
+                        }
+
                         let mut table = Table::new();
                         table.set_titles(vec![
                             "Transaction ID",
-                            "Source Public Key",
+                            "Dest Public Key",
                             "Amount",
+                            "Fee",
                             "Status",
-                            "Receiver State",
+                            "Sender State",
                             "Timestamp",
                             "Message",
                         ]);
                         for (tx_id, txn) in transactions {
                             table.add_row(row![
                                 tx_id,
-                                txn.source_public_key,
+                                txn.destination_public_key,
                                 txn.amount,
+                                txn.fee,
                                 txn.status,
-                                txn.receiver_protocol.state,
+                                txn.sender_protocol,
                                 format_naive_datetime(&txn.timestamp),
                                 txn.message
                             ]);
                         }
 
                         table.print_std();
-                    }
-                },
-                Err(err) => {
-                    println!("Failed to retrieve inbound transactions: {:?}", err);
-                    return;
-                },
-            }
-
-            println!();
-            println!("Outbound Transactions");
-            match transactions.get_pending_outbound_transactions().await {
-                Ok(transactions) => {
-                    if transactions.is_empty() {
-                        println!("No pending outbound transactions found.");
+                    },
+                    Err(err) => {
+                        println!("Failed to retrieve inbound transactions: {:?}", err);
                         return;
-                    }
-
-                    let mut table = Table::new();
-                    table.set_titles(vec![
-                        "Transaction ID",
-                        "Dest Public Key",
-                        "Amount",
-                        "Fee",
-                        "Status",
-                        "Sender State",
-                        "Timestamp",
-                        "Message",
-                    ]);
-                    for (tx_id, txn) in transactions {
-                        table.add_row(row![
-                            tx_id,
-                            txn.destination_public_key,
-                            txn.amount,
-                            txn.fee,
-                            txn.status,
-                            txn.sender_protocol,
-                            format_naive_datetime(&txn.timestamp),
-                            txn.message
-                        ]);
-                    }
-
-                    table.print_std();
-                },
-                Err(err) => {
-                    println!("Failed to retrieve inbound transactions: {:?}", err);
-                    return;
-                },
-            }
-        });
+                    },
+                }
+            });
+        } else {
+            println!("Cannot complete command, Wallet is disabled");
+        }
     }
 
     fn process_list_completed_transactions<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let mut transactions = self.wallet_transaction_service.clone();
-        let n = args.next().and_then(|s| s.parse::<usize>().ok()).unwrap_or(10);
-        let m = args.next().and_then(|s| s.parse::<usize>().ok());
+        if let Some(mut transactions) = self.wallet_transaction_service.clone() {
+            let n = args.next().and_then(|s| s.parse::<usize>().ok()).unwrap_or(10);
+            let m = args.next().and_then(|s| s.parse::<usize>().ok());
 
-        self.executor.spawn(async move {
-            match transactions.get_completed_transactions().await {
-                Ok(transactions) => {
-                    if transactions.is_empty() {
-                        println!("No completed transactions found.");
-                        return;
-                    }
-                    // TODO: This doesn't scale well because hashmap has a random ordering. Support for this query
-                    //       should be added at the database level
-                    let mut transactions = transactions.into_iter().map(|(_, txn)| txn).collect::<Vec<_>>();
-                    transactions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-                    let transactions = match m {
-                        Some(m) => transactions.into_iter().skip(n).take(m).collect::<Vec<_>>(),
-                        None => transactions.into_iter().take(n).collect::<Vec<_>>(),
-                    };
+            self.executor.spawn(async move {
+                match transactions.get_completed_transactions().await {
+                    Ok(transactions) => {
+                        if transactions.is_empty() {
+                            println!("No completed transactions found.");
+                            return;
+                        }
+                        // TODO: This doesn't scale well because hashmap has a random ordering. Support for this query
+                        //       should be added at the database level
+                        let mut transactions = transactions.into_iter().map(|(_, txn)| txn).collect::<Vec<_>>();
+                        transactions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+                        let transactions = match m {
+                            Some(m) => transactions.into_iter().skip(n).take(m).collect::<Vec<_>>(),
+                            None => transactions.into_iter().take(n).collect::<Vec<_>>(),
+                        };
 
-                    let mut table = Table::new();
-                    table.set_titles(vec![
-                        "Transaction ID",
-                        "Sender",
-                        "Receiver",
-                        "Amount",
-                        "Fee",
-                        "Status",
-                        "Timestamp",
-                        "Message",
-                    ]);
-                    for txn in transactions {
-                        table.add_row(row![
-                            txn.tx_id,
-                            txn.source_public_key,
-                            txn.destination_public_key,
-                            txn.amount,
-                            txn.fee,
-                            txn.status,
-                            format_naive_datetime(&txn.timestamp),
-                            txn.message
+                        let mut table = Table::new();
+                        table.set_titles(vec![
+                            "Transaction ID",
+                            "Sender",
+                            "Receiver",
+                            "Amount",
+                            "Fee",
+                            "Status",
+                            "Timestamp",
+                            "Message",
                         ]);
-                    }
+                        for txn in transactions {
+                            table.add_row(row![
+                                txn.tx_id,
+                                txn.source_public_key,
+                                txn.destination_public_key,
+                                txn.amount,
+                                txn.fee,
+                                txn.status,
+                                format_naive_datetime(&txn.timestamp),
+                                txn.message
+                            ]);
+                        }
 
-                    table.print_std();
-                },
-                Err(err) => {
-                    println!("Failed to retrieve inbound transactions: {:?}", err);
-                    return;
-                },
-            }
-        });
+                        table.print_std();
+                    },
+                    Err(err) => {
+                        println!("Failed to retrieve inbound transactions: {:?}", err);
+                        return;
+                    },
+                }
+            });
+        } else {
+            println!("Cannot complete command, Wallet is disabled");
+        }
     }
 
     fn process_cancel_transaction<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let mut transactions = self.wallet_transaction_service.clone();
-        let tx_id = match args.next().and_then(|s| s.parse::<u64>().ok()) {
-            Some(id) => id,
-            None => {
-                println!("Please enter a valid transaction ID");
-                println!("USAGE: cancel-transaction [transaction id]");
-                return;
-            },
-        };
+        if let Some(mut transactions) = self.wallet_transaction_service.clone() {
+            let tx_id = match args.next().and_then(|s| s.parse::<u64>().ok()) {
+                Some(id) => id,
+                None => {
+                    println!("Please enter a valid transaction ID");
+                    println!("USAGE: cancel-transaction [transaction id]");
+                    return;
+                },
+            };
 
-        self.executor.spawn(async move {
-            match transactions.cancel_transaction(tx_id).await {
-                Ok(_) => {
-                    println!("Transaction {} successfully cancelled", tx_id);
-                },
-                Err(err) => {
-                    println!("Failed to cancel transaction: {:?}", err);
-                },
-            }
-        });
+            self.executor.spawn(async move {
+                match transactions.cancel_transaction(tx_id).await {
+                    Ok(_) => {
+                        println!("Transaction {} successfully cancelled", tx_id);
+                    },
+                    Err(err) => {
+                        println!("Failed to cancel transaction: {:?}", err);
+                    },
+                }
+            });
+        } else {
+            println!("Cannot complete command, Wallet is disabled");
+        }
     }
 
     /// Function to process the get-chain-metadata command
@@ -1143,26 +1158,34 @@ impl Parser {
 
         match &node_key {
             Either::Left(public_key) => {
-                let pubkeys = &[
-                    self.base_node_identity.public_key(),
-                    self.wallet_node_identity.public_key(),
-                ];
-                if pubkeys.contains(&public_key) {
-                    println!("Cannot ban our own wallet or node");
+                if let Some(wni) = self.wallet_node_identity.clone() {
+                    if wni.public_key() == public_key {
+                        println!("Cannot ban our own wallet");
+                        return;
+                    }
+                }
+
+                if self.base_node_identity.public_key() == public_key {
+                    println!("Cannot ban our own node");
                     return;
                 }
             },
             Either::Right(node_id) => {
-                let node_ids = &[self.base_node_identity.node_id(), self.wallet_node_identity.node_id()];
-                if node_ids.contains(&node_id) {
-                    println!("Cannot ban our own wallet or node");
+                if let Some(wni) = self.wallet_node_identity.clone() {
+                    if wni.node_id() == node_id {
+                        println!("Cannot ban our own wallet");
+                        return;
+                    }
+                }
+                if self.base_node_identity.node_id() == node_id {
+                    println!("Cannot ban our own node");
                     return;
                 }
             },
         }
 
         let mut connectivity = self.connectivity.clone();
-        let mut wallet_connectivity = self.wallet_connectivity.clone();
+        let wallet_connectivity = self.wallet_connectivity.clone();
         let peer_manager = self.peer_manager.clone();
         let wallet_peer_manager = self.wallet_peer_manager.clone();
 
@@ -1201,15 +1224,17 @@ impl Parser {
                     },
                 }
 
-                match wallet_connectivity
-                    .ban_peer(node_id, duration, "UI manual ban".to_string())
-                    .await
-                {
-                    Ok(_) => println!("Peer was banned in wallet."),
-                    Err(err) => {
-                        println!("Failed to ban peer: {:?}", err);
-                        error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
-                    },
+                if let Some(mut wallet_connectivity) = wallet_connectivity {
+                    match wallet_connectivity
+                        .ban_peer(node_id, duration, "UI manual ban".to_string())
+                        .await
+                    {
+                        Ok(_) => println!("Peer was banned in wallet."),
+                        Err(err) => {
+                            println!("Failed to ban peer: {:?}", err);
+                            error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
+                        },
+                    }
                 }
             } else {
                 match peer_manager.unban_peer(&node_id).await {
@@ -1225,17 +1250,19 @@ impl Parser {
                     },
                 }
 
-                match wallet_peer_manager.unban_peer(&node_id).await {
-                    Ok(_) => {
-                        println!("Peer ban was removed from wallet.");
-                    },
-                    Err(err) if err.is_peer_not_found() => {
-                        println!("Peer not found in wallet");
-                    },
-                    Err(err) => {
-                        println!("Failed to ban peer: {:?}", err);
-                        error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
-                    },
+                if let Some(wallet_peer_manager) = wallet_peer_manager {
+                    match wallet_peer_manager.unban_peer(&node_id).await {
+                        Ok(_) => {
+                            println!("Peer ban was removed from wallet.");
+                        },
+                        Err(err) if err.is_peer_not_found() => {
+                            println!("Peer not found in wallet");
+                        },
+                        Err(err) => {
+                            println!("Failed to ban peer: {:?}", err);
+                            error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
+                        },
+                    }
                 }
             }
         });
@@ -1266,8 +1293,10 @@ impl Parser {
 
             let n = unban_all(&peer_manager).await;
             println!("Unbanned {} peer(s) from node", n);
-            let n = unban_all(&wallet_peer_manager).await;
-            println!("Unbanned {} peer(s) from wallet", n);
+            if let Some(wallet_peer_manager) = wallet_peer_manager {
+                let n = unban_all(&wallet_peer_manager).await;
+                println!("Unbanned {} peer(s) from wallet", n);
+            }
         });
     }
 
@@ -1294,18 +1323,20 @@ impl Parser {
                 Err(e) => println!("Error listing peers: {}", e),
             }
 
-            match banned_peers(&wallet_peer_manager).await {
-                Ok(banned) => {
-                    if banned.is_empty() {
-                        println!("No peers banned from wallet.")
-                    } else {
-                        println!("Peers banned from wallet ({}):", banned.len());
-                        for peer in banned {
-                            println!("{}", peer);
+            if let Some(wallet_peer_manager) = wallet_peer_manager {
+                match banned_peers(&wallet_peer_manager).await {
+                    Ok(banned) => {
+                        if banned.is_empty() {
+                            println!("No peers banned from wallet.")
+                        } else {
+                            println!("Peers banned from wallet ({}):", banned.len());
+                            for peer in banned {
+                                println!("{}", peer);
+                            }
                         }
-                    }
-                },
-                Err(e) => println!("Error listing peers: {}", e),
+                    },
+                    Err(e) => println!("Error listing peers: {}", e),
+                }
             }
         });
     }
@@ -1402,87 +1433,95 @@ impl Parser {
     fn process_toggle_mining(&mut self) {
         // 'enable_miner' should not be changed directly; this is done indirectly via miner instructions,
         // while 'mining_status' will reflect if mining is happening or not
-        let enable_miner = self.enable_miner.clone();
-        let mining_status = self.mining_status.clone();
-        let miner_instructions = self.miner_instructions.clone();
-        self.executor.spawn(async move {
-            let new_state = !enable_miner.load(Ordering::SeqCst);
-            // The event channel can interrupt the mining thread timeously to stop or start mining
-            let _ = match new_state {
-                true => {
-                    println!("Mining requested to be turned ON");
-                    miner_instructions.send(MinerInstruction::StartMining).map_err(|e| {
-                        error!(
-                            target: LOG_TARGET,
-                            "Could not send 'StartMining' instruction to miner. {:?}.", e
-                        );
-                        e
-                    })
-                },
-                false => {
-                    println!("Mining requested to be turned OFF");
-                    miner_instructions.send(MinerInstruction::PauseMining).map_err(|e| {
-                        error!(
-                            target: LOG_TARGET,
-                            "Could not send 'PauseMining' instruction to miner. {:?}.", e
-                        );
-                        e
-                    })
-                },
-            };
-            debug!(
-                target: LOG_TARGET,
-                "Mining state requested to be switched to {}", new_state
-            );
+        if self.wallet_output_service.is_some() {
+            let enable_miner = self.enable_miner.clone();
+            let mining_status = self.mining_status.clone();
+            let miner_instructions = self.miner_instructions.clone();
+            self.executor.spawn(async move {
+                let new_state = !enable_miner.load(Ordering::SeqCst);
+                // The event channel can interrupt the mining thread timeously to stop or start mining
+                let _ = match new_state {
+                    true => {
+                        println!("Mining requested to be turned ON");
+                        miner_instructions.send(MinerInstruction::StartMining).map_err(|e| {
+                            error!(
+                                target: LOG_TARGET,
+                                "Could not send 'StartMining' instruction to miner. {:?}.", e
+                            );
+                            e
+                        })
+                    },
+                    false => {
+                        println!("Mining requested to be turned OFF");
+                        miner_instructions.send(MinerInstruction::PauseMining).map_err(|e| {
+                            error!(
+                                target: LOG_TARGET,
+                                "Could not send 'PauseMining' instruction to miner. {:?}.", e
+                            );
+                            e
+                        })
+                    },
+                };
+                debug!(
+                    target: LOG_TARGET,
+                    "Mining state requested to be switched to {}", new_state
+                );
 
-            // Verify the mining status
-            let mut attempts = 0;
-            const DELAY: u64 = 2500;
-            const WAIT_CYCLES: usize = 50;
-            loop {
-                tokio::time::delay_for(Duration::from_millis(DELAY)).await;
-                if new_state == mining_status.load(Ordering::SeqCst) {
-                    match new_state {
-                        true => println!("Mining is ON"),
-                        false => println!("Mining is OFF"),
+                // Verify the mining status
+                let mut attempts = 0;
+                const DELAY: u64 = 2500;
+                const WAIT_CYCLES: usize = 50;
+                loop {
+                    tokio::time::delay_for(Duration::from_millis(DELAY)).await;
+                    if new_state == mining_status.load(Ordering::SeqCst) {
+                        match new_state {
+                            true => println!("Mining is ON"),
+                            false => println!("Mining is OFF"),
+                        }
+                        break;
                     }
-                    break;
-                }
-                attempts += 1;
-                if attempts > WAIT_CYCLES {
-                    match new_state {
-                        true => println!(
-                            "Mining could not be turned ON in {:.1} s (mining enabled is set to {})",
-                            DELAY as f32 * attempts as f32 / 1000.0,
-                            enable_miner.load(Ordering::SeqCst)
-                        ),
-                        false => println!(
-                            "Mining could not to be turned OFF in {:.1} s (mining enabled is set to {})",
-                            DELAY as f32 * attempts as f32 / 1000.0,
-                            enable_miner.load(Ordering::SeqCst)
-                        ),
+                    attempts += 1;
+                    if attempts > WAIT_CYCLES {
+                        match new_state {
+                            true => println!(
+                                "Mining could not be turned ON in {:.1} s (mining enabled is set to {})",
+                                DELAY as f32 * attempts as f32 / 1000.0,
+                                enable_miner.load(Ordering::SeqCst)
+                            ),
+                            false => println!(
+                                "Mining could not to be turned OFF in {:.1} s (mining enabled is set to {})",
+                                DELAY as f32 * attempts as f32 / 1000.0,
+                                enable_miner.load(Ordering::SeqCst)
+                            ),
+                        }
+                        break;
                     }
-                    break;
                 }
-            }
-        });
+            });
+        } else {
+            println!("Cannot complete command, Wallet is disabled so Mining is also disabled");
+        }
     }
 
     /// Function to process the get_mining_state command
     fn process_get_mining_state(&mut self) {
-        let cur_state = self.enable_miner.load(Ordering::SeqCst);
-        let mining_status = self.mining_status.load(Ordering::SeqCst);
-        match cur_state {
-            true => println!("Mining is ENABLED by the user"),
-            false => println!("Mining is DISABLED by the user"),
+        if self.wallet_output_service.is_some() {
+            let cur_state = self.enable_miner.load(Ordering::SeqCst);
+            let mining_status = self.mining_status.load(Ordering::SeqCst);
+            match cur_state {
+                true => println!("Mining is ENABLED by the user"),
+                false => println!("Mining is DISABLED by the user"),
+            }
+            match mining_status {
+                true => println!("Mining state is currently ON"),
+                false => println!("Mining state is currently OFF"),
+            }
+            let hashrate = self.miner_hashrate.load(Ordering::SeqCst);
+            let total_hashrate = (self.miner_thread_count * hashrate) as f64 / 1_000_000.0;
+            println!("Mining hash rate is: {:.6} MH/s", total_hashrate);
+        } else {
+            println!("Cannot complete command, Wallet is disabled so Mining is also disabled");
         }
-        match mining_status {
-            true => println!("Mining state is currently ON"),
-            false => println!("Mining state is currently OFF"),
-        }
-        let hashrate = self.miner_hashrate.load(Ordering::SeqCst);
-        let total_hashrate = (self.miner_thread_count * hashrate) as f64 / 1_000_000.0;
-        println!("Mining hash rate is: {:.6} MH/s", total_hashrate);
     }
 
     /// Function to process the list-headers command
@@ -1586,8 +1625,8 @@ impl Parser {
                             missing_blocks.push(height);
                         },
                         Ok(mut data) => match data.pop() {
-                            // We need to check the data it self, as FetchBlocks will suppress any error, only logging
-                            // it.
+                            // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
+                            // logging it.
                             Some(_historical_block) => {},
                             None => missing_blocks.push(height),
                         },
@@ -1666,8 +1705,8 @@ impl Parser {
                         break;
                     },
                     Ok(mut data) => match data.pop() {
-                        // We need to check the data it self, as FetchBlocks will suppress any error, only logging
-                        // it.
+                        // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
+                        // logging it.
                         Some(historical_block) => historical_block.block,
                         None => {
                             println!("Error in db, could not get block");
@@ -1681,8 +1720,8 @@ impl Parser {
                         break;
                     },
                     Ok(mut data) => match data.pop() {
-                        // We need to check the data it self, as FetchBlocks will suppress any error, only logging
-                        // it.
+                        // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
+                        // logging it.
                         Some(historical_block) => historical_block.block,
                         None => {
                             println!("Error in db, could not get block");
@@ -1737,55 +1776,66 @@ impl Parser {
 
     /// Function to process the whoami command
     fn process_whoami(&self) {
-        println!("======== Wallet ==========");
-        println!("{}", self.wallet_node_identity);
-        let emoji_id = EmojiId::from_pubkey(&self.wallet_node_identity.public_key());
-        println!("Emoji ID: {}", emoji_id);
-        println!();
-        // TODO: Pass the network in as a var
-        let qr_link = format!(
-            "tari://rincewind/pubkey/{}",
-            &self.wallet_node_identity.public_key().to_hex()
-        );
-        let code = QrCode::new(qr_link).unwrap();
-        let image = code
-            .render::<unicode::Dense1x2>()
-            .dark_color(unicode::Dense1x2::Dark)
-            .light_color(unicode::Dense1x2::Light)
-            .build();
-        println!("{}", image);
-        println!();
+        if let Some(wallet_node_identity) = self.wallet_node_identity.clone() {
+            println!("======== Wallet ==========");
+            println!("{}", wallet_node_identity);
+            let emoji_id = EmojiId::from_pubkey(&wallet_node_identity.public_key());
+            println!("Emoji ID: {}", emoji_id);
+            println!();
+            // TODO: Pass the network in as a var
+            let qr_link = format!(
+                "tari://rincewind/pubkey/{}",
+                &wallet_node_identity.public_key().to_hex()
+            );
+            let code = QrCode::new(qr_link).unwrap();
+            let image = code
+                .render::<unicode::Dense1x2>()
+                .dark_color(unicode::Dense1x2::Dark)
+                .light_color(unicode::Dense1x2::Light)
+                .build();
+            println!("{}", image);
+            println!();
+        }
         println!("======== Base Node ==========");
         println!("{}", self.base_node_identity);
     }
 
     /// Function to process the coin split command
     fn process_coin_split<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let amount_per_split = args.next().and_then(|v| v.parse::<u64>().ok());
-        let split_count = args.next().and_then(|v| v.parse::<usize>().ok());
-        if amount_per_split.is_none() | split_count.is_none() {
-            println!("Command entered incorrectly, please use the following format: ");
-            println!("coin-split [amount of tari to allocated to each UTXO] [number of UTXOs to create]");
-            return;
-        }
-        let amount_per_split: MicroTari = amount_per_split.unwrap().into();
-        let split_count = split_count.unwrap();
+        if let Some(mut output_manager) = self.wallet_output_service.clone() {
+            if let Some(mut txn_service) = self.wallet_transaction_service.clone() {
+                let amount_per_split = args.next().and_then(|v| v.parse::<u64>().ok());
+                let split_count = args.next().and_then(|v| v.parse::<usize>().ok());
+                if amount_per_split.is_none() | split_count.is_none() {
+                    println!("Command entered incorrectly, please use the following format: ");
+                    println!("coin-split [amount of tari to allocated to each UTXO] [number of UTXOs to create]");
+                    return;
+                }
+                let amount_per_split: MicroTari = amount_per_split.unwrap().into();
+                let split_count = split_count.unwrap();
 
-        // Use output manager service to get utxo and create the coin split transaction
-        let fee_per_gram = 25 * uT; // TODO: use configured fee per gram
-        let mut output_manager = self.wallet_output_service.clone();
-        let mut txn_service = self.wallet_transaction_service.clone();
-        self.executor.spawn(async move {
-            match output_manager
-                .create_coin_split(amount_per_split, split_count, fee_per_gram, None)
-                .await
-            {
-                Ok((tx_id, tx, fee, amount)) => {
-                    match txn_service
-                        .submit_transaction(tx_id, tx, fee, amount, "Coin split".into())
+                // Use output manager service to get utxo and create the coin split transaction
+                let fee_per_gram = 25 * uT; // TODO: use configured fee per gram
+
+                self.executor.spawn(async move {
+                    match output_manager
+                        .create_coin_split(amount_per_split, split_count, fee_per_gram, None)
                         .await
                     {
-                        Ok(_) => println!("Coin split transaction created with tx_id:\n{}", tx_id),
+                        Ok((tx_id, tx, fee, amount)) => {
+                            match txn_service
+                                .submit_transaction(tx_id, tx, fee, amount, "Coin split".into())
+                                .await
+                            {
+                                Ok(_) => println!("Coin split transaction created with tx_id:\n{}", tx_id),
+                                Err(e) => {
+                                    println!("Something went wrong creating a coin split transaction");
+                                    println!("{:?}", e);
+                                    warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
+                                    return;
+                                },
+                            };
+                        },
                         Err(e) => {
                             println!("Something went wrong creating a coin split transaction");
                             println!("{:?}", e);
@@ -1793,220 +1843,226 @@ impl Parser {
                             return;
                         },
                     };
-                },
-                Err(e) => {
-                    println!("Something went wrong creating a coin split transaction");
-                    println!("{:?}", e);
-                    warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
-                    return;
-                },
-            };
-        });
+                });
+            }
+        } else {
+            println!("Cannot complete command, Wallet is disabled");
+        }
     }
 
     /// Function to process the send transaction command
     fn process_send_tari<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let amount = args.next().and_then(|v| MicroTari::from_str(v).ok());
-        if amount.is_none() {
-            println!("Please enter a valid amount of tari");
-            return;
+        if let Some(wallet_transaction_service) = self.wallet_transaction_service.clone() {
+            let amount = args.next().and_then(|v| MicroTari::from_str(v).ok());
+            if amount.is_none() {
+                println!("Please enter a valid amount of tari");
+                return;
+            }
+            let amount: MicroTari = amount.unwrap();
+
+            let key = match args.next() {
+                Some(k) => k.to_string(),
+                None => {
+                    println!("Command entered incorrectly, please use the following format: ");
+                    println!(
+                        "send_tari [amount of tari to send] [public key or emoji id to send to] [optional message]"
+                    );
+                    return;
+                },
+            };
+
+            let dest_pubkey = match parse_emoji_id_or_public_key(&key) {
+                Some(v) => v,
+                None => {
+                    println!("Please enter a valid destination public key or emoji id");
+                    return;
+                },
+            };
+
+            // Use the rest of the command line as the message
+            let msg = args.collect::<Vec<&str>>().join(" ");
+
+            self.executor.spawn(async move {
+                send_tari(amount, dest_pubkey.clone(), msg.clone(), wallet_transaction_service).await;
+            });
+        } else {
+            println!("Cannot complete command, Wallet is disabled");
         }
-        let amount: MicroTari = amount.unwrap();
-
-        let key = match args.next() {
-            Some(k) => k.to_string(),
-            None => {
-                println!("Command entered incorrectly, please use the following format: ");
-                println!("send_tari [amount of tari to send] [public key or emoji id to send to] [optional message]");
-                return;
-            },
-        };
-
-        let dest_pubkey = match parse_emoji_id_or_public_key(&key) {
-            Some(v) => v,
-            None => {
-                println!("Please enter a valid destination public key or emoji id");
-                return;
-            },
-        };
-
-        // Use the rest of the command line as the message
-        let msg = args.collect::<Vec<&str>>().join(" ");
-
-        let wallet_transaction_service = self.wallet_transaction_service.clone();
-        self.executor.spawn(async move {
-            send_tari(amount, dest_pubkey.clone(), msg.clone(), wallet_transaction_service).await;
-        });
     }
 
     /// Function to process the make it rain transaction function
     fn process_make_it_rain(&mut self, command_arg: Vec<String>) {
         // args: [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx]
         //       [\"start time (UTC)\" / 'now' for immediate start] [public key or emoji id to send to] [message]
-        let command_error_msg =
-            "Command entered incorrectly, please use the following format:\n".to_owned() + MAKE_IT_RAIN_USAGE;
 
-        if (command_arg.is_empty()) || (command_arg.len() < 6) {
-            println!("{}", command_error_msg);
-            println!("Expected at least 6 arguments, received {}\n", command_arg.len());
-            return;
-        }
+        if let Some(wallet_transaction_service) = self.wallet_transaction_service.clone() {
+            let command_error_msg =
+                "Command entered incorrectly, please use the following format:\n".to_owned() + MAKE_IT_RAIN_USAGE;
 
-        // [number of Txs/s]
-        let mut inc: u8 = 0;
-        let tx_per_s = command_arg[inc as usize].parse::<f64>();
-        if tx_per_s.is_err() {
-            println!("Invalid data provided for [number of Txs]\n");
-            return;
-        }
-        let tx_per_s = tx_per_s.unwrap();
+            if (command_arg.is_empty()) || (command_arg.len() < 6) {
+                println!("{}", command_error_msg);
+                println!("Expected at least 6 arguments, received {}\n", command_arg.len());
+                return;
+            }
 
-        // [test duration (s)]
-        inc += 1;
-        let duration = command_arg[inc as usize].parse::<u32>();
-        if duration.is_err() {
-            println!("{}", command_error_msg);
-            println!("Invalid data provided for [test duration (s)]\n");
-            return;
-        };
-        let duration = duration.unwrap();
-        if (tx_per_s * duration as f64) < 1.0 {
-            println!("{}", command_error_msg);
-            println!("Invalid data provided for [number of Txs/s] * [test duration (s)], must be >= 1\n");
-            return;
-        }
-        let number_of_txs = (tx_per_s * duration as f64) as usize;
-        let tx_per_s = tx_per_s.min(25.0); // Maximum rate set to 25/s.
+            // [number of Txs/s]
+            let mut inc: u8 = 0;
+            let tx_per_s = command_arg[inc as usize].parse::<f64>();
+            if tx_per_s.is_err() {
+                println!("Invalid data provided for [number of Txs]\n");
+                return;
+            }
+            let tx_per_s = tx_per_s.unwrap();
 
-        // [starting amount (uT)]
-        inc += 1;
-        let start_amount = command_arg[inc as usize].parse::<u64>();
-        if start_amount.is_err() {
-            println!("{}", command_error_msg);
-            println!("Invalid data provided for [starting amount (uT)]\n");
-            return;
-        }
-        let start_amount: MicroTari = start_amount.unwrap().into();
+            // [test duration (s)]
+            inc += 1;
+            let duration = command_arg[inc as usize].parse::<u32>();
+            if duration.is_err() {
+                println!("{}", command_error_msg);
+                println!("Invalid data provided for [test duration (s)]\n");
+                return;
+            };
+            let duration = duration.unwrap();
+            if (tx_per_s * duration as f64) < 1.0 {
+                println!("{}", command_error_msg);
+                println!("Invalid data provided for [number of Txs/s] * [test duration (s)], must be >= 1\n");
+                return;
+            }
+            let number_of_txs = (tx_per_s * duration as f64) as usize;
+            let tx_per_s = tx_per_s.min(25.0); // Maximum rate set to 25/s.
 
-        // [increment (uT)/Tx]
-        inc += 1;
-        let amount_inc = command_arg[inc as usize].parse::<u64>();
-        if amount_inc.is_err() {
-            println!("{}", command_error_msg);
-            println!("Invalid data provided for [increment (uT)/Tx]\n");
-            return;
-        }
-        let amount_inc: MicroTari = amount_inc.unwrap().into();
+            // [starting amount (uT)]
+            inc += 1;
+            let start_amount = command_arg[inc as usize].parse::<u64>();
+            if start_amount.is_err() {
+                println!("{}", command_error_msg);
+                println!("Invalid data provided for [starting amount (uT)]\n");
+                return;
+            }
+            let start_amount: MicroTari = start_amount.unwrap().into();
 
-        // [start time (UTC) / 'now']
-        inc += 1;
-        let time = command_arg[inc as usize].to_string();
-        let time_utc_ref = Utc::now();
-        let mut time_utc_start = Utc::now();
-        let datetime = parse_date_string(&time, Utc::now(), Dialect::Uk);
-        match datetime {
-            Ok(t) => {
-                if t > time_utc_ref {
-                    time_utc_start = t;
+            // [increment (uT)/Tx]
+            inc += 1;
+            let amount_inc = command_arg[inc as usize].parse::<u64>();
+            if amount_inc.is_err() {
+                println!("{}", command_error_msg);
+                println!("Invalid data provided for [increment (uT)/Tx]\n");
+                return;
+            }
+            let amount_inc: MicroTari = amount_inc.unwrap().into();
+
+            // [start time (UTC) / 'now']
+            inc += 1;
+            let time = command_arg[inc as usize].to_string();
+            let time_utc_ref = Utc::now();
+            let mut time_utc_start = Utc::now();
+            let datetime = parse_date_string(&time, Utc::now(), Dialect::Uk);
+            match datetime {
+                Ok(t) => {
+                    if t > time_utc_ref {
+                        time_utc_start = t;
+                    }
+                },
+                Err(e) => {
+                    println!("{}", command_error_msg);
+                    println!("Invalid data provided for [start time (UTC) / 'now']\n");
+                    println!("{}", e);
+                    return;
+                },
+            }
+
+            // TODO: Read in recipient address list and custom message from file
+            // [public key or emoji id to send to]
+            inc += 1;
+            let key = command_arg[inc as usize].to_string();
+            let dest_pubkey = match parse_emoji_id_or_public_key(&key) {
+                Some(v) => v,
+                None => {
+                    println!("{}", command_error_msg);
+                    println!("Invalid data provided for [public key or emoji id to send to]\n");
+                    return;
+                },
+            };
+
+            // [message]
+            let mut msg = "".to_string();
+            inc += 1;
+            if command_arg.len() > inc as usize {
+                for arg in command_arg.iter().skip(inc as usize) {
+                    msg = msg + arg + " ";
                 }
-            },
-            Err(e) => {
-                println!("{}", command_error_msg);
-                println!("Invalid data provided for [start time (UTC) / 'now']\n");
-                println!("{}", e);
-                return;
-            },
-        }
-
-        // TODO: Read in recipient address list and custom message from file
-        // [public key or emoji id to send to]
-        inc += 1;
-        let key = command_arg[inc as usize].to_string();
-        let dest_pubkey = match parse_emoji_id_or_public_key(&key) {
-            Some(v) => v,
-            None => {
-                println!("{}", command_error_msg);
-                println!("Invalid data provided for [public key or emoji id to send to]\n");
-                return;
-            },
-        };
-
-        // [message]
-        let mut msg = "".to_string();
-        inc += 1;
-        if command_arg.len() > inc as usize {
-            for arg in command_arg.iter().skip(inc as usize) {
-                msg = msg + arg + " ";
+                msg = msg.trim().to_string();
             }
-            msg = msg.trim().to_string();
-        }
 
-        let mut dht = self.discovery_service.clone();
-        let executor = self.executor.clone();
-        let wallet_transaction_service = self.wallet_transaction_service.clone();
-        self.executor.spawn(async move {
-            // Ensure a valid connection is available by forcing a peer discovery. This is intended to be
-            // a blocking operation before the test starts.
-            match dht
-                .discover_peer(
-                    Box::from(dest_pubkey.clone()),
-                    NodeDestination::PublicKey(Box::from(dest_pubkey.clone())),
-                )
-                .await
-            {
-                Ok(_p) => {
-                    // Wait until specified test start time
-                    let millis_to_wait = (time_utc_start - Utc::now()).num_milliseconds();
-                    println!(
-                        "`make-it-rain` to peer '{}' scheduled to start at {}: msg \"{}\"",
-                        &key, time_utc_start, &msg
-                    );
-                    if millis_to_wait > 0 {
-                        tokio::time::delay_for(Duration::from_millis(millis_to_wait as u64)).await;
-                    }
+            let mut dht = self.discovery_service.clone();
+            let executor = self.executor.clone();
 
-                    // Send all the transactions
-                    let start = Utc::now();
-                    for i in 0..number_of_txs {
-                        // Manage Tx rate
-                        let millis_actual_i = (Utc::now() - start).num_milliseconds() as u64;
-                        let millis_target_i = (i as f64 / (tx_per_s / 1000.0)) as u64;
-                        if millis_target_i - millis_actual_i > 0 {
-                            // Maximum delay between Txs set to 120 s
-                            tokio::time::delay_for(Duration::from_millis(
-                                (millis_target_i - millis_actual_i).min(120_000u64),
-                            ))
-                            .await;
+            self.executor.spawn(async move {
+                // Ensure a valid connection is available by forcing a peer discovery. This is intended to be
+                // a blocking operation before the test starts.
+                match dht
+                    .discover_peer(
+                        Box::from(dest_pubkey.clone()),
+                        NodeDestination::PublicKey(Box::from(dest_pubkey.clone())),
+                    )
+                    .await
+                {
+                    Ok(_p) => {
+                        // Wait until specified test start time
+                        let millis_to_wait = (time_utc_start - Utc::now()).num_milliseconds();
+                        println!(
+                            "`make-it-rain` to peer '{}' scheduled to start at {}: msg \"{}\"",
+                            &key, time_utc_start, &msg
+                        );
+                        if millis_to_wait > 0 {
+                            tokio::time::delay_for(Duration::from_millis(millis_to_wait as u64)).await;
                         }
-                        // Send Tx
-                        let wallet_transaction_service = wallet_transaction_service.clone();
-                        let dest_pubkey = dest_pubkey.clone();
-                        let msg = msg.clone();
-                        executor.spawn(async move {
-                            send_tari(
-                                start_amount + amount_inc * (i as u64),
-                                dest_pubkey,
-                                msg,
-                                wallet_transaction_service,
-                            )
-                            .await;
-                        });
-                    }
-                    println!(
-                        "`make-it-rain` to peer '{}' concluded at {}: msg \"{}\"",
-                        &key,
-                        Utc::now(),
-                        &msg
-                    );
-                },
-                Err(err) => {
-                    println!(
-                        "💀 Peer discovery for `{}` failed, cannot perform 'make-it-rain' test: '{:?}'",
-                        key, err
-                    );
-                },
-            }
-        });
+
+                        // Send all the transactions
+                        let start = Utc::now();
+                        for i in 0..number_of_txs {
+                            // Manage Tx rate
+                            let millis_actual_i = (Utc::now() - start).num_milliseconds() as u64;
+                            let millis_target_i = (i as f64 / (tx_per_s / 1000.0)) as u64;
+                            if millis_target_i - millis_actual_i > 0 {
+                                // Maximum delay between Txs set to 120 s
+                                tokio::time::delay_for(Duration::from_millis(
+                                    (millis_target_i - millis_actual_i).min(120_000u64),
+                                ))
+                                .await;
+                            }
+                            // Send Tx
+                            let wallet_transaction_service = wallet_transaction_service.clone();
+                            let dest_pubkey = dest_pubkey.clone();
+                            let msg = msg.clone();
+                            executor.spawn(async move {
+                                send_tari(
+                                    start_amount + amount_inc * (i as u64),
+                                    dest_pubkey,
+                                    msg,
+                                    wallet_transaction_service,
+                                )
+                                .await;
+                            });
+                        }
+                        println!(
+                            "`make-it-rain` to peer '{}' concluded at {}: msg \"{}\"",
+                            &key,
+                            Utc::now(),
+                            &msg
+                        );
+                    },
+                    Err(err) => {
+                        println!(
+                            "💀 Peer discovery for `{}` failed, cannot perform 'make-it-rain' test: '{:?}'",
+                            key, err
+                        );
+                    },
+                }
+            });
+        } else {
+            println!("Cannot complete command, Wallet is disabled");
+        }
     }
 }
 
