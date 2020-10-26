@@ -272,7 +272,7 @@ async fn inbound_fetch_utxos() {
     assert!(store.commit(txn).is_ok());
 
     if let Ok(NodeCommsResponse::TransactionOutputs(received_utxos)) = inbound_nch
-        .handle_request(&NodeCommsRequest::FetchUtxos(vec![hash]))
+        .handle_request(&NodeCommsRequest::FetchMatchingUtxos(vec![hash]))
         .await
     {
         assert_eq!(received_utxos.len(), 1);
@@ -339,7 +339,7 @@ async fn inbound_fetch_txos() {
     assert!(store.commit(txn).is_ok());
 
     if let Ok(NodeCommsResponse::TransactionOutputs(received_txos)) = inbound_nch
-        .handle_request(&NodeCommsRequest::FetchTxos(vec![utxo_hash, stxo_hash]))
+        .handle_request(&NodeCommsRequest::FetchMatchingTxos(vec![utxo_hash, stxo_hash]))
         .await
     {
         assert_eq!(received_txos.len(), 2);
@@ -392,7 +392,7 @@ async fn inbound_fetch_blocks() {
     let block = store.fetch_block(0).unwrap().block().clone();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
-        .handle_request(&NodeCommsRequest::FetchBlocks(vec![0]))
+        .handle_request(&NodeCommsRequest::FetchMatchingBlocks(vec![0]))
         .await
     {
         assert_eq!(received_blocks.len(), 1);
@@ -438,15 +438,18 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
     let _block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
 
-    assert!(inbound_nch
-        .handle_request(&NodeCommsRequest::FetchBlocks(vec![1]))
+    if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
+        .handle_request(&NodeCommsRequest::FetchMatchingBlocks(vec![1]))
         .await
-        .is_err());
+    {
+        assert_eq!(received_blocks.len(), 0);
+    } else {
+        assert!(false);
+    }
 
-    if let NodeCommsResponse::HistoricalBlocks(received_blocks) = inbound_nch
-        .handle_request(&NodeCommsRequest::FetchBlocks(vec![2]))
+    if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
+        .handle_request(&NodeCommsRequest::FetchMatchingBlocks(vec![2]))
         .await
-        .unwrap()
     {
         assert_eq!(received_blocks.len(), 1);
         assert_eq!(*received_blocks[0].block(), block2);

@@ -221,24 +221,27 @@ where T: BlockchainBackend + 'static
 
                 Ok(NodeCommsResponse::FetchHeadersAfterResponse(headers))
             },
-            NodeCommsRequest::FetchUtxos(utxo_hashes) => {
+            NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut utxos = Vec::<TransactionOutput>::new();
                 for hash in utxo_hashes {
-                    let utxo = async_db::fetch_utxo(self.blockchain_db.clone(), hash.clone()).await?;
-                    utxos.push(utxo);
+                    // Not finding a requested UTXO is not an error; UTXO validation depends on this
+                    if let Ok(utxo) = async_db::fetch_utxo(self.blockchain_db.clone(), hash.clone()).await {
+                        utxos.push(utxo);
+                    }
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
             },
-            NodeCommsRequest::FetchTxos(txo_hashes) => {
+            NodeCommsRequest::FetchMatchingTxos(txo_hashes) => {
                 let mut txos = Vec::<TransactionOutput>::new();
                 for hash in txo_hashes {
-                    if let Some(txo) = async_db::fetch_txo(self.blockchain_db.clone(), hash.clone()).await? {
+                    // Not finding a requested TXO is not an error; TXO validation depends on this
+                    if let Ok(Some(txo)) = async_db::fetch_txo(self.blockchain_db.clone(), hash.clone()).await {
                         txos.push(txo);
                     }
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(txos))
             },
-            NodeCommsRequest::FetchBlocks(block_nums) => {
+            NodeCommsRequest::FetchMatchingBlocks(block_nums) => {
                 let mut blocks = Vec::<HistoricalBlock>::with_capacity(block_nums.len());
                 for block_num in block_nums {
                     debug!(target: LOG_TARGET, "A peer has requested block {}", block_num);
@@ -246,15 +249,12 @@ where T: BlockchainBackend + 'static
                         Ok(block) => blocks.push(block),
                         // We need to suppress the error as another node might ask for a block we dont have, so we
                         // return ok([])
-                        Err(e) => {
-                            error!(
-                                target: LOG_TARGET,
-                                "Could not provide requested block {} to peer because: {}",
-                                block_num,
-                                e.to_string()
-                            );
-                            return Err(e.into());
-                        },
+                        Err(e) => debug!(
+                            target: LOG_TARGET,
+                            "Could not provide requested block {} to peer because: {}",
+                            block_num,
+                            e.to_string()
+                        ),
                     }
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
@@ -400,7 +400,7 @@ where T: BlockchainBackend + 'static
                 let node_count = async_db::fetch_mmr_node_count(self.blockchain_db.clone(), *tree, *height).await?;
                 Ok(NodeCommsResponse::MmrNodeCount(node_count))
             },
-            NodeCommsRequest::FetchMmrNodes(tree, pos, count, hist_height) => {
+            NodeCommsRequest::FetchMatchingMmrNodes(tree, pos, count, hist_height) => {
                 let mut added = Vec::<Vec<u8>>::with_capacity(*count as usize);
                 let mut deleted = Bitmap::create();
                 match async_db::fetch_mmr_nodes(self.blockchain_db.clone(), *tree, *pos, *count, Some(*hist_height))

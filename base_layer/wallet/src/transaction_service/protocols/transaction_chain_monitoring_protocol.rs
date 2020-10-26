@@ -194,7 +194,7 @@ where TBackend: TransactionBackend + 'static
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             // Send Base Node query
-            let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
+            let request = BaseNodeRequestProto::FetchMatchingUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
             let service_request = BaseNodeProto::BaseNodeServiceRequest {
                 request_key: self.id,
                 request: Some(request),
