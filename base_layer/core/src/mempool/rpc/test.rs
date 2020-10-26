@@ -20,12 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{
-    test_utils::{
-        create_peer_manager,
-        mock::{create_mempool_service_mock, MempoolMockState},
+use crate::{
+    mempool::{
+        test_utils::mock::{create_mempool_service_mock, MempoolMockState},
+        MempoolRpcService,
     },
-    MempoolRpcService,
+    test_helpers::create_peer_manager,
 };
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tempfile::{tempdir, TempDir};

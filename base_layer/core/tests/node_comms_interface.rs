@@ -24,7 +24,7 @@
 mod helpers;
 
 use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, StreamExt};
-use helpers::block_builders::append_block;
+use helpers::{block_builders::append_block, database::create_mem_db};
 use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::{
@@ -42,7 +42,6 @@ use tari_core::{
         Validators,
     },
     consensus::{ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     mempool::{Mempool, MempoolConfig, MempoolValidators},
     transactions::{
         helpers::{create_test_kernel, create_utxo},

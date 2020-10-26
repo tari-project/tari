@@ -73,6 +73,9 @@ impl<B: BlockchainBackend> Iterator for HeaderIter<'_, B> {
 
             match self.db.fetch_headers(start, end) {
                 Ok(headers) => {
+                    if headers.is_empty() {
+                        return None;
+                    }
                     self.cursor += headers.len();
                     self.chunk.extend(headers);
                 },

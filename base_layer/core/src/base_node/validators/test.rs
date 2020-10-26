@@ -23,10 +23,10 @@
 use super::{header_iter::HeaderIter, ChainBalanceValidator, HeaderValidator};
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
-    chain_storage::{ChainStorageError, DbTransaction},
+    chain_storage::DbTransaction,
     consensus::{ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     proof_of_work::PowError,
+    test_helpers::create_mem_db,
     transactions::{
         fee::Fee,
         helpers::{create_random_signature_from_s_key, create_utxo, spend_utxos},
@@ -53,9 +53,8 @@ fn header_iter_empty_and_invalid_height() {
 
     // Invalid header height
     let iter = HeaderIter::new(&db, 1, 10);
-    let headers = iter.collect::<Vec<_>>();
+    let headers = iter.collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(headers.len(), 1);
-    unpack_enum!(ChainStorageError::ValueNotFound { .. } = headers[0].as_ref().unwrap_err());
 }
 
 #[test]

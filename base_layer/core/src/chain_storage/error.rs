@@ -99,6 +99,15 @@ pub enum ChainStorageError {
     },
 }
 
+impl ChainStorageError {
+    pub fn is_value_not_found(&self) -> bool {
+        match self {
+            ChainStorageError::ValueNotFound { .. } => true,
+            _ => false,
+        }
+    }
+}
+
 impl From<LMDBVecError> for ChainStorageError {
     fn from(err: LMDBVecError) -> Self {
         Self::AccessError(err.to_string())

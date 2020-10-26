@@ -23,6 +23,7 @@
 
 use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
 
+use crate::helpers::database::create_mem_db;
 use tari_core::{
     blocks::Block,
     chain_storage::{
@@ -34,7 +35,6 @@ use tari_core::{
         Validators,
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     transactions::{
         tari_amount::{uT, T},
         transaction::UnblindedOutput,

@@ -226,8 +226,8 @@ async fn setup_wallet(
     )
     .await
     .map_err(|e| {
-        if let WalletError::CommsInitializationError(ce) = e {
-            ExitCodes::WalletError(format!("Error initializing Comms: {}", ce))
+        if let WalletError::CommsInitializationError(e) = e {
+            ExitCodes::WalletError(e.to_friendly_string())
         } else {
             ExitCodes::WalletError(format!("Error creating Wallet Container: {}", e))
         }

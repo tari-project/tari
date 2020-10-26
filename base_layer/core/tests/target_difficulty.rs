@@ -23,7 +23,10 @@
 #[allow(dead_code)]
 mod helpers;
 
-use helpers::pow_blockchain::{calculate_accumulated_difficulty, create_test_pow_blockchain};
+use helpers::{
+    database::create_mem_db,
+    pow_blockchain::{calculate_accumulated_difficulty, create_test_pow_blockchain},
+};
 use std::collections::HashMap;
 use tari_core::{
     consensus::{
@@ -32,7 +35,6 @@ use tari_core::{
         ConsensusManagerBuilder,
         Network,
     },
-    helpers::create_mem_db,
     proof_of_work::{get_target_difficulty, PowAlgorithm},
 };
 
