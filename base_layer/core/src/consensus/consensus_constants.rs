@@ -173,7 +173,7 @@ impl ConsensusConstants {
     pub fn max_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
         match self.proof_of_work.get(&pow_algo) {
             Some(v) => v.max_difficulty,
-            _ => 1.into(),
+            _ => 0.into(),
         }
     }
 
@@ -349,11 +349,13 @@ impl ConsensusConstants {
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
             min_difficulty: 60_000.into(),
+            max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
         vec![ConsensusConstants {

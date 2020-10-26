@@ -36,7 +36,7 @@ use crate::{
     },
     txn_schema,
     validation::{Validation, ValidationError},
-};
+};use crate::consensus::consensus_constants::ConsensusConstantsBuilder;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, Hashable};
 use tari_test_utils::unpack_enum;
 
