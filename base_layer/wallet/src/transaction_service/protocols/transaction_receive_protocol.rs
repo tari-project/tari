@@ -333,12 +333,14 @@ where TBackend: TransactionBackend + 'static
                             break;
                         }
                     },
-                     _ = cancellation_receiver => {
-                        info!(target: LOG_TARGET, "Cancelling Transaction Receive Protocol for TxId: {}", self.id);
-                        return Err(TransactionServiceProtocolError::new(
-                            self.id,
-                            TransactionServiceError::TransactionCancelled,
-                        ));
+                    result = cancellation_receiver => {
+                        if result.is_ok() {
+                            info!(target: LOG_TARGET, "Cancelling Transaction Receive Protocol for TxId: {}", self.id);
+                            return Err(TransactionServiceProtocolError::new(
+                                self.id,
+                                TransactionServiceError::TransactionCancelled,
+                            ));
+                        }
                     },
                     () = resend_timeout => {
                         match send_transaction_reply(
