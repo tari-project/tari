@@ -264,7 +264,7 @@ where TBackend: OutputManagerBackend + 'static
 
             let request_key = if r == 0 { self.id } else { OsRng.next_u64() };
 
-            let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs {
+            let request = BaseNodeRequestProto::FetchMatchingUtxos(BaseNodeProto::HashOutputs {
                 outputs: output_hashes.clone(),
             });
 

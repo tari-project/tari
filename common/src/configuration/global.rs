@@ -70,6 +70,7 @@ pub struct GlobalConfig {
     pub peer_db_path: PathBuf,
     pub block_sync_strategy: String,
     pub enable_mining: bool,
+    pub enable_wallet: bool,
     pub num_mining_threads: usize,
     pub tor_identity_file: PathBuf,
     pub wallet_db_file: PathBuf,
@@ -288,10 +289,14 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
 
     // Peer seeds
     let key = config_string("base_node", &net_str, "peer_seeds");
-    let peer_seeds = cfg
-        .get_array(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-    let peer_seeds = peer_seeds.into_iter().map(|v| v.into_str().unwrap()).collect();
+    // Peer seeds can be an array or a comma separated list (e.g. in an ENVVAR)
+    let peer_seeds = match cfg.get_array(&key) {
+        Ok(seeds) => seeds.into_iter().map(|v| v.into_str().unwrap()).collect(),
+        Err(..) => match cfg.get_str(&key) {
+            Ok(s) => s.split(',').map(|v| v.to_string()).collect(),
+            Err(err) => return Err(ConfigurationError::new(&key, &err.to_string())),
+        },
+    };
 
     // Peer DB path
     let peer_db_path = data_dir.join("peer_db");
@@ -305,6 +310,12 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     // set base node mining
     let key = config_string("base_node", &net_str, "enable_mining");
     let enable_mining = cfg
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
+
+    // set base node wallet
+    let key = config_string("base_node", &net_str, "enable_wallet");
+    let enable_wallet = cfg
         .get_bool(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
 
@@ -454,6 +465,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         peer_db_path,
         block_sync_strategy,
         enable_mining,
+        enable_wallet,
         num_mining_threads,
         tor_identity_file,
         wallet_identity_file,

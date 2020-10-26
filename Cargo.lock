@@ -4166,7 +4166,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-macros",
- "tokio-test",
  "ttl_cache",
  "uint 0.8.5",
 ]

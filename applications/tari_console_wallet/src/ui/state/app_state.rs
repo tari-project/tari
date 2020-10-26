@@ -3,7 +3,7 @@ use futures::{stream::Fuse, StreamExt};
 use qrcode::{render::unicode, QrCode};
 use std::sync::Arc;
 use tari_common::Network;
-use tari_comms::{types::CommsPublicKey, NodeIdentity};
+use tari_comms::{connectivity::ConnectivityEventRx, peer_manager::Peer, types::CommsPublicKey, NodeIdentity};
 use tari_core::transactions::tari_amount::{uT, MicroTari};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::ShutdownSignal;
@@ -54,6 +54,15 @@ impl AppState {
     pub async fn refresh_contacts_state(&mut self) -> Result<(), UiError> {
         let mut inner = self.inner.write().await;
         inner.refresh_contacts_state().await?;
+        if let Some(data) = inner.get_updated_app_state() {
+            self.cached_data = data;
+        }
+        Ok(())
+    }
+
+    pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
+        let mut inner = self.inner.write().await;
+        inner.refresh_connected_peers_state().await?;
         if let Some(data) = inner.get_updated_app_state() {
             self.cached_data = data;
         }
@@ -132,6 +141,13 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), UiError> {
+        let inner = self.inner.write().await;
+        let mut tx_service_handle = inner.wallet.transaction_service.clone();
+        tx_service_handle.cancel_transaction(tx_id).await?;
+        Ok(())
+    }
+
     pub fn get_identity(&self) -> &MyIdentity {
         &self.cached_data.my_identity
     }
@@ -194,6 +210,10 @@ impl AppState {
         } else {
             None
         }
+    }
+
+    pub fn get_connected_peers(&self) -> &Vec<Peer> {
+        &self.cached_data.connected_peers
     }
 }
 
@@ -367,12 +387,32 @@ impl AppStateInner {
         Ok(())
     }
 
-    pub async fn get_shutdown_signal(&self) -> ShutdownSignal {
+    pub async fn refresh_connected_peers_state(&mut self) -> Result<(), UiError> {
+        let connections = self.wallet.comms.connectivity().get_active_connections().await?;
+
+        let peer_manager = self.wallet.comms.peer_manager();
+        let mut peers = Vec::with_capacity(connections.len());
+        for c in connections.iter() {
+            if let Ok(p) = peer_manager.find_by_node_id(c.peer_node_id()).await {
+                peers.push(p);
+            }
+        }
+
+        self.data.connected_peers = peers;
+        self.updated = true;
+        Ok(())
+    }
+
+    pub fn get_shutdown_signal(&self) -> ShutdownSignal {
         self.wallet.comms.shutdown_signal()
     }
 
-    pub async fn get_transaction_service_event_stream(&self) -> Fuse<TransactionEventReceiver> {
+    pub fn get_transaction_service_event_stream(&self) -> Fuse<TransactionEventReceiver> {
         self.wallet.transaction_service.get_event_stream_fused()
+    }
+
+    pub fn get_connectivity_event_stream(&self) -> Fuse<ConnectivityEventRx> {
+        self.wallet.comms.connectivity().get_event_subscription().fuse()
     }
 }
 
@@ -382,6 +422,7 @@ struct AppStateData {
     completed_txs: Vec<CompletedTransaction>,
     my_identity: MyIdentity,
     contacts: Vec<UiContact>,
+    connected_peers: Vec<Peer>,
 }
 
 impl AppStateData {
@@ -408,6 +449,7 @@ impl AppStateData {
             completed_txs: Vec::new(),
             my_identity: identity,
             contacts: Vec::new(),
+            connected_peers: Vec::new(),
         }
     }
 }

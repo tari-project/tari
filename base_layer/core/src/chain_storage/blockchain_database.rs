@@ -48,6 +48,7 @@ use std::{
     cmp::Ordering,
     collections::VecDeque,
     convert::TryFrom,
+    mem,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use strum_macros::Display;
@@ -718,6 +719,12 @@ where B: BlockchainBackend
         fetch_block(&*db, height)
     }
 
+    /// Returns the set of block between `start` and up to and including `end_inclusive`
+    pub fn fetch_blocks(&self, start: u64, end_inclusive: u64) -> Result<Vec<HistoricalBlock>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        fetch_blocks(&*db, start, end_inclusive)
+    }
+
     /// Attempt to fetch the block corresponding to the provided hash from the main chain, if it cannot be found then
     /// the block will be searched in the orphan block pool.
     pub fn fetch_block_with_hash(&self, hash: BlockHash) -> Result<Option<HistoricalBlock>, ChainStorageError> {
@@ -1001,15 +1008,32 @@ pub fn fetch_header<T: BlockchainBackend>(db: &T, block_num: u64) -> Result<Bloc
 
 pub fn fetch_headers<T: BlockchainBackend>(
     db: &T,
-    start: u64,
-    end_inclusive: u64,
+    mut start: u64,
+    mut end_inclusive: u64,
 ) -> Result<Vec<BlockHeader>, ChainStorageError>
 {
-    if start > end_inclusive {
-        // Allow the headers to be returned in reverse order
-        (end_inclusive..=start).rev().map(|h| fetch_header(db, h)).collect()
+    let is_reversed = start > end_inclusive;
+
+    if is_reversed {
+        mem::swap(&mut end_inclusive, &mut start);
+    }
+
+    // Allow the headers to be returned in reverse order
+    let mut headers = Vec::with_capacity((end_inclusive - start) as usize);
+    for h in start..=end_inclusive {
+        match db.fetch(&DbKey::BlockHeader(h))? {
+            Some(DbValue::BlockHeader(header)) => {
+                headers.push(*header);
+            },
+            Some(_) => unreachable!(),
+            None => break,
+        }
+    }
+
+    if is_reversed {
+        Ok(headers.into_iter().rev().collect())
     } else {
-        (start..=end_inclusive).map(|h| fetch_header(db, h)).collect()
+        Ok(headers)
     }
 }
 
@@ -1186,6 +1210,15 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
         .add_kernels(kernels)
         .build();
     Ok(HistoricalBlock::new(block, tip_height - height + 1, spent))
+}
+
+fn fetch_blocks<T: BlockchainBackend>(
+    db: &T,
+    start: u64,
+    end_inclusive: u64,
+) -> Result<Vec<HistoricalBlock>, ChainStorageError>
+{
+    (start..=end_inclusive).map(|i| fetch_block(db, i)).collect()
 }
 
 fn fetch_block_with_kernel<T: BlockchainBackend>(

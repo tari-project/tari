@@ -24,7 +24,7 @@
 mod helpers;
 
 use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, StreamExt};
-use helpers::block_builders::append_block;
+use helpers::{block_builders::append_block, database::create_mem_db};
 use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::{
@@ -42,7 +42,6 @@ use tari_core::{
         Validators,
     },
     consensus::{ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     mempool::{Mempool, MempoolConfig, MempoolValidators},
     transactions::{
         helpers::{create_test_kernel, create_utxo},
@@ -266,18 +265,28 @@ async fn inbound_fetch_utxos() {
         outbound_nci,
     );
 
-    let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let hash = utxo.hash();
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone());
-    assert!(store.commit(txn).is_ok());
+    // Create valid UTXOs
+    let (utxo_1, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo_2, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let hash_1 = utxo_1.hash();
+    let mut txn_1 = DbTransaction::new();
+    let mut txn_2 = DbTransaction::new();
+    txn_1.insert_utxo(utxo_1.clone());
+    txn_2.insert_utxo(utxo_2.clone());
+    assert!(store.commit(txn_1).is_ok());
+    assert!(store.commit(txn_2).is_ok());
 
+    // Create fake UTXO
+    let (utxo_fake, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let hash_fake = utxo_fake.hash();
+
+    // Only retrieve a subset of the actual hashes, including a fake hash in the list
     if let Ok(NodeCommsResponse::TransactionOutputs(received_utxos)) = inbound_nch
-        .handle_request(&NodeCommsRequest::FetchUtxos(vec![hash]))
+        .handle_request(&NodeCommsRequest::FetchMatchingUtxos(vec![hash_1, hash_fake]))
         .await
     {
         assert_eq!(received_utxos.len(), 1);
-        assert_eq!(received_utxos[0], utxo);
+        assert_eq!(received_utxos[0], utxo_1);
     } else {
         assert!(false);
     }
@@ -340,7 +349,7 @@ async fn inbound_fetch_txos() {
     assert!(store.commit(txn).is_ok());
 
     if let Ok(NodeCommsResponse::TransactionOutputs(received_txos)) = inbound_nch
-        .handle_request(&NodeCommsRequest::FetchTxos(vec![utxo_hash, stxo_hash]))
+        .handle_request(&NodeCommsRequest::FetchMatchingTxos(vec![utxo_hash, stxo_hash]))
         .await
     {
         assert_eq!(received_txos.len(), 2);
@@ -393,7 +402,7 @@ async fn inbound_fetch_blocks() {
     let block = store.fetch_block(0).unwrap().block().clone();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
-        .handle_request(&NodeCommsRequest::FetchBlocks(vec![0]))
+        .handle_request(&NodeCommsRequest::FetchMatchingBlocks(vec![0]))
         .await
     {
         assert_eq!(received_blocks.len(), 1);
@@ -439,15 +448,18 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
     let _block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
 
-    assert!(inbound_nch
-        .handle_request(&NodeCommsRequest::FetchBlocks(vec![1]))
+    if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
+        .handle_request(&NodeCommsRequest::FetchMatchingBlocks(vec![1]))
         .await
-        .is_err());
+    {
+        assert_eq!(received_blocks.len(), 0);
+    } else {
+        assert!(false);
+    }
 
-    if let NodeCommsResponse::HistoricalBlocks(received_blocks) = inbound_nch
-        .handle_request(&NodeCommsRequest::FetchBlocks(vec![2]))
+    if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
+        .handle_request(&NodeCommsRequest::FetchMatchingBlocks(vec![2]))
         .await
-        .unwrap()
     {
         assert_eq!(received_blocks.len(), 1);
         assert_eq!(*received_blocks[0].block(), block2);

@@ -37,9 +37,10 @@ use tari_comms::{
 };
 use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
 use tari_core::{
+    base_node,
     base_node::{
         chain_metadata_service::ChainMetadataServiceInitializer,
-        service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
+        service::{blockchain_state::BlockchainStateServiceHandle, BaseNodeServiceConfig, BaseNodeServiceInitializer},
         state_machine_service::initializer::BaseNodeStateMachineInitializer,
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
@@ -160,12 +161,14 @@ where B: BlockchainBackend + 'static
         let dht = handles.expect_handle::<Dht>();
 
         // Add your RPC services here ‍🏴‍☠️️☮️🌊
-        let rpc_server =
-            RpcServer::new()
-                .add_service(dht.rpc_service())
-                .add_service(mempool::create_mempool_rpc_service(
-                    handles.expect_handle::<MempoolHandle>(),
-                ));
+        let rpc_server = RpcServer::new()
+            .add_service(dht.rpc_service())
+            .add_service(base_node::create_base_node_sync_rpc_service(
+                handles.expect_handle::<BlockchainStateServiceHandle>(),
+            ))
+            .add_service(mempool::create_mempool_rpc_service(
+                handles.expect_handle::<MempoolHandle>(),
+            ));
 
         comms.add_protocol_extension(rpc_server)
     }

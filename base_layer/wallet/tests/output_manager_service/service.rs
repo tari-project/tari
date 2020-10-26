@@ -749,7 +749,7 @@ fn test_utxo_validation() {
     match bn_request1.request {
         None => assert!(false, "Invalid request"),
         Some(request) => match request {
-            Request::FetchUtxos(hash_outputs) => {
+            Request::FetchMatchingUtxos(hash_outputs) => {
                 for h in hash_outputs.outputs {
                     if hashes.iter().find(|i| **i == h).is_some() {
                         hashes_found += 1;
@@ -770,7 +770,7 @@ fn test_utxo_validation() {
     match bn_request2.request {
         None => assert!(false, "Invalid request"),
         Some(request) => match request {
-            Request::FetchUtxos(hash_outputs) => {
+            Request::FetchMatchingUtxos(hash_outputs) => {
                 for h in hash_outputs.outputs {
                     if hashes.iter().find(|i| **i == h).is_some() {
                         hashes_found += 1;
@@ -791,7 +791,7 @@ fn test_utxo_validation() {
     match bn_request3.request {
         None => assert!(false, "Invalid request"),
         Some(request) => match request {
-            Request::FetchUtxos(hash_outputs) => {
+            Request::FetchMatchingUtxos(hash_outputs) => {
                 for h in hash_outputs.outputs {
                     if hashes.iter().find(|i| **i == h).is_some() {
                         hashes_found += 1;
@@ -844,7 +844,7 @@ fn test_utxo_validation() {
             .unwrap()
             .unwrap();
 
-        let request_hashes = if let Request::FetchUtxos(outputs) = bn_request.request.unwrap() {
+        let request_hashes = if let Request::FetchMatchingUtxos(outputs) = bn_request.request.unwrap() {
             outputs.outputs
         } else {
             assert!(false, "Wrong request type");
@@ -1209,7 +1209,7 @@ fn test_spent_txo_validation() {
     match bn_request1.request {
         None => assert!(false, "Invalid request"),
         Some(request) => match request {
-            Request::FetchUtxos(hash_outputs) => {
+            Request::FetchMatchingUtxos(hash_outputs) => {
                 assert_eq!(hash_outputs.outputs.len(), 2, "There should be 2 hashes in the query");
                 for h in hash_outputs.outputs {
                     if hashes.iter().find(|i| **i == h).is_some() {

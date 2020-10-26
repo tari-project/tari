@@ -24,6 +24,7 @@ use crate::ui::state::AppStateInner;
 use futures::stream::StreamExt;
 use log::*;
 use std::sync::Arc;
+use tari_comms::connectivity::ConnectivityEvent;
 use tari_wallet::{output_manager_service::TxId, transaction_service::handle::TransactionEvent};
 use tokio::sync::RwLock;
 
@@ -39,14 +40,11 @@ impl WalletEventMonitor {
     }
 
     pub async fn run(mut self) {
-        let mut shutdown_signal = self.app_state_inner.read().await.get_shutdown_signal().await;
+        let mut shutdown_signal = self.app_state_inner.read().await.get_shutdown_signal();
 
-        let mut transaction_service_events = self
-            .app_state_inner
-            .read()
-            .await
-            .get_transaction_service_event_stream()
-            .await;
+        let mut transaction_service_events = self.app_state_inner.read().await.get_transaction_service_event_stream();
+
+        let mut connectivity_events = self.app_state_inner.read().await.get_connectivity_event_stream();
 
         info!(target: LOG_TARGET, "Wallet Event Monitor starting");
         loop {
@@ -54,14 +52,14 @@ impl WalletEventMonitor {
                     result = transaction_service_events.select_next_some() => {
                         match result {
                             Ok(msg) => {
-                                trace!(target: LOG_TARGET, "Wallet Event Monitor received event {:?}", msg);
+                                trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet event {:?}", msg);
                                 match (*msg).clone() {
                                     TransactionEvent::ReceivedTransaction(tx_id) |
                                     TransactionEvent::ReceivedTransactionReply(tx_id) |
                                     TransactionEvent::ReceivedFinalizedTransaction(tx_id) |
                                     TransactionEvent::TransactionCancelled(tx_id) |
                                     TransactionEvent::TransactionBroadcast(tx_id) |
-                                    TransactionEvent::TransactionMined(tx_id) =>{
+                                    TransactionEvent::TransactionMined(tx_id) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                     },
                                     TransactionEvent::TransactionDirectSendResult(tx_id, success) |
@@ -74,7 +72,27 @@ impl WalletEventMonitor {
                                     _ => (),
                                 }
                             },
-                            Err(e) => error!(target: LOG_TARGET, "Error reading from Transaction Service event broadcast channel"),
+                            Err(_) => debug!(target: LOG_TARGET, "Lagging read on Transaction Service event broadcast channel"),
+                        }
+                    },
+                    result = connectivity_events.select_next_some() => {
+                        match result {
+                            Ok(msg) => {
+                                trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet event {:?}", msg);
+                                     match (*msg).clone() {
+                                        ConnectivityEvent::PeerDisconnected(_) |
+                                        ConnectivityEvent::ManagedPeerDisconnected(_) |
+                                        ConnectivityEvent::PeerConnected(_) |
+                                        ConnectivityEvent::PeerBanned(_) |
+                                        ConnectivityEvent::PeerOffline(_) |
+                                        ConnectivityEvent::PeerConnectionWillClose(_, _) => {
+                                            self.trigger_peer_state_refresh().await;
+                                        },
+                                        /// Only the above variants trigger state refresh
+                                        _ => (),
+                                     }
+                            },
+                            Err(_) => debug!(target: LOG_TARGET, "Lagging read on Connectivity event broadcast channel"),
                         }
                     },
                     complete => {
@@ -93,6 +111,14 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.refresh_single_transaction_state(tx_id).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+        }
+    }
+
+    async fn trigger_peer_state_refresh(&mut self) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_connected_peers_state().await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
     }

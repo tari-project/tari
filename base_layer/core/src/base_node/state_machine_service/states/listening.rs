@@ -211,7 +211,7 @@ fn best_metadata(metadata_list: &[PeerChainMetadata]) -> ChainMetadata {
 
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
 fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers: SyncPeers) -> SyncStatus {
-    use crate::base_node::state_machine_service::states::SyncStatus::*;
+    use SyncStatus::*;
     match network.accumulated_difficulty {
         None => {
             info!(

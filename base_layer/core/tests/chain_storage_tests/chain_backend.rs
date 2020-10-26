@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::helpers::database::create_orphan_block;
 use croaring::Bitmap;
 use monero::{
     blockdata::Block as MoneroBlock,
@@ -42,7 +43,6 @@ use tari_core::{
         WriteOperation,
     },
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
-    helpers::create_orphan_block,
     proof_of_work::{
         monero_rx::{append_merge_mining_tag, tree_hash, MoneroData},
         Difficulty,
