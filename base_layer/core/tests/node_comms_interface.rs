@@ -265,18 +265,28 @@ async fn inbound_fetch_utxos() {
         outbound_nci,
     );
 
-    let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let hash = utxo.hash();
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone());
-    assert!(store.commit(txn).is_ok());
+    // Create valid UTXOs
+    let (utxo_1, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (utxo_2, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let hash_1 = utxo_1.hash();
+    let mut txn_1 = DbTransaction::new();
+    let mut txn_2 = DbTransaction::new();
+    txn_1.insert_utxo(utxo_1.clone());
+    txn_2.insert_utxo(utxo_2.clone());
+    assert!(store.commit(txn_1).is_ok());
+    assert!(store.commit(txn_2).is_ok());
 
+    // Create fake UTXO
+    let (utxo_fake, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let hash_fake = utxo_fake.hash();
+
+    // Only retrieve a subset of the actual hashes, including a fake hash in the list
     if let Ok(NodeCommsResponse::TransactionOutputs(received_utxos)) = inbound_nch
-        .handle_request(&NodeCommsRequest::FetchMatchingUtxos(vec![hash]))
+        .handle_request(&NodeCommsRequest::FetchMatchingUtxos(vec![hash_1, hash_fake]))
         .await
     {
         assert_eq!(received_utxos.len(), 1);
-        assert_eq!(received_utxos[0], utxo);
+        assert_eq!(received_utxos[0], utxo_1);
     } else {
         assert!(false);
     }
