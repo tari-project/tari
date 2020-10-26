@@ -26,7 +26,6 @@ use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::chain_metadata_service::{ChainMetadataEvent, ChainMetadataHandle, PeerChainMetadata},
     chain_storage::ChainMetadata,
-    proof_of_work::Difficulty,
 };
 use tari_crypto::{common::Blake256, tari_utilities::ByteArray};
 use tokio::sync::broadcast;
@@ -68,7 +67,7 @@ impl MockChainMetadata {
     }
 }
 
-pub fn random_peer_metadata(height: u64, difficulty: Difficulty) -> PeerChainMetadata {
+pub fn random_peer_metadata(height: u64, difficulty: u128) -> PeerChainMetadata {
     let key: Vec<u8> = (0..13).map(|_| rand::random::<u8>()).collect();
     let id = NodeId::from_key(&key).unwrap();
     let block_hash = Blake256::digest(id.as_bytes()).to_vec();

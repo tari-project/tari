@@ -994,7 +994,7 @@ fn fetch_best_block(env: &Environment, db: &Database) -> Result<Option<BlockHash
 }
 
 // Fetches the accumulated work from the provided metadata db.
-fn fetch_accumulated_work(env: &Environment, db: &Database) -> Result<Option<Difficulty>, ChainStorageError> {
+fn fetch_accumulated_work(env: &Environment, db: &Database) -> Result<Option<u128>, ChainStorageError> {
     let k = MetadataKey::AccumulatedWork;
     let val: Option<MetadataValue> = lmdb_get(&env, &db, &(k as u32))?;
     match val {

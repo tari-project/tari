@@ -81,7 +81,7 @@ fn write_and_fetch_metadata() {
     assert!(metadata.accumulated_difficulty.is_some());
 
     let height = 10;
-    let accumulated_difficulty = Difficulty::from(20);
+    let accumulated_difficulty = 20;
     let mut metadata = ChainMetadata::default();
     metadata.height_of_longest_chain = Some(height);
     metadata.best_block = None;

@@ -327,12 +327,13 @@ mod test {
     }
 
     fn create_sample_proto_chain_metadata() -> proto::ChainMetadata {
+        let diff: u128 = 1;
         proto::ChainMetadata {
             height_of_longest_chain: Some(1),
             best_block: Some(vec![]),
             pruning_horizon: 64,
             effective_pruned_height: 0,
-            accumulated_difficulty: 1.into(),
+            accumulated_difficulty: diff.to_be_bytes().to_vec(),
         }
     }
 
