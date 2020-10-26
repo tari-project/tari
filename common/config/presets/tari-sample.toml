@@ -46,3 +46,27 @@ monerod_username=""
 
 # Password for curl
 monerod_password=""
+
+[base_node.ridcully]
+db_type = "lmdb"
+transport = "tor"
+peer_seeds = [
+    #test peer
+    "be665efc4fc99cb29bf91998876af21a6fbc5b17396406a2fcadf5542ad9703a::/onion3/emjcsvolat63pik2jtpv2jxqugkmxo5d5p3y5m2vhqdhbrgyx7l7j5qd:18141",
+]
+enable_mining = false
+grpc_enabled = true
+grpc_address = "127.0.0.1:18142"
+grpc_wallet_address = "127.0.0.1:18143"
+
+[merge_mining_proxy.ridcully]
+monerod_url = "http://192.110.160.146:38081"
+proxy_host_address = "127.0.0.1:7878"
+# If authentication is being used for curl
+monerod_use_auth=false
+
+# Username for curl
+monerod_username=""
+
+# Password for curl
+monerod_password=""
