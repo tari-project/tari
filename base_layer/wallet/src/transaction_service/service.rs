@@ -302,7 +302,7 @@ where
                         &mut transaction_broadcast_protocol_handles,
                         &mut transaction_chain_monitoring_protocol_handles,
                         &mut coinbase_transaction_monitoring_protocol_handles).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
+                        warn!(target: LOG_TARGET, "Error handling request: {:?}", resp);
                         Err(resp)
                     })).or_else(|resp| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
