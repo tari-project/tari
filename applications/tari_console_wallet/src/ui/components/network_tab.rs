@@ -1,10 +1,10 @@
-use crate::ui::{components::Component, state::AppState};
+use crate::ui::{components::Component, state::AppState, widgets::MultiColumnList, MAX_WIDTH};
 use tui::{
     backend::Backend,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::Span,
-    widgets::{Block, Borders, Paragraph, Row, Table, Wrap},
+    widgets::{Block, Borders, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
 
@@ -14,10 +14,41 @@ impl NetworkTab {
     pub fn new() -> Self {
         Self {}
     }
+
+    pub fn draw_connected_peers_list<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    where B: Backend {
+        let block = Block::default().borders(Borders::ALL).title(Span::styled(
+            "Connected Peers",
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        ));
+        f.render_widget(block, area);
+
+        let list_areas = Layout::default()
+            .constraints([Constraint::Min(1)].as_ref())
+            .margin(1)
+            .split(area);
+
+        let peers = app_state.get_connected_peers();
+        let mut column0_items = Vec::with_capacity(peers.len());
+        let mut column1_items = Vec::with_capacity(peers.len());
+        let mut column2_items = Vec::with_capacity(peers.len());
+        for p in peers.iter() {
+            column0_items.push(ListItem::new(Span::raw(p.node_id.to_string())));
+            column1_items.push(ListItem::new(Span::raw(p.public_key.to_string())));
+            column2_items.push(ListItem::new(Span::raw(p.user_agent.clone())));
+        }
+        let column_list = MultiColumnList::new()
+            .heading_style(Style::default().fg(Color::Magenta))
+            .max_width(MAX_WIDTH)
+            .add_column(Some("NodeID"), Some(27), column0_items)
+            .add_column(Some("Public Key"), Some(65), column1_items)
+            .add_column(Some("User Agent"), Some(MAX_WIDTH.saturating_sub(93)), column2_items);
+        column_list.render(f, list_areas[0], &mut ListState::default());
+    }
 }
 
 impl<B: Backend> Component<B> for NetworkTab {
-    fn draw(&mut self, f: &mut Frame<B>, area: Rect, _app_state: &AppState) {
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
         // This is all dummy content and layout for review
         let main_chunks = Layout::default()
             .constraints([Constraint::Length(1), Constraint::Length(8), Constraint::Min(10)].as_ref())
@@ -56,42 +87,6 @@ impl<B: Backend> Component<B> for NetworkTab {
             .wrap(Wrap { trim: true });
         f.render_widget(public_address, label_layout[0]);
 
-        let header = ["Public Key", "User Agent"];
-        let rows = vec![
-            Row::Data(
-                vec![
-                    "dc77cae83d06cca0a6912cd93eb04e13345811e94e44d9bf4941495b7a35e644",
-                    "tari/basenode/0.2.4",
-                ]
-                .into_iter(),
-            ),
-            Row::Data(
-                vec![
-                    "fe3c7797045d6850c5b3969649f77f93d7dc46e77e293dfa90f1ac36ba8d8501",
-                    "tari/basenode/0.3.1",
-                ]
-                .into_iter(),
-            ),
-            Row::Data(
-                vec![
-                    "fe3c7797045d6850c5b3969649f77f93d7dc46e77e293dfa90f1ac36ba8d8501",
-                    "tari/basenode/0.3.1",
-                ]
-                .into_iter(),
-            ),
-            Row::Data(
-                vec![
-                    "d440b328e69b20dd8ee6c4a61aeb18888939f0f67cf96668840b7f72055d834c",
-                    "tari/wallet/0.2.3",
-                ]
-                .into_iter(),
-            ),
-        ];
-
-        let table = Table::new(header.iter(), rows.into_iter())
-            .block(Block::default().title("Connected Peers").borders(Borders::ALL))
-            .header_style(Style::default().fg(Color::Magenta))
-            .widths(&[Constraint::Length(65), Constraint::Length(65), Constraint::Min(1)]);
-        f.render_widget(table, main_chunks[2]);
+        self.draw_connected_peers_list(f, main_chunks[2], app_state);
     }
 }
