@@ -27,9 +27,10 @@ use crate::{
     utils,
     utils::{format_duration_basic, format_naive_datetime},
 };
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use chrono_english::{parse_date_string, Dialect};
 use futures::future::Either;
+use itertools::Itertools;
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use regex::Regex;
@@ -42,7 +43,10 @@ use rustyline::{
 };
 use rustyline_derive::{Helper, Highlighter, Validator};
 use std::{
+    fs,
     io::{self, Write},
+    ops::Add,
+    path::PathBuf,
     str::FromStr,
     string::ToString,
     sync::{
@@ -58,6 +62,7 @@ use tari_common::GlobalConfig;
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
+    types::CommsPublicKey,
     NodeIdentity,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
@@ -125,6 +130,7 @@ pub enum BaseNodeCommand {
     GetMiningState,
     MakeItRain,
     CoinSplit,
+    StressTest,
     GetStateInfo,
     Quit,
     Exit,
@@ -161,6 +167,9 @@ include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 const MAKE_IT_RAIN_USAGE: &str = "\nmake-it-rain [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx] \
                                   [\"start time (UTC)\" / 'now' for immediate start] [public key or emoji id to send \
                                   to] [message]\n";
+const STRESS_TEST_USAGE: &str = "\nstress-test [command file]\n\nCommand file format:\n  coin-split   ... \
+                                 (optional)\n  make-it-rain ... (at least one required)\n  make-it-rain ... \
+                                 (optional)\n  ...";
 
 /// This will go through all instructions and look for potential matches
 impl Completer for Parser {
@@ -227,16 +236,7 @@ impl Parser {
             return;
         }
 
-        // Delimit arguments using spaces and pairs of quotation marks, which may include spaces
-        let arg_temp = command_str.trim().to_string();
-        let re = Regex::new(r#"[^\s"]+|"(?:\\"|[^"])+""#).unwrap();
-        let arg_temp_vec: Vec<&str> = re.find_iter(&arg_temp).map(|mat| mat.as_str()).collect();
-        // Remove quotation marks left behind by `Regex` - it does not support look ahead and look behind
-        let mut del_arg_vec = Vec::new();
-        for arg in arg_temp_vec.iter().skip(1) {
-            del_arg_vec.push(str::replace(arg, "\"", ""));
-        }
-
+        let del_arg_vec = delimit_command_string(command_str);
         let mut args = command_str.split_whitespace();
         let command = BaseNodeCommand::from_str(args.next().unwrap_or(&"help"));
         if command.is_err() {
@@ -357,6 +357,9 @@ impl Parser {
             },
             CoinSplit => {
                 self.process_coin_split(args);
+            },
+            StressTest => {
+                self.process_stress_test(del_arg_vec);
             },
             Exit | Quit => {
                 println!("Shutting down...");
@@ -511,6 +514,13 @@ impl Parser {
             },
             CoinSplit => {
                 println!("Constructs a transaction to split a small set of UTXOs into a large set of UTXOs");
+            },
+            StressTest => {
+                println!(
+                    "Performs a network stress test by combining coin-split to create test UTXOs and running \
+                     make-it-rain afterwards."
+                );
+                println!("{}", STRESS_TEST_USAGE);
             },
             Exit | Quit => {
                 println!("Exits the base node");
@@ -1799,52 +1809,34 @@ impl Parser {
 
     /// Function to process the coin split command
     fn process_coin_split<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        if let Some(mut output_manager) = self.wallet_output_service.clone() {
-            if let Some(mut txn_service) = self.wallet_transaction_service.clone() {
-                let amount_per_split = args.next().and_then(|v| v.parse::<u64>().ok());
-                let split_count = args.next().and_then(|v| v.parse::<usize>().ok());
-                if amount_per_split.is_none() | split_count.is_none() {
-                    println!("Command entered incorrectly, please use the following format: ");
-                    println!("coin-split [amount of tari to allocated to each UTXO] [number of UTXOs to create]");
-                    return;
-                }
-                let amount_per_split: MicroTari = amount_per_split.unwrap().into();
-                let split_count = split_count.unwrap();
-
-                // Use output manager service to get utxo and create the coin split transaction
-                let fee_per_gram = 25 * uT; // TODO: use configured fee per gram
-
-                self.executor.spawn(async move {
-                    match output_manager
-                        .create_coin_split(amount_per_split, split_count, fee_per_gram, None)
-                        .await
-                    {
-                        Ok((tx_id, tx, fee, amount)) => {
-                            match txn_service
-                                .submit_transaction(tx_id, tx, fee, amount, "Coin split".into())
-                                .await
-                            {
-                                Ok(_) => println!("Coin split transaction created with tx_id:\n{}", tx_id),
-                                Err(e) => {
-                                    println!("Something went wrong creating a coin split transaction");
-                                    println!("{:?}", e);
-                                    warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
-                                    return;
-                                },
-                            };
-                        },
-                        Err(e) => {
-                            println!("Something went wrong creating a coin split transaction");
-                            println!("{:?}", e);
-                            warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
-                            return;
-                        },
-                    };
-                });
-            }
-        } else {
-            println!("Cannot complete command, Wallet is disabled");
+        let amount_per_split = args.next().and_then(|v| v.parse::<u64>().ok());
+        let split_count = args.next().and_then(|v| v.parse::<usize>().ok());
+        if amount_per_split.is_none() | split_count.is_none() {
+            println!("Command entered incorrectly, please use the following format: ");
+            println!("coin-split [amount of tari to allocated to each UTXO] [number of UTXOs to create]");
+            return;
         }
+        let amount_per_split: MicroTari = amount_per_split.unwrap().into();
+        let split_count = split_count.unwrap();
+
+        // Use output manager service to get utxo and create the coin split transaction
+        let mut output_manager = match self.wallet_output_service.clone() {
+            Some(v) => v,
+            _ => {
+                println!("Error: Problem with OutputManagerHandle");
+                return;
+            },
+        };
+        let mut txn_service = match self.wallet_transaction_service.clone() {
+            Some(v) => v,
+            _ => {
+                println!("Error: Problem with TransactionServiceHandle");
+                return;
+            },
+        };
+        self.executor.spawn(async move {
+            coin_split(&mut output_manager, &mut txn_service, amount_per_split, split_count).await;
+        });
     }
 
     /// Function to process the send transaction command
@@ -1887,179 +1879,373 @@ impl Parser {
         }
     }
 
+    /// Function to process the stress test transaction function
+    fn process_stress_test(&mut self, command_arg: Vec<String>) {
+        // args: [command file]
+        let command_error_msg =
+            "Command entered incorrectly, please use the following format:\n".to_owned() + STRESS_TEST_USAGE;
+
+        if command_arg.is_empty() {
+            println!("{}\n", command_error_msg);
+            println!("Expected at least 1 argument\n");
+            return;
+        }
+
+        // Read [command file]
+        let command_file = PathBuf::from(command_arg[0].as_str());
+        if !command_file.is_file() {
+            println!("{}\n", command_error_msg);
+            println!(
+                "Invalid data provided for [command file], '{}' does not exist\n",
+                command_file.as_path().display()
+            );
+            return;
+        }
+        let script = match fs::read_to_string(command_file.clone()) {
+            Ok(f) => f,
+            _ => {
+                println!("{}\n", command_error_msg);
+                println!(
+                    "Invalid data provided for [command file], '{}' could not be read!\n",
+                    command_file.as_path().display()
+                );
+                return;
+            },
+        };
+        if script.is_empty() {
+            println!("{}\n", command_error_msg);
+            println!(
+                "Invalid data provided for [command file], '{}' is empty!\n",
+                command_file.as_path().display()
+            );
+            return;
+        };
+        let mut make_it_rain_commands = Vec::new();
+        let mut coin_split_command = Vec::new();
+        for command in script.lines() {
+            if command.starts_with("coin-split ") {
+                coin_split_command = delimit_command_string(command);
+                if (coin_split_command.is_empty()) || (coin_split_command.len() < 2) {
+                    println!("{}", command_error_msg);
+                    println!(
+                        "'coin-split' command expected 2 arguments, received {}\n  '{}'\n",
+                        command_arg.len(),
+                        command
+                    );
+                    return;
+                }
+            } else if command.starts_with("make-it-rain ") {
+                make_it_rain_commands.push(delimit_command_string(command));
+                if (make_it_rain_commands[make_it_rain_commands.len() - 1].is_empty()) ||
+                    (make_it_rain_commands[make_it_rain_commands.len() - 1].len() < 6)
+                {
+                    println!("{}", command_error_msg);
+                    println!(
+                        "'make-it-rain' command expected at least 6 arguments, received {}\n  '{}'\n",
+                        command_arg.len(),
+                        command
+                    );
+                    return;
+                }
+            }
+        }
+        let command_error_msg = "Invalid data provided in '".to_owned() +
+            command_file.as_path().to_str().unwrap() +
+            "':\n" +
+            STRESS_TEST_USAGE;
+        if make_it_rain_commands.is_empty() {
+            println!("{}\n", command_error_msg);
+            println!("At least one 'make-it-rain' entry is required\n");
+            return;
+        }
+        println!();
+
+        // Determine UTXO properties required for the test
+        let (number_of_utxos_required, minumum_value_required) = {
+            let (mut number, mut value) = (0.0, 0);
+            for command in make_it_rain_commands.clone() {
+                let (number_of_txs, start_amount, amount_inc) = match get_make_it_rain_tx_values(command) {
+                    Some(v) => {
+                        if v.err_msg != "" {
+                            println!("\n{}", command_error_msg);
+                            println!("\n{}\n", v.err_msg);
+                            return;
+                        }
+                        (v.number_of_txs, v.start_amount, v.amount_inc)
+                    },
+                    None => {
+                        println!("Cannot process the 'make-it-rain' command");
+                        return;
+                    },
+                };
+                number += number_of_txs as f64;
+                value = std::cmp::max(
+                    value,
+                    (start_amount + MicroTari::from(number_of_txs as u64 * amount_inc.0) + MicroTari::from(775)).0,
+                );
+            }
+            (number as usize, value as usize)
+        };
+
+        // Start the test
+        let node_service = self.node_service.clone();
+        let wallet_output_service = match self.wallet_output_service.clone() {
+            Some(v) => v,
+            _ => {
+                println!("Error: Problem with OutputManagerHandle");
+                return;
+            },
+        };
+        let wallet_transaction_service = match self.wallet_transaction_service.clone() {
+            Some(v) => v,
+            _ => {
+                println!("Error: Problem with TransactionServiceHandle");
+                return;
+            },
+        };
+        let executor = self.executor.clone();
+        self.executor.spawn(async move {
+            // Count number of spendable UTXOs available for the test
+            let mut utxo_count = match get_number_of_spendable_utxos(
+                &minumum_value_required,
+                &mut node_service.clone(),
+                &mut wallet_output_service.clone(),
+            )
+            .await
+            {
+                Some(v) => v,
+                _ => {
+                    println!("Cannot query the number of UTXOs");
+                    return;
+                },
+            };
+            let number_of_utxos_to_be_created =
+                std::cmp::max(number_of_utxos_required as i32 - utxo_count as i32, 0) as usize;
+            let will_perform_coin_split = (number_of_utxos_to_be_created > 0) && (coin_split_command.len() >= 2);
+            println!(
+                "The test requires {} UTXOs, minimum value of {} each (average fee included); our current wallet has \
+                 {} UTXOs that are adequate.\n",
+                &number_of_utxos_required, &minumum_value_required, &utxo_count
+            );
+
+            // Perform coin-split only if requested, otherwise test spendable UTXOs may become encumbered
+            if will_perform_coin_split {
+                println!("Command: coin-split {}\n", coin_split_command.iter().join(" "));
+                let amount = (&coin_split_command[0]).parse::<u64>();
+                if amount.is_err() {
+                    println!("{}\n", command_error_msg);
+                    println!("coin-split: '[amount]' not valid\n");
+                    return;
+                };
+                let amount = MicroTari::from(amount.unwrap());
+                let number_of_utxos = coin_split_command[1].parse::<u32>();
+                if number_of_utxos.is_err() {
+                    println!("{}\n", command_error_msg);
+                    println!("coin-split: '[number]' not valid\n");
+                    return;
+                };
+                let number_of_utxos = number_of_utxos.unwrap();
+
+                // Count number of UTXOs available for the coin split
+                let mut utxos_available_for_split = 0usize;
+                if number_of_utxos_to_be_created > 0usize {
+                    utxos_available_for_split = match get_number_of_spendable_utxos(
+                        &(amount.0 as usize * 100),
+                        &mut node_service.clone(),
+                        &mut wallet_output_service.clone(),
+                    )
+                    .await
+                    {
+                        Some(v) => v,
+                        _ => {
+                            println!("Cannot query the number of UTXOs");
+                            return;
+                        },
+                    };
+                    let utxos_to_be_split = &number_of_utxos_to_be_created.div_euclid(99) + 1;
+                    if utxos_available_for_split < utxos_to_be_split {
+                        println!(
+                            "We need to coin split {} UTXOs that has minimum value of {} each; there will be ~{} \
+                             UTXOs short.",
+                            &utxos_to_be_split,
+                            MicroTari::from(amount.0 * 100),
+                            utxos_to_be_split - utxos_available_for_split,
+                        );
+                    }
+                }
+
+                if utxos_available_for_split > 0 {
+                    // Perform requested coin split
+                    for _ in 0..number_of_utxos.div_euclid(99) {
+                        let args = &coin_split_command[0].clone().add(" 99");
+                        println!("coin-split {}", args);
+                        coin_split(
+                            &mut wallet_output_service.clone(),
+                            &mut wallet_transaction_service.clone(),
+                            amount,
+                            99,
+                        )
+                        .await;
+                    }
+                    if number_of_utxos.rem_euclid(99) > 0 {
+                        let args = &coin_split_command[0]
+                            .clone()
+                            .add(" ")
+                            .add(&number_of_utxos.rem_euclid(99).to_string());
+                        println!("coin-split {}", args);
+                        coin_split(
+                            &mut wallet_output_service.clone(),
+                            &mut wallet_transaction_service.clone(),
+                            amount,
+                            number_of_utxos.rem_euclid(99) as usize,
+                        )
+                        .await;
+                    }
+                    println!();
+
+                    // Wait for a sufficient number of UTXOs to be created
+                    let mut count = 1usize;
+                    loop {
+                        tokio::time::delay_for(Duration::from_secs(120)).await;
+                        // Count number of spendable UTXOs available for the test
+                        utxo_count = match get_number_of_spendable_utxos(
+                            &minumum_value_required,
+                            &mut node_service.clone(),
+                            &mut wallet_output_service.clone(),
+                        )
+                        .await
+                        {
+                            Some(v) => v,
+                            _ => {
+                                println!("Cannot query the number of UTXOs");
+                                return;
+                            },
+                        };
+                        if utxo_count >= number_of_utxos_required {
+                            println!("We have created enough UTXOs, initiating the stress test.\n");
+                            break;
+                        } else if count >= 15 {
+                            println!(
+                                "Cannot perform stress test; we still need {} adequate UTXOs.\nPlease try again.\n",
+                                std::cmp::max(number_of_utxos_required as i32 - utxo_count as i32, 0) as usize
+                            );
+                            return;
+                        } else {
+                            println!(
+                                "We still need {} UTXOs, waiting for them to be created...\n",
+                                std::cmp::max(number_of_utxos_required as i32 - utxo_count as i32, 0) as usize
+                            );
+                        }
+                        count += 1;
+                    }
+                }
+            }
+
+            if utxo_count < number_of_utxos_required {
+                println!(
+                    "Cannot perform stress test; we still need {} adequate UTXOs.\nPlease try again.\n",
+                    std::cmp::max(number_of_utxos_required as i32 - utxo_count as i32, 0) as usize
+                );
+                return;
+            }
+
+            // Initiate make-it-rain
+            for command in make_it_rain_commands {
+                println!("Command: make-it-rain {}", command.iter().join(" "));
+                // [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx] [start time (UTC) / 'now'] [public key
+                // or emoji id to send to] [message]
+                let inputs = match get_make_it_rain_tx_values(command) {
+                    Some(v) => {
+                        if v.err_msg != "" {
+                            println!("\n{}", command_error_msg);
+                            println!("\n{}\n", v.err_msg);
+                            return;
+                        };
+                        v
+                    },
+                    None => {
+                        println!("Cannot process the 'make-it-rain' command");
+                        return;
+                    },
+                };
+
+                let executor_clone = executor.clone();
+                let mut wallet_transaction_service_clone = wallet_transaction_service.clone();
+                executor.spawn(async move {
+                    make_it_rain(
+                        &mut wallet_transaction_service_clone,
+                        executor_clone,
+                        inputs.tx_per_s,
+                        inputs.number_of_txs,
+                        inputs.start_amount,
+                        inputs.amount_inc,
+                        inputs.time_utc_start,
+                        inputs.dest_pubkey.clone(),
+                        inputs.msg.clone(),
+                    )
+                    .await;
+                });
+            }
+        });
+
+        println!();
+    }
+
     /// Function to process the make it rain transaction function
     fn process_make_it_rain(&mut self, command_arg: Vec<String>) {
         // args: [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx]
         //       [\"start time (UTC)\" / 'now' for immediate start] [public key or emoji id to send to] [message]
+        let command_error_msg =
+            "Command entered incorrectly, please use the following format:\n".to_owned() + MAKE_IT_RAIN_USAGE;
 
-        if let Some(wallet_transaction_service) = self.wallet_transaction_service.clone() {
-            let command_error_msg =
-                "Command entered incorrectly, please use the following format:\n".to_owned() + MAKE_IT_RAIN_USAGE;
-
-            if (command_arg.is_empty()) || (command_arg.len() < 6) {
-                println!("{}", command_error_msg);
-                println!("Expected at least 6 arguments, received {}\n", command_arg.len());
-                return;
-            }
-
-            // [number of Txs/s]
-            let mut inc: u8 = 0;
-            let tx_per_s = command_arg[inc as usize].parse::<f64>();
-            if tx_per_s.is_err() {
-                println!("Invalid data provided for [number of Txs]\n");
-                return;
-            }
-            let tx_per_s = tx_per_s.unwrap();
-
-            // [test duration (s)]
-            inc += 1;
-            let duration = command_arg[inc as usize].parse::<u32>();
-            if duration.is_err() {
-                println!("{}", command_error_msg);
-                println!("Invalid data provided for [test duration (s)]\n");
-                return;
-            };
-            let duration = duration.unwrap();
-            if (tx_per_s * duration as f64) < 1.0 {
-                println!("{}", command_error_msg);
-                println!("Invalid data provided for [number of Txs/s] * [test duration (s)], must be >= 1\n");
-                return;
-            }
-            let number_of_txs = (tx_per_s * duration as f64) as usize;
-            let tx_per_s = tx_per_s.min(25.0); // Maximum rate set to 25/s.
-
-            // [starting amount (uT)]
-            inc += 1;
-            let start_amount = command_arg[inc as usize].parse::<u64>();
-            if start_amount.is_err() {
-                println!("{}", command_error_msg);
-                println!("Invalid data provided for [starting amount (uT)]\n");
-                return;
-            }
-            let start_amount: MicroTari = start_amount.unwrap().into();
-
-            // [increment (uT)/Tx]
-            inc += 1;
-            let amount_inc = command_arg[inc as usize].parse::<u64>();
-            if amount_inc.is_err() {
-                println!("{}", command_error_msg);
-                println!("Invalid data provided for [increment (uT)/Tx]\n");
-                return;
-            }
-            let amount_inc: MicroTari = amount_inc.unwrap().into();
-
-            // [start time (UTC) / 'now']
-            inc += 1;
-            let time = command_arg[inc as usize].to_string();
-            let time_utc_ref = Utc::now();
-            let mut time_utc_start = Utc::now();
-            let datetime = parse_date_string(&time, Utc::now(), Dialect::Uk);
-            match datetime {
-                Ok(t) => {
-                    if t > time_utc_ref {
-                        time_utc_start = t;
+        // [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx] [start time (UTC) / 'now'] [public key or
+        // emoji id to send to] [message]
+        let (tx_per_s, number_of_txs, start_amount, amount_inc, time_utc_start, dest_pubkey, msg) =
+            match get_make_it_rain_tx_values(command_arg) {
+                Some(v) => {
+                    if v.err_msg != "" {
+                        println!("\n{}", command_error_msg);
+                        println!("\n{}\n", v.err_msg);
+                        return;
                     }
+                    (
+                        v.tx_per_s,
+                        v.number_of_txs,
+                        v.start_amount,
+                        v.amount_inc,
+                        v.time_utc_start,
+                        v.dest_pubkey,
+                        v.msg,
+                    )
                 },
-                Err(e) => {
-                    println!("{}", command_error_msg);
-                    println!("Invalid data provided for [start time (UTC) / 'now']\n");
-                    println!("{}", e);
-                    return;
-                },
-            }
-
-            // TODO: Read in recipient address list and custom message from file
-            // [public key or emoji id to send to]
-            inc += 1;
-            let key = command_arg[inc as usize].to_string();
-            let dest_pubkey = match parse_emoji_id_or_public_key(&key) {
-                Some(v) => v,
                 None => {
-                    println!("{}", command_error_msg);
-                    println!("Invalid data provided for [public key or emoji id to send to]\n");
+                    println!("Cannot process the 'make-it-rain' command");
                     return;
                 },
             };
 
-            // [message]
-            let mut msg = "".to_string();
-            inc += 1;
-            if command_arg.len() > inc as usize {
-                for arg in command_arg.iter().skip(inc as usize) {
-                    msg = msg + arg + " ";
-                }
-                msg = msg.trim().to_string();
-            }
-
-            let mut dht = self.discovery_service.clone();
-            let executor = self.executor.clone();
-
-            self.executor.spawn(async move {
-                // Ensure a valid connection is available by forcing a peer discovery. This is intended to be
-                // a blocking operation before the test starts.
-                match dht
-                    .discover_peer(
-                        Box::from(dest_pubkey.clone()),
-                        NodeDestination::PublicKey(Box::from(dest_pubkey.clone())),
-                    )
-                    .await
-                {
-                    Ok(_p) => {
-                        // Wait until specified test start time
-                        let millis_to_wait = (time_utc_start - Utc::now()).num_milliseconds();
-                        println!(
-                            "`make-it-rain` to peer '{}' scheduled to start at {}: msg \"{}\"",
-                            &key, time_utc_start, &msg
-                        );
-                        if millis_to_wait > 0 {
-                            tokio::time::delay_for(Duration::from_millis(millis_to_wait as u64)).await;
-                        }
-
-                        // Send all the transactions
-                        let start = Utc::now();
-                        for i in 0..number_of_txs {
-                            // Manage Tx rate
-                            let millis_actual_i = (Utc::now() - start).num_milliseconds() as u64;
-                            let millis_target_i = (i as f64 / (tx_per_s / 1000.0)) as u64;
-                            if millis_target_i - millis_actual_i > 0 {
-                                // Maximum delay between Txs set to 120 s
-                                tokio::time::delay_for(Duration::from_millis(
-                                    (millis_target_i - millis_actual_i).min(120_000u64),
-                                ))
-                                .await;
-                            }
-                            // Send Tx
-                            let wallet_transaction_service = wallet_transaction_service.clone();
-                            let dest_pubkey = dest_pubkey.clone();
-                            let msg = msg.clone();
-                            executor.spawn(async move {
-                                send_tari(
-                                    start_amount + amount_inc * (i as u64),
-                                    dest_pubkey,
-                                    msg,
-                                    wallet_transaction_service,
-                                )
-                                .await;
-                            });
-                        }
-                        println!(
-                            "`make-it-rain` to peer '{}' concluded at {}: msg \"{}\"",
-                            &key,
-                            Utc::now(),
-                            &msg
-                        );
-                    },
-                    Err(err) => {
-                        println!(
-                            "💀 Peer discovery for `{}` failed, cannot perform 'make-it-rain' test: '{:?}'",
-                            key, err
-                        );
-                    },
-                }
-            });
-        } else {
-            println!("Cannot complete command, Wallet is disabled");
-        }
+        let executor = self.executor.clone();
+        let mut wallet_transaction_service = match self.wallet_transaction_service.clone() {
+            Some(v) => v,
+            _ => {
+                println!("Error: Problem with TransactionServiceHandle");
+                return;
+            },
+        };
+        self.executor.spawn(async move {
+            make_it_rain(
+                &mut wallet_transaction_service,
+                executor,
+                tx_per_s,
+                number_of_txs,
+                start_amount,
+                amount_inc,
+                time_utc_start,
+                dest_pubkey.clone(),
+                msg.clone(),
+            )
+            .await;
+        });
     }
 }
 
@@ -2071,7 +2257,7 @@ async fn send_tari(
     mut wallet_transaction_service: TransactionServiceHandle,
 )
 {
-    let fee_per_gram = 25 * uT;
+    let fee_per_gram = 25 * uT; // TODO: use configured fee per gram
     let event_stream = wallet_transaction_service.get_event_stream_fused();
     match wallet_transaction_service
         .send_transaction(dest_pubkey.clone(), amount, fee_per_gram, msg)
@@ -2134,4 +2320,309 @@ async fn send_tari(
         },
         Ok(_) => println!("Sending {} Tari to {} ", amount, dest_pubkey),
     };
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn make_it_rain(
+    transaction_service: &mut TransactionServiceHandle,
+    executor: runtime::Handle,
+    tx_per_s: f64,
+    number_of_txs: usize,
+    start_amount: MicroTari,
+    amount_inc: MicroTari,
+    time_utc_start: DateTime<Utc>,
+    dest_pubkey: CommsPublicKey,
+    msg: String,
+)
+{
+    // Ensure a valid connection is available by sending a pilot transaction. This is intended to be
+    // a blocking operation before the test starts.
+    let dest_pubkey_hex = dest_pubkey.clone().to_hex();
+    let event_stream = transaction_service.get_event_stream_fused();
+    let fee_per_gram = 25 * uT; // TODO: use configured fee per gram
+    let tx_id = match transaction_service
+        .send_transaction(dest_pubkey.clone(), 10000 * uT, fee_per_gram, msg.clone())
+        .await
+    {
+        Ok(tx_id) => tx_id,
+        _ => {
+            println!(
+                "💀 Problem sending pilot transaction to `{}`, cannot perform 'make-it-rain' test",
+                &dest_pubkey_hex
+            );
+            return;
+        },
+    };
+    match time::timeout(
+        Duration::from_secs(120),
+        utils::wait_for_discovery_transaction_event(event_stream, tx_id),
+    )
+    .await
+    {
+        Ok(true) => {
+            // Wait until specified test start time
+            let millis_to_wait = (time_utc_start - Utc::now()).num_milliseconds();
+            println!(
+                "`make-it-rain` to peer '{}' scheduled to start at {}: msg \"{}\"",
+                &dest_pubkey_hex, time_utc_start, &msg
+            );
+            if millis_to_wait > 0 {
+                tokio::time::delay_for(Duration::from_millis(millis_to_wait as u64)).await;
+            }
+
+            // Send all the transactions
+            let start = Utc::now();
+            for i in 0..number_of_txs {
+                // Manage Tx rate
+                let millis_actual = (Utc::now() - start).num_milliseconds();
+                let millis_target = (i as f64 / (tx_per_s / 1000.0)) as i64;
+                if millis_target - millis_actual > 0 {
+                    // Maximum delay between Txs set to 120 s
+                    tokio::time::delay_for(Duration::from_millis(
+                        (millis_target - millis_actual).min(120_000i64) as u64
+                    ))
+                    .await;
+                }
+                // Send Tx
+                let transaction_service = transaction_service.clone();
+                let dest_pubkey = dest_pubkey.clone();
+                let msg = msg.clone();
+                executor.spawn(async move {
+                    send_tari(
+                        start_amount + amount_inc * (i as u64),
+                        dest_pubkey,
+                        msg,
+                        transaction_service,
+                    )
+                    .await;
+                });
+            }
+            println!(
+                "`make-it-rain` to peer '{}' concluded at {}: msg \"{}\"",
+                &dest_pubkey_hex,
+                Utc::now(),
+                &msg
+            );
+        },
+        _ => {
+            println!(
+                "💀 Pilot transaction to `{}` timed out, cannot perform 'make-it-rain' test",
+                &dest_pubkey_hex
+            );
+        },
+    }
+}
+
+async fn coin_split(
+    output_manager: &mut OutputManagerHandle,
+    transaction_service: &mut TransactionServiceHandle,
+    amount_per_split: MicroTari,
+    split_count: usize,
+)
+{
+    let fee_per_gram = 25 * uT; // TODO: use configured fee per gram
+    match output_manager
+        .create_coin_split(amount_per_split, split_count, fee_per_gram, None)
+        .await
+    {
+        Ok((tx_id, tx, fee, amount)) => {
+            match transaction_service
+                .submit_transaction(tx_id, tx, fee, amount, "Coin split".into())
+                .await
+            {
+                Ok(_) => println!("Coin split transaction created with tx_id:\n{}", tx_id),
+                Err(e) => {
+                    println!("Something went wrong creating a coin split transaction");
+                    println!("{:?}", e);
+                    warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
+                },
+            };
+        },
+        Err(e) => {
+            println!("Something went wrong creating a coin split transaction");
+            println!("{:?}", e);
+            warn!(target: LOG_TARGET, "Error communicating with wallet: {:?}", e);
+        },
+    };
+}
+
+// Function to delimit arguments using spaces and pairs of quotation marks, which may include spaces
+fn delimit_command_string(command_str: &str) -> Vec<String> {
+    // Delimit arguments using spaces and pairs of quotation marks, which may include spaces
+    let arg_temp = command_str.trim().to_string();
+    let re = Regex::new(r#"[^\s"]+|"(?:\\"|[^"])+""#).unwrap();
+    let arg_temp_vec: Vec<&str> = re.find_iter(&arg_temp).map(|mat| mat.as_str()).collect();
+    // Remove quotation marks left behind by `Regex` - it does not support look ahead and look behind
+    let mut del_arg_vec = Vec::new();
+    for arg in arg_temp_vec.iter().skip(1) {
+        del_arg_vec.push(str::replace(arg, "\"", ""));
+    }
+    del_arg_vec
+}
+
+// Function to count the number of spendable UTXOs above a certain value
+async fn get_number_of_spendable_utxos(
+    threshold: &usize,
+    node_service: &mut LocalNodeCommsInterface,
+    wallet_output_service: &mut OutputManagerHandle,
+) -> Option<usize>
+{
+    match node_service.get_metadata().await {
+        Ok(data) => {
+            let current_height = data.height_of_longest_chain.unwrap() as i64;
+            match wallet_output_service.get_unspent_outputs().await {
+                Ok(unspent_outputs) => {
+                    let mut number = 0usize;
+                    if !unspent_outputs.is_empty() {
+                        for uo in unspent_outputs.iter() {
+                            let mature_in = std::cmp::max(uo.features.maturity as i64 - current_height, 0);
+                            if mature_in == 0 && uo.value.0 >= *threshold as u64 {
+                                number += 1;
+                            }
+                        }
+                    }
+                    Some(number)
+                },
+                _ => None,
+            }
+        },
+        _ => None,
+    }
+}
+
+// Function to get make-it-rain transaction values
+fn get_make_it_rain_tx_values(command_arg: Vec<String>) -> Option<MakeItRainInputs> {
+    if (command_arg.is_empty()) || (command_arg.len() < 6) {
+        return Some(MakeItRainInputs {
+            err_msg: format!("Expected at least 6 arguments, received {}", command_arg.len()),
+            ..Default::default()
+        });
+    }
+
+    // [number of Txs/s]
+    let tx_per_s = command_arg[0].parse::<f64>();
+    if tx_per_s.is_err() {
+        return Some(MakeItRainInputs {
+            err_msg: "Invalid data provided for [number of Txs]".to_string(),
+            ..Default::default()
+        });
+    }
+    let tx_per_s = tx_per_s.unwrap();
+
+    // [test duration (s)]
+    let duration = command_arg[1].parse::<u32>();
+    if duration.is_err() {
+        return Some(MakeItRainInputs {
+            err_msg: "Invalid data provided for [test duration (s)]".to_string(),
+            ..Default::default()
+        });
+    };
+    let duration = duration.unwrap();
+    if (tx_per_s * duration as f64) < 1.0 {
+        return Some(MakeItRainInputs {
+            err_msg: "Invalid data provided for [number of Txs/s] * [test duration (s)], must be >= 1".to_string(),
+            ..Default::default()
+        });
+    }
+    let number_of_txs = (tx_per_s * duration as f64) as usize;
+    let tx_per_s = tx_per_s.min(25.0); // Maximum rate set to 25/s.
+
+    // [starting amount (uT)]
+    let start_amount = command_arg[2].parse::<u64>();
+    if start_amount.is_err() {
+        return Some(MakeItRainInputs {
+            err_msg: "Invalid data provided for [starting amount (uT)]".to_string(),
+            ..Default::default()
+        });
+    }
+    let start_amount: MicroTari = start_amount.unwrap().into();
+
+    // [increment (uT)/Tx]
+    let amount_inc = command_arg[3].parse::<u64>();
+    if amount_inc.is_err() {
+        return Some(MakeItRainInputs {
+            err_msg: "Invalid data provided for [increment (uT)/Tx]".to_string(),
+            ..Default::default()
+        });
+    }
+    let amount_inc: MicroTari = amount_inc.unwrap().into();
+
+    // [start time (UTC) / 'now']
+    let time = command_arg[4].to_string();
+    let time_utc_ref = Utc::now();
+    let mut time_utc_start = Utc::now();
+    let datetime = parse_date_string(&time, Utc::now(), Dialect::Uk);
+    match datetime {
+        Ok(t) => {
+            if t > time_utc_ref {
+                time_utc_start = t;
+            }
+        },
+        Err(e) => {
+            return Some(MakeItRainInputs {
+                err_msg: format!("Invalid data provided for [start time (UTC) / 'now']:  {}", e),
+                ..Default::default()
+            });
+        },
+    }
+
+    // TODO: Read in recipient address list and custom message from file
+    // [public key or emoji id to send to]
+    let key = command_arg[5].to_string();
+    let dest_pubkey = match parse_emoji_id_or_public_key(&key) {
+        Some(v) => v,
+        None => {
+            return Some(MakeItRainInputs {
+                err_msg: "Invalid data provided for [public key or emoji id to send to]".to_string(),
+                ..Default::default()
+            });
+        },
+    };
+
+    // [message]
+    let mut msg = "".to_string();
+    if command_arg.len() > 6 {
+        for arg in command_arg.iter().skip(6) {
+            msg = msg + arg + " ";
+        }
+        msg = msg.trim().to_string();
+    }
+
+    Some(MakeItRainInputs {
+        tx_per_s,
+        number_of_txs,
+        start_amount,
+        amount_inc,
+        time_utc_start,
+        dest_pubkey,
+        msg,
+        ..Default::default()
+    })
+}
+
+#[derive(Clone)]
+struct MakeItRainInputs {
+    tx_per_s: f64,
+    number_of_txs: usize,
+    start_amount: MicroTari,
+    amount_inc: MicroTari,
+    time_utc_start: DateTime<Utc>,
+    dest_pubkey: CommsPublicKey,
+    msg: String,
+    err_msg: String,
+}
+
+impl Default for MakeItRainInputs {
+    fn default() -> Self {
+        Self {
+            tx_per_s: f64::default(),
+            number_of_txs: usize::default(),
+            start_amount: MicroTari::default(),
+            amount_inc: MicroTari::default(),
+            time_utc_start: Utc::now(),
+            dest_pubkey: CommsPublicKey::default(),
+            msg: String::default(),
+            err_msg: String::default(),
+        }
+    }
 }

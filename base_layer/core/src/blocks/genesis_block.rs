@@ -232,6 +232,7 @@ mod test {
     use crate::transactions::types::CryptoFactories;
 
     // This test is not run able anymore as we need to generate a new rincewind block as the kernel's changed
+    #[allow(dead_code)]
     pub fn rincewind_genesis_sanity_check() {
         let block = get_rincewind_genesis_block();
         assert_eq!(block.body.outputs().len(), 4001);

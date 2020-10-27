@@ -3924,6 +3924,7 @@ dependencies = [
  "dirs-next",
  "futures 0.3.6",
  "git2",
+ "itertools",
  "log 0.4.11",
  "log4rs",
  "prost",
