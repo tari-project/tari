@@ -80,7 +80,7 @@ fn request_response_get_metadata() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -277,7 +277,7 @@ fn request_and_response_fetch_blocks() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -328,7 +328,7 @@ fn request_and_response_fetch_blocks_with_hashes() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -402,7 +402,7 @@ fn propagate_and_forward_many_valid_blocks() {
     let dan_node_identity = random_node_identity();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManagerBuilder::new(network)
@@ -495,7 +495,7 @@ fn propagate_and_forward_many_valid_blocks() {
         dan_node.shutdown().await;
     });
 }
-
+static EMISSION: [u64; 2] = [10, 10];
 #[test]
 fn propagate_and_forward_invalid_block_hash() {
     // Alice will propagate a "made up" block hash to Bob, Bob will request the block from Alice. Alice will not be able
@@ -511,7 +511,7 @@ fn propagate_and_forward_invalid_block_hash() {
     let carol_node_identity = random_node_identity();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManagerBuilder::new(network)
@@ -605,7 +605,7 @@ fn propagate_and_forward_invalid_block() {
     let dan_node_identity = random_node_identity();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManagerBuilder::new(network)

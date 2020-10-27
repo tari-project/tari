@@ -151,7 +151,6 @@ db_type = "lmdb"
 #num_mining_threads = 1
 
 # The relative path to store persistent data
-data_dir="rincewind"
 
 # When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
 # any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
@@ -261,6 +260,114 @@ tor_identity_file = ".\\config\\tor.json"
 
 # A path to the file that stores the wallet's tor hidden service private key, if using the tor transport.
 wallet_tor_identity_file = ".\\config\\wallet-tor.json"
+
+[base_node.ridcully]
+# The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
+# almost all use cases.
+db_type = "lmdb"
+
+# db config defaults
+# db_init_size_mb = 1000
+# db_grow_size_mb = 500
+# db_resize_threshold_mb = 100
+
+# The maximum number of orphans that can be stored in the Orphan block pool. Default value is "720".
+#orphan_storage_capacity = 720
+# The size that the orphan pool will be allowed to grow before it is cleaned out, with threshold being tested every
+# time before fetch and add blocks. Default value is "0", which indicates the orphan pool will not be cleaned out.
+#orphan_db_clean_out_threshold = 0
+# The pruning horizon that indicates how many full blocks without pruning must be kept by the base node. Default value
+# is "0", which indicates an archival node without any pruning.
+#pruning_horizon = 0
+
+# Enable if this node must be a mining node
+#enable_mining = true
+#num_mining_threads = 1
+
+# The relative path to store persistent data
+
+# When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
+# any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
+# you knew about last time you ran the software. But what about when you run the software for the first time? That's
+# where this allowlist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
+# new nodes can use to introduce themselves to the network.
+# peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
+peer_seeds = [
+    #test peer
+    "be665efc4fc99cb29bf91998876af21a6fbc5b17396406a2fcadf5542ad9703a::/onion3/emjcsvolat63pik2jtpv2jxqugkmxo5d5p3y5m2vhqdhbrgyx7l7j5qd:18141",
+]
+
+# Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then
+# it is recommended to leave this setting as it. Available values are ViaBestChainMetadata and ViaRandomPeer.
+#block_sync_strategy="ViaBestChainMetadata"
+
+# Configure the maximum number of threads available for base node operation. These threads are spawned lazily, so a higher
+# number is recommended.
+# max_threads = 512
+
+# The number of threads to spawn and keep active at all times. The default is the number of cores available on this node.
+# core_threads = <number of cores>
+
+# The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
+# peers can find you.
+# _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
+# automatically configured
+#public_address = "/ip4/172.2.3.4/tcp/18189"
+
+# Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
+#grpc_enabled = false
+
+# The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
+# Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
+#grpc_address = "tcp://127.0.0.1:18141"
+
+# A path to the file that stores your node identity and secret key
+identity_file = ".\\config\\node_id.json"
+
+# A path to the file that stores your wallet's node identity and secret key
+wallet_identity_file = ".\\config\\wallet-identity.json"
+
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable.
+#transport = "tcp"
+# The address and port to listen for peer connections over TCP.
+#tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address.
+#tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
+#tcp_tor_socks_auth = "none"
+
+# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
+# onion v2, onion v3 and dns addresses.
+transport = "tor"
+# Address of the tor control server
+tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+# Authentication to use for the tor control server
+tor_control_auth = "none" # or "password=xxxxxx"
+# The onion port to use.
+tor_onion_port = 18150
+# The address to which traffic on the node's onion address will be forwarded
+# tor_forward_address = "/ip4/127.0.0.1/tcp/0"
+# Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
+# use the first address returned by the tor control port (GETINFO /net/listeners/socks).
+#tor_socks_address_override=
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+#transport = "socks5"
+# The address of the SOCKS5 proxy
+#socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# The address to which traffic will be forwarded
+#socks5_listener_address = "/ip4/127.0.0.1/tcp/18189"
+#socks5_auth = "none" # or "username_password=username:xxxxxxx"
+
+# A path to the file that stores the tor hidden service private key, if using the tor transport.
+tor_identity_file = ".\\config\\tor.json"
+
+# A path to the file that stores the wallet's tor hidden service private key, if using the tor transport.
+wallet_tor_identity_file = ".\\config\\wallet-tor.json"
+
 
 [base_node.mainnet]
 # The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
@@ -478,6 +585,23 @@ peer_seeds = []
 #                                                                                                                      #
 ########################################################################################################################
 [merge_mining_proxy.rincewind]
+
+# URL to monerod, currently set to a seed node
+monerod_url = "http://192.110.160.146:38081"
+
+# Address of the tari_merge_mining_proxy application
+proxy_host_address = "127.0.0.1:7878"
+
+# If authentication is being used for curl
+monerod_use_auth=false
+
+# Username for curl
+monerod_username=""
+
+# Password for curl
+monerod_password=""
+
+[merge_mining_proxy.ridcully]
 
 # URL to monerod, currently set to a seed node
 monerod_url = "http://192.110.160.146:38081"

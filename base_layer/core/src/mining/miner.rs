@@ -345,7 +345,7 @@ impl Miner {
         trace!(target: LOG_TARGET, "Requesting new block template from node.");
         Ok(self
             .node_interface
-            .get_new_block_template(PowAlgorithm::Blake)
+            .get_new_block_template(PowAlgorithm::Sha3)
             .await
             .map_err(|e| {
                 error!(
@@ -391,7 +391,7 @@ impl Miner {
         let (tx, unblinded_output) = builder
             .build(
                 self.consensus.consensus_constants(block.header.height),
-                self.consensus.emission_schedule(block.header.height),
+                self.consensus.emission_schedule(),
             )
             .expect("invalid constructed coinbase");
         block.body.add_output(tx.body.outputs()[0].clone());

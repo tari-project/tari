@@ -50,19 +50,17 @@ pub struct ConsensusConstants {
     median_timestamp_count: usize,
     /// This is the initial emission curve amount
     pub(in crate::consensus) emission_initial: MicroTari,
-    /// This is the emission curve delay
-    pub(in crate::consensus) emission_decay: f64,
     /// This is the emission curve delay for the int
-    pub(in crate::consensus) emission_decay_int: &'static [u64],
+    pub(in crate::consensus) emission_decay: &'static [u64],
     /// This is the emission curve tail amount
     pub(in crate::consensus) emission_tail: MicroTari,
-    /// The offset relative to the expected genesis coinbase value
-    genesis_coinbase_value_offset: MicroTari,
     /// This is the maximum age a monero merge mined seed can be reused
     max_randomx_seed_height: u64,
     /// This keeps track of the block split targets and which algo is accepted
     /// Ideally this should count up to 100. If this does not you will reduce your target time.
     proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>,
+    /// This is to keep track of the value inside of the genesis block
+    faucet_value: MicroTari,
 }
 
 /// This is just a convenience  wrapper to put all the info into a hashmap per diff algo
@@ -86,13 +84,8 @@ impl ConsensusConstants {
     }
 
     /// This gets the emission curve values as (initial, decay, tail)
-    pub fn emission_amounts(&self) -> (MicroTari, f64, MicroTari) {
+    pub fn emission_amounts(&self) -> (MicroTari, &[u64], MicroTari) {
         (self.emission_initial, self.emission_decay, self.emission_tail)
-    }
-
-    /// This gets the emission curve values as (initial, decay, tail)
-    pub fn emission_amounts_int(&self) -> (MicroTari, &[u64], MicroTari) {
-        (self.emission_initial, self.emission_decay_int, self.emission_tail)
     }
 
     /// The min height maturity a coinbase utxo must have.
@@ -164,11 +157,7 @@ impl ConsensusConstants {
         self.median_timestamp_count
     }
 
-    /// The offset relative to apply to the expected genesis block coinbase emission
-    pub fn get_genesis_coinbase_value_offset(&self) -> MicroTari {
-        self.genesis_coinbase_value_offset
-    }
-
+    /// This is the min initial difficulty that can be requested for the pow
     pub fn min_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
         match self.proof_of_work.get(&pow_algo) {
             Some(v) => v.min_difficulty,
@@ -176,10 +165,15 @@ impl ConsensusConstants {
         }
     }
 
+    /// This will return the value of the genesis block faucets
+    pub fn faucet_value(&self) -> MicroTari {
+        self.faucet_value
+    }
+
     pub fn max_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
         match self.proof_of_work.get(&pow_algo) {
             Some(v) => v.max_difficulty,
-            _ => 1.into(),
+            _ => 0.into(),
         }
     }
 
@@ -259,12 +253,11 @@ impl ConsensusConstants {
                 max_block_transaction_weight: 19500,
                 median_timestamp_count: 11,
                 emission_initial: 5_538_846_115 * uT,
-                emission_decay: 0.999_999_560_409_038_5,
-                emission_decay_int: &EMISSION_DECAY,
+                emission_decay: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
-                genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
                 proof_of_work: algos1,
+                faucet_value: 0 * T,
             },
             ConsensusConstants {
                 effective_from_height: 2,
@@ -275,12 +268,11 @@ impl ConsensusConstants {
                 max_block_transaction_weight: 19500,
                 median_timestamp_count: 11,
                 emission_initial: 5_538_846_115 * uT,
-                emission_decay: 0.999_999_560_409_038_5,
-                emission_decay_int: &EMISSION_DECAY,
+                emission_decay: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
-                genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
                 proof_of_work: algos2,
+                faucet_value: 0 * T,
             },
             // min_pow_difficulty increased. Previous blocks would treat this value as 1 because of
             // a bug that was fixed.
@@ -293,12 +285,11 @@ impl ConsensusConstants {
                 max_block_transaction_weight: 19500,
                 median_timestamp_count: 11,
                 emission_initial: 5_538_846_115 * uT,
-                emission_decay: 0.999_999_560_409_038_5,
-                emission_decay_int: &EMISSION_DECAY,
+                emission_decay: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
-                genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
                 proof_of_work: algos3,
+                faucet_value: 0 * T,
             },
             // set max difficulty_max_block_interval to target_time * 6
             ConsensusConstants {
@@ -310,12 +301,11 @@ impl ConsensusConstants {
                 max_block_transaction_weight: 19500,
                 median_timestamp_count: 11,
                 emission_initial: 5_538_846_115 * uT,
-                emission_decay: 0.999_999_560_409_038_5,
-                emission_decay_int: &EMISSION_DECAY,
+                emission_decay: &EMISSION_DECAY,
                 emission_tail: 1 * T,
                 max_randomx_seed_height: std::u64::MAX,
-                genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
                 proof_of_work: algos4,
+                faucet_value: 0 * T,
             },
         ]
     }
@@ -344,12 +334,44 @@ impl ConsensusConstants {
             max_block_transaction_weight: 19500,
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
-            emission_decay: 0.999,
-            emission_decay_int: &EMISSION_DECAY,
+            emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
-            genesis_coinbase_value_offset: 0.into(),
             proof_of_work: algos,
+            faucet_value: 0 * T,
+        }]
+    }
+
+    pub fn ridcully() -> Vec<Self> {
+        let difficulty_block_window = 90;
+        let mut algos = HashMap::new();
+        // seting sha3/monero to 40/60 split
+        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
+            max_target_time: 1800,
+            min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 300,
+        });
+        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 1200,
+            min_difficulty: 60_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 200,
+        });
+        vec![ConsensusConstants {
+            effective_from_height: 0,
+            coinbase_lock_height: 1,
+            blockchain_version: 1,
+            future_time_limit: 540,
+            difficulty_block_window,
+            max_block_transaction_weight: 19500,
+            median_timestamp_count: 11,
+            emission_initial: 5_538_846_115 * uT,
+            emission_decay: &EMISSION_DECAY,
+            emission_tail: 100.into(),
+            max_randomx_seed_height: std::u64::MAX,
+            proof_of_work: algos,
+            faucet_value: (5000 * 4000) * T,
         }]
     }
 
@@ -378,12 +400,11 @@ impl ConsensusConstants {
             max_block_transaction_weight: 19500,
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
-            emission_decay: 0.999,
-            emission_decay_int: &EMISSION_DECAY,
+            emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
             max_randomx_seed_height: std::u64::MAX,
-            genesis_coinbase_value_offset: 0.into(),
             proof_of_work: algos,
+            faucet_value: 0 * T,
         }]
     }
 }
@@ -413,15 +434,26 @@ impl ConsensusConstantsBuilder {
         self
     }
 
-    pub fn with_emission_amounts(mut self, intial_amount: MicroTari, decay: f64, tail_amount: MicroTari) -> Self {
-        self.consensus.emission_initial = intial_amount;
-        self.consensus.emission_decay = decay;
-        self.consensus.emission_tail = tail_amount;
+    pub fn with_consensus_constants(mut self, consensus: ConsensusConstants) -> Self {
+        self.consensus = consensus;
         self
     }
 
-    pub fn with_genesis_coinbase_value_offset(mut self, value: MicroTari) -> Self {
-        self.consensus.genesis_coinbase_value_offset = value;
+    pub fn with_faucet_value(mut self, value: MicroTari) -> Self {
+        self.consensus.faucet_value = value;
+        self
+    }
+
+    pub fn with_emission_amounts(
+        mut self,
+        intial_amount: MicroTari,
+        decay: &'static [u64],
+        tail_amount: MicroTari,
+    ) -> Self
+    {
+        self.consensus.emission_initial = intial_amount;
+        self.consensus.emission_decay = decay;
+        self.consensus.emission_tail = tail_amount;
         self
     }
 

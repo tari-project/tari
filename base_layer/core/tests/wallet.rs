@@ -102,7 +102,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
         Default::default(),
     )
 }
-
+static EMISSION: [u64; 2] = [10, 10];
 #[test]
 fn wallet_base_node_integration_test() {
     let shutdown = Shutdown::new();
@@ -124,7 +124,7 @@ fn wallet_base_node_integration_test() {
     let mut base_node_runtime = create_runtime();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo0) =
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);

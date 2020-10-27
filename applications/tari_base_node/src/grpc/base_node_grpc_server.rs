@@ -320,7 +320,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let response = tari_rpc::NewBlockTemplateResponse {
             new_block_template: Some(new_template.into()),
-            block_reward: cm.emission_schedule(height).block_reward(height).0,
+            block_reward: cm.emission_schedule().block_reward(height).0,
         };
 
         debug!(target: LOG_TARGET, "Sending GetNewBlockTemplate response to client");
@@ -604,10 +604,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     .into_iter()
                     .map(|height| tari_rpc::ValueAtHeightResponse {
                         height,
-                        value: consensus_manager
-                            .emission_schedule(height)
-                            .supply_at_block(height)
-                            .into(),
+                        value: consensus_manager.emission_schedule().supply_at_block(height).into(),
                     })
                     .collect();
                 let result_size = values.len();

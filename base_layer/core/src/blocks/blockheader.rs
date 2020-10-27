@@ -160,7 +160,7 @@ impl BlockHeader {
     /// Calculates the total accumulated difficulty for the blockchain from the genesis block up until (and including)
     /// this block.
     pub fn total_accumulated_difficulty_inclusive_squared(&self) -> Result<u128, PowError> {
-        Ok(self.get_proof_of_work()?.total_accumulated_difficulty_squared())
+        Ok(self.get_proof_of_work()?.total_accumulated_difficulty())
     }
 
     /// Gets the accumulated `ProofOfWork` from the genesis block up until (and including) this block.

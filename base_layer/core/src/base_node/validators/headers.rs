@@ -75,6 +75,7 @@ impl<B: BlockchainBackend> HeaderValidator<B> {
     /// Calculates the achieved and target difficulties at the specified height and compares them.
     pub fn check_achieved_and_target_difficulty(&self, block_header: &BlockHeader) -> Result<(), ValidationError> {
         let pow_algo = block_header.pow.pow_algo;
+
         let target = if self.is_genesis(block_header) {
             Difficulty::from(1)
         } else {

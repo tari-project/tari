@@ -25,7 +25,14 @@ use crate::chain_storage::ChainMetadata;
 
 impl From<proto::ChainMetadata> for ChainMetadata {
     fn from(metadata: proto::ChainMetadata) -> Self {
-        let accumulated_difficulty = metadata.accumulated_difficulty.map(Into::into);
+        let accumulated_difficulty = if metadata.accumulated_difficulty.len() == 16 {
+            let mut accumulated_difficulty_array = [0; 16];
+            accumulated_difficulty_array.copy_from_slice(&metadata.accumulated_difficulty[0..16]);
+            Some(u128::from_be_bytes(accumulated_difficulty_array))
+        } else {
+            None
+        };
+
         Self {
             height_of_longest_chain: metadata.height_of_longest_chain,
             best_block: metadata.best_block,
@@ -39,8 +46,8 @@ impl From<proto::ChainMetadata> for ChainMetadata {
 impl From<ChainMetadata> for proto::ChainMetadata {
     fn from(metadata: ChainMetadata) -> Self {
         let accumulated_difficulty = match metadata.accumulated_difficulty {
-            None => None,
-            Some(v) => Some(v.into()),
+            None => Vec::new(),
+            Some(v) => v.to_be_bytes().to_vec(),
         };
         Self {
             height_of_longest_chain: metadata.height_of_longest_chain,

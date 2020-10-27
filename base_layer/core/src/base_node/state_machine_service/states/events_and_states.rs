@@ -34,7 +34,6 @@ use crate::{
         Waiting,
     },
     chain_storage::ChainMetadata,
-    proof_of_work::Difficulty,
 };
 use std::fmt::{Display, Error, Formatter};
 
@@ -105,14 +104,14 @@ impl Display for SyncStatus {
                 "Lagging behind {} peers (#{}, Difficulty: {})",
                 v.len(),
                 m.height_of_longest_chain(),
-                m.accumulated_difficulty.unwrap_or_else(Difficulty::min),
+                m.accumulated_difficulty.unwrap_or_else(|| 0),
             ),
             LaggingBehindHorizon(m, v) => write!(
                 f,
                 "Lagging behind pruning horizon ({} peer(s), Network height: #{}, Difficulty: {})",
                 v.len(),
                 m.height_of_longest_chain(),
-                m.accumulated_difficulty.unwrap_or_else(Difficulty::min),
+                m.accumulated_difficulty.unwrap_or_else(|| 0),
             ),
             UpToDate => f.write_str("UpToDate"),
         }

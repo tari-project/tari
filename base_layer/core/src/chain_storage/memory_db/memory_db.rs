@@ -152,7 +152,7 @@ where D: Digest + Send + Sync
     }
 
     // Fetches the chain metadata accumulated work.
-    fn fetch_accumulated_work(&self) -> Result<Option<Difficulty>, ChainStorageError> {
+    fn fetch_accumulated_work(&self) -> Result<Option<u128>, ChainStorageError> {
         Ok(
             if let Some(DbValue::Metadata(MetadataValue::AccumulatedWork(accumulated_work))) =
                 self.fetch(&DbKey::Metadata(MetadataKey::AccumulatedWork))?

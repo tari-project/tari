@@ -50,6 +50,7 @@ use tari_crypto::{
 use tari_mmr::MutableMmr;
 
 const MAINNET: Network = Network::MainNet;
+const RIDCULLY: Network = Network::Ridcully;
 
 pub fn create_coinbase(
     factories: &CryptoFactories,
@@ -85,12 +86,13 @@ fn genesis_template(
 }
 
 // This is a helper function to generate and print out a block that can be used as the genesis block.
+// #[test]
 pub fn create_act_gen_block() {
-    let network = MAINNET;
+    let network = RIDCULLY;
     let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
-    let value = consensus_manager.emission_schedule(0).block_reward(0);
+    let value = consensus_manager.emission_schedule().block_reward(0);
     let (mut utxo, key) = create_utxo(value, &factories, None);
     utxo.features = OutputFeatures::create_coinbase(1);
     let (pk, sig) = create_random_signature_from_s_key(key.clone(), 0.into(), 0);
@@ -238,7 +240,7 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
 ) -> Result<(Block, UnblindedOutput), ChainStorageError>
 {
     let height = prev_block.header.height + 1;
-    let coinbase_value = consensus_manager.emission_schedule(height).block_reward(height);
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(height);
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
         &factories,
         coinbase_value,
