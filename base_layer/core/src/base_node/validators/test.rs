@@ -24,7 +24,7 @@ use super::{header_iter::HeaderIter, ChainBalanceValidator, HeaderValidator};
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
     chain_storage::DbTransaction,
-    consensus::{ConsensusManagerBuilder, Network},
+    consensus::{consensus_constants::ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     proof_of_work::PowError,
     test_helpers::create_mem_db,
     transactions::{
@@ -36,7 +36,7 @@ use crate::{
     },
     txn_schema,
     validation::{Validation, ValidationError},
-};use crate::consensus::consensus_constants::ConsensusConstantsBuilder;
+};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, Hashable};
 use tari_test_utils::unpack_enum;
 

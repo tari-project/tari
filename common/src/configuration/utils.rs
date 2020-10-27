@@ -192,6 +192,63 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.localnet.peer_seeds", Vec::<String>::new())
         .unwrap();
 
+    //---------------------------------- Ridcully Defaults --------------------------------------------//
+
+    cfg.set_default("base_node.ridcully.db_type", "lmdb").unwrap();
+    cfg.set_default("base_node.ridcully.orphan_storage_capacity", 720)
+        .unwrap();
+    cfg.set_default("base_node.ridcully.orphan_db_clean_out_threshold", 0)
+        .unwrap();
+    cfg.set_default("base_node.ridcully.pruning_horizon", 0).unwrap();
+    cfg.set_default("base_node.ridcully.pruned_mode_cleanup_interval", 50)
+        .unwrap();
+    cfg.set_default("base_node.ridcully.peer_seeds", Vec::<String>::new())
+        .unwrap();
+    cfg.set_default("base_node.ridcully.block_sync_strategy", "ViaBestChainMetadata")
+        .unwrap();
+    cfg.set_default(
+        "base_node.ridcully.data_dir",
+        default_subdir("ridcully/", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.ridcully.tor_identity_file",
+        default_subdir("ridcully/tor.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.ridcully.wallet_identity_file",
+        default_subdir("ridcully/wallet-identity.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.ridcully.wallet_tor_identity_file",
+        default_subdir("ridcully/wallet-tor.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.ridcully.identity_file",
+        default_subdir("ridcully/node_id.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.ridcully.public_address",
+        format!("{}/tcp/18141", local_ip_addr),
+    )
+    .unwrap();
+
+    cfg.set_default("base_node.ridcully.grpc_enabled", false).unwrap();
+    cfg.set_default("base_node.ridcully.grpc_address", "127.0.0.1:18142")
+        .unwrap();
+    cfg.set_default("base_node.ridcully.grpc_wallet_address", "127.0.0.1:18143")
+        .unwrap();
+    cfg.set_default("base_node.ridcully.enable_mining", false).unwrap();
+    cfg.set_default("base_node.ridcully.enable_wallet", true).unwrap();
+    cfg.set_default("base_node.ridcully.num_mining_threads", 1).unwrap();
+
+    cfg.set_default("base_node.ridcully.peer_seeds", Vec::<String>::new())
+        .unwrap();
+
     set_transport_defaults(&mut cfg);
     set_merge_mining_defaults(&mut cfg);
 
@@ -211,6 +268,20 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
     cfg.set_default("merge_mining_proxy.rincewind.monerod_username", "")
         .unwrap();
     cfg.set_default("merge_mining_proxy.rincewind.monerod_password", "")
+        .unwrap();
+
+    cfg.set_default(
+        "merge_mining_proxy.ridcully.monerod_url",
+        "http://192.110.160.146:38081",
+    )
+    .unwrap();
+    cfg.set_default("merge_mining_proxy.ridcully.proxy_host_address", "127.0.0.1:7878")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.ridcully.monerod_use_auth", "false")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.ridcully.monerod_username", "")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.ridcully.monerod_password", "")
         .unwrap();
 }
 
@@ -252,6 +323,24 @@ fn set_transport_defaults(cfg: &mut Config) {
     cfg.set_default("base_node.rincewind.socks5_listener_address", "/ip4/0.0.0.0/tcp/18199")
         .unwrap();
     cfg.set_default("base_node.rincewind.socks5_auth", "none").unwrap();
+    // ridcully
+    // Default transport for ridcully is tcp
+    cfg.set_default("base_node.ridcully.transport", "tcp").unwrap();
+    cfg.set_default("base_node.ridcully.tcp_listener_address", "/ip4/0.0.0.0/tcp/18189")
+        .unwrap();
+
+    cfg.set_default("base_node.ridcully.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
+        .unwrap();
+    cfg.set_default("base_node.ridcully.tor_control_auth", "none").unwrap();
+    cfg.set_default("base_node.ridcully.tor_forward_address", "/ip4/127.0.0.1/tcp/0")
+        .unwrap();
+    cfg.set_default("base_node.ridcully.tor_onion_port", "18141").unwrap();
+
+    cfg.set_default("base_node.ridcully.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9150")
+        .unwrap();
+    cfg.set_default("base_node.ridcully.socks5_listener_address", "/ip4/0.0.0.0/tcp/18199")
+        .unwrap();
+    cfg.set_default("base_node.ridcully.socks5_auth", "none").unwrap();
 }
 
 fn get_local_ip() -> Option<Multiaddr> {

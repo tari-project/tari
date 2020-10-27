@@ -1783,10 +1783,7 @@ impl Parser {
             println!("Emoji ID: {}", emoji_id);
             println!();
             // TODO: Pass the network in as a var
-            let qr_link = format!(
-                "tari://rincewind/pubkey/{}",
-                &wallet_node_identity.public_key().to_hex()
-            );
+            let qr_link = format!("tari://ridcully/pubkey/{}", &wallet_node_identity.public_key().to_hex());
             let code = QrCode::new(qr_link).unwrap();
             let image = code
                 .render::<unicode::Dense1x2>()
