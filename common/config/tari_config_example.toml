@@ -74,7 +74,7 @@
 # The relative folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
 #  a) have backed up your seed phrase and
 #  b) know what you are doing!
-wallet_file = "wallet\\wallet.dat"
+#wallet_file = "wallet/wallet.dat" # or "wallet\\wallet.dat"
 
 # This is the timeout period that will be used to monitor TXO queries to the base node (default = 30). Larger values
 # are needed for wallets with many (>1000) TXOs to be validated.
@@ -199,10 +199,10 @@ peer_seeds = [
 #grpc_wallet_address = "127.0.0.1:18143"
 
 # A path to the file that stores your node identity and secret key
-identity_file = ".\\config\\node_id.json"
+identity_file = "./node_id.json" # or ".\\node_id.json"
 
 # A path to the file that stores your wallet's node identity and secret key
-wallet_identity_file = ".\\config\\wallet-identity.json"
+wallet_identity_file = "./wallet-identity.json" # or ".\\wallet-identity.json"
 
 # -------------- Transport configuration --------------
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
@@ -240,10 +240,10 @@ tor_onion_port = 18141
 #socks5_auth = "none" # or "username_password=username:xxxxxxx"
 
 # A path to the file that stores the tor hidden service private key, if using the tor transport.
-tor_identity_file = ".\\config\\tor.json"
+tor_identity_file = "./tor.json" # or ".\\tor.json"
 
 # A path to the file that stores the wallet's tor hidden service private key, if using the tor transport.
-wallet_tor_identity_file = ".\\config\\wallet-tor.json"
+wallet_tor_identity_file = "./wallet-tor.json" # or ".\\wallet-tor.json"
 
 ########################################################################################################################
 #                                                                                                                      #
