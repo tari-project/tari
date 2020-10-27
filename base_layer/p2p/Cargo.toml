@@ -39,7 +39,6 @@ trust-dns-client = {version="0.19.5", optional= true}
 tari_test_utils = { version = "^0.2", path="../../infrastructure/test_utils" }
 
 clap = "2.33.0"
-crossbeam-channel = "0.3.8"
 env_logger = "0.6.2"
 futures-test = { version = "0.3.0-alpha.19", package = "futures-test-preview" }
 futures-timer = "0.3.0"
@@ -52,9 +51,6 @@ tokio-macros = "0.2.4"
 version ="0.8.3"
 features = ["console_appender", "file_appender", "file", "yaml_format"]
 default-features = false
-
-[target.'cfg(not(windows))'.dev-dependencies.cursive]
-version = "0.12.0"
 
 [build-dependencies]
 tari_common = { version = "^0.2", path="../../common"}

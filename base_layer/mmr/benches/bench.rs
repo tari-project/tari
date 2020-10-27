@@ -19,38 +19,54 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
 
-use blake2::Blake2b;
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use digest::Digest;
-use std::time::Duration;
-use tari_mmr::MerkleMountainRange;
-
-fn get_hashes(n: usize) -> Vec<Vec<u8>> {
-    (0..n).map(|i| Blake2b::digest(&i.to_le_bytes()).to_vec()).collect()
+#[cfg(not(feature = "benches"))]
+mod benches {
+    pub fn main() {
+        println!("Enable the `benches` feature to run benches");
+    }
 }
 
-fn build_mmr(c: &mut Criterion) {
-    c.bench_function("Build MMR", move |b| {
-        let hashes = get_hashes(1000);
-        let mut mmr = MerkleMountainRange::<Blake2b, _>::new(Vec::default());
-        b.iter_batched(
-            || hashes.clone(),
-            |hashes| {
-                hashes.into_iter().for_each(|hash| {
-                    mmr.push(hash).unwrap();
-                });
-            },
-            BatchSize::SmallInput,
-        );
-    });
+#[cfg(feature = "benches")]
+mod benches {
+    use blake2::Blake2b;
+    use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+    use digest::Digest;
+    use std::time::Duration;
+    use tari_mmr::MerkleMountainRange;
+
+    fn get_hashes(n: usize) -> Vec<Vec<u8>> {
+        (0..n).map(|i| Blake2b::digest(&i.to_le_bytes()).to_vec()).collect()
+    }
+
+    fn build_mmr(c: &mut Criterion) {
+        c.bench_function("Build MMR", move |b| {
+            let hashes = get_hashes(1000);
+            let mut mmr = MerkleMountainRange::<Blake2b, _>::new(Vec::default());
+            b.iter_batched(
+                || hashes.clone(),
+                |hashes| {
+                    hashes.into_iter().for_each(|hash| {
+                        mmr.push(hash).unwrap();
+                    });
+                },
+                BatchSize::SmallInput,
+            );
+        });
+    }
+
+    criterion_group!(
+        name = mmr;
+        config= Criterion::default().warm_up_time(Duration::from_millis(500)).sample_size(10);
+        targets= build_mmr
+    );
+
+    pub fn main() {
+        mmr();
+        criterion::Criterion::default().configure_from_args().final_summary();
+    }
 }
 
-criterion_group!(
-    name = mmr;
-    config= Criterion::default().warm_up_time(Duration::from_millis(500)).sample_size(10);
-    targets= build_mmr
-);
-
-criterion_main!(mmr);
+fn main() {
+    benches::main();
+}
