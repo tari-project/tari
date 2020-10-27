@@ -231,33 +231,6 @@ mod test {
     use super::*;
     use crate::transactions::types::CryptoFactories;
 
-    // This test is not run able anymore as we need to generate a new rincewind block as the kernel's changed
-    #[allow(dead_code)]
-    pub fn rincewind_genesis_sanity_check() {
-        let block = get_rincewind_genesis_block();
-        assert_eq!(block.body.outputs().len(), 4001);
-
-        let factories = CryptoFactories::default();
-        let coinbase = block.body.outputs().first().unwrap();
-        assert!(coinbase.is_coinbase());
-        coinbase.verify_range_proof(&factories.range_proof).unwrap();
-        assert_eq!(block.body.kernels().len(), 1);
-        for kernel in block.body.kernels() {
-            kernel.verify_signature().unwrap();
-        }
-
-        let coinbase_kernel = block.body.kernels().first().unwrap();
-        assert!(coinbase_kernel.features.contains(KernelFeatures::COINBASE_KERNEL));
-        // I am leaving this here as a reminder. This the value is also changed as the emission curve has been swopped
-        // from a floating point on to a integer one. BUG: Mainnet value was committed to in the Rincewind
-        // let coinbase = block.body.outputs().iter().find(|o| o.is_coinbase()).unwrap();
-        // genesis block coinbase let consensus_manager =
-        // ConsensusManagerBuilder::new(Network::MainNet).build(); let supply =
-        // consensus_manager.emission_schedule().supply_at_block(0); let expected_kernel =
-        //     &coinbase.commitment - &factories.commitment.commit_value(&PrivateKey::default(), supply.into());
-        // assert_eq!(coinbase_kernel.excess, expected_kernel);
-    }
-
     #[test]
     fn ridcully_genesis_sanity_check() {
         let block = get_ridcully_genesis_block();
