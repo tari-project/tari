@@ -123,7 +123,7 @@ base_node_query_timeout = 120
 # Select the network to connect to. Valid options are:
 #   mainnet - the "real" Tari network (default)
 #   Ridcully - the Tari test net
-network = "Ridcully"
+network = "ridcully"
 
 
 # Configuration options for testnet
@@ -160,8 +160,14 @@ db_type = "lmdb"
 # new nodes can use to introduce themselves to the network.
 # peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
 peer_seeds = [
-    #test peer
-    "be665efc4fc99cb29bf91998876af21a6fbc5b17396406a2fcadf5542ad9703a::/onion3/emjcsvolat63pik2jtpv2jxqugkmxo5d5p3y5m2vhqdhbrgyx7l7j5qd:18141",
+    #tbn-nvir
+    "30c9e74dcf2a3f967457cf10f09b0cb2d0b112b6e98fc76bf64cf27597a6961f::/onion3/zyjmhhwj572dnizdbe672vzzyqfmlzjs4k4mp4bmso6wysn2megndzad:18141",
+    #tbn-oregon
+    "e856839057aac496b9e25f10821116d02b58f20129e9b9ba681b830568e47c4d::/onion3/exe2zgehnw3tvrbef3ep6taiacr6sdyeb54be2s25fpru357r4skhtad:18141",
+    #tbn-stockholm
+    "106ca872ec83bc2522bce7e4b35b86c4a598297312cf46ce38caf0b497cf6748::/onion3/hf3n3btfh4tfh2n6afvxs5m6lqkyjlqlj3bm4todjjdcngapa4phhoyd:18141",
+    #tbn-sydney
+    "ac7fba427913a653a27b69c05549e14d9e87cb7849ea0c740d6c8a5855a3882a::/onion3/avteohvrvvfy4fff7ona2wy6yhb7i4ss4aklp74v64knofvev3vd5yyd:18141",
 ]
 
 # Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then
