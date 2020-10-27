@@ -110,7 +110,7 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
     let excess = Commitment::from_public_key(&pk);
     let kernel = TransactionKernel {
         features: KernelFeatures::empty(),
-        fee: 0 * T,
+        fee: MicroTari::from(0),
         lock_height: 0,
         excess,
         excess_sig: sig,
