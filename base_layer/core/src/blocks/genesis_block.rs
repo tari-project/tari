@@ -197,8 +197,7 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
             prev_hash: vec![
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             ],
-            //timestamp: 1_603_843_200.into(), // 10/28/2020 @ 12:00am (UTC)
-            timestamp: 1_603_782_277.into(), //todo remove and swop to top. 
+            timestamp: 1_603_843_200.into(), // 10/28/2020 @ 12:00am (UTC)
             output_mr: from_hex("dcc44f39b65e5e1e526887e7d56f7b85e2ea44bd29bc5bc195e6e015d19e1c06").unwrap(),
             range_proof_mr: from_hex("e4d7dab49a66358379a901b9a36c10f070aa9d7bdc8ae752947b6fc4e55d255f").unwrap(),
             kernel_mr: from_hex("589bc62ac5d9139f921c68b8075c32d8d130024acaf3196d1d6a89df601e2bcf").unwrap(),
