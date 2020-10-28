@@ -45,24 +45,13 @@ use std::{
     fmt::{Display, Formatter},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use thiserror::Error;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::block_sync";
-
-// The maximum number of retry attempts a node can perform to request a particular block from remote nodes.
-const MAX_METADATA_REQUEST_RETRY_ATTEMPTS: usize = 3;
-const MAX_HEADER_REQUEST_RETRY_ATTEMPTS: usize = 5;
-const MAX_BLOCK_REQUEST_RETRY_ATTEMPTS: usize = 5;
-// The maximum number of retry attempts for attempting to validly request and add the block at a specific block height
-// to the chain.
-const MAX_ADD_BLOCK_RETRY_ATTEMPTS: usize = 3;
-// The number of headers that can be requested in a single query.
-const HEADER_REQUEST_SIZE: usize = 100;
-// The number of blocks that can be requested in a single query.
-const BLOCK_REQUEST_SIZE: usize = 5;
 
 /// Configuration for the Block Synchronization.
 #[derive(Clone, Copy)]
@@ -75,6 +64,7 @@ pub struct BlockSyncConfig {
     pub header_request_size: usize,
     pub block_request_size: usize,
     pub orphan_db_clean_out_threshold: usize,
+    pub fetch_blocks_timeout: Duration,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -110,13 +100,14 @@ impl Default for BlockSyncConfig {
     fn default() -> Self {
         Self {
             sync_strategy: BlockSyncStrategy::ViaBestChainMetadata(BestChainMetadataBlockSync),
-            max_metadata_request_retry_attempts: MAX_METADATA_REQUEST_RETRY_ATTEMPTS,
-            max_header_request_retry_attempts: MAX_HEADER_REQUEST_RETRY_ATTEMPTS,
-            max_block_request_retry_attempts: MAX_BLOCK_REQUEST_RETRY_ATTEMPTS,
-            max_add_block_retry_attempts: MAX_ADD_BLOCK_RETRY_ATTEMPTS,
-            header_request_size: HEADER_REQUEST_SIZE,
-            block_request_size: BLOCK_REQUEST_SIZE,
+            max_metadata_request_retry_attempts: 3,
+            max_header_request_retry_attempts: 5,
+            max_block_request_retry_attempts: 5,
+            max_add_block_retry_attempts: 3,
+            header_request_size: 100,
+            block_request_size: 5,
             orphan_db_clean_out_threshold: 0,
+            fetch_blocks_timeout: Duration::from_secs(150),
         }
     }
 }

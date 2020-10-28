@@ -81,6 +81,9 @@ pub struct GlobalConfig {
     pub buffer_size_base_node_wallet: usize,
     pub buffer_rate_limit_base_node: usize,
     pub buffer_rate_limit_base_node_wallet: usize,
+    pub fetch_blocks_timeout: Duration,
+    pub fetch_utxos_timeout: Duration,
+    pub service_request_timeout: Duration,
     pub base_node_query_timeout: Duration,
     pub transaction_broadcast_monitoring_timeout: Duration,
     pub transaction_chain_monitoring_timeout: Duration,
@@ -413,6 +416,24 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         cfg.get_int(&key)
             .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
+    let key = "common.fetch_blocks_timeout";
+    let fetch_blocks_timeout = Duration::from_secs(
+        cfg.get_int(&key)
+            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
+    );
+
+    let key = "common.fetch_utxos_timeout";
+    let fetch_utxos_timeout = Duration::from_secs(
+        cfg.get_int(&key)
+            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
+    );
+
+    let key = "common.service_request_timeout";
+    let service_request_timeout = Duration::from_secs(
+        cfg.get_int(&key)
+            .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
+    );
+
     let key = config_string("merge_mining_proxy", &net_str, "monerod_url");
     let monerod_url = cfg
         .get_str(&key)
@@ -476,6 +497,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         buffer_size_base_node_wallet,
         buffer_rate_limit_base_node,
         buffer_rate_limit_base_node_wallet,
+        fetch_blocks_timeout,
+        fetch_utxos_timeout,
+        service_request_timeout,
         base_node_query_timeout,
         transaction_broadcast_monitoring_timeout,
         transaction_chain_monitoring_timeout,
