@@ -238,9 +238,8 @@ fn main_inner() -> Result<(), ExitCodes> {
 
         cli_loop(Some(parser), shutdown);
     } else {
-        println!("Node has been successfully configured and initialized in daemon mode. Starting CLI loop.");
+        println!("Node has been successfully configured and initialized in daemon mode.");
         base_node_handle = rt.spawn(ctx.run());
-        cli_loop(None, shutdown);
     }
     match rt.block_on(base_node_handle) {
         Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
