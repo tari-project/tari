@@ -167,9 +167,8 @@ include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 const MAKE_IT_RAIN_USAGE: &str = "\nmake-it-rain [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx] \
                                   [\"start time (UTC)\" / 'now' for immediate start] [public key or emoji id to send \
                                   to] [message]\n";
-const STRESS_TEST_USAGE: &str = "\nstress-test [command file]\n\nCommand file format:\n  coin-split   ... \
-                                 (optional)\n  make-it-rain ... (at least one required)\n  make-it-rain ... \
-                                 (optional)\n  ...";
+const STRESS_TEST_USAGE: &str = "\nstress-test [command file]\n\nCommand file format:\n  make-it-rain ... (at least \
+                                 one required)\n  make-it-rain ... (optional)\n  ...";
 
 /// This will go through all instructions and look for potential matches
 impl Completer for Parser {
@@ -1921,20 +1920,8 @@ impl Parser {
             return;
         };
         let mut make_it_rain_commands = Vec::new();
-        let mut coin_split_command = Vec::new();
         for command in script.lines() {
-            if command.starts_with("coin-split ") {
-                coin_split_command = delimit_command_string(command);
-                if (coin_split_command.is_empty()) || (coin_split_command.len() < 2) {
-                    println!("{}", command_error_msg);
-                    println!(
-                        "'coin-split' command expected 2 arguments, received {}\n  '{}'\n",
-                        command_arg.len(),
-                        command
-                    );
-                    return;
-                }
-            } else if command.starts_with("make-it-rain ") {
+            if command.starts_with("make-it-rain ") {
                 make_it_rain_commands.push(delimit_command_string(command));
                 if (make_it_rain_commands[make_it_rain_commands.len() - 1].is_empty()) ||
                     (make_it_rain_commands[make_it_rain_commands.len() - 1].len() < 6)
@@ -1961,7 +1948,7 @@ impl Parser {
         println!();
 
         // Determine UTXO properties required for the test
-        let (number_of_utxos_required, minumum_value_required) = {
+        let (utxos_required, minumum_value_required) = {
             let (mut number, mut value) = (0.0, 0);
             for command in make_it_rain_commands.clone() {
                 let (number_of_txs, start_amount, amount_inc) = match get_make_it_rain_tx_values(command) {
@@ -1981,7 +1968,7 @@ impl Parser {
                 number += number_of_txs as f64;
                 value = std::cmp::max(
                     value,
-                    (start_amount + MicroTari::from(number_of_txs as u64 * amount_inc.0) + MicroTari::from(775)).0,
+                    (start_amount + MicroTari::from(number_of_txs as u64 * amount_inc.0) + MicroTari::from(825)).0,
                 );
             }
             (number as usize, value as usize)
@@ -2006,7 +1993,7 @@ impl Parser {
         let executor = self.executor.clone();
         self.executor.spawn(async move {
             // Count number of spendable UTXOs available for the test
-            let mut utxo_count = match get_number_of_spendable_utxos(
+            let utxo_start_count = match get_number_of_spendable_utxos(
                 &minumum_value_required,
                 &mut node_service.clone(),
                 &mut wallet_output_service.clone(),
@@ -2019,85 +2006,69 @@ impl Parser {
                     return;
                 },
             };
-            let number_of_utxos_to_be_created =
-                std::cmp::max(number_of_utxos_required as i32 - utxo_count as i32, 0) as usize;
-            let will_perform_coin_split = (number_of_utxos_to_be_created > 0) && (coin_split_command.len() >= 2);
+            let utxos_to_be_created = std::cmp::max(utxos_required as i32 - utxo_start_count as i32, 0) as usize;
             println!(
                 "The test requires {} UTXOs, minimum value of {} each (average fee included); our current wallet has \
                  {} UTXOs that are adequate.\n",
-                &number_of_utxos_required, &minumum_value_required, &utxo_count
+                &utxos_required, &minumum_value_required, &utxo_start_count
             );
 
             // Perform coin-split only if requested, otherwise test spendable UTXOs may become encumbered
-            if will_perform_coin_split {
-                println!("Command: coin-split {}\n", coin_split_command.iter().join(" "));
-                let amount = (&coin_split_command[0]).parse::<u64>();
-                if amount.is_err() {
-                    println!("{}\n", command_error_msg);
-                    println!("coin-split: '[amount]' not valid\n");
-                    return;
-                };
-                let amount = MicroTari::from(amount.unwrap());
-                let number_of_utxos = coin_split_command[1].parse::<u32>();
-                if number_of_utxos.is_err() {
-                    println!("{}\n", command_error_msg);
-                    println!("coin-split: '[number]' not valid\n");
-                    return;
-                };
-                let number_of_utxos = number_of_utxos.unwrap();
+            let mut utxo_count = utxo_start_count;
+            if utxos_to_be_created > 0 {
+                println!(
+                    "Command: coin-split {} {}\n",
+                    minumum_value_required, utxos_to_be_created
+                );
 
                 // Count number of UTXOs available for the coin split
-                let mut utxos_available_for_split = 0usize;
-                if number_of_utxos_to_be_created > 0usize {
-                    utxos_available_for_split = match get_number_of_spendable_utxos(
-                        &(amount.0 as usize * 100),
-                        &mut node_service.clone(),
-                        &mut wallet_output_service.clone(),
-                    )
-                    .await
-                    {
-                        Some(v) => v,
-                        _ => {
-                            println!("Cannot query the number of UTXOs");
-                            return;
-                        },
-                    };
-                    let utxos_to_be_split = &number_of_utxos_to_be_created.div_euclid(99) + 1;
-                    if utxos_available_for_split < utxos_to_be_split {
-                        println!(
-                            "We need to coin split {} UTXOs that has minimum value of {} each; there will be ~{} \
-                             UTXOs short.",
-                            &utxos_to_be_split,
-                            MicroTari::from(amount.0 * 100),
-                            utxos_to_be_split - utxos_available_for_split,
-                        );
-                    }
-                }
+                let utxos_available_for_split = match get_number_of_spendable_utxos(
+                    &(minumum_value_required * 100),
+                    &mut node_service.clone(),
+                    &mut wallet_output_service.clone(),
+                )
+                .await
+                {
+                    Some(v) => v,
+                    _ => {
+                        println!("Cannot query the number of UTXOs");
+                        return;
+                    },
+                };
+                let utxos_to_be_split = &utxos_to_be_created.div_euclid(99) + 1;
+                let utxos_that_can_be_created = match utxos_available_for_split < utxos_to_be_split {
+                    true => utxos_available_for_split * 100,
+                    false => utxos_to_be_created,
+                };
+                println!(
+                    "  - UTXOs that can be created {}, UTXOs to be split {}, UTXOs that can be split {}\n",
+                    utxos_that_can_be_created, utxos_to_be_split, utxos_available_for_split,
+                );
 
                 if utxos_available_for_split > 0 {
                     // Perform requested coin split
-                    for _ in 0..number_of_utxos.div_euclid(99) {
-                        let args = &coin_split_command[0].clone().add(" 99");
+                    for _ in 0..utxos_that_can_be_created.div_euclid(99) {
+                        let args = &minumum_value_required.to_string().add(" 99");
                         println!("coin-split {}", args);
                         coin_split(
                             &mut wallet_output_service.clone(),
                             &mut wallet_transaction_service.clone(),
-                            amount,
+                            MicroTari::from(minumum_value_required as u64),
                             99,
                         )
                         .await;
                     }
-                    if number_of_utxos.rem_euclid(99) > 0 {
-                        let args = &coin_split_command[0]
-                            .clone()
+                    if utxos_that_can_be_created.rem_euclid(99) > 0 {
+                        let args = &minumum_value_required
+                            .to_string()
                             .add(" ")
-                            .add(&number_of_utxos.rem_euclid(99).to_string());
+                            .add(&utxos_that_can_be_created.rem_euclid(99).to_string());
                         println!("coin-split {}", args);
                         coin_split(
                             &mut wallet_output_service.clone(),
                             &mut wallet_transaction_service.clone(),
-                            amount,
-                            number_of_utxos.rem_euclid(99) as usize,
+                            MicroTari::from(minumum_value_required as u64),
+                            utxos_that_can_be_created.rem_euclid(99) as usize,
                         )
                         .await;
                     }
@@ -2106,7 +2077,7 @@ impl Parser {
                     // Wait for a sufficient number of UTXOs to be created
                     let mut count = 1usize;
                     loop {
-                        tokio::time::delay_for(Duration::from_secs(120)).await;
+                        tokio::time::delay_for(Duration::from_secs(60)).await;
                         // Count number of spendable UTXOs available for the test
                         utxo_count = match get_number_of_spendable_utxos(
                             &minumum_value_required,
@@ -2121,30 +2092,39 @@ impl Parser {
                                 return;
                             },
                         };
-                        if utxo_count >= number_of_utxos_required {
+                        if utxo_count >= utxos_required {
                             println!("We have created enough UTXOs, initiating the stress test.\n");
                             break;
-                        } else if count >= 15 {
-                            println!(
-                                "Cannot perform stress test; we still need {} adequate UTXOs.\nPlease try again.\n",
-                                std::cmp::max(number_of_utxos_required as i32 - utxo_count as i32, 0) as usize
-                            );
-                            return;
                         } else {
                             println!(
-                                "We still need {} UTXOs, waiting for them to be created...\n",
-                                std::cmp::max(number_of_utxos_required as i32 - utxo_count as i32, 0) as usize
+                                "We still need {} UTXOs, waiting ({}) for them to be created... (current count {}, \
+                                 start count {})",
+                                std::cmp::max(utxos_required as i32 - utxo_count as i32, 0) as usize,
+                                count,
+                                utxo_count,
+                                utxo_start_count,
                             );
                         }
+                        if count >= 60 {
+                            println!("Stress test timed out waiting for UTXOs to be created. \nPlease try again.\n",);
+                            return;
+                        }
+                        if utxo_count >= utxo_start_count + utxos_that_can_be_created {
+                            println!(
+                                "Cannot perform stress test; we could not create enough UTXOs.\nPlease try again.\n",
+                            );
+                            return;
+                        }
+
                         count += 1;
                     }
                 }
             }
 
-            if utxo_count < number_of_utxos_required {
+            if utxo_count < utxos_required {
                 println!(
                     "Cannot perform stress test; we still need {} adequate UTXOs.\nPlease try again.\n",
-                    std::cmp::max(number_of_utxos_required as i32 - utxo_count as i32, 0) as usize
+                    std::cmp::max(utxos_required as i32 - utxo_count as i32, 0) as usize
                 );
                 return;
             }
