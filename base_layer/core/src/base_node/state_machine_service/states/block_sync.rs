@@ -541,7 +541,11 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
             }
 
             shared.publish_event_info();
-            info!(target: LOG_TARGET, "Adding block to db: {}", block);
+            info!(
+                target: LOG_TARGET,
+                "Adding block #{} ({}) to DB.", block_height, block_hash_hex
+            );
+            trace!(target: LOG_TARGET, "{}", block);
             match async_db::add_block(shared.db.clone(), block.clone()).await {
                 Ok(BlockAddResult::Ok) => {
                     info!(
