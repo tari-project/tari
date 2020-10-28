@@ -61,6 +61,7 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
         error!(target: LOG_TARGET, "Validation could not get median timestamp");
         ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestamp)
     })?;
+
     if block_header.timestamp < median_timestamp {
         warn!(
             target: LOG_TARGET,
