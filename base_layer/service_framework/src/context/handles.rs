@@ -71,19 +71,6 @@ impl ServiceInitializerContext {
         self.inner.register(handle);
     }
 
-    /// Retrieve a handle and downcast it to return type and return a copy, otherwise None is returned
-    pub fn get_handle<H>(&self) -> Option<&H>
-    where H: 'static {
-        self.inner.get_handle()
-    }
-
-    /// Get a handle from the given type (`TypeId`) and downcast it to a type `H`.
-    /// If the item does not exist or the downcast fails, a panic occurs
-    pub fn expect_handle<H>(&self) -> H
-    where H: Clone + 'static {
-        self.inner.expect_handle()
-    }
-
     /// Call the given function with the final handles once this future is ready (`notify_ready` is called).
     pub fn lazy_service<F, S>(&self, service_fn: F) -> LazyService<F, Self, S>
     where F: FnOnce(ServiceHandles) -> S {
@@ -239,7 +226,7 @@ mod test {
         let trigger = Shutdown::new();
         let context = ServiceInitializerContext::new(trigger.to_signal(), trigger.to_signal());
         context.register_handle(TestHandle);
-        context.expect_handle::<TestHandle>();
-        assert!(context.get_handle::<()>().is_none());
+        context.inner.expect_handle::<TestHandle>();
+        assert!(context.inner.get_handle::<()>().is_none());
     }
 }
