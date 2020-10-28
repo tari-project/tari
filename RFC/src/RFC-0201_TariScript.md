@@ -472,7 +472,7 @@ But in transaction validations, the mempool SHOULD move a transaction to the Pen
 with `ContextFailure`. It MUST reject the transaction if it fails with `Failure`.
 
 Not all context-dependent failures will fail with `ContextFailure`. For example, `CheckHeight(height) ZeroVerify` will
-fail with `Faiure` even though this script might pass in future. This is because the `CheckHeight(height)` does not have
+fail with `Failure` even though this script might pass in future. This is because the `CheckHeight(height)` does not have
 a context failure mode. The TariScript VM is not smart enough to know that the `ZeroVerify` opcode is context-dependent
 by virtue of the preceding instruction. If you wish to write context-dependent scripts, then use opcode that can
 fail immediately with the `ContextFailure` state.
