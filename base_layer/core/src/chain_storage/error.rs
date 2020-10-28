@@ -97,6 +97,10 @@ pub enum ChainStorageError {
         #[from]
         source: PowError,
     },
+    #[error("Cannot acquire exclusive file lock, another instance of the application is already running")]
+    CannotAcquireFileLock,
+    #[error("IO Error: `{0}`")]
+    IoError(#[from] std::io::Error),
 }
 
 impl ChainStorageError {

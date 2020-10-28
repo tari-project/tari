@@ -314,6 +314,8 @@ where TBackend: TransactionBackend + 'static
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         }
 
+        let mut shutdown = self.resources.shutdown_signal.clone();
+
         #[allow(unused_assignments)]
         let mut incoming_finalized_transaction = None;
         loop {
@@ -362,6 +364,10 @@ where TBackend: TransactionBackend + 'static
                     },
                     () = timeout_delay => {
                         return self.timeout_transaction().await;
+                    }
+                    _ = shutdown => {
+                        info!(target: LOG_TARGET, "Transaction Receive Protocol (id: {}) shutting down because it received the shutdown signal", self.id);
+                        return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                     }
                 }
             }

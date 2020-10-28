@@ -82,7 +82,7 @@ async fn spawn_node(
         .with_shutdown_signal(shutdown_sig)
         // </IrrelevantCalls>
         .with_listener_address(addr)
-        .with_peer_storage(HashmapDatabase::new())
+        .with_peer_storage(HashmapDatabase::new(), None)
 
         .with_node_identity(node_identity)
         .build()

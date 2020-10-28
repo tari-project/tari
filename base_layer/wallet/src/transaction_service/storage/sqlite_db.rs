@@ -23,6 +23,7 @@
 use crate::{
     output_manager_service::TxId,
     schema::{completed_transactions, inbound_transactions, outbound_transactions},
+    storage::sqlite_utilities::WalletDbConnection,
     transaction_service::{
         error::TransactionStorageError,
         storage::{
@@ -47,7 +48,7 @@ use std::{
     collections::HashMap,
     convert::TryFrom,
     str::from_utf8,
-    sync::{Arc, Mutex, MutexGuard, RwLock},
+    sync::{Arc, MutexGuard, RwLock},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, types::PublicKey};
@@ -61,12 +62,12 @@ const LOG_TARGET: &str = "wallet::transaction_service::database::sqlite_db";
 /// A Sqlite backend for the Transaction Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
 pub struct TransactionServiceSqliteDatabase {
-    database_connection: Arc<Mutex<SqliteConnection>>,
+    database_connection: WalletDbConnection,
     cipher: Arc<RwLock<Option<Aes256Gcm>>>,
 }
 
 impl TransactionServiceSqliteDatabase {
-    pub fn new(database_connection: Arc<Mutex<SqliteConnection>>, cipher: Option<Aes256Gcm>) -> Self {
+    pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Self {
         Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
@@ -75,7 +76,7 @@ impl TransactionServiceSqliteDatabase {
 
     // TODO Remove this after the next TestNet
     pub fn migrate(&self, comms_public_key_migration: CommsPublicKey) {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
         let _ = CompletedTransactionSql::migrate(comms_public_key_migration, &(*conn));
     }
 
@@ -219,7 +220,7 @@ impl TransactionServiceSqliteDatabase {
 
 impl TransactionBackend for TransactionServiceSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, TransactionStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         let result = match key {
             DbKey::PendingOutboundTransaction(t) => {
@@ -377,7 +378,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     fn contains(&self, key: &DbKey) -> Result<bool, TransactionStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         let result = match key {
             DbKey::PendingOutboundTransaction(k) => {
@@ -410,7 +411,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         match op {
             WriteOperation::Insert(kvp) => self.insert(kvp, conn).map(|_| None),
@@ -419,7 +420,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     fn transaction_exists(&self, tx_id: u64) -> Result<bool, TransactionStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         Ok(
             OutboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)).is_ok() ||
@@ -433,7 +434,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         tx_id: u64,
     ) -> Result<CommsPublicKey, TransactionStorageError>
     {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         if let Ok(mut outbound_tx_sql) = OutboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             self.decrypt_if_necessary(&mut outbound_tx_sql)?;
@@ -455,7 +456,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>
     {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         if CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)).is_ok() {
             return Err(TransactionStorageError::TransactionAlreadyExists);
@@ -484,7 +485,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         completed_transaction: CompletedTransaction,
     ) -> Result<(), TransactionStorageError>
     {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         if CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)).is_ok() {
             return Err(TransactionStorageError::TransactionAlreadyExists);
@@ -508,7 +509,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     fn broadcast_completed_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             Ok(v) => {
@@ -537,7 +538,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     fn mine_completed_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             Ok(v) => {
@@ -564,7 +565,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     fn cancel_completed_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
         match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             Ok(v) => {
                 v.cancel(&(*conn))?;
@@ -580,7 +581,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     fn cancel_pending_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
         match InboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             Ok(v) => {
                 v.cancel(&(*conn))?;
@@ -601,7 +602,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     fn mark_direct_send_success(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
         match InboundTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             Ok(v) => {
                 v.update(
@@ -646,7 +647,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         timestamp: NaiveDateTime,
     ) -> Result<(), TransactionStorageError>
     {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         if let Ok(tx) = CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             tx.update(
@@ -672,7 +673,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             return Err(TransactionStorageError::AlreadyEncrypted);
         }
 
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         let mut inbound_txs = InboundTransactionSql::index(&conn)?;
         // If the db is already encrypted then the very first output we try to encrypt will fail.
@@ -735,7 +736,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         } else {
             return Ok(());
         };
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         let mut inbound_txs = InboundTransactionSql::index(&conn)?;
 
@@ -767,7 +768,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     fn cancel_coinbase_transaction_at_block_height(&self, block_height: u64) -> Result<(), TransactionStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         let coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(block_height as i64, &conn)?;
         for c in coinbase_txs.iter() {
@@ -777,7 +778,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     }
 
     fn increment_send_count(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         if let Ok(tx) = CompletedTransactionSql::find(tx_id, &conn) {
             let update = UpdateCompletedTransactionSql {
@@ -1472,6 +1473,7 @@ mod test {
     #[cfg(feature = "test_harness")]
     use crate::transaction_service::storage::sqlite_db::UpdateCompletedTransactionSql;
     use crate::{
+        storage::sqlite_utilities::WalletDbConnection,
         transaction_service::storage::{
             database::{DbKey, TransactionBackend},
             models::{
@@ -1497,10 +1499,7 @@ mod test {
     use chrono::Utc;
     use diesel::{Connection, SqliteConnection};
     use rand::rngs::OsRng;
-    use std::{
-        convert::TryFrom,
-        sync::{Arc, Mutex},
-    };
+    use std::convert::TryFrom;
     use tari_core::transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, Transaction, UnblindedOutput},
@@ -2101,7 +2100,7 @@ mod test {
         let key = GenericArray::from_slice(b"an example very very secret key.");
         let cipher = Aes256Gcm::new(key);
 
-        let connection = Arc::new(Mutex::new(conn));
+        let connection = WalletDbConnection::new(conn, None);
 
         let db1 = TransactionServiceSqliteDatabase::new(connection.clone(), Some(cipher.clone()));
         assert!(db1.apply_encryption(cipher.clone()).is_err());

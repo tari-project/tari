@@ -191,6 +191,7 @@ where TBackend: TransactionBackend + 'static
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             let mut delay = delay_for(self.timeout).fuse();
+            let mut shutdown = self.resources.shutdown_signal.clone();
             let mut chain_metadata_response_received: Option<bool> = None;
             let mut fetch_utxo_response_received = false;
             // Loop until both a Mempool response AND a Base node response is received OR the Timeout expires.
@@ -225,6 +226,10 @@ where TBackend: TransactionBackend + 'static
                     },
                     () = delay => {
                         break;
+                    },
+                    _ = shutdown => {
+                        info!(target: LOG_TARGET, "Transaction Coinbase Monitoring Protocol (id: {}) shutting down because it received the shutdown signal", self.id);
+                        return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                     },
                 }
 

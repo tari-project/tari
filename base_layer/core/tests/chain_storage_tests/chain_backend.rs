@@ -32,6 +32,7 @@ use tari_core::{
     chain_storage::{
         create_lmdb_database,
         BlockchainBackend,
+        ChainStorageError,
         DbKey,
         DbKeyValuePair,
         DbTransaction,
@@ -2072,6 +2073,35 @@ fn lmdb_insert_mmr_node_for_utxo_and_rp() {
     {
         let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
         insert_mmr_node_for_utxo_and_rp(db);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&temp_path).exists() {
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
+    }
+}
+
+#[test]
+fn lmdb_file_lock() {
+    // Create temporary test folder
+    let temp_path = create_temporary_data_path();
+
+    // Perform test
+    {
+        let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
+
+        match create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()) {
+            Err(ChainStorageError::CannotAcquireFileLock) => assert!(true),
+            _ => assert!(false, "Should not be able to make this db"),
+        }
+
+        drop(db);
+
+        let _db2 = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default())
+            .expect("Should be able to make a new lmdb now");
     }
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files

@@ -1196,6 +1196,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
+name = "fs2"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "640001e1bd865c7c32806292822445af576a6866175b5225aa2087ca5e3de551"
+dependencies = [
+ "kernel32-sys",
+ "libc",
+ "winapi 0.2.8",
+]
+
+[[package]]
 name = "fuchsia-cprng"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3921,6 +3932,7 @@ dependencies = [
  "croaring",
  "digest 0.8.1",
  "env_logger 0.7.1",
+ "fs2",
  "futures 0.3.6",
  "hex",
  "lmdb-zero",
@@ -4073,6 +4085,7 @@ dependencies = [
  "chrono",
  "clap",
  "env_logger 0.6.2",
+ "fs2",
  "futures 0.3.6",
  "futures-test-preview",
  "futures-timer",
@@ -4188,6 +4201,7 @@ dependencies = [
  "diesel_migrations",
  "digest 0.8.1",
  "env_logger 0.7.1",
+ "fs2",
  "futures 0.3.6",
  "lazy_static 1.4.0",
  "lmdb-zero",

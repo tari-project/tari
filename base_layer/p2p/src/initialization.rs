@@ -24,10 +24,11 @@ use crate::{
     comms_connector::{InboundDomainConnector, PeerMessage, PubsubDomainConnector},
     transport::{TorConfig, TransportType},
 };
+use fs2::FileExt;
 use futures::{channel::mpsc, Sink};
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use std::{error::Error, future::Future, iter, path::PathBuf, sync::Arc, time::Duration};
+use std::{error::Error, fs::File, future::Future, iter, path::PathBuf, sync::Arc, time::Duration};
 use tari_comms::{
     backoff::ConstantBackoff,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerManagerError},
@@ -74,6 +75,10 @@ pub enum CommsInitializationError {
     InvalidLivenessCidrs(String),
     #[error("Could not add seed peers to comms layer: `{0}`")]
     FailedToAddSeedPeer(#[from] PeerManagerError),
+    #[error("Cannot acquire exclusive file lock, another instance of the application is already running")]
+    CannotAcquireFileLock,
+    #[error("IO Error: `{0}`")]
+    IoError(#[from] std::io::Error),
 }
 
 impl CommsInitializationError {
@@ -164,7 +169,7 @@ where
         .with_listener_liveness_max_sessions(1)
         .with_node_identity(node_identity)
         .with_user_agent("/test/1.0")
-        .with_peer_storage(peer_database)
+        .with_peer_storage(peer_database, None)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .with_min_connectivity(1.0)
         .with_shutdown_signal(shutdown_signal)
@@ -296,6 +301,8 @@ where
     TSink: Sink<Arc<PeerMessage>> + Unpin + Clone + Send + Sync + 'static,
     TSink::Error: Error + Send + Sync,
 {
+    let file_lock = acquire_exclusive_file_lock(&config.datastore_path)?;
+
     let datastore = LMDBBuilder::new()
         .set_path(&config.datastore_path)
         .set_env_config(LMDBConfig::default())
@@ -313,7 +320,7 @@ where
         .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
         .with_listener_liveness_allowlist_cidrs(listener_liveness_allowlist_cidrs)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .with_peer_storage(peer_database)
+        .with_peer_storage(peer_database, Some(file_lock))
         .build()?;
 
     // Create outbound channel
@@ -362,6 +369,29 @@ where
     ));
 
     Ok((comms, dht))
+}
+
+/// Acquire an exclusive OS level write lock on a file in the provided path. This is used to check if another instance
+/// of this database has already been initialized in order to prevent two process from using it simultaneously
+/// ## Parameters
+/// `db_path` - Path where the db will be initialized
+///
+/// ## Returns
+/// Returns a File handle that must be retained to keep the file lock active.
+pub fn acquire_exclusive_file_lock(db_path: &PathBuf) -> Result<File, CommsInitializationError> {
+    let lock_file_path = db_path.join(".p2p_file.lock");
+
+    let file = File::create(lock_file_path)?;
+    // Attempt to acquire exclusive OS level Write Lock
+    if let Err(e) = file.try_lock_exclusive() {
+        error!(
+            target: LOG_TARGET,
+            "Could not acquire exclusive write lock on database lock file: {:?}", e
+        );
+        return Err(CommsInitializationError::CannotAcquireFileLock);
+    }
+
+    Ok(file)
 }
 
 /// Adds a new peer to the base node

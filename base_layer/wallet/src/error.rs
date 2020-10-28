@@ -108,4 +108,10 @@ pub enum WalletStorageError {
     AlreadyEncrypted,
     #[error("Byte array error: `{0}`")]
     ByteArrayError(#[from] ByteArrayError),
+    #[error("Cannot acquire exclusive file lock, another instance of the application is already running")]
+    CannotAcquireFileLock,
+    #[error("Database file cannot be a root path")]
+    DatabasePathIsRootPath,
+    #[error("IO Error: `{0}`")]
+    IoError(#[from] std::io::Error),
 }
