@@ -109,6 +109,9 @@ where B: BlockchainBackend + 'static
 
         let seed_peers = utilities::parse_peer_seeds(&config.peer_seeds);
 
+        let mempool_sync = MempoolSyncInitializer::new(mempool_config, self.mempool.clone());
+        let mempool_protocol = mempool_sync.get_protocol_extension();
+
         let mut handles = StackBuilder::new(self.interrupt_signal)
             .add_initializer(P2pInitializer::new(comms_config, publisher, seed_peers))
             .add_initializer(BaseNodeServiceInitializer::new(
@@ -123,7 +126,7 @@ where B: BlockchainBackend + 'static
                 self.mempool.clone(),
                 peer_message_subscriptions.clone(),
             ))
-            .add_initializer(MempoolSyncInitializer::new(mempool_config, self.mempool.clone()))
+            .add_initializer(mempool_sync)
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
                     auto_ping_interval: Some(Duration::from_secs(30)),
@@ -148,6 +151,7 @@ where B: BlockchainBackend + 'static
             .take_handle::<UnspawnedCommsNode>()
             .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
 
+        let comms = comms.add_protocol_extension(mempool_protocol);
         let comms = Self::setup_rpc_services(comms, &handles);
         let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
         // Save final node identity after comms has initialized. This is required because the public_address can be

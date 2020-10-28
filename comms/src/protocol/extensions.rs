@@ -36,6 +36,14 @@ pub trait ProtocolExtension: Send + Sync {
     fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError>;
 }
 
+impl<F> ProtocolExtension for F
+where F: FnOnce(&mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> + Send + Sync
+{
+    fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
+        (self)(context)
+    }
+}
+
 #[derive(Default)]
 pub struct ProtocolExtensions {
     inner: Vec<Box<dyn ProtocolExtension>>,
