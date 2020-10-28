@@ -45,6 +45,7 @@ strum_macros = "0.18.0"
 thiserror = "^1.0.20"
 tonic = "0.2"
 itertools = "0.8.2"
+windows-service = { version = "0.3.1", optional = true }
 
 [build-dependencies]
 tonic-build = "0.2"
@@ -53,5 +54,6 @@ toml = "0.5"
 git2 = "0.8"
 
 [features]
+winservice = ["windows-service"]
 avx2 = ["tari_core/avx2", "tari_crypto/avx2", "tari_p2p/avx2", "tari_wallet/avx2", "tari_comms/avx2", "tari_comms_dht/avx2"]
 safe = []

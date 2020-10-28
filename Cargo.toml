@@ -19,4 +19,6 @@ members = [
     "applications/test_faucet",
     "applications/tari_app_utilities",
     "applications/tari_merge_mining_proxy",
+    "applications/tari_base_node/windows/windows_service_installer",
+    "applications/tari_base_node/windows/windows_service_uninstaller",
 ]
