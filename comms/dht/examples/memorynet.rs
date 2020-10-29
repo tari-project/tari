@@ -148,23 +148,23 @@ async fn main() {
     // Wait for all the nodes to startup and connect to seed node
     take_a_break(NUM_NODES).await;
 
-    log::info!("------------------------------- BASE NODE JOIN -------------------------------");
-    for index in 0..nodes.len() {
-        {
-            let node = nodes.get_mut(index).expect("Couldn't get TestNode");
-            println!(
-                "Node '{}' is joining the network via the seed node '{}'",
-                node, seed_node[0]
-            );
-            node.comms
-                .connectivity()
-                .wait_for_connectivity(Duration::from_secs(10))
-                .await
-                .unwrap();
-
-            node.dht.dht_requester().send_join().await.unwrap();
-        }
-    }
+    // log::info!("------------------------------- BASE NODE JOIN -------------------------------");
+    // for index in 0..nodes.len() {
+    //     {
+    //         let node = nodes.get_mut(index).expect("Couldn't get TestNode");
+    //         println!(
+    //             "Node '{}' is joining the network via the seed node '{}'",
+    //             node, seed_node[0]
+    //         );
+    //         node.comms
+    //             .connectivity()
+    //             .wait_for_connectivity(Duration::from_secs(10))
+    //             .await
+    //             .unwrap();
+    //
+    //         node.dht.dht_requester().send_join().await.unwrap();
+    //     }
+    // }
 
     take_a_break(NUM_NODES).await;
 
@@ -198,10 +198,11 @@ async fn main() {
         let count = seed_node[0].comms.peer_manager().count().await;
         let num_connections = seed_node[0]
             .comms
-            .connection_manager()
-            .get_num_active_connections()
+            .connectivity()
+            .get_active_connections()
             .await
-            .unwrap();
+            .unwrap()
+            .len();
         println!("Seed node knows {} peers ({} connections)", count, num_connections);
     }
 

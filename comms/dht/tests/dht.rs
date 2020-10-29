@@ -230,12 +230,12 @@ async fn dht_join_propagation() {
     // to A.
     node_A.dht.dht_requester().send_join().await.unwrap();
 
-    let node_A_peer_manager = node_A.comms.peer_manager();
+    let node_B_peer_manager = node_B.comms.peer_manager();
     let node_C_peer_manager = node_C.comms.peer_manager();
 
-    // Check that Node A knows about Node C and vice versa
+    // Check that Node B and C know node A
     async_assert_eventually!(
-        node_A_peer_manager.exists(node_C.node_identity().public_key()).await,
+        node_B_peer_manager.exists(node_A.node_identity().public_key()).await,
         expect = true,
         max_attempts = 10,
         interval = Duration::from_millis(1000)
@@ -247,11 +247,11 @@ async fn dht_join_propagation() {
         interval = Duration::from_millis(500)
     );
 
-    let node_C_peer = node_A_peer_manager
-        .find_by_public_key(node_C.node_identity().public_key())
+    let node_A_peer = node_C_peer_manager
+        .find_by_public_key(node_A.node_identity().public_key())
         .await
         .unwrap();
-    assert_eq!(node_C_peer.features, node_C.comms.node_identity().features());
+    assert_eq!(node_A_peer.features, node_A.comms.node_identity().features());
 
     node_A.shutdown().await;
     node_B.shutdown().await;

@@ -21,12 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::task::ProcessDhtMessage;
-use crate::{
-    config::DhtConfig,
-    discovery::DhtDiscoveryRequester,
-    inbound::DecryptedDhtMessage,
-    outbound::OutboundMessageRequester,
-};
+use crate::{discovery::DhtDiscoveryRequester, inbound::DecryptedDhtMessage, outbound::OutboundMessageRequester};
 use futures::{task::Context, Future};
 use std::{sync::Arc, task::Poll};
 use tari_comms::{
@@ -37,7 +32,6 @@ use tower::Service;
 
 #[derive(Clone)]
 pub struct DhtHandlerMiddleware<S> {
-    config: DhtConfig,
     next_service: S,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
@@ -47,7 +41,6 @@ pub struct DhtHandlerMiddleware<S> {
 
 impl<S> DhtHandlerMiddleware<S> {
     pub fn new(
-        config: DhtConfig,
         next_service: S,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
@@ -57,7 +50,6 @@ impl<S> DhtHandlerMiddleware<S> {
     ) -> Self
     {
         Self {
-            config,
             next_service,
             node_identity,
             peer_manager,
@@ -81,7 +73,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
 
     fn call(&mut self, message: DecryptedDhtMessage) -> Self::Future {
         ProcessDhtMessage::new(
-            self.config.clone(),
             self.next_service.clone(),
             Arc::clone(&self.peer_manager),
             self.outbound_service.clone(),

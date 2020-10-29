@@ -115,7 +115,7 @@ pub struct TransactionService<
     BNResponseStream,
     TBackend,
     TTxCancelledStream,
-> where TBackend: TransactionBackend + Clone + 'static
+> where TBackend: TransactionBackend + 'static
 {
     config: TransactionServiceConfig,
     db: TransactionDatabase<TBackend>,
@@ -161,7 +161,7 @@ where
     MReplyStream: Stream<Item = DomainMessage<MempoolProto::MempoolServiceResponse>>,
     BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
     TTxCancelledStream: Stream<Item = DomainMessage<proto::TransactionCancelledMessage>>,
-    TBackend: TransactionBackend + Clone + 'static,
+    TBackend: TransactionBackend + 'static,
 {
     pub fn new(
         config: TransactionServiceConfig,
@@ -302,7 +302,7 @@ where
                         &mut transaction_broadcast_protocol_handles,
                         &mut transaction_chain_monitoring_protocol_handles,
                         &mut coinbase_transaction_monitoring_protocol_handles).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
+                        warn!(target: LOG_TARGET, "Error handling request: {:?}", resp);
                         Err(resp)
                     })).or_else(|resp| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
@@ -500,6 +500,7 @@ where
                     self.db.get_pending_outbound_transactions().await?,
                 ))
             },
+
             TransactionServiceRequest::GetCompletedTransactions => Ok(
                 TransactionServiceResponse::CompletedTransactions(self.db.get_completed_transactions().await?),
             ),
@@ -523,6 +524,9 @@ where
                     self.db.get_completed_transaction(tx_id).await?,
                 )))
             },
+            TransactionServiceRequest::GetAnyTransaction(tx_id) => Ok(TransactionServiceResponse::AnyTransaction(
+                Box::new(self.db.get_any_transaction(tx_id).await?),
+            )),
             TransactionServiceRequest::SetBaseNodePublicKey(public_key) => {
                 self.set_base_node_public_key(public_key);
                 Ok(TransactionServiceResponse::BaseNodePublicKeySet)
@@ -2011,7 +2015,7 @@ where
 /// This struct is a collection of the common resources that a protocol in the service requires.
 #[derive(Clone)]
 pub struct TransactionServiceResources<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     pub db: TransactionDatabase<TBackend>,
     pub output_manager_service: OutputManagerHandle,

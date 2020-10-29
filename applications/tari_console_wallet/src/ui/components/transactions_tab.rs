@@ -1,68 +1,63 @@
 use crate::ui::{
     components::{balance::Balance, Component},
-    multi_column_list::MultiColumnList,
     state::AppState,
-    SelectedTransactionList,
+    widgets::{draw_dialog, MultiColumnList, WindowedListState},
     MAX_WIDTH,
 };
-use tari_wallet::transaction_service::storage::models::{TransactionDirection, TransactionStatus};
+use tari_crypto::tari_utilities::hex::Hex;
+use tari_wallet::transaction_service::storage::models::{
+    CompletedTransaction,
+    TransactionDirection,
+    TransactionStatus,
+};
+use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, ListItem, Paragraph, Wrap},
     Frame,
 };
 
 pub struct TransactionsTab {
     balance: Balance,
     selected_tx_list: SelectedTransactionList,
-    pending_txs_state: ListState,
-    completed_txs_state: ListState,
+    pending_list_state: WindowedListState,
+    completed_list_state: WindowedListState,
+    detailed_transaction: Option<CompletedTransaction>,
+    error_message: Option<String>,
+    confirmation_dialog: bool,
 }
 
 impl TransactionsTab {
     pub fn new() -> Self {
         Self {
             balance: Balance::new(),
-            selected_tx_list: SelectedTransactionList::PendingTxs,
-            pending_txs_state: ListState::default(),
-            completed_txs_state: ListState::default(),
+            selected_tx_list: SelectedTransactionList::CompletedTxs,
+            pending_list_state: WindowedListState::new(),
+            completed_list_state: WindowedListState::new(),
+            detailed_transaction: None,
+            error_message: None,
+            confirmation_dialog: false,
         }
     }
 
     fn draw_transaction_lists<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
-        let total = app_state.pending_txs.len() + app_state.completed_txs.len();
-        let (pending_constraint, completed_constaint) = if app_state.pending_txs.len() == 0 {
-            (Constraint::Min(4), Constraint::Min(4))
-        } else if app_state.pending_txs.len() as f32 / total as f32 > 0.25 {
-            (
-                Constraint::Ratio(app_state.pending_txs.len() as u32, total as u32),
-                Constraint::Ratio(app_state.completed_txs.len() as u32, total as u32),
-            )
+        let (pending_constraint, completed_constaint) = if app_state.get_pending_txs().is_empty() {
+            self.selected_tx_list = SelectedTransactionList::CompletedTxs;
+            (Constraint::Max(3), Constraint::Min(4))
         } else {
-            (Constraint::Max(5), Constraint::Min(4))
+            (
+                Constraint::Length((3 + app_state.get_pending_txs().len()).min(7) as u16),
+                Constraint::Min(4),
+            )
         };
-
         let list_areas = Layout::default()
             .constraints([pending_constraint, completed_constaint].as_ref())
             .split(area);
 
-        let instructions = Paragraph::new(Spans::from(vec![
-            Span::raw(" Use "),
-            Span::styled("P/C", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to move between transaction lists, "),
-            Span::styled("Up/Down Arrow Keys", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to select a transaction, "),
-            Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to open Transaction Details."),
-        ]))
-        .wrap(Wrap { trim: true });
-        f.render_widget(instructions, list_areas[0]);
-
-        // Pending Transactions
         let style = if self.selected_tx_list == SelectedTransactionList::PendingTxs {
             Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
         } else {
@@ -73,11 +68,19 @@ impl TransactionsTab {
             .title(Span::styled("(P)ending Transactions", style));
         f.render_widget(block, list_areas[0]);
 
+        // Pending Transactions
+        self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
+        let mut pending_list_state = self
+            .pending_list_state
+            .get_list_state((list_areas[0].height as usize).saturating_sub(3));
+        let window = self.pending_list_state.get_start_end();
+        let windowed_view = app_state.get_pending_txs_slice(window.0, window.1);
+
         let mut column0_items = Vec::new();
         let mut column1_items = Vec::new();
         let mut column2_items = Vec::new();
         let mut column3_items = Vec::new();
-        for t in app_state.pending_txs.items.iter() {
+        for t in windowed_view.iter() {
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::raw(format!("{}", t.destination_public_key))));
                 column1_items.push(ListItem::new(Span::styled(
@@ -106,7 +109,7 @@ impl TransactionsTab {
             .add_column(Some("Amount"), Some(18), column1_items)
             .add_column(Some("Timestamp"), Some(20), column2_items)
             .add_column(Some("Message"), None, column3_items);
-        column_list.render(f, list_areas[0], &mut self.pending_txs_state);
+        column_list.render(f, list_areas[0], &mut pending_list_state);
 
         //  Completed Transactions
         let style = if self.selected_tx_list == SelectedTransactionList::CompletedTxs {
@@ -116,14 +119,22 @@ impl TransactionsTab {
         };
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(Span::styled("(C)ompleted Transactions", style));
+            .title(Span::styled("Completed (T)ransactions", style));
         f.render_widget(block, list_areas[1]);
+
+        self.completed_list_state
+            .set_num_items(app_state.get_completed_txs().len());
+        let mut completed_list_state = self
+            .completed_list_state
+            .get_list_state((list_areas[1].height as usize).saturating_sub(3));
+        let window = self.completed_list_state.get_start_end();
+        let windowed_view = app_state.get_completed_txs_slice(window.0, window.1);
 
         let mut column0_items = Vec::new();
         let mut column1_items = Vec::new();
         let mut column2_items = Vec::new();
         let mut column3_items = Vec::new();
-        for t in app_state.completed_txs.items.iter() {
+        for t in windowed_view.iter() {
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::raw(format!("{}", t.destination_public_key))));
                 column1_items.push(ListItem::new(Span::styled(
@@ -141,7 +152,12 @@ impl TransactionsTab {
                 "{}",
                 t.timestamp.format("%Y-%m-%d %H:%M:%S")
             ))));
-            column3_items.push(ListItem::new(Span::raw(format!("{}", t.status))));
+            let status = if t.cancelled {
+                "Cancelled".to_string()
+            } else {
+                t.status.to_string()
+            };
+            column3_items.push(ListItem::new(Span::raw(status)));
         }
 
         let column_list = MultiColumnList::new()
@@ -152,10 +168,11 @@ impl TransactionsTab {
             .add_column(Some("Amount"), Some(18), column1_items)
             .add_column(Some("Timestamp"), Some(20), column2_items)
             .add_column(Some("Status"), None, column3_items);
-        column_list.render(f, list_areas[1], &mut self.completed_txs_state);
+
+        column_list.render(f, list_areas[1], &mut completed_list_state);
     }
 
-    fn draw_detailed_transaction<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    fn draw_detailed_transaction<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
     where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Transaction Details",
@@ -182,6 +199,7 @@ impl TransactionsTab {
                     Constraint::Length(1),
                     Constraint::Length(1),
                     Constraint::Length(1),
+                    Constraint::Length(1),
                 ]
                 .as_ref(),
             )
@@ -196,6 +214,7 @@ impl TransactionsTab {
         let status = Span::styled("Status:", Style::default().fg(Color::Magenta));
         let message = Span::styled("Message:", Style::default().fg(Color::Magenta));
         let timestamp = Span::styled("Timestamp:", Style::default().fg(Color::Magenta));
+        let excess = Span::styled("Excess:", Style::default().fg(Color::Magenta));
         let paragraph = Paragraph::new(tx_id).wrap(Wrap { trim: true });
         f.render_widget(paragraph, label_layout[0]);
         let paragraph = Paragraph::new(source_public_key).wrap(Wrap { trim: true });
@@ -214,13 +233,17 @@ impl TransactionsTab {
         f.render_widget(paragraph, label_layout[7]);
         let paragraph = Paragraph::new(timestamp).wrap(Wrap { trim: true });
         f.render_widget(paragraph, label_layout[8]);
+        let paragraph = Paragraph::new(excess).wrap(Wrap { trim: true });
+        f.render_widget(paragraph, label_layout[9]);
 
         // Content:
 
-        if let Some(tx) = app_state.detailed_transaction.as_ref() {
+        if let Some(tx) = self.detailed_transaction.as_ref() {
             let content_layout = Layout::default()
                 .constraints(
                     [
+                        Constraint::Length(1),
+                        Constraint::Length(1),
                         Constraint::Length(1),
                         Constraint::Length(1),
                         Constraint::Length(1),
@@ -254,12 +277,23 @@ impl TransactionsTab {
             let direction = Span::styled(format!("{}", tx.direction), Style::default().fg(Color::White));
             let amount = Span::styled(format!("{}", tx.amount), Style::default().fg(Color::White));
             let fee = Span::styled(format!("{}", tx.fee), Style::default().fg(Color::White));
-            let status = Span::styled(format!("{}", tx.status), Style::default().fg(Color::White));
+            let status_msg = if tx.cancelled {
+                "Cancelled".to_string()
+            } else {
+                tx.status.to_string()
+            };
+            let status = Span::styled(status_msg, Style::default().fg(Color::White));
             let message = Span::styled(tx.message.as_str(), Style::default().fg(Color::White));
             let timestamp = Span::styled(
                 format!("{}", tx.timestamp.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(Color::White),
             );
+            let excess_hex = if tx.transaction.body.kernels().is_empty() {
+                "".to_string()
+            } else {
+                tx.transaction.body.kernels()[0].excess_sig.get_signature().to_hex()
+            };
+            let excess = Span::styled(excess_hex.as_str(), Style::default().fg(Color::White));
             let paragraph = Paragraph::new(tx_id).wrap(Wrap { trim: true });
             f.render_widget(paragraph, content_layout[0]);
             let paragraph = Paragraph::new(source_public_key).wrap(Wrap { trim: true });
@@ -278,6 +312,8 @@ impl TransactionsTab {
             f.render_widget(paragraph, content_layout[7]);
             let paragraph = Paragraph::new(timestamp).wrap(Wrap { trim: true });
             f.render_widget(paragraph, content_layout[8]);
+            let paragraph = Paragraph::new(excess).wrap(Wrap { trim: true });
+            f.render_widget(paragraph, content_layout[9]);
         }
     }
 }
@@ -285,32 +321,122 @@ impl TransactionsTab {
 impl<B: Backend> Component<B> for TransactionsTab {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
         let balance_main_area = Layout::default()
-            .constraints([Constraint::Length(3), Constraint::Min(10), Constraint::Length(11)].as_ref())
+            .constraints(
+                [
+                    Constraint::Length(3),
+                    Constraint::Length(1),
+                    Constraint::Min(10),
+                    Constraint::Length(12),
+                ]
+                .as_ref(),
+            )
             .split(area);
 
         self.balance.draw(f, balance_main_area[0], app_state);
-        self.draw_transaction_lists(f, balance_main_area[1], app_state);
-        self.draw_detailed_transaction(f, balance_main_area[2], app_state);
+
+        let mut span_vec = if app_state.get_pending_txs().is_empty() {
+            vec![]
+        } else {
+            vec![
+                Span::raw(" Use "),
+                Span::styled("P/T", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to move between transaction lists, "),
+            ]
+        };
+
+        span_vec.push(Span::styled(
+            "Up/Down Arrow Keys",
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
+        span_vec.push(Span::raw(" to select a transaction, "));
+        span_vec.push(Span::styled("C", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" to cancel a selected Pending Tx."));
+
+        let instructions = Paragraph::new(Spans::from(span_vec)).wrap(Wrap { trim: true });
+        f.render_widget(instructions, balance_main_area[1]);
+
+        self.draw_transaction_lists(f, balance_main_area[2], app_state);
+        self.draw_detailed_transaction(f, balance_main_area[3], app_state);
+
+        if let Some(msg) = self.error_message.clone() {
+            draw_dialog(f, area, "Error!".to_string(), msg, Color::Red, 120, 9);
+        }
+
+        if self.confirmation_dialog {
+            draw_dialog(
+                f,
+                area,
+                "Confirm Cancellation".to_string(),
+                "Are you sure you want to cancel this pending transaction? \n(Y)es / (N)o".to_string(),
+                Color::Red,
+                120,
+                9,
+            );
+        }
     }
 
     fn on_key(&mut self, app_state: &mut AppState, c: char) {
+        if self.error_message.is_some() && '\n' == c {
+            self.error_message = None;
+            return;
+        }
+
+        if self.confirmation_dialog {
+            if 'n' == c {
+                self.confirmation_dialog = false;
+                return;
+            } else if 'y' == c {
+                if self.selected_tx_list == SelectedTransactionList::PendingTxs {
+                    if let Some(i) = self.pending_list_state.selected() {
+                        if let Some(pending_tx) = app_state.get_pending_tx(i).cloned() {
+                            if let Err(e) = Handle::current().block_on(app_state.cancel_transaction(pending_tx.tx_id)) {
+                                self.error_message = Some(format!(
+                                    "Could not cancel pending transaction.\n{}\nPress Enter to continue.",
+                                    e
+                                ));
+                            }
+                        }
+                    }
+                }
+                self.confirmation_dialog = false;
+                return;
+            }
+        }
+
         match c {
             'p' => {
                 self.selected_tx_list = SelectedTransactionList::PendingTxs;
-                app_state.pending_txs.select_first();
-                app_state.completed_txs.unselect();
+                self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
+                if self.pending_list_state.selected().is_none() {
+                    self.pending_list_state.select_first();
+                }
+            },
+            't' => {
+                self.selected_tx_list = SelectedTransactionList::CompletedTxs;
+                self.completed_list_state
+                    .set_num_items(app_state.get_completed_txs().len());
+                if self.completed_list_state.selected().is_none() {
+                    self.completed_list_state.select_first();
+                }
             },
             'c' => {
-                self.selected_tx_list = SelectedTransactionList::CompletedTxs;
-                app_state.pending_txs.unselect();
-                app_state.completed_txs.select_first();
+                if self.selected_tx_list == SelectedTransactionList::PendingTxs {
+                    self.confirmation_dialog = true;
+                    return;
+                }
             },
             '\n' => match self.selected_tx_list {
                 SelectedTransactionList::PendingTxs => {
-                    app_state.detailed_transaction = app_state.pending_txs.selected_item().cloned();
+                    self.detailed_transaction = match self.pending_list_state.selected() {
+                        None => None,
+                        Some(i) => app_state.get_pending_tx(i).cloned(),
+                    };
                 },
                 SelectedTransactionList::CompletedTxs => {
-                    app_state.detailed_transaction = app_state.completed_txs.selected_item().cloned();
+                    self.detailed_transaction = match self.completed_list_state.selected() {
+                        None => None,
+                        Some(i) => app_state.get_completed_tx(i).cloned(),
+                    };
                 },
             },
             _ => {},
@@ -320,12 +446,21 @@ impl<B: Backend> Component<B> for TransactionsTab {
     fn on_up(&mut self, app_state: &mut AppState) {
         match self.selected_tx_list {
             SelectedTransactionList::PendingTxs => {
-                app_state.pending_txs.previous();
-                app_state.detailed_transaction = app_state.pending_txs.selected_item().cloned();
+                self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
+                self.pending_list_state.previous();
+                self.detailed_transaction = match self.pending_list_state.selected() {
+                    None => None,
+                    Some(i) => app_state.get_pending_tx(i).cloned(),
+                };
             },
             SelectedTransactionList::CompletedTxs => {
-                app_state.completed_txs.previous();
-                app_state.detailed_transaction = app_state.completed_txs.selected_item().cloned();
+                self.completed_list_state
+                    .set_num_items(app_state.get_completed_txs().len());
+                self.completed_list_state.previous();
+                self.detailed_transaction = match self.completed_list_state.selected() {
+                    None => None,
+                    Some(i) => app_state.get_completed_tx(i).cloned(),
+                };
             },
         }
     }
@@ -333,13 +468,28 @@ impl<B: Backend> Component<B> for TransactionsTab {
     fn on_down(&mut self, app_state: &mut AppState) {
         match self.selected_tx_list {
             SelectedTransactionList::PendingTxs => {
-                app_state.pending_txs.next();
-                app_state.detailed_transaction = app_state.pending_txs.selected_item().cloned();
+                self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
+                self.pending_list_state.next();
+                self.detailed_transaction = match self.pending_list_state.selected() {
+                    None => None,
+                    Some(i) => app_state.get_pending_tx(i).cloned(),
+                };
             },
             SelectedTransactionList::CompletedTxs => {
-                app_state.completed_txs.next();
-                app_state.detailed_transaction = app_state.completed_txs.selected_item().cloned();
+                self.completed_list_state
+                    .set_num_items(app_state.get_completed_txs().len());
+                self.completed_list_state.next();
+                self.detailed_transaction = match self.completed_list_state.selected() {
+                    None => None,
+                    Some(i) => app_state.get_completed_tx(i).cloned(),
+                };
             },
         }
     }
+}
+
+#[derive(PartialEq)]
+pub enum SelectedTransactionList {
+    PendingTxs,
+    CompletedTxs,
 }

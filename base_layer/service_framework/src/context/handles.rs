@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::context::LazyService;
-use futures::{Future, FutureExt};
+use futures::{future, future::Either, Future, FutureExt};
 use std::{
     any,
     any::{Any, TypeId},
@@ -71,19 +71,6 @@ impl ServiceInitializerContext {
         self.inner.register(handle);
     }
 
-    /// Retrieve a handle and downcast it to return type and return a copy, otherwise None is returned
-    pub fn get_handle<H>(&self) -> Option<&H>
-    where H: 'static {
-        self.inner.get_handle()
-    }
-
-    /// Get a handle from the given type (`TypeId`) and downcast it to a type `H`.
-    /// If the item does not exist or the downcast fails, a panic occurs
-    pub fn expect_handle<H>(&self) -> H
-    where H: Clone + 'static {
-        self.inner.expect_handle()
-    }
-
     /// Call the given function with the final handles once this future is ready (`notify_ready` is called).
     pub fn lazy_service<F, S>(&self, service_fn: F) -> LazyService<F, Self, S>
     where F: FnOnce(ServiceHandles) -> S {
@@ -97,6 +84,27 @@ impl ServiceInitializerContext {
         Fut: Future<Output = ()> + Send + 'static,
     {
         task::spawn(self.wait_ready().then(f))
+    }
+
+    /// Spawn a task once handles are ready. The resolved handles are passed into this closure.
+    /// The future returned from the closure is polled on a new task until the shutdown signal is triggered.
+    pub fn spawn_until_shutdown<F, Fut>(self, f: F) -> task::JoinHandle<Option<Fut::Output>>
+    where
+        F: FnOnce(ServiceHandles) -> Fut + Send + 'static,
+        Fut: Future + Send + 'static,
+        Fut::Output: Send + 'static,
+    {
+        task::spawn(async move {
+            let shutdown_signal = self.get_shutdown_signal();
+            let _ = self.ready_signal.await;
+            let fut = f(self.inner);
+            futures::pin_mut!(fut);
+            let either = future::select(shutdown_signal, fut).await;
+            match either {
+                Either::Left((_, _)) => None,
+                Either::Right((res, _)) => Some(res),
+            }
+        })
     }
 
     /// Wait until the service handle are ready and return them when they are.
@@ -218,7 +226,7 @@ mod test {
         let trigger = Shutdown::new();
         let context = ServiceInitializerContext::new(trigger.to_signal(), trigger.to_signal());
         context.register_handle(TestHandle);
-        context.expect_handle::<TestHandle>();
-        assert!(context.get_handle::<()>().is_none());
+        context.inner.expect_handle::<TestHandle>();
+        assert!(context.inner.get_handle::<()>().is_none());
     }
 }

@@ -23,6 +23,7 @@
 
 use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
 
+use crate::helpers::database::create_mem_db;
 use tari_core::{
     blocks::Block,
     chain_storage::{
@@ -34,7 +35,6 @@ use tari_core::{
         Validators,
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     transactions::{
         tari_amount::{uT, T},
         transaction::UnblindedOutput,
@@ -44,6 +44,8 @@ use tari_core::{
 };
 use tari_mmr::MmrCacheConfig;
 use tari_storage::lmdb_store::LMDBConfig;
+
+static EMISSION: [u64; 2] = [10, 10];
 
 /// Create a simple 6 block memory-backed database.
 /// Genesis block:
@@ -138,7 +140,7 @@ pub fn create_new_blockchain(
 ) {
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -164,7 +166,7 @@ pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
 {
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -172,6 +174,6 @@ pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
         .with_block(block0.clone())
         .build();
     let db = create_lmdb_database(path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
-    let db = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let db = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
     (db, vec![block0], vec![vec![output]], consensus_manager)
 }

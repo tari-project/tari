@@ -29,7 +29,6 @@ use crate::{
         },
     },
     chain_storage::{async_db, BlockchainBackend, ChainMetadata},
-    proof_of_work::Difficulty,
 };
 
 use futures::StreamExt;
@@ -131,13 +130,17 @@ impl Listening {
                         let sync_peers = select_sync_peers(local_tip_height, &best_metadata, &peer_metadata_list);
 
                         let sync_mode = determine_sync_mode(&local, best_metadata, sync_peers);
-                        if !shared.bootstrapped_sync && sync_mode == SyncStatus::UpToDate {
-                            shared.bootstrapped_sync = true;
-                        }
                         if sync_mode.is_lagging() {
                             debug!(target: LOG_TARGET, "{}", sync_mode);
                             return StateEvent::FallenBehind(sync_mode);
                         } else {
+                            if !shared.bootstrapped_sync && sync_mode == SyncStatus::UpToDate {
+                                shared.bootstrapped_sync = true;
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Initial sync achieved, bootstrap done: {}", sync_mode
+                                );
+                            }
                             self.is_synced = true;
                             shared
                                 .set_state_info(StateInfo::Listening(ListeningInfo::new(true)))
@@ -177,28 +180,27 @@ fn select_sync_peers(
     peer_metadata_list: &[PeerChainMetadata],
 ) -> Vec<PeerChainMetadata>
 {
-    let mut sync_peers = Vec::new();
-    for peer_metadata in peer_metadata_list {
-        let peer_tip_height = peer_metadata.chain_metadata.height_of_longest_chain;
-        let peer_horizon_height = peer_metadata.chain_metadata.horizon_block(peer_tip_height.unwrap_or(0));
-        if (peer_horizon_height <= local_tip_height) &&
-            (peer_metadata.chain_metadata.best_block == best_metadata.best_block)
-        {
-            sync_peers.push(peer_metadata.clone());
-        }
-    }
-    sync_peers
+    peer_metadata_list
+        .iter()
+        // Metadata sanity checks
+        .filter(|p| p.chain_metadata.accumulated_difficulty.is_some() && p.chain_metadata.best_block.is_some())
+        // Check if the peer can provide blocks higher than the local tip height
+        .filter(|p| {
+            let peer_horizon_height = p.chain_metadata.effective_pruned_height;
+            local_tip_height >= peer_horizon_height
+        })
+        // Filter for peers that match the best metadata
+        .filter(|p| p.chain_metadata.best_block == best_metadata.best_block)
+        .cloned()
+        .collect()
 }
 
 /// Determine the best metadata from a set of metadata received from the network.
 fn best_metadata(metadata_list: &[PeerChainMetadata]) -> ChainMetadata {
     // TODO: Use heuristics to weed out outliers / dishonest nodes.
     metadata_list.iter().fold(ChainMetadata::default(), |best, current| {
-        if current
-            .chain_metadata
-            .accumulated_difficulty
-            .unwrap_or_else(Difficulty::min) >=
-            best.accumulated_difficulty.unwrap_or_else(|| 0.into())
+        if current.chain_metadata.accumulated_difficulty.unwrap_or_else(|| 0) >=
+            best.accumulated_difficulty.unwrap_or_else(|| 0)
         {
             current.chain_metadata.clone()
         } else {
@@ -209,7 +211,7 @@ fn best_metadata(metadata_list: &[PeerChainMetadata]) -> ChainMetadata {
 
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
 fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers: SyncPeers) -> SyncStatus {
-    use crate::base_node::state_machine_service::states::SyncStatus::*;
+    use SyncStatus::*;
     match network.accumulated_difficulty {
         None => {
             info!(
@@ -220,7 +222,7 @@ fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers
             UpToDate
         },
         Some(network_tip_accum_difficulty) => {
-            let local_tip_accum_difficulty = local.accumulated_difficulty.unwrap_or_else(|| 0.into());
+            let local_tip_accum_difficulty = local.accumulated_difficulty.unwrap_or_else(|| 0);
             if local_tip_accum_difficulty < network_tip_accum_difficulty {
                 let local_tip_height = local.height_of_longest_chain();
                 let network_tip_height = network.height_of_longest_chain();
@@ -276,8 +278,8 @@ mod test {
         let network_tip_height = 5000;
         let block_hash1: BlockHash = vec![0, 1, 2, 3];
         let block_hash2: BlockHash = vec![4, 5, 6, 7];
-        let accumulated_difficulty1 = Difficulty::from(200000);
-        let accumulated_difficulty2 = Difficulty::from(100000);
+        let accumulated_difficulty1 = 200000;
+        let accumulated_difficulty2 = 100000;
 
         let mut peer_metadata_list = Vec::<PeerChainMetadata>::new();
         let best_network_metadata = best_metadata(peer_metadata_list.as_slice());
@@ -296,7 +298,13 @@ mod test {
         ); // Archival node
         let peer2 = PeerChainMetadata::new(
             node_id2,
-            ChainMetadata::new(network_tip_height, block_hash1.clone(), 500, 0, accumulated_difficulty1),
+            ChainMetadata::new(
+                network_tip_height,
+                block_hash1.clone(),
+                500,
+                5000 - 500,
+                accumulated_difficulty1,
+            ),
         ); // Pruning horizon is to short to sync from
         let peer3 = PeerChainMetadata::new(
             node_id3.clone(),
@@ -304,13 +312,19 @@ mod test {
                 network_tip_height,
                 block_hash1.clone(),
                 1440,
-                0,
+                5000 - 1440,
                 accumulated_difficulty1,
             ),
         );
         let peer4 = PeerChainMetadata::new(
             node_id4,
-            ChainMetadata::new(network_tip_height, block_hash2, 2880, 0, accumulated_difficulty2),
+            ChainMetadata::new(
+                network_tip_height,
+                block_hash2,
+                2880,
+                5000 - 2880,
+                accumulated_difficulty2,
+            ),
         ); // Node running a fork
         let peer5 = PeerChainMetadata::new(
             node_id5.clone(),
@@ -318,7 +332,7 @@ mod test {
                 network_tip_height,
                 block_hash1.clone(),
                 2880,
-                0,
+                5000 - 2880,
                 accumulated_difficulty1,
             ),
         );
@@ -345,21 +359,21 @@ mod test {
     #[test]
     fn sync_mode_selection() {
         let mut local = ChainMetadata::default();
-        local.accumulated_difficulty = Some(Difficulty::from(500000));
+        local.accumulated_difficulty = Some(500000);
         match determine_sync_mode(&local, local.clone(), vec![]) {
             SyncStatus::UpToDate => assert!(true),
             _ => assert!(false),
         }
 
         let mut network = ChainMetadata::default();
-        network.accumulated_difficulty = Some(Difficulty::from(499999));
+        network.accumulated_difficulty = Some(499999);
         match determine_sync_mode(&local, network, vec![]) {
             SyncStatus::UpToDate => assert!(true),
             _ => assert!(false),
         }
 
         let mut network = ChainMetadata::default();
-        network.accumulated_difficulty = Some(Difficulty::from(500001));
+        network.accumulated_difficulty = Some(500001);
         match determine_sync_mode(&local, network.clone(), vec![]) {
             SyncStatus::Lagging(n, _) => assert_eq!(n, network),
             _ => assert!(false),
@@ -368,7 +382,7 @@ mod test {
         local.pruning_horizon = 50;
         local.height_of_longest_chain = Some(100);
         let mut network = ChainMetadata::default();
-        network.accumulated_difficulty = Some(Difficulty::from(500001));
+        network.accumulated_difficulty = Some(500001);
         network.height_of_longest_chain = Some(150);
         match determine_sync_mode(&local, network.clone(), vec![]) {
             SyncStatus::Lagging(n, _) => assert_eq!(n, network),
@@ -378,7 +392,7 @@ mod test {
         local.pruning_horizon = 50;
         local.height_of_longest_chain = None;
         let mut network = ChainMetadata::default();
-        network.accumulated_difficulty = Some(Difficulty::from(500001));
+        network.accumulated_difficulty = Some(500001);
         network.height_of_longest_chain = Some(100);
         match determine_sync_mode(&local, network.clone(), vec![]) {
             SyncStatus::LaggingBehindHorizon(n, _) => assert_eq!(n, network),
@@ -388,7 +402,7 @@ mod test {
         local.pruning_horizon = 50;
         local.height_of_longest_chain = Some(99);
         let mut network = ChainMetadata::default();
-        network.accumulated_difficulty = Some(Difficulty::from(500001));
+        network.accumulated_difficulty = Some(500001);
         network.height_of_longest_chain = Some(150);
         match determine_sync_mode(&local, network.clone(), vec![]) {
             SyncStatus::LaggingBehindHorizon(n, _) => assert_eq!(n, network),

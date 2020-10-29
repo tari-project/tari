@@ -37,9 +37,10 @@ use tari_comms::{
 };
 use tari_comms_dht::{DbConnectionUrl, Dht, DhtConfig};
 use tari_core::{
+    base_node,
     base_node::{
         chain_metadata_service::ChainMetadataServiceInitializer,
-        service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
+        service::{blockchain_state::BlockchainStateServiceHandle, BaseNodeServiceConfig, BaseNodeServiceInitializer},
         state_machine_service::initializer::BaseNodeStateMachineInitializer,
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase},
@@ -68,6 +69,7 @@ use tokio::runtime;
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
 const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
+const SERVICE_REQUEST_MINIMUM_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct BaseNodeBootstrapper<'a, B> {
     pub config: &'a GlobalConfig,
@@ -92,7 +94,12 @@ where B: BlockchainBackend + 'static
             pubsub_connector(runtime::Handle::current(), buf_size, config.buffer_rate_limit_base_node);
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
 
-        let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
+        let node_config = BaseNodeServiceConfig {
+            fetch_blocks_timeout: cmp::max(SERVICE_REQUEST_MINIMUM_TIMEOUT, config.fetch_blocks_timeout),
+            service_request_timeout: cmp::max(SERVICE_REQUEST_MINIMUM_TIMEOUT, config.service_request_timeout),
+            fetch_utxos_timeout: cmp::max(SERVICE_REQUEST_MINIMUM_TIMEOUT, config.fetch_utxos_timeout),
+            ..Default::default()
+        };
         let mempool_config = MempoolServiceConfig::default(); // TODO - make this configurable
 
         let comms_config = self.create_comms_config();
@@ -101,6 +108,9 @@ where B: BlockchainBackend + 'static
         let sync_strategy = config.block_sync_strategy.parse().unwrap();
 
         let seed_peers = utilities::parse_peer_seeds(&config.peer_seeds);
+
+        let mempool_sync = MempoolSyncInitializer::new(mempool_config, self.mempool.clone());
+        let mempool_protocol = mempool_sync.get_protocol_extension();
 
         let mut handles = StackBuilder::new(self.interrupt_signal)
             .add_initializer(P2pInitializer::new(comms_config, publisher, seed_peers))
@@ -116,7 +126,7 @@ where B: BlockchainBackend + 'static
                 self.mempool.clone(),
                 peer_message_subscriptions.clone(),
             ))
-            .add_initializer(MempoolSyncInitializer::new(mempool_config, self.mempool.clone()))
+            .add_initializer(mempool_sync)
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
                     auto_ping_interval: Some(Duration::from_secs(30)),
@@ -131,6 +141,8 @@ where B: BlockchainBackend + 'static
                 self.rules,
                 self.factories,
                 sync_strategy,
+                config.orphan_db_clean_out_threshold,
+                cmp::max(SERVICE_REQUEST_MINIMUM_TIMEOUT, config.fetch_blocks_timeout),
             ))
             .build()
             .await?;
@@ -139,6 +151,7 @@ where B: BlockchainBackend + 'static
             .take_handle::<UnspawnedCommsNode>()
             .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
 
+        let comms = comms.add_protocol_extension(mempool_protocol);
         let comms = Self::setup_rpc_services(comms, &handles);
         let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
@@ -159,12 +172,14 @@ where B: BlockchainBackend + 'static
         let dht = handles.expect_handle::<Dht>();
 
         // Add your RPC services here ‍🏴‍☠️️☮️🌊
-        let rpc_server =
-            RpcServer::new()
-                .add_service(dht.rpc_service())
-                .add_service(mempool::create_mempool_rpc_service(
-                    handles.expect_handle::<MempoolHandle>(),
-                ));
+        let rpc_server = RpcServer::new()
+            .add_service(dht.rpc_service())
+            .add_service(base_node::create_base_node_sync_rpc_service(
+                handles.expect_handle::<BlockchainStateServiceHandle>(),
+            ))
+            .add_service(mempool::create_mempool_rpc_service(
+                handles.expect_handle::<MempoolHandle>(),
+            ));
 
         comms.add_protocol_extension(rpc_server)
     }

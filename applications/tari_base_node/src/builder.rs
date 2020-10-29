@@ -81,9 +81,9 @@ const LOG_TARGET: &str = "c::bn::initialization";
 pub struct BaseNodeContext {
     base_node_comms: CommsNode,
     base_node_dht: Dht,
-    wallet_comms: CommsNode,
+    wallet_comms: Option<CommsNode>,
     base_node_handles: ServiceHandles,
-    wallet_handles: ServiceHandles,
+    wallet_handles: Option<ServiceHandles>,
     miner: Option<Miner>,
     miner_enabled: Arc<AtomicBool>,
     mining_status: Arc<AtomicBool>,
@@ -96,52 +96,66 @@ impl BaseNodeContext {
     /// starting the base node state machine. This call consumes the NodeContainer instance.
     pub async fn run(mut self) {
         info!(target: LOG_TARGET, "Tari base node has STARTED");
-        let mut wallet_output_handle = self.output_manager();
         // Start wallet & miner
-        let mut miner = self.miner.take().expect("Miner was not constructed");
-        let mut rx = miner.get_utxo_receiver_channel();
-        task::spawn(async move {
-            info!(target: LOG_TARGET, " ⚒️ Mining wallet ready to receive coins.");
-            while let Some(utxo) = rx.next().await {
-                match wallet_output_handle.add_output(utxo).await {
-                    Ok(_) => {
-                        info!(
-                            target: LOG_TARGET,
-                            "🤑💰🤑 Newly mined coinbase output added to wallet 🤑💰🤑"
-                        );
-                        // TODO Remove this when the wallet monitors the UTXO's more intelligently
-                        let mut oms_handle_clone = wallet_output_handle.clone();
-                        task::spawn(async move {
-                            delay_for(Duration::from_secs(240)).await;
-                            let _ = oms_handle_clone
-                                .validate_txos(TxoValidationType::Unspent, TxoValidationRetry::UntilSuccess)
-                                .await;
-                        });
-                    },
-                    Err(e) => warn!(target: LOG_TARGET, "Error adding output: {}", e),
+        if self.wallet_handles.is_none() {
+            info!(
+                target: LOG_TARGET,
+                "Miner and Wallet are not starting due to config setting disabling embedded Wallet instance"
+            );
+        } else if let Some(mut wallet_output_handle) = self.output_manager() {
+            let mut miner = self.miner.take().expect("Miner was not constructed");
+            let mut rx = miner.get_utxo_receiver_channel();
+            task::spawn(async move {
+                info!(target: LOG_TARGET, " ⚒️ Mining wallet ready to receive coins.");
+                while let Some(utxo) = rx.next().await {
+                    match wallet_output_handle.add_output(utxo).await {
+                        Ok(_) => {
+                            info!(
+                                target: LOG_TARGET,
+                                "🤑💰🤑 Newly mined coinbase output added to wallet 🤑💰🤑"
+                            );
+                            // TODO Remove this when the wallet monitors the UTXO's more intelligently
+                            let mut oms_handle_clone = wallet_output_handle.clone();
+                            task::spawn(async move {
+                                delay_for(Duration::from_secs(240)).await;
+                                let _ = oms_handle_clone
+                                    .validate_txos(TxoValidationType::Unspent, TxoValidationRetry::UntilSuccess)
+                                    .await;
+                            });
+                        },
+                        Err(e) => warn!(target: LOG_TARGET, "Error adding output: {}", e),
+                    }
                 }
-            }
-        });
-        task::spawn(async move {
-            info!(target: LOG_TARGET, "⚒️ Starting miner");
-            miner.mine().await;
-            info!(target: LOG_TARGET, "⚒️ Miner has shutdown");
-        });
+            });
+            task::spawn(async move {
+                info!(target: LOG_TARGET, "⚒️ Starting miner");
+                miner.mine().await;
+                info!(target: LOG_TARGET, "⚒️ Miner has shutdown");
+            });
+        }
+
         if let Err(e) = self.state_machine().shutdown_signal().await {
             warn!(target: LOG_TARGET, "Error shutting down Base Node State Machine: {}", e);
         }
         info!(target: LOG_TARGET, "Initiating communications stack shutdown");
-        future::join(
-            self.base_node_comms.wait_until_shutdown(),
-            self.wallet_comms.wait_until_shutdown(),
-        )
-        .await;
+
+        if let Some(wallet_comms) = self.wallet_comms {
+            future::join(
+                self.base_node_comms.wait_until_shutdown(),
+                wallet_comms.wait_until_shutdown(),
+            )
+            .await;
+        } else {
+            self.base_node_comms.wait_until_shutdown().await
+        }
         info!(target: LOG_TARGET, "Communications stack has shutdown");
     }
 
     /// Returns a handle to the Output Manager
-    pub fn output_manager(&self) -> OutputManagerHandle {
-        self.wallet_handles.expect_handle::<OutputManagerHandle>()
+    pub fn output_manager(&self) -> Option<OutputManagerHandle> {
+        self.wallet_handles
+            .as_ref()
+            .map(|wh| wh.expect_handle::<OutputManagerHandle>())
     }
 
     /// Returns the handle to the Comms Interface
@@ -160,8 +174,8 @@ impl BaseNodeContext {
     }
 
     /// Returns the wallet CommsNode.
-    pub fn wallet_comms(&self) -> &CommsNode {
-        &self.wallet_comms
+    pub fn wallet_comms(&self) -> Option<&CommsNode> {
+        self.wallet_comms.as_ref()
     }
 
     /// Returns the wallet CommsNode.
@@ -180,8 +194,8 @@ impl BaseNodeContext {
     }
 
     /// Returns this node's wallet identity.
-    pub fn wallet_node_identity(&self) -> Arc<NodeIdentity> {
-        self.wallet_comms.node_identity()
+    pub fn wallet_node_identity(&self) -> Option<Arc<NodeIdentity>> {
+        self.wallet_comms.as_ref().map(|wc| wc.node_identity())
     }
 
     /// Returns this node's miner enabled flag.
@@ -205,8 +219,10 @@ impl BaseNodeContext {
     }
 
     /// Return the handle to the Transaction Service
-    pub fn wallet_transaction_service(&self) -> TransactionServiceHandle {
-        self.wallet_handles.expect_handle::<TransactionServiceHandle>()
+    pub fn wallet_transaction_service(&self) -> Option<TransactionServiceHandle> {
+        self.wallet_handles
+            .as_ref()
+            .map(|wh| wh.expect_handle::<TransactionServiceHandle>())
     }
 
     /// Return the state machine channel to provide info updates
@@ -230,16 +246,33 @@ pub async fn configure_and_initialize_node(
     node_identity: Arc<NodeIdentity>,
     wallet_node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
+    cleanup_orphans_at_startup: bool,
 ) -> Result<BaseNodeContext, anyhow::Error>
 {
     let result = match &config.db_type {
         DatabaseType::Memory => {
             let backend = MemoryDatabase::<HashDigest>::default();
-            build_node_context(backend, node_identity, wallet_node_identity, config, interrupt_signal).await?
+            build_node_context(
+                backend,
+                node_identity,
+                wallet_node_identity,
+                config,
+                interrupt_signal,
+                cleanup_orphans_at_startup,
+            )
+            .await?
         },
         DatabaseType::LMDB(p) => {
             let backend = create_lmdb_database(&p, config.db_config.clone(), MmrCacheConfig::default())?;
-            build_node_context(backend, node_identity, wallet_node_identity, config, interrupt_signal).await?
+            build_node_context(
+                backend,
+                node_identity,
+                wallet_node_identity,
+                config,
+                interrupt_signal,
+                cleanup_orphans_at_startup,
+            )
+            .await?
         },
     };
     Ok(result)
@@ -262,6 +295,7 @@ async fn build_node_context<B>(
     wallet_node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
     interrupt_signal: ShutdownSignal,
+    cleanup_orphans_at_startup: bool,
 ) -> Result<BaseNodeContext, anyhow::Error>
 where
     B: BlockchainBackend + 'static,
@@ -279,7 +313,7 @@ where
         pruning_horizon: config.pruning_horizon,
         pruning_interval: config.pruned_mode_cleanup_interval,
     };
-    let db = BlockchainDatabase::new(backend, &rules, validators, db_config)?;
+    let db = BlockchainDatabase::new(backend, &rules, validators, db_config, cleanup_orphans_at_startup)?;
     let mempool_validator = MempoolValidators::new(
         TxInternalConsistencyValidator::new(factories.clone()).and_then(TxInputAndMaturityValidator::new(db.clone())),
         TxInputAndMaturityValidator::new(db.clone()),
@@ -305,41 +339,46 @@ where
     let base_node_dht = base_node_handles.expect_handle::<Dht>();
 
     //---------------------------------- Wallet --------------------------------------------//
-    let wallet_handles = WalletBootstrapper {
-        node_identity: wallet_node_identity,
-        config,
-        interrupt_signal: interrupt_signal.clone(),
-        base_node_peer: base_node_comms.node_identity().to_peer(),
-        factories,
-    }
-    .bootstrap()
-    .await?;
+    let wallet_handles = if config.enable_wallet {
+        let wallet_handles = WalletBootstrapper {
+            node_identity: wallet_node_identity,
+            config: config.clone(),
+            interrupt_signal: interrupt_signal.clone(),
+            base_node_peer: base_node_comms.node_identity().to_peer(),
+            factories,
+        }
+        .bootstrap()
+        .await?;
+        let wallet_comms = wallet_handles.expect_handle::<CommsNode>();
 
-    let wallet_comms = wallet_handles.expect_handle::<CommsNode>();
+        task::spawn(tasks::sync_peers(
+            base_node_comms.subscribe_connection_manager_events(),
+            base_node_comms.peer_manager(),
+            wallet_comms.peer_manager(),
+        ));
 
-    task::spawn(tasks::sync_peers(
-        base_node_comms.subscribe_connection_manager_events(),
-        base_node_comms.peer_manager(),
-        wallet_comms.peer_manager(),
-    ));
+        // Set the base node for the wallet to the 'local' base node
+        let base_node_public_key = base_node_comms.node_identity().public_key().clone();
+        let mut transaction_service_handle = wallet_handles.expect_handle::<TransactionServiceHandle>();
+        transaction_service_handle
+            .set_base_node_public_key(base_node_public_key.clone())
+            .await
+            .expect("Problem setting local base node public key for transaction service.");
+        let oms_handle = wallet_handles.expect_handle::<OutputManagerHandle>();
+        let state_machine = base_node_handles.expect_handle::<StateMachineHandle>();
+        tasks::spawn_transaction_protocols_and_utxo_validation(
+            state_machine,
+            transaction_service_handle,
+            oms_handle,
+            config.base_node_query_timeout,
+            base_node_public_key.clone(),
+            interrupt_signal.clone(),
+        );
 
-    // Set the base node for the wallet to the 'local' base node
-    let base_node_public_key = base_node_comms.node_identity().public_key().clone();
-    let mut transaction_service_handle = wallet_handles.expect_handle::<TransactionServiceHandle>();
-    transaction_service_handle
-        .set_base_node_public_key(base_node_public_key.clone())
-        .await
-        .expect("Problem setting local base node public key for transaction service.");
-    let oms_handle = wallet_handles.expect_handle::<OutputManagerHandle>();
-    let state_machine = base_node_handles.expect_handle::<StateMachineHandle>();
-    tasks::spawn_transaction_protocols_and_utxo_validation(
-        state_machine,
-        transaction_service_handle,
-        oms_handle,
-        config.base_node_query_timeout,
-        base_node_public_key.clone(),
-        interrupt_signal.clone(),
-    );
+        Some(wallet_handles)
+    } else {
+        None
+    };
 
     //---------------------------------- Mining --------------------------------------------//
 
@@ -373,7 +412,7 @@ where
     Ok(BaseNodeContext {
         base_node_comms,
         base_node_dht,
-        wallet_comms,
+        wallet_comms: wallet_handles.clone().map(|h| h.expect_handle::<CommsNode>()),
         base_node_handles,
         wallet_handles,
         miner: Some(miner),

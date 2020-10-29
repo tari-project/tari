@@ -77,7 +77,7 @@ impl UnspawnedCommsNode {
     /// CommsBuilder::new().add_rpc_service(server).build();
     /// ```
     #[cfg(feature = "rpc")]
-    pub fn add_rpc<T: ProtocolExtension + 'static>(mut self, rpc: T) -> Self {
+    pub fn add_rpc_server<T: ProtocolExtension + 'static>(mut self, rpc: T) -> Self {
         // Rpc router is treated the same as any other `ProtocolExtension` however this method may make it clearer for
         // users that this is the correct way to add the RPC server
         self.protocol_extensions.add(rpc);
@@ -168,6 +168,7 @@ impl UnspawnedCommsNode {
             request_rx: connectivity_rx,
             event_tx: connectivity_requester.get_event_publisher(),
             connection_manager: connection_manager_requester.clone(),
+            node_identity: node_identity.clone(),
             peer_manager: peer_manager.clone(),
             shutdown_signal: shutdown_signal.clone(),
         };

@@ -22,15 +22,14 @@
 
 use super::{
     state_machine::{DiscoveryParams, NetworkDiscoveryContext, StateEvent},
-    DhtNetworkDiscoveryRoundInfo,
     NetworkDiscoveryError,
 };
-use crate::DhtConfig;
+use crate::{network_discovery::DhtNetworkDiscoveryRoundInfo, DhtConfig};
 use log::*;
 use std::cmp;
 use tari_comms::peer_manager::{NodeId, PeerFeatures};
 
-const LOG_TARGET: &str = "comms::dht::network_discovery";
+const LOG_TARGET: &str = "comms::dht::network_discovery::ready";
 
 #[derive(Debug)]
 pub(super) struct DiscoveryReady {
@@ -39,14 +38,7 @@ pub(super) struct DiscoveryReady {
 }
 
 impl DiscoveryReady {
-    pub fn new(context: NetworkDiscoveryContext, last_discovery: DhtNetworkDiscoveryRoundInfo) -> Self {
-        Self {
-            context,
-            last_discovery: Some(last_discovery),
-        }
-    }
-
-    pub fn initial(context: NetworkDiscoveryContext) -> Self {
+    pub fn new(context: NetworkDiscoveryContext) -> Self {
         Self {
             context,
             last_discovery: None,
@@ -54,6 +46,8 @@ impl DiscoveryReady {
     }
 
     pub async fn next_event(&mut self) -> StateEvent {
+        self.last_discovery = self.context.last_round().await;
+
         match self.process().await {
             Ok(event) => event,
             Err(err) => err.into(),
@@ -66,6 +60,17 @@ impl DiscoveryReady {
 
         // We don't have many peers - let's aggressively probe for them
         if num_peers < self.context.config.network_discovery.min_desired_peers {
+            if self.context.num_rounds() >= self.config().network_discovery.idle_after_num_rounds {
+                warn!(
+                    target: LOG_TARGET,
+                    "Still unable to obtain at minimum desired peers ({}) after {} rounds. Idling...",
+                    self.config().network_discovery.min_desired_peers,
+                    self.context.num_rounds(),
+                );
+                self.context.reset_num_rounds();
+                return Ok(StateEvent::Idle);
+            }
+
             let peers = self
                 .context
                 .peer_manager
@@ -74,14 +79,27 @@ impl DiscoveryReady {
                     self.previous_sync_peers(),
                 )
                 .await?;
+            let peers = peers.into_iter().map(|p| p.node_id).collect::<Vec<_>>();
+
+            if peers.is_empty() {
+                debug!(
+                    target: LOG_TARGET,
+                    "No more sync peers after round #{}. Idling...",
+                    self.context.num_rounds()
+                );
+                return Ok(StateEvent::Idle);
+            }
+
             return Ok(StateEvent::BeginDiscovery(DiscoveryParams {
                 // All peers
                 num_peers_to_request: None,
-                peers: peers.into_iter().map(|p| p.node_id).collect(),
+                peers,
             }));
         }
 
-        if let Some(info) = self.last_discovery.as_ref() {
+        let last_round = self.context.last_round().await;
+
+        if let Some(ref info) = last_round {
             // A discovery round just completed
             let round_num = self.context.increment_num_rounds();
             debug!(target: LOG_TARGET, "Completed peer round #{} ({})", round_num + 1, info);
@@ -106,12 +124,17 @@ impl DiscoveryReady {
             }
         }
 
-        let peers = match self.last_discovery {
+        let peers = match last_round {
             Some(ref stats) => {
                 let num_peers_to_select =
                     cmp::min(stats.num_new_neighbours, self.config().network_discovery.max_sync_peers);
 
                 if stats.has_new_neighbours() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Last peer sync round found {} new neighbour(s). Attempting to sync from those neighbours",
+                        stats.num_new_neighbours
+                    );
                     self.context
                         .peer_manager
                         .closest_peers(
@@ -123,34 +146,43 @@ impl DiscoveryReady {
                         .await?
                         .into_iter()
                         .map(|p| p.node_id)
-                        .collect()
+                        .collect::<Vec<_>>()
                 } else {
-                    // As soon as we cannot find any more neighbours, enter passive mode
+                    debug!(
+                        target: LOG_TARGET,
+                        "Last peer sync round found no new neighbours. Transitioning to OnConnectMode",
+                    );
                     return Ok(StateEvent::OnConnectMode);
                 }
             },
-            None => self
-                .context
-                .peer_manager
-                .random_peers(
+            None => {
+                debug!(
+                    target: LOG_TARGET,
+                    "No previous round, selecting {} random peers for peer sync",
                     self.config().network_discovery.max_sync_peers,
-                    self.previous_sync_peers(),
-                )
-                .await?
-                .into_iter()
-                .map(|p| p.node_id)
-                .collect(),
+                );
+                self.context
+                    .peer_manager
+                    .random_peers(
+                        self.config().network_discovery.max_sync_peers,
+                        self.previous_sync_peers(),
+                    )
+                    .await?
+                    .into_iter()
+                    .map(|p| p.node_id)
+                    .collect::<Vec<_>>()
+            },
         };
 
-        // let max_accept_closer_peers = cmp::max(
-        //     // Want to get to the min_desired_peers as quickly as possible
-        //     self.config()
-        //         .network_discovery
-        //         .min_desired_peers
-        //         .saturating_sub(num_peers),
-        //     // Otherwise we want to be a bit more 'cautious' about accepting neighbouring peers
-        //     self.config().num_neighbouring_nodes,
-        // );
+        if peers.is_empty() {
+            debug!(
+                target: LOG_TARGET,
+                "No more sync peers after round #{}. Idling...",
+                self.context.num_rounds()
+            );
+            return Ok(StateEvent::Idle);
+        }
+
         Ok(StateEvent::BeginDiscovery(DiscoveryParams {
             // Request all peers
             num_peers_to_request: None,

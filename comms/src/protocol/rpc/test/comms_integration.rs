@@ -50,7 +50,7 @@ async fn run_service() {
         .with_peer_storage(CommsDatabase::new())
         .build()
         .unwrap()
-        .add_rpc(RpcServer::new().add_service(rpc_service))
+        .add_rpc_server(RpcServer::new().add_service(rpc_service))
         .spawn_with_transport(MemoryTransport)
         .await
         .unwrap();

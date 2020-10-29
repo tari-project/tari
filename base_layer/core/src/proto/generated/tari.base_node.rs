@@ -11,8 +11,8 @@ pub struct ChainMetadata {
     #[prost(uint64, tag = "4")]
     pub pruning_horizon: u64,
     /// The current geometric mean of the pow of the chain tip, or `None` if there is no chain
-    #[prost(message, optional, tag = "5")]
-    pub accumulated_difficulty: ::std::option::Option<u64>,
+    #[prost(bytes, tag = "5")]
+    pub accumulated_difficulty: std::vec::Vec<u8>,
     /// The effective height of the pruning horizon. This indicates from what height
     /// a full block can be provided (exclusive).
     /// If `effective_pruned_height` is equal to the `height_of_longest_chain` no blocks can be provided.
@@ -98,6 +98,44 @@ pub struct MmrNodes {
     #[prost(bytes, tag = "2")]
     pub deleted: std::vec::Vec<u8>,
 }
+/// Request message used to initiate a sync
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SyncBlocksRequest {
+    /// Start sending from this hash (exclusive)
+    #[prost(bytes, tag = "1")]
+    pub start_hash: std::vec::Vec<u8>,
+    /// Number of blocks to send. If this is zero (empty) the peer SHOULD send to their tip height
+    #[prost(uint64, tag = "2")]
+    pub count: u64,
+}
+/// Request message used to initiate a sync
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SyncHeadersRequest {
+    /// Start sending from this hash (exclusive)
+    #[prost(bytes, tag = "1")]
+    pub start_hash: std::vec::Vec<u8>,
+    /// Number of blocks to send. If this is zero (empty) the peer SHOULD send to their tip height
+    #[prost(uint64, tag = "2")]
+    pub count: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FindChainSplitRequest {
+    #[prost(bytes, repeated, tag = "1")]
+    pub block_hashes: ::std::vec::Vec<std::vec::Vec<u8>>,
+    #[prost(uint64, tag = "2")]
+    pub count: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FindChainSplitResponse {
+    /// An ordered list of headers starting from next header after the matching hash, up until
+    /// `FindChainSplitRequest::count`
+    #[prost(message, repeated, tag = "1")]
+    pub headers: ::std::vec::Vec<super::core::BlockHeader>,
+    /// The index of the hash that matched from `FindChainSplitRequest::block_hashes`. This value could also be used to
+    /// know how far back a split occurs.
+    #[prost(uint32, tag = "2")]
+    pub found_hash_index: u32,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum MmrTree {
@@ -132,12 +170,12 @@ pub mod base_node_service_request {
         /// Indicates a FetchHeadersWithHashes request.
         #[prost(message, tag = "5")]
         FetchHeadersWithHashes(super::HashOutputs),
-        /// Indicates a FetchUtxos request.
+        /// Indicates a FetchMatchingUtxos request.
         #[prost(message, tag = "6")]
-        FetchUtxos(super::HashOutputs),
-        /// Indicates a FetchBlocks request.
+        FetchMatchingUtxos(super::HashOutputs),
+        /// Indicates a FetchMatchingBlocks request.
         #[prost(message, tag = "7")]
-        FetchBlocks(super::BlockHeights),
+        FetchMatchingBlocks(super::BlockHeights),
         /// Indicates a FetchBlocksWithHashes request.
         #[prost(message, tag = "8")]
         FetchBlocksWithHashes(super::HashOutputs),
@@ -153,12 +191,12 @@ pub mod base_node_service_request {
         /// Indicates a FetchMmrNodeCount request.
         #[prost(message, tag = "13")]
         FetchMmrNodeCount(super::FetchMmrNodeCount),
-        /// Indicates a FetchMmrNodes request.
+        /// Indicates a FetchMatchingMmrNodes request.
         #[prost(message, tag = "14")]
-        FetchMmrNodes(super::FetchMmrNodes),
-        /// Indicates a FetchTxos request.
+        FetchMatchingMmrNodes(super::FetchMatchingMmrNodes),
+        /// Indicates a FetchMatchingTxos request.
         #[prost(message, tag = "15")]
-        FetchTxos(super::HashOutputs),
+        FetchMatchingTxos(super::HashOutputs),
         /// Indicates a Fetch block with kernels request
         #[prost(message, tag = "16")]
         FetchBlocksWithKernels(super::Signatures),
@@ -205,7 +243,7 @@ pub struct FetchMmrNodeCount {
     pub height: u64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct FetchMmrNodes {
+pub struct FetchMatchingMmrNodes {
     #[prost(enumeration = "MmrTree", tag = "1")]
     pub tree: i32,
     #[prost(uint32, tag = "2")]

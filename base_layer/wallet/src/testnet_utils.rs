@@ -72,6 +72,7 @@ use tari_crypto::{
     tari_utilities::hex::Hex,
 };
 use tari_p2p::{initialization::CommsConfig, transport::TransportType};
+use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::time::delay_for;
 
 // Used to generate test wallet data
@@ -118,6 +119,7 @@ pub async fn create_wallet(
     secret_key: CommsSecretKey,
     public_address: Multiaddr,
     datastore_path: PathBuf,
+    shutdown_signal: ShutdownSignal,
 ) -> Wallet<WalletMemoryDatabase, TransactionMemoryDatabase, OutputManagerMemoryDatabase, ContactsServiceMemoryDatabase>
 {
     let factories = CryptoFactories::default();
@@ -153,6 +155,7 @@ pub async fn create_wallet(
         TransactionMemoryDatabase::new(),
         OutputManagerMemoryDatabase::new(),
         ContactsServiceMemoryDatabase::new(),
+        shutdown_signal,
     )
     .await
     .expect("Could not create Wallet")
@@ -166,8 +169,8 @@ pub fn get_next_memory_address() -> Multiaddr {
 /// This function will generate a set of test data for the supplied wallet. Takes a few seconds to complete
 pub async fn generate_wallet_test_data<
     T: WalletBackend,
-    U: TransactionBackend + Clone,
-    V: OutputManagerBackend + Clone,
+    U: TransactionBackend,
+    V: OutputManagerBackend,
     W: ContactsBackend,
     P: AsRef<Path>,
 >(
@@ -244,10 +247,13 @@ pub async fn generate_wallet_test_data<
     let alice_temp_dir = data_path.as_ref().join(random_string(8));
     let _ = std::fs::create_dir(&alice_temp_dir);
 
+    let mut shutdown_a = Shutdown::new();
+    let mut shutdown_b = Shutdown::new();
     let mut wallet_alice = create_wallet(
         generated_contacts[0].0.clone(),
         generated_contacts[0].1.clone(),
         alice_temp_dir.clone(),
+        shutdown_a.to_signal(),
     )
     .await;
     let mut alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();
@@ -267,6 +273,7 @@ pub async fn generate_wallet_test_data<
         generated_contacts[1].0.clone(),
         generated_contacts[1].1.clone(),
         bob_temp_dir.clone(),
+        shutdown_b.to_signal(),
     )
     .await;
     let mut bob_event_stream = wallet_bob.transaction_service.get_event_stream_fused();
@@ -692,8 +699,10 @@ pub async fn generate_wallet_test_data<
 
     delay_for(Duration::from_secs(1)).await;
 
-    wallet_alice.shutdown().await;
-    wallet_bob.shutdown().await;
+    shutdown_a.trigger().unwrap();
+    shutdown_b.trigger().unwrap();
+    wallet_alice.wait_until_shutdown().await;
+    wallet_bob.wait_until_shutdown().await;
 
     let _ = std::fs::remove_dir_all(&alice_temp_dir);
     let _ = std::fs::remove_dir_all(&bob_temp_dir);
@@ -708,8 +717,8 @@ pub async fn generate_wallet_test_data<
 /// CompletedTransaction with the Broadcast status indicating it is in a base node Mempool but not yet mined
 pub async fn complete_sent_transaction<
     T: WalletBackend,
-    U: TransactionBackend + Clone,
-    V: OutputManagerBackend + Clone,
+    U: TransactionBackend,
+    V: OutputManagerBackend,
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,
@@ -752,8 +761,8 @@ pub async fn complete_sent_transaction<
 /// wallet sending a transaction to this wallet which will become a PendingInboundTransaction
 pub async fn receive_test_transaction<
     T: WalletBackend,
-    U: TransactionBackend + Clone,
-    V: OutputManagerBackend + Clone,
+    U: TransactionBackend,
+    V: OutputManagerBackend,
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,
@@ -783,8 +792,8 @@ pub async fn receive_test_transaction<
 /// but not yet mined
 pub async fn finalize_received_transaction<
     T: WalletBackend,
-    U: TransactionBackend + Clone,
-    V: OutputManagerBackend + Clone,
+    U: TransactionBackend,
+    V: OutputManagerBackend,
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,
@@ -802,8 +811,8 @@ pub async fn finalize_received_transaction<
 /// funds that were pending become spent and available respectively.
 pub async fn broadcast_transaction<
     T: WalletBackend,
-    U: TransactionBackend + Clone,
-    V: OutputManagerBackend + Clone,
+    U: TransactionBackend,
+    V: OutputManagerBackend,
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,
@@ -819,12 +828,7 @@ pub async fn broadcast_transaction<
 /// the event when a CompletedTransaction that is in the Broadcast status, is in a mempool but not mined, beocmes
 /// mined/confirmed. After this function is called the status of the CompletedTransaction becomes `Mined` and the funds
 /// that were pending become spent and available respectively.
-pub async fn mine_transaction<
-    T: WalletBackend,
-    U: TransactionBackend + Clone,
-    V: OutputManagerBackend + Clone,
-    W: ContactsBackend,
->(
+pub async fn mine_transaction<T: WalletBackend, U: TransactionBackend, V: OutputManagerBackend, W: ContactsBackend>(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
 ) -> Result<(), WalletError>

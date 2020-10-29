@@ -135,7 +135,7 @@ fn create_runtime() -> Runtime {
         .unwrap()
 }
 
-pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static, P: AsRef<Path>>(
+pub fn setup_transaction_service<T: TransactionBackend + 'static, P: AsRef<Path>>(
     runtime: &mut Runtime,
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
@@ -191,7 +191,7 @@ pub fn setup_transaction_service<T: TransactionBackend + Clone + 'static, P: AsR
 
 /// This utility function creates a Transaction service without using the Service Framework Stack and exposes all the
 /// streams for testing purposes.
-pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'static>(
+pub fn setup_transaction_service_no_comms<T: TransactionBackend + 'static>(
     runtime: &mut Runtime,
     factories: CryptoFactories,
     tx_backend: T,
@@ -218,8 +218,8 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + Clone + 'stati
 }
 
 pub fn setup_transaction_service_no_comms_and_oms_backend<
-    T: TransactionBackend + Clone + 'static,
-    S: OutputManagerBackend + Clone + 'static,
+    T: TransactionBackend + 'static,
+    S: OutputManagerBackend + 'static,
 >(
     runtime: &mut Runtime,
     factories: CryptoFactories,
@@ -396,12 +396,7 @@ fn try_decode_base_node_request(bytes: Vec<u8>) -> Option<BaseNodeProto::BaseNod
     };
 }
 
-fn manage_single_transaction<T: TransactionBackend + Clone + 'static>(
-    alice_backend: T,
-    bob_backend: T,
-    database_path: String,
-)
-{
+fn manage_single_transaction<T: TransactionBackend + 'static>(alice_backend: T, bob_backend: T, database_path: String) {
     let mut runtime = create_runtime();
 
     let factories = CryptoFactories::default();
@@ -577,7 +572,7 @@ fn manage_single_transaction_sqlite_db() {
     );
 }
 
-fn manage_multiple_transactions<T: TransactionBackend + Clone + 'static>(
+fn manage_multiple_transactions<T: TransactionBackend + 'static>(
     alice_backend: T,
     bob_backend: T,
     carol_backend: T,
@@ -857,7 +852,7 @@ fn manage_multiple_transactions_sqlite_db() {
     );
 }
 
-fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + Clone + 'static>(alice_backend: T) {
+fn test_accepting_unknown_tx_id_and_malformed_reply<T: TransactionBackend + 'static>(alice_backend: T) {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
 
@@ -966,7 +961,7 @@ fn test_accepting_unknown_tx_id_and_malformed_reply_sqlite_db() {
     });
 }
 
-fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + Clone + 'static>(alice_backend: T, bob_backend: T) {
+fn finalize_tx_with_incorrect_pubkey<T: TransactionBackend + 'static>(alice_backend: T, bob_backend: T) {
     let mut runtime = create_runtime();
     let factories = CryptoFactories::default();
 
@@ -1081,7 +1076,7 @@ fn finalize_tx_with_incorrect_pubkey_sqlite_db() {
     });
 }
 
-fn finalize_tx_with_missing_output<T: TransactionBackend + Clone + 'static>(alice_backend: T, bob_backend: T) {
+fn finalize_tx_with_missing_output<T: TransactionBackend + 'static>(alice_backend: T, bob_backend: T) {
     let mut runtime = create_runtime();
     let factories = CryptoFactories::default();
 
@@ -2688,7 +2683,7 @@ fn transaction_cancellation_when_not_in_mempool() {
     assert_eq!(balance.available_balance, alice_total_available);
 }
 
-fn test_transaction_cancellation<T: TransactionBackend + Clone + 'static>(backend: T) {
+fn test_transaction_cancellation<T: TransactionBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
@@ -3692,7 +3687,7 @@ fn test_handling_coinbase_transactions() {
                 BaseNodeRequestProto::GetChainMetadata(_c) => {
                     chain_metadata_request.insert(bsr.request_key);
                 },
-                BaseNodeRequestProto::FetchUtxos(f) => {
+                BaseNodeRequestProto::FetchMatchingUtxos(f) => {
                     fetch_utxo_request.insert(bsr.request_key, f);
                 },
                 _ => (),
@@ -3726,7 +3721,7 @@ fn test_handling_coinbase_transactions() {
             height_of_longest_chain: Some(20),
             best_block: None,
             pruning_horizon: 0,
-            accumulated_difficulty: None,
+            accumulated_difficulty: Vec::new(),
             effective_pruned_height: 0,
         })),
         is_synced: false,
@@ -3814,7 +3809,7 @@ fn test_handling_coinbase_transactions() {
             height_of_longest_chain: Some(blockheight2),
             best_block: None,
             pruning_horizon: 0,
-            accumulated_difficulty: None,
+            accumulated_difficulty: Vec::new(),
             effective_pruned_height: 0,
         })),
         is_synced: false,
@@ -3890,7 +3885,7 @@ fn test_handling_coinbase_transactions() {
                     }
                     metadata_count += 1;
                 },
-                BaseNodeRequestProto::FetchUtxos(_f) => {
+                BaseNodeRequestProto::FetchMatchingUtxos(_f) => {
                     if request_key == 0 {
                         request_key = bsr.request_key;
                     } else {

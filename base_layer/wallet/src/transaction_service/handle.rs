@@ -24,7 +24,7 @@ use crate::{
     output_manager_service::TxId,
     transaction_service::{
         error::TransactionServiceError,
-        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
+        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
     },
 };
 use aes_gcm::Aes256Gcm;
@@ -46,6 +46,7 @@ pub enum TransactionServiceRequest {
     GetCancelledPendingOutboundTransactions,
     GetCancelledCompletedTransactions,
     GetCompletedTransaction(TxId),
+    GetAnyTransaction(TxId),
     SetBaseNodePublicKey(CommsPublicKey),
     SendTransaction((CommsPublicKey, MicroTari, MicroTari, String)),
     CancelTransaction(TxId),
@@ -110,6 +111,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::MineTransaction(id) => f.write_str(&format!("MineTransaction ({})", id)),
             #[cfg(feature = "test_harness")]
             Self::BroadcastTransaction(id) => f.write_str(&format!("BroadcastTransaction ({})", id)),
+            TransactionServiceRequest::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
         }
     }
 }
@@ -132,6 +134,7 @@ pub enum TransactionServiceResponse {
     EncryptionRemoved,
     CoinbaseTransactionGenerated(Box<Transaction>),
     ProtocolsRestarted,
+    AnyTransaction(Box<Option<WalletTransaction>>),
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -151,6 +154,7 @@ pub enum TransactionEvent {
     ReceivedTransaction(TxId),
     ReceivedTransactionReply(TxId),
     ReceivedFinalizedTransaction(TxId),
+    TransactionDiscoveryInProgress(TxId),
     TransactionDirectSendResult(TxId, bool),
     TransactionStoreForwardSendResult(TxId, bool),
     TransactionCancelled(TxId),
@@ -309,6 +313,21 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::CompletedTransaction(t) => Ok(*t),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_any_transaction(
+        &mut self,
+        tx_id: TxId,
+    ) -> Result<Option<WalletTransaction>, TransactionServiceError>
+    {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetAnyTransaction(tx_id))
+            .await??
+        {
+            TransactionServiceResponse::AnyTransaction(t) => Ok(*t),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

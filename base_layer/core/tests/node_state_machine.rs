@@ -34,6 +34,7 @@ use helpers::{
         find_header_with_achieved_difficulty,
     },
     chain_metadata::{random_peer_metadata, MockChainMetadata},
+    database::create_mem_db,
     nodes::{
         create_network_with_2_base_nodes_with_config,
         create_network_with_3_base_nodes_with_config,
@@ -69,9 +70,7 @@ use tari_core::{
     },
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     mempool::MempoolServiceConfig,
-    proof_of_work::Difficulty,
     transactions::{helpers::spend_utxos, types::CryptoFactories},
     txn_schema,
     validation::{block_validators::MockStatelessBlockValidator, mocks::MockValidator},
@@ -86,7 +85,7 @@ use tokio::{
     sync::{broadcast, watch},
     time,
 };
-
+static EMISSION: [u64; 2] = [10, 10];
 #[test]
 fn test_listening_lagging() {
     let mut runtime = Runtime::new().unwrap();
@@ -94,7 +93,7 @@ fn test_listening_lagging() {
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -194,7 +193,7 @@ fn test_event_channel() {
     let PeerChainMetadata {
         node_id,
         chain_metadata,
-    } = random_peer_metadata(10, 5_000.into());
+    } = random_peer_metadata(10, 5_000);
     runtime
         .block_on(mock.publish_chain_metadata(&node_id, &chain_metadata))
         .expect("Could not publish metadata");
@@ -206,7 +205,7 @@ fn test_event_channel() {
         match *event.unwrap().unwrap() {
             StateEvent::FallenBehind(SyncStatus::Lagging(ref data, ref peers)) => {
                 assert_eq!(data.height_of_longest_chain, Some(10));
-                assert_eq!(data.accumulated_difficulty, Some(5_000.into()));
+                assert_eq!(data.accumulated_difficulty, Some(5_000));
                 assert_eq!(peers[0].node_id, node_id);
             },
             _ => assert!(false),
@@ -221,7 +220,7 @@ fn test_block_sync() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -277,6 +276,9 @@ fn test_block_sync() {
         }
 
         // Sync Blocks from genesis block to tip
+        let is_bootstrapped = status_event_receiver.recv().await.unwrap().bootstrapped;
+        assert!(!is_bootstrapped);
+
         let mut network_tip = bob_db.get_chain_metadata().unwrap();
         let mut sync_peers = vec![SyncPeer {
             node_id: bob_node.node_identity.node_id().clone(),
@@ -295,15 +297,16 @@ fn test_block_sync() {
             );
         }
 
+        // Bootstrap status changed to true after initial sync was achieved
         let is_bootstrapped = status_event_receiver.recv().await.unwrap().bootstrapped;
+        assert!(is_bootstrapped);
 
-        assert!(!is_bootstrapped);
         // Publish on the metadata that will indicate we are synced in the Listening state
         let _ = mock
             .publish_chain_metadata(bob_node.node_identity.node_id(), &network_tip)
             .await;
         // Publish a second event saying that we are lagging again so that we will leave the Listening state
-        let higher_difficulty = Difficulty::from(u64::MAX);
+        let higher_difficulty = std::u128::MAX;
         network_tip.accumulated_difficulty = Some(higher_difficulty);
 
         let _ = mock
@@ -313,6 +316,7 @@ fn test_block_sync() {
         // Run the listening State
         let _state_event = Listening { is_synced: true }.next_event(&mut alice_state_machine).await;
 
+        // Bootstrap status remains unchanged
         let is_bootstrapped = status_event_receiver.recv().await.unwrap().bootstrapped;
         assert!(is_bootstrapped);
     });
@@ -325,7 +329,7 @@ fn test_lagging_block_sync() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -414,7 +418,7 @@ fn test_block_sync_recovery() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -494,7 +498,6 @@ fn test_block_sync_recovery() {
         }
     });
 }
-
 #[test]
 fn test_forked_block_sync() {
     let mut runtime = Runtime::new().unwrap();
@@ -502,7 +505,7 @@ fn test_forked_block_sync() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -601,8 +604,9 @@ fn test_sync_peer_banning() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
+
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -679,7 +683,7 @@ fn test_sync_peer_banning() {
         let bob_db = &bob_node.blockchain_db;
         let bob_public_key = &bob_node.node_identity.public_key();
         for height in 1..=2 {
-            let coinbase_value = consensus_manager.emission_schedule(0).block_reward(height);
+            let coinbase_value = consensus_manager.emission_schedule().block_reward(height);
             let (mut coinbase_utxo, coinbase_kernel, mut coinbase) = create_coinbase(
                 &factories,
                 coinbase_value,
@@ -706,7 +710,7 @@ fn test_sync_peer_banning() {
         // Alice fork
         let mut alice_prev_block = prev_block.clone();
         for height in 3..=4 {
-            let coinbase_value = consensus_manager.emission_schedule(0).block_reward(height);
+            let coinbase_value = consensus_manager.emission_schedule().block_reward(height);
             let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
                 &factories,
                 coinbase_value,

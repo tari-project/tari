@@ -131,8 +131,12 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::FetchKernels(kernel_hashes) => {
                 let mut kernels = Vec::<TransactionKernel>::new();
                 for hash in kernel_hashes {
-                    if let Ok(kernel) = async_db::fetch_kernel(self.blockchain_db.clone(), hash.clone()).await {
-                        kernels.push(kernel);
+                    match async_db::fetch_kernel(self.blockchain_db.clone(), hash.clone()).await {
+                        Ok(kernel) => kernels.push(kernel),
+                        Err(err) => {
+                            error!(target: LOG_TARGET, "Could not fetch kernel {}", err.to_string());
+                            return Err(err.into());
+                        },
                     }
                 }
                 Ok(NodeCommsResponse::TransactionKernels(kernels))
@@ -140,8 +144,14 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::FetchHeaders(block_nums) => {
                 let mut block_headers = Vec::<BlockHeader>::new();
                 for block_num in block_nums {
-                    if let Ok(block_header) = async_db::fetch_header(self.blockchain_db.clone(), *block_num).await {
-                        block_headers.push(block_header);
+                    match async_db::fetch_header(self.blockchain_db.clone(), *block_num).await {
+                        Ok(block_header) => {
+                            block_headers.push(block_header);
+                        },
+                        Err(err) => {
+                            error!(target: LOG_TARGET, "Could not fetch headers: {}", err.to_string());
+                            return Err(err.into());
+                        },
                     }
                 }
                 Ok(NodeCommsResponse::BlockHeaders(block_headers))
@@ -149,10 +159,18 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::FetchHeadersWithHashes(block_hashes) => {
                 let mut block_headers = Vec::<BlockHeader>::new();
                 for block_hash in block_hashes {
-                    if let Ok(block_header) =
-                        async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), block_hash.clone()).await
-                    {
-                        block_headers.push(block_header);
+                    match async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), block_hash.clone()).await {
+                        Ok(block_header) => {
+                            block_headers.push(block_header);
+                        },
+                        Err(err) => {
+                            error!(
+                                target: LOG_TARGET,
+                                "Could not fetch headers with hashes:{}",
+                                err.to_string()
+                            );
+                            return Err(err.into());
+                        },
                     }
                 }
                 Ok(NodeCommsResponse::BlockHeaders(block_headers))
@@ -162,47 +180,68 @@ where T: BlockchainBackend + 'static
                 let mut starting_block = async_db::fetch_header(self.blockchain_db.clone(), 0).await?;
                 // Find first header that matches
                 for header_hash in header_hashes {
-                    if let Ok(from_block) =
-                        async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), header_hash.clone()).await
-                    {
-                        starting_block = from_block;
-                        break;
+                    match async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), header_hash.clone()).await {
+                        Ok(from_block) => {
+                            starting_block = from_block;
+                            break;
+                        },
+                        Err(err) => {
+                            // Not an error. The header requested is simply not in our chain.
+                            // Logging it as debug because it may not just be not found.
+                            debug!(
+                                target: LOG_TARGET,
+                                "Skipping header {} when searching for matching headers in our chain. Err: {}",
+                                header_hash.to_hex(),
+                                err.to_string()
+                            );
+                        },
                     }
                 }
                 let mut headers = vec![];
                 for i in 1..MAX_HEADERS_PER_RESPONSE {
-                    if let Ok(header) =
-                        async_db::fetch_header(self.blockchain_db.clone(), starting_block.height + i as u64).await
-                    {
-                        let hash = header.hash();
-                        headers.push(header);
-                        if &hash == stopping_hash {
-                            break;
-                        }
+                    match async_db::fetch_header(self.blockchain_db.clone(), starting_block.height + i as u64).await {
+                        Ok(header) => {
+                            let hash = header.hash();
+                            headers.push(header);
+                            if &hash == stopping_hash {
+                                break;
+                            }
+                        },
+                        Err(err) => {
+                            error!(
+                                target: LOG_TARGET,
+                                "Could not fetch header at {}:{}",
+                                starting_block.height + i as u64,
+                                err.to_string()
+                            );
+                            return Err(err.into());
+                        },
                     }
                 }
 
                 Ok(NodeCommsResponse::FetchHeadersAfterResponse(headers))
             },
-            NodeCommsRequest::FetchUtxos(utxo_hashes) => {
+            NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut utxos = Vec::<TransactionOutput>::new();
                 for hash in utxo_hashes {
+                    // Not finding a requested UTXO is not an error; UTXO validation depends on this
                     if let Ok(utxo) = async_db::fetch_utxo(self.blockchain_db.clone(), hash.clone()).await {
                         utxos.push(utxo);
                     }
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
             },
-            NodeCommsRequest::FetchTxos(txo_hashes) => {
+            NodeCommsRequest::FetchMatchingTxos(txo_hashes) => {
                 let mut txos = Vec::<TransactionOutput>::new();
                 for hash in txo_hashes {
+                    // Not finding a requested TXO is not an error; TXO validation depends on this
                     if let Ok(Some(txo)) = async_db::fetch_txo(self.blockchain_db.clone(), hash.clone()).await {
                         txos.push(txo);
                     }
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(txos))
             },
-            NodeCommsRequest::FetchBlocks(block_nums) => {
+            NodeCommsRequest::FetchMatchingBlocks(block_nums) => {
                 let mut blocks = Vec::<HistoricalBlock>::with_capacity(block_nums.len());
                 for block_num in block_nums {
                     debug!(target: LOG_TARGET, "A peer has requested block {}", block_num);
@@ -361,7 +400,7 @@ where T: BlockchainBackend + 'static
                 let node_count = async_db::fetch_mmr_node_count(self.blockchain_db.clone(), *tree, *height).await?;
                 Ok(NodeCommsResponse::MmrNodeCount(node_count))
             },
-            NodeCommsRequest::FetchMmrNodes(tree, pos, count, hist_height) => {
+            NodeCommsRequest::FetchMatchingMmrNodes(tree, pos, count, hist_height) => {
                 let mut added = Vec::<Vec<u8>>::with_capacity(*count as usize);
                 let mut deleted = Bitmap::create();
                 match async_db::fetch_mmr_nodes(self.blockchain_db.clone(), *tree, *pos, *count, Some(*hist_height))
@@ -378,7 +417,7 @@ where T: BlockchainBackend + 'static
                     },
                     // We need to suppress the error as another node might ask for mmr nodes we dont have, so we
                     // return ok([])
-                    Err(e) => debug!(
+                    Err(e) => warn!(
                         target: LOG_TARGET,
                         "Could not provide requested mmr nodes (pos:{},count:{}) to peer because: {}",
                         pos,
@@ -386,6 +425,7 @@ where T: BlockchainBackend + 'static
                         e.to_string()
                     ),
                 }
+                deleted.run_optimize();
                 Ok(NodeCommsResponse::MmrNodes(added, deleted.serialize()))
             },
         }
@@ -523,6 +563,10 @@ where T: BlockchainBackend + 'static
         height: u64,
     ) -> Result<Difficulty, CommsInterfaceError>
     {
+        let height_of_longest_chain = async_db::get_chain_metadata(self.blockchain_db.clone())
+            .await?
+            .height_of_longest_chain
+            .ok_or_else(|| CommsInterfaceError::UnexpectedApiResponse)?;
         trace!(
             target: LOG_TARGET,
             "Calculating target difficulty at height:{} for PoW:{}",
@@ -531,15 +575,20 @@ where T: BlockchainBackend + 'static
         );
         let constants = self.consensus_manager.consensus_constants(height);
         let block_window = constants.get_difficulty_block_window() as usize;
-        let target_difficulties = self
-            .blockchain_db
-            .fetch_target_difficulties(pow_algo, height, block_window)?;
+        let target_difficulties = async_db::fetch_target_difficulties(
+            self.blockchain_db.clone(),
+            pow_algo,
+            height_of_longest_chain,
+            block_window,
+        )
+        .await?;
 
         let target = get_target_difficulty(
             target_difficulties,
             block_window,
             constants.get_diff_target_block_interval(pow_algo),
             constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
             constants.get_difficulty_max_block_interval(pow_algo),
         )?;
         debug!(target: LOG_TARGET, "Target difficulty:{} for PoW:{}", target, pow_algo);

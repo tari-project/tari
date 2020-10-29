@@ -30,6 +30,7 @@ use crate::helpers::{
         generate_new_block_with_achieved_difficulty,
         generate_new_block_with_coinbase,
     },
+    database::{create_mem_db, create_orphan_block},
     sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb},
     test_blockchain::TestBlockchain,
 };
@@ -53,7 +54,6 @@ use tari_core::{
         Validators,
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
-    helpers::{create_mem_db, create_orphan_block},
     proof_of_work::Difficulty,
     transactions::{
         helpers::{create_test_kernel, create_utxo, spend_utxos},
@@ -81,7 +81,7 @@ fn write_and_fetch_metadata() {
     assert!(metadata.accumulated_difficulty.is_some());
 
     let height = 10;
-    let accumulated_difficulty = Difficulty::from(20);
+    let accumulated_difficulty = 20;
     let mut metadata = ChainMetadata::default();
     metadata.height_of_longest_chain = Some(height);
     metadata.best_block = None;
@@ -554,7 +554,7 @@ fn rewind_past_horizon_height() {
         pruning_horizon: 2,
         pruning_interval: 50,
     };
-    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
 
     let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
     let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into()).unwrap();
@@ -1019,7 +1019,10 @@ fn handle_reorg_failure_recovery() {
     }
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -1030,7 +1033,7 @@ fn store_and_retrieve_blocks() {
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-    let store = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
+    let store = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap();
 
     let block0 = store.fetch_block(0).unwrap().block().clone();
     let block1 = append_block(&store, &block0, vec![], &rules, 1.into()).unwrap();
@@ -1053,7 +1056,7 @@ fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
-    let store = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
+    let store = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap();
 
     let block0 = store.fetch_block(0).unwrap().block().clone();
     let block1 = append_block(&store, &block0, vec![], &rules, 1.into()).unwrap();
@@ -1121,7 +1124,7 @@ fn restore_metadata_and_pruning_horizon_update() {
         {
             let db = create_lmdb_database(&path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
             config.pruning_horizon = pruning_horizon1;
-            let db = BlockchainDatabase::new(db, &rules, validators.clone(), config).unwrap();
+            let db = BlockchainDatabase::new(db, &rules, validators.clone(), config, false).unwrap();
 
             let block1 = append_block(&db, &block0, vec![], &rules, 1.into()).unwrap();
             db.add_block(block1.clone().into()).unwrap();
@@ -1135,7 +1138,7 @@ fn restore_metadata_and_pruning_horizon_update() {
         {
             config.pruning_horizon = 2000;
             let db = create_lmdb_database(&path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
-            let db = BlockchainDatabase::new(db, &rules, validators.clone(), config).unwrap();
+            let db = BlockchainDatabase::new(db, &rules, validators.clone(), config, false).unwrap();
 
             let metadata = db.get_chain_metadata().unwrap();
             assert_eq!(metadata.height_of_longest_chain, Some(1));
@@ -1146,7 +1149,7 @@ fn restore_metadata_and_pruning_horizon_update() {
         {
             config.pruning_horizon = 900;
             let db = create_lmdb_database(&path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
-            let db = BlockchainDatabase::new(db, &rules, validators, config).unwrap();
+            let db = BlockchainDatabase::new(db, &rules, validators, config, false).unwrap();
 
             let metadata = db.get_chain_metadata().unwrap();
             assert_eq!(metadata.height_of_longest_chain, Some(1));
@@ -1157,10 +1160,13 @@ fn restore_metadata_and_pruning_horizon_update() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&path).exists() {
-        std::fs::remove_dir_all(&path).unwrap();
+        match std::fs::remove_dir_all(&path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
-
+static EMISSION: [u64; 2] = [10, 10];
 #[test]
 fn invalid_block() {
     let temp_path = create_temporary_data_path();
@@ -1168,7 +1174,7 @@ fn invalid_block() {
         let factories = CryptoFactories::default();
         let network = Network::LocalNet;
         let consensus_constants = ConsensusConstantsBuilder::new(network)
-            .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+            .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
             .build();
         let (block0, output) = create_genesis_block(&factories, &consensus_constants);
         let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -1180,8 +1186,14 @@ fn invalid_block() {
             MockStatelessBlockValidator::new(consensus_manager.clone(), factories.clone()),
         );
         let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
-        let mut store =
-            BlockchainDatabase::new(db, &consensus_manager, validators, BlockchainDatabaseConfig::default()).unwrap();
+        let mut store = BlockchainDatabase::new(
+            db,
+            &consensus_manager,
+            validators,
+            BlockchainDatabaseConfig::default(),
+            false,
+        )
+        .unwrap();
         let mut blocks = vec![block0];
         let mut outputs = vec![vec![output]];
         let block0_hash = blocks[0].hash();
@@ -1199,7 +1211,7 @@ fn invalid_block() {
             from: vec![outputs[0][0].clone()],
             to: vec![10 * T, 5 * T, 10 * T, 15 * T]
         )];
-        let coinbase_value = consensus_manager.emission_schedule(1).block_reward(1);
+        let coinbase_value = consensus_manager.emission_schedule().block_reward(1);
         assert_eq!(
             generate_new_block_with_coinbase(
                 &mut store,
@@ -1229,7 +1241,7 @@ fn invalid_block() {
 
         // Invalid Block 2 - Double spends genesis block output
         let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
-        let coinbase_value = consensus_manager.emission_schedule(2).block_reward(2);
+        let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
         unpack_enum!(
             ChainStorageError::UnspendableInput = generate_new_block_with_coinbase(
                 &mut store,
@@ -1257,7 +1269,7 @@ fn invalid_block() {
 
         // Valid Block 2
         let txs = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![4 * T, 4 * T])];
-        let coinbase_value = consensus_manager.emission_schedule(0).block_reward(2);
+        let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
         assert_eq!(
             generate_new_block_with_coinbase(
                 &mut store,
@@ -1289,7 +1301,10 @@ fn invalid_block() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -1304,7 +1319,7 @@ fn orphan_cleanup_on_block_add() {
         pruning_horizon: 0,
         pruning_interval: 50,
     };
-    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
 
     let orphan1 = create_orphan_block(500, vec![], &consensus_manager);
     let orphan2 = create_orphan_block(5, vec![], &consensus_manager);
@@ -1359,7 +1374,7 @@ fn horizon_height_orphan_cleanup() {
         pruning_horizon: 2,
         pruning_interval: 50,
     };
-    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
     let orphan1 = create_orphan_block(2, vec![], &consensus_manager);
     let orphan2 = create_orphan_block(3, vec![], &consensus_manager);
     let orphan3 = create_orphan_block(1, vec![], &consensus_manager);
@@ -1412,7 +1427,7 @@ fn orphan_cleanup_on_reorg() {
         pruning_horizon: 0,
         pruning_interval: 50,
     };
-    let mut store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let mut store = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
     let mut blocks = vec![block0];
     let mut outputs = vec![vec![output]];
 
@@ -1527,6 +1542,92 @@ fn orphan_cleanup_on_reorg() {
 }
 
 #[test]
+fn orphan_cleanup_delete_all_orphans() {
+    let path = create_temporary_data_path();
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let config = BlockchainDatabaseConfig {
+        orphan_storage_capacity: 5,
+        pruning_horizon: 0,
+        pruning_interval: 50,
+    };
+    // Test cleanup during runtime
+    {
+        let db = create_lmdb_database(&path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
+        let store = BlockchainDatabase::new(db, &consensus_manager, validators.clone(), config, false).unwrap();
+
+        let orphan1 = create_orphan_block(500, vec![], &consensus_manager);
+        let orphan2 = create_orphan_block(5, vec![], &consensus_manager);
+        let orphan3 = create_orphan_block(30, vec![], &consensus_manager);
+        let orphan4 = create_orphan_block(700, vec![], &consensus_manager);
+        let orphan5 = create_orphan_block(43, vec![], &consensus_manager);
+
+        // Add orphans and verify
+        assert_eq!(
+            store.add_block(orphan1.clone().into()).unwrap(),
+            BlockAddResult::OrphanBlock
+        );
+        assert_eq!(
+            store.add_block(orphan2.clone().into()).unwrap(),
+            BlockAddResult::OrphanBlock
+        );
+        assert_eq!(
+            store.add_block(orphan3.clone().into()).unwrap(),
+            BlockAddResult::OrphanBlock
+        );
+        assert_eq!(
+            store.add_block(orphan4.clone().clone().into()).unwrap(),
+            BlockAddResult::OrphanBlock
+        );
+        assert_eq!(
+            store.add_block(orphan5.clone().into()).unwrap(),
+            BlockAddResult::OrphanBlock
+        );
+        assert_eq!(store.db_read_access().unwrap().get_orphan_count().unwrap(), 5);
+
+        // Cleanup orphans and verify
+        assert_eq!(store.cleanup_all_orphans().unwrap(), ());
+        assert_eq!(store.db_read_access().unwrap().get_orphan_count().unwrap(), 0);
+
+        // Add orphans again
+        assert_eq!(
+            store.add_block(orphan1.clone().into()).unwrap(),
+            BlockAddResult::OrphanBlock
+        );
+        assert_eq!(store.add_block(orphan2.into()).unwrap(), BlockAddResult::OrphanBlock);
+        assert_eq!(store.add_block(orphan3.into()).unwrap(), BlockAddResult::OrphanBlock);
+        assert_eq!(
+            store.add_block(orphan4.clone().into()).unwrap(),
+            BlockAddResult::OrphanBlock
+        );
+        assert_eq!(store.add_block(orphan5.into()).unwrap(), BlockAddResult::OrphanBlock);
+    }
+
+    // Test orphans are present on open
+    {
+        let db = create_lmdb_database(&path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
+        let store = BlockchainDatabase::new(db, &consensus_manager, validators.clone(), config, false).unwrap();
+        assert_eq!(store.db_read_access().unwrap().get_orphan_count().unwrap(), 5);
+    }
+
+    // Test orphans cleanup on open
+    {
+        let db = create_lmdb_database(&path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
+        let store = BlockchainDatabase::new(db, &consensus_manager, validators.clone(), config, true).unwrap();
+        assert_eq!(store.db_read_access().unwrap().get_orphan_count().unwrap(), 0);
+    }
+
+    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
+    if std::path::Path::new(&path).exists() {
+        match std::fs::remove_dir_all(&path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
+    }
+}
+
+#[test]
 fn fails_validation() {
     let network = Network::LocalNet;
     let factories = CryptoFactories::default();
@@ -1543,7 +1644,7 @@ fn fails_validation() {
         pruning_horizon: 0,
         pruning_interval: 50,
     };
-    let mut store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let mut store = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
     let mut blocks = vec![block0];
     let mut outputs = vec![vec![]];
 
@@ -1576,7 +1677,7 @@ fn pruned_mode_cleanup_and_fetch_block() {
         pruning_horizon: 2,
         pruning_interval: 2,
     };
-    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
     let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
     let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into()).unwrap();
     let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
@@ -1600,7 +1701,7 @@ fn pruned_mode_is_stxo() {
     let network = Network::LocalNet;
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -1614,7 +1715,7 @@ fn pruned_mode_is_stxo() {
         pruning_horizon: 2,
         pruning_interval: 2,
     };
-    let mut store = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let mut store = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
     let mut blocks = vec![block0];
     let mut outputs = vec![vec![output]];
     let txo_hash1 = blocks[0].body.outputs()[0].hash();
@@ -1622,7 +1723,7 @@ fn pruned_mode_is_stxo() {
 
     // Block 1
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![50 * T])];
-    let coinbase_value = consensus_manager.emission_schedule(0).block_reward(1);
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(1);
     assert_eq!(
         generate_new_block_with_coinbase(
             &mut store,
@@ -1648,7 +1749,7 @@ fn pruned_mode_is_stxo() {
 
     // Block 2
     let txs = vec![txn_schema!(from: vec![outputs[1][1].clone()], to: vec![40 * T])];
-    let coinbase_value = consensus_manager.emission_schedule(0).block_reward(2);
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
     assert_eq!(
         generate_new_block_with_coinbase(
             &mut store,
@@ -1677,7 +1778,7 @@ fn pruned_mode_is_stxo() {
 
     // Block 3
     let txs = vec![txn_schema!(from: vec![outputs[2][2].clone()], to: vec![30 * T])];
-    let coinbase_value = consensus_manager.emission_schedule(0).block_reward(3);
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(3);
     assert_eq!(
         generate_new_block_with_coinbase(
             &mut store,
@@ -1709,7 +1810,7 @@ fn pruned_mode_is_stxo() {
 
     // Block 4
     let txs = vec![txn_schema!(from: vec![outputs[3][1].clone()], to: vec![20 * T])];
-    let coinbase_value = consensus_manager.emission_schedule(0).block_reward(4);
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(4);
     assert_eq!(
         generate_new_block_with_coinbase(
             &mut store,
@@ -1777,6 +1878,7 @@ fn pruned_mode_fetch_insert_and_commit() {
         &consensus_manager,
         validators,
         config,
+        false,
     )
     .unwrap();
     let network_tip_height = alice_store
@@ -1794,8 +1896,7 @@ fn pruned_mode_fetch_insert_and_commit() {
 
     // Sync headers
     let bob_height = bob_metadata.height_of_longest_chain.unwrap();
-    let block_nums = (bob_height + 1..=sync_horizon_height).collect::<Vec<u64>>();
-    let headers = alice_store.fetch_headers(block_nums).unwrap();
+    let headers = alice_store.fetch_headers(bob_height + 1, sync_horizon_height).unwrap();
     assert!(bob_store.insert_valid_headers(headers).is_ok());
 
     // Sync kernels
@@ -1905,9 +2006,12 @@ fn pruned_mode_fetch_insert_and_commit() {
     assert_eq!(bob_metadata.best_block, Some(sync_height_header.hash()));
 
     // Check headers
-    let block_nums = (0..=bob_metadata.height_of_longest_chain.unwrap()).collect::<Vec<u64>>();
-    let alice_headers = alice_store.fetch_headers(block_nums.clone()).unwrap();
-    let bob_headers = bob_store.fetch_headers(block_nums).unwrap();
+    let alice_headers = alice_store
+        .fetch_headers(0, bob_metadata.height_of_longest_chain())
+        .unwrap();
+    let bob_headers = bob_store
+        .fetch_headers(0, bob_metadata.height_of_longest_chain())
+        .unwrap();
     assert_eq!(alice_headers, bob_headers);
     // Check Kernel MMR nodes
     let alice_num_kernels = alice_store

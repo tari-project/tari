@@ -26,7 +26,13 @@ use crate::{
         error::TransactionStorageError,
         storage::{
             database::{DbKey, DbKeyValuePair, DbValue, TransactionBackend, WriteOperation},
-            models::{CompletedTransaction, InboundTransaction, OutboundTransaction, TransactionStatus},
+            models::{
+                CompletedTransaction,
+                InboundTransaction,
+                OutboundTransaction,
+                TransactionStatus,
+                WalletTransaction,
+            },
         },
     },
 };
@@ -176,6 +182,24 @@ impl TransactionBackend for TransactionMemoryDatabase {
                 }
                 result
             },
+            DbKey::AnyTransaction(t) => {
+                if let Some(v) = db.pending_outbound_transactions.get(t) {
+                    return Ok(Some(DbValue::WalletTransaction(Box::new(
+                        WalletTransaction::PendingOutbound(v.clone()),
+                    ))));
+                }
+                if let Some(v) = db.pending_inbound_transactions.get(t) {
+                    return Ok(Some(DbValue::WalletTransaction(Box::new(
+                        WalletTransaction::PendingInbound(v.clone()),
+                    ))));
+                }
+                if let Some(v) = db.completed_transactions.get(t) {
+                    return Ok(Some(DbValue::WalletTransaction(Box::new(
+                        WalletTransaction::Completed(v.clone()),
+                    ))));
+                }
+                None
+            },
         };
 
         Ok(result)
@@ -202,6 +226,11 @@ impl TransactionBackend for TransactionMemoryDatabase {
             },
             DbKey::CancelledPendingInboundTransaction(k) => {
                 db.pending_inbound_transactions.get(k).map_or(false, |v| v.cancelled)
+            },
+            DbKey::AnyTransaction(k) => {
+                db.pending_outbound_transactions.get(k).is_some() ||
+                    db.pending_inbound_transactions.get(k).is_some() ||
+                    db.completed_transactions.get(k).is_some()
             },
         };
 
@@ -267,6 +296,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
                     return Err(TransactionStorageError::OperationNotSupported)
                 },
                 DbKey::CancelledCompletedTransactions => return Err(TransactionStorageError::OperationNotSupported),
+                DbKey::AnyTransaction(_) => return Err(TransactionStorageError::OperationNotSupported),
             },
         }
 

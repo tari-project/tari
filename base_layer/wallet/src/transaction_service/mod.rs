@@ -179,7 +179,7 @@ where T: TransactionBackend
 }
 
 impl<T> ServiceInitializer for TransactionServiceInitializer<T>
-where T: TransactionBackend + Clone + 'static
+where T: TransactionBackend + 'static
 {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 

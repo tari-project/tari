@@ -1,6 +1,6 @@
 use tari_wallet::{contacts_service::storage::database::Contact, util::emoji::EmojiId};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct UiContact {
     pub alias: String,
     pub public_key: String,

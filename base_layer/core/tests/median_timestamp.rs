@@ -25,20 +25,19 @@ mod helpers;
 
 use helpers::{
     block_builders::chain_block,
+    database::create_mem_db,
     pow_blockchain::{append_to_pow_blockchain, create_test_pow_blockchain},
 };
 use tari_core::{
     chain_storage::{fetch_headers, BlockchainBackend},
     consensus::{ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     proof_of_work::{get_median_timestamp, PowAlgorithm},
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 pub fn get_header_timestamps<B: BlockchainBackend>(db: &B, height: u64, timestamp_count: u64) -> Vec<EpochTime> {
     let min_height = height.checked_sub(timestamp_count).unwrap_or(0);
-    let block_nums = (min_height..=height).collect();
-    fetch_headers(db, block_nums)
+    fetch_headers(db, min_height, height)
         .unwrap()
         .iter()
         .map(|h| h.timestamp)

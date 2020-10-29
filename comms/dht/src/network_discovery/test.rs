@@ -132,7 +132,7 @@ mod state_machine {
             .await;
 
         connectivity_mock
-            .set_connectivity_status(ConnectivityStatus::Online)
+            .set_connectivity_status(ConnectivityStatus::Online(NUM_PEERS))
             .await;
         connectivity_mock.add_active_connection(connection).await;
 
@@ -167,18 +167,17 @@ mod discovery_ready {
         state_machine::{NetworkDiscoveryContext, StateEvent},
         DhtNetworkDiscoveryRoundInfo,
     };
-    use tari_comms::test_utils::mocks::ConnectivityManagerMock;
+    use tari_comms::test_utils::{mocks::ConnectivityManagerMock, node_identity::build_many_node_identities};
 
     fn setup(
         config: NetworkDiscoveryConfig,
-        last_discovery: Option<DhtNetworkDiscoveryRoundInfo>,
     ) -> (
         Arc<NodeIdentity>,
         Arc<PeerManager>,
         ConnectivityManagerMock,
         DiscoveryReady,
-    )
-    {
+        NetworkDiscoveryContext,
+    ) {
         let peer_manager = build_peer_manager();
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let (connectivity, connectivity_mock) = create_connectivity_mock();
@@ -193,25 +192,30 @@ mod discovery_ready {
             node_identity: node_identity.clone(),
             num_rounds: Default::default(),
             event_tx,
+            last_round: Default::default(),
         };
 
-        let ready = match last_discovery {
-            Some(r) => DiscoveryReady::new(context, r),
-            None => DiscoveryReady::initial(context),
-        };
-        (node_identity, peer_manager, connectivity_mock, ready)
+        let ready = DiscoveryReady::new(context.clone());
+        (node_identity, peer_manager, connectivity_mock, ready, context)
     }
 
     #[tokio_macros::test_basic]
     async fn it_begins_aggressive_discovery() {
-        let config = NetworkDiscoveryConfig {
-            min_desired_peers: 10,
-            ..Default::default()
-        };
-        let (_, _, _, mut ready) = setup(config, None);
+        let (_, pm, _, mut ready, _) = setup(Default::default());
+        let peers = build_many_node_identities(1, PeerFeatures::COMMUNICATION_NODE);
+        for peer in peers {
+            pm.add_peer(peer.to_peer()).await.unwrap();
+        }
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::BeginDiscovery(params) = state_event);
         assert!(params.num_peers_to_request.is_none());
+    }
+
+    #[tokio_macros::test_basic]
+    async fn it_idles_if_no_sync_peers() {
+        let (_, _, _, mut ready, _) = setup(Default::default());
+        let state_event = ready.next_event().await;
+        unpack_enum!(StateEvent::Idle = state_event);
     }
 
     #[tokio_macros::test_basic]
@@ -221,16 +225,16 @@ mod discovery_ready {
             idle_after_num_rounds: 0,
             ..Default::default()
         };
-        let (_, _, _, mut ready) = setup(
-            config,
-            Some(DhtNetworkDiscoveryRoundInfo {
+        let (_, _, _, mut ready, context) = setup(config);
+        context
+            .set_last_round(DhtNetworkDiscoveryRoundInfo {
                 num_new_neighbours: 1,
                 num_new_peers: 1,
                 num_duplicate_peers: 0,
                 num_succeeded: 1,
                 sync_peers: vec![],
-            }),
-        );
+            })
+            .await;
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::Idle = state_event);
     }
@@ -242,7 +246,8 @@ mod discovery_ready {
             idle_after_num_rounds: 0,
             ..Default::default()
         };
-        let (_, _, _, mut ready) = setup(config, Some(Default::default()));
+        let (_, _, _, mut ready, context) = setup(config);
+        context.set_last_round(Default::default()).await;
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::OnConnectMode = state_event);
     }

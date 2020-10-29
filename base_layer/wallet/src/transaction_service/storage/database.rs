@@ -39,6 +39,7 @@ use chrono::NaiveDateTime;
 use chrono::Utc;
 use log::*;
 
+use crate::transaction_service::storage::models::WalletTransaction;
 use std::{
     collections::HashMap,
     fmt::{Display, Error, Formatter},
@@ -53,7 +54,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::database";
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. If new data types are
 /// required to be supported by the backends then these enums can be updated to reflect this requirement and the trait
 /// will remain the same
-pub trait TransactionBackend: Send + Sync {
+pub trait TransactionBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, TransactionStorageError>;
     /// Check if a record with the provided key exists in the backend.
@@ -121,6 +122,7 @@ pub enum DbKey {
     CancelledCompletedTransactions,
     CancelledPendingOutboundTransaction(TxId),
     CancelledPendingInboundTransaction(TxId),
+    AnyTransaction(TxId),
 }
 
 #[derive(Debug)]
@@ -131,6 +133,7 @@ pub enum DbValue {
     PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
     CompletedTransactions(HashMap<TxId, CompletedTransaction>),
+    WalletTransaction(Box<WalletTransaction>),
 }
 
 pub enum DbKeyValuePair {
@@ -480,6 +483,21 @@ where T: TransactionBackend + 'static
         self.get_completed_transactions_by_cancelled(true).await
     }
 
+    // TODO: all the single getters should use an Option rather than an error to indicate not found.
+    pub async fn get_any_transaction(&self, tx_id: TxId) -> Result<Option<WalletTransaction>, TransactionStorageError> {
+        let db_clone = self.db.clone();
+        let key = DbKey::AnyTransaction(tx_id);
+        let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&key) {
+            Ok(None) => Ok(None),
+            Ok(Some(DbValue::WalletTransaction(pt))) => Ok(Some(*pt)),
+            Ok(Some(other)) => unexpected_result(key, other),
+            Err(e) => log_error(key, e),
+        })
+        .await
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(t)
+    }
+
     async fn get_completed_transactions_by_cancelled(
         &self,
         cancelled: bool,
@@ -677,6 +695,7 @@ impl Display for DbKey {
             DbKey::CancelledPendingInboundTransaction(_) => {
                 f.write_str(&"Cancelled Pending Inbound Transaction".to_string())
             },
+            DbKey::AnyTransaction(_) => f.write_str(&"Any Transaction".to_string()),
         }
     }
 }
@@ -690,6 +709,7 @@ impl Display for DbValue {
             DbValue::PendingOutboundTransactions(_) => f.write_str(&"All Pending Outbound Transactions".to_string()),
             DbValue::PendingInboundTransactions(_) => f.write_str(&"All Pending Inbound Transactions".to_string()),
             DbValue::CompletedTransactions(_) => f.write_str(&"All Complete Transactions".to_string()),
+            DbValue::WalletTransaction(_) => f.write_str(&"Any Wallet Transaction".to_string()),
         }
     }
 }

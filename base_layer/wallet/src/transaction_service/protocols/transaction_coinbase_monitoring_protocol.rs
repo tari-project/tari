@@ -53,7 +53,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::protocols::chain_monitori
 /// Mined or leaves the mempool in which case it should be cancelled
 
 pub struct TransactionCoinbaseMonitoringProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     id: u64,
     tx_id: TxId,
@@ -66,7 +66,7 @@ where TBackend: TransactionBackend + Clone + 'static
 }
 
 impl<TBackend> TransactionCoinbaseMonitoringProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -176,7 +176,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-            let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
+            let request = BaseNodeRequestProto::FetchMatchingUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
             let service_request = BaseNodeProto::BaseNodeServiceRequest {
                 request_key: self.id,
                 request: Some(request),

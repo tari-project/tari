@@ -70,7 +70,7 @@ use tokio::{
     runtime::Runtime,
     sync::{broadcast, watch},
 };
-
+static EMISSION: [u64; 2] = [10, 10];
 #[test]
 fn test_pruned_mode_sync_with_future_horizon_sync_height() {
     // Number of blocks to create in addition to the genesis
@@ -82,7 +82,7 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (genesis_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -203,7 +203,7 @@ fn test_pruned_mode_sync_with_spent_utxos() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (genesis_block, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -274,7 +274,7 @@ fn test_pruned_mode_sync_with_spent_utxos() {
 
         // Spend coinbases before horizon height
         {
-            let supply = consensus_manager.emission_schedule(4).supply_at_block(4);
+            let supply = consensus_manager.emission_schedule().supply_at_block(4);
             let fee = Fee::calculate(25 * uT, 5, 5, 2);
             let schema = txn_schema!(from: outputs, to: vec![supply - fee], fee: 25 * uT);
             let (tx, _, _) = spend_utxos(schema);
@@ -309,7 +309,7 @@ fn test_pruned_mode_sync_with_spent_utxos() {
 
         // Spend the other coinbases (why not?)
         {
-            let supply = consensus_manager.emission_schedule(0).supply_at_block(4);
+            let supply = consensus_manager.emission_schedule().supply_at_block(4);
             let fee = Fee::calculate(25 * uT, 5, 5, 2);
             let schema = txn_schema!(from: outputs, to: vec![supply - fee], fee: 25 * uT);
             let (tx, _, _) = spend_utxos(schema);
@@ -518,9 +518,8 @@ fn check_final_state<B: BlockchainBackend>(alice_db: &BlockchainDatabase<B>, bob
 
     // Check headers
     let network_tip_height = network_tip.height_of_longest_chain.unwrap_or(0);
-    let block_nums = (0..=network_tip_height).collect::<Vec<u64>>();
-    let alice_headers = alice_db.fetch_headers(block_nums.clone()).unwrap();
-    let bob_headers = bob_db.fetch_headers(block_nums).unwrap();
+    let alice_headers = alice_db.fetch_headers(0, network_tip_height).unwrap();
+    let bob_headers = bob_db.fetch_headers(0, network_tip_height).unwrap();
     assert_eq!(alice_headers, bob_headers);
 
     // Check Kernel MMR nodes
@@ -606,7 +605,7 @@ fn test_pruned_mode_sync_fail_final_validation() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (genesis_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)

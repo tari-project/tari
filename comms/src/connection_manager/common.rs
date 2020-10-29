@@ -94,6 +94,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
     known_peer: Option<Peer>,
     authenticated_public_key: CommsPublicKey,
     mut peer_identity: PeerIdentityMsg,
+    dialed_addr: Option<&Multiaddr>,
     allow_test_addrs: bool,
 ) -> Result<NodeId, ConnectionManagerError>
 {
@@ -138,6 +139,9 @@ pub async fn validate_and_add_peer_from_peer_identity(
             peer.connection_stats.set_connection_success();
             peer.addresses = addresses.into();
             peer.set_offline(false);
+            if let Some(addr) = dialed_addr {
+                peer.addresses.mark_successful_connection_attempt(addr);
+            }
             peer.features = PeerFeatures::from_bits_truncate(peer_identity.features);
             peer.supported_protocols = supported_protocols;
             peer.user_agent = peer_identity.user_agent;
@@ -159,6 +163,9 @@ pub async fn validate_and_add_peer_from_peer_identity(
                 peer_identity.user_agent,
             );
             new_peer.connection_stats.set_connection_success();
+            if let Some(addr) = dialed_addr {
+                new_peer.addresses.mark_successful_connection_attempt(addr);
+            }
             new_peer
         },
     };

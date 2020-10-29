@@ -36,6 +36,7 @@ use tari_core::transactions::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
+#[derive(Clone)]
 pub struct ContactsServiceSqliteDatabase {
     database_connection: Arc<Mutex<SqliteConnection>>,
 }

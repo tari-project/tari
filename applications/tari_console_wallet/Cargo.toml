@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.5.5"
+version = "0.6.0"
 authors = ["Philip Robinson <simian@tari.com>"]
 edition = "2018"
 
@@ -13,8 +13,11 @@ tari_comms = { version = "^0.2", path = "../../comms"}
 tari_comms_dht = { version = "^0.2", path = "../../comms/dht"}
 tari_p2p = { version= "^0.2", path = "../../base_layer/p2p" }
 tari_app_grpc = {  path = "../tari_app_grpc" }
+tari_shutdown = { version= "^0.2", path = "../../infrastructure/shutdown" }
 
 chrono = { version = "0.4.6", features = ["serde"]}
+chrono-english = "0.1"
+futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}
 crossterm = { version = "0.17"}
 rand = "0.7.2"
 unicode-width = "0.1"
@@ -24,7 +27,10 @@ log = { version = "0.4.8", features = ["std"] }
 structopt = { version = "0.3.13", default_features = false }
 config = { version = "0.9.3" }
 qrcode = { version = "0.12" }
-dirs = "2.0.2"
+dirs-next = "1.0.2"
+strum = "^0.19"
+strum_macros = "^0.19"
+time = "0.1.38"
 tokio = { version="0.2.10", features = ["signal"] }
 thiserror = "1.0.20"
 tonic = "0.2"
@@ -36,6 +42,6 @@ default-features = false
 features = ["transactions", "mempool_proto", "base_node_proto"]
 
 [dependencies.tui]
-version = "0.10"
+version = "0.12"
 default-features = false
 features = ["crossterm"]

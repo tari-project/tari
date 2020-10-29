@@ -312,7 +312,6 @@ impl Dht {
                 self.saf_response_signal_sender.clone(),
             ))
             .layer(inbound::DhtHandlerLayer::new(
-                self.config.clone(),
                 Arc::clone(&self.node_identity),
                 Arc::clone(&self.peer_manager),
                 self.discovery_service_requester(),
@@ -374,7 +373,7 @@ impl Dht {
                          supported by this node. Discarding message.",
                         msg.source_peer.public_key
                     );
-                    future::ready(Err(PipelineError::from_debug(
+                    future::ready(Err(anyhow::anyhow!(
                         "Message filtered out because store and forward is not supported by this node",
                     )))
                 },

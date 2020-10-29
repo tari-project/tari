@@ -29,8 +29,6 @@ impl From<proto::TransactionMetadata> for TransactionMetadata {
         Self {
             fee: metadata.fee.into(),
             lock_height: metadata.lock_height,
-            meta_info: metadata.meta_info.map(Into::into),
-            linked_kernel: metadata.linked_kernel.map(Into::into),
         }
     }
 }
@@ -42,11 +40,6 @@ impl From<TransactionMetadata> for proto::TransactionMetadata {
             fee: metadata.fee.into(),
             // The earliest block this transaction can be mined
             lock_height: metadata.lock_height,
-            // This is an optional field used by committing to additional tx meta data between the two parties
-            meta_info: metadata.meta_info.map(Into::into),
-            // This is an optional field and is the hash of the kernel this kernel is linked to.
-            // This field is for example for relative time-locked transactions
-            linked_kernel: metadata.linked_kernel.map(Into::into),
         }
     }
 }

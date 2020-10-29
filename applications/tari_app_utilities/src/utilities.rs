@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::identity_management::load_from_json;
+use futures::future::Either;
 use log::*;
 use std::{fmt, fmt::Formatter, net::SocketAddr, path::Path};
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
@@ -31,32 +32,38 @@ use tari_comms::{
     tor,
     tor::TorIdentity,
     transports::SocksConfig,
+    types::CommsPublicKey,
 };
 use tari_core::transactions::types::PublicKey;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
-use tokio::runtime::Runtime;
+use tari_wallet::util::emoji::EmojiId;
+use tokio::{runtime, runtime::Runtime};
 
 pub const LOG_TARGET: &str = "tari::application";
 
 /// Enum to show failure information
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum ExitCodes {
-    ConfigError,
+    ConfigError(String),
     UnknownError,
     InterfaceError,
     WalletError(String),
     GrpcError(String),
+    InputError(String),
+    CommandError(String),
 }
 
 impl ExitCodes {
     pub fn as_i32(&self) -> i32 {
         match self {
-            Self::ConfigError => 101,
+            Self::ConfigError(_) => 101,
             Self::UnknownError => 102,
             Self::InterfaceError => 103,
             Self::WalletError(_) => 104,
             Self::GrpcError(_) => 105,
+            Self::InputError(_) => 106,
+            Self::CommandError(_) => 107,
         }
     }
 }
@@ -64,15 +71,18 @@ impl ExitCodes {
 impl From<tari_common::ConfigError> for ExitCodes {
     fn from(err: tari_common::ConfigError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
-        Self::ConfigError
+        Self::ConfigError(err.to_string())
     }
 }
 
 impl fmt::Display for ExitCodes {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            ExitCodes::ConfigError(e) => write!(f, "Config Error ({}): {}", self.as_i32(), e),
             ExitCodes::WalletError(e) => write!(f, "Wallet Error ({}): {}", self.as_i32(), e),
             ExitCodes::GrpcError(e) => write!(f, "GRPC Error ({}): {}", self.as_i32(), e),
+            ExitCodes::InputError(e) => write!(f, "Input Error ({}): {}", self.as_i32(), e),
+            ExitCodes::CommandError(e) => write!(f, "Command Error ({}): {}", self.as_i32(), e),
             _ => write!(f, "{}", self.as_i32()),
         }
     }
@@ -190,22 +200,27 @@ pub fn convert_socks_authentication(auth: SocksAuthentication) -> socks::Authent
 /// ## Returns
 /// A result containing the runtime on success, string indicating the error on failure
 pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
-    let num_core_threads = config.core_threads;
-    let num_blocking_threads = config.blocking_threads;
-    let num_mining_threads = config.num_mining_threads;
-
     info!(
         target: LOG_TARGET,
-        "Configuring the node to run on {} core threads, {} blocking worker threads and {} mining threads.",
-        num_core_threads,
-        num_blocking_threads,
-        num_mining_threads
+        "Configuring the node to run on up to {} core threads and {} mining threads.",
+        config.max_threads.unwrap_or(512),
+        config.num_mining_threads
     );
-    tokio::runtime::Builder::new()
+
+    let mut builder = runtime::Builder::new();
+
+    if let Some(max_threads) = config.max_threads {
+        // Ensure that there are always enough threads for mining.
+        // e.g if the user sets max_threads = 2, mining_threads = 5 then 7 threads are available in total
+        builder.max_threads(max_threads + config.num_mining_threads);
+    }
+    if let Some(core_threads) = config.core_threads {
+        builder.core_threads(core_threads);
+    }
+
+    builder
         .threaded_scheduler()
         .enable_all()
-        .max_threads(num_core_threads + num_blocking_threads + num_mining_threads)
-        .core_threads(num_core_threads)
         .build()
         .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
 }
@@ -273,4 +288,18 @@ pub fn parse_peer_seeds(seeds: &[String]) -> Vec<Peer> {
         result.push(peer);
     }
     result
+}
+
+/// Returns a CommsPublicKey from either a emoji id or a public key
+pub fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
+    EmojiId::str_to_pubkey(&key.trim().replace('|', ""))
+        .or_else(|_| CommsPublicKey::from_hex(key))
+        .ok()
+}
+
+/// Returns a CommsPublicKey from either a emoji id, a public key or node id
+pub fn parse_emoji_id_or_public_key_or_node_id(key: &str) -> Option<Either<CommsPublicKey, NodeId>> {
+    parse_emoji_id_or_public_key(key)
+        .map(Either::Left)
+        .or_else(|| NodeId::from_hex(key).ok().map(Either::Right))
 }

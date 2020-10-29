@@ -26,7 +26,7 @@ use crate::{
         state_machine_service::{
             handle::StateMachineHandle,
             state_machine::{BaseNodeStateMachine, BaseNodeStateMachineConfig},
-            states::{BlockSyncStrategy, StatusInfo},
+            states::{BlockSyncConfig, BlockSyncStrategy, StatusInfo},
         },
         LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
@@ -38,7 +38,8 @@ use crate::{
 };
 use futures::{future, Future};
 use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, CommsNode};
+use std::{sync::Arc, time::Duration};
+use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
 
@@ -49,6 +50,8 @@ pub struct BaseNodeStateMachineInitializer<B> {
     rules: ConsensusManager,
     factories: CryptoFactories,
     sync_strategy: BlockSyncStrategy,
+    orphan_db_clean_out_threshold: usize,
+    fetch_blocks_timeout: Duration,
 }
 
 impl<B> BaseNodeStateMachineInitializer<B>
@@ -59,6 +62,8 @@ where B: BlockchainBackend + 'static
         rules: ConsensusManager,
         factories: CryptoFactories,
         sync_strategy: BlockSyncStrategy,
+        orphan_db_clean_out_threshold: usize,
+        fetch_blocks_timeout: Duration,
     ) -> Self
     {
         Self {
@@ -66,6 +71,8 @@ where B: BlockchainBackend + 'static
             rules,
             factories,
             sync_strategy,
+            orphan_db_clean_out_threshold,
+            fetch_blocks_timeout,
         }
     }
 }
@@ -76,6 +83,7 @@ where B: BlockchainBackend + 'static
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
     fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+        trace!(target: LOG_TARGET, "init of base_node");
         let (state_event_publisher, _) = broadcast::channel(10);
         let (status_event_sender, status_event_receiver) = watch::channel(StatusInfo::new());
 
@@ -90,15 +98,23 @@ where B: BlockchainBackend + 'static
         let sync_strategy = self.sync_strategy;
         let rules = self.rules.clone();
         let db = self.db.clone();
+        let orphan_db_clean_out_threshold = self.orphan_db_clean_out_threshold;
+        let fetch_blocks_timeout = self.fetch_blocks_timeout;
         context.spawn_when_ready(move |handles| async move {
             let outbound_interface = handles.expect_handle::<OutboundNodeCommsInterface>();
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
             let node_local_interface = handles.expect_handle::<LocalNodeCommsInterface>();
             let connectivity_requester = handles.expect_handle::<ConnectivityRequester>();
-            let base_node_comms = handles.expect_handle::<CommsNode>();
-            let peer_manager = base_node_comms.peer_manager();
+            let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
-            let mut state_machine_config = BaseNodeStateMachineConfig::default();
+            let mut state_machine_config = BaseNodeStateMachineConfig {
+                block_sync_config: BlockSyncConfig {
+                    orphan_db_clean_out_threshold,
+                    fetch_blocks_timeout,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
             state_machine_config.block_sync_config.sync_strategy = sync_strategy;
 
             // TODO: This should move to checking each time

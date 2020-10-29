@@ -203,7 +203,7 @@ impl OutboundNodeCommsInterface {
     {
         if let NodeCommsResponse::TransactionOutputs(utxos) = self
             .request_sender
-            .call((NodeCommsRequest::FetchUtxos(hashes), node_id))
+            .call((NodeCommsRequest::FetchMatchingUtxos(hashes), node_id))
             .await??
         {
             Ok(utxos)
@@ -227,7 +227,7 @@ impl OutboundNodeCommsInterface {
     {
         if let NodeCommsResponse::TransactionOutputs(txos) = self
             .request_sender
-            .call((NodeCommsRequest::FetchTxos(hashes), node_id))
+            .call((NodeCommsRequest::FetchMatchingTxos(hashes), node_id))
             .await??
         {
             Ok(txos)
@@ -251,7 +251,7 @@ impl OutboundNodeCommsInterface {
     {
         if let NodeCommsResponse::HistoricalBlocks(blocks) = self
             .request_sender
-            .call((NodeCommsRequest::FetchBlocks(block_nums), node_id))
+            .call((NodeCommsRequest::FetchMatchingBlocks(block_nums), node_id))
             .await??
         {
             Ok(blocks)
@@ -335,7 +335,10 @@ impl OutboundNodeCommsInterface {
     {
         if let NodeCommsResponse::MmrNodes(added, deleted) = self
             .request_sender
-            .call((NodeCommsRequest::FetchMmrNodes(tree, pos, count, hist_height), node_id))
+            .call((
+                NodeCommsRequest::FetchMatchingMmrNodes(tree, pos, count, hist_height),
+                node_id,
+            ))
             .await??
         {
             Ok((added, deleted))

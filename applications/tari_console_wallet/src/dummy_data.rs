@@ -40,7 +40,7 @@ pub fn get_dummy_base_node_status() -> Option<u64> {
     }
 }
 
-pub fn get_dummy_contacts() -> Vec<Contact> {
+pub fn _get_dummy_contacts() -> Vec<Contact> {
     let mut contacts = Vec::new();
     let names = [
         "Alice".to_string(),

@@ -41,6 +41,7 @@ use crate::{
     storage::sqlite_db::WalletSqliteDatabase,
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
+
 pub type WalletSqlite = Wallet<
     WalletSqliteDatabase,
     TransactionServiceSqliteDatabase,

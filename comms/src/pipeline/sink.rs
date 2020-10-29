@@ -22,7 +22,7 @@
 
 use super::PipelineError;
 use futures::{task::Context, Future, Sink, SinkExt};
-use std::{error::Error, pin::Pin, task::Poll};
+use std::{pin::Pin, task::Poll};
 use tower::Service;
 
 /// A service which forwards and messages it gets to the given Sink
@@ -38,7 +38,7 @@ impl<TSink> SinkService<TSink> {
 impl<T, TSink> Service<T> for SinkService<TSink>
 where
     TSink: Sink<T> + Unpin + Clone + 'static,
-    TSink::Error: Error + Send + Sync + 'static,
+    TSink::Error: Into<PipelineError> + Send + Sync + 'static,
 {
     type Error = PipelineError;
     type Response = ();
@@ -46,11 +46,11 @@ where
     type Future = impl Future<Output = Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Pin::new(&mut self.0).poll_ready(cx).map_err(PipelineError::from_debug)
+        Pin::new(&mut self.0).poll_ready(cx).map_err(Into::into)
     }
 
     fn call(&mut self, item: T) -> Self::Future {
         let mut sink = self.0.clone();
-        async move { sink.send(item).await.map_err(PipelineError::from_debug) }
+        async move { sink.send(item).await.map_err(Into::into) }
     }
 }

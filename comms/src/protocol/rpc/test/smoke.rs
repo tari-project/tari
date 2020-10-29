@@ -128,6 +128,9 @@ async fn request_reponse_errors_and_streaming() // a.k.a  smoke test
         .await
         .unwrap();
 
+    // Latency is available "for free" as part of the connect protocol
+    assert!(client.get_last_request_latency().await.unwrap().is_some());
+
     let resp = client
         .say_hello(SayHelloRequest {
             name: "Yathvan".to_string(),
@@ -215,7 +218,7 @@ async fn timeout() {
     let framed = framing::canonical(socket, 1024);
     let mut client = GreetingClient::builder()
         .with_deadline(Duration::from_millis(100))
-        .with_deadline_grace_period(Duration::from_secs(100))
+        .with_deadline_grace_period(Duration::from_secs(1))
         .connect(framed)
         .await
         .unwrap();
@@ -542,6 +545,10 @@ impl GreetingClient {
 
     pub async fn get_public_key_hex(&mut self) -> Result<String, RpcError> {
         self.inner.request_response((), 6).await
+    }
+
+    pub async fn get_last_request_latency(&mut self) -> Result<Option<Duration>, RpcError> {
+        self.inner.get_last_request_latency().await
     }
 
     pub fn close(&mut self) {

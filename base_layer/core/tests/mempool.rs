@@ -32,6 +32,7 @@ use helpers::{
         generate_block,
         generate_new_block,
     },
+    database::create_mem_db,
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::create_new_blockchain,
 };
@@ -45,7 +46,6 @@ use tari_core::{
     },
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     mempool::{
         Mempool,
         MempoolConfig,
@@ -456,7 +456,7 @@ fn request_response_get_stats() {
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_coinbase_lockheight(100)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -516,7 +516,7 @@ fn request_response_get_tx_state_by_excess_sig() {
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_coinbase_lockheight(100)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -577,7 +577,7 @@ fn request_response_get_tx_state_by_excess_sig() {
         );
     });
 }
-
+static EMISSION: [u64; 2] = [10, 10];
 #[test]
 fn receive_and_propagate_transaction() {
     let factories = CryptoFactories::default();
@@ -586,7 +586,7 @@ fn receive_and_propagate_transaction() {
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_coinbase_lockheight(100)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)

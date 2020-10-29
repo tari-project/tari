@@ -49,7 +49,7 @@ use tokio::{sync::broadcast, time::delay_for};
 const LOG_TARGET: &str = "wallet::output_manager_service::protocols::utxo_validation_protocol";
 
 pub struct TxoValidationProtocol<TBackend>
-where TBackend: OutputManagerBackend + Clone + 'static
+where TBackend: OutputManagerBackend + 'static
 {
     id: u64,
     validation_type: TxoValidationType,
@@ -63,7 +63,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
 
 /// This protocol defines the process of submitting our current UTXO set to the Base Node to validate it.
 impl<TBackend> TxoValidationProtocol<TBackend>
-where TBackend: OutputManagerBackend + Clone + 'static
+where TBackend: OutputManagerBackend + 'static
 {
     pub fn new(
         id: u64,
@@ -264,7 +264,7 @@ where TBackend: OutputManagerBackend + Clone + 'static
 
             let request_key = if r == 0 { self.id } else { OsRng.next_u64() };
 
-            let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs {
+            let request = BaseNodeRequestProto::FetchMatchingUtxos(BaseNodeProto::HashOutputs {
                 outputs: output_hashes.clone(),
             });
 

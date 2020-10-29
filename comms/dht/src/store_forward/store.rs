@@ -188,15 +188,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         message.set_saf_stored(false);
-        if let Some(priority) = self
-            .get_storage_priority(&message)
-            .await
-            .map_err(PipelineError::from_debug)?
-        {
+        if let Some(priority) = self.get_storage_priority(&message).await? {
             message.set_saf_stored(true);
-            self.store(priority, message.clone())
-                .await
-                .map_err(PipelineError::from_debug)?;
+            self.store(priority, message.clone()).await?;
         }
 
         trace!(

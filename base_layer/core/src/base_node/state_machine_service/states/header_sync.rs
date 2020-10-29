@@ -209,7 +209,7 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
                             target: LOG_TARGET,
                             "Banning peer {} from local node, because they supplied an invalid response", sync_peer
                         );
-                        self.ban_sync_peer(sync_peer, "Peer supplied an invalid response".to_string())
+                        self.ban_sync_peer(&sync_peer, "Peer supplied an invalid response".to_string())
                             .await?;
                     },
                     // Fatal
@@ -298,7 +298,7 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
         Ok(())
     }
 
-    async fn ban_sync_peer(&mut self, sync_peer: SyncPeer, reason: String) -> Result<(), HeaderSyncError> {
+    async fn ban_sync_peer(&mut self, sync_peer: &SyncPeer, reason: String) -> Result<(), HeaderSyncError> {
         helpers::ban_sync_peer(
             LOG_TARGET,
             &mut self.shared.connectivity,

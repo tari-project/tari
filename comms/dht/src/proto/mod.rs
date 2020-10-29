@@ -92,7 +92,7 @@ impl fmt::Display for dht::JoinMessage {
             "JoinMessage(NodeId = {}, Addresses = {:?}, Features = {:?})",
             self.node_id.to_hex(),
             self.addresses,
-            self.peer_features
+            PeerFeatures::from_bits_truncate(self.peer_features),
         )
     }
 }

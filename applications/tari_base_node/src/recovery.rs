@@ -103,7 +103,7 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
         pruning_horizon: node_config.pruning_horizon,
         pruning_interval: node_config.pruned_mode_cleanup_interval,
     };
-    let db = BlockchainDatabase::new(main_db, &rules, validators, db_config)?;
+    let db = BlockchainDatabase::new(main_db, &rules, validators, db_config, true)?;
     do_recovery(db, temp_db).await?;
 
     info!(
@@ -134,7 +134,8 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
     // We dont care about the values, here, so we just use mock validators, and a mainnet CM.
     let rules = ConsensusManagerBuilder::new(NetworkType::LocalNet).build();
     let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
-    let temp_db_backend = BlockchainDatabase::new(temp_db, &rules, validators, BlockchainDatabaseConfig::default())?;
+    let temp_db_backend =
+        BlockchainDatabase::new(temp_db, &rules, validators, BlockchainDatabaseConfig::default(), false)?;
     let max_height = temp_db_backend
         .get_chain_metadata()
         .map_err(|e| anyhow!("Could not get max chain height: {}", e))?

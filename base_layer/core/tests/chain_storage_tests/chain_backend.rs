@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::helpers::database::create_orphan_block;
 use croaring::Bitmap;
 use monero::{
     blockdata::Block as MoneroBlock,
@@ -42,7 +43,6 @@ use tari_core::{
         WriteOperation,
     },
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
-    helpers::create_orphan_block,
     proof_of_work::{
         monero_rx::{append_merge_mining_tag, tree_hash, MoneroData},
         Difficulty,
@@ -109,7 +109,10 @@ fn lmdb_insert_contains_delete_and_fetch_header() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -154,7 +157,10 @@ fn lmdb_insert_contains_delete_and_fetch_utxo() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -200,7 +206,10 @@ fn lmdb_insert_contains_delete_and_fetch_kernel() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -253,7 +262,10 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -325,7 +337,10 @@ fn lmdb_spend_utxo_and_unspend_stxo() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -415,7 +430,10 @@ fn lmdb_insert_fetch_metadata() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -501,7 +519,10 @@ fn lmdb_fetch_mmr_root_and_proof_for_utxo_and_rp() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -562,7 +583,10 @@ fn lmdb_fetch_mmr_root_and_proof_for_kernel() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -624,7 +648,10 @@ fn lmdb_fetch_future_mmr_root_for_utxo_and_rp() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -674,7 +701,10 @@ fn lmdb_fetch_future_mmr_root_for_for_kernel() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -792,7 +822,10 @@ fn lmdb_commit_block_and_create_fetch_checkpoint_and_rewind_mmr() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -866,7 +899,10 @@ fn lmdb_for_each_orphan() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -924,7 +960,10 @@ fn lmdb_for_each_kernel() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -982,7 +1021,10 @@ fn lmdb_for_each_header() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -1041,7 +1083,10 @@ fn lmdb_for_each_utxo() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -1104,7 +1149,10 @@ fn lmdb_backend_restore() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&path).exists() {
-        std::fs::remove_dir_all(&path).unwrap();
+        match std::fs::remove_dir_all(&path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -1214,7 +1262,10 @@ fn lmdb_mmr_reset_and_commit() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -1337,7 +1388,10 @@ fn lmdb_fetch_checkpoint() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -1484,7 +1538,10 @@ fn lmdb_merging_and_fetch_checkpoints_and_stxo_discard() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -1532,7 +1589,10 @@ fn lmdb_duplicate_utxo() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -1576,7 +1636,10 @@ fn lmdb_fetch_last_header() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -1726,7 +1789,10 @@ fn lmdb_fetch_target_difficulties() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -1835,7 +1901,10 @@ fn lmdb_fetch_utxo_rp_nodes_and_count() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -1912,7 +1981,10 @@ fn lmdb_fetch_kernel_nodes_and_count() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }
 
@@ -2004,6 +2076,9 @@ fn lmdb_insert_mmr_node_for_utxo_and_rp() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        std::fs::remove_dir_all(&temp_path).unwrap();
+        match std::fs::remove_dir_all(&temp_path) {
+            Err(e) => println!("\n{:?}\n", e),
+            _ => (),
+        }
     }
 }

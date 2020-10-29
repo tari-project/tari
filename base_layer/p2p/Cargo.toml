@@ -1,6 +1,6 @@
 [package]
 name = "tari_p2p"
-version = "0.2.6"
+version = "0.2.11"
 authors = ["The Tari Development community"]
 description = "Tari base layer-specific peer-to-peer communication features"
 repository = "https://github.com/tari-project/tari"
@@ -19,9 +19,9 @@ tari_shutdown = { version = "^0.2", path="../../infrastructure/shutdown" }
 tari_storage = { version = "^0.2", path = "../../infrastructure/storage"}
 tari_utilities = "^0.3"
 
+anyhow = "1.0.32"
 bytes = "0.4.12"
 chrono = {version = "0.4.6", features = ["serde"]}
-thiserror = "1.0.20"
 futures = {version = "^0.3.1"}
 lmdb-zero = "0.4.4"
 log = "0.4.6"
@@ -29,16 +29,16 @@ prost = "0.6.1"
 rand = "0.7.2"
 serde = "1.0.90"
 serde_derive = "1.0.90"
+thiserror = "1.0.20"
 tokio = {version="0.2.10", features=["blocking"]}
 tower = "0.3.0-alpha.2"
 tower-service = { version="0.3.0-alpha.2" }
-anyhow = "1.0.32"
+trust-dns-client = {version="0.19.5", optional= true}
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.2", path="../../infrastructure/test_utils" }
 
 clap = "2.33.0"
-crossbeam-channel = "0.3.8"
 env_logger = "0.6.2"
 futures-test = { version = "0.3.0-alpha.19", package = "futures-test-preview" }
 futures-timer = "0.3.0"
@@ -52,12 +52,10 @@ version ="0.8.3"
 features = ["console_appender", "file_appender", "file", "yaml_format"]
 default-features = false
 
-[target.'cfg(not(windows))'.dev-dependencies.cursive]
-version = "0.12.0"
-
 [build-dependencies]
 tari_common = { version = "^0.2", path="../../common"}
 
 [features]
 test-mocks = []
 avx2 = ["tari_crypto/avx2"]
+dns-seed = ["trust-dns-client"]

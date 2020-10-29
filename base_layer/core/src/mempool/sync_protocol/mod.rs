@@ -103,7 +103,7 @@ use tokio::{sync::Semaphore, task};
 const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
 
-pub static MEMPOOL_SYNC_PROTOCOL: Bytes = Bytes::from_static(b"/tari/mempool-sync/1.0");
+pub static MEMPOOL_SYNC_PROTOCOL: Bytes = Bytes::from_static(b"t/mempool-sync/1");
 
 pub struct MempoolSyncProtocol<TSubstream> {
     config: MempoolServiceConfig,

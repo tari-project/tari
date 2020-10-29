@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{difficulty::big_endian_difficulty, Difficulty},
+    proof_of_work::{difficulty::util::big_endian_difficulty, Difficulty},
 };
 use blake2::Blake2b;
 use digest::Digest;
@@ -37,10 +37,10 @@ pub fn blake_difficulty(header: &BlockHeader) -> Difficulty {
     blake_difficulty_with_hash(header).0
 }
 
-pub fn blake_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
+fn blake_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
     let bytes = header.hash();
     let hash = Blake2b::digest(&bytes);
-    let hash = Blake256::digest(&hash).to_vec();
+    let hash = Blake256::digest(&hash);
     let difficulty = big_endian_difficulty(&hash);
     (difficulty, hash.to_vec())
 }

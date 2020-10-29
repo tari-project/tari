@@ -21,14 +21,17 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{BlockHeader, BlockHeaderValidationError},
+    blocks::BlockHeader,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
-    proof_of_work::{get_median_timestamp, get_target_difficulty, Difficulty, PowError},
-    validation::{Validation, ValidationError},
+    validation::{
+        helpers::{check_achieved_and_target_difficulty, check_median_timestamp},
+        Validation,
+        ValidationError,
+    },
 };
 use log::*;
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, Hashable};
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 const LOG_TARGET: &str = "c::bn::states::horizon_state_sync::headers";
 
@@ -62,7 +65,6 @@ impl<B: BlockchainBackend> Validation<BlockHeader> for HeaderValidator<B> {
             target: LOG_TARGET,
             "Block header validation: BlockHeader is VALID for {}", &header_id
         );
-
         Ok(())
     }
 }
@@ -74,166 +76,19 @@ impl<B: BlockchainBackend> HeaderValidator<B> {
 
     /// Calculates the achieved and target difficulties at the specified height and compares them.
     pub fn check_achieved_and_target_difficulty(&self, block_header: &BlockHeader) -> Result<(), ValidationError> {
-        let pow_algo = block_header.pow.pow_algo;
-        let target = if self.is_genesis(block_header) {
-            Difficulty::from(1)
-        } else {
-            let target_difficulties = self.fetch_target_difficulties(block_header)?;
-
-            let constants = self.rules.consensus_constants(block_header.height);
-            get_target_difficulty(
-                target_difficulties,
-                constants.get_difficulty_block_window() as usize,
-                constants.get_diff_target_block_interval(pow_algo),
-                constants.min_pow_difficulty(pow_algo),
-                constants.get_difficulty_max_block_interval(pow_algo),
-            )
-            .map_err(|err| {
-                error!(
-                    target: LOG_TARGET,
-                    "Validation could not get target difficulty: {}", err
-                );
-                ValidationError::BlockHeaderError(BlockHeaderValidationError::ProofOfWorkError(
-                    PowError::InvalidProofOfWork,
-                ))
-            })?
-        };
-
-        if block_header.pow.target_difficulty != target {
-            warn!(
-                target: LOG_TARGET,
-                "Recorded header target difficulty was incorrect: (got = {}, expected = {})",
-                block_header.pow.target_difficulty,
-                target
-            );
-            return Err(ValidationError::BlockHeaderError(
-                BlockHeaderValidationError::ProofOfWorkError(PowError::InvalidTargetDifficulty),
-            ));
-        }
-
-        let achieved = block_header.achieved_difficulty()?;
-        if achieved < target {
-            warn!(
-                target: LOG_TARGET,
-                "Proof of work for {} was below the target difficulty. Achieved: {}, Target:{}",
-                block_header.hash().to_hex(),
-                achieved,
-                target
-            );
-            return Err(ValidationError::BlockHeaderError(
-                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow { achieved, target }),
-            ));
-        }
-
-        Ok(())
-    }
-
-    /// Returns the set of target difficulties for the given `BlockHeader`
-    fn fetch_target_difficulties(
-        &self,
-        block_header: &BlockHeader,
-    ) -> Result<Vec<(EpochTime, Difficulty)>, ValidationError>
-    {
-        let block_window = self
-            .rules
-            .consensus_constants(block_header.height)
-            .get_difficulty_block_window();
-        let start_height = block_header.height.saturating_sub(block_window);
-        if start_height == block_header.height {
-            return Ok(vec![]);
-        }
-
-        trace!(
-            target: LOG_TARGET,
-            "fetch_target_difficulties: new header height = {}, block window = {}",
-            block_header.height,
-            block_window
-        );
-
-        let block_window = block_window as usize;
-        // TODO: create custom iterator for chunks that does not require a large number of u64s to exist in memory
-        let heights = (0..block_header.height).rev().collect::<Vec<_>>();
-        let mut target_difficulties = Vec::with_capacity(block_window);
-        for block_nums in heights.chunks(block_window) {
-            let headers = self.db.fetch_headers(block_nums.to_vec())?;
-
-            let max_remaining = block_window.saturating_sub(target_difficulties.len());
-            trace!(
-                target: LOG_TARGET,
-                "fetch_target_difficulties: max_remaining = {}",
-                max_remaining
-            );
-            target_difficulties.extend(
-                headers
-                    .into_iter()
-                    .filter(|h| h.pow.pow_algo == block_header.pow.pow_algo)
-                    .take(max_remaining)
-                    .map(|h| (h.timestamp, h.pow.target_difficulty)),
-            );
-
-            assert!(
-                target_difficulties.len() <= block_window,
-                "target_difficulties can never contain more elements than the block window"
-            );
-            if target_difficulties.len() == block_window {
-                break;
-            }
-        }
-
-        trace!(
-            target: LOG_TARGET,
-            "fetch_target_difficulties: #returned = {}",
-            target_difficulties.len()
-        );
-        Ok(target_difficulties.into_iter().rev().collect())
+        // We cant use the actual tip, as this is used by the header sync, the tip has not yet been downloaded, but we
+        // can assume that the previous header was added, so we use that as the tip.
+        let tip_height = block_header.height.saturating_sub(1);
+        let db = self.db.db_read_access()?;
+        check_achieved_and_target_difficulty(&*db, block_header, tip_height, self.rules.clone())
     }
 
     /// This function tests that the block timestamp is greater than the median timestamp at the specified height.
     pub fn check_median_timestamp(&self, block_header: &BlockHeader) -> Result<(), ValidationError> {
-        if self.is_genesis(block_header) {
-            // Median timestamps check not required for the genesis block header
-            return Ok(());
-        }
-
-        let start_height = block_header.height.saturating_sub(
-            self.rules
-                .consensus_constants(block_header.height)
-                .get_median_timestamp_count() as u64,
-        );
-
-        if start_height == block_header.height {
-            return Ok(());
-        }
-
-        let block_nums = (start_height..block_header.height).collect();
-        let timestamps = self
-            .db
-            .fetch_headers(block_nums)?
-            .iter()
-            .map(|h| h.timestamp)
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            timestamps.is_empty(),
-            false,
-            "check_median_timestamp: timestamps are empty"
-        );
-
-        let median_timestamp = get_median_timestamp(timestamps)
-            .expect("check_median_timestamp: get_median_timestamp only returns None if `timestamps` is empty");
-
-        if block_header.timestamp < median_timestamp {
-            warn!(
-                target: LOG_TARGET,
-                "Block header timestamp {} is less than median timestamp: {} for block:{}",
-                block_header.timestamp,
-                median_timestamp,
-                block_header.hash().to_hex()
-            );
-            return Err(ValidationError::BlockHeaderError(
-                BlockHeaderValidationError::InvalidTimestamp,
-            ));
-        }
-        Ok(())
+        // We cant use the actual tip, as this is used by the header sync, the tip has not yet been downloaded, but we
+        // can assume that the previous header was added, so we use that as the tip.
+        let tip_height = block_header.height.saturating_sub(1);
+        let db = self.db.db_read_access()?;
+        check_median_timestamp(&*db, block_header, tip_height, self.rules.clone())
     }
 }

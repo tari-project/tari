@@ -397,6 +397,7 @@ where
             known_peer,
             authenticated_public_key,
             peer_identity,
+            Some(&dialed_addr),
             allow_test_addresses,
         )
         .await?;

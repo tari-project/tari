@@ -81,7 +81,7 @@ impl<B: Backend> TabsContainer<B> {
         f.render_widget(tabs, area);
     }
 
-    pub fn draw_content(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
+    pub fn draw_content(&mut self, f: &mut Frame<B>, area: Rect, app_state: &mut AppState) {
         self.tabs[self.index].draw(f, area, app_state);
     }
 }
@@ -111,5 +111,9 @@ impl<B: Backend> Component<B> for TabsContainer<B> {
 
     fn on_backspace(&mut self, app_state: &mut AppState) {
         self.tabs[self.index].on_backspace(app_state);
+    }
+
+    fn on_tick(&mut self, app_state: &mut AppState) {
+        self.tabs[self.index].on_tick(app_state);
     }
 }

@@ -36,9 +36,6 @@ use tari_comms::{
     protocol::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
-        ProtocolId,
-        ProtocolNotificationTx,
-        Protocols,
     },
     tor,
     tor::HiddenServiceControllerError,
@@ -48,7 +45,6 @@ use tari_comms::{
     CommsBuilderError,
     CommsNode,
     PeerManager,
-    Substream,
     UnspawnedCommsNode,
 };
 use tari_comms_dht::{Dht, DhtBuilder, DhtConfig, DhtInitializationError};
@@ -59,7 +55,7 @@ use tari_storage::{
     LMDBWrapper,
 };
 use thiserror::Error;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::broadcast;
 use tower::ServiceBuilder;
 
 const LOG_TARGET: &str = "p2p::initialization";
@@ -341,7 +337,7 @@ where
         .node_identity()
         .has_peer_features(PeerFeatures::COMMUNICATION_NODE)
     {
-        comms = comms.add_rpc(RpcServer::new().add_service(dht.rpc_service()));
+        comms = comms.add_rpc_server(RpcServer::new().add_service(dht.rpc_service()));
     }
 
     // Hook up DHT messaging middlewares
@@ -441,35 +437,10 @@ impl ServiceInitializer for P2pInitializer {
 
             context.register_handle(comms.connectivity());
             context.register_handle(comms.peer_manager());
-            context.register_handle(CommsProtocols::new());
             context.register_handle(comms);
             context.register_handle(dht);
 
             Ok(())
         }
-    }
-}
-
-/// CommsProtocols is made available by the P2pInitializer.
-/// This should be used to hook up protocols to comms and is made available in the initialization phase before comms has
-/// spawned.
-#[derive(Clone, Default)]
-pub struct CommsProtocols {
-    protocols: Arc<Mutex<Protocols<Substream>>>,
-}
-
-impl CommsProtocols {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    /// Register an mpsc channel to be notified whenever a peer wants to speak any of the given protocols.
-    pub async fn add_protocol_notifier<I: AsRef<[ProtocolId]>>(
-        &self,
-        protocols: I,
-        notifier: ProtocolNotificationTx<Substream>,
-    )
-    {
-        self.protocols.lock().await.add(protocols, notifier);
     }
 }

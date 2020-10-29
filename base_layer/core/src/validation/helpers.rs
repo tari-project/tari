@@ -53,8 +53,7 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
             .consensus_constants(block_header.height)
             .get_median_timestamp_count() as u64,
     );
-    let block_nums = (min_height..=height).collect();
-    let timestamps = fetch_headers(db, block_nums)?
+    let timestamps = fetch_headers(db, min_height, height)?
         .iter()
         .map(|h| h.timestamp)
         .collect::<Vec<_>>();
@@ -62,6 +61,7 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
         error!(target: LOG_TARGET, "Validation could not get median timestamp");
         ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestamp)
     })?;
+
     if block_header.timestamp < median_timestamp {
         warn!(
             target: LOG_TARGET,
@@ -112,6 +112,7 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
             block_window,
             constants.get_diff_target_block_interval(pow_algo),
             constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
             constants.get_difficulty_max_block_interval(pow_algo),
         )
         .map_err(|e| {

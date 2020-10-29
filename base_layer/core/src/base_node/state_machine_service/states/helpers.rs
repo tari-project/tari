@@ -46,8 +46,8 @@ use tari_comms::connectivity::ConnectivityRequester;
 const RANDOM_SYNC_PEER_WITH_CHAIN: bool = true;
 // The default length of time to ban a misbehaving/malfunctioning sync peer (24 hours)
 const DEFAULT_PEER_BAN_DURATION: Duration = Duration::from_secs(24 * 60 * 60);
-// The length of time for a short term ban of a misbehaving/malfunctioning sync peer (5 min)
-const SHORT_TERM_PEER_BAN_DURATION: Duration = Duration::from_secs(5 * 60);
+// The length of time for a short term ban of a misbehaving/malfunctioning sync peer
+const SHORT_TERM_PEER_BAN_DURATION: Duration = Duration::from_secs(30 * 60);
 
 /// Configuration for the Sync Peer Selection and Banning.
 #[derive(Clone, Copy)]
@@ -83,7 +83,7 @@ pub fn select_sync_peer(config: &SyncPeerConfig, sync_peers: &[SyncPeer]) -> Res
 pub fn exclude_sync_peer(
     log_target: &str,
     sync_peers: &mut SyncPeers,
-    sync_peer: SyncPeer,
+    sync_peer: &SyncPeer,
 ) -> Result<(), BlockSyncError>
 {
     trace!(target: log_target, "Excluding peer ({}) from sync peers.", sync_peer);
@@ -94,32 +94,12 @@ pub fn exclude_sync_peer(
     Ok(())
 }
 
-/// Ban and disconnect the provided sync peer if this node is online
-pub async fn ban_sync_peer_if_online(
-    log_target: &str,
-    connectivity: &mut ConnectivityRequester,
-    sync_peers: &mut SyncPeers,
-    sync_peer: SyncPeer,
-    ban_duration: Duration,
-    reason: String,
-) -> Result<(), BlockSyncError>
-{
-    if !connectivity.get_connectivity_status().await?.is_online() {
-        warn!(
-            target: log_target,
-            "Unable to ban peer {} because local node is offline.", sync_peer
-        );
-        return Ok(());
-    }
-    ban_sync_peer(log_target, connectivity, sync_peers, sync_peer, ban_duration, reason).await
-}
-
 /// Ban and disconnect the provided sync peer.
 pub async fn ban_sync_peer(
     log_target: &str,
     connectivity: &mut ConnectivityRequester,
     sync_peers: &mut SyncPeers,
-    sync_peer: SyncPeer,
+    sync_peer: &SyncPeer,
     ban_duration: Duration,
     reason: String,
 ) -> Result<(), BlockSyncError>
@@ -128,7 +108,7 @@ pub async fn ban_sync_peer(
     connectivity
         .ban_peer(sync_peer.node_id.clone(), ban_duration, reason)
         .await?;
-    exclude_sync_peer(log_target, sync_peers, sync_peer)
+    exclude_sync_peer(log_target, sync_peers, &sync_peer)
 }
 
 /// Ban and disconnect entire set of sync peers.
@@ -145,7 +125,7 @@ pub async fn ban_all_sync_peers<B: BlockchainBackend + 'static>(
             log_target,
             &mut shared.connectivity,
             sync_peers,
-            sync_peers[0].clone(),
+            &sync_peers[0].clone(),
             ban_duration,
             reason.clone(),
         )
@@ -192,7 +172,7 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
                             log_target,
                             &mut shared.connectivity,
                             sync_peers,
-                            sync_peer.clone(),
+                            &sync_peer,
                             config.short_term_peer_ban_duration,
                             "Peer supplied the incorrect headers".to_string(),
                         )
@@ -214,7 +194,7 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
                         log_target,
                         &mut shared.connectivity,
                         sync_peers,
-                        sync_peer.clone(),
+                        &sync_peer,
                         config.short_term_peer_ban_duration,
                         "Peer supplied the incorrect headers".to_string(),
                     )
@@ -231,7 +211,7 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
-                    sync_peer.clone(),
+                    &sync_peer,
                     config.short_term_peer_ban_duration,
                     "Peer provided an unexpected api response".to_string(),
                 )
@@ -243,11 +223,11 @@ pub async fn request_headers<B: BlockchainBackend + 'static>(
                     "Failed to fetch header from peer: {:?}. Retrying.",
                     CommsInterfaceError::RequestTimedOut,
                 );
-                ban_sync_peer_if_online(
+                ban_sync_peer(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
-                    sync_peer.clone(),
+                    &sync_peer,
                     config.short_term_peer_ban_duration,
                     "Failed to fetch header from peer".to_string(),
                 )
@@ -296,7 +276,7 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
-                    sync_peer.clone(),
+                    &sync_peer,
                     config.short_term_peer_ban_duration,
                     "Peer provided an unexpected api response".to_string(),
                 )
@@ -308,11 +288,11 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
                     "Failed to fetch mmr node count from peer: {:?}. Retrying.",
                     CommsInterfaceError::RequestTimedOut,
                 );
-                ban_sync_peer_if_online(
+                ban_sync_peer(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
-                    sync_peer.clone(),
+                    &sync_peer,
                     config.short_term_peer_ban_duration,
                     "Failed to fetch mmr node count from peer".to_string(),
                 )
@@ -371,7 +351,7 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
-                    sync_peer.clone(),
+                    &sync_peer,
                     config.short_term_peer_ban_duration,
                     "Peer provided an unexpected api response".to_string(),
                 )
@@ -383,11 +363,11 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
                     "Failed to fetch mmr nodes from peer: {:?}. Retrying.",
                     CommsInterfaceError::RequestTimedOut,
                 );
-                ban_sync_peer_if_online(
+                ban_sync_peer(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
-                    sync_peer.clone(),
+                    &sync_peer,
                     config.short_term_peer_ban_duration,
                     "Failed to fetch mmr nodes from peer".to_string(),
                 )
@@ -437,7 +417,7 @@ pub async fn request_kernels<B: BlockchainBackend + 'static>(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
-                    sync_peer.clone(),
+                    &sync_peer,
                     config.peer_ban_duration,
                     "Peer provided an unexpected api response".to_string(),
                 )
@@ -449,11 +429,11 @@ pub async fn request_kernels<B: BlockchainBackend + 'static>(
                     "Failed to fetch kernels from peer: {:?}. Retrying.",
                     CommsInterfaceError::RequestTimedOut,
                 );
-                ban_sync_peer_if_online(
+                ban_sync_peer(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
-                    sync_peer.clone(),
+                    &sync_peer,
                     config.short_term_peer_ban_duration,
                     "Failed to fetch kernels from peer".to_string(),
                 )
@@ -510,7 +490,7 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
-                    sync_peer.clone(),
+                    &sync_peer,
                     config.peer_ban_duration,
                     "Peer provided an unexpected api response".to_string(),
                 )
@@ -522,11 +502,11 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
                     "Failed to fetch kernels from peer: {:?}. Retrying.",
                     CommsInterfaceError::RequestTimedOut,
                 );
-                ban_sync_peer_if_online(
+                ban_sync_peer(
                     log_target,
                     &mut shared.connectivity,
                     sync_peers,
-                    sync_peer.clone(),
+                    &sync_peer,
                     config.short_term_peer_ban_duration,
                     "Failed to fetch kernels from peer".to_string(),
                 )

@@ -196,7 +196,7 @@ mkdir $distDir/dist
 COPY_FILES=(
   "target/release/tari_base_node"
   "target/release/tari_merge_mining_proxy"
-  "common/config/presets/rincewind-simple.toml"
+  "common/config/presets/tari-sample.toml"
   "common/config/tari_config_sample.toml"
 #  "log4rs.yml"
   "common/logging/log4rs-sample.yml"

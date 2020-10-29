@@ -45,3 +45,6 @@ pub mod proto;
 pub mod services;
 pub mod tari_message;
 pub mod transport;
+
+#[cfg(feature = "dns-seed")]
+pub mod dns_seed;

@@ -1,4 +1,4 @@
-#![recursion_limit = "256"]
+#![recursion_limit = "1024"]
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -106,10 +106,11 @@ mod utils;
 // recovery mode
 mod recovery;
 
+use futures::FutureExt;
 use log::*;
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
-use std::{net::SocketAddr, time::Duration};
+use std::net::SocketAddr;
 use structopt::StructOpt;
 use tari_app_utilities::{
     identity_management::setup_node_identity,
@@ -117,7 +118,7 @@ use tari_app_utilities::{
 };
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
 use tari_comms::peer_manager::PeerFeatures;
-use tari_shutdown::Shutdown;
+use tari_shutdown::{Shutdown, ShutdownSignal};
 use tonic::transport::Server;
 
 pub const LOG_TARGET: &str = "base_node::app";
@@ -147,7 +148,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // Populate the configuration struct
     let node_config = GlobalConfig::convert_from(cfg).map_err(|err| {
         error!(target: LOG_TARGET, "The configuration file has an error. {}", err);
-        ExitCodes::ConfigError
+        ExitCodes::ConfigError(format!("The configuration file has an error. {}", err))
     })?;
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
@@ -205,38 +206,43 @@ fn main_inner() -> Result<(), ExitCodes> {
             node_identity,
             wallet_identity,
             shutdown.to_signal(),
+            bootstrap.clean_orphans_db,
         ))
         .map_err(|err| {
             error!(target: LOG_TARGET, "{}", err);
             ExitCodes::UnknownError
         })?;
-    // Run, node, run!
-    let parser = Parser::new(rt.handle().clone(), &ctx, &node_config);
 
-    cli::print_banner(parser.get_commands(), 3);
     if node_config.grpc_enabled {
+        // Go, GRPC , go go
         let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::new(
             rt.handle().clone(),
             ctx.local_node(),
             node_config.clone(),
         );
 
-        rt.spawn(run_grpc(grpc, node_config.grpc_address));
+        rt.spawn(run_grpc(grpc, node_config.grpc_address, shutdown.to_signal()));
     }
+
+    // Run, node, run!
+    let parser = Parser::new(rt.handle().clone(), &ctx, &node_config);
+    cli::print_banner(parser.get_commands(), 3);
     let base_node_handle = rt.spawn(ctx.run());
 
     info!(
         target: LOG_TARGET,
         "Node has been successfully configured and initialized. Starting CLI loop."
     );
+
     cli_loop(parser, shutdown);
+
     match rt.block_on(base_node_handle) {
         Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
         Err(e) => error!(target: LOG_TARGET, "Node has crashed: {}", e),
     }
 
-    // Wait for all tasks to exit or a timeout, whichever comes first
-    rt.shutdown_timeout(Duration::from_secs(20));
+    // Wait until tasks have shut down
+    drop(rt);
 
     println!("Goodbye!");
     Ok(())
@@ -246,15 +252,16 @@ fn main_inner() -> Result<(), ExitCodes> {
 async fn run_grpc(
     grpc: crate::grpc::base_node_grpc_server::BaseNodeGrpcServer,
     grpc_address: SocketAddr,
-) -> Result<(), String>
+    interrupt_signal: ShutdownSignal,
+) -> Result<(), anyhow::Error>
 {
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     Server::builder()
         .add_service(tari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc))
-        .serve(grpc_address)
-        .await
-        .map_err(|e| format!("GRPC server returned error:{}", e))?;
+        .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
+        .await?;
+
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
 }

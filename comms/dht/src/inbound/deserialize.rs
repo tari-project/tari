@@ -76,25 +76,15 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
             } = message;
 
             if body.is_empty() {
-                return Err(format!("Received empty message from peer '{}'", source_peer)
-                    .as_str()
-                    .into());
+                return Err(anyhow::anyhow!("Received empty message from peer '{}'", source_peer));
             }
 
             match DhtEnvelope::decode(&mut body) {
                 Ok(dht_envelope) => {
-                    let source_peer = peer_manager
-                        .find_by_node_id(&source_peer)
-                        .await
-                        .map(Arc::new)
-                        .map_err(PipelineError::from_debug)?;
+                    let source_peer = peer_manager.find_by_node_id(&source_peer).await.map(Arc::new)?;
 
-                    let inbound_msg = DhtInboundMessage::new(
-                        tag,
-                        dht_envelope.header.try_into().map_err(PipelineError::from_debug)?,
-                        source_peer,
-                        dht_envelope.body,
-                    );
+                    let inbound_msg =
+                        DhtInboundMessage::new(tag, dht_envelope.header.try_into()?, source_peer, dht_envelope.body);
                     trace!(
                         target: LOG_TARGET,
                         "Deserialization succeeded. Passing message {} onto next service (Trace: {})",
@@ -106,7 +96,7 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
                 },
                 Err(err) => {
                     error!(target: LOG_TARGET, "DHT deserialization failed: {}", err);
-                    Err(PipelineError::from_debug(err))
+                    Err(err.into())
                 },
             }
         }

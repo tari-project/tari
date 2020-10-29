@@ -157,14 +157,12 @@ use tari_crypto::{
     tari_utilities::ByteArray,
 };
 use tari_p2p::transport::{TorConfig, TransportType};
+use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex, message_format::MessageFormat};
 use tari_wallet::{
-    contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
+    contacts_service::storage::database::Contact,
     error::WalletError,
-    output_manager_service::{
-        protocols::txo_validation_protocol::TxoValidationRetry,
-        storage::sqlite_db::OutputManagerSqliteDatabase,
-    },
+    output_manager_service::protocols::txo_validation_protocol::TxoValidationRetry,
     storage::{
         database::WalletDatabase,
         sqlite_db::WalletSqliteDatabase,
@@ -195,7 +193,6 @@ use tari_wallet::{
                 TransactionDirection,
                 TransactionStatus,
             },
-            sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
     util::emoji::{emoji_set, EmojiId},
@@ -212,7 +209,11 @@ use log4rs::append::{
     Append,
 };
 use tari_core::consensus::Network;
-use tari_wallet::output_manager_service::protocols::txo_validation_protocol::TxoValidationType;
+use tari_wallet::{
+    error::WalletStorageError,
+    output_manager_service::protocols::txo_validation_protocol::TxoValidationType,
+    WalletSqlite,
+};
 use tokio::runtime::Runtime;
 
 const LOG_TARGET: &str = "wallet_ffi";
@@ -248,13 +249,9 @@ pub struct EmojiSet(Vec<ByteVector>);
 pub struct TariSeedWords(Vec<String>);
 
 pub struct TariWallet {
-    wallet: tari_wallet::wallet::Wallet<
-        WalletSqliteDatabase,
-        TransactionServiceSqliteDatabase,
-        OutputManagerSqliteDatabase,
-        ContactsServiceSqliteDatabase,
-    >,
+    wallet: WalletSqlite,
     runtime: Runtime,
+    shutdown: Shutdown,
 }
 
 /// -------------------------------- Strings ------------------------------------------------ ///
@@ -2925,6 +2922,8 @@ pub unsafe extern "C" fn wallet_create(
             // TODO remove after next TestNet
             transaction_backend.migrate((*config).node_identity.public_key().clone());
 
+            let shutdown = Shutdown::new();
+
             w = runtime.block_on(Wallet::new(
                 WalletConfig::new(
                     (*config).clone(),
@@ -2939,6 +2938,7 @@ pub unsafe extern "C" fn wallet_create(
                 transaction_backend.clone(),
                 output_manager_backend,
                 contacts_backend,
+                shutdown.to_signal(),
             ));
 
             match w {
@@ -2972,7 +2972,11 @@ pub unsafe extern "C" fn wallet_create(
                         );
                     }
 
-                    let tari_wallet = TariWallet { wallet: w, runtime };
+                    let tari_wallet = TariWallet {
+                        wallet: w,
+                        runtime,
+                        shutdown,
+                    };
 
                     Box::into_raw(Box::new(tari_wallet))
                 },
@@ -4772,6 +4776,183 @@ pub unsafe extern "C" fn wallet_remove_encryption(wallet: *mut TariWallet, error
     }
 }
 
+/// Set a Key Value in the Wallet storage used for Client Key Value store
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `key` - The pointer to a Utf8 string representing the Key
+/// `value` - The pointer to a Utf8 string representing the Value ot be stored
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Return a boolean value indicating the operation's success or failure. The error_ptr will hold the error
+/// code if there was a failure
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_set_key_value(
+    wallet: *mut TariWallet,
+    key: *const c_char,
+    value: *const c_char,
+    error_out: *mut c_int,
+) -> bool
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    let key_string;
+    if key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    } else {
+        key_string = CStr::from_ptr(key).to_str().unwrap().to_owned();
+    }
+
+    let value_string;
+    if value.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("value".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    } else {
+        value_string = CStr::from_ptr(value).to_str().unwrap().to_owned();
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.db.set_client_key_value(key_string, value_string))
+    {
+        Ok(_) => true,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
+    }
+}
+
+/// get a stored Value that was previously stored in the Wallet storage used for Client Key Value store
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `key` - The pointer to a Utf8 string representing the Key
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array of the Value string. Note that it returns an null pointer if an
+/// error occured.
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_value(
+    wallet: *mut TariWallet,
+    key: *const c_char,
+    error_out: *mut c_int,
+) -> *mut c_char
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let key_string;
+    if key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        key_string = CStr::from_ptr(key).to_str().unwrap().to_owned();
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.db.get_client_key_value(key_string))
+    {
+        Ok(result) => match result {
+            None => {
+                error = LibWalletError::from(WalletError::WalletStorageError(WalletStorageError::ValuesNotFound)).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                ptr::null_mut()
+            },
+            Some(value) => {
+                let v = CString::new(value).expect("Should be able to make a CString");
+                CString::into_raw(v)
+            },
+        },
+        Err(e) => {
+            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Clears a Value for the provided Key Value in the Wallet storage used for Client Key Value store
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `key` - The pointer to a Utf8 string representing the Key
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Return a boolean value indicating the operation's success or failure. The error_ptr will hold the error
+/// code if there was a failure
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_clear_value(
+    wallet: *mut TariWallet,
+    key: *const c_char,
+    error_out: *mut c_int,
+) -> bool
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    let key_string;
+    if key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    } else {
+        key_string = CStr::from_ptr(key).to_str().unwrap().to_owned();
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.db.clear_client_value(key_string))
+    {
+        Ok(result) => result,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
+    }
+}
+
 /// This function will produce a partial backup of the specified wallet database file. This backup will be written to
 /// the provided file (full path must include the filename and extension) and will include the full wallet db but will
 /// clear the sensitive Comms Private Key
@@ -4945,8 +5126,11 @@ pub unsafe extern "C" fn emoji_set_destroy(emoji_set: *mut EmojiSet) {
 #[no_mangle]
 pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
     if !wallet.is_null() {
-        let mut m = Box::from_raw(wallet);
-        m.runtime.block_on(m.wallet.shutdown());
+        let mut w = Box::from_raw(wallet);
+        match w.shutdown.trigger() {
+            Err(_) => error!(target: LOG_TARGET, "No listeners for the shutdown signal!"),
+            Ok(()) => w.runtime.block_on(w.wallet.wait_until_shutdown()),
+        }
     }
 }
 
@@ -6286,6 +6470,110 @@ mod test {
 
             comms_config_destroy(alice_config);
             seed_words_destroy(seed_words);
+            wallet_destroy(alice_wallet);
+        }
+    }
+
+    #[test]
+    fn test_wallet_client_key_value_store() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let secret_key_alice = private_key_generate();
+            let db_name_alice = CString::new(random_string(8).as_str()).unwrap();
+            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice.clone()) as *const c_char;
+            let alice_temp_dir = tempdir().unwrap();
+            let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
+            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
+            let transport_type_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
+            let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
+            let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+
+            let alice_config = comms_config_create(
+                address_alice_str,
+                transport_type_alice,
+                db_name_alice_str,
+                db_path_alice_str,
+                20,
+                error_ptr,
+            );
+            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
+            let alice_wallet = wallet_create(
+                alice_config,
+                ptr::null(),
+                0,
+                0,
+                ptr::null(),
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                direct_send_callback,
+                store_and_forward_send_callback,
+                tx_cancellation_callback,
+                base_node_sync_process_complete_callback,
+                saf_messages_received_callback,
+                error_ptr,
+            );
+
+            let client_key_values = vec![
+                ("key1".to_string(), "value1".to_string()),
+                ("key2".to_string(), "value2".to_string()),
+                ("key3".to_string(), "value3".to_string()),
+            ];
+
+            for kv in client_key_values.iter() {
+                let k = CString::new(kv.0.as_str()).unwrap();
+                let k_str: *const c_char = CString::into_raw(k.clone()) as *const c_char;
+                let v = CString::new(kv.1.as_str()).unwrap();
+                let v_str: *const c_char = CString::into_raw(v.clone()) as *const c_char;
+                assert!(wallet_set_key_value(alice_wallet, k_str, v_str, error_ptr));
+                string_destroy(k_str as *mut c_char);
+                string_destroy(v_str as *mut c_char);
+            }
+
+            let passphrase =
+                "A pretty long passphrase that should test the hashing to a 32-bit key quite well".to_string();
+            let passphrase_str = CString::new(passphrase).unwrap();
+            let passphrase_const_str: *const c_char = CString::into_raw(passphrase_str) as *const c_char;
+
+            wallet_apply_encryption(alice_wallet, passphrase_const_str, error_ptr);
+            assert_eq!(error, 0);
+
+            for kv in client_key_values.iter() {
+                let k = CString::new(kv.0.as_str()).unwrap();
+                let k_str: *const c_char = CString::into_raw(k.clone()) as *const c_char;
+
+                let found_value = wallet_get_value(alice_wallet, k_str, error_ptr);
+                let found_string = CString::from_raw(found_value).to_str().unwrap().to_owned();
+                assert_eq!(found_string, kv.1.clone());
+                string_destroy(k_str as *mut c_char);
+            }
+            let wrong_key = CString::new("Wrong").unwrap();
+            let wrong_key_str: *const c_char = CString::into_raw(wrong_key.clone()) as *const c_char;
+            assert!(!wallet_clear_value(alice_wallet, wrong_key_str, error_ptr));
+            string_destroy(wrong_key_str as *mut c_char);
+
+            let k = CString::new(client_key_values[0].0.as_str()).unwrap();
+            let k_str: *const c_char = CString::into_raw(k.clone()) as *const c_char;
+            assert!(wallet_clear_value(alice_wallet, k_str, error_ptr));
+
+            let found_value = wallet_get_value(alice_wallet, k_str, error_ptr);
+            assert_eq!(found_value, ptr::null_mut());
+            assert_eq!(*error_ptr, 424i32);
+
+            string_destroy(k_str as *mut c_char);
+            string_destroy(db_name_alice_str as *mut c_char);
+            string_destroy(db_path_alice_str as *mut c_char);
+            string_destroy(address_alice_str as *mut c_char);
+            string_destroy(passphrase_const_str as *mut c_char);
+            private_key_destroy(secret_key_alice);
+            transport_type_destroy(transport_type_alice);
+
+            comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
         }
     }

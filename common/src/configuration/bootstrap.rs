@@ -23,7 +23,7 @@
 //! // Initialise the logger
 //! bootstrap.initialize_logging()?;
 //! assert_eq!(config.network, Network::MainNet);
-//! assert_eq!(config.blocking_threads, 4);
+//! assert_eq!(config.core_threads, Some(4));
 //! ```
 //!
 //! ```shell
@@ -104,6 +104,15 @@ pub struct ConfigBootstrap {
     /// This will rebuild the db, adding block for block in
     #[structopt(long, alias("rebuild_db"))]
     pub rebuild_db: bool,
+    /// Path to input file of commands
+    #[structopt(short, long, alias("input"), parse(from_os_str))]
+    pub input_file: Option<PathBuf>,
+    /// Single input command
+    #[structopt(long)]
+    pub command: Option<String>,
+    /// This will clean out the orphans db at startup
+    #[structopt(long, alias("clean_orphans_db"))]
+    pub clean_orphans_db: bool,
 }
 
 impl Default for ConfigBootstrap {
@@ -116,6 +125,9 @@ impl Default for ConfigBootstrap {
             create_id: false,
             daemon_mode: false,
             rebuild_db: false,
+            input_file: None,
+            command: None,
+            clean_orphans_db: false,
         }
     }
 }
@@ -272,20 +284,25 @@ mod test {
             "--init",
             "--create-id",
             "--rebuild_db",
+            "--clean_orphans_db",
             "--base-path",
             "no-temp-path-created",
             "--log-config",
             "no-log-config-file-created",
             "--config",
             "no-config-file-created",
+            "--command",
+            "no-command-provided",
         ])
         .expect("failed to process arguments");
         assert!(bootstrap.init);
         assert!(bootstrap.create_id);
         assert!(bootstrap.rebuild_db);
+        assert!(bootstrap.clean_orphans_db);
         assert_eq!(bootstrap.base_path.to_str(), Some("no-temp-path-created"));
         assert_eq!(bootstrap.log_config.to_str(), Some("no-log-config-file-created"));
         assert_eq!(bootstrap.config.to_str(), Some("no-config-file-created"));
+        assert_eq!(bootstrap.command.unwrap(), "no-command-provided");
 
         // Test command line argument aliases
         let bootstrap = ConfigBootstrap::from_iter_safe(vec![
@@ -315,7 +332,7 @@ mod test {
 
         // Check if home_dir is used by default
         assert_eq!(
-            dirs::home_dir().unwrap().join(".tari"),
+            dirs_next::home_dir().unwrap().join(".tari"),
             dir_utils::default_path("", None)
         );
 

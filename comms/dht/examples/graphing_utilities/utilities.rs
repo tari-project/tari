@@ -201,19 +201,20 @@ pub fn run_python_network_graph_render(
         ],
     };
 
-    let mut result = Command::new("python")
+    let result = Command::new("python")
         .args(arguments)
         .spawn()
         .map_err(|_| "Could not execute Python command".to_string())?;
-    match result
-        .wait()
-        .map_err(|_| "Python command did not complete".to_string())?
-        .code()
-    {
+    let output = result
+        .wait_with_output()
+        .map_err(|e| format!("Python command did not complete: {}", e))?;
+    match output.status.code() {
         Some(0) => Ok(()),
-        Some(1) => Err("Problem with the arguments".to_string()),
-        Some(2) => Err("No graph files to process".to_string()),
-        _ => Err("Unexpected exit from Python script".to_string()),
+        _ => Err(format!(
+            "stdout: {}, stderr:{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )),
     }
 }
 

@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.2.6"
+version = "0.2.11"
 edition = "2018"
 
 [features]
@@ -23,7 +23,6 @@ tari_comms = { version = "^0.2", path = "../../comms"}
 tari_comms_dht = { version = "^0.2.1", path = "../../comms/dht"}
 tari_comms_rpc_macros = { version = "^0.1", path = "../../comms/rpc_macros"}
 tari_crypto = { version = "^0.8" }
-tari_infra_derive = { version = "^0.0",  path = "../../infrastructure/derive" }
 tari_mmr = { version = "^0.2", path = "../../base_layer/mmr", optional = true }
 tari_p2p = { version = "^0.2", path = "../../base_layer/p2p" }
 tari_service_framework = { version = "^0.2", path = "../service_framework"}
@@ -51,7 +50,9 @@ rand = "0.7.2"
 randomx-rs = { version = "0.4.0", optional = true }
 serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0"
-strum = "0.17.1"
+cfg-if = "0.1.10"
+config = { version = "0.9.3" }
+strum = "^0.19"
 strum_macros = "0.17.1"
 thiserror = "1.0.20"
 tokio = { version="^0.2", features = ["blocking", "time", "sync"] }
@@ -68,7 +69,6 @@ env_logger = "0.7.0"
 tempfile = "3.1.0"
 tokio-macros = "0.2.4"
 tari_wallet = { version = "^0.2", path = "../../base_layer/wallet" }
-tokio-test = "0.2.0"
 
 [build-dependencies]
 tari_common = { version = "^0.2", path="../../common"}

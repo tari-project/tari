@@ -5,22 +5,20 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
-use rand::{self, Rng};
 use serde::Serialize;
+use std::{fs::File, io::Write};
 use tari_core::{
     tari_utilities::hex::Hex,
     transactions::{
         helpers,
         tari_amount::{MicroTari, T},
-        transaction::{OutputFeatures, TransactionOutput},
-        types::{CryptoFactories, PrivateKey},
+        transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
+        types::{Commitment, CryptoFactories, PrivateKey},
     },
 };
-
-use std::{fs::File, io::Write};
 use tokio::{sync::mpsc, task};
 
-const NUM_KEYS: usize = 10;
+const NUM_KEYS: usize = 4000;
 
 #[derive(Serialize)]
 struct Key {
@@ -84,8 +82,10 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
     let mut utxo_file = File::create("utxos.json").expect("Could not create utxos.json");
     let mut key_file = File::create("keys.json").expect("Could not create keys.json");
     let mut written: u64 = 0;
+    let mut key_sum = PrivateKey::default();
     // The receiver channel will patiently await results until the tx is dropped.
     while let Some((utxo, key, value)) = rx.recv().await {
+        key_sum = key_sum + key.clone();
         let key = Key {
             key: key.to_hex(),
             value: u64::from(value),
@@ -106,6 +106,17 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
             Err(e) => println!("{}", e.to_string()),
         }
     }
+    let (pk, sig) = helpers::create_random_signature_from_s_key(key_sum, 0.into(), 0);
+    let excess = Commitment::from_public_key(&pk);
+    let kernel = TransactionKernel {
+        features: KernelFeatures::empty(),
+        fee: MicroTari::from(0),
+        lock_height: 0,
+        excess,
+        excess_sig: sig,
+    };
+    let _ = utxo_file.write_all(format!("{}\n", kernel).as_bytes());
+
     println!("Done.");
 }
 
@@ -115,9 +126,7 @@ impl Iterator for Values {
     type Item = MicroTari;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut rng = rand::rngs::OsRng;
-        let extra = rng.gen_range(0, 25) * 10_000_000;
-        Some(5000 * T + MicroTari(extra))
+        Some(5000 * T)
     }
 }
 

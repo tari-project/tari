@@ -12,4 +12,5 @@ pub trait Component<B: Backend> {
 
     fn on_esc(&mut self, _app_state: &mut AppState) {}
     fn on_backspace(&mut self, _app_state: &mut AppState) {}
+    fn on_tick(&mut self, _app_state: &mut AppState) {}
 }

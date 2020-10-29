@@ -37,7 +37,10 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerStorage},
     pipeline,
     pipeline::SinkService,
-    protocol::messaging::{MessagingEvent, MessagingEventReceiver, MessagingEventSender, MessagingProtocolExtension},
+    protocol::{
+        messaging::{MessagingEvent, MessagingEventReceiver, MessagingEventSender, MessagingProtocolExtension},
+        rpc::RpcServer,
+    },
     transports::MemoryTransport,
     types::CommsDatabase,
     CommsBuilder,
@@ -52,6 +55,7 @@ use tari_comms_dht::{
     outbound::OutboundEncryption,
     Dht,
     DhtBuilder,
+    DhtConfig,
 };
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_storage::{
@@ -218,7 +222,7 @@ pub async fn network_connectivity_stats(nodes: &[TestNode], wallets: &[TestNode]
         let mut total = 0;
         let mut avg = Vec::new();
         for node in nodes {
-            let conns = node.comms.connection_manager().get_active_connections().await.unwrap();
+            let conns = node.comms.connectivity().get_active_connections().await.unwrap();
             total += conns.len();
             avg.push(conns.len());
 
@@ -265,10 +269,11 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
         .unwrap();
     let num_connections = random_node
         .comms
-        .connection_manager()
-        .get_num_active_connections()
+        .connectivity()
+        .get_active_connections()
         .await
-        .unwrap();
+        .unwrap()
+        .len();
     let (success, failed) = send_states.wait_all().await;
     println!(
         "🦠 {} broadcast to {}/{} peer(s) ({} connection(s))",
@@ -286,14 +291,14 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
         .enumerate()
         .map(|(idx, node)| {
             let mut outbound_req = node.dht.outbound_requester();
-            let mut conn_man = node.comms.connection_manager();
+            let mut connectivity = node.comms.connectivity();
             let mut ims_rx = node.ims_rx.take().unwrap();
             let start = Instant::now();
             let start_global = start_global.clone();
             let node_name = node.name.clone();
 
             task::spawn(async move {
-                let result = time::timeout(Duration::from_secs(10), ims_rx.next()).await;
+                let result = time::timeout(Duration::from_secs(30), ims_rx.next()).await;
                 let mut is_success = false;
                 match result {
                     Ok(Some(msg)) => {
@@ -319,7 +324,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
                             )
                             .await
                             .unwrap();
-                        let num_connections = conn_man.get_num_active_connections().await.unwrap();
+                        let num_connections = connectivity.get_active_connections().await.unwrap().len();
                         let (success, failed) = send_states.wait_all().await;
                         println!(
                             "🦠 {} propagated to {}/{} peer(s) ({} connection(s))",
@@ -471,11 +476,13 @@ pub async fn do_store_and_forward_message_propagation(
     let shutdown = Shutdown::new();
     let (comms, dht, messaging_events) = setup_comms_dht(
         node_identity,
-        create_peer_storage(wallets_peers),
+        create_peer_storage(),
         tx,
         num_neighbouring_nodes,
         num_random_nodes,
         propagation_factor,
+        wallets_peers,
+        true,
         shutdown.to_signal(),
     )
     .await;
@@ -496,12 +503,7 @@ pub async fn do_store_and_forward_message_propagation(
         .await
         .unwrap();
     take_a_break(nodes.len()).await;
-    let connections = wallet
-        .comms
-        .connection_manager()
-        .get_active_connections()
-        .await
-        .unwrap();
+    let connections = wallet.comms.connectivity().get_active_connections().await.unwrap();
     println!(
         "{} has {} connections to {}",
         wallet,
@@ -624,14 +626,6 @@ fn connection_manager_logger(
                     node_name,
                     get_name(node_id),
                     err
-                );
-            },
-            PeerConnectWillClose(_, node_id, direction) => {
-                println!(
-                    "'{}' will disconnect {} connection to '{}'",
-                    get_name(node_id),
-                    direction,
-                    node_name,
                 );
             },
             PeerInboundConnectFailed(err) => {
@@ -800,7 +794,7 @@ pub fn make_node_identity(features: PeerFeatures) -> Arc<NodeIdentity> {
     Arc::new(NodeIdentity::random(&mut OsRng, format!("/memory/{}", port).parse().unwrap(), features).unwrap())
 }
 
-fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
+fn create_peer_storage() -> CommsDatabase {
     let database_name = random::string(8);
     let datastore = LMDBBuilder::new()
         .set_path(create_temporary_data_path().to_str().unwrap())
@@ -812,12 +806,7 @@ fn create_peer_storage(peers: Vec<Peer>) -> CommsDatabase {
 
     let peer_database = datastore.get_handle(&database_name).unwrap();
     let peer_database = LMDBWrapper::new(Arc::new(peer_database));
-    let mut storage = PeerStorage::new_indexed(peer_database).unwrap();
-    for peer in peers {
-        storage.add_peer(peer).unwrap();
-    }
-
-    storage.into()
+    PeerStorage::new_indexed(peer_database).unwrap().into()
 }
 
 pub async fn make_node(
@@ -858,11 +847,13 @@ pub async fn make_node_from_node_identities(
     let shutdown = Shutdown::new();
     let (comms, dht, messaging_events) = setup_comms_dht(
         node_identity,
-        create_peer_storage(seed_peers.clone()),
+        create_peer_storage(),
         tx,
         num_neighbouring_nodes,
         num_random_nodes,
         propagation_factor,
+        seed_peers.clone(),
+        false,
         shutdown.to_signal(),
     )
     .await;
@@ -879,13 +870,15 @@ pub async fn make_node_from_node_identities(
     )
 }
 
-pub async fn setup_comms_dht(
+async fn setup_comms_dht(
     node_identity: Arc<NodeIdentity>,
     storage: CommsDatabase,
     inbound_tx: mpsc::Sender<DecryptedDhtMessage>,
     num_neighbouring_nodes: usize,
     num_random_nodes: usize,
     propagation_factor: usize,
+    seed_peers: Vec<Peer>,
+    saf_auto_request: bool,
     shutdown_signal: ShutdownSignal,
 ) -> (CommsNode, Dht, MessagingEventSender)
 {
@@ -903,6 +896,9 @@ pub async fn setup_comms_dht(
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(1000)))
         .build()
         .unwrap();
+    for peer in seed_peers {
+        comms.peer_manager().add_peer(peer).await.unwrap();
+    }
 
     let dht = DhtBuilder::new(
         comms.node_identity(),
@@ -911,22 +907,26 @@ pub async fn setup_comms_dht(
         comms.connectivity(),
         comms.shutdown_signal(),
     )
-        .local_test()
-        //.enable_auto_join()
-        .set_auto_store_and_forward_requests(false)
-        .with_discovery_timeout(Duration::from_secs(15))
-        .with_num_neighbouring_nodes(num_neighbouring_nodes)
-        .with_num_random_nodes(num_random_nodes)
-        .with_propagation_factor(propagation_factor)
-        .build()
-        .await
-        .unwrap();
+    .with_config(DhtConfig {
+        saf_auto_request,
+        auto_join: false,
+        discovery_request_timeout: Duration::from_secs(15),
+        num_neighbouring_nodes,
+        num_random_nodes,
+        propagation_factor,
+        network_discovery: Default::default(),
+        ..DhtConfig::default_local_test()
+    })
+    .build()
+    .await
+    .unwrap();
 
     let dht_outbound_layer = dht.outbound_middleware_layer();
 
     let (messaging_events_tx, _) = broadcast::channel(100);
 
     let comms = comms
+        .add_rpc_server(RpcServer::new().add_service(dht.rpc_service()))
         .add_protocol_extension(MessagingProtocolExtension::new(
             messaging_events_tx.clone(),
             pipeline::Builder::new()
