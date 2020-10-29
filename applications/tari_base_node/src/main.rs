@@ -20,13 +20,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#![cfg_attr(not(debug_assertions), deny(unused_variables))]
-#![cfg_attr(not(debug_assertions), deny(unused_imports))]
-#![cfg_attr(not(debug_assertions), deny(dead_code))]
-#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
-#![deny(unused_must_use)]
-#![deny(unreachable_patterns)]
-#![deny(unknown_lints)]
+//#![cfg_attr(not(debug_assertions), deny(unused_variables))]
+//#![cfg_attr(not(debug_assertions), deny(unused_imports))]
+//#![cfg_attr(not(debug_assertions), deny(dead_code))]
+//#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+//#![deny(unused_must_use)]
+//#![deny(unreachable_patterns)]
+//#![deny(unknown_lints)]
 // Enable 'impl Trait' type aliases
 #![feature(type_alias_impl_trait)]
 
@@ -124,12 +124,12 @@ use tonic::transport::Server;
 pub const LOG_TARGET: &str = "base_node::app";
 
 #[cfg(feature = "winservice")]
-#[macro_use]
 extern crate windows_service;
 
 #[cfg(feature = "winservice")]
 use std::{ffi::OsString, sync::mpsc, time::Duration};
 
+use std::thread;
 #[cfg(feature = "winservice")]
 use windows_service::{
     define_windows_service,
@@ -183,14 +183,117 @@ pub fn run_service() -> ServiceResult<()> {
         controls_accepted: ServiceControlAccept::STOP,
         exit_code: ServiceExitCode::Win32(0),
         checkpoint: 0,
-        wait_hint: Duration::default(),
+        wait_hint: Duration::new(5, 0),
         process_id: None,
     })?;
 
-    match main_inner(Some(shutdown_rx)) {
-        Ok(_) => info!(target: LOG_TARGET, "Service shutdown successful."),
-        Err(e) => error!(target: LOG_TARGET, "Service exited with code: {}", e),
+    let handle = thread::spawn(move || {
+        let mut bootstrap = ConfigBootstrap::from_args();
+
+        // Check and initialize configuration files
+        bootstrap.init_dirs(ApplicationType::BaseNode).unwrap();
+
+        // Load and apply configuration file
+        let cfg = bootstrap.load_configuration().unwrap();
+
+        // Initialise the logger
+        bootstrap.initialize_logging().unwrap();
+
+        // Populate the configuration struct
+        let node_config = GlobalConfig::convert_from(cfg)
+            .map_err(|err| {
+                error!(target: LOG_TARGET, "The configuration file has an error. {}", err);
+                ExitCodes::ConfigError(format!("The configuration file has an error. {}", err))
+            })
+            .unwrap();
+
+        debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
+
+        // Set up the Tokio runtime
+        let mut rt = setup_runtime(&node_config)
+            .map_err(|err| {
+                error!(target: LOG_TARGET, "{}", err);
+                ExitCodes::UnknownError
+            })
+            .unwrap();
+
+        // Load or create the Node identity
+        let wallet_identity = setup_node_identity(
+            &node_config.wallet_identity_file,
+            &node_config.public_address,
+            bootstrap.create_id ||
+                // If the base node identity exists, we want to be sure that the wallet identity exists
+                node_config.identity_file.exists(),
+            PeerFeatures::COMMUNICATION_CLIENT,
+        )
+        .unwrap();
+
+        let node_identity = setup_node_identity(
+            &node_config.identity_file,
+            &node_config.public_address,
+            bootstrap.create_id,
+            PeerFeatures::COMMUNICATION_NODE,
+        )
+        .unwrap();
+
+        // This is the main and only shutdown trigger for the system.
+        let shutdown = Shutdown::new();
+
+        // Build, node, build!
+        let ctx = rt
+            .block_on(builder::configure_and_initialize_node(
+                &node_config,
+                node_identity,
+                wallet_identity,
+                shutdown.to_signal(),
+                bootstrap.clean_orphans_db,
+            ))
+            .map_err(|err| {
+                error!(target: LOG_TARGET, "{}", err);
+                ExitCodes::UnknownError
+            })
+            .unwrap();
+
+        if node_config.grpc_enabled {
+            // Go, GRPC , go go
+            let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::new(
+                rt.handle().clone(),
+                ctx.local_node(),
+                node_config.clone(),
+            );
+
+            rt.spawn(run_grpc(grpc, node_config.grpc_address, shutdown.to_signal()));
+        }
+
+        // Run, node, run!
+        let base_node_handle = rt.spawn(ctx.run());
+
+        info!(
+            target: LOG_TARGET,
+            "Node has been successfully configured and initialized. Starting CLI loop."
+        );
+
+        match rt.block_on(base_node_handle) {
+            Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
+            Err(e) => error!(target: LOG_TARGET, "Node has crashed: {}", e),
+        }
+
+        // Wait until tasks have shut down
+        drop(rt);
+
+    });
+
+    loop {
+        match shutdown_rx.recv_timeout(Duration::from_secs(5)) {
+            // Break the loop either upon stop or channel disconnect
+            Ok(_) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+
+            // Continue work if no events were received within the timeout
+            Err(mpsc::RecvTimeoutError::Timeout) => (),
+        };
     }
+
+    handle.join().unwrap();
 
     status_handle.set_service_status(ServiceStatus {
         service_type: SERVICE_TYPE,
@@ -198,7 +301,7 @@ pub fn run_service() -> ServiceResult<()> {
         controls_accepted: ServiceControlAccept::empty(),
         exit_code: ServiceExitCode::Win32(0),
         checkpoint: 0,
-        wait_hint: Duration::default(),
+        wait_hint: Duration::new(5, 0),
         process_id: None,
     })?;
 
@@ -213,14 +316,14 @@ fn main() -> windows_service::Result<()> {
 /// Application entry point
 #[cfg(not(feature = "winservice"))]
 fn main() {
-    match main_inner(None) {
+    match main_inner() {
         Ok(_) => std::process::exit(0),
         Err(exit_code) => std::process::exit(exit_code.as_i32()),
     }
 }
 
 /// Sets up the base node and runs the cli_loop
-fn main_inner(receiver: Option<mpsc::Receiver<()>>) -> Result<(), ExitCodes> {
+fn main_inner() -> Result<(), ExitCodes> {
     // Parse and validate command-line arguments
     let mut bootstrap = ConfigBootstrap::from_args();
 
@@ -327,9 +430,6 @@ fn main_inner(receiver: Option<mpsc::Receiver<()>>) -> Result<(), ExitCodes> {
     #[cfg(not(feature = "winservice"))]
     cli_loop(parser, shutdown);
 
-    #[cfg(feature = "winservice")]
-    service_loop(receiver);
-
     match rt.block_on(base_node_handle) {
         Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
         Err(e) => error!(target: LOG_TARGET, "Node has crashed: {}", e),
@@ -358,25 +458,6 @@ async fn run_grpc(
 
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
-}
-
-#[cfg(feature = "winservice")]
-fn service_loop(receiver:Option<mpsc::Receiver<()>>) {
-    loop {
-        unsafe {
-            if let Some(shutdown_rx) = &receiver {
-                match shutdown_rx.recv_timeout(Duration::from_secs(1)) {
-                    // Break the loop either upon stop or channel disconnect
-                    Ok(_) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
-
-                    // Continue work if no events were received within the timeout
-                    Err(mpsc::RecvTimeoutError::Timeout) => (),
-                };
-            } else {
-                break;
-            }
-        }
-    }
 }
 
 /// Runs the Base Node
