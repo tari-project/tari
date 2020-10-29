@@ -1,4 +1,3 @@
-#[cfg(windows)]
 fn main() -> windows_service::Result<()> {
     use std::{thread, time::Duration};
     use windows_service::{
@@ -21,9 +20,4 @@ fn main() -> windows_service::Result<()> {
 
     service.delete()?;
     Ok(())
-}
-
-#[cfg(not(windows))]
-fn main() {
-    panic!("This program is only intended to run on Windows.");
 }

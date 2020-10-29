@@ -140,51 +140,32 @@ use windows_service::{
 };
 
 #[cfg(feature = "winservice")]
-const SERVICE_NAME: &str = "base_node_service";
+const SERVICE_NAME: &str = "tari_base_node";
 #[cfg(feature = "winservice")]
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
-#[cfg(feature = "winservice")]
-static mut SHUTDOWN_CHANNEL: Option<mpsc::Receiver<()>> = None;
 
 #[cfg(feature = "winservice")]
 pub fn run() -> ServiceResult<()> {
-    // Register generated `ffi_service_main` with the system and start the service, blocking
-    // this thread until the service is stopped.
     service_dispatcher::start(SERVICE_NAME, ffi_service_main)
 }
 
-// Generate the windows service boilerplate.
-// The boilerplate contains the low-level service entry function (ffi_service_main) that parses
-// incoming service arguments into Vec<OsString> and passes them to user defined service
-// entry (my_service_main).
 #[cfg(feature = "winservice")]
 define_windows_service!(ffi_service_main, service_main);
 
-// Service entry function which is called on background thread by the system with service
-// parameters. There is no stdout or stderr at this point so make sure to configure the log
-// output to file if needed.
 #[cfg(feature = "winservice")]
 pub fn service_main(_arguments: Vec<OsString>) {
     if let Err(_e) = run_service() {
-        // Handle the error, by logging or something.
+        // Handle the error
     }
 }
 
 #[cfg(feature = "winservice")]
 pub fn run_service() -> ServiceResult<()> {
-    // Create a channel to be able to poll a stop event from the service worker loop.
     let (shutdown_tx, shutdown_rx) = mpsc::channel();
-    unsafe {
-        SHUTDOWN_CHANNEL = Some(shutdown_rx);
-    }
-    // Define system service event handler that will be receiving service events.
+
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         match control_event {
-            // Notifies a service to report its current status information to the service
-            // control manager. Always return NoError even if not implemented.
             ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
-
-            // Handle stop
             ServiceControl::Stop => {
                 shutdown_tx.send(()).unwrap();
                 ServiceControlHandlerResult::NoError
@@ -194,11 +175,8 @@ pub fn run_service() -> ServiceResult<()> {
         }
     };
 
-    // Register system service event handler.
-    // The returned status handle should be used to report service status changes to the system.
     let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
 
-    // Tell the system that service is running
     status_handle.set_service_status(ServiceStatus {
         service_type: SERVICE_TYPE,
         current_state: ServiceState::Running,
@@ -209,12 +187,11 @@ pub fn run_service() -> ServiceResult<()> {
         process_id: None,
     })?;
 
-    match main_inner() {
+    match main_inner(Some(shutdown_rx)) {
         Ok(_) => info!(target: LOG_TARGET, "Service shutdown successful."),
         Err(e) => error!(target: LOG_TARGET, "Service exited with code: {}", e),
     }
 
-    // Tell the system that service has stopped.
     status_handle.set_service_status(ServiceStatus {
         service_type: SERVICE_TYPE,
         current_state: ServiceState::Stopped,
@@ -236,14 +213,14 @@ fn main() -> windows_service::Result<()> {
 /// Application entry point
 #[cfg(not(feature = "winservice"))]
 fn main() {
-    match main_inner() {
+    match main_inner(None) {
         Ok(_) => std::process::exit(0),
         Err(exit_code) => std::process::exit(exit_code.as_i32()),
     }
 }
 
 /// Sets up the base node and runs the cli_loop
-fn main_inner() -> Result<(), ExitCodes> {
+fn main_inner(receiver: Option<mpsc::Receiver<()>>) -> Result<(), ExitCodes> {
     // Parse and validate command-line arguments
     let mut bootstrap = ConfigBootstrap::from_args();
 
@@ -351,7 +328,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     cli_loop(parser, shutdown);
 
     #[cfg(feature = "winservice")]
-    service_loop();
+    service_loop(receiver);
 
     match rt.block_on(base_node_handle) {
         Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
@@ -384,10 +361,10 @@ async fn run_grpc(
 }
 
 #[cfg(feature = "winservice")]
-fn service_loop() {
+fn service_loop(receiver:Option<mpsc::Receiver<()>>) {
     loop {
         unsafe {
-            if let Some(shutdown_rx) = &SHUTDOWN_CHANNEL {
+            if let Some(shutdown_rx) = &receiver {
                 match shutdown_rx.recv_timeout(Duration::from_secs(1)) {
                     // Break the loop either upon stop or channel disconnect
                     Ok(_) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
