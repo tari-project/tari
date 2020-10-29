@@ -1,0 +1,147 @@
+on:
+  push:
+  pull_request:
+    types: [opened]
+
+name: CI
+
+jobs:
+  check:
+    name: cargo check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2020-06-10
+          components: clippy, rustfmt
+          override: true
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+  build:
+    name: cargo build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+          libncurses5 \
+          libncurses5-dev \
+          openssl \
+          libssl-dev \
+          pkg-config \
+          libsqlite3-0 \
+          libsqlite3-dev \
+          git \
+          cmake \
+          libc++-dev \
+          libc++abi-dev
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2020-06-10
+          components: clippy, rustfmt
+          override: true
+      - name: cargo cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: build cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            target
+          key: ${{ runner.os }}-build-${{ hashFiles('**/Cargo.lock') }}
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+  test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+          libncurses5 \
+          libncurses5-dev \
+          openssl \
+          libssl-dev \
+          pkg-config \
+          libsqlite3-0 \
+          libsqlite3-dev \
+          git \
+          cmake \
+          libc++-dev \
+          libc++abi-dev
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2020-06-10
+          components: clippy, rustfmt
+          override: true
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+  fmt:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2020-06-10
+          components: clippy, rustfmt
+          override: true
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2020-06-10
+          components: clippy, rustfmt
+          override: true
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -- -D warnings
