@@ -976,7 +976,7 @@ impl TryFrom<InboundTransactionSql> for InboundTransaction {
         Ok(Self {
             tx_id: i.tx_id as u64,
             source_public_key: PublicKey::from_vec(&i.source_public_key)
-                .map_err(|_| TransactionStorageError::ConversionError)?,
+                .map_err(|_| TransactionStorageError::ConversionError("Invalid Source Publickey".to_string()))?,
             amount: MicroTari::from(i.amount as u64),
             receiver_protocol: serde_json::from_str(&i.receiver_protocol)?,
             status: TransactionStatus::Pending,
@@ -1163,7 +1163,7 @@ impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
         Ok(Self {
             tx_id: o.tx_id as u64,
             destination_public_key: PublicKey::from_vec(&o.destination_public_key)
-                .map_err(|_| TransactionStorageError::ConversionError)?,
+                .map_err(|_| TransactionStorageError::ConversionError("Invalid destination PublicKey".to_string()))?,
             amount: MicroTari::from(o.amount as u64),
             fee: MicroTari::from(o.fee as u64),
             sender_protocol: serde_json::from_str(&o.sender_protocol)?,
@@ -1412,9 +1412,9 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
         Ok(Self {
             tx_id: c.tx_id as u64,
             source_public_key: PublicKey::from_vec(&c.source_public_key)
-                .map_err(|_| TransactionStorageError::ConversionError)?,
+                .map_err(|_| TransactionStorageError::ConversionError("Invalid source Publickey".to_string()))?,
             destination_public_key: PublicKey::from_vec(&c.destination_public_key)
-                .map_err(|_| TransactionStorageError::ConversionError)?,
+                .map_err(|_| TransactionStorageError::ConversionError("Invalid destination PublicKey".to_string()))?,
             amount: MicroTari::from(c.amount as u64),
             fee: MicroTari::from(c.fee as u64),
             transaction: serde_json::from_str(&c.transaction_protocol)?,
