@@ -24,6 +24,14 @@ const tariWallet = protoDescriptor2.tari.rpc;
 walletClient = new tariWallet.Wallet('127.0.0.1:50061', grpc.credentials.createInsecure());
 grpc_promise.promisifyAll(walletClient);
 
+describe('Transaction builder', function() {
+   it("Can generate a signature challenge", async function(){
+       let tb = new TransactionBuilder();
+       tb.buildChallenge("f4aad10d3ba02cafb490c943c689c98895bd87197de841450dffb7ad28a17238", 1, 60);
+   });
+});
+
+
 describe('Base Node',function () {
     this.timeout(10000);
 
@@ -97,12 +105,13 @@ describe('Base Node',function () {
             let builder = new TransactionBuilder();
             const privateKey = builder.generatePrivateKey("test");
             let blockTemplate = await baseNode.getBlockTemplate();
-            let transaction = builder.generateCoinbase(blockTemplate.block_reward, privateKey, 60);
+            console.log("Block template:", blockTemplate);
+            let transaction = builder.generateCoinbase(blockTemplate.block_reward, privateKey, 0, 60);
             return baseNode.submitBlockWithCoinbase(blockTemplate.block, transaction).then(async () =>
             {
                 let tip = await baseNode.getTipHeight();
                 console.log("Tip:", tip);
-                expect(tip).to.equal(blockTemplate.block.height);
+                expect(tip).to.equal(parseInt(blockTemplate.block.header.height));
             });
         });
     });

@@ -144,3 +144,49 @@ pub fn build_challenge(sum_public_nonces: &PublicKey, metadata: &TransactionMeta
         .result()
         .to_vec()
 }
+
+#[cfg(test)]
+mod test {
+    use tari_crypto::tari_utilities::hex::Hex;
+
+    use crate::transactions::{
+        tari_amount::*,
+        transaction::TransactionError,
+        types::{Challenge, MessageHash, PublicKey},
+    };
+    use digest::Digest;
+    use serde::{Deserialize, Serialize};
+    use tari_crypto::{
+        range_proof::RangeProofError,
+        signatures::SchnorrSignatureError,
+        tari_utilities::byte_array::ByteArray,
+    };
+    use thiserror::Error;
+
+    #[test]
+    fn test_challenge() {
+
+        let pn = PublicKey::from_hex("f4aad10d3ba02cafb490c943c689c98895bd87197de841450dffb7ad28a17238").unwrap();
+        assert_eq!(Vec::from(pn.as_bytes()).to_hex(),"f4aad10d3ba02cafb490c943c689c98895bd87197de841450dffb7ad28a17238" );
+
+        let result = Challenge::new().chain(pn.as_bytes());
+        let fee :u64 = 1;
+
+        assert_eq!(Vec::from(fee.to_le_bytes()).to_hex(), "0100000000000000");
+
+        let result =result
+            .chain(fee.to_le_bytes());
+
+
+        let lock_height: u64 = 60;
+
+        assert_eq!(Vec::from(lock_height.to_le_bytes()).to_hex(), "3c00000000000000");
+
+let result = result.chain(lock_height.to_le_bytes())
+        .result().to_vec().to_hex();
+        // assert_eq!(result, "f5b611a5a70e8b692b1258864ebc14b7616151af56606c973ebf919ee35ff300");
+        assert_eq!(result, "1afd4287bfc507e3bfbce398e7d6d9948e25bdbdc1caf61fdd19deb45c41272b");
+        // should be:
+       // 292c4bf7560fe315859992d5744ae28718bcb88a53cb6942e05a409e2f781258
+    }
+}

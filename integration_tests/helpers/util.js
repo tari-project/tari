@@ -19,8 +19,33 @@ async function waitFor(asyncTestFn, toBe, maxTime) {
     }
 }
 
+function dec2hex (n){
+    return n ? [n%256].concat(dec2hex(~~(n/256))) : [];
+}
+
+function toLittleEndianInner(n){
+
+    let hexar = dec2hex(n);
+    return hexar.map(h => (h < 16 ? "0" : "") + h.toString(16))
+        .concat(Array(4-hexar.length).fill("00"));
+}
+
+function toLittleEndian(n, numBits) {
+
+    let s = toLittleEndianInner(n);
+
+    for (let i=s.length;i<numBits/8;i++) {
+        s.push("00");
+    }
+
+    let arr = Buffer.from(s.join(''), 'hex');
+
+    return arr;
+}
+
 module.exports = {
     getRandomInt,
     sleep,
-    waitFor
+    waitFor,
+    toLittleEndian
 };

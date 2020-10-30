@@ -54,11 +54,12 @@ class BaseNodeProcess {
             TARI_BASE_NODE__LOCALNET__IDENTITY_FILE: this.nodeFile,
             TARI_BASE_NODE__LOCALNET__TOR_IDENTITY_FILE: "node_tor_id.json",
             TARI_BASE_NODE__LOCALNET__WALLET_IDENTITY_FILE: "walletid.json",
+            TARI_BASE_NODE__LOCALNET__ENABLE_WALLET: true,
             TARI_BASE_NODE__LOCALNET__WALLET_TOR_IDENTITY_FILE: "wallet_tor_id.json",
             TARI_BASE_NODE__LOCALNET__TRANSPORT: "tcp",
             TARI_BASE_NODE__LOCALNET__TCP_LISTENER_ADDRESS: "/ip4/0.0.0.0/tcp/" + this.port,
             TARI_BASE_NODE__LOCALNET__ALLOW_TEST_ADDRESSES: 'true',
-            TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS: "/ip4/10.0.0.102/tcp/" + this.port,
+            TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS: "/ip4/127.0.0.1/tcp/" + this.port,
             TARI_BASE_NODE__LOCALNET__GRPC_ENABLED: "true",
             TARI_BASE_NODE__LOCALNET__GRPC_ADDRESS: "127.0.0.1:" + this.grpcPort,
             TARI_BASE_NODE__LOCALNET__BLOCK_SYNC_STRATEGY: "ViaBestChainMetadata",
@@ -135,7 +136,7 @@ class BaseNodeProcess {
     }
 
     async start() {
-        var ps = this.run("cargo", ["run", "--release", "--bin tari_base_node", "--", "--base-path", "."]);
+        var ps = this.run("cargo", ["run","--release", "--bin tari_base_node", "--", "--base-path", "."]);
         await sleep(6000);
         return ps;
     }
