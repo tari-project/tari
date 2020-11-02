@@ -23,7 +23,7 @@ message BaseNodeServiceResponse {
         // Indicates a NewBlockTemplate response.
         tari.core.NewBlockTemplate new_block_template = 7;
         // Indicates a NewBlock response.
-        tari.core.Block new_block = 8;
+        NewBlockResponse new_block = 8;
         // Indicates a TargetDifficulty response.
         uint64 target_difficulty = 9;
         // Block headers in range response
@@ -52,7 +52,13 @@ message HistoricalBlocks {
     repeated tari.core.HistoricalBlock blocks = 1;
 }
 
-message MmrNodes {
+message NewBlockResponse {
+    bool success = 1;
+    string error = 2;
+    tari.core.Block block = 3;
+ }
+
+ message MmrNodes {
     repeated bytes added = 1;
     bytes deleted = 2;
 }

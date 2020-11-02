@@ -123,7 +123,19 @@ impl LocalNodeCommsInterface {
             .call(NodeCommsRequest::GetNewBlock(block_template))
             .await??
         {
-            NodeCommsResponse::NewBlock(block) => Ok(block),
+            NodeCommsResponse::NewBlock { success, error, block } => {
+                if success {
+                    if let Some(block) = block {
+                        Ok(block)
+                    } else {
+                        Err(CommsInterfaceError::UnexpectedApiResponse)
+                    }
+                } else {
+                    Err(CommsInterfaceError::ApiError(
+                        error.unwrap_or("Unspecified error".to_string()),
+                    ))
+                }
+            },
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

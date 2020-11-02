@@ -25,6 +25,7 @@ use super::base_node::{
     BlockHeaders as ProtoBlockHeaders,
     HistoricalBlocks as ProtoHistoricalBlocks,
     MmrNodes as ProtoMmrNodes,
+    NewBlockResponse as ProtoNewBlockResponse,
     TransactionKernels as ProtoTransactionKernels,
     TransactionOutputs as ProtoTransactionOutputs,
 };
@@ -67,7 +68,14 @@ impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 ci::NodeCommsResponse::HistoricalBlocks(blocks)
             },
             NewBlockTemplate(block_template) => ci::NodeCommsResponse::NewBlockTemplate(block_template.try_into()?),
-            NewBlock(block) => ci::NodeCommsResponse::NewBlock(block.try_into()?),
+            NewBlock(block) => ci::NodeCommsResponse::NewBlock {
+                success: block.success,
+                error: Some(block.error),
+                block: match block.block {
+                    Some(b) => Some(b.try_into()?),
+                    None => None,
+                },
+            },
             TargetDifficulty(difficulty) => ci::NodeCommsResponse::TargetDifficulty(Difficulty::from(difficulty)),
             MmrNodeCount(u64) => ci::NodeCommsResponse::MmrNodeCount(u64),
             MmrNodes(response) => ci::NodeCommsResponse::MmrNodes(response.added, response.deleted),
@@ -103,7 +111,11 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 ProtoNodeCommsResponse::HistoricalBlocks(historical_blocks)
             },
             NewBlockTemplate(block_template) => ProtoNodeCommsResponse::NewBlockTemplate(block_template.into()),
-            NewBlock(block) => ProtoNodeCommsResponse::NewBlock(block.into()),
+            NewBlock { success, error, block } => ProtoNodeCommsResponse::NewBlock(ProtoNewBlockResponse {
+                success,
+                error: error.unwrap_or("".to_string()),
+                block: block.map(|b| b.into()),
+            }),
             TargetDifficulty(difficulty) => ProtoNodeCommsResponse::TargetDifficulty(difficulty.as_u64()),
             MmrNodeCount(node_count) => ProtoNodeCommsResponse::MmrNodeCount(node_count),
             MmrNodes(added, deleted) => ProtoNodeCommsResponse::MmrNodes(ProtoMmrNodes { added, deleted }),
