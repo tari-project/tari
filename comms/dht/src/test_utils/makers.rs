@@ -175,7 +175,7 @@ pub fn build_peer_manager() -> Arc<PeerManager> {
 
     let peer_database = datastore.get_handle(&database_name).unwrap();
 
-    PeerManager::new(CommsDatabase::new(Arc::new(peer_database)))
+    PeerManager::new(CommsDatabase::new(Arc::new(peer_database)), None)
         .map(Arc::new)
         .unwrap()
 }

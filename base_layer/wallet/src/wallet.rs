@@ -221,7 +221,7 @@ where
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
     /// exiting.
     pub async fn wait_until_shutdown(self) {
-        self.comms.wait_until_shutdown().await;
+        self.comms.clone().wait_until_shutdown().await;
     }
 
     /// This function will set the base_node that the wallet uses to broadcast transactions and monitor the blockchain

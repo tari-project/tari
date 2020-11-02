@@ -228,6 +228,7 @@ where T: TransactionBackend + 'static
                 node_identity,
                 factories,
                 constants,
+                handles.get_shutdown_signal(),
             )
             .start();
             futures::pin_mut!(service);

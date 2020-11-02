@@ -125,6 +125,8 @@ pub enum TransactionServiceError {
     CoinbaseBuildError(#[from] CoinbaseBuildError),
     #[error("Pending Transaction Timed out")]
     Timeout,
+    #[error("Shutdown Signal Received")]
+    Shutdown,
 }
 
 #[derive(Debug, Error)]

@@ -80,7 +80,7 @@ async fn spawn_messaging_protocol() -> (
     let mock_state = mock.get_shared_state();
     mock.spawn();
 
-    let peer_manager = PeerManager::new(CommsDatabase::new()).map(Arc::new).unwrap();
+    let peer_manager = PeerManager::new(CommsDatabase::new(), None).map(Arc::new).unwrap();
     let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
     let (proto_tx, proto_rx) = mpsc::channel(10);
     let (request_tx, request_rx) = mpsc::channel(100);

@@ -189,6 +189,7 @@ where TBackend: TransactionBackend + 'static
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
+            let mut shutdown = self.resources.shutdown_signal.clone();
             let mut delay = delay_for(self.timeout).fuse();
             futures::select! {
                 mempool_response = mempool_response_receiver.select_next_some() => {
@@ -245,6 +246,10 @@ where TBackend: TransactionBackend + 'static
                             e
                         });
                 },
+                 _ = shutdown => {
+                    info!(target: LOG_TARGET, "Transaction Broadcast Protocol (id: {}) shutting down because it received the shutdown signal", self.id);
+                    return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
+                }
             }
         }
 

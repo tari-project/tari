@@ -23,7 +23,10 @@
 use crate::{
     error::WalletStorageError,
     schema::{client_key_values, wallet_settings},
-    storage::database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
+    storage::{
+        database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
+        sqlite_utilities::WalletDbConnection,
+    },
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable, AES_NONCE_BYTES},
 };
 use aes_gcm::{
@@ -35,7 +38,7 @@ use diesel::{prelude::*, SqliteConnection};
 use log::*;
 use std::{
     str::from_utf8,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
 };
 use tari_comms::types::{CommsPublicKey, CommsSecretKey};
 use tari_crypto::{
@@ -51,22 +54,18 @@ const LOG_TARGET: &str = "wallet::storage::sqlite_db";
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
 pub struct WalletSqliteDatabase {
-    database_connection: Arc<Mutex<SqliteConnection>>,
+    database_connection: WalletDbConnection,
     cipher: Arc<RwLock<Option<Aes256Gcm>>>,
 }
 impl WalletSqliteDatabase {
-    pub fn new(
-        database_connection: Arc<Mutex<SqliteConnection>>,
-        cipher: Option<Aes256Gcm>,
-    ) -> Result<Self, WalletStorageError>
-    {
+    pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Result<Self, WalletStorageError> {
         // Here we validate if the database is encrypted or not and if a cipher is provided that it is the correct one.
         // Unencrypted the database should contain a CommsPrivateKey and associated CommsPublicKey
         // Encrypted the data should contain a CommsPublicKey in the clear and an encrypted CommsPrivateKey
         // To confirm if the provided Cipher is correct we decrypt the CommsPrivateKey and see if it produces the same
         // CommsPublicKey that is stored in the db
         {
-            let conn = acquire_lock!(database_connection);
+            let conn = database_connection.acquire_lock();
             let secret_key = WalletSettingSql::get(format!("{}", DbKey::CommsSecretKey), &conn)?;
             let db_public_key = WalletSettingSql::get(format!("{}", DbKey::CommsPublicKey), &conn)?;
 
@@ -209,7 +208,7 @@ impl WalletSqliteDatabase {
 
 impl WalletBackend for WalletSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
         let cipher = acquire_read_lock!(self.cipher);
 
         let result = match key {
@@ -250,7 +249,7 @@ impl WalletBackend for WalletSqliteDatabase {
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, WalletStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
         match op {
             WriteOperation::Insert(kvp) => match kvp {
                 DbKeyValuePair::CommsSecretKey(sk) => {
@@ -295,7 +294,7 @@ impl WalletBackend for WalletSqliteDatabase {
             return Err(WalletStorageError::AlreadyEncrypted);
         }
 
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
         let secret_key_str = match WalletSettingSql::get(format!("{}", DbKey::CommsSecretKey), &conn)? {
             None => return Err(WalletStorageError::ValueNotFound(DbKey::CommsSecretKey)),
             Some(sk) => sk,
@@ -326,7 +325,7 @@ impl WalletBackend for WalletSqliteDatabase {
         } else {
             return Ok(());
         };
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
         let secret_key_str = match WalletSettingSql::get(format!("{}", DbKey::CommsSecretKey), &conn)? {
             None => return Err(WalletStorageError::ValueNotFound(DbKey::CommsSecretKey)),
             Some(sk) => sk,
@@ -483,7 +482,7 @@ mod test {
         let secret_key1 = CommsSecretKey::random(&mut OsRng);
         let public_key1 = CommsPublicKey::from_secret_key(&secret_key1);
         {
-            let conn = acquire_lock!(connection);
+            let conn = connection.acquire_lock();
             WalletSettingSql::new(format!("{}", DbKey::CommsSecretKey), secret_key1.to_hex())
                 .set(&conn)
                 .unwrap();
@@ -505,7 +504,7 @@ mod test {
         let secret_key2 = CommsSecretKey::random(&mut OsRng);
         let public_key2 = CommsPublicKey::from_secret_key(&secret_key2);
         {
-            let conn = acquire_lock!(connection);
+            let conn = connection.acquire_lock();
             db.set_comms_private_key(&secret_key2, &conn).unwrap();
         }
         if let DbValue::CommsPublicKey(pk) = db.fetch(&DbKey::CommsPublicKey).unwrap().unwrap() {
@@ -518,7 +517,8 @@ mod test {
     #[test]
     pub fn test_encrypted_secret_public_key_validation_during_startup() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
-        let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();
+        let db_tempdir = tempdir().unwrap();
+        let db_folder = db_tempdir.path().to_str().unwrap().to_string();
         let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
 
         let key = GenericArray::from_slice(b"an example very very secret key.");
@@ -528,7 +528,7 @@ mod test {
 
         let secret_key = CommsSecretKey::random(&mut OsRng);
         {
-            let conn = acquire_lock!(connection);
+            let conn = connection.acquire_lock();
             WalletSettingSql::new(format!("{}", DbKey::CommsSecretKey), secret_key.to_hex())
                 .set(&conn)
                 .unwrap();
@@ -549,7 +549,7 @@ mod test {
         ciphertext_integral_nonce.append(&mut ciphertext);
 
         {
-            let conn = acquire_lock!(connection);
+            let conn = connection.acquire_lock();
             WalletSettingSql::new(format!("{}", DbKey::CommsSecretKey), ciphertext_integral_nonce.to_hex())
                 .set(&conn)
                 .unwrap();
@@ -562,7 +562,7 @@ mod test {
         // insert incorrect public key
         let incorrect_public_key = CommsPublicKey::from_secret_key(&CommsSecretKey::random(&mut OsRng));
         {
-            let conn = acquire_lock!(connection);
+            let conn = connection.acquire_lock();
             WalletSettingSql::new(format!("{}", DbKey::CommsPublicKey), incorrect_public_key.to_hex())
                 .set(&conn)
                 .unwrap();
@@ -572,7 +572,7 @@ mod test {
         // insert correct public key
         let public_key = CommsPublicKey::from_secret_key(&secret_key);
         {
-            let conn = acquire_lock!(connection);
+            let conn = connection.acquire_lock();
             WalletSettingSql::new(format!("{}", DbKey::CommsPublicKey), public_key.to_hex())
                 .set(&conn)
                 .unwrap();
@@ -596,7 +596,7 @@ mod test {
 
         let db = WalletSqliteDatabase::new(connection.clone(), None).unwrap();
         {
-            let conn = acquire_lock!(connection);
+            let conn = connection.acquire_lock();
             db.set_comms_private_key(&secret_key, &conn).unwrap();
             for kv in key_values.iter() {
                 kv.set(&conn).unwrap();
@@ -634,7 +634,7 @@ mod test {
 
         assert_eq!(secret_key, read_secret_key2);
         {
-            let conn = acquire_lock!(connection);
+            let conn = connection.acquire_lock();
             let secret_key_str = WalletSettingSql::get(format!("{}", DbKey::CommsSecretKey), &conn)
                 .unwrap()
                 .unwrap();
@@ -656,7 +656,7 @@ mod test {
         assert_eq!(secret_key, read_secret_key3);
 
         {
-            let conn = acquire_lock!(connection);
+            let conn = connection.acquire_lock();
             let secret_key_str = WalletSettingSql::get(format!("{}", DbKey::CommsSecretKey), &conn)
                 .unwrap()
                 .unwrap();
@@ -678,9 +678,10 @@ mod test {
     #[test]
     fn test_client_key_value_store() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
-        let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();
+        let db_tempdir = tempdir().unwrap();
+        let db_folder = db_tempdir.path().to_str().unwrap().to_string();
         let connection = run_migration_and_create_sqlite_connection(&format!("{}{}", db_folder, db_name)).unwrap();
-        let conn = acquire_lock!(connection);
+        let conn = connection.acquire_lock();
 
         let key1 = "key1".to_string();
         let value1 = "value1".to_string();

@@ -38,6 +38,7 @@ use crate::{
         TxId,
     },
     schema::{key_manager_states, outputs, pending_transaction_outputs},
+    storage::sqlite_utilities::WalletDbConnection,
     util::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
 use aes_gcm::{aead::Error as AeadError, Aes256Gcm, Error};
@@ -48,7 +49,7 @@ use std::{
     collections::HashMap,
     convert::TryFrom,
     str::from_utf8,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
     time::Duration,
 };
 use tari_core::{
@@ -72,15 +73,15 @@ const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
 pub struct OutputManagerSqliteDatabase {
-    database_connection: Arc<Mutex<SqliteConnection>>,
+    database_connection: WalletDbConnection,
     cipher: Arc<RwLock<Option<Aes256Gcm>>>,
 }
 
 impl OutputManagerSqliteDatabase {
-    pub fn new(database_connection: Arc<Mutex<SqliteConnection>>, cipher: Option<Aes256Gcm>) -> Self {
+    pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Self {
         {
             // let check if we have to do migration
-            let conn = acquire_lock!(database_connection);
+            let conn = database_connection.acquire_lock();
             let _ = OutputSql::migrate(&(*conn), cipher.clone());
         }
         Self {
@@ -109,7 +110,7 @@ impl OutputManagerSqliteDatabase {
 }
 impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         let result = match key {
             DbKey::SpentOutput(k) => match OutputSql::find_status(&k.to_vec(), OutputStatus::Spent, &(*conn)) {
@@ -249,7 +250,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         match op {
             WriteOperation::Insert(kvp) => match kvp {
@@ -362,7 +363,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn confirm_transaction(&self, tx_id: u64) -> Result<(), OutputManagerStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         match PendingTransactionOutputSql::find(tx_id, &(*conn)) {
             Ok(p) => {
@@ -410,7 +411,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         outputs_to_receive: &[DbUnblindedOutput],
     ) -> Result<(), OutputManagerStorageError>
     {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         let mut outputs_to_be_spent = Vec::new();
         for i in outputs_to_send {
@@ -444,7 +445,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn confirm_encumbered_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         match PendingTransactionOutputSql::find(tx_id, &(*conn)) {
             Ok(p) => {
@@ -466,7 +467,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         let pending_transaction_outputs = PendingTransactionOutputSql::index_short_term(&(*conn))?;
         drop(conn);
@@ -479,7 +480,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn cancel_pending_transaction(&self, tx_id: u64) -> Result<(), OutputManagerStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         match PendingTransactionOutputSql::find(tx_id, &(*conn)) {
             Ok(p) => {
@@ -526,7 +527,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn timeout_pending_transactions(&self, period: Duration) -> Result<(), OutputManagerStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         let older_pending_txs = PendingTransactionOutputSql::index_older(
             Utc::now().naive_utc() - ChronoDuration::from_std(period)?,
@@ -540,7 +541,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn increment_key_index(&self) -> Result<(), OutputManagerStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         KeyManagerStateSql::increment_index(&(*conn))?;
 
@@ -548,7 +549,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn invalidate_unspent_output(&self, output: &DbUnblindedOutput) -> Result<Option<TxId>, OutputManagerStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
         let output = OutputSql::find_by_commitment(&output.commitment.to_vec(), &conn)?;
         let tx_id = output.tx_id.clone().map(|id| id as u64);
         let _ = output.update(
@@ -564,7 +565,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     }
 
     fn revalidate_unspent_output(&self, commitment: &Commitment) -> Result<(), OutputManagerStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
         let output = OutputSql::find_by_commitment(&commitment.to_vec(), &conn)?;
 
         if OutputStatus::try_from(output.status)? != OutputStatus::Invalid {
@@ -586,7 +587,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         commitment: &Commitment,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
     {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
         let output = OutputSql::find_by_commitment(&commitment.to_vec(), &conn)?;
 
         if OutputStatus::try_from(output.status)? != OutputStatus::Spent {
@@ -609,7 +610,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn cancel_pending_transaction_at_block_height(&self, block_height: u64) -> Result<(), OutputManagerStorageError> {
         let pending_txs;
         {
-            let conn = acquire_lock!(self.database_connection);
+            let conn = self.database_connection.acquire_lock();
             pending_txs = PendingTransactionOutputSql::index_block_height(block_height as i64, &conn)?;
         }
         for p in pending_txs {
@@ -625,7 +626,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             return Err(OutputManagerStorageError::AlreadyEncrypted);
         }
 
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
         let mut outputs = OutputSql::index(&conn)?;
 
         // If the db is already encrypted then the very first output we try to encrypt will fail.
@@ -670,7 +671,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         } else {
             return Ok(());
         };
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
         let mut outputs = OutputSql::index(&conn)?;
 
         for o in outputs.iter_mut() {
@@ -1357,6 +1358,7 @@ mod test {
                 UpdateOutput,
             },
         },
+        storage::sqlite_utilities::WalletDbConnection,
         util::encryption::Encryptable,
     };
     use aes_gcm::{
@@ -1366,12 +1368,7 @@ mod test {
     use chrono::{Duration as ChronoDuration, Utc};
     use diesel::{Connection, SqliteConnection};
     use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
-    use std::{
-        convert::TryFrom,
-        iter,
-        sync::{Arc, Mutex},
-        time::Duration,
-    };
+    use std::{convert::TryFrom, iter, time::Duration};
     use tari_core::transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
@@ -1717,7 +1714,7 @@ mod test {
         let key = GenericArray::from_slice(b"an example very very secret key.");
         let cipher = Aes256Gcm::new(key);
 
-        let connection = Arc::new(Mutex::new(conn));
+        let connection = WalletDbConnection::new(conn, None);
 
         let db1 = OutputManagerSqliteDatabase::new(connection.clone(), Some(cipher.clone()));
         assert!(db1.apply_encryption(cipher.clone()).is_err());
