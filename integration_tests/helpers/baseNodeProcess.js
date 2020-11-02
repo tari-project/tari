@@ -59,7 +59,7 @@ class BaseNodeProcess {
             TARI_BASE_NODE__LOCALNET__TRANSPORT: "tcp",
             TARI_BASE_NODE__LOCALNET__TCP_LISTENER_ADDRESS: "/ip4/0.0.0.0/tcp/" + this.port,
             TARI_BASE_NODE__LOCALNET__ALLOW_TEST_ADDRESSES: 'true',
-            TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS: "/ip4/127.0.0.1/tcp/" + this.port,
+            TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS: "/ip4/10.0.0.104/tcp/" + this.port,
             TARI_BASE_NODE__LOCALNET__GRPC_ENABLED: "true",
             TARI_BASE_NODE__LOCALNET__GRPC_ADDRESS: "127.0.0.1:" + this.grpcPort,
             TARI_BASE_NODE__LOCALNET__BLOCK_SYNC_STRATEGY: "ViaBestChainMetadata",
@@ -94,6 +94,7 @@ class BaseNodeProcess {
 
         expect(ps.error).to.be.an('undefined');
 
+        this.ps = ps;
         return ps;
 
     }
@@ -121,6 +122,7 @@ class BaseNodeProcess {
         });
 
         expect(ps.error).to.be.an('undefined');
+        this.ps = ps;
         return ps;
 
     }
@@ -139,6 +141,10 @@ class BaseNodeProcess {
         var ps = this.run("cargo", ["run","--release", "--bin tari_base_node", "--", "--base-path", "."]);
         await sleep(6000);
         return ps;
+    }
+
+    stop() {
+        this.ps.kill("SIGINT");
     }
 
     createGrpcClient() {

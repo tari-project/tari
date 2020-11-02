@@ -76,8 +76,6 @@ pub enum BlockHeaderValidationError {
     InvalidTimestampFutureTimeLimit,
     #[error("Invalid Proof of work for the header: {0}")]
     ProofOfWorkError(#[from] PowError),
-    #[error("Mismatched MMR roots")]
-    MismatchedMmrRoots,
     #[error("Monero seed hash too old")]
     OldSeedHash,
 }

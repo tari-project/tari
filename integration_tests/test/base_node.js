@@ -157,5 +157,7 @@ describe('Base Node',function () {
             await waitFor(async() => seedClient.getTipHeight(), 2, 45000);
             expect(await seedClient.getTipHeight()).to.equal(2);
         });
-    })
+    });
+
+
 });
