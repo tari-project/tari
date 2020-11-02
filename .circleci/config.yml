@@ -21,9 +21,6 @@ commands:
           keys:
             - v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
       - run:
-          name: Build the project
-          command: cargo build --all --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
-      - run:
           name: Cargo fmt
           command: |
             TOOLCHAIN=$(cat rust-toolchain)
@@ -32,6 +29,36 @@ commands:
       - run:
           name: Run tests
           command: cargo test --workspace --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+      - save_cache:
+          paths:
+            - /usr/local/cargo/registry
+            - target
+          key: v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
+  build:
+    description: Build
+    parameters:
+      release:
+        description: Set this to true to compile in release mode.
+        type: boolean
+        default: false
+    steps:
+      - run:
+          name: Calculate dependencies
+          command: |
+            rustc --version >rust-version
+            test -e Cargo.lock || cargo generate-lockfile
+      - restore_cache:
+          keys:
+            - v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
+      - run:
+          name: Cargo fmt
+          command: |
+            TOOLCHAIN=$(cat rust-toolchain)
+            rustup component add --toolchain $TOOLCHAIN rustfmt
+            cargo fmt --all -- --check
+      - run:
+          name: Build
+          command: cargo build --all --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
       - save_cache:
           paths:
             - /usr/local/cargo/registry
@@ -90,6 +117,15 @@ jobs:
       - test:
           release: true
 
+  build-tari-release:
+    docker:
+      - image: *rust_image
+    resource_class: medium
+    steps:
+      - checkout
+      - build:
+          release: true
+
   clippy:
     docker:
       - image: *rust_image
@@ -140,8 +176,6 @@ jobs:
 
             echo "Published."
 
-
-
 workflows:
   version: 2
   workflow:
@@ -156,6 +190,10 @@ workflows:
           filters:
             branches:
               only: development
+      - build-tari-release:
+          filters:
+            branches:
+              ignore: gh-pages
       - test-tari-release:
           filters:
             branches:
