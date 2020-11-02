@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
     output_manager_service::{
@@ -126,6 +127,7 @@ where
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
     pub contacts_service: ContactsServiceHandle,
+    pub base_node_service: BaseNodeServiceHandle,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
     #[cfg(feature = "test_harness")]
@@ -179,13 +181,17 @@ where
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
-                peer_message_subscription_factory,
+                peer_message_subscription_factory.clone(),
                 transaction_backend,
-                node_identity,
+                node_identity.clone(),
                 factories.clone(),
                 config.network,
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
+            .add_initializer(BaseNodeServiceInitializer::new(
+                BaseNodeServiceConfig::default(),
+                peer_message_subscription_factory,
+            ))
             .build()
             .await?;
 
@@ -198,6 +204,7 @@ where
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();
+        let base_node_service = handles.expect_handle::<BaseNodeServiceHandle>();
 
         let store_and_forward_requester = dht.store_and_forward_requester();
 
@@ -208,6 +215,7 @@ where
             output_manager_service: output_manager_handle,
             transaction_service: transaction_service_handle,
             contacts_service: contacts_handle,
+            base_node_service,
             db,
             factories,
             #[cfg(feature = "test_harness")]
@@ -232,6 +240,11 @@ where
         net_address: String,
     ) -> Result<(), WalletError>
     {
+        info!(
+            "Wallet setting base node peer, public key: {}, net address: {}.",
+            public_key, net_address
+        );
+
         let address = net_address.parse::<Multiaddr>()?;
         let peer = Peer::new(
             public_key.clone(),
@@ -252,9 +265,12 @@ where
         self.transaction_service
             .set_base_node_public_key(peer.public_key.clone())
             .await?;
+
         self.output_manager_service
-            .set_base_node_public_key(peer.public_key)
+            .set_base_node_public_key(peer.public_key.clone())
             .await?;
+
+        self.base_node_service.set_base_node_public_key(peer.public_key).await?;
 
         Ok(())
     }
