@@ -177,7 +177,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     let comms_node = CommsBuilder::new()
         .with_node_identity(node_identity)
         .with_listener_address(hs_controller.proxied_address())
-        .with_peer_storage(peer_database)
+        .with_peer_storage(peer_database, None)
         .build()
         .unwrap();
 

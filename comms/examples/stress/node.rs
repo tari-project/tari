@@ -98,7 +98,7 @@ pub async fn create(
         .allow_test_addresses()
         .with_node_identity(node_identity.clone())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_secs(0)))
-        .with_peer_storage(peer_database)
+        .with_peer_storage(peer_database, None)
         .with_listener_liveness_max_sessions(10)
         .disable_connection_reaping();
 

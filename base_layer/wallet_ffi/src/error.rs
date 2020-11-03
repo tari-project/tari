@@ -252,6 +252,10 @@ impl From<WalletError> for LibWalletError {
                 code: 424,
                 message: format!("{:?}", w),
             },
+            WalletError::WalletStorageError(WalletStorageError::CannotAcquireFileLock) => Self {
+                code: 425,
+                message: format!("{:?}", w),
+            },
             // This is the catch all error code. Any error that is not explicitly mapped above will be given this code
             _ => Self {
                 code: 999,

@@ -892,7 +892,7 @@ async fn setup_comms_dht(
         .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity)
         .with_min_connectivity(0.3)
-        .with_peer_storage(storage)
+        .with_peer_storage(storage,None)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(1000)))
         .build()
         .unwrap();

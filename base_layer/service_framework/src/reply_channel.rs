@@ -51,7 +51,7 @@ type Tx<TReq, TRes> = mpsc::UnboundedSender<(TReq, oneshot::Sender<TRes>)>;
 pub type TrySenderService<TReq, TResp, TErr> = SenderService<TReq, Result<TResp, TErr>>;
 pub type TryReceiver<TReq, TResp, TErr> = Receiver<TReq, Result<TResp, TErr>>;
 
-/// Requester is sends requests on a given `Tx` sender and returns a
+/// Requester sends `TReq` requests on a given `Tx` sender, and returns an
 /// AwaitResponseFuture which will resolve to the generic `TRes`.
 ///
 /// This should be used to make requests which require a response.

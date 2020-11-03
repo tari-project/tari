@@ -80,6 +80,7 @@ use tari_core::{
 use tari_crypto::keys::SecretKey;
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
+use tari_shutdown::ShutdownSignal;
 use tokio::{sync::broadcast, task::JoinHandle};
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
@@ -182,6 +183,7 @@ where
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
         consensus_constants: ConsensusConstants,
+        shutdown_signal: ShutdownSignal,
     ) -> Self
     {
         // Collect the resources that all protocols will need so that they can be neatly cloned as the protocols are
@@ -195,6 +197,7 @@ where
             factories,
             config: config.clone(),
             consensus_constants,
+            shutdown_signal,
         };
         let (timeout_update_publisher, _) = broadcast::channel(20);
 
@@ -268,6 +271,8 @@ where
             .expect("Transaction Service initialized without transaction_cancelled_stream")
             .fuse();
         pin_mut!(transaction_cancelled_stream);
+
+        let mut shutdown = self.resources.shutdown_signal.clone();
 
         let mut send_transaction_protocol_handles: FuturesUnordered<
             JoinHandle<Result<u64, TransactionServiceProtocolError>>,
@@ -448,12 +453,17 @@ where
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Coinbase Monitoring protocol: {:?}", e),
                     };
                 }
+                 _ = shutdown => {
+                    info!(target: LOG_TARGET, "Transaction service shutting down because it received the shutdown signal");
+                    break;
+                }
                 complete => {
                     info!(target: LOG_TARGET, "Transaction service shutting down");
                     break;
                 }
             }
         }
+        info!(target: LOG_TARGET, "Transaction service shut down");
         Ok(())
     }
 
@@ -814,6 +824,9 @@ where
             Err(TransactionServiceProtocolError { id, error }) => {
                 let _ = self.pending_transaction_reply_senders.remove(&id);
                 let _ = self.send_transaction_cancellation_senders.remove(&id);
+                if let TransactionServiceError::Shutdown = error {
+                    return;
+                }
                 warn!(
                     target: LOG_TARGET,
                     "Error completing Send Transaction Protocol (Id: {}): {:?}", id, error
@@ -1116,6 +1129,9 @@ where
                          already been processed",
                         id
                     ),
+                    TransactionServiceError::Shutdown => {
+                        return;
+                    },
                     _ => warn!(
                         target: LOG_TARGET,
                         "Error completing Receive Transaction Protocol (Id: {}): {}", id, error
@@ -1383,6 +1399,10 @@ where
                 let _ = self.mempool_response_senders.remove(&id);
                 let _ = self.base_node_response_senders.remove(&id);
 
+                if let TransactionServiceError::Shutdown = error {
+                    return;
+                }
+
                 warn!(
                     target: LOG_TARGET,
                     "Error completing Transaction Broadcast Protocol (Id: {}): {:?}", id, error
@@ -1460,7 +1480,9 @@ where
             Err(TransactionServiceProtocolError { id, error }) => {
                 let _ = self.mempool_response_senders.remove(&id);
                 let _ = self.base_node_response_senders.remove(&id);
-
+                if let TransactionServiceError::Shutdown = error {
+                    return;
+                }
                 warn!(
                     target: LOG_TARGET,
                     "Error completing Transaction chain monitoring Protocol (Id: {}): {:?}", id, error
@@ -1733,7 +1755,9 @@ where
             },
             Err(TransactionServiceProtocolError { id, error }) => {
                 let _ = self.base_node_response_senders.remove(&id);
-
+                if let TransactionServiceError::Shutdown = error {
+                    return;
+                }
                 warn!(
                     target: LOG_TARGET,
                     "Error completing Coinbase Transaction monitoring Protocol (Id: {}): {:?}", id, error
@@ -1891,6 +1915,7 @@ where
             transactions::{transaction::OutputFeatures, ReceiverTransactionProtocol},
         };
         use tari_crypto::keys::SecretKey as SecretKeyTrait;
+        use tari_shutdown::Shutdown;
 
         let (_sender, receiver) = reply_channel::unbounded();
         let (tx, _rx) = mpsc::channel(20);
@@ -1899,7 +1924,7 @@ where
         let (event_publisher, _) = broadcast::channel(100);
         let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
         let constants = ConsensusConstantsBuilder::new(Network::Rincewind).build();
-
+        let shutdown = Shutdown::new();
         let mut fake_oms = OutputManagerService::new(
             OutputManagerServiceConfig::default(),
             OutboundMessageRequester::new(tx),
@@ -1910,6 +1935,7 @@ where
             oms_event_publisher,
             self.resources.factories.clone(),
             constants.coinbase_lock_height(),
+            shutdown.to_signal(),
         )
         .await?;
 
@@ -2025,6 +2051,7 @@ where TBackend: TransactionBackend + 'static
     pub factories: CryptoFactories,
     pub config: TransactionServiceConfig,
     pub consensus_constants: ConsensusConstants,
+    pub shutdown_signal: ShutdownSignal,
 }
 
 #[derive(Clone, Copy)]

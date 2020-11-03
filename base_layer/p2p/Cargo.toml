@@ -23,6 +23,7 @@ anyhow = "1.0.32"
 bytes = "0.4.12"
 chrono = {version = "0.4.6", features = ["serde"]}
 futures = {version = "^0.3.1"}
+fs2 = "0.3.0"
 lmdb-zero = "0.4.4"
 log = "0.4.6"
 prost = "0.6.1"

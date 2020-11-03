@@ -212,6 +212,8 @@ where TBackend: TransactionBackend + 'static
             let mut received_mempool_response = None;
             let mut mempool_response_received = false;
             let mut base_node_response_received = false;
+            let mut shutdown = self.resources.shutdown_signal.clone();
+
             // Loop until both a Mempool response AND a Base node response is received OR the Timeout expires.
             loop {
                 futures::select! {
@@ -254,6 +256,10 @@ where TBackend: TransactionBackend + 'static
                             "Chain monitoring protocol event 'time_out' triggered (Id: {}) ", self.id
                         );
                         break;
+                    },
+                    _ = shutdown => {
+                        info!(target: LOG_TARGET, "Transaction Chain Monitoring Protocol (id: {}) shutting down because it received the shutdown signal", self.id);
+                        return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                     },
                 }
 

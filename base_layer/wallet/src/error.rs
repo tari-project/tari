@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    base_node_service::error::BaseNodeServiceError,
     contacts_service::error::ContactsServiceError,
     output_manager_service::error::OutputManagerError,
     storage::database::DbKey,
@@ -62,6 +63,8 @@ pub enum WalletError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("Failed to initialize services: {0}")]
     ServiceInitializationError(#[from] ServiceInitializationError),
+    #[error("Base Node Service error: {0}")]
+    BaseNodeServiceError(#[from] BaseNodeServiceError),
 }
 
 #[derive(Debug, Error)]
@@ -108,4 +111,10 @@ pub enum WalletStorageError {
     AlreadyEncrypted,
     #[error("Byte array error: `{0}`")]
     ByteArrayError(#[from] ByteArrayError),
+    #[error("Cannot acquire exclusive file lock, another instance of the application is already running")]
+    CannotAcquireFileLock,
+    #[error("Database file cannot be a root path")]
+    DatabasePathIsRootPath,
+    #[error("IO Error: `{0}`")]
+    IoError(#[from] std::io::Error),
 }
