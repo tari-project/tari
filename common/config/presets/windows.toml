@@ -190,13 +190,13 @@ peer_seeds = [
 #public_address = "/ip4/172.2.3.4/tcp/18189"
 
 # Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
-#grpc_enabled = false
+grpc_enabled = true
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-#grpc_address = "127.0.0.1:18142"
+grpc_address = "127.0.0.1:18142"
 # The socket to expose for the gRPC wallet server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-#grpc_wallet_address = "127.0.0.1:18143"
+grpc_wallet_address = "127.0.0.1:18143"
 
 # A path to the file that stores your node identity and secret key
 identity_file = ".\\config\\node_id.json"
@@ -325,7 +325,7 @@ wallet_tor_identity_file = ".\\config\\wallet-tor.json"
 [merge_mining_proxy.ridcully]
 
 # URL to monerod, currently set to a seed node
-monerod_url = "http://192.110.160.146:38081"
+monerod_url = "http://18.133.55.120:38081"
 
 # Address of the tari_merge_mining_proxy application
 proxy_host_address = "127.0.0.1:7878"

@@ -22,7 +22,7 @@ grpc_wallet_address = "127.0.0.1:18143"
 transport = "tor"
 
 [merge_mining_proxy.ridcully]
-monerod_url = "http://192.110.160.146:38081"
+monerod_url = "http://18.133.55.120:38081"
 proxy_host_address = "127.0.0.1:7878"
 monerod_use_auth=false
 monerod_username=""
