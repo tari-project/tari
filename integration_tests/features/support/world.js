@@ -51,10 +51,10 @@ setWorldConstructor(CustomWorld);
 After(function () {
     for (const property in this.seeds) {
         console.log("Stopping seed", property);
-        this.stopNode(property);
+       // this.stopNode(property);
     }
     for (const property in this.nodes) {
         console.log("Stopping node", property);
-        this.stopNode(property);
+        //this.stopNode(property);
     }
 });

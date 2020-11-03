@@ -51,7 +51,7 @@ When(/I save the tip on (.*) as (.*)/, async function (node, name) {
 Then(/node (.*) is at tip (.*)/, async function (node, name) {
     let client = this.getClient(node);
     let header= await client.getTipHeader();
-    console.log("headers:", this.headers);
+    // console.log("headers:", this.headers);
     expect(this.headers[name].hash).to.equal(header.hash);
 });
 
@@ -59,12 +59,12 @@ Then(/node (.*) is at tip (.*)/, async function (node, name) {
 When(/I mine a block on (.*) based on height (\d+)/, async function (node, atHeight) {
     let client = this.getClient(node);
     let template = client.getPreviousBlockTemplate(atHeight);
-    console.log("Candidate before: ", template);
+    // console.log("Candidate before: ", template);
     let candidate = await client.getMinedCandidateBlock(template);
-    console.log("Candidate for mining:", candidate);
+    // console.log("Candidate for mining:", candidate);
 
     await client.submitBlock(candidate, block => {
-        console.log("Candidate:", block);
+        // console.log("Candidate:", block);
         // block.block.header.output_mr[0] = 1;
         // block.block.header.height = atHeight + 1;
         // block.block.header.prev_hash = candidate.header.hash;
@@ -84,7 +84,7 @@ When(/I mine a block on (.*) at height (\d+) with an invalid MMR/, async functio
     let candidate = await client.getMinedCandidateBlock(template);
 
     await client.submitBlock(candidate, block => {
-        console.log("Candidate:", block);
+        // console.log("Candidate:", block);
         // block.block.header.output_mr[0] = 1;
         // block.block.header.height = atHeight + 1;
         // block.block.header.prev_hash = candidate.header.hash;
