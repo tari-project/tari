@@ -191,6 +191,7 @@ mod discovery_ready {
             connectivity,
             node_identity: node_identity.clone(),
             num_rounds: Default::default(),
+            all_attempted_peers: Default::default(),
             event_tx,
             last_round: Default::default(),
         };

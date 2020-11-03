@@ -27,7 +27,7 @@ use super::{
 use crate::{network_discovery::DhtNetworkDiscoveryRoundInfo, DhtConfig};
 use log::*;
 use std::cmp;
-use tari_comms::peer_manager::{NodeId, PeerFeatures};
+use tari_comms::peer_manager::PeerFeatures;
 
 const LOG_TARGET: &str = "comms::dht::network_discovery::ready";
 
@@ -76,7 +76,7 @@ impl DiscoveryReady {
                 .peer_manager
                 .random_peers(
                     self.config().network_discovery.max_sync_peers,
-                    self.previous_sync_peers(),
+                    self.context.all_attempted_peers.read().await.as_slice(),
                 )
                 .await?;
             let peers = peers.into_iter().map(|p| p.node_id).collect::<Vec<_>>();
@@ -140,7 +140,7 @@ impl DiscoveryReady {
                         .closest_peers(
                             self.context.node_identity.node_id(),
                             num_peers_to_select,
-                            self.previous_sync_peers(),
+                            self.context.all_attempted_peers.read().await.as_slice(),
                             Some(PeerFeatures::COMMUNICATION_NODE),
                         )
                         .await?
@@ -165,7 +165,7 @@ impl DiscoveryReady {
                     .peer_manager
                     .random_peers(
                         self.config().network_discovery.max_sync_peers,
-                        self.previous_sync_peers(),
+                        self.context.all_attempted_peers.read().await.as_slice(),
                     )
                     .await?
                     .into_iter()
@@ -188,13 +188,6 @@ impl DiscoveryReady {
             num_peers_to_request: None,
             peers,
         }))
-    }
-
-    fn previous_sync_peers(&self) -> &[NodeId] {
-        self.last_discovery
-            .as_ref()
-            .map(|info| info.sync_peers.as_slice())
-            .unwrap_or(&[])
     }
 
     #[inline]
