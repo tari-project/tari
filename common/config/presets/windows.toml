@@ -74,7 +74,8 @@
 # The relative folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
 #  a) have backed up your seed phrase and
 #  b) know what you are doing!
-wallet_file = "wallet\\wallet.dat"
+wallet_db_file = "wallet\\wallet.dat"
+console_wallet_db_file = "wallet\\console-wallet.dat"
 
 # This is the timeout period that will be used to monitor TXO queries to the base node (default = 30). Larger values
 # are needed for wallets with many (>1000) TXOs to be validated.
@@ -203,16 +204,19 @@ peer_seeds = [
 grpc_enabled = true
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-grpc_address = "127.0.0.1:18142"
+grpc_base_node_address = "127.0.0.1:18142"
 # The socket to expose for the gRPC wallet server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-grpc_wallet_address = "127.0.0.1:18143"
+grpc_console_wallet_address = "127.0.0.1:18143"
 
 # A path to the file that stores your node identity and secret key
-identity_file = ".\\config\\node_id.json"
+base_node_identity_file = ".\\config\\base_node_id.json"
 
 # A path to the file that stores your wallet's node identity and secret key
-wallet_identity_file = ".\\config\\wallet-identity.json"
+wallet_identity_file = ".\\config\\wallet_id.json"
+
+# A path to the file that stores your console wallet's node identity and secret key
+console_wallet_identity_file = ".\\config\\console_wallet_id.json"
 
 # -------------- Transport configuration --------------
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
@@ -250,10 +254,13 @@ tor_onion_port = 18141
 #socks5_auth = "none" # or "username_password=username:xxxxxxx"
 
 # A path to the file that stores the tor hidden service private key, if using the tor transport.
-tor_identity_file = ".\\config\\tor.json"
+base_node_tor_identity_file = ".\\config\\base_node_tor.json"
 
 # A path to the file that stores the wallet's tor hidden service private key, if using the tor transport.
-wallet_tor_identity_file = ".\\config\\wallet-tor.json"
+wallet_tor_identity_file = ".\\config\\wallet_tor.json"
+
+# A path to the file that stores the console wallet's tor hidden service private key, if using the tor transport.
+console_wallet_tor_identity_file = ".\\config\\cosole_wallet_tor.json"
 
 ########################################################################################################################
 #                                                                                                                      #

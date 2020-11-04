@@ -243,7 +243,7 @@ impl WalletBootstrapper {
         let config = &self.config;
         debug!(
             target: LOG_TARGET,
-            "Wallet transport is set to '{:?}'", config.comms_transport
+            "Base node wallet transport is set to '{:?}'", config.comms_transport
         );
 
         match config.comms_transport.clone() {
@@ -278,8 +278,8 @@ impl WalletBootstrapper {
                     });
                 info!(
                     target: LOG_TARGET,
-                    "Wallet tor identity at path '{}' {:?}",
-                    self.config.tor_identity_file.to_string_lossy(),
+                    "Base node wallet tor identity at path '{}' {:?}",
+                    self.config.wallet_tor_identity_file.to_string_lossy(),
                     identity
                         .as_ref()
                         .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))

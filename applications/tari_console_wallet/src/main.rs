@@ -90,11 +90,9 @@ fn main_inner() -> Result<(), ExitCodes> {
     debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
     // Load or create the Node identity
     let node_identity = setup_node_identity(
-        &config.wallet_identity_file,
+        &config.console_wallet_identity_file,
         &config.public_address,
-        bootstrap.create_id ||
-            // If the base node identity exists, we want to be sure that the wallet identity exists
-            config.identity_file.exists(),
+        bootstrap.create_id,
         PeerFeatures::COMMUNICATION_CLIENT,
     )?;
 
@@ -102,8 +100,8 @@ fn main_inner() -> Result<(), ExitCodes> {
     if bootstrap.create_id {
         info!(
             target: LOG_TARGET,
-            "Node ID created at '{}'. Done.",
-            config.identity_file.to_string_lossy()
+            "Console wallet's node ID created at '{}'. Done.",
+            config.console_wallet_identity_file.to_string_lossy()
         );
         return Ok(());
     }
@@ -199,17 +197,17 @@ async fn setup_wallet(
 {
     fs::create_dir_all(
         &config
-            .wallet_db_file
+            .console_wallet_db_file
             .parent()
-            .expect("wallet_db_file cannot be set to a root directory"),
+            .expect("console_wallet_db_file cannot be set to a root directory"),
     )
     .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet folder. {}", e)))?;
-    fs::create_dir_all(&config.wallet_peer_db_path)
+    fs::create_dir_all(&config.console_wallet_peer_db_path)
         .map_err(|e| ExitCodes::WalletError(format!("Error creating peer db folder. {}", e)))?;
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) =
-        initialize_sqlite_database_backends(config.wallet_db_file.clone(), None)
+        initialize_sqlite_database_backends(config.console_wallet_db_file.clone(), None)
             .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?;
     debug!(target: LOG_TARGET, "Databases Initialized");
 
@@ -220,13 +218,13 @@ async fn setup_wallet(
         node_identity,
         user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
         transport_type: setup_wallet_transport_type(&config),
-        datastore_path: config.wallet_peer_db_path.clone(),
+        datastore_path: config.console_wallet_peer_db_path.clone(),
         peer_database_name: "peers".to_string(),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
         // TODO - make this configurable
         dht: DhtConfig {
-            database_url: DbConnectionUrl::File(config.data_dir.join("dht-wallet.db")),
+            database_url: DbConnectionUrl::File(config.data_dir.join("dht-console-wallet.db")),
             auto_join: true,
             ..Default::default()
         },

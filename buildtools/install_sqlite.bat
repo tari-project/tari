@@ -15,9 +15,10 @@ goto END:
 
 :INSTALL_SQLITE
 rem Download install file
-powershell wget https://www.sqlite.org/2020/%sqlite_zip% -outfile "%TEMP%\%sqlite_zip%"
+del /f "%TEMP%\%sqlite_zip%" 2>null
+powershell Invoke-WebRequest https://www.sqlite.org/2020/%sqlite_zip% -outfile "%TEMP%\%sqlite_zip%"
 rem Install
-powershell expand-archive -Force -LiteralPath "%TEMP%\%sqlite_zip%" -DestinationPath '%sqlite_folder%'
+powershell Expand-Archive -Force -LiteralPath "%TEMP%\%sqlite_zip%" -DestinationPath '%sqlite_folder%'
 rem Set Tari environment variables
 set TARI_SQLITE_DIR=%sqlite_folder%
 setx TARI_SQLITE_DIR %TARI_SQLITE_DIR%

@@ -66,8 +66,8 @@ pub struct MergeMiningProxyConfig {
     pub monerod_username: String,
     pub monerod_password: String,
     pub monerod_use_auth: bool,
-    pub grpc_address: SocketAddr,
-    pub grpc_wallet_address: SocketAddr,
+    pub grpc_base_node_address: SocketAddr,
+    pub grpc_console_wallet_address: SocketAddr,
 }
 
 impl From<GlobalConfig> for MergeMiningProxyConfig {
@@ -78,8 +78,8 @@ impl From<GlobalConfig> for MergeMiningProxyConfig {
             monerod_username: config.monerod_username,
             monerod_password: config.monerod_password,
             monerod_use_auth: config.monerod_use_auth,
-            grpc_address: config.grpc_address,
-            grpc_wallet_address: config.grpc_wallet_address,
+            grpc_base_node_address: config.grpc_base_node_address,
+            grpc_console_wallet_address: config.grpc_console_wallet_address,
         }
     }
 }
@@ -403,7 +403,8 @@ impl InnerService {
         &self,
     ) -> Result<grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>, MmProxyError> {
         let client =
-            grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", self.config.grpc_address)).await?;
+            grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", self.config.grpc_base_node_address))
+                .await?;
         Ok(client)
     }
 
@@ -411,7 +412,8 @@ impl InnerService {
         &self,
     ) -> Result<grpc::wallet_client::WalletClient<tonic::transport::Channel>, MmProxyError> {
         let client =
-            grpc::wallet_client::WalletClient::connect(format!("http://{}", self.config.grpc_wallet_address)).await?;
+            grpc::wallet_client::WalletClient::connect(format!("http://{}", self.config.grpc_console_wallet_address))
+                .await?;
         Ok(client)
     }
 
