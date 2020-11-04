@@ -1,9 +1,10 @@
 use crate::ui::{components::Component, state::AppState, widgets::MultiColumnList, MAX_WIDTH};
+use tari_core::tari_utilities::hex::Hex;
 use tui::{
     backend::Backend,
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::Span,
+    text::{Span, Spans},
     widgets::{Block, Borders, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
@@ -45,48 +46,52 @@ impl NetworkTab {
             .add_column(Some("User Agent"), Some(MAX_WIDTH.saturating_sub(93)), column2_items);
         column_list.render(f, list_areas[0], &mut ListState::default());
     }
+
+    pub fn draw_base_node_peer<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
+    where B: Backend {
+        let block = Block::default().borders(Borders::ALL).title(Span::styled(
+            "Base Node Peer",
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        ));
+        f.render_widget(block, area);
+
+        let base_node = app_state.get_base_node_peer();
+        let public_key = base_node.public_key.to_hex();
+        let public_address = match base_node.addresses.first() {
+            Some(address) => address.to_string(),
+            None => "".to_string(),
+        };
+
+        let base_node_layout = Layout::default()
+            .constraints([Constraint::Length(1), Constraint::Length(1)].as_ref())
+            .margin(1)
+            .split(area);
+
+        let public_key_paragraph = Paragraph::new(Spans::from(vec![
+            Span::styled("Public Key:", Style::default().fg(Color::Magenta)),
+            Span::raw(" "),
+            Span::styled(public_key, Style::default().fg(Color::White)),
+        ]))
+        .wrap(Wrap { trim: true });
+        f.render_widget(public_key_paragraph, base_node_layout[0]);
+
+        let public_address_paragraph = Paragraph::new(Spans::from(vec![
+            Span::styled("Public Address:", Style::default().fg(Color::Magenta)),
+            Span::raw(" "),
+            Span::styled(public_address, Style::default().fg(Color::White)),
+        ]))
+        .wrap(Wrap { trim: true });
+        f.render_widget(public_address_paragraph, base_node_layout[1]);
+    }
 }
 
 impl<B: Backend> Component<B> for NetworkTab {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
-        // This is all dummy content and layout for review
         let main_chunks = Layout::default()
-            .constraints([Constraint::Length(1), Constraint::Length(8), Constraint::Min(10)].as_ref())
+            .constraints([Constraint::Length(1), Constraint::Length(4), Constraint::Min(10)].as_ref())
             .split(area);
 
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled("Base Node Peer", Style::default().fg(Color::White)));
-        f.render_widget(block, main_chunks[1]);
-        let base_node_layout = Layout::default()
-            .constraints([Constraint::Length(3), Constraint::Length(3)].as_ref())
-            .margin(1)
-            .split(main_chunks[1]);
-
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled("Public Key", Style::default().fg(Color::White)));
-        f.render_widget(block, base_node_layout[0]);
-        let label_layout = Layout::default()
-            .constraints([Constraint::Length(1)].as_ref())
-            .margin(1)
-            .split(base_node_layout[0]);
-        let public_key = Paragraph::new("92b34a4dc815531af8aeb8a1f1c8d18b927ddd7feabc706df6a1f87cf5014e54")
-            .wrap(Wrap { trim: true });
-        f.render_widget(public_key, label_layout[0]);
-
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled("Public Address", Style::default().fg(Color::White)));
-        f.render_widget(block, base_node_layout[1]);
-        let label_layout = Layout::default()
-            .constraints([Constraint::Length(1)].as_ref())
-            .margin(1)
-            .split(base_node_layout[1]);
-        let public_address = Paragraph::new("/onion3/mqsfoi62gonulivatrhitugwil3hcxf23eisaieetgyw7x2pdi2bzpyd:18142")
-            .wrap(Wrap { trim: true });
-        f.render_widget(public_address, label_layout[0]);
-
+        self.draw_base_node_peer(f, main_chunks[1], app_state);
         self.draw_connected_peers_list(f, main_chunks[2], app_state);
     }
 }

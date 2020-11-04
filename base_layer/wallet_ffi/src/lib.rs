@@ -2933,6 +2933,7 @@ pub unsafe extern "C" fn wallet_create(
                         ..Default::default()
                     }),
                     Network::Rincewind,
+                    None,
                 ),
                 wallet_backend,
                 transaction_backend.clone(),

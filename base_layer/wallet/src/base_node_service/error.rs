@@ -26,8 +26,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum BaseNodeServiceError {
-    #[error("No base node public key set")]
-    NoBaseNodePublicKey,
+    #[error("No base node peer set")]
+    NoBaseNodePeer,
     #[error("Unexpected API Response")]
     UnexpectedApiResponse,
     #[error("Transport channel error: `{0}`")]

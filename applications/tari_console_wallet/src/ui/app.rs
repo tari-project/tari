@@ -20,30 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    dummy_data::get_dummy_base_node_status,
-    ui::{
-        components::{
-            network_tab::NetworkTab,
-            send_receive_tab::SendReceiveTab,
-            tabs_container::TabsContainer,
-            transactions_tab::TransactionsTab,
-            Component,
-        },
-        state::AppState,
-        MAX_WIDTH,
+use crate::ui::{
+    components::{
+        base_node::BaseNode,
+        network_tab::NetworkTab,
+        send_receive_tab::SendReceiveTab,
+        tabs_container::TabsContainer,
+        transactions_tab::TransactionsTab,
+        Component,
     },
+    state::AppState,
+    MAX_WIDTH,
 };
 use tari_common::Network;
-use tari_comms::NodeIdentity;
+use tari_comms::{peer_manager::Peer, NodeIdentity};
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    text::{Span, Spans},
-    widgets::{Block, Borders, Paragraph},
     Frame,
 };
 
@@ -56,19 +51,29 @@ pub struct App<B: Backend> {
     pub app_state: AppState,
     // Ui working state
     pub tabs: TabsContainer<B>,
+    pub base_node_status: BaseNode,
 }
 
 impl<B: Backend> App<B> {
-    pub fn new(title: String, node_identity: &NodeIdentity, wallet: WalletSqlite, network: Network) -> Self {
+    pub fn new(
+        title: String,
+        node_identity: &NodeIdentity,
+        wallet: WalletSqlite,
+        network: Network,
+        base_node: Peer,
+    ) -> Self
+    {
         // TODO: It's probably better to read the node_identity from the wallet, but that requires
         // taking a read lock and making this method async, which adds some read/write cycles,
         // so it's easier to just ask for it right now
-        let app_state = AppState::new(&node_identity, network, wallet);
+        let app_state = AppState::new(&node_identity, network, wallet, base_node);
 
         let tabs = TabsContainer::<B>::new(title.clone())
             .add("Transactions".into(), Box::new(TransactionsTab::new()))
             .add("Send/Receive".into(), Box::new(SendReceiveTab::new()))
             .add("Network".into(), Box::new(NetworkTab::new()));
+
+        let base_node_status = BaseNode::new();
 
         Self {
             title,
@@ -76,6 +81,7 @@ impl<B: Backend> App<B> {
             should_quit: false,
             app_state,
             tabs,
+            base_node_status,
         }
     }
 
@@ -145,25 +151,7 @@ impl<B: Backend> App<B> {
 
         self.tabs.draw_titles(f, title_halves[0]);
 
-        let chain_meta_data = match get_dummy_base_node_status() {
-            None => Spans::from(vec![
-                Span::styled("Base Node Chain Tip:", Style::default().fg(Color::Magenta)),
-                Span::raw(" "),
-                Span::styled(" *Not Connected*", Style::default().fg(Color::Red)),
-            ]),
-            Some(tip) => Spans::from(vec![
-                Span::styled("Base Node Chain Tip:", Style::default().fg(Color::Magenta)),
-                Span::raw(" "),
-                Span::styled(format!("{}", tip), Style::default().fg(Color::Green)),
-            ]),
-        };
-        let chain_meta_data_paragraph =
-            Paragraph::new(chain_meta_data).block(Block::default().borders(Borders::ALL).title(Span::styled(
-                "Base Node Status:",
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
-            )));
-        f.render_widget(chain_meta_data_paragraph, title_halves[1]);
-
+        self.base_node_status.draw(f, title_halves[1], &self.app_state);
         self.tabs.draw_content(f, title_chunks[1], &mut self.app_state);
     }
 }

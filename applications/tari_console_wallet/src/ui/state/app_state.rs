@@ -8,6 +8,7 @@ use tari_core::transactions::tari_amount::{uT, MicroTari};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
+    base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     contacts_service::storage::database::Contact,
     output_manager_service::{service::Balance, TxId},
     transaction_service::{
@@ -28,8 +29,8 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(node_identity: &NodeIdentity, network: Network, wallet: WalletSqlite) -> Self {
-        let inner = AppStateInner::new(node_identity, network, wallet);
+    pub fn new(node_identity: &NodeIdentity, network: Network, wallet: WalletSqlite, base_node: Peer) -> Self {
+        let inner = AppStateInner::new(node_identity, network, wallet, base_node);
         let cached_data = inner.data.clone();
         Self {
             inner: Arc::new(RwLock::new(inner)),
@@ -219,6 +220,14 @@ impl AppState {
     pub fn get_balance(&self) -> &Balance {
         &self.cached_data.balance
     }
+
+    pub fn get_base_node_state(&self) -> &BaseNodeState {
+        &self.cached_data.base_node_state
+    }
+
+    pub fn get_base_node_peer(&self) -> &Peer {
+        &self.cached_data.base_node_peer
+    }
 }
 
 pub struct AppStateInner {
@@ -228,8 +237,8 @@ pub struct AppStateInner {
 }
 
 impl AppStateInner {
-    pub fn new(node_identity: &NodeIdentity, network: Network, wallet: WalletSqlite) -> Self {
-        let data = AppStateData::new(node_identity, network);
+    pub fn new(node_identity: &NodeIdentity, network: Network, wallet: WalletSqlite, base_node: Peer) -> Self {
+        let data = AppStateData::new(node_identity, network, base_node);
 
         AppStateInner {
             updated: false,
@@ -412,6 +421,14 @@ impl AppStateInner {
         let balance = self.wallet.output_manager_service.get_balance().await?;
         self.data.balance = balance;
         self.updated = true;
+
+        Ok(())
+    }
+
+    pub async fn refresh_base_node_state(&mut self, state: BaseNodeState) -> Result<(), UiError> {
+        self.data.base_node_state = state;
+        self.updated = true;
+
         Ok(())
     }
 
@@ -426,6 +443,14 @@ impl AppStateInner {
     pub fn get_connectivity_event_stream(&self) -> Fuse<ConnectivityEventRx> {
         self.wallet.comms.connectivity().get_event_subscription().fuse()
     }
+
+    pub fn get_base_node_event_stream(&self) -> Fuse<BaseNodeEventReceiver> {
+        self.wallet
+            .base_node_service
+            .clone()
+            .expect("The wallet base node service was never initialized!")
+            .get_event_stream_fused()
+    }
 }
 
 #[derive(Clone)]
@@ -436,10 +461,12 @@ struct AppStateData {
     contacts: Vec<UiContact>,
     connected_peers: Vec<Peer>,
     balance: Balance,
+    base_node_state: BaseNodeState,
+    base_node_peer: Peer,
 }
 
 impl AppStateData {
-    pub fn new(node_identity: &NodeIdentity, network: Network) -> Self {
+    pub fn new(node_identity: &NodeIdentity, network: Network, base_node: Peer) -> Self {
         let eid = EmojiId::from_pubkey(node_identity.public_key()).to_string();
         let qr_link = format!("tari://{}/pubkey/{}", network, &node_identity.public_key().to_hex());
         let code = QrCode::new(qr_link).unwrap();
@@ -458,6 +485,7 @@ impl AppStateData {
             emoji_id: eid,
             qr_code: image,
         };
+
         AppStateData {
             pending_txs: Vec::new(),
             completed_txs: Vec::new(),
@@ -465,6 +493,8 @@ impl AppStateData {
             contacts: Vec::new(),
             connected_peers: Vec::new(),
             balance: Balance::zero(),
+            base_node_state: BaseNodeState::default(),
+            base_node_peer: base_node,
         }
     }
 }

@@ -23,7 +23,7 @@
 use super::{error::BaseNodeServiceError, service::BaseNodeState};
 use futures::{stream::Fuse, StreamExt};
 use std::sync::Arc;
-use tari_comms::types::CommsPublicKey;
+use tari_comms::peer_manager::Peer;
 use tari_core::chain_storage::ChainMetadata;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
@@ -35,13 +35,13 @@ pub type BaseNodeEventReceiver = broadcast::Receiver<Arc<BaseNodeEvent>>;
 #[derive(Debug)]
 pub enum BaseNodeServiceRequest {
     GetChainMetadata,
-    SetBaseNodePublicKey(CommsPublicKey),
+    SetBaseNodePeer(Box<Peer>),
 }
 /// API Response enum
 #[derive(Debug)]
 pub enum BaseNodeServiceResponse {
     ChainMetadata(Option<ChainMetadata>),
-    BaseNodePublicKeySet,
+    BaseNodePeerSet,
 }
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BaseNodeEvent {
@@ -72,13 +72,13 @@ impl BaseNodeServiceHandle {
         self.event_stream_sender.subscribe().fuse()
     }
 
-    pub async fn set_base_node_public_key(&mut self, public_key: CommsPublicKey) -> Result<(), BaseNodeServiceError> {
+    pub async fn set_service_peer(&mut self, peer: Peer) -> Result<(), BaseNodeServiceError> {
         match self
             .handle
-            .call(BaseNodeServiceRequest::SetBaseNodePublicKey(public_key))
+            .call(BaseNodeServiceRequest::SetBaseNodePeer(Box::new(peer)))
             .await??
         {
-            BaseNodeServiceResponse::BaseNodePublicKeySet => Ok(()),
+            BaseNodeServiceResponse::BaseNodePeerSet => Ok(()),
             _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
         }
     }
