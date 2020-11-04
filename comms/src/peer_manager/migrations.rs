@@ -21,6 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod v1;
+mod v2;
+mod v3;
 
 use log::*;
 use tari_storage::lmdb_store::{LMDBDatabase, LMDBError};
@@ -30,7 +32,11 @@ const LOG_TARGET: &str = "comms::peer_manager::migrations";
 pub(super) const MIGRATION_VERSION_KEY: u64 = std::u64::MAX;
 
 pub fn migrate(database: &LMDBDatabase) -> Result<(), LMDBError> {
-    let migrations = vec![v1::MigrationV1.boxed()];
+    let migrations = vec![
+        v1::MigrationV1.boxed(),
+        v2::MigrationV2.boxed(),
+        v3::MigrationV3.boxed(),
+    ];
 
     // If the database is empty there is nothing to migrate, so set it to the latest version
     if database.len()? == 0 {

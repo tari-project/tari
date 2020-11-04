@@ -32,7 +32,7 @@ use crate::{
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
-use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_comms_dht::Dht;
 use tari_core::{
     base_node::proto::base_node as BaseNodeProto,
     consensus::{ConsensusConstantsBuilder, Network},
@@ -45,13 +45,12 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
-    handles::ServiceHandlesFuture,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
+    ServiceInitializerContext,
 };
-use tari_shutdown::ShutdownSignal;
-use tokio::{runtime, sync::broadcast};
+use tokio::sync::broadcast;
 
 pub mod config;
 pub mod error;
@@ -77,7 +76,7 @@ where T: OutputManagerBackend
 }
 
 impl<T> OutputManagerServiceInitializer<T>
-where T: OutputManagerBackend + Clone + 'static
+where T: OutputManagerBackend + 'static
 {
     pub fn new(
         config: OutputManagerServiceConfig,
@@ -111,26 +110,25 @@ where T: OutputManagerBackend + Clone + 'static
 }
 
 impl<T> ServiceInitializer for OutputManagerServiceInitializer<T>
-where T: OutputManagerBackend + Clone + 'static
+where T: OutputManagerBackend + 'static
 {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+        trace!(
+            target: LOG_TARGET,
+            "Output manager initialization: Base node query timeout: {}s",
+            self.config.base_node_query_timeout.as_secs()
+        );
+
         let base_node_response_stream = self.base_node_response_stream();
 
         let (sender, receiver) = reply_channel::unbounded();
         let (publisher, _) = broadcast::channel(200);
 
-        let oms_handle = OutputManagerHandle::new(sender, publisher.clone());
-
         // Register handle before waiting for handles to be ready
-        handles_fut.register(oms_handle);
+        let oms_handle = OutputManagerHandle::new(sender, publisher.clone());
+        context.register_handle(oms_handle);
 
         let backend = self
             .backend
@@ -140,16 +138,9 @@ where T: OutputManagerBackend + Clone + 'static
         let config = self.config.clone();
         let constants = ConsensusConstantsBuilder::new(self.network).build();
 
-        executor.spawn(async move {
-            let handles = handles_fut.await;
-
-            let outbound_message_service = handles
-                .get_handle::<OutboundMessageRequester>()
-                .expect("OMS handle required for Output Manager Service");
-
-            let transaction_service = handles
-                .get_handle::<TransactionServiceHandle>()
-                .expect("Transaction Service handle required for Output Manager Service");
+        context.spawn_when_ready(move |handles| async move {
+            let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
+            let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
 
             let service = OutputManagerService::new(
                 config,
@@ -161,13 +152,14 @@ where T: OutputManagerBackend + Clone + 'static
                 publisher,
                 factories,
                 constants.coinbase_lock_height(),
+                handles.get_shutdown_signal(),
             )
             .await
             .expect("Could not initialize Output Manager Service")
             .start();
 
             futures::pin_mut!(service);
-            future::select(service, shutdown).await;
+            future::select(service, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "Output manager service shutdown");
         });
         future::ready(Ok(()))

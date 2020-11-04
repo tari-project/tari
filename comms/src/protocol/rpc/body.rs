@@ -210,6 +210,7 @@ impl Buf for BodyBytes {
     }
 }
 
+#[derive(Debug)]
 pub struct Streaming<T> {
     inner: mpsc::Receiver<Result<T, RpcStatus>>,
 }
@@ -217,6 +218,15 @@ pub struct Streaming<T> {
 impl<T> Streaming<T> {
     pub fn new(inner: mpsc::Receiver<Result<T, RpcStatus>>) -> Self {
         Self { inner }
+    }
+
+    pub fn empty() -> Self {
+        let (_, rx) = mpsc::channel(0);
+        Self { inner: rx }
+    }
+
+    pub fn into_inner(self) -> mpsc::Receiver<Result<T, RpcStatus>> {
+        self.inner
     }
 }
 

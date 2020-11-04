@@ -91,24 +91,24 @@ impl RpcCodeGenerator {
 
         quote::quote! {
             pub struct #server_struct<T> {
-                inner: #dep_mod::Arc<T>,
+                inner: std::sync::Arc<T>,
             }
 
             impl<T: #trait_ident> #server_struct<T> {
                 pub fn new(service: T) -> Self {
                     Self {
-                        inner: #dep_mod::Arc::new(service),
+                        inner: std::sync::Arc::new(service),
                     }
                 }
             }
 
             impl<T: #trait_ident> #dep_mod::Service<#dep_mod::Request<#dep_mod::Bytes>> for #server_struct<T> {
                 type Error = #dep_mod::RpcStatus;
-                type Future = #dep_mod::BoxFuture<'static, Result<#dep_mod::Response<#dep_mod::Body>,
-        #dep_mod::RpcStatus>>;         type Response = #dep_mod::Response<#dep_mod::Body>;
+                type Future = #dep_mod::BoxFuture<'static, Result<#dep_mod::Response<#dep_mod::Body>, #dep_mod::RpcStatus>>;
+                type Response = #dep_mod::Response<#dep_mod::Body>;
 
-                fn poll_ready(&mut self, _: &mut #dep_mod::Context<'_>) -> #dep_mod::Poll<Result<(), Self::Error>> {
-                    #dep_mod::Poll::Ready(Ok(()))
+                fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+                    std::task::Poll::Ready(Ok(()))
                 }
 
                 fn call(&mut self, req: #dep_mod::Request<#dep_mod::Bytes>) -> Self::Future {
@@ -139,8 +139,8 @@ impl RpcCodeGenerator {
 
                 type Future = #dep_mod::future::Ready<Result<Self::Response, Self::Error>>;
 
-                fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>>
-        {             #dep_mod::Poll::Ready(Ok(()))
+                fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+                    std::task::Poll::Ready(Ok(()))
                 }
 
                 fn call(&mut self, _: #dep_mod::ProtocolId) -> Self::Future {
@@ -205,6 +205,10 @@ impl RpcCodeGenerator {
             }
 
             #client_methods
+
+            pub async fn get_last_request_latency(&mut self) -> Result<Option<std::time::Duration>, #dep_mod::RpcError> {
+                self.inner.get_last_request_latency().await
+            }
 
             pub fn close(&mut self) {
                 self.inner.close();

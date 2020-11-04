@@ -1,3 +1,4 @@
+#![recursion_limit = "1024"]
 // Copyright 2019. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -19,6 +20,15 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#![cfg_attr(not(debug_assertions), deny(unused_variables))]
+#![cfg_attr(not(debug_assertions), deny(unused_imports))]
+#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+#![deny(unused_must_use)]
+#![deny(unreachable_patterns)]
+#![deny(unknown_lints)]
+// Enable 'impl Trait' type aliases
+#![feature(type_alias_impl_trait)]
 
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣶⣦⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣾⣿⡿⠋⠀⠀⠀⠀⠉⠛⠿⣿⣿⣶⣤⣀⠀⠀⠀⠀⠀⠀⢰⣿⣾⣾⣾⣾⣾⣾⣾⣾⣾⣿⠀⠀⠀⣾⣾⣾⡀⠀⠀⠀⠀⢰⣾⣾⣾⣾⣿⣶⣶⡀⠀⠀⠀⢸⣾⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -77,6 +87,8 @@
 #[macro_use]
 mod table;
 
+/// Base node bootstrap code
+mod bootstrap;
 /// Utilities and helpers for building the base node instance
 mod builder;
 /// The command line interface definition and configuration
@@ -87,40 +99,35 @@ mod grpc;
 mod miner;
 /// Parser module used to control user commands
 mod parser;
+/// Misc. long running base node tasks
+mod tasks;
+/// Utility functions
 mod utils;
+// recovery mode
+mod recovery;
 
-use crate::builder::{create_new_base_node_identity, load_identity};
+use futures::FutureExt;
 use log::*;
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::net::SocketAddr;
 use structopt::StructOpt;
-use tari_common::{ConfigBootstrap, GlobalConfig};
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
-use tari_shutdown::Shutdown;
-use tokio::runtime::Runtime;
+use tari_app_utilities::{
+    identity_management::setup_node_identity,
+    utilities::{setup_runtime, ExitCodes},
+};
+use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
+use tari_comms::peer_manager::PeerFeatures;
+use tari_shutdown::{Shutdown, ShutdownSignal};
 use tonic::transport::Server;
 
 pub const LOG_TARGET: &str = "base_node::app";
-
-/// Enum to show failure information
-enum ExitCodes {
-    ConfigError = 101,
-    UnknownError = 102,
-}
-
-impl From<tari_common::ConfigError> for ExitCodes {
-    fn from(err: tari_common::ConfigError) -> Self {
-        error!(target: LOG_TARGET, "{}", err);
-        Self::ConfigError
-    }
-}
 
 /// Application entry point
 fn main() {
     match main_inner() {
         Ok(_) => std::process::exit(0),
-        Err(exit_code) => std::process::exit(exit_code as i32),
+        Err(exit_code) => std::process::exit(exit_code.as_i32()),
     }
 }
 
@@ -130,7 +137,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     let mut bootstrap = ConfigBootstrap::from_args();
 
     // Check and initialize configuration files
-    bootstrap.init_dirs()?;
+    bootstrap.init_dirs(ApplicationType::BaseNode)?;
 
     // Load and apply configuration file
     let cfg = bootstrap.load_configuration()?;
@@ -141,7 +148,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // Populate the configuration struct
     let node_config = GlobalConfig::convert_from(cfg).map_err(|err| {
         error!(target: LOG_TARGET, "The configuration file has an error. {}", err);
-        ExitCodes::ConfigError
+        ExitCodes::ConfigError(format!("The configuration file has an error. {}", err))
     })?;
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
@@ -177,6 +184,15 @@ fn main_inner() -> Result<(), ExitCodes> {
         );
         return Ok(());
     }
+    // This is the main and only shutdown trigger for the system.
+    let shutdown = Shutdown::new();
+
+    if bootstrap.rebuild_db {
+        info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
+        recovery::initiate_recover_db(&node_config)?;
+        let _ = rt.block_on(recovery::run_recovery(&node_config));
+        return Ok(());
+    };
 
     if bootstrap.init {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
@@ -184,87 +200,75 @@ fn main_inner() -> Result<(), ExitCodes> {
     }
 
     // Build, node, build!
-    let shutdown = Shutdown::new();
     let ctx = rt
         .block_on(builder::configure_and_initialize_node(
             &node_config,
             node_identity,
             wallet_identity,
             shutdown.to_signal(),
+            bootstrap.clean_orphans_db,
         ))
         .map_err(|err| {
             error!(target: LOG_TARGET, "{}", err);
             ExitCodes::UnknownError
         })?;
 
-    // Run, node, run!
-    let parser = Parser::new(rt.handle().clone(), &ctx, &node_config);
-
-    cli::print_banner(parser.get_commands(), 3);
     if node_config.grpc_enabled {
-        let grpc =
-            crate::grpc::server::BaseNodeGrpcServer::new(rt.handle().clone(), ctx.local_node(), node_config.clone());
+        // Go, GRPC , go go
+        let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::new(
+            rt.handle().clone(),
+            ctx.local_node(),
+            node_config.clone(),
+        );
 
-        rt.spawn(run_grpc(grpc, node_config.grpc_address));
+        rt.spawn(run_grpc(grpc, node_config.grpc_address, shutdown.to_signal()));
     }
-    let base_node_handle = rt.spawn(ctx.run(rt.handle().clone()));
 
-    info!(
-        target: LOG_TARGET,
-        "Node has been successfully configured and initialized. Starting CLI loop."
-    );
+    // Run, node, run!
+    let base_node_handle;
+    if !bootstrap.daemon_mode {
+        let parser = Parser::new(rt.handle().clone(), &ctx, &node_config);
+        cli::print_banner(parser.get_commands(), 3);
+        base_node_handle = rt.spawn(ctx.run());
 
-    cli_loop(parser, shutdown);
+        info!(
+            target: LOG_TARGET,
+            "Node has been successfully configured and initialized. Starting CLI loop."
+        );
 
+        cli_loop(Some(parser), shutdown);
+    } else {
+        println!("Node has been successfully configured and initialized in daemon mode.");
+        base_node_handle = rt.spawn(ctx.run());
+    }
     match rt.block_on(base_node_handle) {
         Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
         Err(e) => error!(target: LOG_TARGET, "Node has crashed: {}", e),
     }
+
+    // Wait until tasks have shut down
+    drop(rt);
 
     println!("Goodbye!");
     Ok(())
 }
 
 /// Runs the gRPC server
-async fn run_grpc(grpc: crate::grpc::server::BaseNodeGrpcServer, grpc_address: SocketAddr) -> Result<(), String> {
+async fn run_grpc(
+    grpc: crate::grpc::base_node_grpc_server::BaseNodeGrpcServer,
+    grpc_address: SocketAddr,
+    interrupt_signal: ShutdownSignal,
+) -> Result<(), anyhow::Error>
+{
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     Server::builder()
-        .add_service(tari_app_grpc::base_node_grpc::base_node_server::BaseNodeServer::new(
-            grpc,
-        ))
-        .serve(grpc_address)
-        .await
-        .map_err(|e| format!("GRPC server returned error:{}", e))?;
+        .add_service(tari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc))
+        .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
+        .await?;
+
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
-}
-
-/// Sets up the tokio runtime based on the configuration
-/// ## Parameters
-/// `config` - The configuration  of the base node
-///
-/// ## Returns
-/// A result containing the runtime on success, string indicating the error on failure
-fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
-    let num_core_threads = config.core_threads;
-    let num_blocking_threads = config.blocking_threads;
-    let num_mining_threads = config.num_mining_threads;
-
-    info!(
-        target: LOG_TARGET,
-        "Configuring the node to run on {} core threads, {} blocking worker threads and {} mining threads.",
-        num_core_threads,
-        num_blocking_threads,
-        num_mining_threads
-    );
-    tokio::runtime::Builder::new()
-        .threaded_scheduler()
-        .enable_all()
-        .max_threads(num_core_threads + num_blocking_threads + num_mining_threads)
-        .core_threads(num_core_threads)
-        .build()
-        .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
 }
 
 /// Runs the Base Node
@@ -274,7 +278,7 @@ fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
 ///
 /// ## Returns
 /// Doesn't return anything
-fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
+fn cli_loop(parser: Option<Parser>, mut shutdown: Shutdown) {
     let cli_config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
@@ -282,85 +286,65 @@ fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
         .output_stream(OutputStreamType::Stdout)
         .build();
     let mut rustyline = Editor::with_config(cli_config);
-    rustyline.set_helper(Some(parser));
-    loop {
-        let readline = rustyline.readline(">> ");
-        match readline {
-            Ok(line) => {
-                rustyline.add_history_entry(line.as_str());
-                if let Some(p) = rustyline.helper_mut().as_deref_mut() {
-                    p.handle_command(&line, &mut shutdown)
+    match parser {
+        Some(parser) => {
+            rustyline.set_helper(Some(parser));
+            loop {
+                let readline = rustyline.readline(">> ");
+                match readline {
+                    Ok(line) => {
+                        rustyline.add_history_entry(line.as_str());
+                        if let Some(p) = rustyline.helper_mut().as_deref_mut() {
+                            p.handle_command(&line, &mut shutdown)
+                        }
+                    },
+                    Err(ReadlineError::Interrupted) => {
+                        // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
+                        println!("The node is shutting down because Ctrl+C was received...");
+                        info!(
+                            target: LOG_TARGET,
+                            "Termination signal received from user. Shutting node down."
+                        );
+                        if shutdown.trigger().is_err() {
+                            error!(target: LOG_TARGET, "Shutdown signal failed to trigger");
+                        };
+                        break;
+                    },
+                    Err(err) => {
+                        println!("Error: {:?}", err);
+                        break;
+                    },
                 }
-            },
-            Err(ReadlineError::Interrupted) => {
-                // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
-                println!("The node is shutting down because Ctrl+C was received...");
-                info!(
-                    target: LOG_TARGET,
-                    "Termination signal received from user. Shutting node down."
-                );
-                if shutdown.trigger().is_err() {
-                    error!(target: LOG_TARGET, "Shutdown signal failed to trigger");
+                if shutdown.is_triggered() {
+                    break;
                 };
-                break;
-            },
-            Err(err) => {
-                println!("Error: {:?}", err);
-                break;
-            },
-        }
-        if shutdown.is_triggered() {
-            break;
-        };
-    }
-}
-
-/// Loads the node identity, or creates a new one if the --create-id flag was specified
-/// ## Parameters
-/// `identity_file` - Reference to file path
-/// `public_address` - Network address of the base node
-/// `create_id` - Whether an identity needs to be created or not
-/// `peer_features` - Enables features of the base node
-///
-/// # Return
-/// A NodeIdentity wrapped in an atomic reference counter on success, the exit code indicating the reason on failure
-fn setup_node_identity(
-    identity_file: &PathBuf,
-    public_address: &Multiaddr,
-    create_id: bool,
-    peer_features: PeerFeatures,
-) -> Result<Arc<NodeIdentity>, ExitCodes>
-{
-    match load_identity(identity_file) {
-        Ok(id) => Ok(Arc::new(id)),
-        Err(e) => {
-            if !create_id {
-                error!(
-                    target: LOG_TARGET,
-                    "Node identity information not found. {}. You can update the configuration file to point to a \
-                     valid node identity file, or re-run the node with the --create-id flag to create a new identity.",
-                    e
-                );
-                return Err(ExitCodes::ConfigError);
             }
-
-            debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
-
-            match create_new_base_node_identity(identity_file, public_address.clone(), peer_features) {
-                Ok(id) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "New node identity [{}] with public key {} has been created at {}.",
-                        id.node_id(),
-                        id.public_key(),
-                        identity_file.to_string_lossy(),
-                    );
-                    Ok(Arc::new(id))
-                },
-                Err(e) => {
-                    error!(target: LOG_TARGET, "Could not create new node id. {:?}.", e);
-                    Err(ExitCodes::ConfigError)
-                },
+        },
+        None => {
+            loop {
+                let readline = rustyline.readline("");
+                match readline {
+                    Ok(_) => {},
+                    Err(ReadlineError::Interrupted) => {
+                        // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
+                        println!("The node is shutting down because Ctrl+C was received...");
+                        info!(
+                            target: LOG_TARGET,
+                            "Termination signal received from user. Shutting node down."
+                        );
+                        if shutdown.trigger().is_err() {
+                            error!(target: LOG_TARGET, "Shutdown signal failed to trigger");
+                        };
+                        break;
+                    },
+                    Err(err) => {
+                        println!("Error: {:?}", err);
+                        break;
+                    },
+                }
+                if shutdown.is_triggered() {
+                    break;
+                };
             }
         },
     }

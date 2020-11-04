@@ -32,12 +32,11 @@ mod and_then;
 mod error;
 pub use error::ValidationError;
 
-mod helpers;
+pub mod helpers;
 
 mod traits;
-pub use traits::{StatelessValidation, StatelessValidationExt, StatelessValidator, Validation, Validator};
+pub use traits::{StatefulValidation, StatefulValidator, Validation, ValidationExt, Validator};
 
-pub mod accum_difficulty_validators;
 pub mod block_validators;
 pub mod mocks;
 pub mod transaction_validators;

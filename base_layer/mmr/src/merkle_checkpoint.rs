@@ -58,7 +58,7 @@ impl MerkleCheckPoint {
         B2: ArrayLike<Value = Hash>,
     {
         for node in &self.nodes_added {
-            mmr.push(node)?;
+            mmr.push(node.clone())?;
         }
         mmr.deleted.or_inplace(&self.nodes_deleted);
         Ok(())

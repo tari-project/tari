@@ -29,8 +29,7 @@ use crate::{
 use futures::channel::mpsc::UnboundedSender;
 use log::*;
 use tari_comms::peer_manager::NodeId;
-use tari_service_framework::reply_channel::SenderService;
-use tower_service::Service;
+use tari_service_framework::{reply_channel::SenderService, Service};
 
 pub const LOG_TARGET: &str = "c::bn::comms_interface::outbound_interface";
 
@@ -201,7 +200,7 @@ impl OutboundNodeCommsInterface {
     {
         if let NodeCommsResponse::TransactionOutputs(utxos) = self
             .request_sender
-            .call((NodeCommsRequest::FetchUtxos(hashes), node_id))
+            .call((NodeCommsRequest::FetchMatchingUtxos(hashes), node_id))
             .await??
         {
             Ok(utxos)
@@ -225,7 +224,7 @@ impl OutboundNodeCommsInterface {
     {
         if let NodeCommsResponse::TransactionOutputs(txos) = self
             .request_sender
-            .call((NodeCommsRequest::FetchTxos(hashes), node_id))
+            .call((NodeCommsRequest::FetchMatchingTxos(hashes), node_id))
             .await??
         {
             Ok(txos)
@@ -249,7 +248,7 @@ impl OutboundNodeCommsInterface {
     {
         if let NodeCommsResponse::HistoricalBlocks(blocks) = self
             .request_sender
-            .call((NodeCommsRequest::FetchBlocks(block_nums), node_id))
+            .call((NodeCommsRequest::FetchMatchingBlocks(block_nums), node_id))
             .await??
         {
             Ok(blocks)
@@ -333,7 +332,10 @@ impl OutboundNodeCommsInterface {
     {
         if let NodeCommsResponse::MmrNodes(added, deleted) = self
             .request_sender
-            .call((NodeCommsRequest::FetchMmrNodes(tree, pos, count, hist_height), node_id))
+            .call((
+                NodeCommsRequest::FetchMatchingMmrNodes(tree, pos, count, hist_height),
+                node_id,
+            ))
             .await??
         {
             Ok((added, deleted))

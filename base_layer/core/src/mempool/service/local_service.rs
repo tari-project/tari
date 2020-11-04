@@ -26,13 +26,10 @@ use crate::mempool::{
     StateResponse,
     StatsResponse,
 };
-use futures::{stream::Fuse, StreamExt};
-use tari_broadcast_channel::Subscriber;
-use tari_service_framework::reply_channel::{Receiver, SenderService};
-use tower_service::Service;
+use tari_service_framework::{reply_channel::SenderService, Service};
+use tokio::sync::broadcast;
 
 pub type LocalMempoolRequester = SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;
-pub type LocalMempoolRequestStream = Receiver<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;
 
 /// A local interface into the mempool service.
 ///
@@ -44,7 +41,7 @@ pub type LocalMempoolRequestStream = Receiver<MempoolRequest, Result<MempoolResp
 #[derive(Clone)]
 pub struct LocalMempoolService {
     request_sender: LocalMempoolRequester,
-    mempool_state_event_stream: Subscriber<MempoolStateEvent>,
+    mempool_state_event_stream: broadcast::Sender<MempoolStateEvent>,
 }
 
 impl LocalMempoolService {
@@ -56,7 +53,7 @@ impl LocalMempoolService {
     /// such that the request behaves like a standard future.
     pub fn new(
         request_sender: LocalMempoolRequester,
-        mempool_state_event_stream: Subscriber<MempoolStateEvent>,
+        mempool_state_event_stream: broadcast::Sender<MempoolStateEvent>,
     ) -> Self
     {
         LocalMempoolService {
@@ -65,12 +62,8 @@ impl LocalMempoolService {
         }
     }
 
-    pub fn get_mempool_state_event_stream(&self) -> Subscriber<MempoolStateEvent> {
-        self.mempool_state_event_stream.clone()
-    }
-
-    pub fn get_mempool_state_stream_fused(&self) -> Fuse<Subscriber<MempoolStateEvent>> {
-        self.get_mempool_state_event_stream().fuse()
+    pub fn get_mempool_state_event_stream(&self) -> broadcast::Receiver<MempoolStateEvent> {
+        self.mempool_state_event_stream.subscribe()
     }
 
     /// Returns a future that resolves to the current mempool statistics
@@ -92,18 +85,15 @@ impl LocalMempoolService {
 #[cfg(test)]
 mod test {
     use crate::mempool::{
-        service::{
-            local_service::{LocalMempoolRequestStream, LocalMempoolService},
-            MempoolRequest,
-            MempoolResponse,
-        },
+        service::{local_service::LocalMempoolService, MempoolRequest, MempoolResponse},
         MempoolServiceError,
         StatsResponse,
     };
     use futures::StreamExt;
-    use tari_broadcast_channel::bounded;
-    use tari_service_framework::reply_channel::unbounded;
-    use tokio::task;
+    use tari_service_framework::reply_channel::{unbounded, Receiver};
+    use tokio::{sync::broadcast, task};
+
+    pub type LocalMempoolRequestStream = Receiver<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;
 
     fn request_stats() -> StatsResponse {
         StatsResponse {
@@ -129,9 +119,9 @@ mod test {
 
     #[tokio_macros::test]
     async fn mempool_stats() {
-        let (_, event_subscriber) = bounded(100, 110);
+        let (event_publisher, _) = broadcast::channel(100);
         let (tx, rx) = unbounded();
-        let mut service = LocalMempoolService::new(tx, event_subscriber);
+        let mut service = LocalMempoolService::new(tx, event_publisher);
         task::spawn(mock_handler(rx));
         let stats = service.get_mempool_stats().await;
         let stats = stats.expect("get_mempool_stats should have succeeded");
@@ -140,9 +130,9 @@ mod test {
 
     #[tokio_macros::test]
     async fn mempool_stats_from_multiple() {
-        let (_, event_subscriber) = bounded(100, 111);
+        let (event_publisher, _) = broadcast::channel(100);
         let (tx, rx) = unbounded();
-        let mut service = LocalMempoolService::new(tx, event_subscriber);
+        let mut service = LocalMempoolService::new(tx, event_publisher);
         let mut service2 = service.clone();
         task::spawn(mock_handler(rx));
         let stats = service.get_mempool_stats().await;

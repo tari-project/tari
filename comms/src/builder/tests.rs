@@ -31,7 +31,11 @@ use crate::{
     peer_manager::{Peer, PeerFeatures},
     pipeline,
     pipeline::SinkService,
-    protocol::{messaging::MessagingEvent, ProtocolEvent, Protocols},
+    protocol::{
+        messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
+        ProtocolEvent,
+        Protocols,
+    },
     runtime,
     test_utils::node_identity::build_node_identity,
     transports::MemoryTransport,
@@ -47,12 +51,21 @@ use futures::{
     StreamExt,
 };
 use std::{collections::HashSet, convert::identity, hash::Hash, time::Duration};
+use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_storage::HashmapDatabase;
 use tari_test_utils::{collect_stream, unpack_enum};
+use tokio::{sync::broadcast, task};
 
 async fn spawn_node(
     protocols: Protocols<Substream>,
-) -> (CommsNode, mpsc::Receiver<InboundMessage>, mpsc::Sender<OutboundMessage>) {
+    shutdown_sig: ShutdownSignal,
+) -> (
+    CommsNode,
+    mpsc::Receiver<InboundMessage>,
+    mpsc::Sender<OutboundMessage>,
+    MessagingEventSender,
+)
+{
     let addr = format!("/memory/{}", memsocket::acquire_next_memsocket_port())
         .parse::<Multiaddr>()
         .unwrap();
@@ -65,40 +78,36 @@ async fn spawn_node(
     let comms_node = CommsBuilder::new()
         // These calls are just to get rid of unused function warnings. 
         // <IrrelevantCalls>
-        .with_executor(runtime::current())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
-        .on_shutdown(|| {})
+        .with_shutdown_signal(shutdown_sig)
         // </IrrelevantCalls>
         .with_listener_address(addr)
-        .with_transport(MemoryTransport)
-        .with_peer_storage(HashmapDatabase::new())
+        .with_peer_storage(HashmapDatabase::new(), None)
 
         .with_node_identity(node_identity)
-        .add_protocol_extensions(protocols.into()
-       )
         .build()
         .unwrap();
 
+    let (messaging_events_sender, _) = broadcast::channel(100);
     let comms_node = comms_node
-        .with_messaging_pipeline(
+        .add_protocol_extensions(protocols.into())
+        .add_protocol_extension(MessagingProtocolExtension::new(
+            messaging_events_sender.clone(),
             pipeline::Builder::new()
                 // Outbound messages will be forwarded "as is" to outbound messaging
                 .with_outbound_pipeline(outbound_rx, identity)
                 .max_concurrent_inbound_tasks(1)
                 // Inbound messages will be forwarded "as is" to inbound_tx
                 .with_inbound_pipeline(SinkService::new(inbound_tx))
-                .finish(),
-        )
-        .spawn()
+                .build(),
+        ))
+        .spawn_with_transport(MemoryTransport)
         .await
         .unwrap();
 
     unpack_enum!(Protocol::Memory(_port) = comms_node.listening_address().iter().next().unwrap());
 
-    // This call is to get rid of unused function warnings
-    comms_node.peer_manager();
-
-    (comms_node, inbound_rx, outbound_tx)
+    (comms_node, inbound_rx, outbound_tx, messaging_events_sender)
 }
 
 #[runtime::test_basic]
@@ -122,8 +131,9 @@ async fn peer_to_peer_custom_protocols() {
         .add(&[TEST_PROTOCOL], test_sender)
         .add(&[ANOTHER_TEST_PROTOCOL], another_test_sender);
 
-    let (comms_node1, _, _) = spawn_node(protocols1).await;
-    let (comms_node2, _, _) = spawn_node(protocols2).await;
+    let mut shutdown = Shutdown::new();
+    let (comms_node1, _, _, _) = spawn_node(protocols1, shutdown.to_signal()).await;
+    let (comms_node2, _, _, _) = spawn_node(protocols2, shutdown.to_signal()).await;
 
     let node_identity1 = comms_node1.node_identity();
     let node_identity2 = comms_node2.node_identity();
@@ -170,7 +180,7 @@ async fn peer_to_peer_custom_protocols() {
     let negotiation = test_protocol_rx2.next().await.unwrap();
     assert_eq!(negotiation.protocol, TEST_PROTOCOL);
     unpack_enum!(ProtocolEvent::NewInboundSubstream(node_id, substream) = negotiation.event);
-    assert_eq!(&*node_id, node_identity1.node_id());
+    assert_eq!(&node_id, node_identity1.node_id());
     let mut buf = [0u8; TEST_MSG.len()];
     substream.read_exact(&mut buf).await.unwrap();
     assert_eq!(buf, TEST_MSG);
@@ -179,23 +189,26 @@ async fn peer_to_peer_custom_protocols() {
     let negotiation = another_test_protocol_rx1.next().await.unwrap();
     assert_eq!(negotiation.protocol, ANOTHER_TEST_PROTOCOL);
     unpack_enum!(ProtocolEvent::NewInboundSubstream(node_id, substream) = negotiation.event);
-    assert_eq!(&*node_id, node_identity2.node_id());
+    assert_eq!(&node_id, node_identity2.node_id());
     let mut buf = [0u8; ANOTHER_TEST_MSG.len()];
     substream.read_exact(&mut buf).await.unwrap();
     assert_eq!(buf, ANOTHER_TEST_MSG);
 
-    comms_node1.shutdown().await;
-    comms_node2.shutdown().await;
+    shutdown.trigger().unwrap();
+    comms_node1.wait_until_shutdown().await;
+    comms_node2.wait_until_shutdown().await;
 }
 
 #[runtime::test_basic]
 async fn peer_to_peer_messaging() {
     const NUM_MSGS: usize = 100;
+    let shutdown = Shutdown::new();
 
-    let (comms_node1, mut inbound_rx1, mut outbound_tx1) = spawn_node(Protocols::new()).await;
-    let (comms_node2, mut inbound_rx2, mut outbound_tx2) = spawn_node(Protocols::new()).await;
+    let (comms_node1, mut inbound_rx1, mut outbound_tx1, _) = spawn_node(Protocols::new(), shutdown.to_signal()).await;
+    let (comms_node2, mut inbound_rx2, mut outbound_tx2, messaging_events2) =
+        spawn_node(Protocols::new(), shutdown.to_signal()).await;
 
-    let mut messaging_events2 = comms_node2.subscribe_messaging_events();
+    let mut messaging_events2 = messaging_events2.subscribe();
 
     let node_identity1 = comms_node1.node_identity();
     let node_identity2 = comms_node2.node_identity();
@@ -261,16 +274,20 @@ async fn peer_to_peer_messaging() {
     assert_eq!(messages2_to_1.len(), NUM_MSGS);
     check_messages(messages2_to_1);
 
-    comms_node1.shutdown().await;
-    comms_node2.shutdown().await;
+    drop(shutdown);
+
+    comms_node1.wait_until_shutdown().await;
+    comms_node2.wait_until_shutdown().await;
 }
 
 #[runtime::test_basic]
 async fn peer_to_peer_messaging_simultaneous() {
+    env_logger::init();
     const NUM_MSGS: usize = 10;
+    let shutdown = Shutdown::new();
 
-    let (comms_node1, mut inbound_rx1, mut outbound_tx1) = spawn_node(Protocols::new()).await;
-    let (comms_node2, mut inbound_rx2, mut outbound_tx2) = spawn_node(Protocols::new()).await;
+    let (comms_node1, mut inbound_rx1, mut outbound_tx1, _) = spawn_node(Protocols::new(), shutdown.to_signal()).await;
+    let (comms_node2, mut inbound_rx2, mut outbound_tx2, _) = spawn_node(Protocols::new(), shutdown.to_signal()).await;
 
     log::info!(
         "Peer1 = `{}`, Peer2 = `{}`",
@@ -311,8 +328,7 @@ async fn peer_to_peer_messaging_simultaneous() {
         .unwrap();
 
     // Simultaneously send messages between the two nodes
-    let rt_handle = runtime::current();
-    let handle1 = rt_handle.spawn(async move {
+    let handle1 = task::spawn(async move {
         for i in 0..NUM_MSGS {
             let outbound_msg = OutboundMessage::new(
                 node_identity2.node_id().clone(),
@@ -322,7 +338,7 @@ async fn peer_to_peer_messaging_simultaneous() {
         }
     });
 
-    let handle2 = rt_handle.spawn(async move {
+    let handle2 = task::spawn(async move {
         for i in 0..NUM_MSGS {
             let outbound_msg = OutboundMessage::new(
                 node_identity1.node_id().clone(),
@@ -345,8 +361,10 @@ async fn peer_to_peer_messaging_simultaneous() {
     drop(o1);
     drop(o2);
 
-    comms_node1.shutdown().await;
-    comms_node2.shutdown().await;
+    drop(shutdown);
+
+    comms_node1.wait_until_shutdown().await;
+    comms_node2.wait_until_shutdown().await;
 }
 
 fn has_unique_elements<T>(iter: T) -> bool

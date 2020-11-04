@@ -22,7 +22,7 @@
 
 use crate::{
     connection_manager::{ConnectionManagerError, PeerConnection},
-    connectivity::{ConnectivityEvent, ConnectivityRequest, ConnectivityRequester},
+    connectivity::{ConnectivityEvent, ConnectivityRequest, ConnectivityRequester, ConnectivityStatus},
     peer_manager::NodeId,
     runtime::task,
 };
@@ -46,6 +46,7 @@ pub struct ConnectivityManagerMockState {
     selected_connections: Arc<Mutex<Vec<PeerConnection>>>,
     managed_peers: Arc<Mutex<Vec<NodeId>>>,
     event_tx: broadcast::Sender<Arc<ConnectivityEvent>>,
+    connectivity_status: Arc<Mutex<ConnectivityStatus>>,
 }
 
 impl ConnectivityManagerMockState {
@@ -56,6 +57,7 @@ impl ConnectivityManagerMockState {
             selected_connections: Arc::new(Mutex::new(Vec::new())),
             managed_peers: Arc::new(Mutex::new(Vec::new())),
             active_conns: Arc::new(Mutex::new(HashMap::new())),
+            connectivity_status: Arc::new(Mutex::new(ConnectivityStatus::Initializing)),
         }
     }
 
@@ -75,6 +77,10 @@ impl ConnectivityManagerMockState {
         *self.selected_connections.lock().await = conns;
     }
 
+    pub async fn set_connectivity_status(&self, status: ConnectivityStatus) {
+        *self.connectivity_status.lock().await = status;
+    }
+
     pub async fn get_managed_peers(&self) -> Vec<NodeId> {
         self.managed_peers.lock().await.clone()
     }
@@ -84,9 +90,8 @@ impl ConnectivityManagerMockState {
         self.calls.lock().await.len()
     }
 
-    #[allow(dead_code)]
-    pub async fn add_active_connection(&self, node_id: NodeId, conn: PeerConnection) {
-        self.active_conns.lock().await.insert(node_id, conn);
+    pub async fn add_active_connection(&self, conn: PeerConnection) {
+        self.active_conns.lock().await.insert(conn.peer_node_id().clone(), conn);
     }
 
     #[allow(dead_code)]
@@ -130,19 +135,23 @@ impl ConnectivityManagerMock {
         use ConnectivityRequest::*;
         self.state.add_call(format!("{:?}", req)).await;
         match req {
-            DialPeer(node_id, reply_tx) => {
+            DialPeer(node_id, reply) => {
                 // Send Ok(conn) if we have an active connection, otherwise Err(DialConnectFailedAllAddresses)
-                let _ = reply_tx.send(
-                    self.state
-                        .active_conns
-                        .lock()
-                        .await
-                        .get(&node_id)
-                        .map(Clone::clone)
-                        .ok_or_else(|| ConnectionManagerError::DialConnectFailedAllAddresses),
-                );
+                reply
+                    .send(
+                        self.state
+                            .active_conns
+                            .lock()
+                            .await
+                            .get(&node_id)
+                            .cloned()
+                            .ok_or_else(|| ConnectionManagerError::DialConnectFailedAllAddresses),
+                    )
+                    .unwrap();
             },
-            GetConnectivityStatus(_) => unimplemented!(),
+            GetConnectivityStatus(reply) => {
+                reply.send(*self.state.connectivity_status.lock().await).unwrap();
+            },
             AddManagedPeers(peers) => {
                 // TODO: we should not have to implement behaviour of the actor in the mock
                 //       but should rather have a _good_ way to check the call to the mock
@@ -160,16 +169,21 @@ impl ConnectivityManagerMock {
                     lock.remove(pos);
                 }
             },
-            SelectConnections(_, reply_tx) => {
-                reply_tx.send(Ok(self.state.get_selected_connections().await)).unwrap();
+            SelectConnections(_, reply) => {
+                reply.send(Ok(self.state.get_selected_connections().await)).unwrap();
             },
-            GetConnection(node_id, reply_tx) => {
-                reply_tx
+            GetConnection(node_id, reply) => {
+                reply
                     .send(self.state.active_conns.lock().await.get(&node_id).cloned())
                     .unwrap();
             },
             GetAllConnectionStates(_) => unimplemented!(),
-            BanPeer(_, _) => unimplemented!(),
+            BanPeer(_, _, _) => unimplemented!(),
+            GetActiveConnections(reply) => {
+                reply
+                    .send(self.state.active_conns.lock().await.values().cloned().collect())
+                    .unwrap();
+            },
         }
     }
 }

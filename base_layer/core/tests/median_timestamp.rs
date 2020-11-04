@@ -25,20 +25,19 @@ mod helpers;
 
 use helpers::{
     block_builders::chain_block,
+    database::create_mem_db,
     pow_blockchain::{append_to_pow_blockchain, create_test_pow_blockchain},
 };
 use tari_core::{
     chain_storage::{fetch_headers, BlockchainBackend},
     consensus::{ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     proof_of_work::{get_median_timestamp, PowAlgorithm},
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 pub fn get_header_timestamps<B: BlockchainBackend>(db: &B, height: u64, timestamp_count: u64) -> Vec<EpochTime> {
-    let min_height = height.saturating_sub(timestamp_count);
-    let block_nums = (min_height..=height).collect();
-    fetch_headers(db, block_nums)
+    let min_height = height.checked_sub(timestamp_count).unwrap_or(0);
+    fetch_headers(db, min_height, height)
         .unwrap()
         .iter()
         .map(|h| h.timestamp)
@@ -87,7 +86,7 @@ fn test_median_timestamp_with_height() {
 fn test_median_timestamp_odd_order() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let timestamp_count = consensus_manager.consensus_constants().get_median_timestamp_count() as u64;
+    let timestamp_count = consensus_manager.consensus_constants(0).get_median_timestamp_count() as u64;
     let store = create_mem_db(&consensus_manager);
     let pow_algos = vec![PowAlgorithm::Blake]; // GB default
     create_test_pow_blockchain(&store, pow_algos, &consensus_manager);
@@ -103,8 +102,8 @@ fn test_median_timestamp_odd_order() {
     let pow_algos = vec![PowAlgorithm::Blake];
     // lets add 1
     let tip = store.fetch_block(store.get_height().unwrap().unwrap()).unwrap().block;
-    append_to_pow_blockchain(&store, tip, pow_algos, &consensus_manager);
-    timestamps.push(timestamps[0].increase(consensus_manager.consensus_constants().get_target_block_interval()));
+    append_to_pow_blockchain(&store, tip, pow_algos.clone(), &consensus_manager);
+    timestamps.push(timestamps[0].increase(120));
     let height = store.get_chain_metadata().unwrap().height_of_longest_chain.unwrap();
     median_timestamp = get_median_timestamp(get_header_timestamps(
         &*store.db_read_access().unwrap(),
@@ -117,14 +116,14 @@ fn test_median_timestamp_odd_order() {
     // lets add 1 that's further back then
     let append_height = store.get_height().unwrap().unwrap();
     let prev_block = store.fetch_block(append_height).unwrap().block().clone();
-    let new_block = chain_block(&prev_block, Vec::new(), &consensus_manager.consensus_constants());
+    let new_block = chain_block(&prev_block, Vec::new(), &consensus_manager);
     let mut new_block = store.calculate_mmr_roots(new_block).unwrap();
-    timestamps.push(timestamps[0].increase(&consensus_manager.consensus_constants().get_target_block_interval() / 2));
+    timestamps.push(timestamps[0].increase(60));
     new_block.header.timestamp = timestamps[2];
     new_block.header.pow.pow_algo = PowAlgorithm::Blake;
-    store.add_block(new_block).unwrap();
+    store.add_block(new_block.into()).unwrap();
 
-    timestamps.push(timestamps[2].increase(consensus_manager.consensus_constants().get_target_block_interval() / 2));
+    timestamps.push(timestamps[2].increase(60));
     let height = store.get_chain_metadata().unwrap().height_of_longest_chain.unwrap();
     median_timestamp = get_median_timestamp(get_header_timestamps(
         &*store.db_read_access().unwrap(),

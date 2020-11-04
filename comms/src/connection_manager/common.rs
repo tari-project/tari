@@ -94,6 +94,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
     known_peer: Option<Peer>,
     authenticated_public_key: CommsPublicKey,
     mut peer_identity: PeerIdentityMsg,
+    dialed_addr: Option<&Multiaddr>,
     allow_test_addrs: bool,
 ) -> Result<NodeId, ConnectionManagerError>
 {
@@ -138,6 +139,9 @@ pub async fn validate_and_add_peer_from_peer_identity(
             peer.connection_stats.set_connection_success();
             peer.addresses = addresses.into();
             peer.set_offline(false);
+            if let Some(addr) = dialed_addr {
+                peer.addresses.mark_successful_connection_attempt(addr);
+            }
             peer.features = PeerFeatures::from_bits_truncate(peer_identity.features);
             peer.supported_protocols = supported_protocols;
             peer.user_agent = peer_identity.user_agent;
@@ -159,6 +163,9 @@ pub async fn validate_and_add_peer_from_peer_identity(
                 peer_identity.user_agent,
             );
             new_peer.connection_stats.set_connection_success();
+            if let Some(addr) = dialed_addr {
+                new_peer.addresses.mark_successful_connection_attempt(addr);
+            }
             new_peer
         },
     };
@@ -181,18 +188,18 @@ pub async fn find_unbanned_peer(
     }
 }
 
-pub fn validate_peer_addresses<A: AsRef<[Multiaddr]>>(
+pub fn validate_peer_addresses<'a, A: IntoIterator<Item = &'a Multiaddr>>(
     addresses: A,
     allow_test_addrs: bool,
 ) -> Result<(), ConnectionManagerError>
 {
-    for addr in addresses.as_ref() {
+    for addr in addresses.into_iter() {
         validate_address(addr, allow_test_addrs)?;
     }
     Ok(())
 }
 
-pub fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), ConnectionManagerError> {
+fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), ConnectionManagerError> {
     let mut addr_iter = addr.iter();
     let proto = addr_iter
         .next()
@@ -301,7 +308,7 @@ mod test {
             multiaddr!(Memory(0u64)),
         ];
 
-        validate_peer_addresses(valid, false).unwrap();
+        validate_peer_addresses(&valid, false).unwrap();
         for addr in invalid {
             validate_address(addr, false).unwrap_err();
         }
@@ -329,7 +336,7 @@ mod test {
             multiaddr!(Memory(0u64)),
         ];
 
-        validate_peer_addresses(valid, true).unwrap();
+        validate_peer_addresses(&valid, true).unwrap();
         for addr in invalid {
             validate_address(addr, true).unwrap_err();
         }

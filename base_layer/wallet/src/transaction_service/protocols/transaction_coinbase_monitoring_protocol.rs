@@ -26,7 +26,7 @@ use crate::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
         service::TransactionServiceResources,
-        storage::database::{TransactionBackend, TransactionStatus},
+        storage::{database::TransactionBackend, models::TransactionStatus},
     },
 };
 use futures::{channel::mpsc::Receiver, FutureExt, StreamExt};
@@ -53,7 +53,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::protocols::chain_monitori
 /// Mined or leaves the mempool in which case it should be cancelled
 
 pub struct TransactionCoinbaseMonitoringProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     id: u64,
     tx_id: TxId,
@@ -66,7 +66,7 @@ where TBackend: TransactionBackend + Clone + 'static
 }
 
 impl<TBackend> TransactionCoinbaseMonitoringProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -176,7 +176,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-            let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
+            let request = BaseNodeRequestProto::FetchMatchingUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
             let service_request = BaseNodeProto::BaseNodeServiceRequest {
                 request_key: self.id,
                 request: Some(request),
@@ -191,6 +191,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             let mut delay = delay_for(self.timeout).fuse();
+            let mut shutdown = self.resources.shutdown_signal.clone();
             let mut chain_metadata_response_received: Option<bool> = None;
             let mut fetch_utxo_response_received = false;
             // Loop until both a Mempool response AND a Base node response is received OR the Timeout expires.
@@ -225,6 +226,10 @@ where TBackend: TransactionBackend + Clone + 'static
                     },
                     () = delay => {
                         break;
+                    },
+                    _ = shutdown => {
+                        info!(target: LOG_TARGET, "Transaction Coinbase Monitoring Protocol (id: {}) shutting down because it received the shutdown signal", self.id);
+                        return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                     },
                 }
 

@@ -22,7 +22,6 @@
 
 use crate::{
     blocks::Block,
-    chain_storage::BlockchainBackend,
     mempool::{error::MempoolError, Mempool, StateResponse, StatsResponse, TxStorageResponse},
     transactions::{transaction::Transaction, types::Signature},
 };
@@ -30,8 +29,7 @@ use std::sync::Arc;
 
 macro_rules! make_async {
     ($fn:ident($($param1:ident:$ptype1:ty,$param2:ident:$ptype2:ty),+) -> $rtype:ty) => {
-        pub async fn $fn<T>(mp: Mempool<T>, $($param1: $ptype1, $param2: $ptype2),+) -> Result<$rtype, MempoolError>
-        where T: BlockchainBackend + 'static {
+        pub async fn $fn(mp: Mempool, $($param1: $ptype1, $param2: $ptype2),+) -> Result<$rtype, MempoolError> {
             tokio::task::spawn_blocking(move || mp.$fn($($param1,$param2),+))
                 .await
                 .or_else(|err| Err(MempoolError::BlockingTaskSpawnError(err.to_string())))
@@ -40,8 +38,7 @@ macro_rules! make_async {
     };
 
     ($fn:ident($($param:ident:$ptype:ty),+) -> $rtype:ty) => {
-        pub async fn $fn<T>(mp: Mempool<T>, $($param: $ptype),+) -> Result<$rtype, MempoolError>
-        where T: BlockchainBackend + 'static {
+        pub async fn $fn(mp: Mempool, $($param: $ptype),+) -> Result<$rtype, MempoolError> {
             tokio::task::spawn_blocking(move || mp.$fn($($param),+))
                 .await
                 .or_else(|err| Err(MempoolError::BlockingTaskSpawnError(err.to_string())))
@@ -50,8 +47,7 @@ macro_rules! make_async {
     };
 
     ($fn:ident() -> $rtype:ty) => {
-        pub async fn $fn<T>(mp: Mempool<T>) -> Result<$rtype, MempoolError>
-        where T: BlockchainBackend + 'static {
+        pub async fn $fn(mp: Mempool) -> Result<$rtype, MempoolError> {
             tokio::task::spawn_blocking(move || {
                 mp.$fn()
             })
@@ -63,8 +59,8 @@ macro_rules! make_async {
 }
 
 make_async!(insert(tx: Arc<Transaction>) -> TxStorageResponse);
-make_async!(process_published_block(published_block: Block) -> ());
-make_async!(process_reorg(removed_blocks: Vec<Block>, new_blocks: Vec<Block>) -> ());
+make_async!(process_published_block(published_block: Arc<Block>) -> ());
+make_async!(process_reorg(removed_blocks: Vec<Arc<Block>>, new_blocks: Vec<Arc<Block>>) -> ());
 make_async!(snapshot() -> Vec<Arc<Transaction>>);
 make_async!(retrieve(total_weight: u64) -> Vec<Arc<Transaction>>);
 make_async!(has_tx_with_excess_sig(excess_sig: Signature) -> TxStorageResponse);

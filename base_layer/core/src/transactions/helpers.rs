@@ -98,12 +98,7 @@ pub fn create_random_signature(fee: MicroTari, lock_height: u64) -> (PublicKey, 
 /// Generate a random transaction signature, returning the public key (excess) and the signature.
 pub fn create_signature(k: PrivateKey, fee: MicroTari, lock_height: u64) -> Signature {
     let r = PrivateKey::random(&mut OsRng);
-    let tx_meta = TransactionMetadata {
-        fee,
-        lock_height,
-        meta_info: None,
-        linked_kernel: None,
-    };
+    let tx_meta = TransactionMetadata { fee, lock_height };
     let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
     Signature::sign(k, r, &e).unwrap()
 }
@@ -138,6 +133,19 @@ macro_rules! sign {
         let meta = TransactionMetadata::default();
         sign!($output, meta)
     }};
+/// Generate a random transaction signature given a key, returning the public key (excess) and the signature.
+pub fn create_random_signature_from_s_key(
+    s_key: PrivateKey,
+    fee: MicroTari,
+    lock_height: u64,
+) -> (PublicKey, Signature)
+{
+    let _rng = rand::thread_rng();
+    let r = PrivateKey::random(&mut OsRng);
+    let p = PK::from_secret_key(&s_key);
+    let tx_meta = TransactionMetadata { fee, lock_height };
+    let e = build_challenge(&PublicKey::from_secret_key(&r), &tx_meta);
+    (p, Signature::sign(s_key, r, &e).unwrap())
 }
 
 /// The tx macro is a convenience wrapper around the [create_tx] function, making the arguments optional and explicit
@@ -290,8 +298,7 @@ pub fn create_tx(
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
     match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
-        Ok(true) => (),
-        Ok(false) => panic!("{:?}", stx_protocol.failure_reason()),
+        Ok(_) => (),
         Err(e) => panic!("{:?}", e),
     }
     (
@@ -341,8 +348,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         .unwrap();
     outputs.push(change_output);
     match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
-        Ok(true) => (),
-        Ok(false) => panic!("{:?}", stx_protocol.failure_reason()),
+        Ok(_) => (),
         Err(e) => panic!("{:?}", e),
     }
     let txn = stx_protocol.get_transaction().unwrap().clone();

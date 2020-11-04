@@ -126,6 +126,11 @@ impl RpcClient {
         self.connector.close()
     }
 
+    /// Return the latency of the last request
+    pub fn get_last_request_latency(&mut self) -> impl Future<Output = Result<Option<Duration>, RpcError>> + '_ {
+        self.connector.get_last_request_latency()
+    }
+
     async fn call_inner(
         &mut self,
         request: BaseRequest<Bytes>,
@@ -209,7 +214,7 @@ impl RpcClientConfig {
 impl Default for RpcClientConfig {
     fn default() -> Self {
         Self {
-            deadline: Some(Duration::from_secs(100)),
+            deadline: Some(Duration::from_secs(30)),
             deadline_grace_period: Duration::from_secs(10),
         }
     }
@@ -223,6 +228,16 @@ pub struct ClientConnector {
 impl ClientConnector {
     pub fn close(&mut self) {
         self.inner.close_channel();
+    }
+
+    pub async fn get_last_request_latency(&mut self) -> Result<Option<Duration>, RpcError> {
+        let (reply, reply_rx) = oneshot::channel();
+        self.inner
+            .send(ClientRequest::GetLastRequestLatency(reply))
+            .await
+            .map_err(|_| RpcError::ClientClosed)?;
+
+        reply_rx.await.map_err(|_| RpcError::RequestCancelled)
     }
 }
 
@@ -264,6 +279,7 @@ pub struct RpcClientWorker<TSubstream> {
     // sent determines the byte size. A u16 will be more than enough for the purpose (currently just logging)
     request_id: u16,
     ready_tx: Option<oneshot::Sender<Result<(), RpcError>>>,
+    latency: Option<Duration>,
 }
 
 impl<TSubstream> RpcClientWorker<TSubstream>
@@ -282,6 +298,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
             framed,
             request_id: 0,
             ready_tx: Some(ready_tx),
+            latency: None,
         }
     }
 
@@ -292,11 +309,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         let mut handshake = Handshake::new(&mut self.framed);
         match handshake.perform_client_handshake().await {
             Ok(_) => {
+                let latency = start.elapsed();
                 debug!(
                     target: LOG_TARGET,
-                    "RPC Session negotiation completed. Latency: {:.0?}",
-                    start.elapsed()
+                    "RPC Session negotiation completed. Latency: {:.0?}", latency
                 );
+                self.latency = Some(latency);
                 if let Some(r) = self.ready_tx.take() {
                     let _ = r.send(Ok(()));
                 }
@@ -318,6 +336,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                         debug!(target: LOG_TARGET, "Unexpected error: {}. Worker is terminating.", err);
                         break;
                     }
+                },
+                GetLastRequestLatency(reply) => {
+                    let _ = reply.send(self.latency);
                 },
             }
         }
@@ -364,13 +385,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
 
             let resp = match next_msg_fut.await {
                 Ok(resp) => {
+                    let latency = start.elapsed();
                     trace!(
                         target: LOG_TARGET,
-                        "Received response from request {} (method={}) in {:.0?} ms",
+                        "Received response from request #{} (method={}) in {:.0?}",
                         request_id,
                         method,
-                        start.elapsed()
+                        latency
                     );
+                    self.latency = Some(latency);
                     resp.ok_or_else(|| RpcError::ServerClosedRequest)??
                 },
                 // Timeout
@@ -445,4 +468,5 @@ pub enum ClientRequest {
         request: BaseRequest<Bytes>,
         reply: oneshot::Sender<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>>,
     },
+    GetLastRequestLatency(oneshot::Sender<Option<Duration>>),
 }

@@ -4,12 +4,12 @@ authors = ["The Tari Development Community"]
 description = "The tari full base node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.5.4"
+version = "0.6.0"
 edition = "2018"
 
 [dependencies]
 tari_common = {  path = "../../common" }
-tari_comms = { path = "../../comms"}
+tari_comms = { path = "../../comms", features = ["rpc"]}
 tari_comms_dht = {  path = "../../comms/dht"}
 tari_core = {  path = "../../base_layer/core", default-features = false, features = ["transactions"]}
 tari_p2p = {  path = "../../base_layer/p2p" }
@@ -17,30 +17,34 @@ tari_service_framework = {  path = "../../base_layer/service_framework"}
 tari_shutdown = { path = "../../infrastructure/shutdown"}
 tari_mmr = {  path = "../../base_layer/mmr" }
 tari_wallet = { path = "../../base_layer/wallet" }
-tari_broadcast_channel = "^0.2"
-tari_crypto = { version = "^0.7", path = "../../../tari_crypto" }
+tari_crypto = { version = "^0.8" }
 tari_app_grpc = {  path = "../tari_app_grpc" }
+tari_app_utilities = { path = "../tari_app_utilities"}
 
-structopt = { version = "0.3.13", default_features = false }
+anyhow = "1.0.32"
+bincode = "1.3.1"
+chrono = "0.4"
+chrono-english = "0.1"
 config = { version = "0.9.3" }
-dirs = "2.0.2"
+dirs-next = "1.0.2"
 futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}
 log = { version = "0.4.8", features = ["std"] }
 log4rs = { version = "0.8.3", features = ["toml_format", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
-rand = "0.7.2"
-serde_json = "1.0"
-tokio = { version="0.2.10", features = ["signal"] }
-rustyline = "6.0"
-rustyline-derive = "0.3"
-strum = "0.18.0"
-strum_macros = "0.18.0"
-qrcode = { version = "0.12" }
-chrono = "0.4"
-chrono-english = "0.1"
-regex = "1"
-tonic = "0.2"
 prost = "0.6"
 prost-types = "0.6.1"
+qrcode = { version = "0.12" }
+rand = "0.7.2"
+regex = "1"
+rustyline = "6.0"
+rustyline-derive = "0.3"
+serde_json = "1.0"
+structopt = { version = "0.3.13", default_features = false }
+tokio = { version="0.2.10", features = ["signal"] }
+strum = "^0.19"
+strum_macros = "0.18.0"
+thiserror = "^1.0.20"
+tonic = "0.2"
+itertools = "0.8.2"
 
 [build-dependencies]
 tonic-build = "0.2"

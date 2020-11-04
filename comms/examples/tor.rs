@@ -1,52 +1,33 @@
+use anyhow::anyhow;
 use bytes::Bytes;
 use chrono::Utc;
-use futures::{
-    channel::{mpsc, mpsc::SendError},
-    SinkExt,
-    StreamExt,
-};
+use futures::{channel::mpsc, SinkExt, StreamExt};
 use rand::{rngs::OsRng, thread_rng, RngCore};
 use std::{collections::HashMap, convert::identity, env, net::SocketAddr, path::Path, process, sync::Arc};
 use tari_comms::{
     message::{InboundMessage, OutboundMessage},
     multiaddr::Multiaddr,
-    peer_manager::{NodeId, NodeIdentity, NodeIdentityError, Peer, PeerFeatures, PeerManagerError},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures},
     pipeline,
     pipeline::SinkService,
+    protocol::messaging::MessagingProtocolExtension,
     tor,
     CommsBuilder,
-    CommsBuilderError,
     CommsNode,
 };
 use tari_crypto::tari_utilities::message_format::MessageFormat;
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use tari_storage::{
+    lmdb_store::{LMDBBuilder, LMDBConfig},
+    LMDBWrapper,
+};
 use tempfile::Builder;
-use thiserror::Error;
-use tokio::{runtime, task};
+use tokio::{runtime, sync::broadcast};
 
 // Tor example for tari_comms.
 //
 // _Note:_ A running tor proxy with `ControlPort` set is required for this example to work.
 
-#[derive(Debug, Error)]
-enum Error {
-    #[error("Invalid control port address provided. USAGE: tor_example 'Tor_multiaddress'.")]
-    InvalidArgControlPortAddress,
-    #[error("NodeIdentityError: {0}")]
-    NodeIdentityError(#[from] NodeIdentityError),
-    #[error("HiddenServiceBuilderError: {0}")]
-    HiddenServiceBuilderError(#[from] tor::HiddenServiceBuilderError),
-    #[error("CommsBuilderError: {0}")]
-    CommsBuilderError(#[from] CommsBuilderError),
-    #[error("PeerManagerError: {0}")]
-    PeerManagerError(#[from] PeerManagerError),
-    #[error("Failed to send message")]
-    SendError(#[from] SendError),
-    #[error("JoinError: {0}")]
-    JoinError(#[from] task::JoinError),
-    #[error("{0}")]
-    Custom(String),
-}
+type Error = anyhow::Error;
 
 #[tokio_macros::main]
 async fn main() {
@@ -67,8 +48,7 @@ async fn run() -> Result<(), Error> {
     let control_port_addr = args_iter
         .next()
         .unwrap_or("/ip4/127.0.0.1/tcp/9051".to_string())
-        .parse::<Multiaddr>()
-        .map_err(|_| Error::InvalidArgControlPortAddress)?;
+        .parse::<Multiaddr>()?;
 
     let tor_identity1 = args_iter.next().map(load_tor_identity);
     let tor_identity2 = args_iter.next().map(load_tor_identity);
@@ -149,8 +129,8 @@ async fn run() -> Result<(), Error> {
     tokio::signal::ctrl_c().await.expect("ctrl-c failed");
 
     println!("Tor example is shutting down...");
-    comms_node1.shutdown().await;
-    comms_node2.shutdown().await;
+    comms_node1.wait_until_shutdown().await;
+    comms_node2.wait_until_shutdown().await;
 
     handle1.await??;
     handle2.await??;
@@ -167,7 +147,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
 {
     let datastore = LMDBBuilder::new()
         .set_path(database_path.to_str().unwrap())
-        .set_environment_size(50)
+        .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(1)
         .add_database("peerdb", lmdb_zero::db::CREATE)
         .build()
@@ -186,7 +166,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
         hs_builder = hs_builder.with_tor_identity(ident);
     }
 
-    let hs_controller = hs_builder.finish().await?;
+    let mut hs_controller = hs_builder.build().await?;
 
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
@@ -196,24 +176,26 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
 
     let comms_node = CommsBuilder::new()
         .with_node_identity(node_identity)
-        .configure_from_hidden_service(hs_controller)
-        .await
-        .unwrap()
-        .with_peer_storage(peer_database)
+        .with_listener_address(hs_controller.proxied_address())
+        .with_peer_storage(peer_database, None)
         .build()
         .unwrap();
 
+    let transport = hs_controller.initialize_transport().await?;
+
+    let (event_tx, _) = broadcast::channel(1);
     let comms_node = comms_node
-        .with_messaging_pipeline(
+        .add_protocol_extension(MessagingProtocolExtension::new(
+            event_tx,
             pipeline::Builder::new()
             // Outbound messages will be forwarded "as is" to outbound messaging
             .with_outbound_pipeline(outbound_rx, identity)
             .max_concurrent_inbound_tasks(1)
             // Inbound messages will be forwarded "as is" to inbound_tx
             .with_inbound_pipeline(SinkService::new(inbound_tx))
-            .finish(),
-        )
-        .spawn()
+            .build(),
+        ))
+        .spawn_with_transport(transport)
         .await?;
 
     println!(
@@ -248,9 +230,7 @@ async fn start_ping_ponger(
                 outbound_tx.send(msg).await?;
             },
             Some("PING") => {
-                let id = msg_parts
-                    .next()
-                    .ok_or(Error::Custom("Received PING without id".to_string()))?;
+                let id = msg_parts.next().ok_or_else(|| anyhow!("Received PING without id"))?;
 
                 let msg_str = format!("PONG {}", id);
                 let msg = make_msg(&dest_node_id, msg_str);
@@ -259,9 +239,7 @@ async fn start_ping_ponger(
             },
 
             Some("PONG") => {
-                let id = msg_parts
-                    .next()
-                    .ok_or(Error::Custom("Received PING without id".to_string()))?;
+                let id = msg_parts.next().ok_or_else(|| anyhow!("Received PING without id"))?;
 
                 id.parse::<u64>()
                     .ok()
@@ -279,7 +257,7 @@ async fn start_ping_ponger(
                 outbound_tx.send(msg).await?;
             },
             msg => {
-                return Err(Error::Custom(format!("Received invalid message '{:?}'", msg)));
+                return Err(anyhow!("Received invalid message '{:?}'", msg));
             },
         }
     }

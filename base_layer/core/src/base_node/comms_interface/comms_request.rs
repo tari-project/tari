@@ -45,18 +45,17 @@ pub enum NodeCommsRequest {
     FetchHeaders(Vec<u64>),
     FetchHeadersWithHashes(Vec<HashOutput>),
     FetchHeadersAfter(Vec<HashOutput>, HashOutput),
-    FetchUtxos(Vec<HashOutput>),
-    FetchTxos(Vec<HashOutput>),
-    FetchBlocks(Vec<u64>),
+    FetchMatchingUtxos(Vec<HashOutput>),
+    FetchMatchingTxos(Vec<HashOutput>),
+    FetchMatchingBlocks(Vec<u64>),
     FetchBlocksWithHashes(Vec<HashOutput>),
     FetchBlocksWithKernels(Vec<Signature>),
     FetchBlocksWithStxos(Vec<Commitment>),
     FetchBlocksWithUtxos(Vec<Commitment>),
     GetNewBlockTemplate(PowAlgorithm),
     GetNewBlock(NewBlockTemplate),
-    GetTargetDifficulty(PowAlgorithm),
     FetchMmrNodeCount(MmrTree, u64),
-    FetchMmrNodes(MmrTree, u32, u32, u64),
+    FetchMatchingMmrNodes(MmrTree, u32, u32, u64),
 }
 
 impl Display for NodeCommsRequest {
@@ -65,12 +64,16 @@ impl Display for NodeCommsRequest {
             NodeCommsRequest::GetChainMetadata => f.write_str("GetChainMetadata"),
             NodeCommsRequest::FetchKernels(v) => f.write_str(&format!("FetchKernels (n={})", v.len())),
             NodeCommsRequest::FetchHeaders(v) => f.write_str(&format!("FetchHeaders (n={})", v.len())),
-            NodeCommsRequest::FetchHeadersWithHashes(v) => f.write_str(&format!("FetchHeaders (n={})", v.len())),
+            NodeCommsRequest::FetchHeadersWithHashes(v) => {
+                f.write_str(&format!("FetchHeadersWithHashes (n={})", v.len()))
+            },
             NodeCommsRequest::FetchHeadersAfter(v, _hash) => f.write_str(&format!("FetchHeadersAfter (n={})", v.len())),
-            NodeCommsRequest::FetchUtxos(v) => f.write_str(&format!("FetchUtxos (n={})", v.len())),
-            NodeCommsRequest::FetchTxos(v) => f.write_str(&format!("FetchTxos (n={})", v.len())),
-            NodeCommsRequest::FetchBlocks(v) => f.write_str(&format!("FetchBlocks (n={})", v.len())),
-            NodeCommsRequest::FetchBlocksWithHashes(v) => f.write_str(&format!("FetchBlocks (n={})", v.len())),
+            NodeCommsRequest::FetchMatchingUtxos(v) => f.write_str(&format!("FetchMatchingUtxos (n={})", v.len())),
+            NodeCommsRequest::FetchMatchingTxos(v) => f.write_str(&format!("FetchMatchingTxos (n={})", v.len())),
+            NodeCommsRequest::FetchMatchingBlocks(v) => f.write_str(&format!("FetchMatchingBlocks (n={})", v.len())),
+            NodeCommsRequest::FetchBlocksWithHashes(v) => {
+                f.write_str(&format!("FetchBlocksWithHashes (n={})", v.len()))
+            },
             NodeCommsRequest::FetchBlocksWithKernels(v) => {
                 f.write_str(&format!("FetchBlocksWithKernels (n={})", v.len()))
             },
@@ -78,12 +81,11 @@ impl Display for NodeCommsRequest {
             NodeCommsRequest::FetchBlocksWithUtxos(v) => f.write_str(&format!("FetchBlocksWithUtxos (n={})", v.len())),
             NodeCommsRequest::GetNewBlockTemplate(algo) => f.write_str(&format!("GetNewBlockTemplate ({})", algo)),
             NodeCommsRequest::GetNewBlock(b) => f.write_str(&format!("GetNewBlock (Block Height={})", b.header.height)),
-            NodeCommsRequest::GetTargetDifficulty(algo) => f.write_str(&format!("GetTargetDifficulty ({})", algo)),
             NodeCommsRequest::FetchMmrNodeCount(tree, height) => {
                 f.write_str(&format!("FetchMmrNodeCount (tree={},Block Height={})", tree, height))
             },
-            NodeCommsRequest::FetchMmrNodes(tree, pos, count, hist_height) => f.write_str(&format!(
-                "FetchMmrNodeCount (tree={},pos={},count={},hist_height={})",
+            NodeCommsRequest::FetchMatchingMmrNodes(tree, pos, count, hist_height) => f.write_str(&format!(
+                "FetchMatchingMmrNodes (tree={},pos={},count={},hist_height={})",
                 tree, pos, count, hist_height
             )),
         }

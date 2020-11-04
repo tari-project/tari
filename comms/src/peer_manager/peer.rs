@@ -37,7 +37,7 @@ use bitflags::bitflags;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Display, time::Duration};
+use std::{collections::HashMap, fmt::Display, time::Duration};
 use tari_crypto::tari_utilities::hex::serialize_to_hex;
 
 bitflags! {
@@ -71,6 +71,7 @@ pub struct Peer {
     /// Flags for the peer.
     pub flags: PeerFlags,
     pub banned_until: Option<NaiveDateTime>,
+    pub banned_reason: String,
     pub offline_at: Option<NaiveDateTime>,
     /// Features supported by the peer
     pub features: PeerFeatures,
@@ -83,6 +84,9 @@ pub struct Peer {
     pub added_at: NaiveDateTime,
     /// User agent advertised by the peer
     pub user_agent: String,
+    /// Metadata field. This field is for use by upstream clients to record extra info about a peer.
+    /// We use a hashmap here so that we can use more than one "info set"
+    pub metadata: HashMap<u8, Vec<u8>>,
 }
 
 impl Peer {
@@ -105,11 +109,13 @@ impl Peer {
             flags,
             features,
             banned_until: None,
+            banned_reason: "".to_string(),
             offline_at: None,
             connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
             supported_protocols: supported_protocols.into_iter().cloned().collect(),
             user_agent,
+            metadata: HashMap::new(),
         }
     }
 
@@ -163,11 +169,13 @@ impl Peer {
     }
 
     #[allow(clippy::option_option)]
+    #[allow(clippy::too_many_arguments)]
     pub fn update(
         &mut self,
         net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
         banned_until: Option<Option<Duration>>,
+        banned_reason: Option<String>,
         is_offline: Option<bool>,
         features: Option<PeerFeatures>,
         supported_protocols: Option<Vec<ProtocolId>>,
@@ -183,6 +191,9 @@ impl Peer {
             self.banned_until = banned_until
                 .map(safe_future_datetime_from_duration)
                 .map(|dt| dt.naive_utc());
+        }
+        if let Some(banned_reason) = banned_reason {
+            self.banned_reason = banned_reason;
         }
         if let Some(is_offline) = is_offline {
             self.set_offline(is_offline);
@@ -210,15 +221,22 @@ impl Peer {
         self.banned_until().is_some()
     }
 
+    /// Returns the ban status of the peer
+    pub fn reason_banned(&self) -> &str {
+        &self.banned_reason
+    }
+
     /// Bans the peer for a specified duration
-    pub fn ban_for(&mut self, duration: Duration) {
+    pub fn ban_for(&mut self, duration: Duration, reason: String) {
         let dt = safe_future_datetime_from_duration(duration);
         self.banned_until = Some(dt.naive_utc());
+        self.banned_reason = reason;
     }
 
     /// Unban the peer
     pub fn unban(&mut self) {
         self.banned_until = None;
+        self.banned_reason = "".to_string();
     }
 
     pub fn banned_until(&self) -> Option<&NaiveDateTime> {
@@ -232,6 +250,17 @@ impl Peer {
         } else {
             self.offline_at = None;
         }
+    }
+
+    /// This will store metadata inside of the metadata field in the peer.
+    /// It will return None if the value was empty and the old value if the value was updated
+    pub fn set_metadata(&mut self, key: u8, data: Vec<u8>) -> Option<Vec<u8>> {
+        self.metadata.insert(key, data)
+    }
+
+    /// This will return the value in the metadata field. It will return None if the key is not present
+    pub fn get_metadata(&self, key: u8) -> Option<&Vec<u8>> {
+        self.metadata.get(&key)
     }
 }
 
@@ -252,6 +281,7 @@ impl Display for Peer {
 
             if let Some(dt) = self.banned_until() {
                 s.push(format!("BANNED until {}", dt));
+                s.push(format!("Banned because: {}", self.banned_reason))
             }
             s.join(", ")
         };
@@ -310,9 +340,10 @@ mod test {
             Default::default(),
         );
         assert_eq!(peer.is_banned(), false);
-        peer.ban_for(Duration::from_millis(std::u64::MAX));
+        peer.ban_for(Duration::from_millis(std::u64::MAX), "Very long manual ban".to_string());
+        assert_eq!(peer.reason_banned(), &"Very long manual ban".to_string());
         assert_eq!(peer.is_banned(), true);
-        peer.ban_for(Duration::from_millis(0));
+        peer.ban_for(Duration::from_millis(0), "".to_string());
         assert_eq!(peer.is_banned(), false);
     }
 
@@ -339,6 +370,7 @@ mod test {
             Some(vec![net_address2.clone(), net_address3.clone()]),
             None,
             Some(Some(Duration::from_secs(1000))),
+            Some("".to_string()),
             None,
             Some(PeerFeatures::MESSAGE_PROPAGATION),
             Some(vec![protocol::IDENTITY_PROTOCOL.clone()]),

@@ -22,13 +22,15 @@
 
 use crate::{
     chain_storage::{lmdb_db::LMDBVecError, MmrTree},
+    proof_of_work::PowError,
     validation::ValidationError,
 };
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
+use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
 use tokio::task;
 
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Error)]
 pub enum ChainStorageError {
     #[error("Access to the underlying storage mechanism failed: {0}")]
     AccessError(String),
@@ -85,6 +87,29 @@ pub enum ChainStorageError {
     OutOfRange,
     #[error("Value not found: {0}")]
     LmdbValueNotFound(lmdb_zero::Error),
+    #[error("LMDB error: {source}")]
+    LmdbError {
+        #[from]
+        source: LMDBError,
+    },
+    #[error("Invalid proof of work: {source}")]
+    ProofOfWorkError {
+        #[from]
+        source: PowError,
+    },
+    #[error("Cannot acquire exclusive file lock, another instance of the application is already running")]
+    CannotAcquireFileLock,
+    #[error("IO Error: `{0}`")]
+    IoError(#[from] std::io::Error),
+}
+
+impl ChainStorageError {
+    pub fn is_value_not_found(&self) -> bool {
+        match self {
+            ChainStorageError::ValueNotFound { .. } => true,
+            _ => false,
+        }
+    }
 }
 
 impl From<LMDBVecError> for ChainStorageError {

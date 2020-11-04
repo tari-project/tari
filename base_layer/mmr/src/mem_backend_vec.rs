@@ -80,10 +80,6 @@ impl<T: Clone + PartialEq> ArrayLike for MemBackendVec<T> {
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?)
     }
 
-    fn get_or_panic(&self, index: usize) -> Self::Value {
-        self.db.read().unwrap()[index].clone()
-    }
-
     fn clear(&mut self) -> Result<(), Self::Error> {
         self.db
             .write()

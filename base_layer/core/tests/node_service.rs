@@ -24,7 +24,7 @@
 mod helpers;
 use crate::helpers::block_builders::construct_chained_blocks;
 use croaring::Bitmap;
-use futures::{join, StreamExt};
+use futures::join;
 use helpers::{
     block_builders::{
         append_block,
@@ -49,8 +49,8 @@ use tari_comms::protocol::messaging::MessagingEvent;
 use tari_core::{
     base_node::{
         comms_interface::{BlockEvent, Broadcast, CommsInterfaceError},
-        consts::BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
         service::BaseNodeServiceConfig,
+        state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
     blocks::{BlockHeader, NewBlock},
     chain_storage::{BlockAddResult, BlockchainDatabaseConfig, DbTransaction, MmrTree},
@@ -64,11 +64,7 @@ use tari_core::{
         OutputBuilder,
     },
     txn_schema,
-    validation::{
-        accum_difficulty_validators::MockAccumDifficultyValidator,
-        block_validators::StatelessBlockValidator,
-        mocks::MockValidator,
-    },
+    validation::{block_validators::StatelessBlockValidator, mocks::MockValidator},
 };
 use tari_crypto::tari_utilities::hash::Hashable;
 use tari_mmr::MmrCacheConfig;
@@ -84,7 +80,7 @@ fn request_response_get_metadata() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -106,9 +102,9 @@ fn request_response_get_metadata() {
         let received_metadata = alice_node.outbound_nci.get_metadata().await.unwrap();
         assert_eq!(received_metadata.height_of_longest_chain, Some(0));
 
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
-        carol_node.comms.shutdown().await;
+        alice_node.shutdown().await;
+        bob_node.shutdown().await;
+        carol_node.shutdown().await;
     });
 }
 
@@ -150,9 +146,9 @@ fn request_and_response_fetch_headers() {
                 (received_headers.contains(&headerc1) && (received_headers.contains(&headerc2)))
         );
 
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
-        carol_node.comms.shutdown().await;
+        alice_node.shutdown().await;
+        bob_node.shutdown().await;
+        carol_node.shutdown().await;
     });
 }
 
@@ -165,7 +161,7 @@ fn request_and_response_fetch_headers_with_hashes() {
 
     let mut header1 = BlockHeader::new(0);
     header1.height = 1;
-    let header2 = BlockHeader::from_previous(&header1);
+    let header2 = BlockHeader::from_previous(&header1).unwrap();
     let hash1 = header1.hash();
     let hash2 = header2.hash();
     let mut txn = DbTransaction::new();
@@ -190,8 +186,8 @@ fn request_and_response_fetch_headers_with_hashes() {
         assert_eq!(received_headers.len(), 2);
         assert!(received_headers.contains(&header1) && (received_headers.contains(&header2)));
 
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
+        alice_node.shutdown().await;
+        bob_node.shutdown().await;
     });
 }
 
@@ -230,9 +226,9 @@ fn request_and_response_fetch_kernels() {
         assert!(received_kernels.contains(&kernel1));
         assert!(received_kernels.contains(&kernel2));
 
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
-        carol_node.comms.shutdown().await;
+        alice_node.shutdown().await;
+        bob_node.shutdown().await;
+        carol_node.shutdown().await;
     });
 }
 
@@ -276,9 +272,9 @@ fn request_and_response_fetch_utxos() {
         assert!(received_utxos.contains(&utxo1));
         assert!(received_utxos.contains(&utxo2));
 
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
-        carol_node.comms.shutdown().await;
+        alice_node.shutdown().await;
+        bob_node.shutdown().await;
+        carol_node.shutdown().await;
     });
 }
 
@@ -289,7 +285,7 @@ fn request_and_response_fetch_blocks() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -309,12 +305,12 @@ fn request_and_response_fetch_blocks() {
 
     let mut blocks = vec![block0];
     let db = &mut bob_node.blockchain_db;
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
 
-    carol_node.blockchain_db.add_block(blocks[1].clone()).unwrap();
-    carol_node.blockchain_db.add_block(blocks[2].clone()).unwrap();
+    carol_node.blockchain_db.add_block(blocks[1].clone().into()).unwrap();
+    carol_node.blockchain_db.add_block(blocks[2].clone().into()).unwrap();
 
     runtime.block_on(async {
         let received_blocks = alice_node.outbound_nci.fetch_blocks(vec![0]).await.unwrap();
@@ -327,9 +323,9 @@ fn request_and_response_fetch_blocks() {
         assert!((*received_blocks[0].block() == blocks[0]) || (*received_blocks[1].block() == blocks[0]));
         assert!((*received_blocks[0].block() == blocks[1]) || (*received_blocks[1].block() == blocks[1]));
 
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
-        carol_node.comms.shutdown().await;
+        alice_node.shutdown().await;
+        bob_node.shutdown().await;
+        carol_node.shutdown().await;
     });
 }
 
@@ -340,7 +336,7 @@ fn request_and_response_fetch_blocks_with_hashes() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -360,14 +356,14 @@ fn request_and_response_fetch_blocks_with_hashes() {
 
     let mut blocks = vec![block0];
     let db = &mut bob_node.blockchain_db;
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
     let block0_hash = blocks[0].hash();
     let block1_hash = blocks[1].hash();
 
-    carol_node.blockchain_db.add_block(blocks[1].clone()).unwrap();
-    carol_node.blockchain_db.add_block(blocks[2].clone()).unwrap();
+    carol_node.blockchain_db.add_block(blocks[1].clone().into()).unwrap();
+    carol_node.blockchain_db.add_block(blocks[2].clone().into()).unwrap();
 
     runtime.block_on(async {
         let received_blocks = alice_node
@@ -388,9 +384,9 @@ fn request_and_response_fetch_blocks_with_hashes() {
         assert!((*received_blocks[0].block() == blocks[0]) || (*received_blocks[1].block() == blocks[0]));
         assert!((*received_blocks[0].block() == blocks[1]) || (*received_blocks[1].block() == blocks[1]));
 
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
-        carol_node.comms.shutdown().await;
+        alice_node.shutdown().await;
+        bob_node.shutdown().await;
+        carol_node.shutdown().await;
     });
 }
 
@@ -414,40 +410,56 @@ fn propagate_and_forward_many_valid_blocks() {
     let dan_node_identity = random_node_identity();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let (alice_node, rules) = BaseNodeBuilder::new(network)
+    let (mut alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("alice").to_str().unwrap());
-    let (bob_node, rules) = BaseNodeBuilder::new(network)
+    let (mut bob_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("bob").to_str().unwrap());
-    let (carol_node, rules) = BaseNodeBuilder::new(network)
+    let (mut carol_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone()])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("carol").to_str().unwrap());
-    let (dan_node, rules) = BaseNodeBuilder::new(network)
+    let (mut dan_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(dan_node_identity)
         .with_peers(vec![carol_node_identity, bob_node_identity])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("dan").to_str().unwrap());
 
     wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node, &dan_node]);
+    alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    dan_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
 
-    let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
-    let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
-    let mut dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
+    let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream();
+    let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream();
+    let mut dan_block_event_stream = dan_node.local_nci.get_block_event_stream();
 
-    let blocks = construct_chained_blocks(&alice_node.blockchain_db, block0, &rules.consensus_constants(), 5);
+    let blocks = construct_chained_blocks(&alice_node.blockchain_db, block0, &rules, 5);
 
     runtime.block_on(async {
         for block in &blocks {
@@ -464,31 +476,34 @@ fn propagate_and_forward_many_valid_blocks() {
                 join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
             let block_hash = block.hash();
 
-            if let BlockEvent::Verified((received_block, _, _)) = &*bob_block_event.unwrap().unwrap() {
+            if let BlockEvent::ValidBlockAdded(received_block, _, _) = &*bob_block_event.unwrap().unwrap() {
                 assert_eq!(received_block.hash(), block_hash);
             } else {
                 panic!("Bob's node did not receive and validate the expected block");
             }
-            if let BlockEvent::Verified((received_block, _block_add_result, _)) = &*carol_block_event.unwrap().unwrap()
+            if let BlockEvent::ValidBlockAdded(received_block, _block_add_result, _) =
+                &*carol_block_event.unwrap().unwrap()
             {
                 assert_eq!(received_block.hash(), block_hash);
             } else {
                 panic!("Carol's node did not receive and validate the expected block");
             }
-            if let BlockEvent::Verified((received_block, _block_add_result, _)) = &*dan_block_event.unwrap().unwrap() {
+            if let BlockEvent::ValidBlockAdded(received_block, _block_add_result, _) =
+                &*dan_block_event.unwrap().unwrap()
+            {
                 assert_eq!(received_block.hash(), block_hash);
             } else {
                 panic!("Dan's node did not receive and validate the expected block");
             }
         }
 
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
-        carol_node.comms.shutdown().await;
-        dan_node.comms.shutdown().await;
+        alice_node.shutdown().await;
+        bob_node.shutdown().await;
+        carol_node.shutdown().await;
+        dan_node.shutdown().await;
     });
 }
-
+static EMISSION: [u64; 2] = [10, 10];
 #[test]
 fn propagate_and_forward_invalid_block_hash() {
     // Alice will propagate a "made up" block hash to Bob, Bob will request the block from Alice. Alice will not be able
@@ -504,43 +519,48 @@ fn propagate_and_forward_invalid_block_hash() {
     let carol_node_identity = random_node_identity();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let (alice_node, rules) = BaseNodeBuilder::new(network)
+    let (mut alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity.clone())
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("alice").to_str().unwrap());
-    let (bob_node, rules) = BaseNodeBuilder::new(network)
+    let (mut bob_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![alice_node_identity])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("bob").to_str().unwrap());
-    let (carol_node, rules) = BaseNodeBuilder::new(network)
-        .with_node_identity(carol_node_identity)
-        .with_peers(vec![bob_node_identity])
+    let (mut carol_node, rules) = BaseNodeBuilder::new(network)
+        .with_node_identity(carol_node_identity.clone())
+        .with_peers(vec![bob_node_identity.clone()])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("carol").to_str().unwrap());
 
     wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node]);
+    alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
 
-    let mut block1 = append_block(
-        &alice_node.blockchain_db,
-        &block0,
-        vec![],
-        &rules.consensus_constants(),
-        1.into(),
-    )
-    .unwrap();
+    let mut block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules, 1.into()).unwrap();
     // Create unknown block hash
     block1.header.height = 0;
 
-    let mut bob_message_events = bob_node.comms.subscribe_messaging_events().fuse();
-    let mut carol_message_events = carol_node.comms.subscribe_messaging_events().fuse();
+    let mut bob_message_events = bob_node.messaging_events.subscribe();
+    let mut carol_message_events = carol_node.messaging_events.subscribe();
 
     runtime.block_on(async {
         alice_node
@@ -569,9 +589,9 @@ fn propagate_and_forward_invalid_block_hash() {
         let msg_event = event_stream_next(&mut carol_message_events, Duration::from_millis(500)).await;
         assert!(msg_event.is_none());
 
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
-        carol_node.comms.shutdown().await;
+        alice_node.shutdown().await;
+        bob_node.shutdown().await;
+        carol_node.shutdown().await;
     });
 }
 
@@ -593,42 +613,33 @@ fn propagate_and_forward_invalid_block() {
     let dan_node_identity = random_node_identity();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let stateless_block_validator = StatelessBlockValidator::new(rules.clone(), factories);
-    let mock_accum_difficulty_validator = MockAccumDifficultyValidator {};
+    let stateless_block_validator = StatelessBlockValidator::new(rules.clone(), factories.clone());
 
     let mock_validator = MockValidator::new(false);
-    let (dan_node, rules) = BaseNodeBuilder::new(network)
+    let (mut dan_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(dan_node_identity.clone())
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("dan").to_str().unwrap());
-    let (carol_node, rules) = BaseNodeBuilder::new(network)
+    let (mut carol_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(carol_node_identity.clone())
         .with_peers(vec![dan_node_identity.clone()])
         .with_consensus_manager(rules)
-        .with_validators(
-            mock_validator.clone(),
-            stateless_block_validator.clone(),
-            mock_accum_difficulty_validator.clone(),
-        )
+        .with_validators(mock_validator.clone(), stateless_block_validator.clone())
         .start(&mut runtime, temp_dir.path().join("carol").to_str().unwrap());
-    let (bob_node, rules) = BaseNodeBuilder::new(network)
+    let (mut bob_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![dan_node_identity])
         .with_consensus_manager(rules)
-        .with_validators(
-            mock_validator,
-            stateless_block_validator,
-            mock_accum_difficulty_validator,
-        )
+        .with_validators(mock_validator.clone(), stateless_block_validator.clone())
         .start(&mut runtime, temp_dir.path().join("bob").to_str().unwrap());
-    let (alice_node, rules) = BaseNodeBuilder::new(network)
+    let (mut alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity)
         .with_peers(vec![bob_node_identity, carol_node_identity])
         .with_consensus_manager(rules)
@@ -636,22 +647,32 @@ fn propagate_and_forward_invalid_block() {
 
     wait_until_online(&mut runtime, &[&alice_node, &bob_node, &carol_node, &dan_node]);
 
+    alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    dan_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+
     // This is a valid block, however Bob, Carol and Dan's block validator is set to always reject the block
     // after fetching it.
-    let block1 = append_block(
-        &alice_node.blockchain_db,
-        &block0,
-        vec![],
-        &rules.consensus_constants(),
-        1.into(),
-    )
-    .unwrap();
+    let block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules, 1.into()).unwrap();
     let block1_hash = block1.hash();
 
     runtime.block_on(async {
-        let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream_fused();
-        let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream_fused();
-        let mut dan_block_event_stream = dan_node.local_nci.get_block_event_stream_fused();
+        let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream();
+        let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream();
+        let mut dan_block_event_stream = dan_node.local_nci.get_block_event_stream();
 
         assert!(alice_node
             .outbound_nci
@@ -665,22 +686,22 @@ fn propagate_and_forward_invalid_block() {
         let (bob_block_event, carol_block_event, dan_block_event) =
             join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
 
-        if let BlockEvent::Invalid((received_block, _err, _)) = &*bob_block_event.unwrap().unwrap() {
+        if let BlockEvent::AddBlockFailed(received_block, _) = &*bob_block_event.unwrap().unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
         } else {
             panic!("Bob's node should have detected an invalid block");
         }
-        if let BlockEvent::Invalid((received_block, _err, _)) = &*carol_block_event.unwrap().unwrap() {
+        if let BlockEvent::AddBlockFailed(received_block, _) = &*carol_block_event.unwrap().unwrap() {
             assert_eq!(received_block.hash(), block1_hash);
         } else {
             panic!("Carol's node should have detected an invalid block");
         }
         assert!(dan_block_event.is_none());
 
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
-        carol_node.comms.shutdown().await;
-        dan_node.comms.shutdown().await;
+        alice_node.shutdown().await;
+        bob_node.shutdown().await;
+        carol_node.shutdown().await;
+        dan_node.shutdown().await;
     });
 }
 
@@ -690,8 +711,10 @@ fn service_request_timeout() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let base_node_service_config = BaseNodeServiceConfig {
-        request_timeout: Duration::from_millis(1),
-        desired_response_fraction: BASE_NODE_SERVICE_DESIRED_RESPONSE_FRACTION,
+        service_request_timeout: Duration::from_millis(1),
+        fetch_blocks_timeout: Default::default(),
+        fetch_utxos_timeout: Default::default(),
+        desired_response_fraction: Default::default(),
     };
     let temp_dir = tempdir().unwrap();
     let (mut alice_node, bob_node, _consensus_manager) = create_network_with_2_base_nodes_with_config(
@@ -707,9 +730,9 @@ fn service_request_timeout() {
 
     runtime.block_on(async {
         // Bob should not be reachable
-        bob_node.comms.shutdown().await;
+        bob_node.shutdown().await;
         unpack_enum!(CommsInterfaceError::RequestTimedOut = alice_node.outbound_nci.get_metadata().await.unwrap_err());
-        alice_node.comms.shutdown().await;
+        alice_node.shutdown().await;
     });
 }
 
@@ -722,15 +745,15 @@ fn local_get_metadata() {
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
     let db = &node.blockchain_db;
     let block0 = db.fetch_block(0).unwrap().block().clone();
-    let block1 = append_block(db, &block0, vec![], &consensus_manager.consensus_constants(), 1.into()).unwrap();
-    let block2 = append_block(db, &block1, vec![], &consensus_manager.consensus_constants(), 1.into()).unwrap();
+    let block1 = append_block(db, &block0, vec![], &consensus_manager, 1.into()).unwrap();
+    let block2 = append_block(db, &block1, vec![], &consensus_manager, 1.into()).unwrap();
 
     runtime.block_on(async {
         let metadata = node.local_nci.get_metadata().await.unwrap();
         assert_eq!(metadata.height_of_longest_chain, Some(2));
         assert_eq!(metadata.best_block, Some(block2.hash()));
 
-        node.comms.shutdown().await;
+        node.shutdown().await;
     });
 }
 
@@ -741,9 +764,9 @@ fn local_get_new_block_template_and_get_new_block() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
-    let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants);
+    let (block0, outputs) = create_genesis_block_with_utxos(&factories, &[T, T], &consensus_constants[0]);
     let rules = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
         .build();
     let (mut node, _rules) = BaseNodeBuilder::new(network)
@@ -772,53 +795,9 @@ fn local_get_new_block_template_and_get_new_block() {
         assert_eq!(block.header.height, 1);
         assert_eq!(block.body, block_template.body);
 
-        assert!(node.blockchain_db.add_block(block.clone()).is_ok());
+        assert!(node.blockchain_db.add_block(block.clone().into()).is_ok());
 
-        node.comms.shutdown().await;
-    });
-}
-
-#[test]
-fn local_get_target_difficulty() {
-    let network = Network::LocalNet;
-    let mut runtime = Runtime::new().unwrap();
-    let temp_dir = tempdir().unwrap();
-    let (mut node, consensus_manager) =
-        BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
-
-    let db = &node.blockchain_db;
-    let block0 = db.fetch_block(0).unwrap().block().clone();
-    assert_eq!(node.blockchain_db.get_height().unwrap(), Some(0));
-
-    runtime.block_on(async {
-        let monero_target_difficulty1 = node
-            .local_nci
-            .get_target_difficulty(PowAlgorithm::Monero)
-            .await
-            .unwrap();
-        let blake_target_difficulty1 = node.local_nci.get_target_difficulty(PowAlgorithm::Blake).await.unwrap();
-        assert_ne!(monero_target_difficulty1, Difficulty::from(0));
-        assert_ne!(blake_target_difficulty1, Difficulty::from(0));
-
-        let block1 = chain_block(&block0, Vec::new(), &consensus_manager.consensus_constants());
-        let mut block1 = node.blockchain_db.calculate_mmr_roots(block1).unwrap();
-        block1.header.timestamp = block0
-            .header
-            .timestamp
-            .increase(consensus_manager.consensus_constants().get_target_block_interval());
-        block1.header.pow.pow_algo = PowAlgorithm::Blake;
-        node.blockchain_db.add_block(block1).unwrap();
-        assert_eq!(node.blockchain_db.get_height().unwrap(), Some(1));
-        let monero_target_difficulty2 = node
-            .local_nci
-            .get_target_difficulty(PowAlgorithm::Monero)
-            .await
-            .unwrap();
-        let blake_target_difficulty2 = node.local_nci.get_target_difficulty(PowAlgorithm::Blake).await.unwrap();
-        assert!(monero_target_difficulty1 <= monero_target_difficulty2);
-        assert!(blake_target_difficulty1 <= blake_target_difficulty2);
-
-        node.comms.shutdown().await;
+        node.shutdown().await;
     });
 }
 
@@ -831,10 +810,10 @@ fn local_submit_block() {
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
 
     let db = &node.blockchain_db;
-    let mut event_stream = node.local_nci.get_block_event_stream_fused();
+    let mut event_stream = node.local_nci.get_block_event_stream();
     let block0 = db.fetch_block(0).unwrap().block().clone();
     let block1 = db
-        .calculate_mmr_roots(chain_block(&block0, vec![], &consensus_manager.consensus_constants()))
+        .calculate_mmr_roots(chain_block(&block0, vec![], &consensus_manager))
         .unwrap();
     runtime.block_on(async {
         assert!(node
@@ -844,14 +823,14 @@ fn local_submit_block() {
             .is_ok());
 
         let event = event_stream_next(&mut event_stream, Duration::from_millis(20000)).await;
-        if let BlockEvent::Verified((received_block, result, _)) = &*event.unwrap().unwrap() {
+        if let BlockEvent::ValidBlockAdded(received_block, result, _) = &*event.unwrap().unwrap() {
             assert_eq!(received_block.hash(), block1.hash());
             assert_eq!(*result, BlockAddResult::Ok);
         } else {
             panic!("Block validation failed");
         }
 
-        node.comms.shutdown().await;
+        node.shutdown().await;
     });
 }
 
@@ -862,9 +841,9 @@ fn request_and_response_fetch_mmr_node_and_count() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
-    let (block0, _) = create_genesis_block(&factories, &consensus_constants);
+    let (block0, _) = create_genesis_block(&factories, &consensus_constants[0]);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())
         .build();
     let (mut alice_node, mut bob_node, _) = create_network_with_2_base_nodes_with_config(
@@ -917,21 +896,21 @@ fn request_and_response_fetch_mmr_node_and_count() {
     txn.insert_utxo(utxo2);
     txn.insert_kernel(kernel1);
     assert!(db.commit(txn).is_ok());
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo3);
     txn.spend_utxo(utxo_hash1.clone());
     txn.insert_kernel(kernel2);
     assert!(db.commit(txn).is_ok());
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
 
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo4);
     txn.spend_utxo(utxo_hash3.clone());
     txn.insert_kernel(kernel3);
     assert!(db.commit(txn).is_ok());
-    generate_block(db, &mut blocks, vec![], &consensus_manager.consensus_constants()).unwrap();
+    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
 
     runtime.block_on(async {
         let node_count = alice_node
@@ -1023,7 +1002,7 @@ fn request_and_response_fetch_mmr_node_and_count() {
         assert_eq!(added.len(), 0);
         assert_eq!(deleted.len(), 0);
 
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
+        alice_node.shutdown().await;
+        bob_node.shutdown().await;
     });
 }

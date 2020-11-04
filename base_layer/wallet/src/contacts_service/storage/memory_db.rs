@@ -37,7 +37,7 @@ impl InnerDatabase {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ContactsServiceMemoryDatabase {
     db: Arc<RwLock<InnerDatabase>>,
 }

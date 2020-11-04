@@ -25,13 +25,20 @@ use crate::{
         genesis_block::{
             get_mainnet_block_hash,
             get_mainnet_genesis_block,
+            get_ridcully_block_hash,
+            get_ridcully_genesis_block,
             get_rincewind_block_hash,
             get_rincewind_genesis_block,
         },
         Block,
     },
     chain_storage::ChainStorageError,
-    consensus::{emission::EmissionSchedule, network::Network, ConsensusConstants},
+    consensus::{
+        chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
+        emission::{Emission, EmissionSchedule},
+        network::Network,
+        ConsensusConstants,
+    },
     proof_of_work::DifficultyAdjustmentError,
     transactions::tari_amount::MicroTari,
 };
@@ -39,7 +46,7 @@ use std::sync::Arc;
 use tari_crypto::tari_utilities::hash::Hashable;
 use thiserror::Error;
 
-#[derive(Debug, Error, Clone)]
+#[derive(Debug, Error)]
 pub enum ConsensusManagerError {
     #[error("Difficulty adjustment encountered an error: `{0}`")]
     DifficultyAdjustmentError(#[from] DifficultyAdjustmentError),
@@ -53,9 +60,8 @@ pub enum ConsensusManagerError {
     MissingDifficultyAdjustmentManager,
 }
 
-/// This is the consensus manager struct. This manages all state-full consensus code.
-/// The inside is wrapped inside of an ARC so that it can safely and cheaply be cloned.
-/// The code is multi-thread safe and so only one instance is required. Inner objects are wrapped inside of RwLocks.
+/// Container struct for consensus rules. This can be cheaply cloned.
+#[derive(Debug, Clone)]
 pub struct ConsensusManager {
     inner: Arc<ConsensusManagerInner>,
 }
@@ -66,6 +72,7 @@ impl ConsensusManager {
         match self.inner.network {
             Network::MainNet => get_mainnet_genesis_block(),
             Network::Rincewind => get_rincewind_genesis_block(),
+            Network::Ridcully => get_ridcully_genesis_block(),
             Network::LocalNet => self.inner.gen_block.clone().unwrap_or_else(get_rincewind_genesis_block),
         }
     }
@@ -75,6 +82,7 @@ impl ConsensusManager {
         match self.inner.network {
             Network::MainNet => get_mainnet_block_hash(),
             Network::Rincewind => get_rincewind_block_hash(),
+            Network::Ridcully => get_ridcully_block_hash(),
             Network::LocalNet => self
                 .inner
                 .gen_block
@@ -85,13 +93,29 @@ impl ConsensusManager {
     }
 
     /// Get a pointer to the emission schedule
-    pub fn emission_schedule(&self) -> &EmissionSchedule {
+    /// The height provided here, decides the emission curve to use. It swaps to the integer curve upon reaching
+    /// 1_000_000_000
+    pub fn emission_schedule(&self) -> &dyn Emission {
         &self.inner.emission
     }
 
+    // Get a pointer to the emission schedule
+    /// The height provided here, decides the emission curve to use. It swaps to the integer curve upon reaching
+    /// 1_000_000_000
+    pub fn get_emission_reward_at(&self, height: u64) -> MicroTari {
+        self.inner.emission.supply_at_block(height)
+    }
+
     /// Get a pointer to the consensus constants
-    pub fn consensus_constants(&self) -> &ConsensusConstants {
-        &self.inner.consensus_constants
+    pub fn consensus_constants(&self, height: u64) -> &ConsensusConstants {
+        let mut constants = &self.inner.consensus_constants[0];
+        for c in self.inner.consensus_constants.iter() {
+            if c.effective_from_height() > height {
+                break;
+            }
+            constants = &c
+        }
+        constants
     }
 
     /// Creates a total_coinbase offset containing all fees for the validation from block
@@ -100,55 +124,53 @@ impl ConsensusManager {
         coinbase + block.calculate_fees()
     }
 
+    pub fn chain_strength_comparer(&self) -> &dyn ChainStrengthComparer {
+        self.inner.chain_strength_comparer.as_ref()
+    }
+
     /// This is the currently configured chain network.
     pub fn network(&self) -> Network {
         self.inner.network
     }
 }
 
-impl Clone for ConsensusManager {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
 /// This is the used to control all consensus values.
+#[derive(Debug)]
 struct ConsensusManagerInner {
     /// This is the inner struct used to control all consensus values.
-    pub consensus_constants: ConsensusConstants,
+    pub consensus_constants: Vec<ConsensusConstants>,
     /// The configured chain network.
     pub network: Network,
-    /// The configuration for the emission schedule.
+    /// The configuration for the emission schedule for integer only.
     pub emission: EmissionSchedule,
     /// This allows the user to set a custom Genesis block
     pub gen_block: Option<Block>,
+    /// The comparer used to determine which chain is stronger for reorgs.
+    pub chain_strength_comparer: Box<dyn ChainStrengthComparer + Send + Sync>,
 }
 
 /// Constructor for the consensus manager struct
 pub struct ConsensusManagerBuilder {
-    /// This is the inner struct used to control all consensus values.
-    pub consensus_constants: Option<ConsensusConstants>,
-    /// The configured chain network.
-    pub network: Network,
-    /// This allows the user to set a custom Genesis block
-    pub gen_block: Option<Block>,
+    consensus_constants: Vec<ConsensusConstants>,
+    network: Network,
+    gen_block: Option<Block>,
+    chain_strength_comparer: Option<Box<dyn ChainStrengthComparer + Send + Sync>>,
 }
 
 impl ConsensusManagerBuilder {
     /// Creates a new ConsensusManagerBuilder with the specified network
     pub fn new(network: Network) -> Self {
         ConsensusManagerBuilder {
-            consensus_constants: None,
+            consensus_constants: vec![],
             network,
             gen_block: None,
+            chain_strength_comparer: None,
         }
     }
 
     /// Adds in a custom consensus constants to be used
     pub fn with_consensus_constants(mut self, consensus_constants: ConsensusConstants) -> Self {
-        self.consensus_constants = Some(consensus_constants);
+        self.consensus_constants.push(consensus_constants);
         self
     }
 
@@ -158,22 +180,39 @@ impl ConsensusManagerBuilder {
         self
     }
 
+    pub fn on_ties(mut self, chain_strength_comparer: Box<dyn ChainStrengthComparer + Send + Sync>) -> Self {
+        self.chain_strength_comparer = Some(chain_strength_comparer);
+        self
+    }
+
     /// Builds a consensus manager
-    #[allow(clippy::or_fun_call)]
-    pub fn build(self) -> ConsensusManager {
-        let consensus_constants = self
-            .consensus_constants
-            .unwrap_or(self.network.create_consensus_constants());
+    pub fn build(mut self) -> ConsensusManager {
+        if self.consensus_constants.is_empty() {
+            self.consensus_constants = self.network.create_consensus_constants();
+        }
+        // TODO: Check that constants is not empty
+
         let emission = EmissionSchedule::new(
-            consensus_constants.emission_initial,
-            consensus_constants.emission_decay,
-            consensus_constants.emission_tail,
+            self.consensus_constants[0].emission_initial,
+            &self.consensus_constants[0].emission_decay,
+            self.consensus_constants[0].emission_tail,
         );
         let inner = ConsensusManagerInner {
-            consensus_constants,
+            consensus_constants: self.consensus_constants,
             network: self.network,
             emission,
             gen_block: self.gen_block,
+            chain_strength_comparer: self.chain_strength_comparer.unwrap_or_else(|| {
+                strongest_chain()
+                    .by_accumulated_difficulty()
+                    .then()
+                    .by_height()
+                    .then()
+                    .by_monero_difficulty()
+                    .then()
+                    .by_blake_difficulty()
+                    .build()
+            }),
         };
         ConsensusManager { inner: Arc::new(inner) }
     }

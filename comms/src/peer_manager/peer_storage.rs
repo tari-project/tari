@@ -125,6 +125,7 @@ where DS: KeyValueStore<PeerId, Peer>
         net_addresses: Option<Vec<Multiaddr>>,
         flags: Option<PeerFlags>,
         banned_until: Option<Option<Duration>>,
+        banned_reason: Option<String>,
         is_offline: Option<bool>,
         peer_features: Option<PeerFeatures>,
         supported_protocols: Option<Vec<ProtocolId>>,
@@ -144,6 +145,7 @@ where DS: KeyValueStore<PeerId, Peer>
                     net_addresses,
                     flags,
                     banned_until,
+                    banned_reason,
                     is_offline,
                     peer_features,
                     supported_protocols,
@@ -433,37 +435,49 @@ where DS: KeyValueStore<PeerId, Peer>
     }
 
     /// Ban the peer for the given duration
-    pub fn ban_peer(&mut self, public_key: &CommsPublicKey, duration: Duration) -> Result<NodeId, PeerManagerError> {
+    pub fn ban_peer(
+        &mut self,
+        public_key: &CommsPublicKey,
+        duration: Duration,
+        reason: String,
+    ) -> Result<NodeId, PeerManagerError>
+    {
         let id = *self
             .public_key_index
             .get(public_key)
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        self.ban_peer_by_id(id, duration)
+        self.ban_peer_by_id(id, duration, reason)
     }
 
     /// Ban the peer for the given duration
-    pub fn ban_peer_by_node_id(&mut self, node_id: &NodeId, duration: Duration) -> Result<NodeId, PeerManagerError> {
+    pub fn ban_peer_by_node_id(
+        &mut self,
+        node_id: &NodeId,
+        duration: Duration,
+        reason: String,
+    ) -> Result<NodeId, PeerManagerError>
+    {
         let id = *self
             .node_id_index
             .get(node_id)
             .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
-        self.ban_peer_by_id(id, duration)
+        self.ban_peer_by_id(id, duration, reason)
     }
 
-    fn ban_peer_by_id(&mut self, id: PeerId, duration: Duration) -> Result<NodeId, PeerManagerError> {
+    fn ban_peer_by_id(&mut self, id: PeerId, duration: Duration, reason: String) -> Result<NodeId, PeerManagerError> {
         let mut peer: Peer = self
             .peer_db
             .get(&id)
             .map_err(PeerManagerError::DatabaseError)?
             .expect("index are out of sync with peer db");
-        peer.ban_for(duration);
+        peer.ban_for(duration, reason);
         let node_id = peer.node_id.clone();
         self.peer_db.insert(id, peer).map_err(PeerManagerError::DatabaseError)?;
         Ok(node_id)
     }
 
-    /// Changes the OFFLINE flag bit of the peer
-    pub fn set_offline(&mut self, node_id: &NodeId, ban_flag: bool) -> Result<NodeId, PeerManagerError> {
+    /// Changes the OFFLINE flag bit of the peer.
+    pub fn set_offline(&mut self, node_id: &NodeId, offline: bool) -> Result<bool, PeerManagerError> {
         let peer_key = *self
             .node_id_index
             .get(&node_id)
@@ -473,12 +487,12 @@ where DS: KeyValueStore<PeerId, Peer>
             .get(&peer_key)
             .map_err(PeerManagerError::DatabaseError)?
             .expect("node_id_index is out of sync with peer db");
-        peer.set_offline(ban_flag);
-        let node_id = peer.node_id.clone();
+        let was_offline = peer.is_offline();
+        peer.set_offline(offline);
         self.peer_db
             .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)?;
-        Ok(node_id)
+        Ok(was_offline)
     }
 
     /// Enables Thread safe access - Adds a new net address to the peer if it doesn't yet exist
@@ -496,6 +510,31 @@ where DS: KeyValueStore<PeerId, Peer>
         self.peer_db
             .insert(peer_key, peer)
             .map_err(PeerManagerError::DatabaseError)
+    }
+
+    /// This will store metadata inside of the metadata field in the peer provided by the nodeID.
+    /// It will return None if the value was empty and the old value if the value was updated
+    pub fn set_peer_metadata(
+        &self,
+        node_id: &NodeId,
+        key: u8,
+        data: Vec<u8>,
+    ) -> Result<Option<Vec<u8>>, PeerManagerError>
+    {
+        let peer_key = *self
+            .node_id_index
+            .get(&node_id)
+            .ok_or_else(|| PeerManagerError::PeerNotFoundError)?;
+        let mut peer: Peer = self
+            .peer_db
+            .get(&peer_key)
+            .map_err(PeerManagerError::DatabaseError)?
+            .expect("node_id_index is out of sync with peer db");
+        let result = peer.set_metadata(key, data);
+        self.peer_db
+            .insert(peer_key, peer)
+            .map_err(PeerManagerError::DatabaseError)?;
+        Ok(result)
     }
 }
 
@@ -759,7 +798,7 @@ mod test {
             Default::default(),
         );
         if ban {
-            peer.ban_for(Duration::from_secs(600));
+            peer.ban_for(Duration::from_secs(600), "".to_string());
         }
         peer.set_offline(offline);
         peer

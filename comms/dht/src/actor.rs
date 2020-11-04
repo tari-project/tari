@@ -45,7 +45,7 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use std::{fmt, fmt::Display, sync::Arc};
+use std::{cmp, fmt, fmt::Display, sync::Arc};
 use tari_comms::{
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
@@ -283,8 +283,7 @@ impl DhtActor {
             SendJoin => {
                 let node_identity = Arc::clone(&self.node_identity);
                 let outbound_requester = self.outbound_requester.clone();
-                let config = self.config.clone();
-                Box::pin(Self::broadcast_join(config, node_identity, outbound_requester))
+                Box::pin(Self::broadcast_join(node_identity, outbound_requester))
             },
             MsgHashCacheInsert(hash, reply_tx) => {
                 // No locks needed here. Downside is this isn't really async, however this should be
@@ -340,7 +339,6 @@ impl DhtActor {
     }
 
     async fn broadcast_join(
-        config: DhtConfig,
         node_identity: Arc<NodeIdentity>,
         mut outbound_requester: OutboundMessageRequester,
     ) -> Result<(), DhtActorError>
@@ -352,7 +350,7 @@ impl DhtActor {
         outbound_requester
             .send_message_no_header(
                 SendMessageParams::new()
-                    .closest(node_identity.node_id().clone(), config.num_neighbouring_nodes, vec![])
+                    .closest(node_identity.node_id().clone(), vec![])
                     .with_destination(node_identity.node_id().clone().into())
                     .with_dht_message_type(DhtMessageType::Join)
                     .force_origin()
@@ -393,33 +391,48 @@ impl DhtActor {
                     .map(|peer| peer.map(|p| vec![p.node_id]).unwrap_or_default())
                     .map_err(Into::into)
             },
-            Flood => {
-                // Send to all known peers
-                // TODO: This should never be needed, remove
-                let peers = peer_manager.flood_peers().await?;
-                Ok(peers.into_iter().map(|p| p.node_id).collect())
+            Flood(exclude) => {
+                let peers = connectivity
+                    .select_connections(ConnectivitySelection::all_nodes(exclude))
+                    .await?;
+                Ok(peers.into_iter().map(|p| p.peer_node_id().clone()).collect())
             },
             Closest(closest_request) => {
-                let candidates = if closest_request.connected_only {
-                    let connections = connectivity
-                        .select_connections(ConnectivitySelection::closest_to(
-                            closest_request.node_id,
-                            closest_request.n,
-                            closest_request.excluded_peers,
-                        ))
-                        .await?;
+                let connections = connectivity
+                    .select_connections(ConnectivitySelection::closest_to(
+                        closest_request.node_id.clone(),
+                        config.broadcast_factor,
+                        closest_request.excluded_peers.clone(),
+                    ))
+                    .await?;
 
-                    connections.iter().map(|conn| conn.peer_node_id()).cloned().collect()
-                } else {
-                    Self::select_closest_peers_for_propagation(
+                let mut candidates = connections
+                    .iter()
+                    .map(|conn| conn.peer_node_id())
+                    .cloned()
+                    .collect::<Vec<_>>();
+
+                if !closest_request.connected_only {
+                    let excluded = closest_request
+                        .excluded_peers
+                        .iter()
+                        .chain(candidates.iter())
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    // If we don't have enough connections, let's select some more disconnected peers (at least 2)
+                    let n = cmp::max(config.broadcast_factor.saturating_sub(candidates.len()), 2);
+                    let additional = Self::select_closest_peers_for_propagation(
                         &peer_manager,
                         &closest_request.node_id,
-                        closest_request.n,
-                        &closest_request.excluded_peers,
+                        n,
+                        &excluded,
                         PeerFeatures::MESSAGE_PROPAGATION,
                     )
-                    .await?
-                };
+                    .await?;
+
+                    candidates.extend(additional);
+                }
+
                 Ok(candidates)
             },
             Random(n, excluded) => {
@@ -434,7 +447,7 @@ impl DhtActor {
             Broadcast(exclude) => {
                 let connections = connectivity
                     .select_connections(ConnectivitySelection::random_nodes(
-                        config.num_neighbouring_nodes,
+                        config.broadcast_factor,
                         exclude.clone(),
                     ))
                     .await?;
@@ -636,7 +649,7 @@ mod test {
     use crate::{
         broadcast_strategy::BroadcastClosestRequest,
         envelope::NodeDestination,
-        test_utils::{make_client_identity, make_node_identity, make_peer_manager},
+        test_utils::{build_peer_manager, make_client_identity, make_node_identity},
     };
     use chrono::{DateTime, Utc};
     use tari_comms::test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair};
@@ -652,7 +665,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn send_join_request() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (out_tx, mut out_rx) = mpsc::channel(1);
         let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
@@ -681,7 +694,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn insert_message_signature() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
         let (out_tx, _) = mpsc::channel(1);
@@ -714,7 +727,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn select_peers() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
 
         let client_node_identity = make_client_identity();
         peer_manager.add_peer(client_node_identity.to_peer()).await.unwrap();
@@ -725,9 +738,7 @@ mod test {
 
         let (conn_in, _, conn_out, _) =
             create_peer_connection_mock_pair(1, client_node_identity.to_peer(), node_identity.to_peer()).await;
-        connectivity_manager_mock_state
-            .add_active_connection(node_identity.node_id().clone(), conn_in)
-            .await;
+        connectivity_manager_mock_state.add_active_connection(conn_in).await;
 
         peer_manager.add_peer(make_node_identity().to_peer()).await.unwrap();
 
@@ -781,7 +792,6 @@ mod test {
         assert_eq!(peers.len(), 1);
 
         let send_request = Box::new(BroadcastClosestRequest {
-            n: 10,
             node_id: node_identity.node_id().clone(),
             excluded_peers: vec![],
             connected_only: false,
@@ -790,7 +800,7 @@ mod test {
             .select_peers(BroadcastStrategy::Closest(send_request))
             .await
             .unwrap();
-        assert_eq!(peers.len(), 1);
+        assert_eq!(peers.len(), 2);
 
         let peers = requester
             .select_peers(BroadcastStrategy::DirectNodeId(Box::new(
@@ -805,7 +815,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn get_and_set_metadata() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (out_tx, _out_rx) = mpsc::channel(1);
         let (actor_tx, actor_rx) = mpsc::channel(1);
         let (connectivity_manager, mock) = create_connectivity_mock();

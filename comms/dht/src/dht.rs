@@ -29,9 +29,11 @@ use crate::{
     inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     logging_middleware::MessageLoggingLayer,
+    network_discovery::DhtNetworkDiscovery,
     outbound,
     outbound::DhtOutboundRequest,
     proto::envelope::DhtMessageType,
+    rpc,
     storage::{DbConnection, StorageError},
     store_forward,
     store_forward::{StoreAndForwardError, StoreAndForwardRequest, StoreAndForwardRequester, StoreAndForwardService},
@@ -73,6 +75,7 @@ pub enum DhtInitializationError {
 
 /// Responsible for starting the DHT actor, building the DHT middleware stack and as a factory
 /// for producing DHT requesters.
+#[derive(Clone)]
 pub struct Dht {
     /// Node identity of this node
     node_identity: Arc<NodeIdentity>,
@@ -129,6 +132,7 @@ impl Dht {
             .await
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
+        dht.network_discovery_service(shutdown_signal.clone()).spawn();
         dht.connectivity_service(shutdown_signal.clone()).spawn();
         dht.store_and_forward_service(
             conn.clone(),
@@ -143,6 +147,11 @@ impl Dht {
         debug!(target: LOG_TARGET, "Dht initialization complete.");
 
         Ok(dht)
+    }
+
+    /// Create a DHT RPC service
+    pub fn rpc_service(&self) -> rpc::DhtService<rpc::DhtRpcServiceImpl> {
+        rpc::DhtService::new(rpc::DhtRpcServiceImpl::new(self.peer_manager.clone()))
     }
 
     /// Create a DHT actor
@@ -189,6 +198,19 @@ impl Dht {
             self.node_identity.clone(),
             self.connectivity.clone(),
             self.dht_requester(),
+            self.event_publisher.subscribe(),
+            shutdown_signal,
+        )
+    }
+
+    /// Create the network discovery service
+    fn network_discovery_service(&self, shutdown_signal: ShutdownSignal) -> DhtNetworkDiscovery {
+        DhtNetworkDiscovery::new(
+            self.config.clone(),
+            Arc::clone(&self.node_identity),
+            Arc::clone(&self.peer_manager),
+            self.connectivity.clone(),
+            self.event_publisher.clone(),
             shutdown_signal,
         )
     }
@@ -209,9 +231,9 @@ impl Dht {
             self.connectivity.clone(),
             self.outbound_requester(),
             request_rx,
-            shutdown_signal,
             saf_response_signal_rx,
             self.event_publisher.clone(),
+            shutdown_signal,
         )
     }
 
@@ -270,16 +292,15 @@ impl Dht {
                 self.node_identity.node_id().short_str()
             )))
             .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
-            .layer(store_forward::ForwardLayer::new(
-                self.config.clone(),
-                self.outbound_requester(),
-                self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
-            ))
             .layer(store_forward::StoreLayer::new(
                 self.config.clone(),
                 Arc::clone(&self.peer_manager),
                 Arc::clone(&self.node_identity),
                 self.store_and_forward_requester(),
+            ))
+            .layer(store_forward::ForwardLayer::new(
+                self.outbound_requester(),
+                self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
             ))
             .layer(store_forward::MessageHandlerLayer::new(
                 self.config.clone(),
@@ -291,7 +312,6 @@ impl Dht {
                 self.saf_response_signal_sender.clone(),
             ))
             .layer(inbound::DhtHandlerLayer::new(
-                self.config.clone(),
                 Arc::clone(&self.node_identity),
                 Arc::clone(&self.peer_manager),
                 self.discovery_service_requester(),
@@ -353,7 +373,7 @@ impl Dht {
                          supported by this node. Discarding message.",
                         msg.source_peer.public_key
                     );
-                    future::ready(Err(PipelineError::from_debug(
+                    future::ready(Err(anyhow::anyhow!(
                         "Message filtered out because store and forward is not supported by this node",
                     )))
                 },
@@ -371,11 +391,11 @@ mod test {
         outbound::mock::create_outbound_service_mock,
         proto::envelope::DhtMessageType,
         test_utils::{
+            build_peer_manager,
             make_client_identity,
             make_comms_inbound_message,
             make_dht_envelope,
             make_node_identity,
-            make_peer_manager,
         },
         DhtBuilder,
     };
@@ -394,7 +414,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn stack_unencrypted() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
 
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
@@ -411,7 +431,7 @@ mod test {
             shutdown.to_signal(),
         )
         .local_test()
-        .finish()
+        .build()
         .await
         .unwrap();
 
@@ -444,7 +464,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn stack_encrypted() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
 
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
@@ -460,7 +480,7 @@ mod test {
             connectivity,
             shutdown.to_signal(),
         )
-        .finish()
+        .build()
         .await
         .unwrap();
 
@@ -494,7 +514,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn stack_forward() {
         let node_identity = make_node_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let shutdown = Shutdown::new();
 
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
@@ -511,7 +531,7 @@ mod test {
             connectivity,
             shutdown.to_signal(),
         )
-        .finish()
+        .build()
         .await
         .unwrap();
         let oms_mock_state = oms_mock.get_state();
@@ -552,7 +572,7 @@ mod test {
     #[tokio_macros::test_basic]
     async fn stack_filter_saf_message() {
         let node_identity = make_client_identity();
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (connectivity, _) = create_connectivity_mock();
 
         peer_manager.add_peer(node_identity.to_peer()).await.unwrap();
@@ -568,7 +588,7 @@ mod test {
             connectivity,
             shutdown.to_signal(),
         )
-        .finish()
+        .build()
         .await
         .unwrap();
 

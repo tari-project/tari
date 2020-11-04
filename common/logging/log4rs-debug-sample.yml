@@ -25,11 +25,11 @@ appenders:
       kind: compound
       trigger:
         kind: size
-        limit: 10mb
+        limit: 20mb
       roller:
         kind: fixed_window
         base: 1
-        count: 5
+        count: 10
         pattern: "log/network.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
@@ -42,16 +42,16 @@ appenders:
       kind: compound
       trigger:
         kind: size
-        limit: 10mb
+        limit: 20mb
       roller:
         kind: fixed_window
         base: 1
-        count: 5
+        count: 10
         pattern: "log/base_layer.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
-       # An appender named "base_layer" that writes to a file with a custom pattern encoder
+  # An appender named "other" that writes to a file with a custom pattern encoder
   other:
     kind: rolling_file
     path: "log/other.log"
@@ -65,6 +65,40 @@ appenders:
         base: 1
         count: 5
         pattern: "log/other.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+  # An appender named "mm_proxy" that writes to a file with a custom pattern encoder
+  mm_proxy:
+    kind: rolling_file
+    path: "log/mm_proxy.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 10
+        pattern: "log/mm_proxy.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+  # An appender named "stress_test" that writes to a file with a custom pattern encoder
+  stress_test:
+    kind: rolling_file
+    path: "log/stress_test.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 10
+        pattern: "log/stress_test.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
@@ -99,13 +133,13 @@ loggers:
     appenders:
       - network
     additive: false
-    # Route log events sent to the "p2p" logger to the "network" appender
+  # Route log events sent to the "yamux" logger to the "network" appender
   yamux:
     level: warn
     appenders:
       - network
     additive: false
- # Route log events sent to the "mio" logger to the "other" appender
+  # Route log events sent to the "mio" logger to the "network" appender
   mio:
     level: warn
     appenders:
@@ -123,9 +157,15 @@ loggers:
     appenders:
       - other
     additive: false
-  # Route log events sent to the "pub_sub" logger to the "other" appender
-  tari_broadcast_channel:
+  # Route log events sent to the "tari_mm_proxy" logger to the "mm_proxy" appender
+  tari_mm_proxy:
     level: debug
     appenders:
-      - other
+      - mm_proxy
+    additive: false
+  # Route log events sent to the "stress_test" logger to the "stress_test" appender
+  stress_test:
+    level: debug
+    appenders:
+      - stress_test
     additive: false

@@ -136,7 +136,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .ephemeral_public_key
             .as_ref()
             // TODO: #banheuristic - encrypted message sent without ephemeral public key
-            .ok_or("Ephemeral public key not provided for encrypted message")?;
+            .ok_or_else(|| anyhow::anyhow!("Ephemeral public key not provided for encrypted message"))?;
 
         let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), e_pk);
 
@@ -145,8 +145,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             Ok((public_key, signature)) => {
                 // If this fails, discard the message because we decrypted and deserialized the message with our shared
                 // ECDH secret but the message could not be authenticated
-                Self::authenticate_origin_mac(&public_key, &signature, &message.body)
-                    .map_err(PipelineError::from_debug)?;
+                Self::authenticate_origin_mac(&public_key, &signature, &message.body)?;
                 public_key
             },
             Err(err) => {
@@ -260,11 +259,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             None
         } else {
             let origin_mac = OriginMac::decode(message.dht_header.origin_mac.as_slice())
-                .map_err(|_| PipelineError::from_debug(DecryptionError::OriginMacClearTextDecodeFailed))?;
+                .map_err(|_| DecryptionError::OriginMacClearTextDecodeFailed)?;
             let public_key = CommsPublicKey::from_bytes(&origin_mac.public_key)
-                .map_err(|_| PipelineError::from_debug(DecryptionError::OriginMacInvalidPublicKey))?;
-            Self::authenticate_origin_mac(&public_key, &origin_mac.signature, &message.body)
-                .map_err(PipelineError::from_debug)?;
+                .map_err(|_| DecryptionError::OriginMacInvalidPublicKey)?;
+            Self::authenticate_origin_mac(&public_key, &origin_mac.signature, &message.body)?;
             Some(public_key)
         };
 
@@ -312,9 +310,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 message.tag,
                 message.dht_header.message_tag
             );
-            return Err(
-                "Message rejected because this node could not decrypt a message that was addressed to it".into(),
-            );
+            return Err(anyhow::anyhow!(
+                "Message rejected because this node could not decrypt a message that was addressed to it"
+            ));
         }
         let msg = DecryptedDhtMessage::failed(message);
         next_service.oneshot(msg).await

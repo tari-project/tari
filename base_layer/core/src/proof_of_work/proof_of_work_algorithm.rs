@@ -23,10 +23,11 @@ use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Hash, Eq)]
 pub enum PowAlgorithm {
     Monero = 0,
     Blake = 1,
+    Sha3 = 2,
 }
 
 impl TryFrom<u64> for PowAlgorithm {
@@ -36,6 +37,7 @@ impl TryFrom<u64> for PowAlgorithm {
         match v {
             0 => Ok(PowAlgorithm::Monero),
             1 => Ok(PowAlgorithm::Blake),
+            2 => Ok(PowAlgorithm::Sha3),
             _ => Err("Invalid PoWAlgorithm".into()),
         }
     }

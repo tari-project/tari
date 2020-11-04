@@ -26,6 +26,7 @@ mod helpers;
 
 use helpers::{
     block_builders::chain_block,
+    database::create_orphan_block,
     sample_blockchains::{create_blockchain_db_no_cut_through, create_new_blockchain},
 };
 use std::ops::Deref;
@@ -33,7 +34,6 @@ use tari_core::{
     blocks::Block,
     chain_storage::{async_db, BlockAddResult, MmrTree},
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
-    helpers::create_orphan_block,
     transactions::{
         helpers::schema_to_transaction,
         tari_amount::T,
@@ -195,12 +195,14 @@ fn async_add_new_block() {
         .iter()
         .map(|t| t.deref().clone())
         .collect();
-    let new_block = chain_block(&blocks.last().unwrap(), txns, &consensus_manager.consensus_constants());
+    let new_block = chain_block(&blocks.last().unwrap(), txns, &consensus_manager);
     let new_block = db.calculate_mmr_roots(new_block).unwrap();
     test_async(|rt| {
         let dbc = db.clone();
         rt.spawn(async move {
-            let result = async_db::add_block(dbc.clone(), new_block.clone()).await.unwrap();
+            let result = async_db::add_block(dbc.clone(), new_block.clone().into())
+                .await
+                .unwrap();
             let block = async_db::fetch_block(dbc.clone(), 1).await.unwrap();
             match result {
                 BlockAddResult::Ok => assert_eq!(Block::from(block).hash(), new_block.hash()),
@@ -236,12 +238,12 @@ fn async_add_block_fetch_orphan() {
     let network = Network::LocalNet;
     let consensus: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let (db, _, _, _) = create_blockchain_db_no_cut_through();
-    let orphan = create_orphan_block(7, vec![], &consensus.consensus_constants());
+    let orphan = create_orphan_block(7, vec![], &consensus);
     let block_hash = orphan.hash();
     test_async(move |rt| {
         let dbc = db.clone();
         rt.spawn(async move {
-            async_db::add_block(dbc.clone(), orphan.clone()).await.unwrap();
+            async_db::add_block(dbc.clone(), orphan.clone().into()).await.unwrap();
             let block = async_db::fetch_orphan(dbc.clone(), block_hash).await.unwrap();
             assert_eq!(orphan, block);
         });

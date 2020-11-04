@@ -1,3 +1,11 @@
+#![cfg_attr(not(debug_assertions), deny(unused_variables))]
+#![cfg_attr(not(debug_assertions), deny(unused_imports))]
+#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+#![deny(unused_must_use)]
+#![deny(unreachable_patterns)]
+#![deny(unknown_lints)]
+
 //! # Tari Comms
 //!
 //! The Tari network messaging library.
@@ -17,6 +25,9 @@ extern crate lazy_static;
 
 #[macro_use]
 mod macros;
+
+mod builder;
+pub use builder::{CommsBuilder, CommsBuilderError, CommsNode, UnspawnedCommsNode};
 
 pub mod connection_manager;
 pub use connection_manager::{validate_peer_addresses, ConnectionManagerEvent, PeerConnection, PeerConnectionError};
@@ -55,9 +66,6 @@ pub mod types;
 #[macro_use]
 pub mod utils;
 
-mod builder;
-pub use builder::{BuiltCommsNode, CommsBuilder, CommsBuilderError, CommsNode};
-
 // TODO: Test utils should be part of a `tari_comms_test` crate
 // #[cfg(test)]
 pub mod test_utils;
@@ -74,3 +82,5 @@ pub use bytes::{Bytes, BytesMut};
 
 #[cfg(feature = "rpc")]
 pub use async_trait::async_trait;
+#[cfg(feature = "rpc")]
+pub use tower_make::MakeService;

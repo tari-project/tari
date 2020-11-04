@@ -26,28 +26,27 @@ use crate::{
         storage::database::{Contact, ContactsBackend, DbKey, DbKeyValuePair, DbValue, WriteOperation},
     },
     schema::contacts,
+    storage::sqlite_utilities::WalletDbConnection,
 };
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
-use std::{
-    convert::TryFrom,
-    sync::{Arc, Mutex},
-};
+use std::convert::TryFrom;
 use tari_core::transactions::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
+#[derive(Clone)]
 pub struct ContactsServiceSqliteDatabase {
-    database_connection: Arc<Mutex<SqliteConnection>>,
+    database_connection: WalletDbConnection,
 }
 impl ContactsServiceSqliteDatabase {
-    pub fn new(database_connection: Arc<Mutex<SqliteConnection>>) -> Self {
+    pub fn new(database_connection: WalletDbConnection) -> Self {
         Self { database_connection }
     }
 }
 
 impl ContactsBackend for ContactsServiceSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ContactsServiceStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         let result = match key {
             DbKey::Contact(pk) => match ContactSql::find(&pk.to_vec(), &(*conn)) {
@@ -67,7 +66,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, ContactsServiceStorageError> {
-        let conn = acquire_lock!(self.database_connection);
+        let conn = self.database_connection.acquire_lock();
 
         match op {
             WriteOperation::Upsert(kvp) => match kvp {

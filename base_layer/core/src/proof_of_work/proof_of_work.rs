@@ -19,12 +19,18 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{blake_pow::blake_difficulty, monero_rx::monero_difficulty, Difficulty, PowAlgorithm},
+    proof_of_work::{
+        blake_pow::blake_difficulty,
+        monero_rx::{monero_difficulty, MoneroData},
+        sha3_pow::sha3_difficulty,
+        Difficulty,
+        PowAlgorithm,
+        PowError,
+    },
 };
-use bytes::{self, BufMut};
+use bytes::BufMut;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use tari_crypto::tari_utilities::hex::Hex;
@@ -94,25 +100,19 @@ impl ProofOfWork {
     ///
     /// If there are any problems with calculating a difficulty (e.g. an invalid header), then the function returns a
     /// difficulty of one.
-    pub fn achieved_difficulty(header: &BlockHeader) -> Difficulty {
+    pub fn achieved_difficulty(header: &BlockHeader) -> Result<Difficulty, PowError> {
         match header.pow.pow_algo {
-            PowAlgorithm::Monero => monero_difficulty(header),
-            PowAlgorithm::Blake => blake_difficulty(header),
+            PowAlgorithm::Monero => Ok(monero_difficulty(header)?),
+            PowAlgorithm::Blake => Ok(blake_difficulty(header)),
+            PowAlgorithm::Sha3 => Ok(sha3_difficulty(header)),
         }
     }
 
-    /// Calculates the total _ accumulated difficulty for the blockchain from the genesis block up until,
-    /// but _not including_ this block.
-    ///
-    /// This uses a geometric mean to compare the two difficulties. See Issue #1075 (https://github.com/tari-project/tari/issues/1075) as to why this was done
-    ///
-    /// The total accumulated difficulty is most often used to decide on which of two forks is the longest chain.
-    pub fn total_accumulated_difficulty(&self) -> Difficulty {
-        let d = (self.accumulated_monero_difficulty.as_u64() as f64 *
-            self.accumulated_blake_difficulty.as_u64() as f64)
-            .sqrt();
-
-        Difficulty::from(d.ceil() as u64)
+    /// Computes the square of the total accumulated difficulty. This can be
+    /// more efficient than using `total_accumulated_difficulty`, which does a square root, and can
+    /// be used in comparisons, since sqrt(a) > sqrt(b) implies a > b
+    pub fn total_accumulated_difficulty(&self) -> u128 {
+        self.accumulated_monero_difficulty.as_u64() as u128 * self.accumulated_blake_difficulty.as_u64() as u128
     }
 
     /// Replaces the `next` proof of work's difficulty with the sum of this proof of work's total cumulative
@@ -132,6 +132,10 @@ impl ProofOfWork {
                 pow.accumulated_blake_difficulty,
             ),
             PowAlgorithm::Blake => (
+                pow.accumulated_monero_difficulty,
+                pow.accumulated_blake_difficulty + added_difficulty,
+            ),
+            PowAlgorithm::Sha3 => (
                 pow.accumulated_monero_difficulty,
                 pow.accumulated_blake_difficulty + added_difficulty,
             ),
@@ -181,6 +185,7 @@ impl Display for PowAlgorithm {
         let algo = match self {
             PowAlgorithm::Monero => "Monero",
             PowAlgorithm::Blake => "Blake",
+            PowAlgorithm::Sha3 => "Sha3",
         };
         fmt.write_str(&algo.to_string())
     }
@@ -195,10 +200,16 @@ impl Display for ProofOfWork {
         )?;
         writeln!(
             fmt,
-            "Total accumulated difficulty:\nMonero={}, Blake={}",
+            "Total accumulated difficulty:\nMonero={}, Sha3={}",
             self.accumulated_monero_difficulty, self.accumulated_blake_difficulty
         )?;
-        writeln!(fmt, "Pow data: {}", self.pow_data.to_hex())
+        match self.pow_algo {
+            PowAlgorithm::Monero => match MoneroData::new_from_pow(&self.pow_data) {
+                Ok(v) => writeln!(fmt, "Pow data: {}", v),
+                Err(_) => writeln!(fmt, "Pow data: MALFORMED DATA"),
+            },
+            _ => writeln!(fmt, "Pow data: {}", self.pow_data.to_hex()),
+        }
     }
 }
 
@@ -214,7 +225,7 @@ mod test {
         let pow = ProofOfWork::default();
         assert_eq!(
             &format!("{}", pow),
-            "Mining algorithm: Blake, Target difficulty: 1\nTotal accumulated difficulty:\nMonero=1, Blake=1\nPow \
+            "Mining algorithm: Blake, Target difficulty: 1\nTotal accumulated difficulty:\nMonero=1, Sha3=1\nPow \
              data: \n"
         );
     }
@@ -234,17 +245,17 @@ mod test {
         // Simple cases
         pow.accumulated_monero_difficulty = 500.into();
         pow.accumulated_blake_difficulty = 100.into();
-        assert_eq!(pow.total_accumulated_difficulty(), 224.into(), "Case 1");
+        assert_eq!(pow.total_accumulated_difficulty(), 50000, "Case 1");
         pow.accumulated_monero_difficulty = 50.into();
         pow.accumulated_blake_difficulty = 1000.into();
-        assert_eq!(pow.total_accumulated_difficulty(), 224.into(), "Case 2");
+        assert_eq!(pow.total_accumulated_difficulty(), 50000, "Case 2");
         // Edge cases - Very large OOM difficulty differences
         pow.accumulated_monero_difficulty = 444.into();
         pow.accumulated_blake_difficulty = 1_555_222_888_555_555.into();
-        assert_eq!(pow.total_accumulated_difficulty(), 830_974_707.into(), "Case 3");
+        assert_eq!(pow.total_accumulated_difficulty(), 690_518_962_518_666_420, "Case 3");
         pow.accumulated_monero_difficulty = 1.into();
         pow.accumulated_blake_difficulty = 15_222_333_444_555_666_777.into();
-        assert_eq!(pow.total_accumulated_difficulty(), 3_901_580_891.into(), "Case 4");
+        assert_eq!(pow.total_accumulated_difficulty(), 15_222_333_444_555_666_777, "Case 4");
     }
 
     #[test]

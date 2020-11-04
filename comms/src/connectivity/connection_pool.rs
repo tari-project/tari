@@ -53,6 +53,11 @@ impl PeerConnectionState {
         self.connection.as_ref()
     }
 
+    /// Return true if the underlying connection exists and is connected, otherwise false
+    pub fn is_connected(&self) -> bool {
+        self.connection().filter(|c| c.is_connected()).is_some()
+    }
+
     #[inline]
     pub fn connection_mut(&mut self) -> Option<&mut PeerConnection> {
         self.connection.as_mut()
@@ -107,15 +112,14 @@ impl fmt::Display for PeerConnectionState {
     }
 }
 
+#[derive(Debug, Clone, Default)]
 pub struct ConnectionPool {
     connections: HashMap<NodeId, PeerConnectionState>,
 }
 
 impl ConnectionPool {
     pub fn new() -> Self {
-        Self {
-            connections: HashMap::new(),
-        }
+        Default::default()
     }
 
     pub fn insert(&mut self, node_id: NodeId) -> ConnectionStatus {
@@ -153,12 +157,21 @@ impl ConnectionPool {
         self.connections.get(node_id)
     }
 
+    #[inline]
+    pub fn get_mut(&mut self, node_id: &NodeId) -> Option<&mut PeerConnectionState> {
+        self.connections.get_mut(node_id)
+    }
+
     pub fn all(&self) -> Vec<&PeerConnectionState> {
         self.connections.values().collect()
     }
 
     pub fn get_connection(&self, node_id: &NodeId) -> Option<&PeerConnection> {
         self.get(node_id).and_then(|c| c.connection())
+    }
+
+    pub fn get_connection_mut(&mut self, node_id: &NodeId) -> Option<&mut PeerConnection> {
+        self.get_mut(node_id).and_then(|c| c.connection_mut())
     }
 
     pub fn get_connection_status(&self, node_id: &NodeId) -> ConnectionStatus {
@@ -235,6 +248,13 @@ impl ConnectionPool {
                         .filter(|c| c.is_connected() && c.peer_features().is_client())
                         .is_some()
             })
+            .count()
+    }
+
+    pub fn count_connected(&self) -> usize {
+        self.connections
+            .values()
+            .filter(|c| c.status() == ConnectionStatus::Connected || c.status() == ConnectionStatus::Connecting)
             .count()
     }
 

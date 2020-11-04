@@ -19,7 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+#![cfg_attr(not(debug_assertions), deny(unused_variables))]
+#![cfg_attr(not(debug_assertions), deny(unused_imports))]
+#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+#![deny(unused_must_use)]
+#![deny(unreachable_patterns)]
+#![deny(unknown_lints)]
 //! # Common logging and configuration utilities
 //!
 //! ## The global Tari configuration file
@@ -57,15 +63,16 @@
 //! # use tari_test_utils::random::string;
 //! # use tempfile::tempdir;
 //! # use structopt::StructOpt;
+//! # use tari_common::configuration::bootstrap::ApplicationType;
 //! let mut args = ConfigBootstrap::from_args();
 //! # let temp_dir = tempdir().unwrap();
 //! # args.base_path = temp_dir.path().to_path_buf();
 //! # args.init = true;
-//! args.init_dirs();
+//! args.init_dirs(ApplicationType::BaseNode);
 //! let config = args.load_configuration().unwrap();
 //! let global = GlobalConfig::convert_from(config).unwrap();
-//! assert_eq!(global.network, Network::Rincewind);
-//! assert_eq!(global.blocking_threads, 4);
+//! assert_eq!(global.network, Network::Ridcully);
+//! assert!(global.max_threads.is_none());
 //! # std::fs::remove_dir_all(temp_dir).unwrap();
 //! ```
 
@@ -87,5 +94,7 @@ pub use logging::initialize_logging;
 
 pub const DEFAULT_CONFIG: &str = "config.toml";
 pub const DEFAULT_LOG_CONFIG: &str = "log4rs.yml";
+pub const DEFAULT_WALLET_LOG_CONFIG: &str = "log4rs_wallet.yml";
+pub const DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG: &str = "log4rs.yml";
 
 pub(crate) const LOG_TARGET: &str = "common::config";

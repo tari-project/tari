@@ -38,6 +38,8 @@ pub enum Error {
     NodeIdentityError(#[from] NodeIdentityError),
     #[error("HiddenServiceBuilderError: {0}")]
     HiddenServiceBuilderError(#[from] tor::HiddenServiceBuilderError),
+    #[error("HiddenServiceControllerError: {0}")]
+    HiddenServiceControllerError(#[from] tor::HiddenServiceControllerError),
     #[error("CommsBuilderError: {0}")]
     CommsBuilderError(#[from] CommsBuilderError),
     #[error("PeerManagerError: {0}")]

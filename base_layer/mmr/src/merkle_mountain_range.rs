@@ -66,7 +66,7 @@ where
             .clear()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
         for hash in hash_iter.into_iter() {
-            self.push(&hash)?;
+            self.push(hash)?;
         }
         Ok(())
     }
@@ -137,35 +137,48 @@ where
         );
         Ok(peaks
             .into_iter()
-            .map(|i| self.hashes.get_or_panic(i))
+            .map(|i| {
+                self.hashes
+                    .get(i)
+                    .unwrap()
+                    .expect("find_peaks returned invalid indexes")
+            })
             .fold(hasher, |hasher, h| hasher.chain(h)))
     }
 
     /// Push a new element into the MMR. Computes new related peaks at the same time if applicable.
     /// Returns the new length of the merkle mountain range (the number of all nodes, not just leaf nodes).
-    pub fn push(&mut self, hash: &Hash) -> Result<usize, MerkleMountainRangeError> {
+    pub fn push(&mut self, hash: Hash) -> Result<usize, MerkleMountainRangeError> {
         if self.is_empty()? {
-            return self.push_hash(hash.clone());
+            return self.push_hash(hash);
         }
+
         let mut pos = self.len()?;
         let (peak_map, height) = peak_map_height(pos);
         if height != 0 {
             return Err(MerkleMountainRangeError::CorruptDataStructure);
         }
+
         self.push_hash(hash.clone())?;
+        let mut last_hash = hash;
         // hash with all immediately preceding peaks, as indicated by peak map
         let mut peak = 1;
         while (peak_map & peak) != 0 {
+            // left_sibling can never be out of bounds (>= len) because peak can never be 0
             let left_sibling = pos + 1 - 2 * peak;
-            let left_hash = &self.hashes.get_or_panic(left_sibling);
+            debug_assert!(
+                left_sibling < pos,
+                "left_sibling was greater than the reported number of elements contained in the impl of ArrayLike"
+            );
+            let left_hash = self
+                .hashes
+                .get(left_sibling)
+                .map_err(MerkleMountainRangeError::backend_error)?
+                .unwrap();
             peak *= 2;
             pos += 1;
-            let hash_count = self
-                .hashes
-                .len()
-                .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
-            let last_hash = &self.hashes.get_or_panic(hash_count - 1);
-            let new_hash = hash_together::<D>(left_hash, last_hash);
+            let new_hash = hash_together::<D>(&left_hash, &last_hash);
+            last_hash = new_hash.clone();
             self.push_hash(new_hash)?;
         }
         Ok(pos)
@@ -204,14 +217,14 @@ where
     /// Search for the node index of the given hash in the MMR. This is a very slow function, being O(n). In general,
     /// it's better to cache the index of the hash when storing it rather than using this function, but it's here
     /// for completeness.
-    pub fn find_node_index(&self, hash: &Hash) -> Result<Option<usize>, MerkleMountainRangeError> {
+    pub fn find_node_index(&self, hash: &[u8]) -> Result<Option<usize>, MerkleMountainRangeError> {
         self.hashes
-            .position(hash)
+            .position(&hash.to_vec())
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))
     }
 
     /// Search for the leaf index of the given hash in the leaf nodes of the MMR.
-    pub fn find_leaf_index(&self, hash: &Hash) -> Result<Option<u32>, MerkleMountainRangeError> {
+    pub fn find_leaf_index(&self, hash: &[u8]) -> Result<Option<u32>, MerkleMountainRangeError> {
         Ok(match self.find_node_index(hash)? {
             Some(node_index) => {
                 if is_leaf(node_index) {

@@ -141,9 +141,9 @@ where
         Ok(lmdb_get::<i64, T>(&self.env, &self.db, &key)?)
     }
 
-    fn get_or_panic(&self, index: usize) -> Self::Value {
-        self.get(index).unwrap().unwrap()
-    }
+    // fn get_or_panic(&self, index: usize) -> Self::Value {
+    //     self.get(index).unwrap().unwrap()
+    // }
 
     fn clear(&mut self) -> Result<(), Self::Error> {
         let txn = WriteTransaction::new(self.env.clone()).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
@@ -284,7 +284,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use tari_storage::lmdb_store::{db, LMDBBuilder};
+    use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig};
     use tari_test_utils::paths::create_temporary_data_path;
 
     #[test]
@@ -293,7 +293,7 @@ mod test {
         let _ = std::fs::create_dir(&path).unwrap_or_default();
         let lmdb_store = LMDBBuilder::new()
             .set_path(&path)
-            .set_environment_size(1)
+            .set_env_config(LMDBConfig::default())
             .set_max_number_of_databases(1)
             .add_database("db", db::CREATE)
             .build()

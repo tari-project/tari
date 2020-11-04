@@ -526,7 +526,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     /// (switched to transport mode) upon success.
     pub async fn handshake_1rt(mut self) -> io::Result<NoiseSocket<TSocket>> {
         match self.perform_handshake().await {
-            Ok(_) => self.finish(),
+            Ok(_) => self.build(),
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
@@ -570,7 +570,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         self.socket.read(&mut []).await
     }
 
-    fn finish(self) -> io::Result<NoiseSocket<TSocket>> {
+    fn build(self) -> io::Result<NoiseSocket<TSocket>> {
         let transport_state = self
             .socket
             .state

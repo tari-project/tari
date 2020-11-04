@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{envelope::Network, storage::DbConnectionUrl};
+use crate::{envelope::Network, network_discovery::NetworkDiscoveryConfig, storage::DbConnectionUrl};
 use std::time::Duration;
 
 /// The default maximum number of messages that can be stored using the Store-and-forward middleware
@@ -47,7 +47,10 @@ pub struct DhtConfig {
     /// Number of random peers to include
     /// Default: [DEFAULT_NUM_RANDOM_NODES](self::DEFAULT_NUM_RANDOM_NODES)
     pub num_random_nodes: usize,
-    /// For each message to propagate, propagate to this many peers
+    /// Send to this many peers when using the broadcast strategy
+    /// Default: 8
+    pub broadcast_factor: usize,
+    /// Send to this many peers when using the propagate strategy
     /// Default: 4
     pub propagation_factor: usize,
     /// The maximum number of messages that can be stored using the Store-and-forward middleware. Default: 10_000
@@ -97,6 +100,8 @@ pub struct DhtConfig {
     pub connectivity_random_pool_refresh: Duration,
     /// The active Network. Default: TestNet
     pub network: Network,
+    /// Network discovery config
+    pub network_discovery: NetworkDiscoveryConfig,
 }
 
 impl DhtConfig {
@@ -117,6 +122,11 @@ impl DhtConfig {
             database_url: DbConnectionUrl::Memory,
             saf_auto_request: false,
             auto_join: false,
+            network_discovery: NetworkDiscoveryConfig {
+                // If a test requires the peer probe they should explicitly enable it
+                enabled: false,
+                ..Default::default()
+            },
             ..Default::default()
         }
     }
@@ -128,6 +138,7 @@ impl Default for DhtConfig {
             num_neighbouring_nodes: DEFAULT_NUM_NEIGHBOURING_NODES,
             num_random_nodes: DEFAULT_NUM_RANDOM_NODES,
             propagation_factor: 4,
+            broadcast_factor: 8,
             saf_num_closest_nodes: 10,
             saf_max_returned_messages: 50,
             outbound_buffer_size: 20,
@@ -146,6 +157,7 @@ impl Default for DhtConfig {
             auto_join: false,
             join_cooldown_interval: Duration::from_secs(10 * 60),
             network: Network::TestNet,
+            network_discovery: Default::default(),
         }
     }
 }

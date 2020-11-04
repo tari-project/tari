@@ -23,19 +23,24 @@
 use crate::transactions::tari_amount::MicroTari;
 use num::pow;
 
+pub trait Emission {
+    fn block_reward(&self, height: u64) -> MicroTari;
+    fn supply_at_block(&self, height: u64) -> MicroTari;
+}
+
 /// The Tari emission schedule. The emission schedule determines how much Tari is mined as a block reward at every
 /// block.
 ///
 /// NB: We don't know what the final emission schedule will be on Tari yet, so do not give any weight to values or
 /// formulae provided in this file, they will almost certainly change ahead of main-net release.
-#[derive(Clone)]
-pub struct Emission {
+#[derive(Debug, Clone)]
+pub struct EmissionSchedule {
     initial: MicroTari,
-    decay: &'static [u64],
+    pub(crate) decay: &'static [u64],
     tail: MicroTari,
 }
 
-impl Emission {
+impl EmissionSchedule {
     /// Create a new emission schedule instance.
     ///
     /// The Emission schedule follows a similar pattern to Monero; with an exponentially decaying emission rate with
@@ -55,8 +60,8 @@ impl Emission {
     ///
     /// So for example, if the decay rate is 0.25, then $$\epsilon$$ is 0.75 or 1/2 + 1/4 i.e. `1 >> 1 + 1 >> 2`
     /// and the decay array is `&[1, 2]`
-    pub fn new(initial: MicroTari, decay: &'static [u64], tail: MicroTari) -> Emission {
-        Emission { initial, decay, tail }
+    pub fn new(initial: MicroTari, decay: &'static [u64], tail: MicroTari) -> EmissionSchedule {
+        EmissionSchedule { initial, decay, tail }
     }
 
     /// Return an iterator over the block reward and total supply. This is the most efficient way to iterate through
@@ -65,10 +70,10 @@ impl Emission {
     /// This is an infinite iterator, and each value returned is a tuple of (block number, reward, and total supply)
     ///
     /// ```edition2018
-    /// use tari_core::consensus::emission::Emission;
+    /// use tari_core::consensus::emission::EmissionSchedule;
     /// use tari_core::transactions::tari_amount::MicroTari;
     /// // Print the reward and supply for first 100 blocks
-    /// let schedule = Emission::new(10.into(), &[3], 1.into());
+    /// let schedule = EmissionSchedule::new(10.into(), &[3], 1.into());
     /// for (n, reward, supply) in schedule.iter().take(100) {
     ///     println!("{:3} {:9} {:9}", n, reward, supply);
     /// }
@@ -82,11 +87,11 @@ pub struct EmissionRate<'a> {
     block_num: u64,
     supply: MicroTari,
     reward: MicroTari,
-    schedule: &'a Emission,
+    schedule: &'a EmissionSchedule,
 }
 
 impl<'a> EmissionRate<'a> {
-    fn new(schedule: &'a Emission) -> EmissionRate<'a> {
+    fn new(schedule: &'a EmissionSchedule) -> EmissionRate<'a> {
         EmissionRate {
             block_num: 0,
             supply: schedule.initial,
@@ -139,20 +144,42 @@ impl<'a> Iterator for EmissionRate<'a> {
     }
 }
 
+impl Emission for EmissionSchedule {
+    /// Calculate the block reward for the given block height, in µTari
+    fn block_reward(&self, height: u64) -> MicroTari {
+        let mut iterator = self.iter();
+        while iterator.block_height() < height {
+            iterator.next();
+        }
+        iterator.block_reward()
+    }
+
+    /// Calculate the exact emitted supply after the given block, in µTari. The value is calculated by summing up the
+    /// block reward for each block, making this a very inefficient function if you wanted to call it from a loop for
+    /// example. For those cases, use the `iter` function instead.
+    fn supply_at_block(&self, height: u64) -> MicroTari {
+        let mut iterator = self.iter();
+        while iterator.block_height() < height {
+            iterator.next();
+        }
+        iterator.supply()
+    }
+}
+
 /// The Tari emission schedule. The emission schedule determines how much Tari is mined as a block reward at every
 /// block.
 ///
 /// NB: We don't know what the final emission schedule will be on Tari yet, so do not give any weight to values or
 /// formulae provided in this file, they will almost certainly change ahead of main-net release.
-#[derive(Clone)]
-#[deprecated(note = "Use Emission instead")]
-pub struct EmissionSchedule {
+#[derive(Debug, Clone)]
+// #[deprecated(note = "Use Emission instead")]
+pub struct EmissionScheduleOld {
     initial: MicroTari,
     decay: f64,
     tail: MicroTari,
 }
 
-impl EmissionSchedule {
+impl EmissionScheduleOld {
     /// Create a new emission schedule instance.
     ///
     /// The Emission schedule follows a similar pattern to Monero; with an exponentially decaying emission rate with
@@ -165,14 +192,34 @@ impl EmissionSchedule {
     ///  * $$A_0$$ is the genesis block reward
     ///  * $$1-r$$ is the decay rate
     ///  * $$t$$ is the constant tail emission rate
-    pub fn new(initial: MicroTari, decay: f64, tail: MicroTari) -> EmissionSchedule {
-        EmissionSchedule { initial, decay, tail }
+    pub fn new(initial: MicroTari, decay: f64, tail: MicroTari) -> EmissionScheduleOld {
+        EmissionScheduleOld { initial, decay, tail }
     }
 
+    /// Return an iterator over the block reward and total supply. This is the most efficient way to iterate through
+    /// the emission curve if you're interested in the supply as well as the reward.
+    ///
+    /// This is an infinite iterator, and each value returned is a tuple of (block number, reward, and total supply)
+    ///
+    /// ```edition2018
+    /// use tari_core::consensus::emission::EmissionScheduleOld;
+    /// use tari_core::transactions::tari_amount::MicroTari;
+    /// // Print the reward and supply for first 100 blocks
+    /// let schedule = EmissionScheduleOld::new(10.into(), 0.9, 1.into());
+    /// for (n, reward, supply) in schedule.iter().take(100) {
+    ///     println!("{:3} {:9} {:9}", n, reward, supply);
+    /// }
+    /// ```
+    pub fn iter(&self) -> EmissionValues {
+        EmissionValues::new(self)
+    }
+}
+
+impl Emission for EmissionScheduleOld {
     /// Calculate the block reward for the given block height, in µTari
-    pub fn block_reward(&self, block: u64) -> MicroTari {
-        let base = if block < std::i32::MAX as u64 {
-            let base_f = (f64::from(self.initial) * pow(self.decay, block as usize)).trunc();
+    fn block_reward(&self, height: u64) -> MicroTari {
+        let base = if height < std::i32::MAX as u64 {
+            let base_f = (f64::from(self.initial) * pow(self.decay, height as usize)).trunc();
             MicroTari::from(base_f as u64)
         } else {
             MicroTari::from(0)
@@ -183,30 +230,12 @@ impl EmissionSchedule {
     /// Calculate the exact emitted supply after the given block, in µTari. The value is calculated by summing up the
     /// block reward for each block, making this a very inefficient function if you wanted to call it from a loop for
     /// example. For those cases, use the `iter` function instead.
-    pub fn supply_at_block(&self, block: u64) -> MicroTari {
+    fn supply_at_block(&self, height: u64) -> MicroTari {
         let mut total = MicroTari::from(0u64);
-        for i in 0..=block {
+        for i in 0..=height {
             total += self.block_reward(i);
         }
         total
-    }
-
-    /// Return an iterator over the block reward and total supply. This is the most efficient way to iterate through
-    /// the emission curve if you're interested in the supply as well as the reward.
-    ///
-    /// This is an infinite iterator, and each value returned is a tuple of (block number, reward, and total supply)
-    ///
-    /// ```edition2018
-    /// use tari_core::consensus::emission::EmissionSchedule;
-    /// use tari_core::transactions::tari_amount::MicroTari;
-    /// // Print the reward and supply for first 100 blocks
-    /// let schedule = EmissionSchedule::new(10.into(), 0.9, 1.into());
-    /// for (n, reward, supply) in schedule.iter().take(100) {
-    ///     println!("{:3} {:9} {:9}", n, reward, supply);
-    /// }
-    /// ```
-    pub fn iter(&self) -> EmissionValues {
-        EmissionValues::new(self)
     }
 }
 
@@ -214,11 +243,11 @@ pub struct EmissionValues<'a> {
     block_num: u64,
     supply: MicroTari,
     reward: MicroTari,
-    schedule: &'a EmissionSchedule,
+    schedule: &'a EmissionScheduleOld,
 }
 
 impl<'a> EmissionValues<'a> {
-    fn new(schedule: &'a EmissionSchedule) -> EmissionValues<'a> {
+    fn new(schedule: &'a EmissionScheduleOld) -> EmissionValues<'a> {
         EmissionValues {
             block_num: 0,
             supply: MicroTari::default(),
@@ -243,21 +272,25 @@ impl<'a> Iterator for EmissionValues<'a> {
 #[cfg(test)]
 mod test {
     use crate::{
-        consensus::emission::{Emission, EmissionSchedule},
+        consensus::emission::{Emission, EmissionSchedule, EmissionScheduleOld},
         transactions::tari_amount::{uT, MicroTari, T},
     };
 
     /// Commit df95cee73812689bbae77bfb547c1d73a49635d4 introduced a bug in Windows builds that resulted in certain
     /// blocks failing validation tests. The cause was traced to an erroneous implementation of the std::f64::powi
     /// function in Rust toolchain nightly-2020-06-10, where Windows would give a slightly different floating point
-    /// result than Linux. This affected the EmissionSchedule::block_reward calculation.
+    /// result than Linux. This affected the EmissionScheduleOld::block_reward calculation.
     #[test]
     fn block_reward_edge_cases() {
         const EMISSION_INITIAL: u64 = 5_538_846_115;
         const EMISSION_DECAY: f64 = 0.999_999_560_409_038_5;
         const EMISSION_TAIL: u64 = 1;
 
-        let schedule = EmissionSchedule::new(EMISSION_INITIAL * uT, EMISSION_DECAY, EMISSION_TAIL * T);
+        let schedule = EmissionScheduleOld::new(
+            MicroTari::from(EMISSION_INITIAL * uT),
+            EMISSION_DECAY,
+            MicroTari::from(EMISSION_TAIL * T),
+        );
 
         // Block numbers in these tests represent the edge cases of the pow function.
         assert_eq!(schedule.block_reward(9182), MicroTari::from(5517534590));
@@ -270,8 +303,38 @@ mod test {
     }
 
     #[test]
+    fn block_diff() {
+        const EMISSION_INITIAL: u64 = 5_538_846_115;
+        const EMISSION_DECAY: f64 = 0.999_999_560_409_038_5;
+        const EMISSION_TAIL: u64 = 1;
+
+        let schedule = EmissionScheduleOld::new(
+            MicroTari::from(EMISSION_INITIAL * uT),
+            EMISSION_DECAY,
+            MicroTari::from(EMISSION_TAIL * T),
+        );
+        let emission = EmissionSchedule::new(EMISSION_INITIAL * uT, &[22, 23, 24, 26, 27], EMISSION_TAIL * uT);
+
+        // lest test the old schedule vs the new and see if the diff is less than 0.1%
+        assert!(schedule.block_reward(9182) - emission.block_reward(9182) < schedule.block_reward(9182) / 1000);
+        assert!(schedule.block_reward(9430) - emission.block_reward(9430) < schedule.block_reward(9430) / 1000);
+        assert!(schedule.block_reward(10856) - emission.block_reward(10856) < schedule.block_reward(10856) / 1000);
+        assert!(schedule.block_reward(11708) - emission.block_reward(11708) < schedule.block_reward(11708) / 1000);
+        assert!(schedule.block_reward(30335) - emission.block_reward(30335) < schedule.block_reward(30335) / 1000);
+        assert!(schedule.block_reward(33923) - emission.block_reward(33923) < schedule.block_reward(33923) / 1000);
+        assert!(schedule.block_reward(34947) - emission.block_reward(34947) < schedule.block_reward(34947) / 1000);
+        assert!(schedule.block_reward(50000) - emission.block_reward(50000) < schedule.block_reward(50000) / 1000);
+        assert!(schedule.block_reward(100000) - emission.block_reward(100000) < schedule.block_reward(100000) / 1000);
+        assert!(schedule.block_reward(200000) - emission.block_reward(200000) < schedule.block_reward(200000) / 1000);
+        assert!(emission.block_reward(700000) - schedule.block_reward(700000) < schedule.block_reward(700000) / 1000);
+        assert!(
+            emission.block_reward(1400000) - schedule.block_reward(1400000) < schedule.block_reward(1400000) / 1000
+        );
+    }
+
+    #[test]
     fn schedule() {
-        let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
+        let schedule = EmissionScheduleOld::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
         let r0 = schedule.block_reward(0);
         assert_eq!(r0, MicroTari::from(10_000_100));
         let s0 = schedule.supply_at_block(0);
@@ -283,7 +346,7 @@ mod test {
     #[test]
     fn huge_block_number() {
         let mut n = (std::i32::MAX - 1) as u64;
-        let schedule = EmissionSchedule::new(MicroTari::from(1e21 as u64), 0.999_999_9, MicroTari::from(100));
+        let schedule = EmissionScheduleOld::new(MicroTari::from(1e21 as u64), 0.999_9999, MicroTari::from(100));
         for _ in 0..3 {
             assert_eq!(schedule.block_reward(n), MicroTari::from(100));
             n += 1;
@@ -292,7 +355,7 @@ mod test {
 
     #[test]
     fn generate_emission_schedule_as_iterator() {
-        let schedule = EmissionSchedule::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
+        let schedule = EmissionScheduleOld::new(MicroTari::from(10_000_000), 0.999, MicroTari::from(100));
         let values: Vec<(u64, MicroTari, MicroTari)> = schedule.iter().take(101).collect();
         assert_eq!(values[0].0, 0);
         assert_eq!(values[0].1, MicroTari::from(10_000_100));
@@ -310,7 +373,7 @@ mod test {
 
     #[test]
     fn emission() {
-        let emission = Emission::new(1 * T, &[1, 2], 100 * uT);
+        let emission = EmissionSchedule::new(1 * T, &[1, 2], 100 * uT);
         let mut emission = emission.iter();
         // decay is 1 - 0.25 - 0.125 = 0.625
         assert_eq!(emission.block_height(), 0);
@@ -330,5 +393,8 @@ mod test {
         assert_eq!(emission.block_height(), 8);
         assert_eq!(emission.block_reward(), 100 * uT);
         assert_eq!(emission.supply(), 1333455 * uT);
+        let schedule = EmissionSchedule::new(1 * T, &[1, 2], 100 * uT);
+        assert_eq!(emission.block_reward(), schedule.block_reward(8));
+        assert_eq!(emission.supply(), schedule.supply_at_block(8));
     }
 }

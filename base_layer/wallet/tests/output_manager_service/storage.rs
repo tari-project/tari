@@ -50,7 +50,7 @@ use tari_wallet::{
 use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
-pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
+pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
     let db = OutputManagerDatabase::new(backend);
     let factories = CryptoFactories::default();
@@ -354,6 +354,22 @@ pub fn test_db_backend<T: OutputManagerBackend + Clone + 'static>(backend: T) {
             .is_some(),
         "Should find revalidated output"
     );
+    let result = runtime.block_on(db.update_spent_output_to_unspent(unspent_outputs[0].commitment.clone()));
+    assert!(result.is_err());
+
+    let spent_outputs = runtime.block_on(db.get_spent_outputs()).unwrap();
+    let updated_output = runtime
+        .block_on(db.update_spent_output_to_unspent(spent_outputs[0].commitment.clone()))
+        .unwrap();
+
+    let unspent_outputs = runtime.block_on(db.get_unspent_outputs()).unwrap();
+    assert!(
+        unspent_outputs
+            .iter()
+            .find(|o| o.unblinded_output == updated_output.unblinded_output)
+            .is_some(),
+        "Should find updated spent output"
+    );
 }
 
 #[test]
@@ -384,7 +400,7 @@ pub fn test_output_manager_sqlite_db_encrypted() {
     test_db_backend(OutputManagerSqliteDatabase::new(connection, Some(cipher)));
 }
 
-pub fn test_key_manager_crud<T: OutputManagerBackend + Clone + 'static>(backend: T) {
+pub fn test_key_manager_crud<T: OutputManagerBackend + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
 
     let db = OutputManagerDatabase::new(backend);
@@ -435,7 +451,7 @@ pub fn test_key_manager_crud_sqlite_db() {
     test_key_manager_crud(OutputManagerSqliteDatabase::new(connection, None));
 }
 
-pub async fn test_short_term_encumberance<T: OutputManagerBackend + Clone + 'static>(backend: T) {
+pub async fn test_short_term_encumberance<T: OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
 
     let db = OutputManagerDatabase::new(backend);

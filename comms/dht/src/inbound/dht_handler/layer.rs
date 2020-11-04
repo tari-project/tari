@@ -21,13 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::middleware::DhtHandlerMiddleware;
-use crate::{config::DhtConfig, discovery::DhtDiscoveryRequester, outbound::OutboundMessageRequester};
+use crate::{discovery::DhtDiscoveryRequester, outbound::OutboundMessageRequester};
 use std::sync::Arc;
 use tari_comms::peer_manager::{NodeIdentity, PeerManager};
 use tower::layer::Layer;
 
 pub struct DhtHandlerLayer {
-    config: DhtConfig,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     outbound_service: OutboundMessageRequester,
@@ -36,7 +35,6 @@ pub struct DhtHandlerLayer {
 
 impl DhtHandlerLayer {
     pub fn new(
-        config: DhtConfig,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         discovery_requester: DhtDiscoveryRequester,
@@ -44,7 +42,6 @@ impl DhtHandlerLayer {
     ) -> Self
     {
         Self {
-            config,
             node_identity,
             peer_manager,
             discovery_requester,
@@ -58,7 +55,6 @@ impl<S> Layer<S> for DhtHandlerLayer {
 
     fn layer(&self, service: S) -> Self::Service {
         DhtHandlerMiddleware::new(
-            self.config.clone(),
             service,
             Arc::clone(&self.node_identity),
             Arc::clone(&self.peer_manager),

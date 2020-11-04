@@ -33,8 +33,9 @@ use crate::{
     transaction_service::{
         handle::TransactionEvent,
         storage::{
-            database::{CompletedTransaction, TransactionBackend, TransactionDirection, TransactionStatus},
+            database::TransactionBackend,
             memory_db::TransactionMemoryDatabase,
+            models::{CompletedTransaction, TransactionDirection, TransactionStatus},
         },
     },
     wallet::WalletConfig,
@@ -48,7 +49,6 @@ use std::{
     iter,
     path::{Path, PathBuf},
     sync::Arc,
-    thread,
     time::Duration,
 };
 use tari_comms::{
@@ -72,7 +72,8 @@ use tari_crypto::{
     tari_utilities::hex::Hex,
 };
 use tari_p2p::{initialization::CommsConfig, transport::TransportType};
-use tokio::{runtime::Runtime, time::delay_for};
+use tari_shutdown::{Shutdown, ShutdownSignal};
+use tokio::time::delay_for;
 
 // Used to generate test wallet data
 
@@ -103,13 +104,13 @@ pub fn random_string(len: usize) -> String {
 }
 
 /// Create a wallet for testing purposes
-pub fn create_wallet(
+pub async fn create_wallet(
     secret_key: CommsSecretKey,
     public_address: Multiaddr,
     datastore_path: PathBuf,
+    shutdown_signal: ShutdownSignal,
 ) -> Wallet<WalletMemoryDatabase, TransactionMemoryDatabase, OutputManagerMemoryDatabase, ContactsServiceMemoryDatabase>
 {
-    let runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
 
     let node_identity = Arc::new(
@@ -139,12 +140,13 @@ pub fn create_wallet(
 
     Wallet::new(
         config,
-        runtime,
         WalletMemoryDatabase::new(),
         TransactionMemoryDatabase::new(),
         OutputManagerMemoryDatabase::new(),
         ContactsServiceMemoryDatabase::new(),
+        shutdown_signal,
     )
+    .await
     .expect("Could not create Wallet")
 }
 
@@ -154,10 +156,10 @@ pub fn get_next_memory_address() -> Multiaddr {
 }
 
 /// This function will generate a set of test data for the supplied wallet. Takes a few seconds to complete
-pub fn generate_wallet_test_data<
+pub async fn generate_wallet_test_data<
     T: WalletBackend,
-    U: TransactionBackend + Clone,
-    V: OutputManagerBackend + Clone,
+    U: TransactionBackend,
+    V: OutputManagerBackend,
     W: ContactsBackend,
     P: AsRef<Path>,
 >(
@@ -205,16 +207,17 @@ pub fn generate_wallet_test_data<
         let secret_key = CommsSecretKey::from_hex(private_keys[i]).expect("Could not parse hex key");
         let public_key = CommsPublicKey::from_secret_key(&secret_key);
         wallet
-            .runtime
-            .block_on(wallet.contacts_service.upsert_contact(Contact {
+            .contacts_service
+            .upsert_contact(Contact {
                 alias: names[i].to_string(),
                 public_key: public_key.clone(),
-            }))?;
+            })
+            .await?;
 
         let addr = get_next_memory_address();
         generated_contacts.push((secret_key, addr));
     }
-    let contacts = wallet.runtime.block_on(wallet.contacts_service.get_contacts())?;
+    let contacts = wallet.contacts_service.get_contacts().await?;
     assert_eq!(contacts.len(), names.len());
     info!(target: LOG_TARGET, "Added test contacts to wallet");
 
@@ -236,11 +239,15 @@ pub fn generate_wallet_test_data<
     let alice_temp_dir = data_path.as_ref().join(random_string(8));
     let _ = std::fs::create_dir(&alice_temp_dir);
 
+    let mut shutdown_a = Shutdown::new();
+    let mut shutdown_b = Shutdown::new();
     let mut wallet_alice = create_wallet(
         generated_contacts[0].0.clone(),
         generated_contacts[0].1.clone(),
         alice_temp_dir.clone(),
-    );
+        shutdown_a.to_signal(),
+    )
+    .await;
     let mut alice_event_stream = wallet_alice.transaction_service.get_event_stream_fused();
     for i in 0..20 {
         let uo = OutputBuilder::new()
@@ -263,7 +270,9 @@ pub fn generate_wallet_test_data<
         generated_contacts[1].0.clone(),
         generated_contacts[1].1.clone(),
         bob_temp_dir.clone(),
-    );
+        shutdown_b.to_signal(),
+    )
+    .await;
     let mut bob_event_stream = wallet_bob.transaction_service.get_event_stream_fused();
 
     for i in 0..20 {
@@ -279,33 +288,24 @@ pub fn generate_wallet_test_data<
 
     let alice_peer = wallet_alice.comms.node_identity().to_peer();
 
-    wallet
-        .runtime
-        .block_on(wallet.comms.peer_manager().add_peer(alice_peer))?;
+    wallet.comms.peer_manager().add_peer(alice_peer).await?;
 
     let bob_peer = wallet_bob.comms.node_identity().to_peer();
 
-    wallet
-        .runtime
-        .block_on(wallet.comms.peer_manager().add_peer(bob_peer))?;
+    wallet.comms.peer_manager().add_peer(bob_peer).await?;
 
     wallet
-        .runtime
-        .block_on(
-            wallet
-                .comms
-                .connection_manager()
-                .dial_peer(wallet_alice.comms.node_identity().node_id().clone()),
-        )
+        .comms
+        .connection_manager()
+        .dial_peer(wallet_alice.comms.node_identity().node_id().clone())
+        .await
         .unwrap();
+
     wallet
-        .runtime
-        .block_on(
-            wallet
-                .comms
-                .connection_manager()
-                .dial_peer(wallet_bob.comms.node_identity().node_id().clone()),
-        )
+        .comms
+        .connection_manager()
+        .dial_peer(wallet_bob.comms.node_identity().node_id().clone())
+        .await
         .unwrap();
     info!(target: LOG_TARGET, "Starting to execute test transactions");
 
@@ -313,262 +313,293 @@ pub fn generate_wallet_test_data<
     let mut outbound_tx_ids = Vec::new();
 
     // Completed TX
-    let tx_id = wallet.runtime.block_on(wallet.transaction_service.send_transaction(
-        contacts[0].public_key.clone(),
-        MicroTari::from(1_100_000),
-        MicroTari::from(100),
-        messages[message_index].clone(),
-    ))?;
+    let tx_id = wallet
+        .transaction_service
+        .send_transaction(
+            contacts[0].public_key.clone(),
+            MicroTari::from(1_100_000),
+            MicroTari::from(100),
+            messages[message_index].clone(),
+        )
+        .await?;
     outbound_tx_ids.push(tx_id);
     message_index = (message_index + 1) % messages.len();
 
-    let tx_id = wallet.runtime.block_on(wallet.transaction_service.send_transaction(
-        contacts[0].public_key.clone(),
-        MicroTari::from(2_010_500),
-        MicroTari::from(110),
-        messages[message_index].clone(),
-    ))?;
+    let tx_id = wallet
+        .transaction_service
+        .send_transaction(
+            contacts[0].public_key.clone(),
+            MicroTari::from(2_010_500),
+            MicroTari::from(110),
+            messages[message_index].clone(),
+        )
+        .await?;
     outbound_tx_ids.push(tx_id);
     message_index = (message_index + 1) % messages.len();
 
-    wallet_alice.runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
-        let mut count = 0;
-        loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
-                    match &*event.unwrap() {
-                        TransactionEvent::ReceivedTransaction(_) => {
-                            count +=1;
-                        },
-                        TransactionEvent::ReceivedFinalizedTransaction(_) => {
-                            count +=1;
-                        },
-                        _ => (),
-                    }
-                    if count >=4 {
-                        break;
-                    }
-                },
-                () = delay => {
+    let mut delay = delay_for(Duration::from_secs(60)).fuse();
+    let mut count = 0;
+    loop {
+        futures::select! {
+            event = alice_event_stream.select_next_some() => {
+                match &*event.unwrap() {
+                    TransactionEvent::ReceivedTransaction(_) => {
+                        count +=1;
+                    },
+                    TransactionEvent::ReceivedFinalizedTransaction(_) => {
+                        count +=1;
+                    },
+                    _ => (),
+                }
+                if count >=4 {
                     break;
-                },
-            }
+                }
+            },
+            () = delay => {
+                break;
+            },
         }
-        assert!(count >= 4, "Event waiting timed out before receiving expected events 1");
-    });
+    }
+    assert!(count >= 4, "Event waiting timed out before receiving expected events 1");
 
-    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
-        contacts[0].public_key.clone(),
-        MicroTari::from(10_000_000),
-        MicroTari::from(110),
-        messages[message_index].clone(),
-    ))?;
-    message_index = (message_index + 1) % messages.len();
-
-    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
-        contacts[1].public_key.clone(),
-        MicroTari::from(3_441_000),
-        MicroTari::from(105),
-        messages[message_index].clone(),
-    ))?;
+    wallet
+        .transaction_service
+        .send_transaction(
+            contacts[0].public_key.clone(),
+            MicroTari::from(10_000_000),
+            MicroTari::from(110),
+            messages[message_index].clone(),
+        )
+        .await?;
     message_index = (message_index + 1) % messages.len();
 
-    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
-        contacts[1].public_key.clone(),
-        MicroTari::from(14_100_000),
-        MicroTari::from(100),
-        messages[message_index].clone(),
-    ))?;
-    message_index = (message_index + 1) % messages.len();
-    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
-        contacts[0].public_key.clone(),
-        MicroTari::from(22_010_500),
-        MicroTari::from(110),
-        messages[message_index].clone(),
-    ))?;
+    wallet
+        .transaction_service
+        .send_transaction(
+            contacts[1].public_key.clone(),
+            MicroTari::from(3_441_000),
+            MicroTari::from(105),
+            messages[message_index].clone(),
+        )
+        .await?;
     message_index = (message_index + 1) % messages.len();
 
-    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
-        contacts[0].public_key.clone(),
-        MicroTari::from(17_000_000),
-        MicroTari::from(110),
-        messages[message_index].clone(),
-    ))?;
+    wallet
+        .transaction_service
+        .send_transaction(
+            contacts[1].public_key.clone(),
+            MicroTari::from(14_100_000),
+            MicroTari::from(100),
+            messages[message_index].clone(),
+        )
+        .await?;
+    message_index = (message_index + 1) % messages.len();
+    wallet
+        .transaction_service
+        .send_transaction(
+            contacts[0].public_key.clone(),
+            MicroTari::from(22_010_500),
+            MicroTari::from(110),
+            messages[message_index].clone(),
+        )
+        .await?;
     message_index = (message_index + 1) % messages.len();
 
-    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
-        contacts[1].public_key.clone(),
-        MicroTari::from(31_441_000),
-        MicroTari::from(105),
-        messages[message_index].clone(),
-    ))?;
+    wallet
+        .transaction_service
+        .send_transaction(
+            contacts[0].public_key.clone(),
+            MicroTari::from(17_000_000),
+            MicroTari::from(110),
+            messages[message_index].clone(),
+        )
+        .await?;
     message_index = (message_index + 1) % messages.len();
 
-    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
-        contacts[0].public_key.clone(),
-        MicroTari::from(12_100_000),
-        MicroTari::from(100),
-        messages[message_index].clone(),
-    ))?;
+    wallet
+        .transaction_service
+        .send_transaction(
+            contacts[1].public_key.clone(),
+            MicroTari::from(31_441_000),
+            MicroTari::from(105),
+            messages[message_index].clone(),
+        )
+        .await?;
     message_index = (message_index + 1) % messages.len();
-    wallet.runtime.block_on(wallet.transaction_service.send_transaction(
-        contacts[1].public_key.clone(),
-        MicroTari::from(28_010_500),
-        MicroTari::from(110),
-        messages[message_index].clone(),
-    ))?;
+
+    wallet
+        .transaction_service
+        .send_transaction(
+            contacts[0].public_key.clone(),
+            MicroTari::from(12_100_000),
+            MicroTari::from(100),
+            messages[message_index].clone(),
+        )
+        .await?;
+    message_index = (message_index + 1) % messages.len();
+    wallet
+        .transaction_service
+        .send_transaction(
+            contacts[1].public_key.clone(),
+            MicroTari::from(28_010_500),
+            MicroTari::from(110),
+            messages[message_index].clone(),
+        )
+        .await?;
     message_index = (message_index + 1) % messages.len();
 
     // Pending Outbound
-    let _ = wallet.runtime.block_on(wallet.transaction_service.send_transaction(
-        contacts[2].public_key.clone(),
-        MicroTari::from(2_500_000),
-        MicroTari::from(107),
-        messages[message_index].clone(),
-    ));
+    let _ = wallet
+        .transaction_service
+        .send_transaction(
+            contacts[2].public_key.clone(),
+            MicroTari::from(2_500_000),
+            MicroTari::from(107),
+            messages[message_index].clone(),
+        )
+        .await;
     message_index = (message_index + 1) % messages.len();
 
-    let _ = wallet.runtime.block_on(wallet.transaction_service.send_transaction(
-        contacts[3].public_key.clone(),
-        MicroTari::from(3_512_000),
-        MicroTari::from(117),
-        messages[message_index].clone(),
-    ));
+    let _ = wallet
+        .transaction_service
+        .send_transaction(
+            contacts[3].public_key.clone(),
+            MicroTari::from(3_512_000),
+            MicroTari::from(117),
+            messages[message_index].clone(),
+        )
+        .await;
     message_index = (message_index + 1) % messages.len();
 
-    wallet.runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
-        let mut count = 0;
-        loop {
-            futures::select! {
-                event = wallet_event_stream.select_next_some() => {
-                    match &*event.unwrap() {
-                        TransactionEvent::TransactionDirectSendResult(_,_) => {
-                            count+=1;
-                            if count >= 10 {
-                                break;
-                            }
-                        },
-                        _ => (),
-                    }
-                },
-                () = delay => {
-                    break;
-                },
-            }
+    let mut delay = delay_for(Duration::from_secs(60)).fuse();
+    let mut count = 0;
+    loop {
+        futures::select! {
+            event = wallet_event_stream.select_next_some() => {
+                match &*event.unwrap() {
+                    TransactionEvent::TransactionDirectSendResult(_,_) => {
+                        count+=1;
+                        if count >= 10 {
+                            break;
+                        }
+                    },
+                    _ => (),
+                }
+            },
+            () = delay => {
+                break;
+            },
         }
-        assert!(
-            count >= 10,
-            "Event waiting timed out before receiving expected events 2"
-        );
-    });
+    }
+    assert!(
+        count >= 10,
+        "Event waiting timed out before receiving expected events 2"
+    );
 
-    wallet_bob.runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
-        let mut count = 0;
-        loop {
-            futures::select! {
-                event = bob_event_stream.select_next_some() => {
-                    match &*event.unwrap() {
-                        TransactionEvent::ReceivedTransaction(_) => {
-                            count+=1;
-                        },
-                        TransactionEvent::ReceivedFinalizedTransaction(_) => {
-                            count+=1;
-                        },
-                        _ => (),
-                    }
-                    if count >= 8 {
-                        break;
-                    }
-                },
-                () = delay => {
+    let mut delay = delay_for(Duration::from_secs(60)).fuse();
+    let mut count = 0;
+    loop {
+        futures::select! {
+            event = bob_event_stream.select_next_some() => {
+                match &*event.unwrap() {
+                    TransactionEvent::ReceivedTransaction(_) => {
+                        count+=1;
+                    },
+                    TransactionEvent::ReceivedFinalizedTransaction(_) => {
+                        count+=1;
+                    },
+                    _ => (),
+                }
+                if count >= 8 {
                     break;
-                },
-            }
+                }
+            },
+            () = delay => {
+                break;
+            },
         }
-        assert!(count >= 8, "Event waiting timed out before receiving expected events 3");
-    });
+    }
+    assert!(count >= 8, "Event waiting timed out before receiving expected events 3");
+
     log::error!("Inbound Transactions starting");
     // Pending Inbound
     wallet_alice
-        .runtime
-        .block_on(wallet_alice.transaction_service.send_transaction(
+        .transaction_service
+        .send_transaction(
             wallet.comms.node_identity().public_key().clone(),
             MicroTari::from(1_235_000),
             MicroTari::from(117),
             messages[message_index].clone(),
-        ))?;
+        )
+        .await?;
     message_index = (message_index + 1) % messages.len();
 
     wallet_alice
-        .runtime
-        .block_on(wallet_alice.transaction_service.send_transaction(
+        .transaction_service
+        .send_transaction(
             wallet.comms.node_identity().public_key().clone(),
             MicroTari::from(3_500_000),
             MicroTari::from(117),
             messages[message_index].clone(),
-        ))?;
+        )
+        .await?;
     message_index = (message_index + 1) % messages.len();
 
     wallet_alice
-        .runtime
-        .block_on(wallet_alice.transaction_service.send_transaction(
+        .transaction_service
+        .send_transaction(
             wallet.comms.node_identity().public_key().clone(),
             MicroTari::from(2_335_000),
             MicroTari::from(117),
             messages[message_index].clone(),
-        ))?;
+        )
+        .await?;
     message_index = (message_index + 1) % messages.len();
 
     wallet_bob
-        .runtime
-        .block_on(wallet_bob.transaction_service.send_transaction(
+        .transaction_service
+        .send_transaction(
             wallet.comms.node_identity().public_key().clone(),
             MicroTari::from(8_035_000),
             MicroTari::from(117),
             messages[message_index].clone(),
-        ))?;
+        )
+        .await?;
     message_index = (message_index + 1) % messages.len();
 
     wallet_bob
-        .runtime
-        .block_on(wallet_bob.transaction_service.send_transaction(
+        .transaction_service
+        .send_transaction(
             wallet.comms.node_identity().public_key().clone(),
             MicroTari::from(5_135_000),
             MicroTari::from(117),
             messages[message_index].clone(),
-        ))?;
+        )
+        .await?;
 
-    wallet.runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
-        let mut count = 0;
-        loop {
-            futures::select! {
-                event = wallet_event_stream.select_next_some() => {
-                    match &*event.unwrap() {
-                        TransactionEvent::ReceivedFinalizedTransaction(_) => {
-                            count+=1;
-                            if count >= 5 {
-                                break;
-                            }
-                        },
-                        _ => (),
-                    }
-                },
-                () = delay => {
-                    break;
-                },
-            }
+    let mut delay = delay_for(Duration::from_secs(60)).fuse();
+    let mut count = 0;
+    loop {
+        futures::select! {
+            event = wallet_event_stream.select_next_some() => {
+                match &*event.unwrap() {
+                    TransactionEvent::ReceivedFinalizedTransaction(_) => {
+                        count+=1;
+                        if count >= 5 {
+                            break;
+                        }
+                    },
+                    _ => (),
+                }
+            },
+            () = delay => {
+                break;
+            },
         }
-        assert!(count >= 5, "Event waiting timed out before receiving expected events 4");
-    });
+    }
+    assert!(count >= 5, "Event waiting timed out before receiving expected events 4");
 
-    let txs = wallet
-        .runtime
-        .block_on(wallet.transaction_service.get_completed_transactions())
-        .unwrap();
+    let txs = wallet.transaction_service.get_completed_transactions().await.unwrap();
 
     let timestamps = vec![
         Utc::now()
@@ -650,25 +681,26 @@ pub fn generate_wallet_test_data<
     }
 
     // Broadcast a tx
+
     wallet
-        .runtime
-        .block_on(
-            wallet
-                .transaction_service
-                .test_broadcast_transaction(outbound_tx_ids[0]),
-        )
+        .transaction_service
+        .test_broadcast_transaction(outbound_tx_ids[0])
+        .await
         .unwrap();
 
     // Mine a tx
     wallet
-        .runtime
-        .block_on(wallet.transaction_service.test_mine_transaction(outbound_tx_ids[1]))
+        .transaction_service
+        .test_mine_transaction(outbound_tx_ids[1])
+        .await
         .unwrap();
 
-    thread::sleep(Duration::from_millis(1000));
+    delay_for(Duration::from_secs(1)).await;
 
-    wallet_alice.shutdown();
-    wallet_bob.shutdown();
+    shutdown_a.trigger().unwrap();
+    shutdown_b.trigger().unwrap();
+    wallet_alice.wait_until_shutdown().await;
+    wallet_bob.wait_until_shutdown().await;
 
     let _ = std::fs::remove_dir_all(&alice_temp_dir);
     let _ = std::fs::remove_dir_all(&bob_temp_dir);
@@ -681,19 +713,17 @@ pub fn generate_wallet_test_data<
 /// This function is only available for testing and development by the client of LibWallet. It simulates a this node,
 /// who sent a transaction out, accepting a reply to the Pending Outbound Transaction. That transaction then becomes a
 /// CompletedTransaction with the Broadcast status indicating it is in a base node Mempool but not yet mined
-pub fn complete_sent_transaction<
+pub async fn complete_sent_transaction<
     T: WalletBackend,
-    U: TransactionBackend + Clone,
-    V: OutputManagerBackend + Clone,
+    U: TransactionBackend,
+    V: OutputManagerBackend,
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
 ) -> Result<(), WalletError>
 {
-    let pending_outbound_tx = wallet
-        .runtime
-        .block_on(wallet.transaction_service.get_pending_outbound_transactions())?;
+    let pending_outbound_tx = wallet.transaction_service.get_pending_outbound_transactions().await?;
     match pending_outbound_tx.get(&tx_id) {
         Some(p) => {
             let completed_tx: CompletedTransaction = CompletedTransaction::new(
@@ -709,11 +739,11 @@ pub fn complete_sent_transaction<
                 TransactionDirection::Outbound,
                 None,
             );
-            wallet.runtime.block_on(
-                wallet
-                    .transaction_service
-                    .test_complete_pending_transaction(completed_tx),
-            )?;
+
+            wallet
+                .transaction_service
+                .test_complete_pending_transaction(completed_tx)
+                .await?;
         },
         None => {
             return Err(WalletError::WalletStorageError(WalletStorageError::UnexpectedResult(
@@ -727,15 +757,15 @@ pub fn complete_sent_transaction<
 
 /// This function is only available for testing by the client of LibWallet. This function simulates an external
 /// wallet sending a transaction to this wallet which will become a PendingInboundTransaction
-pub fn receive_test_transaction<
+pub async fn receive_test_transaction<
     T: WalletBackend,
-    U: TransactionBackend + Clone,
-    V: OutputManagerBackend + Clone,
+    U: TransactionBackend,
+    V: OutputManagerBackend,
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,
 ) -> Result<(), WalletError> {
-    let contacts = wallet.runtime.block_on(wallet.contacts_service.get_contacts()).unwrap();
+    let contacts = wallet.contacts_service.get_contacts().await.unwrap();
     let (_secret_key, mut public_key): (CommsSecretKey, CommsPublicKey) = PublicKey::random_keypair(&mut OsRng);
 
     if !contacts.is_empty() {
@@ -743,12 +773,13 @@ pub fn receive_test_transaction<
     }
 
     wallet
-        .runtime
-        .block_on(wallet.transaction_service.test_accept_transaction(
+        .transaction_service
+        .test_accept_transaction(
             OsRng.next_u64(),
             MicroTari::from(10_000 + OsRng.next_u64() % 101_000),
             public_key,
-        ))?;
+        )
+        .await?;
 
     Ok(())
 }
@@ -757,19 +788,17 @@ pub fn receive_test_transaction<
 /// who received a prior inbound transaction, accepting the Finalized Completed transaction from the Sender. That
 /// transaction then becomes a CompletedTransaction with the Broadcast status indicating it is in a base node Mempool
 /// but not yet mined
-pub fn finalize_received_transaction<
+pub async fn finalize_received_transaction<
     T: WalletBackend,
-    U: TransactionBackend + Clone,
-    V: OutputManagerBackend + Clone,
+    U: TransactionBackend,
+    V: OutputManagerBackend,
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
 ) -> Result<(), WalletError>
 {
-    wallet
-        .runtime
-        .block_on(wallet.transaction_service.test_finalize_transaction(tx_id))?;
+    wallet.transaction_service.test_finalize_transaction(tx_id).await?;
 
     Ok(())
 }
@@ -778,19 +807,17 @@ pub fn finalize_received_transaction<
 /// the event when a CompletedTransaction that is in the Complete status is broadcast to the Mempool and its status
 /// moves to Broadcast. After this function is called the status of the CompletedTransaction becomes `Mined` and the
 /// funds that were pending become spent and available respectively.
-pub fn broadcast_transaction<
+pub async fn broadcast_transaction<
     T: WalletBackend,
-    U: TransactionBackend + Clone,
-    V: OutputManagerBackend + Clone,
+    U: TransactionBackend,
+    V: OutputManagerBackend,
     W: ContactsBackend,
 >(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
 ) -> Result<(), WalletError>
 {
-    wallet
-        .runtime
-        .block_on(wallet.transaction_service.test_broadcast_transaction(tx_id))?;
+    wallet.transaction_service.test_broadcast_transaction(tx_id).await?;
 
     Ok(())
 }
@@ -799,19 +826,12 @@ pub fn broadcast_transaction<
 /// the event when a CompletedTransaction that is in the Broadcast status, is in a mempool but not mined, beocmes
 /// mined/confirmed. After this function is called the status of the CompletedTransaction becomes `Mined` and the funds
 /// that were pending become spent and available respectively.
-pub fn mine_transaction<
-    T: WalletBackend,
-    U: TransactionBackend + Clone,
-    V: OutputManagerBackend + Clone,
-    W: ContactsBackend,
->(
+pub async fn mine_transaction<T: WalletBackend, U: TransactionBackend, V: OutputManagerBackend, W: ContactsBackend>(
     wallet: &mut Wallet<T, U, V, W>,
     tx_id: TxId,
 ) -> Result<(), WalletError>
 {
-    wallet
-        .runtime
-        .block_on(wallet.transaction_service.test_mine_transaction(tx_id))?;
+    wallet.transaction_service.test_mine_transaction(tx_id).await?;
 
     Ok(())
 }

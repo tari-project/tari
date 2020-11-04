@@ -146,22 +146,6 @@ impl ConnectionManagerMock {
             },
             CancelDial(_) => {},
             NotifyListening(_reply_tx) => {},
-            GetActiveConnection(node_id, reply_tx) => {
-                reply_tx
-                    .send(self.state.active_conns.lock().await.get(&node_id).map(Clone::clone))
-                    .unwrap();
-            },
-            GetActiveConnections(reply_tx) => {
-                reply_tx
-                    .send(self.state.active_conns.lock().await.values().cloned().collect())
-                    .unwrap();
-            },
-            GetNumActiveConnections(reply_tx) => {
-                reply_tx.send(self.state.active_conns.lock().await.len()).unwrap();
-            },
-            DisconnectPeer(node_id) => {
-                let _ = self.state.active_conns.lock().await.remove(&node_id);
-            },
         }
     }
 }

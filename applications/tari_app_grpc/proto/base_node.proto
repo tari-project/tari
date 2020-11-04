@@ -26,7 +26,7 @@ import "google/protobuf/wrappers.proto";
 import "google/protobuf/timestamp.proto";
 import "types.proto";
 
-package tari.base_node;
+package tari.rpc;
 
 // The gRPC interface for interacting with the base node.
 service BaseNode {
@@ -56,6 +56,8 @@ service BaseNode {
     rpc SubmitBlock(Block) returns (Empty);
     // Get the base node tip information
     rpc GetTipInfo(Empty) returns (TipInfoResponse);
+    // Search for blocks containing the specified kernels
+    rpc SearchKernels(SearchKernelsRequest) returns (stream HistoricalBlock);
 }
 
 /// return type of GetTipInfo
@@ -65,6 +67,7 @@ message TipInfoResponse{
 /// return type of GetNewBlockTemplate
 message NewBlockTemplateResponse{
     NewBlockTemplate new_block_template = 1;
+    uint64 block_reward = 2;
 }
 
 /// An Empty placeholder for endpoints without request parameters
@@ -157,7 +160,7 @@ message ListHeadersRequest {
 
 // The request used for querying blocks in the base node's current best chain. Currently only querying by height is
 // available. Multiple blocks may be queried.e.g. [189092,100023,122424]. The order in which they are returned is not
-// guarenteed.
+// guaranteed.
 message GetBlocksRequest {
   repeated uint64 heights = 1;
 }
@@ -183,17 +186,17 @@ message MetaData {
         // tracked (i.e. the database is in full archival mode).
         uint64 pruning_horizon = 4;
         // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
-        uint64 accumulated_difficulty = 5;
+        bytes accumulated_difficulty = 5;
 }
 
 // This is the message that is returned for a miner after it asks for a new block.
 message GetNewBlockResult{
-    // This is the header hash of the complated block
+    // This is the header hash of the completed block
     bytes block_hash = 1;
     // This is the completed block
     Block block = 2;
     // This is the merge_mining hash of the completed block.
-    MinerData mining_data = 3;
+    MinerData miner_data = 3;
 }
 
 // This is mining data for the miner asking for a new block
@@ -201,5 +204,10 @@ message MinerData{
     PowAlgo algo = 1;
     uint64 target_difficulty = 2;
     uint64 reward = 3;
-    bytes mergemining_hash =4;
+    bytes merge_mining_hash =4;
+}
+
+// This is the request type for the Search Kernels rpc
+message SearchKernelsRequest{
+    repeated Signature signatures = 1;
 }

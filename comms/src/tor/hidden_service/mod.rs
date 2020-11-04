@@ -33,10 +33,11 @@ use crate::{
     transports::{SocksConfig, SocksTransport},
 };
 use serde_derive::{Deserialize, Serialize};
-use tari_shutdown::Shutdown;
+use tari_shutdown::OptionalShutdownSignal;
 
 /// Handle for a Tor Hidden Service. This handle keeps the session to the Tor control port alive.
 /// Once this is dropped, the hidden service will cease to be accessible.
+#[derive(Clone)]
 pub struct HiddenService {
     /// The identity of the hidden service
     pub(super) identity: TorIdentity,
@@ -47,7 +48,7 @@ pub struct HiddenService {
     /// The address where incoming traffic to the `onion_addr` will be forwarded to.
     pub(super) proxied_addr: Multiaddr,
     /// Shutdown signal for hidden service
-    pub(super) shutdown: Shutdown,
+    pub(super) shutdown_signal: OptionalShutdownSignal,
 }
 
 impl HiddenService {

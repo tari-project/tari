@@ -22,7 +22,7 @@
 
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
-use std::iter::repeat_with;
+use std::{iter::repeat_with, sync::Arc};
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{BlockAddResult, BlockchainBackend, BlockchainDatabase, ChainStorageError},
@@ -48,6 +48,7 @@ use tari_crypto::{
 use tari_mmr::MutableMmr;
 
 const MAINNET: Network = Network::MainNet;
+const RIDCULLY: Network = Network::Ridcully;
 
 pub fn create_coinbase(
     factories: &CryptoFactories,
@@ -87,11 +88,12 @@ fn genesis_template(
 }
 
 // This is a helper function to generate and print out a block that can be used as the genesis block.
+// #[test]
 pub fn create_act_gen_block() {
-    let network = MAINNET;
+    let network = RIDCULLY;
     let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let factories = CryptoFactories::default();
-    let mut header = BlockHeader::new(consensus_manager.consensus_constants().blockchain_version());
+    let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
     let value = consensus_manager.emission_schedule().block_reward(0);
     let features = OutputFeatures::create_coinbase(1);
     let utxo = OutputBuilder::new()
@@ -192,11 +194,11 @@ pub fn create_genesis_block_with_utxos(
 pub fn chain_block(
     prev_block: &Block,
     transactions: Vec<Transaction>,
-    constants: &ConsensusConstants,
+    consensus: &ConsensusManager,
 ) -> NewBlockTemplate
 {
-    let mut header = BlockHeader::from_previous(&prev_block.header);
-    header.version = constants.blockchain_version();
+    let mut header = BlockHeader::from_previous(&prev_block.header).unwrap();
+    header.version = consensus.consensus_constants(header.height).blockchain_version();
     NewBlockTemplate::from(header.into_builder().with_transactions(transactions).build())
 }
 
@@ -206,11 +208,11 @@ pub fn chain_block_with_coinbase(
     transactions: Vec<Transaction>,
     coinbase_utxo: TransactionOutput,
     coinbase_kernel: TransactionKernel,
-    constants: &ConsensusConstants,
+    consensus: &ConsensusManager,
 ) -> NewBlockTemplate
 {
-    let mut header = BlockHeader::from_previous(&prev_block.header);
-    header.version = constants.blockchain_version();
+    let mut header = BlockHeader::from_previous(&prev_block.header).unwrap();
+    header.version = consensus.consensus_constants(header.height).blockchain_version();
     NewBlockTemplate::from(
         header
             .into_builder()
@@ -226,15 +228,15 @@ pub fn append_block<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     prev_block: &Block,
     txns: Vec<Transaction>,
-    consensus_constants: &ConsensusConstants,
+    consensus: &ConsensusManager,
     achieved_difficulty: Difficulty,
 ) -> Result<Block, ChainStorageError>
 {
-    let template = chain_block(prev_block, txns, consensus_constants);
+    let template = chain_block(prev_block, txns, consensus);
     let mut block = db.calculate_mmr_roots(template)?;
     block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
-    db.add_block(block.clone())?;
+    db.add_block(Arc::new(block.clone()))?;
     Ok(block)
 }
 
@@ -254,19 +256,13 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
         &factories,
         coinbase_value,
-        height + consensus_manager.consensus_constants().coinbase_lock_height(),
+        height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
     );
-    let template = chain_block_with_coinbase(
-        prev_block,
-        txns,
-        coinbase_utxo,
-        coinbase_kernel,
-        consensus_manager.consensus_constants(),
-    );
+    let template = chain_block_with_coinbase(prev_block, txns, coinbase_utxo, coinbase_kernel, consensus_manager);
     let mut block = db.calculate_mmr_roots(template)?;
     block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
-    db.add_block(block.clone())?;
+    db.add_block(Arc::new(block.clone()))?;
     Ok((block, coinbase_output))
 }
 
@@ -277,7 +273,7 @@ pub fn generate_new_block<B: BlockchainBackend>(
     blocks: &mut Vec<Block>,
     outputs: &mut Vec<Vec<UnblindedOutput>>,
     schemas: Vec<TransactionSchema>,
-    consensus_constants: &ConsensusConstants,
+    consensus: &ConsensusManager,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let mut txns = Vec::new();
@@ -290,7 +286,7 @@ pub fn generate_new_block<B: BlockchainBackend>(
         keys.push(param);
     }
     outputs.push(block_utxos);
-    generate_block(db, blocks, txns, consensus_constants)
+    generate_block(db, blocks, txns, consensus)
 }
 
 pub fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
@@ -299,7 +295,7 @@ pub fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
     outputs: &mut Vec<Vec<UnblindedOutput>>,
     schemas: Vec<TransactionSchema>,
     achieved_difficulty: Difficulty,
-    consensus_constants: &ConsensusConstants,
+    consensus: &ConsensusManager,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let mut txns = Vec::new();
@@ -310,7 +306,7 @@ pub fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
         block_utxos.append(&mut utxos);
     }
     outputs.push(block_utxos);
-    generate_block_with_achieved_difficulty(db, blocks, txns, achieved_difficulty, consensus_constants)
+    generate_block_with_achieved_difficulty(db, blocks, txns, achieved_difficulty, consensus)
 }
 
 /// Generate a new block using the given transaction schema and coinbase value and add it to the provided database.
@@ -322,7 +318,7 @@ pub fn generate_new_block_with_coinbase<B: BlockchainBackend>(
     outputs: &mut Vec<Vec<UnblindedOutput>>,
     schemas: Vec<TransactionSchema>,
     coinbase_value: MicroTari,
-    consensus_constants: &ConsensusConstants,
+    consensus: &ConsensusManager,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let mut txns = Vec::new();
@@ -338,12 +334,18 @@ pub fn generate_new_block_with_coinbase<B: BlockchainBackend>(
     block_utxos.push(coinbase_output);
 
     outputs.push(block_utxos);
-    generate_block_with_coinbase(db, blocks, txns, coinbase_utxo, coinbase_kernel, consensus_constants)
+    generate_block_with_coinbase(db, blocks, txns, coinbase_utxo, coinbase_kernel, consensus)
 }
 
 pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
-    while header.achieved_difficulty() != achieved_difficulty {
+    let mut num_tries = 0;
+    while header.achieved_difficulty().unwrap() != achieved_difficulty {
         header.nonce += 1;
+        num_tries += 1;
+        if num_tries > 10_000_000 {
+            // Just in case we burn a hole in the CI server
+            panic!("Could not find a nonce for achieved difficulty in time");
+        }
     }
 }
 
@@ -355,12 +357,13 @@ pub fn generate_block<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     blocks: &mut Vec<Block>,
     transactions: Vec<Transaction>,
-    consensus_constants: &ConsensusConstants,
+    consensus: &ConsensusManager,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
-    let template = chain_block(&blocks.last().unwrap(), transactions, consensus_constants);
+    let prev_block = blocks.last().unwrap();
+    let template = chain_block(prev_block, transactions, consensus);
     let new_block = db.calculate_mmr_roots(template)?;
-    let result = db.add_block(new_block.clone());
+    let result = db.add_block(new_block.clone().into());
     if let Ok(BlockAddResult::Ok) = result {
         blocks.push(new_block);
     }
@@ -372,14 +375,14 @@ pub fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
     blocks: &mut Vec<Block>,
     transactions: Vec<Transaction>,
     achieved_difficulty: Difficulty,
-    consensus_constants: &ConsensusConstants,
+    consensus: &ConsensusManager,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
-    let template = chain_block(&blocks.last().unwrap(), transactions, consensus_constants);
+    let template = chain_block(&blocks.last().unwrap(), transactions, consensus);
     let mut new_block = db.calculate_mmr_roots(template)?;
     new_block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut new_block.header, achieved_difficulty);
-    let result = db.add_block(new_block.clone());
+    let result = db.add_block(new_block.clone().into());
     if let Ok(BlockAddResult::Ok) = result {
         blocks.push(new_block);
     }
@@ -394,7 +397,7 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
     transactions: Vec<Transaction>,
     coinbase_utxo: TransactionOutput,
     coinbase_kernel: TransactionKernel,
-    consensus_constants: &ConsensusConstants,
+    consensus: &ConsensusManager,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let template = chain_block_with_coinbase(
@@ -402,10 +405,10 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
         transactions,
         coinbase_utxo,
         coinbase_kernel,
-        consensus_constants,
+        consensus,
     );
     let new_block = db.calculate_mmr_roots(template)?;
-    let result = db.add_block(new_block.clone());
+    let result = db.add_block(new_block.clone().into());
     if let Ok(BlockAddResult::Ok) = result {
         blocks.push(new_block);
     }
@@ -415,14 +418,14 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
 pub fn construct_chained_blocks<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     block0: Block,
-    consensus_constants: &ConsensusConstants,
+    consensus: &ConsensusManager,
     n: usize,
 ) -> Vec<Block>
 {
     let mut prev_block = block0;
 
     repeat_with(|| {
-        let block = append_block(db, &prev_block, vec![], consensus_constants, 1.into()).unwrap();
+        let block = append_block(db, &prev_block, vec![], consensus, 1.into()).unwrap();
         prev_block = block.clone();
         block
     })

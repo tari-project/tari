@@ -35,7 +35,7 @@ use crate::{
     types::{CommsDatabase, CommsPublicKey},
 };
 use multiaddr::Multiaddr;
-use std::{fmt, time::Duration};
+use std::{fmt, fs::File, time::Duration};
 use tari_storage::{lmdb_store::LMDBDatabase, IterationResult};
 use tokio::sync::RwLock;
 
@@ -43,14 +43,16 @@ use tokio::sync::RwLock;
 /// It also provides functionality to add, find and delete peers.
 pub struct PeerManager {
     peer_storage: RwLock<PeerStorage<KeyValueWrapper<CommsDatabase>>>,
+    _file_lock: Option<File>,
 }
 
 impl PeerManager {
     /// Constructs a new empty PeerManager
-    pub fn new(database: CommsDatabase) -> Result<PeerManager, PeerManagerError> {
+    pub fn new(database: CommsDatabase, file_lock: Option<File>) -> Result<PeerManager, PeerManagerError> {
         let storage = PeerStorage::new_indexed(KeyValueWrapper::new(database))?;
         Ok(Self {
             peer_storage: RwLock::new(storage),
+            _file_lock: file_lock,
         })
     }
 
@@ -231,17 +233,32 @@ impl PeerManager {
     }
 
     /// Ban the peer for a length of time specified by the duration
-    pub async fn ban_peer(&self, public_key: &CommsPublicKey, duration: Duration) -> Result<NodeId, PeerManagerError> {
-        self.peer_storage.write().await.ban_peer(public_key, duration)
+    pub async fn ban_peer(
+        &self,
+        public_key: &CommsPublicKey,
+        duration: Duration,
+        reason: String,
+    ) -> Result<NodeId, PeerManagerError>
+    {
+        self.peer_storage.write().await.ban_peer(public_key, duration, reason)
     }
 
     /// Ban the peer for a length of time specified by the duration
-    pub async fn ban_peer_by_node_id(&self, node_id: &NodeId, duration: Duration) -> Result<NodeId, PeerManagerError> {
-        self.peer_storage.write().await.ban_peer_by_node_id(node_id, duration)
+    pub async fn ban_peer_by_node_id(
+        &self,
+        node_id: &NodeId,
+        duration: Duration,
+        reason: String,
+    ) -> Result<NodeId, PeerManagerError>
+    {
+        self.peer_storage
+            .write()
+            .await
+            .ban_peer_by_node_id(node_id, duration, reason)
     }
 
-    /// Changes the offline flag bit of the peer
-    pub async fn set_offline(&self, node_id: &NodeId, is_offline: bool) -> Result<NodeId, PeerManagerError> {
+    /// Changes the offline flag bit of the peer. Return the previous offline state.
+    pub async fn set_offline(&self, node_id: &NodeId, is_offline: bool) -> Result<bool, PeerManagerError> {
         self.peer_storage.write().await.set_offline(node_id, is_offline)
     }
 
@@ -272,6 +289,18 @@ impl PeerManager {
     pub async fn get_peer_features(&self, node_id: &NodeId) -> Result<PeerFeatures, PeerManagerError> {
         let peer = self.find_by_node_id(node_id).await?;
         Ok(peer.features)
+    }
+
+    /// This will store metadata inside of the metadata field in the peer provided by the nodeID.
+    /// It will return None if the value was empty and the old value if the value was updated
+    pub async fn set_peer_metadata(
+        &self,
+        node_id: &NodeId,
+        key: u8,
+        data: Vec<u8>,
+    ) -> Result<Option<Vec<u8>>, PeerManagerError>
+    {
+        self.peer_storage.write().await.set_peer_metadata(node_id, key, data)
     }
 }
 
@@ -311,7 +340,7 @@ mod test {
             Default::default(),
         );
         if ban_flag {
-            peer.ban_for(Duration::from_secs(1000));
+            peer.ban_for(Duration::from_secs(1000), "".to_string());
         }
         peer
     }
@@ -319,7 +348,7 @@ mod test {
     #[runtime::test_basic]
     async fn get_broadcast_identities() {
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
         let mut test_peers = Vec::new();
         // Create 20 peers were the 1st and last one is bad
         test_peers.push(create_test_peer(true, PeerFeatures::COMMUNICATION_NODE));
@@ -431,7 +460,7 @@ mod test {
     async fn calc_region_threshold() {
         let n = 5;
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
         let network_region_node_id = create_test_peer(false, Default::default()).node_id;
         let mut test_peers = (0..10)
             .map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_NODE))
@@ -499,7 +528,7 @@ mod test {
     async fn closest_peers() {
         let n = 5;
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
         let network_region_node_id = create_test_peer(false, Default::default()).node_id;
         let test_peers = (0..10)
             .map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_NODE))
@@ -531,7 +560,7 @@ mod test {
 
     #[runtime::test_basic]
     async fn add_or_update_online_peer() {
-        let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
         let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
         peer.set_offline(true);
         peer.connection_stats.set_connection_failed();

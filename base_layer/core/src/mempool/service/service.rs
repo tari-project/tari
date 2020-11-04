@@ -25,9 +25,9 @@ use crate::{
         comms_interface::{BlockEvent, BlockEventReceiver},
         generate_request_key,
         RequestKey,
+        StateMachineHandle,
         WaitingRequests,
     },
-    chain_storage::BlockchainBackend,
     mempool::{
         proto,
         service::{
@@ -41,10 +41,7 @@ use crate::{
     transactions::{proto::types::Transaction as ProtoTransaction, transaction::Transaction},
 };
 use futures::{
-    channel::{
-        mpsc::{channel, Receiver, Sender, UnboundedReceiver},
-        oneshot::Sender as OneshotSender,
-    },
+    channel::{mpsc, oneshot::Sender as OneshotSender},
     pin_mut,
     stream::StreamExt,
     SinkExt,
@@ -61,66 +58,44 @@ use tari_comms_dht::{
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
-use tari_service_framework::RequestContext;
+use tari_service_framework::{reply_channel, reply_channel::RequestContext};
 use tokio::task;
 
 const LOG_TARGET: &str = "c::mempool::service::service";
 
 /// A convenience struct to hold all the Mempool service streams
 pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq> {
-    outbound_request_stream: SOutReq,
-    outbound_tx_stream: UnboundedReceiver<(Transaction, Vec<NodeId>)>,
-    inbound_request_stream: SInReq,
-    inbound_response_stream: SInRes,
-    inbound_transaction_stream: STxIn,
-    local_request_stream: SLocalReq,
-    block_event_stream: BlockEventReceiver,
-}
-
-impl<SOutReq, SInReq, SInRes, STxIn, SLocalReq> MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq> {
-    pub fn new(
-        outbound_request_stream: SOutReq,
-        outbound_tx_stream: UnboundedReceiver<(Transaction, Vec<NodeId>)>,
-        inbound_request_stream: SInReq,
-        inbound_response_stream: SInRes,
-        inbound_transaction_stream: STxIn,
-        local_request_stream: SLocalReq,
-        block_event_stream: BlockEventReceiver,
-    ) -> Self
-    {
-        Self {
-            outbound_request_stream,
-            outbound_tx_stream,
-            inbound_request_stream,
-            inbound_response_stream,
-            inbound_transaction_stream,
-            local_request_stream,
-            block_event_stream,
-        }
-    }
+    pub outbound_request_stream: SOutReq,
+    pub outbound_tx_stream: mpsc::UnboundedReceiver<(Transaction, Vec<NodeId>)>,
+    pub inbound_request_stream: SInReq,
+    pub inbound_response_stream: SInRes,
+    pub inbound_transaction_stream: STxIn,
+    pub local_request_stream: SLocalReq,
+    pub block_event_stream: BlockEventReceiver,
+    pub request_receiver: reply_channel::TryReceiver<MempoolRequest, MempoolResponse, MempoolServiceError>,
 }
 
 /// The Mempool Service is responsible for handling inbound requests and responses and for sending new requests to the
 /// Mempools of remote Base nodes.
-pub struct MempoolService<B: BlockchainBackend + 'static> {
+pub struct MempoolService {
     outbound_message_service: OutboundMessageRequester,
-    inbound_handlers: MempoolInboundHandlers<B>,
+    inbound_handlers: MempoolInboundHandlers,
     waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>>,
-    timeout_sender: Sender<RequestKey>,
-    timeout_receiver_stream: Option<Receiver<RequestKey>>,
+    timeout_sender: mpsc::Sender<RequestKey>,
+    timeout_receiver_stream: Option<mpsc::Receiver<RequestKey>>,
     config: MempoolServiceConfig,
+    state_machine: StateMachineHandle,
 }
 
-impl<B> MempoolService<B>
-where B: BlockchainBackend + 'static
-{
+impl MempoolService {
     pub fn new(
         outbound_message_service: OutboundMessageRequester,
-        inbound_handlers: MempoolInboundHandlers<B>,
+        inbound_handlers: MempoolInboundHandlers,
         config: MempoolServiceConfig,
+        state_machine: StateMachineHandle,
     ) -> Self
     {
-        let (timeout_sender, timeout_receiver) = channel(100);
+        let (timeout_sender, timeout_receiver) = mpsc::channel(100);
         Self {
             outbound_message_service,
             inbound_handlers,
@@ -128,6 +103,7 @@ where B: BlockchainBackend + 'static
             timeout_sender,
             timeout_receiver_stream: Some(timeout_receiver),
             config,
+            state_machine,
         }
     }
 
@@ -144,8 +120,7 @@ where B: BlockchainBackend + 'static
     {
         let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
-        let outbound_tx_stream = streams.outbound_tx_stream.fuse();
-        pin_mut!(outbound_tx_stream);
+        let mut outbound_tx_stream = streams.outbound_tx_stream.fuse();
         let inbound_request_stream = streams.inbound_request_stream.fuse();
         pin_mut!(inbound_request_stream);
         let inbound_response_stream = streams.inbound_response_stream.fuse();
@@ -154,17 +129,22 @@ where B: BlockchainBackend + 'static
         pin_mut!(inbound_transaction_stream);
         let local_request_stream = streams.local_request_stream.fuse();
         pin_mut!(local_request_stream);
-        let block_event_stream = streams.block_event_stream.fuse();
-        pin_mut!(block_event_stream);
-        let timeout_receiver_stream = self
+        let mut block_event_stream = streams.block_event_stream.fuse();
+        let mut timeout_receiver_stream = self
             .timeout_receiver_stream
             .take()
             .expect("Mempool Service initialized without timeout_receiver_stream")
             .fuse();
-        pin_mut!(timeout_receiver_stream);
+        let mut request_receiver = streams.request_receiver;
 
         loop {
             futures::select! {
+                // Requests sent from the handle
+                request = request_receiver.select_next_some() => {
+                    let (request, reply) = request.split();
+                    let _ = reply.send(self.handle_request(request).await);
+                },
+
                 // Outbound request messages from the OutboundMempoolServiceInterface
                 outbound_request_context = outbound_request_stream.select_next_some() => {
                     self.spawn_handle_outbound_request(outbound_request_context);
@@ -187,7 +167,7 @@ where B: BlockchainBackend + 'static
 
                 // Incoming transaction messages from the Comms layer
                 transaction_msg = inbound_transaction_stream.select_next_some() => {
-                    self.spawn_handle_incoming_tx(transaction_msg);
+                    self.spawn_handle_incoming_tx(transaction_msg).await;
                 }
 
                 // Incoming local request messages from the LocalMempoolServiceInterface and other local services
@@ -216,6 +196,11 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
+    async fn handle_request(&mut self, request: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
+        // TODO: Move db calls into MempoolService
+        self.inbound_handlers.handle_request(request).await
+    }
+
     fn spawn_handle_outbound_request(
         &self,
         request_context: RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
@@ -227,7 +212,7 @@ where B: BlockchainBackend + 'static
         let config = self.config;
         task::spawn(async move {
             let (request, reply_tx) = request_context.split();
-            let _ = handle_outbound_request(
+            let result = handle_outbound_request(
                 outbound_message_service,
                 waiting_requests,
                 timeout_sender,
@@ -235,26 +220,21 @@ where B: BlockchainBackend + 'static
                 request,
                 config,
             )
-            .await
-            .or_else(|err| {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to handle outbound request message: {:?}", err
-                );
-                Err(err)
-            });
+            .await;
+
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle outbound request message: {:?}", e);
+            }
         });
     }
 
     fn spawn_handle_outbound_tx(&self, tx: Transaction, excluded_peers: Vec<NodeId>) {
         let outbound_message_service = self.outbound_message_service.clone();
         task::spawn(async move {
-            let _ = handle_outbound_tx(outbound_message_service, tx, excluded_peers)
-                .await
-                .or_else(|err| {
-                    error!(target: LOG_TARGET, "Failed to handle outbound tx message {:?}", err);
-                    Err(err)
-                });
+            let result = handle_outbound_tx(outbound_message_service, tx, excluded_peers).await;
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle outbound tx message {:?}", e);
+            }
         });
     }
 
@@ -262,43 +242,50 @@ where B: BlockchainBackend + 'static
         let inbound_handlers = self.inbound_handlers.clone();
         let outbound_message_service = self.outbound_message_service.clone();
         task::spawn(async move {
-            let _ = handle_incoming_request(inbound_handlers, outbound_message_service, domain_msg)
-                .await
-                .or_else(|err| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to handle incoming request message: {:?}", err
-                    );
-                    Err(err)
-                });
+            let result = handle_incoming_request(inbound_handlers, outbound_message_service, domain_msg).await;
+
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle incoming request message: {:?}", e);
+            }
         });
     }
 
     fn spawn_handle_incoming_response(&self, domain_msg: DomainMessage<proto::mempool::MempoolServiceResponse>) {
         let waiting_requests = self.waiting_requests.clone();
         task::spawn(async move {
-            let _ = handle_incoming_response(waiting_requests, domain_msg.into_inner())
-                .await
-                .or_else(|err| {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to handle incoming response message: {:?}", err
-                    );
-                    Err(err)
-                });
+            let result = handle_incoming_response(waiting_requests, domain_msg.into_inner()).await;
+
+            if let Err(e) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to handle incoming response message: {:?}", e
+                );
+            }
         });
     }
 
-    fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
+    async fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
+        // Determine if we are bootstrapped
+        let status_watch = self.state_machine.get_status_info_watch();
+
+        if !(*status_watch.borrow()).bootstrapped {
+            debug!(
+                target: LOG_TARGET,
+                "Transaction with Message {} from peer `{}` not processed while busy with initial sync.",
+                tx_msg.dht_header.message_tag,
+                tx_msg.source_peer.node_id.short_str(),
+            );
+            return;
+        }
         let inbound_handlers = self.inbound_handlers.clone();
         task::spawn(async move {
-            let _ = handle_incoming_tx(inbound_handlers, tx_msg).await.or_else(|err| {
+            let result = handle_incoming_tx(inbound_handlers, tx_msg).await;
+            if let Err(e) = result {
                 error!(
                     target: LOG_TARGET,
-                    "Failed to handle incoming transaction message: {:?}", err
+                    "Failed to handle incoming transaction message: {:?}", e
                 );
-                Err(err)
-            });
+            }
         });
     }
 
@@ -310,43 +297,41 @@ where B: BlockchainBackend + 'static
         let mut inbound_handlers = self.inbound_handlers.clone();
         task::spawn(async move {
             let (request, reply_tx) = request_context.split();
-            let _ = reply_tx
-                .send(inbound_handlers.handle_request(request).await)
-                .or_else(|err| {
-                    error!(
-                        target: LOG_TARGET,
-                        "MempoolService failed to send reply to local request {:?}", err
-                    );
-                    Err(err)
-                });
+            let result = reply_tx.send(inbound_handlers.handle_request(request).await);
+
+            if let Err(e) = result {
+                error!(
+                    target: LOG_TARGET,
+                    "MempoolService failed to send reply to local request {:?}", e
+                );
+            }
         });
     }
 
     fn spawn_handle_block_event(&self, block_event: Arc<BlockEvent>) {
         let inbound_handlers = self.inbound_handlers.clone();
         task::spawn(async move {
-            let _ = handle_block_event(inbound_handlers, &block_event).await.or_else(|err| {
-                error!(target: LOG_TARGET, "Failed to handle base node block event: {:?}", err);
-                Err(err)
-            });
+            let result = handle_block_event(inbound_handlers, &block_event).await;
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle base node block event: {:?}", e);
+            }
         });
     }
 
     fn spawn_handle_request_timeout(&self, timeout_request_key: u64) {
         let waiting_requests = self.waiting_requests.clone();
         task::spawn(async move {
-            let _ = handle_request_timeout(waiting_requests, timeout_request_key)
-                .await
-                .or_else(|err| {
-                    error!(target: LOG_TARGET, "Failed to handle request timeout event: {:?}", err);
-                    Err(err)
-                });
+            let result = handle_request_timeout(waiting_requests, timeout_request_key).await;
+
+            if let Err(e) = result {
+                error!(target: LOG_TARGET, "Failed to handle request timeout event: {:?}", e);
+            }
         });
     }
 }
 
-async fn handle_incoming_request<B: BlockchainBackend + 'static>(
-    mut inbound_handlers: MempoolInboundHandlers<B>,
+async fn handle_incoming_request(
+    mut inbound_handlers: MempoolInboundHandlers,
     mut outbound_message_service: OutboundMessageRequester,
     domain_request_msg: DomainMessage<proto::MempoolServiceRequest>,
 ) -> Result<(), MempoolServiceError>
@@ -395,12 +380,12 @@ async fn handle_incoming_response(
             &request_key,
             started.elapsed().as_millis()
         );
-        let _ = reply_tx.send(Ok(response).or_else(|resp| {
+        let _ = reply_tx.send(Ok(response).map_err(|e| {
             warn!(
                 target: LOG_TARGET,
-                "Failed to finalize request (request key:{}): {:?}", &request_key, resp
+                "Failed to finalize request (request key:{}): {:?}", &request_key, e
             );
-            Err(resp)
+            e
         }));
     }
 
@@ -410,7 +395,7 @@ async fn handle_incoming_response(
 async fn handle_outbound_request(
     mut outbound_message_service: OutboundMessageRequester,
     waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>>,
-    timeout_sender: Sender<RequestKey>,
+    timeout_sender: mpsc::Sender<RequestKey>,
     reply_tx: OneshotSender<Result<MempoolResponse, MempoolServiceError>>,
     request: MempoolRequest,
     config: MempoolServiceConfig,
@@ -426,7 +411,7 @@ async fn handle_outbound_request(
         .send_random(
             1,
             NodeDestination::Unknown,
-            OutboundEncryption::None,
+            OutboundEncryption::ClearText,
             OutboundDomainMessage::new(TariMessageType::MempoolRequest, service_request),
         )
         .await;
@@ -440,12 +425,12 @@ async fn handle_outbound_request(
             Ok(())
         },
         Err(DhtOutboundError::NoMessagesQueued) => {
-            let _ = reply_tx.send(Err(MempoolServiceError::NoBootstrapNodesConfigured).or_else(|resp| {
+            let _ = reply_tx.send(Err(MempoolServiceError::NoBootstrapNodesConfigured).map_err(|e| {
                 error!(
                     target: LOG_TARGET,
                     "Failed to send outbound request as no bootstrap nodes were configured"
                 );
-                Err(resp)
+                e
             }));
 
             Ok(())
@@ -457,8 +442,8 @@ async fn handle_outbound_request(
     }
 }
 
-async fn handle_incoming_tx<B: BlockchainBackend + 'static>(
-    mut inbound_handlers: MempoolInboundHandlers<B>,
+async fn handle_incoming_tx(
+    mut inbound_handlers: MempoolInboundHandlers,
     domain_transaction_msg: DomainMessage<Transaction>,
 ) -> Result<(), MempoolServiceError>
 {
@@ -495,12 +480,13 @@ async fn handle_request_timeout(
             started.elapsed().as_millis()
         );
         let reply_msg = Err(MempoolServiceError::RequestTimedOut);
-        let _ = reply_tx.send(reply_msg.or_else(|resp| {
+
+        let _ = reply_tx.send(reply_msg.map_err(|e| {
             error!(
                 target: LOG_TARGET,
-                "Failed to send outbound request (request key: {}): {:?}", &request_key, resp
+                "Failed to send outbound request (request key: {}): {:?}", &request_key, e
             );
-            Err(resp)
+            e
         }));
     }
 
@@ -513,24 +499,25 @@ async fn handle_outbound_tx(
     exclude_peers: Vec<NodeId>,
 ) -> Result<(), MempoolServiceError>
 {
-    outbound_message_service
+    let result = outbound_message_service
         .propagate(
             NodeDestination::Unknown,
-            OutboundEncryption::None,
+            OutboundEncryption::ClearText,
             exclude_peers,
             OutboundDomainMessage::new(TariMessageType::NewTransaction, ProtoTransaction::from(tx)),
         )
-        .await
-        .or_else(|e| {
-            error!(target: LOG_TARGET, "Handle outbound tx failure. {:?}", e);
-            Err(e)
-        })
-        .map_err(|e| MempoolServiceError::OutboundMessageService(e.to_string()))
-        .map(|_| ())
+        .await;
+
+    if let Err(e) = result {
+        error!(target: LOG_TARGET, "Handle outbound tx failure. {:?}", e);
+        return Err(MempoolServiceError::OutboundMessageService(e.to_string()));
+    }
+
+    Ok(())
 }
 
-async fn handle_block_event<B: BlockchainBackend + 'static>(
-    mut inbound_handlers: MempoolInboundHandlers<B>,
+async fn handle_block_event(
+    mut inbound_handlers: MempoolInboundHandlers,
     block_event: &BlockEvent,
 ) -> Result<(), MempoolServiceError>
 {
@@ -538,7 +525,7 @@ async fn handle_block_event<B: BlockchainBackend + 'static>(
     Ok(())
 }
 
-fn spawn_request_timeout(mut timeout_sender: Sender<RequestKey>, request_key: RequestKey, timeout: Duration) {
+fn spawn_request_timeout(mut timeout_sender: mpsc::Sender<RequestKey>, request_key: RequestKey, timeout: Duration) {
     task::spawn(async move {
         tokio::time::delay_for(timeout).await;
         let _ = timeout_sender.send(request_key).await;

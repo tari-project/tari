@@ -23,17 +23,22 @@
 #[allow(dead_code)]
 mod helpers;
 
-use futures::{SinkExt, StreamExt};
+use futures::StreamExt;
 use helpers::{
     block_builders::create_genesis_block_with_coinbase_value,
     event_stream::event_stream_next,
     nodes::create_network_with_2_base_nodes_with_config,
 };
-use std::{sync::atomic::Ordering, time::Duration};
-use tari_broadcast_channel::{bounded, Publisher, Subscriber};
+use std::{
+    sync::{atomic::Ordering, Arc},
+    time::Duration,
+};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
-    base_node::{service::BaseNodeServiceConfig, states::StateEvent},
+    base_node::{
+        service::BaseNodeServiceConfig,
+        state_machine_service::states::{ListeningInfo, StateEvent, StateInfo, StatusInfo},
+    },
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusManagerBuilder, Network},
     mempool::{MempoolServiceConfig, TxStorageResponse},
@@ -46,7 +51,7 @@ use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType
 use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, sync::broadcast};
 
 #[test]
 fn mining() {
@@ -56,12 +61,12 @@ fn mining() {
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =
-        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
+        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
-        .with_block(block0)
+        .with_consensus_constants(consensus_constants[0].clone())
+        .with_block(block0.clone())
         .build();
-    let (alice_node, mut bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
+    let (mut alice_node, mut bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
@@ -71,7 +76,10 @@ fn mining() {
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
     );
-
+    alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
     // Bob sends Alice a transaction, the transaction is received by the mempool service. The mempool service validates
     // it and sends it to the mempool where it is added to the unconfirmed pool.
     let (tx1, _) = schema_to_transaction(&vec![txn_schema!(from: vec![utxos0], to: vec![1 * T, 1 * T])]);
@@ -103,7 +111,7 @@ fn mining() {
     let shutdown = Shutdown::new();
     let mut miner = Miner::new(shutdown.to_signal(), consensus_manager, &alice_node.local_nci, 1);
     miner.enable_mining_flag().store(true, Ordering::Relaxed);
-    let (mut state_event_sender, state_event_receiver): (Publisher<_>, Subscriber<_>) = bounded(1, 112);
+    let (state_event_sender, state_event_receiver) = broadcast::channel(1);
     miner.subscribe_to_node_state_events(state_event_receiver);
     miner.subscribe_to_mempool_state_events(alice_node.local_mp_interface.get_mempool_state_event_stream());
     let mut miner_utxo_stream = miner.get_utxo_receiver_channel().fuse();
@@ -111,7 +119,9 @@ fn mining() {
 
     runtime.block_on(async {
         // Simulate the BlockSync event
-        assert!(state_event_sender.send(StateEvent::BlocksSynchronized).await.is_ok());
+        state_event_sender
+            .send(Arc::new(StateEvent::BlocksSynchronized))
+            .unwrap();
         // Wait for miner to finish mining block 1
         assert!(event_stream_next(&mut miner_utxo_stream, Duration::from_secs(20))
             .await
@@ -140,8 +150,5 @@ fn mining() {
             max_attempts = 10,
             interval = Duration::from_secs(1),
         );
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }

@@ -28,6 +28,7 @@ use crate::{
 };
 use bitflags::bitflags;
 use log::*;
+use tari_shutdown::{OptionalShutdownSignal, ShutdownSignal};
 use thiserror::Error;
 
 const LOG_TARGET: &str = "comms::tor::hidden_service";
@@ -62,6 +63,7 @@ pub struct HiddenServiceBuilder {
     control_server_auth: Authentication,
     socks_auth: socks::Authentication,
     hs_flags: HsFlags,
+    shutdown_signal: OptionalShutdownSignal,
 }
 
 impl HiddenServiceBuilder {
@@ -91,6 +93,13 @@ impl HiddenServiceBuilder {
 
     /// The address of the SOCKS5 server. If an address is None, the hidden service builder will use the SOCKS
     /// listener address as given by the tor control port.
+    pub fn with_shutdown_signal(mut self, shutdown_signal: ShutdownSignal) -> Self {
+        self.shutdown_signal.set(shutdown_signal);
+        self
+    }
+
+    /// The address of the SOCKS5 server. If an address is None, the hidden service builder will use the SOCKS
+    /// listener address as given by the tor control port.
     pub fn with_socks_address_override(mut self, socks_addr_override: Option<Multiaddr>) -> Self {
         self.socks_addr_override = socks_addr_override;
         self
@@ -106,7 +115,7 @@ impl HiddenServiceBuilder {
 
 impl HiddenServiceBuilder {
     /// Create a HiddenService with the given builder parameters.
-    pub async fn finish(self) -> Result<HiddenServiceController, HiddenServiceBuilderError> {
+    pub async fn build(self) -> Result<HiddenServiceController, HiddenServiceBuilderError> {
         let proxied_port_mapping = self
             .port_mapping
             .ok_or(HiddenServiceBuilderError::ProxiedPortMappingNotProvided)?;
@@ -129,6 +138,7 @@ impl HiddenServiceBuilder {
             self.socks_auth,
             self.identity,
             self.hs_flags,
+            self.shutdown_signal,
         );
 
         Ok(controller)

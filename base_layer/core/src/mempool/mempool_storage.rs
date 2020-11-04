@@ -22,7 +22,6 @@
 
 use crate::{
     blocks::Block,
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
     mempool::{
         error::MempoolError,
         mempool::MempoolValidators,
@@ -47,27 +46,23 @@ pub const LOG_TARGET: &str = "c::mp::mempool";
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
 /// that have recently been included in a block.
-pub struct MempoolStorage<T> {
-    blockchain_db: BlockchainDatabase<T>,
+pub struct MempoolStorage {
     unconfirmed_pool: UnconfirmedPool,
-    orphan_pool: OrphanPool<T>,
+    orphan_pool: OrphanPool,
     pending_pool: PendingPool,
     reorg_pool: ReorgPool,
-    validator: Arc<Validator<Transaction, T>>,
+    validator: Arc<Validator<Transaction>>,
 }
 
-impl<T> MempoolStorage<T>
-where T: BlockchainBackend
-{
+impl MempoolStorage {
     /// Create a new Mempool with an UnconfirmedPool, OrphanPool, PendingPool and ReOrgPool.
-    pub fn new(blockchain_db: BlockchainDatabase<T>, config: MempoolConfig, validators: MempoolValidators<T>) -> Self {
+    pub fn new(config: MempoolConfig, validators: MempoolValidators) -> Self {
         let (mempool_validator, orphan_validator) = validators.into_validators();
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool),
-            orphan_pool: OrphanPool::new(config.orphan_pool, orphan_validator, blockchain_db.clone()),
+            orphan_pool: OrphanPool::new(config.orphan_pool, orphan_validator),
             pending_pool: PendingPool::new(config.pending_pool),
             reorg_pool: ReorgPool::new(config.reorg_pool),
-            blockchain_db,
             validator: Arc::new(mempool_validator),
         }
     }
@@ -78,12 +73,14 @@ where T: BlockchainBackend
         debug!(
             target: LOG_TARGET,
             "Inserting tx into mempool: {}",
-            tx.body.kernels()[0].excess_sig.get_signature().to_hex()
+            tx.body
+                .kernels()
+                .first()
+                .map(|k| k.excess_sig.get_signature().to_hex())
+                .unwrap_or_else(|| "None".into())
         );
-        // The transaction is already internally consistent
-        let db = self.blockchain_db.db_read_access()?;
 
-        match self.validator.validate(&tx, &db) {
+        match self.validator.validate(&tx) {
             Ok(()) => {
                 self.unconfirmed_pool.insert(tx)?;
                 Ok(TxStorageResponse::UnconfirmedPool)
@@ -113,7 +110,7 @@ where T: BlockchainBackend
     }
 
     /// Update the Mempool based on the received published block.
-    pub fn process_published_block(&mut self, published_block: Block) -> Result<(), MempoolError> {
+    pub fn process_published_block(&mut self, published_block: Arc<Block>) -> Result<(), MempoolError> {
         trace!(target: LOG_TARGET, "Mempool processing new block: {}", published_block);
         // Move published txs to ReOrgPool and discard double spends
         self.reorg_pool.insert_txs(
@@ -138,7 +135,7 @@ where T: BlockchainBackend
     }
 
     // Update the Mempool based on the received set of published blocks.
-    fn process_published_blocks(&mut self, published_blocks: Vec<Block>) -> Result<(), MempoolError> {
+    fn process_published_blocks(&mut self, published_blocks: Vec<Arc<Block>>) -> Result<(), MempoolError> {
         for published_block in published_blocks {
             self.process_published_block(published_block)?;
         }
@@ -147,7 +144,12 @@ where T: BlockchainBackend
 
     /// In the event of a ReOrg, resubmit all ReOrged transactions into the Mempool and process each newly introduced
     /// block from the latest longest chain.
-    pub fn process_reorg(&mut self, removed_blocks: Vec<Block>, new_blocks: Vec<Block>) -> Result<(), MempoolError> {
+    pub fn process_reorg(
+        &mut self,
+        removed_blocks: Vec<Arc<Block>>,
+        new_blocks: Vec<Arc<Block>>,
+    ) -> Result<(), MempoolError>
+    {
         debug!(target: LOG_TARGET, "Mempool processing reorg");
         for block in &removed_blocks {
             debug!(

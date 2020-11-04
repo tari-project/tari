@@ -8,6 +8,12 @@ pub struct TransactionFinalizedMessage {
     pub transaction: ::std::option::Option<super::types::Transaction>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TransactionCancelledMessage {
+    /// The transaction id for the cancelled transaction
+    #[prost(uint64, tag = "1")]
+    pub tx_id: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TransactionMetadata {
     /// The absolute fee for the transaction
     #[prost(uint64, tag = "1")]
@@ -15,13 +21,6 @@ pub struct TransactionMetadata {
     /// The earliest block this transaction can be mined
     #[prost(uint64, tag = "2")]
     pub lock_height: u64,
-    /// This is an optional field used by committing to additional tx meta data between the two parties
-    #[prost(message, optional, tag = "3")]
-    pub meta_info: ::std::option::Option<super::types::HashOutput>,
-    /// This is an optional field and is the hash of the kernel this kernel is linked to.
-    /// This field is for example for relative time-locked transactions
-    #[prost(message, optional, tag = "4")]
-    pub linked_kernel: ::std::option::Option<super::types::HashOutput>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SingleRoundSenderData {

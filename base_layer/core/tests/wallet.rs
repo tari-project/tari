@@ -30,10 +30,12 @@ use helpers::{
 };
 
 use core::iter;
-use futures::{FutureExt, SinkExt, StreamExt};
+use futures::{FutureExt, StreamExt};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use std::{sync::atomic::Ordering, time::Duration};
-use tari_broadcast_channel::{bounded, Publisher, Subscriber};
+use std::{
+    sync::{atomic::Ordering, Arc},
+    time::Duration,
+};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -42,7 +44,7 @@ use tari_comms::{
 };
 use tari_comms_dht::DhtConfig;
 use tari_core::{
-    base_node::{service::BaseNodeServiceConfig, states::StateEvent},
+    base_node::{service::BaseNodeServiceConfig, state_machine_service::states::StateEvent},
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::{MempoolServiceConfig, TxStorageResponse},
     mining::Miner,
@@ -67,6 +69,7 @@ use tari_wallet::{
 use tempfile::tempdir;
 use tokio::{
     runtime::{Builder, Runtime},
+    sync::broadcast,
     time::delay_for,
 };
 
@@ -99,10 +102,12 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
         Default::default(),
     )
 }
-
+static EMISSION: [u64; 2] = [10, 10];
 #[test]
 fn wallet_base_node_integration_test() {
-    let temp_dir = tempdir().unwrap();
+    let shutdown = Shutdown::new();
+    let alice_temp_dir = tempdir().unwrap();
+    let bob_temp_dir = tempdir().unwrap();
     let factories = CryptoFactories::default();
 
     let alice_node_identity = random_node_identity();
@@ -120,7 +125,7 @@ fn wallet_base_node_integration_test() {
     let mut base_node_runtime = create_runtime();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo0) =
         create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
@@ -135,7 +140,7 @@ fn wallet_base_node_integration_test() {
         .with_mempool_service_config(MempoolServiceConfig::default())
         .with_liveness_service_config(LivenessConfig::default())
         .with_consensus_manager(consensus_manager.clone())
-        .start(&mut base_node_runtime, temp_dir.path().to_str().unwrap());
+        .start(&mut base_node_runtime, alice_temp_dir.path().to_str().unwrap());
 
     log::info!("Finished Starting Base Node");
 
@@ -145,7 +150,7 @@ fn wallet_base_node_integration_test() {
         transport_type: TransportType::Memory {
             listener_address: alice_node_identity.public_address(),
         },
-        datastore_path: temp_dir.path().to_path_buf(),
+        datastore_path: alice_temp_dir.path().to_path_buf(),
         peer_database_name: random_string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
@@ -159,33 +164,33 @@ fn wallet_base_node_integration_test() {
         alice_comms_config,
         factories.clone(),
         Some(TransactionServiceConfig {
-            base_node_monitoring_timeout: Duration::from_secs(1),
+            broadcast_monitoring_timeout: Duration::from_secs(1),
             low_power_polling_timeout: Duration::from_secs(10),
             ..Default::default()
         }),
         Network::Rincewind,
     );
-    let alice_runtime = create_runtime();
-    let mut alice_wallet = Wallet::new(
-        alice_wallet_config,
-        alice_runtime,
-        WalletMemoryDatabase::new(),
-        TransactionMemoryDatabase::new(),
-        OutputManagerMemoryDatabase::new(),
-        ContactsServiceMemoryDatabase::new(),
-    )
-    .unwrap();
+    let mut runtime = create_runtime();
+    let mut alice_wallet = runtime
+        .block_on(Wallet::new(
+            alice_wallet_config,
+            WalletMemoryDatabase::new(),
+            TransactionMemoryDatabase::new(),
+            OutputManagerMemoryDatabase::new(),
+            ContactsServiceMemoryDatabase::new(),
+            shutdown.to_signal(),
+        ))
+        .unwrap();
     let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream_fused();
 
-    alice_wallet
-        .set_base_node_peer(
+    runtime
+        .block_on(alice_wallet.set_base_node_peer(
             (*base_node_identity.public_key()).clone(),
-            base_node_identity.public_address().to_string(),
-        )
+            base_node_identity.public_address().clone().to_string(),
+        ))
         .unwrap();
 
-    alice_wallet
-        .runtime
+    runtime
         .block_on(alice_wallet.comms.peer_manager().add_peer(create_peer(
             bob_node_identity.public_key().clone(),
             bob_node_identity.public_address(),
@@ -198,7 +203,7 @@ fn wallet_base_node_integration_test() {
         transport_type: TransportType::Memory {
             listener_address: bob_node_identity.public_address(),
         },
-        datastore_path: temp_dir.path().to_path_buf(),
+        datastore_path: bob_temp_dir.path().to_path_buf(),
         peer_database_name: random_string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
@@ -230,13 +235,10 @@ fn wallet_base_node_integration_test() {
     log::info!("Finished Starting Wallets");
 
     // Transaction
-    let mut runtime = create_runtime();
-    alice_wallet
-        .runtime
+    runtime
         .block_on(alice_wallet.output_manager_service.add_output(utxo0))
         .unwrap();
-    alice_wallet
-        .runtime
+    runtime
         .block_on(
             alice_wallet
                 .comms
@@ -246,8 +248,7 @@ fn wallet_base_node_integration_test() {
         .unwrap();
 
     let value = MicroTari::from(1000);
-    alice_wallet
-        .runtime
+    runtime
         .block_on(alice_wallet.transaction_service.send_transaction(
             bob_node_identity.public_key().clone(),
             value,
@@ -299,20 +300,20 @@ fn wallet_base_node_integration_test() {
     let transaction = transaction.expect("Transaction must be present");
 
     // Setup and start the miner
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
     let mut miner = Miner::new(shutdown.to_signal(), consensus_manager, &base_node.local_nci, 1);
     miner.enable_mining_flag().store(true, Ordering::Relaxed);
-    let (mut state_event_sender, state_event_receiver): (Publisher<_>, Subscriber<_>) = bounded(1, 113);
+    let (state_event_sender, state_event_receiver) = broadcast::channel(1);
     miner.subscribe_to_node_state_events(state_event_receiver);
     miner.subscribe_to_mempool_state_events(base_node.local_mp_interface.get_mempool_state_event_stream());
     let mut miner_utxo_stream = miner.get_utxo_receiver_channel().fuse();
-    runtime.spawn(async move {
-        miner.mine().await;
-    });
+    runtime.spawn(miner.mine());
 
     runtime.block_on(async {
         // Simulate block sync
-        assert!(state_event_sender.send(StateEvent::BlocksSynchronized).await.is_ok());
+        state_event_sender
+            .send(Arc::new(StateEvent::BlocksSynchronized))
+            .unwrap();
         // Wait for miner to finish mining block 1
         assert!(event_stream_next(&mut miner_utxo_stream, Duration::from_secs(20))
             .await
@@ -352,9 +353,4 @@ fn wallet_base_node_integration_test() {
         }
         assert!(mined, "Transaction has not been mined before timeout");
     });
-
-    alice_wallet.shutdown();
-    bob_wallet.shutdown();
-    let _ = shutdown.trigger();
-    runtime.block_on(base_node.comms.shutdown());
 }

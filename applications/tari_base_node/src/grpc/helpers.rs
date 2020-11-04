@@ -42,15 +42,6 @@ pub fn mean(list: Vec<u64>) -> Option<f64> {
     let total = list.iter().inspect(|_| count += 1).sum::<u64>();
     Some(total as f64 / count as f64)
 }
-/// TODO Implement the function for grpc responsed
-pub fn quantile(_list: Vec<u64>) -> Option<f64> {
-    None
-}
-
-/// TODO Implement the function for grpc responsed
-pub fn quartile(_list: Vec<u64>) -> Option<f64> {
-    None
-}
 
 #[cfg(test)]
 pub mod test {

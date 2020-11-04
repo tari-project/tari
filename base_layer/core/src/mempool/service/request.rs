@@ -30,10 +30,11 @@ use tari_crypto::tari_utilities::hex::Hex;
 
 /// API Request enum for Mempool requests.
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum MempoolRequest {
     GetStats,
     GetState,
-    GetTxStateWithExcessSig(Signature),
+    GetTxStateByExcessSig(Signature),
     SubmitTransaction(Transaction),
 }
 
@@ -42,8 +43,8 @@ impl Display for MempoolRequest {
         match self {
             MempoolRequest::GetStats => f.write_str("GetStats"),
             MempoolRequest::GetState => f.write_str("GetState"),
-            MempoolRequest::GetTxStateWithExcessSig(sig) => {
-                f.write_str(&format!("GetTxStateWithExcessSig ({})", sig.get_signature().to_hex()))
+            MempoolRequest::GetTxStateByExcessSig(sig) => {
+                f.write_str(&format!("GetTxStateByExcessSig ({})", sig.get_signature().to_hex()))
             },
             MempoolRequest::SubmitTransaction(tx) => f.write_str(&format!(
                 "SubmitTransaction ({})",

@@ -88,7 +88,7 @@ async fn main() {
     let hidden_service_ctl = tor::HiddenServiceBuilder::new()
         .with_port_mapping(port)
         .with_control_server_address(tor_control_addr)
-        .finish()
+        .build()
         .await
         .unwrap()
         .create_hidden_service()

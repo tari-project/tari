@@ -26,7 +26,7 @@ use crate::{
     protocol::{
         rpc::{
             body::Streaming,
-            context::RpcCommsContext,
+            context::RpcCommsBackend,
             message::Request,
             test::mock::create_mocked_rpc_context,
             Response,
@@ -74,7 +74,7 @@ async fn setup_service<T: GreetingRpc>(
 ) -> (
     mpsc::Sender<ProtocolNotification<MemorySocket>>,
     task::JoinHandle<Result<(), RpcError>>,
-    RpcCommsContext,
+    RpcCommsBackend,
     Shutdown,
 ) {
     let (notif_tx, notif_rx) = mpsc::channel(1);
@@ -107,7 +107,7 @@ async fn setup<T: GreetingRpc>(
     notif_tx
         .send(ProtocolNotification::new(
             ProtocolId::from_static(b"/test/greeting/1.0"),
-            ProtocolEvent::NewInboundSubstream(Box::new(node_identity.node_id().clone()), inbound),
+            ProtocolEvent::NewInboundSubstream(node_identity.node_id().clone(), inbound),
         ))
         .await
         .unwrap();
@@ -127,6 +127,9 @@ async fn request_reponse_errors_and_streaming() // a.k.a  smoke test
         .connect(framed)
         .await
         .unwrap();
+
+    // Latency is available "for free" as part of the connect protocol
+    assert!(client.get_last_request_latency().await.unwrap().is_some());
 
     let resp = client
         .say_hello(SayHelloRequest {
@@ -214,8 +217,8 @@ async fn timeout() {
     let (socket, _, _, _shutdown) = setup(SlowGreetingService::new(delay.clone())).await;
     let framed = framing::canonical(socket, 1024);
     let mut client = GreetingClient::builder()
-        .with_deadline(Duration::from_millis(50))
-        .with_deadline_grace_period(Duration::from_secs(0))
+        .with_deadline(Duration::from_millis(100))
+        .with_deadline_grace_period(Duration::from_secs(1))
         .connect(framed)
         .await
         .unwrap();
@@ -245,7 +248,7 @@ async fn unknown_protocol() {
     notif_tx
         .send(ProtocolNotification::new(
             ProtocolId::from_static(b"this-is-junk"),
-            ProtocolEvent::NewInboundSubstream(Box::new(node_identity.node_id().clone()), inbound),
+            ProtocolEvent::NewInboundSubstream(node_identity.node_id().clone(), inbound),
         ))
         .await
         .unwrap();
@@ -325,7 +328,7 @@ impl GreetingRpc for GreetingService {
 
     async fn get_public_key_hex(&self, req: Request<()>) -> Result<String, RpcStatus> {
         let context = req.context();
-        let peer = context.load_peer().await?;
+        let peer = context.fetch_peer().await?;
         Ok(peer.public_key.to_hex())
     }
 }
@@ -407,8 +410,8 @@ impl<T: GreetingRpc> __rpc_deps::Service<Request<__rpc_deps::Bytes>> for Greetin
     type Future = __rpc_deps::BoxFuture<'static, Result<Response<__rpc_deps::Body>, RpcStatus>>;
     type Response = Response<__rpc_deps::Body>;
 
-    fn poll_ready(&mut self, _: &mut __rpc_deps::Context<'_>) -> __rpc_deps::Poll<Result<(), Self::Error>> {
-        __rpc_deps::Poll::Ready(Ok(()))
+    fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+        std::task::Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, req: Request<__rpc_deps::Bytes>) -> Self::Future {
@@ -491,8 +494,8 @@ where T: GreetingRpc
     type Future = __rpc_deps::future::Ready<Result<Self::Response, Self::Error>>;
     type Response = Self;
 
-    fn poll_ready(&mut self, _: &mut __rpc_deps::Context<'_>) -> __rpc_deps::Poll<Result<(), Self::Error>> {
-        __rpc_deps::Poll::Ready(Ok(()))
+    fn poll_ready(&mut self, _: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+        std::task::Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, _: ProtocolId) -> Self::Future {
@@ -542,6 +545,10 @@ impl GreetingClient {
 
     pub async fn get_public_key_hex(&mut self) -> Result<String, RpcError> {
         self.inner.request_response((), 6).await
+    }
+
+    pub async fn get_last_request_latency(&mut self) -> Result<Option<Duration>, RpcError> {
+        self.inner.get_last_request_latency().await
     }
 
     pub fn close(&mut self) {

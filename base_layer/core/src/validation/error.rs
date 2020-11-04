@@ -23,11 +23,12 @@
 use crate::{
     blocks::{blockheader::BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
+    proof_of_work::PowError,
     transactions::transaction::TransactionError,
 };
 use thiserror::Error;
 
-#[derive(Clone, Debug, PartialEq, Error)]
+#[derive(Debug, Error)]
 pub enum ValidationError {
     #[error("Block header validation failed: {0}")]
     BlockHeaderError(#[from] BlockHeaderValidationError),
@@ -37,7 +38,7 @@ pub enum ValidationError {
     MaturityError,
     #[error("Contains unknown inputs")]
     UnknownInputs,
-    #[error("The transaction has some transaction error")]
+    #[error("The transaction is invalid: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("Error: {0}")]
     CustomError(String),
@@ -60,6 +61,8 @@ pub enum ValidationError {
     InvalidRangeProofMr,
     #[error("Final state validation failed: The UTXO set did not balance with the expected emission at height {0}")]
     ChainBalanceValidationFailed(u64),
+    #[error("Proof of work error: {0}")]
+    ProofOfWorkError(#[from] PowError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

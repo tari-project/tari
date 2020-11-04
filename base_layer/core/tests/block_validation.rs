@@ -24,25 +24,21 @@ use tari_core::{
     chain_storage::{BlockAddResult, BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
     consensus::{ConsensusManagerBuilder, Network},
     transactions::types::{CryptoFactories, HashDigest},
-    validation::{
-        accum_difficulty_validators::AccumDifficultyValidator,
-        block_validators::{FullConsensusValidator, StatelessBlockValidator},
-    },
+    validation::block_validators::{FullConsensusValidator, StatelessBlockValidator},
 };
 
 #[test]
 fn test_genesis_block() {
     let factories = CryptoFactories::default();
-    let network = Network::LocalNet;
+    let network = Network::Ridcully;
     let rules = ConsensusManagerBuilder::new(network).build();
     let backend = MemoryDatabase::<HashDigest>::default();
     let validators = Validators::new(
-        FullConsensusValidator::new(rules.clone(), factories.clone()),
+        FullConsensusValidator::new(rules.clone()),
         StatelessBlockValidator::new(rules.clone(), factories),
-        AccumDifficultyValidator {},
     );
-    let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default()).unwrap();
+    let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap();
     let block = rules.get_genesis_block();
-    let result = db.add_block(block).unwrap();
+    let result = db.add_block(block.into()).unwrap();
     assert_eq!(result, BlockAddResult::BlockExists);
 }

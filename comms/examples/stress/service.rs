@@ -191,7 +191,7 @@ impl StressTestService {
             }
         }
 
-        self.comms_node.shutdown().await;
+        self.comms_node.wait_until_shutdown().await;
 
         Ok(())
     }
@@ -240,7 +240,7 @@ impl StressTestService {
                 );
 
                 task::spawn(start_responder_protocol(
-                    *node_id,
+                    node_id,
                     substream,
                     self.inbound_rx.clone(),
                     self.outbound_tx.clone(),

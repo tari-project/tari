@@ -17,11 +17,6 @@ message TransactionKernel {
     // This kernel is not valid earlier than lock_height blocks
     // The max lock_height of all *inputs* to this transaction
     uint64 lock_height = 3;
-    // This is an optional field used by committing to additional tx meta data between the two parties
-    HashOutput meta_info = 4;
-    // This is an optional field and is the hash of the kernel this kernel is linked to.
-    // This field is for example for relative time-locked transactions
-    HashOutput linked_kernel = 5;
     // Remainder of the sum of all transaction commitments. If the transaction
     // is well formed, amounts components should sum to zero and the excess
     // is hence a valid public key.

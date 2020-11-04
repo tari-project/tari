@@ -38,7 +38,7 @@ pub struct ChainMetadata {
     /// provided. Archival nodes wil always have an `effective_pruned_height` of zero.
     pub effective_pruned_height: u64,
     /// The geometric mean of the proof of work of the longest chain, none if the chain is empty
-    pub accumulated_difficulty: Option<Difficulty>,
+    pub accumulated_difficulty: Option<u128>,
 }
 
 impl ChainMetadata {
@@ -47,7 +47,7 @@ impl ChainMetadata {
         hash: BlockHash,
         pruning_horizon: u64,
         effective_pruned_height: u64,
-        accumulated_difficulty: Difficulty,
+        accumulated_difficulty: u128,
     ) -> ChainMetadata
     {
         ChainMetadata {
@@ -119,7 +119,7 @@ impl Display for ChainMetadata {
             .clone()
             .map(|b| b.to_hex())
             .unwrap_or_else(|| "None".into());
-        let accumulated_difficulty = self.accumulated_difficulty.unwrap_or_else(|| 0.into());
+        let accumulated_difficulty = self.accumulated_difficulty.unwrap_or_else(|| 0);
         fmt.write_str(&format!("Height of longest chain : {}\n", height))?;
         fmt.write_str(&format!(
             "Geometric mean of longest chain : {}\n",

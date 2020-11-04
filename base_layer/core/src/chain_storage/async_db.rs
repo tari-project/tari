@@ -32,6 +32,8 @@ use crate::{
         InProgressHorizonSyncState,
         MmrTree,
     },
+    proof_of_work::{Difficulty, PowAlgorithm},
+    tari_utilities::epoch_time::EpochTime,
     transactions::{
         transaction::TransactionKernel,
         types::{BlockHash, Commitment, HashOutput, Signature},
@@ -40,7 +42,7 @@ use crate::{
 };
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 use tari_mmr::{Hash, MerkleProof};
 
 const LOG_TARGET: &str = "c::bn::async_db";
@@ -51,14 +53,14 @@ where F: FnOnce() -> R {
     let trace_id = OsRng.next_u32();
     trace!(
         target: LOG_TARGET,
-        "[{}] Entered blocking thread. trace_id: '{}'",
+        "[{}] Entered blocking thread. trace_id: {}",
         name,
         trace_id
     );
     let ret = f();
     trace!(
         target: LOG_TARGET,
-        "[{}] Exited blocking thread after {}ms. trace_id: '{}'",
+        "[{}] Exited blocking thread after {}ms. trace_id: {}",
         name,
         start.elapsed().as_millis(),
         trace_id
@@ -106,9 +108,11 @@ make_async!(is_utxo(hash: HashOutput) -> bool, "is_utxo");
 
 //---------------------------------- Headers --------------------------------------------//
 make_async!(fetch_header(block_num: u64) -> BlockHeader, "fetch_header");
+make_async!(fetch_headers(start: u64, end_inclusive: u64) -> Vec<BlockHeader>, "fetch_headers");
 make_async!(fetch_header_by_block_hash(hash: HashOutput) -> BlockHeader, "fetch_header_by_block_hash");
 make_async!(fetch_tip_header() -> BlockHeader, "fetch_header");
 make_async!(insert_valid_headers(headers: Vec<BlockHeader>) -> (), "insert_valid_headers");
+make_async!(fetch_target_difficulties(pow_algo: PowAlgorithm, height: u64, block_window: usize) -> Vec<(EpochTime, Difficulty)>, "fetch_target_difficulties");
 
 //---------------------------------- MMR --------------------------------------------//
 make_async!(calculate_mmr_root(tree: MmrTree,additions: Vec<HashOutput>,deletions: Vec<HashOutput>) -> HashOutput, "calculate_mmr_root");
@@ -120,12 +124,14 @@ make_async!(fetch_mmr_proof(tree: MmrTree, pos: usize) -> MerkleProof, "fetch_mm
 make_async!(fetch_mmr_root(tree: MmrTree) -> HashOutput, "fetch_mmr_root");
 make_async!(insert_mmr_node(tree: MmrTree, hash: Hash, deleted: bool) -> (), "insert_mmr_node");
 make_async!(validate_merkle_root(tree: MmrTree, height: u64) -> bool, "validate_merkle_root");
-make_async!(rewind_to_height(height: u64) -> Vec<Block>, "rewind_to_height");
+make_async!(rewind_to_height(height: u64) -> Vec<Arc<Block>>, "rewind_to_height");
 
 //---------------------------------- Block --------------------------------------------//
-make_async!(add_block(block: Block) -> BlockAddResult, "add_block");
+make_async!(add_block(block: Arc<Block>) -> BlockAddResult, "add_block");
+make_async!(cleanup_all_orphans() -> (), "cleanup_all_orphans");
 make_async!(block_exists(block_hash: BlockHash) -> bool, "block_exists");
 make_async!(fetch_block(height: u64) -> HistoricalBlock, "fetch_block");
+make_async!(fetch_blocks(start: u64, end_inclusive: u64) -> Vec<HistoricalBlock>, "fetch_blocks");
 make_async!(fetch_orphan(hash: HashOutput) -> Block, "fetch_orphan");
 make_async!(fetch_block_with_hash(hash: HashOutput) -> Option<HistoricalBlock>, "fetch_block_with_hash");
 make_async!(fetch_block_with_kernel(excess_sig: Signature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");

@@ -25,8 +25,14 @@
 // Used to eliminate the need for boxing futures in many cases.
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
-// Enable usage of Vec::shrink_to
 #![feature(shrink_to)]
+#![cfg_attr(not(debug_assertions), deny(unused_variables))]
+#![cfg_attr(not(debug_assertions), deny(unused_imports))]
+#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+#![deny(unused_must_use)]
+#![deny(unreachable_patterns)]
+#![deny(unknown_lints)]
 
 #[macro_use]
 extern crate bitflags;
@@ -44,8 +50,6 @@ pub mod chain_storage;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 pub mod consensus;
 #[cfg(feature = "base_node")]
-pub mod helpers;
-#[cfg(feature = "base_node")]
 pub mod iterators;
 #[cfg(feature = "base_node")]
 pub mod mining;
@@ -56,6 +60,14 @@ pub mod proto;
 #[cfg(feature = "base_node")]
 pub mod validation;
 
+#[cfg(all(test, feature = "base_node"))]
+mod test_helpers;
+
+#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
+pub mod base_node;
+#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
+pub mod proto;
+
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod mempool;
 
@@ -65,7 +77,17 @@ pub mod serialization;
 pub use crypto::tari_utilities;
 pub use tari_crypto as crypto;
 
-uint::construct_uint! {
-    /// 256-bit unsigned integer.
-    pub(crate) struct U256(4);
+#[allow(clippy::ptr_offset_with_cast)]
+#[allow(clippy::assign_op_pattern)]
+pub mod large_ints {
+    uint::construct_uint! {
+        /// 256-bit unsigned integer.
+        pub struct U256(4);
+    }
+
+    uint::construct_uint! {
+        /// 512-bit unsigned integer.
+        pub struct U512(8);
+    }
 }
+pub use large_ints::{U256, U512};

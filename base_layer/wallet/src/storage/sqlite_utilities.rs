@@ -33,21 +33,42 @@ use aes_gcm::{
 };
 use diesel::{Connection, SqliteConnection};
 use digest::Digest;
+use fs2::FileExt;
 use log::*;
 use std::{
+    fs::File,
     io,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 use tari_crypto::common::Blake256;
 
 const LOG_TARGET: &str = "wallet::storage:sqlite_utilities";
 
-pub type WalletDbConnection = Arc<Mutex<SqliteConnection>>;
+#[derive(Clone)]
+pub struct WalletDbConnection {
+    pub connection: Arc<Mutex<SqliteConnection>>,
+    _file_lock: Arc<Option<File>>,
+}
+
+impl WalletDbConnection {
+    pub fn new(connection: SqliteConnection, file_lock: Option<File>) -> Self {
+        Self {
+            connection: Arc::new(Mutex::new(connection)),
+            _file_lock: Arc::new(file_lock),
+        }
+    }
+
+    pub fn acquire_lock(&self) -> MutexGuard<SqliteConnection> {
+        acquire_lock!(self.connection)
+    }
+}
 
 pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     db_path: P,
 ) -> Result<WalletDbConnection, WalletStorageError> {
+    let file_lock = acquire_exclusive_file_lock(&db_path.as_ref().to_path_buf())?;
+
     let path_str = db_path
         .as_ref()
         .to_str()
@@ -59,7 +80,7 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     embedded_migrations::run_with_output(&connection, &mut io::stdout())
         .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
 
-    Ok(Arc::new(Mutex::new(connection)))
+    Ok(WalletDbConnection::new(connection, Some(file_lock)))
 }
 
 /// This function will copy a wallet database to the provided path and then clear the CommsPrivateKey from the database.
@@ -82,6 +103,38 @@ pub async fn partial_wallet_backup<P: AsRef<Path>>(current_db: P, backup_path: P
     db.clear_comms_secret_key().await?;
 
     Ok(())
+}
+
+pub fn acquire_exclusive_file_lock(db_path: &PathBuf) -> Result<File, WalletStorageError> {
+    let lock_file_path = match db_path.file_name() {
+        None => {
+            return Err(WalletStorageError::FileError(
+                "Database path should be to a file".to_string(),
+            ))
+        },
+        Some(filename) => match db_path.parent() {
+            Some(p) => p.join(format!(
+                ".{}.lock",
+                filename
+                    .to_str()
+                    .ok_or_else(|| WalletStorageError::FileError("Could not acquire database filename".to_string()))?
+            )),
+            None => return Err(WalletStorageError::DatabasePathIsRootPath),
+        },
+    };
+
+    let file = File::create(lock_file_path)?;
+
+    // Attempt to acquire exclusive OS level Write Lock
+    if let Err(e) = file.try_lock_exclusive() {
+        error!(
+            target: LOG_TARGET,
+            "Could not acquire exclusive write lock on database lock file: {:?}", e
+        );
+        return Err(WalletStorageError::CannotAcquireFileLock);
+    }
+
+    Ok(file)
 }
 
 pub fn initialize_sqlite_database_backends(

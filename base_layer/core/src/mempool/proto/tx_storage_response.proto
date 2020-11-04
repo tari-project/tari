@@ -12,3 +12,7 @@ enum TxStorageResponse {
     TxStorageResponseReorgPool = 4;
     TxStorageResponseNotStored = 5;
 }
+
+message TxStorage {
+    TxStorageResponse response = 1;
+}

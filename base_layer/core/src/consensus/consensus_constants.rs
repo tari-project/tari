@@ -26,50 +26,65 @@ use crate::{
     transactions::tari_amount::{uT, MicroTari, T},
 };
 use chrono::{DateTime, Duration, Utc};
-use std::ops::Add;
+use std::{collections::HashMap, ops::Add};
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// This is the inner struct used to control all consensus values.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ConsensusConstants {
+    /// The height at which these constants become effective
+    effective_from_height: u64,
     /// The min height maturity a coinbase utxo must have
     coinbase_lock_height: u64,
     /// Current version of the blockchain
     blockchain_version: u16,
     /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is excepted.
-    /// We use TxN/20 where T = target time = 60 seconds, and N = block_window = 150
+    /// We use T*N/20 where T = desired chain target time, and N = block_window
     future_time_limit: u64,
-    /// This is the our target time in seconds between blocks
-    target_block_interval: u64,
     /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
+    /// https://github.com/zawy12/difficulty-algorithms/issues/14
     difficulty_block_window: u64,
-    /// When doing difficulty adjustments, this is the maximum block time allowed
-    difficulty_max_block_interval: u64,
     /// Maximum transaction weight used for the construction of new blocks.
     max_block_transaction_weight: u64,
-    /// The amount of PoW algorithms used by the Tari chain.
-    pow_algo_count: u64,
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward
     median_timestamp_count: usize,
     /// This is the initial emission curve amount
     pub(in crate::consensus) emission_initial: MicroTari,
-    /// This is the emission curve delay
-    pub(in crate::consensus) emission_decay: f64,
+    /// This is the emission curve delay for the int
+    pub(in crate::consensus) emission_decay: &'static [u64],
     /// This is the emission curve tail amount
     pub(in crate::consensus) emission_tail: MicroTari,
-    /// This is the initial min difficulty for the difficulty adjustment
-    min_pow_difficulty: (Difficulty, Difficulty),
-    /// The offset relative to the expected genesis coinbase value
-    genesis_coinbase_value_offset: MicroTari,
     /// This is the maximum age a monero merge mined seed can be reused
     max_randomx_seed_height: u64,
+    /// This keeps track of the block split targets and which algo is accepted
+    /// Ideally this should count up to 100. If this does not you will reduce your target time.
+    proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>,
+    /// This is to keep track of the value inside of the genesis block
+    faucet_value: MicroTari,
+}
+
+/// This is just a convenience  wrapper to put all the info into a hashmap per diff algo
+#[derive(Clone, Debug)]
+pub struct PowAlgorithmConstants {
+    /// NB this is very important to set this as 6 * the target time
+    pub max_target_time: u64,
+    pub min_difficulty: Difficulty,
+    pub max_difficulty: Difficulty,
+    /// target time is calculated as desired chain target time / block %.
+    /// example 120/0.5 = 240 for a 50% of the blocks, chain target time of 120.
+    pub target_time: u64,
 }
 
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
 impl ConsensusConstants {
+    /// The height at which these constants become effective
+    pub fn effective_from_height(&self) -> u64 {
+        self.effective_from_height
+    }
+
     /// This gets the emission curve values as (initial, decay, tail)
-    pub fn emission_amounts(&self) -> (MicroTari, f64, MicroTari) {
+    pub fn emission_amounts(&self) -> (MicroTari, &[u64], MicroTari) {
         (self.emission_initial, self.emission_decay, self.emission_tail)
     }
 
@@ -99,11 +114,6 @@ impl ConsensusConstants {
         Utc::now().add(Duration::seconds(self.future_time_limit as i64))
     }
 
-    /// This is the our target time in seconds between blocks.
-    pub fn get_target_block_interval(&self) -> u64 {
-        self.target_block_interval
-    }
-
     /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at.
     pub fn get_difficulty_block_window(&self) -> u64 {
         self.difficulty_block_window
@@ -121,19 +131,25 @@ impl ConsensusConstants {
 
     /// The amount of PoW algorithms used by the Tari chain.
     pub fn get_pow_algo_count(&self) -> u64 {
-        self.pow_algo_count
+        self.proof_of_work.len() as u64
     }
 
-    /// The target time used by the difficulty adjustment algorithms, their target time is the target block interval *
-    /// PoW algorithm count.
-    pub fn get_diff_target_block_interval(&self) -> u64 {
-        self.pow_algo_count * self.target_block_interval
+    /// The target time used by the difficulty adjustment algorithms, their target time is the target block interval /
+    /// algo block percentage
+    pub fn get_diff_target_block_interval(&self, pow_algo: PowAlgorithm) -> u64 {
+        match self.proof_of_work.get(&pow_algo) {
+            Some(v) => v.target_time,
+            _ => 0,
+        }
     }
 
     /// The maximum time a block is considered to take. Used by the difficulty adjustment algorithms
-    /// Multiplied by the PoW algorithm count.
-    pub fn get_difficulty_max_block_interval(&self) -> u64 {
-        self.pow_algo_count * self.difficulty_max_block_interval
+    /// Multiplied by the PoW algorithm block percentage.
+    pub fn get_difficulty_max_block_interval(&self, pow_algo: PowAlgorithm) -> u64 {
+        match self.proof_of_work.get(&pow_algo) {
+            Some(v) => v.max_target_time,
+            _ => 0,
+        }
     }
 
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward.
@@ -141,16 +157,23 @@ impl ConsensusConstants {
         self.median_timestamp_count
     }
 
-    /// The offset relative to apply to the expected genesis block coinbase emission
-    pub fn get_genesis_coinbase_value_offset(&self) -> MicroTari {
-        self.genesis_coinbase_value_offset
-    }
-
     /// This is the min initial difficulty that can be requested for the pow
     pub fn min_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
-        match pow_algo {
-            PowAlgorithm::Monero => self.min_pow_difficulty.0,
-            PowAlgorithm::Blake => self.min_pow_difficulty.1,
+        match self.proof_of_work.get(&pow_algo) {
+            Some(v) => v.min_difficulty,
+            _ => 0.into(),
+        }
+    }
+
+    /// This will return the value of the genesis block faucets
+    pub fn faucet_value(&self) -> MicroTari {
+        self.faucet_value
+    }
+
+    pub fn max_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
+        match self.proof_of_work.get(&pow_algo) {
+            Some(v) => v.max_difficulty,
+            _ => 0.into(),
         }
     }
 
@@ -160,73 +183,233 @@ impl ConsensusConstants {
     }
 
     #[allow(clippy::identity_op)]
-    pub fn rincewind() -> Self {
-        let target_block_interval = 120;
+    pub fn rincewind() -> Vec<Self> {
         let difficulty_block_window = 90;
-        ConsensusConstants {
-            coinbase_lock_height: 60,
+        let mut algos1 = HashMap::new();
+        algos1.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
+            max_target_time: 7200,
+            min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 120,
+        });
+        algos1.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 7200,
+            min_difficulty: 1.into(),
+
+            max_difficulty: u64::MAX.into(),
+            target_time: 120,
+        });
+
+        let mut algos2 = HashMap::new();
+        algos2.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
+            max_target_time: 7200,
+            min_difficulty: 1.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 120,
+        });
+        algos2.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 7200,
+            min_difficulty: 1.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 120,
+        });
+
+        let mut algos3 = HashMap::new();
+        algos3.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
+            max_target_time: 7200,
+            min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 120,
+        });
+        algos3.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 7200,
+            min_difficulty: 59_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 120,
+        });
+
+        let mut algos4 = HashMap::new();
+        algos4.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
+            max_target_time: 720,
+            min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 120,
+        });
+        algos4.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 720,
+            min_difficulty: 59_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 120,
+        });
+        vec![
+            // Due to a bug in previous code, block 1 has a high minimum difficulty which
+            // drops to 1 after block 2
+            ConsensusConstants {
+                effective_from_height: 0,
+                coinbase_lock_height: 60,
+                blockchain_version: 1,
+                future_time_limit: 540,
+                difficulty_block_window,
+                max_block_transaction_weight: 19500,
+                median_timestamp_count: 11,
+                emission_initial: 5_538_846_115 * uT,
+                emission_decay: &EMISSION_DECAY,
+                emission_tail: 1 * T,
+                max_randomx_seed_height: std::u64::MAX,
+                proof_of_work: algos1,
+                faucet_value: MicroTari::from(0),
+            },
+            ConsensusConstants {
+                effective_from_height: 2,
+                coinbase_lock_height: 60,
+                blockchain_version: 1,
+                future_time_limit: 540,
+                difficulty_block_window,
+                max_block_transaction_weight: 19500,
+                median_timestamp_count: 11,
+                emission_initial: 5_538_846_115 * uT,
+                emission_decay: &EMISSION_DECAY,
+                emission_tail: 1 * T,
+                max_randomx_seed_height: std::u64::MAX,
+                proof_of_work: algos2,
+                faucet_value: MicroTari::from(0),
+            },
+            // min_pow_difficulty increased. Previous blocks would treat this value as 1 because of
+            // a bug that was fixed.
+            ConsensusConstants {
+                effective_from_height: 109000,
+                coinbase_lock_height: 60,
+                blockchain_version: 1,
+                future_time_limit: 540,
+                difficulty_block_window,
+                max_block_transaction_weight: 19500,
+                median_timestamp_count: 11,
+                emission_initial: 5_538_846_115 * uT,
+                emission_decay: &EMISSION_DECAY,
+                emission_tail: 1 * T,
+                max_randomx_seed_height: std::u64::MAX,
+                proof_of_work: algos3,
+                faucet_value: MicroTari::from(0),
+            },
+            // set max difficulty_max_block_interval to target_time * 6
+            ConsensusConstants {
+                effective_from_height: 120_000,
+                coinbase_lock_height: 60,
+                blockchain_version: 1,
+                future_time_limit: 540,
+                difficulty_block_window,
+                max_block_transaction_weight: 19500,
+                median_timestamp_count: 11,
+                emission_initial: 5_538_846_115 * uT,
+                emission_decay: &EMISSION_DECAY,
+                emission_tail: 1 * T,
+                max_randomx_seed_height: std::u64::MAX,
+                proof_of_work: algos4,
+                faucet_value: MicroTari::from(0),
+            },
+        ]
+    }
+
+    pub fn localnet() -> Vec<Self> {
+        let difficulty_block_window = 90;
+        let mut algos = HashMap::new();
+        algos.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
+            max_target_time: 720,
+            min_difficulty: 1.into(),
+            max_difficulty: 1.into(),
+            target_time: 120,
+        });
+        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 720,
+            min_difficulty: 1.into(),
+            max_difficulty: 1.into(),
+            target_time: 120,
+        });
+        vec![ConsensusConstants {
+            effective_from_height: 0,
+            coinbase_lock_height: 1,
             blockchain_version: 1,
-            future_time_limit: target_block_interval * difficulty_block_window / 20,
-            target_block_interval,
+            future_time_limit: 540,
             difficulty_block_window,
-            difficulty_max_block_interval: target_block_interval * 60,
             max_block_transaction_weight: 19500,
-            pow_algo_count: 1,
+            median_timestamp_count: 11,
+            emission_initial: 10_000_000.into(),
+            emission_decay: &EMISSION_DECAY,
+            emission_tail: 100.into(),
+            max_randomx_seed_height: std::u64::MAX,
+            proof_of_work: algos,
+            faucet_value: MicroTari::from(0),
+        }]
+    }
+
+    pub fn ridcully() -> Vec<Self> {
+        let difficulty_block_window = 90;
+        let mut algos = HashMap::new();
+        // seting sha3/monero to 40/60 split
+        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
+            max_target_time: 1800,
+            min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 300,
+        });
+        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 1200,
+            min_difficulty: 60_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 200,
+        });
+        vec![ConsensusConstants {
+            effective_from_height: 0,
+            coinbase_lock_height: 1,
+            blockchain_version: 1,
+            future_time_limit: 540,
+            difficulty_block_window,
+            max_block_transaction_weight: 19500,
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,
-            emission_decay: 0.999_999_560_409_038_5,
-            emission_tail: 1 * T,
-            min_pow_difficulty: (1.into(), 60_000_000.into()),
-            max_randomx_seed_height: std::u64::MAX,
-            genesis_coinbase_value_offset: 5_539_846_115 * uT - 10_000_100 * uT,
-        }
-    }
-
-    pub fn localnet() -> Self {
-        let target_block_interval = 120;
-        let difficulty_block_window = 90;
-        ConsensusConstants {
-            coinbase_lock_height: 1,
-            blockchain_version: 1,
-            future_time_limit: target_block_interval * difficulty_block_window / 20,
-            target_block_interval,
-            difficulty_max_block_interval: target_block_interval * 6,
-            difficulty_block_window,
-            max_block_transaction_weight: 19500,
-            pow_algo_count: 2,
-            median_timestamp_count: 11,
-            emission_initial: 10_000_000.into(),
-            emission_decay: 0.999,
+            emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
-            min_pow_difficulty: (1.into(), 1.into()),
             max_randomx_seed_height: std::u64::MAX,
-            genesis_coinbase_value_offset: 0.into(),
-        }
+            proof_of_work: algos,
+            faucet_value: (5000 * 4000) * T,
+        }]
     }
 
-    pub fn mainnet() -> Self {
+    pub fn mainnet() -> Vec<Self> {
         // Note these values are all placeholders for final values
-        let target_block_interval = 120;
         let difficulty_block_window = 90;
-        ConsensusConstants {
+        let mut algos = HashMap::new();
+        algos.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
+            max_target_time: 1800,
+            min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 300,
+        });
+        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 800,
+            min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 200,
+        });
+        vec![ConsensusConstants {
+            effective_from_height: 0,
             coinbase_lock_height: 1,
             blockchain_version: 1,
-            future_time_limit: target_block_interval * difficulty_block_window / 20,
-            target_block_interval,
-            difficulty_max_block_interval: target_block_interval * 6,
+            future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 19500,
-            pow_algo_count: 2,
             median_timestamp_count: 11,
             emission_initial: 10_000_000.into(),
-            emission_decay: 0.999,
+            emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
-            min_pow_difficulty: (1.into(), 500_000_000.into()),
             max_randomx_seed_height: std::u64::MAX,
-            genesis_coinbase_value_offset: 0.into(),
-        }
+            proof_of_work: algos,
+            faucet_value: MicroTari::from(0),
+        }]
     }
 }
+
+static EMISSION_DECAY: [u64; 5] = [22, 23, 24, 26, 27];
 
 /// Class to create custom consensus constants
 pub struct ConsensusConstantsBuilder {
@@ -236,8 +419,14 @@ pub struct ConsensusConstantsBuilder {
 impl ConsensusConstantsBuilder {
     pub fn new(network: Network) -> Self {
         Self {
-            consensus: network.create_consensus_constants(),
+            // TODO: Resolve this unwrap
+            consensus: network.create_consensus_constants().pop().unwrap(),
         }
+    }
+
+    pub fn with_proof_of_work(mut self, proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>) -> Self {
+        self.consensus.proof_of_work = proof_of_work;
+        self
     }
 
     pub fn with_coinbase_lockheight(mut self, height: u64) -> Self {
@@ -245,15 +434,26 @@ impl ConsensusConstantsBuilder {
         self
     }
 
-    pub fn with_emission_amounts(mut self, intial_amount: MicroTari, decay: f64, tail_amount: MicroTari) -> Self {
-        self.consensus.emission_initial = intial_amount;
-        self.consensus.emission_decay = decay;
-        self.consensus.emission_tail = tail_amount;
+    pub fn with_consensus_constants(mut self, consensus: ConsensusConstants) -> Self {
+        self.consensus = consensus;
         self
     }
 
-    pub fn with_genesis_coinbase_value_offset(mut self, value: MicroTari) -> Self {
-        self.consensus.genesis_coinbase_value_offset = value;
+    pub fn with_faucet_value(mut self, value: MicroTari) -> Self {
+        self.consensus.faucet_value = value;
+        self
+    }
+
+    pub fn with_emission_amounts(
+        mut self,
+        intial_amount: MicroTari,
+        decay: &'static [u64],
+        tail_amount: MicroTari,
+    ) -> Self
+    {
+        self.consensus.emission_initial = intial_amount;
+        self.consensus.emission_decay = decay;
+        self.consensus.emission_tail = tail_amount;
         self
     }
 

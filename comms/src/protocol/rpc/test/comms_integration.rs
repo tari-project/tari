@@ -34,6 +34,7 @@ use crate::{
     types::CommsDatabase,
     CommsBuilder,
 };
+use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
 
 #[runtime::test_basic]
@@ -41,32 +42,35 @@ async fn run_service() {
     let node_identity1 = build_node_identity(Default::default());
     let rpc_service = MockRpcService::new();
     let mock_state = rpc_service.shared_state();
+    let shutdown = Shutdown::new();
     let comms1 = CommsBuilder::new()
         .with_listener_address(node_identity1.public_address())
         .with_node_identity(node_identity1)
-        .with_transport(MemoryTransport)
-        .with_peer_storage(CommsDatabase::new())
-        .add_rpc(RpcServer::new().add_service(rpc_service))
+        .with_shutdown_signal(shutdown.to_signal())
+        .with_peer_storage(CommsDatabase::new(), None)
         .build()
         .unwrap()
-        .spawn()
+        .add_rpc_server(RpcServer::new().add_service(rpc_service))
+        .spawn_with_transport(MemoryTransport)
         .await
         .unwrap();
 
     let node_identity2 = build_node_identity(Default::default());
     let comms2 = CommsBuilder::new()
         .with_listener_address(node_identity2.public_address())
+        .with_shutdown_signal(shutdown.to_signal())
         .with_node_identity(node_identity2.clone())
-        .with_transport(MemoryTransport)
-        .with_peer_storage(CommsDatabase::new())
+        .with_peer_storage(CommsDatabase::new(), None)
         .build()
-        .unwrap()
-        .add_peers(vec![comms1.node_identity().to_peer()])
-        .await
-        .unwrap()
-        .spawn()
+        .unwrap();
+
+    comms2
+        .peer_manager()
+        .add_peer(comms1.node_identity().to_peer())
         .await
         .unwrap();
+
+    let comms2 = comms2.spawn_with_transport(MemoryTransport).await.unwrap();
 
     let mut conn = comms2
         .connectivity()

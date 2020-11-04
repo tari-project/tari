@@ -78,13 +78,6 @@ pub(super) struct RawTransactionInfo {
     pub message: String,
 }
 
-impl RawTransactionInfo {
-    pub fn calculate_total_amount(&self) -> MicroTari {
-        let to_others: MicroTari = self.amounts.iter().sum();
-        to_others + self.amount_to_self
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SingleRoundSenderData {
     /// The transaction id for the recipient
@@ -342,14 +335,7 @@ impl SenderTransactionProtocol {
     /// Performs sanitary checks on the collected transaction pieces prior to building the final Transaction instance
     fn validate(&self) -> Result<(), TPE> {
         if let SenderState::Finalizing(info) = &self.state {
-            let total_amount = info.calculate_total_amount();
             let fee = info.metadata.fee;
-            // The fee should be less than the amount. This isn't a protocol requirement, but it's what you want 99.999%
-            // of the time, and our users will thank us if we reject a tx where they put the amount in the fee field by
-            // mistake!
-            if fee > total_amount {
-                return Err(TPE::ValidationError("Fee is greater than amount".into()));
-            }
             // The fee must be greater than MIN_FEE to prevent spam attacks
             if fee < MINIMUM_TRANSACTION_FEE {
                 return Err(TPE::ValidationError("Fee is less than the minimum".into()));
@@ -399,13 +385,13 @@ impl SenderTransactionProtocol {
     /// formally validate the transaction terms (no inflation, signature matches etc). If any step fails,
     /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation. The function
     /// returns `Ok(false)` in this instance.
-    pub fn finalize(&mut self, features: KernelFeatures, factories: &CryptoFactories) -> Result<bool, TPE> {
+    pub fn finalize(&mut self, features: KernelFeatures, factories: &CryptoFactories) -> Result<(), TPE> {
         // Create the final aggregated signature, moving to the Failed state if anything goes wrong
         match &mut self.state {
             SenderState::Finalizing(_) => {
                 if let Err(e) = self.sign() {
-                    self.state = SenderState::Failed(e);
-                    return Ok(false);
+                    self.state = SenderState::Failed(e.clone());
+                    return Err(e);
                 }
             },
             _ => return Err(TPE::InvalidStateError),
@@ -417,19 +403,19 @@ impl SenderTransactionProtocol {
                     .validate()
                     .and_then(|_| Self::build_transaction(info, features, factories));
                 if let Err(e) = result {
-                    self.state = SenderState::Failed(e);
-                    return Ok(false);
+                    self.state = SenderState::Failed(e.clone());
+                    return Err(e);
                 }
                 let transaction = result.unwrap();
                 let result = transaction
                     .validate_internal_consistency(factories, None)
                     .map_err(TPE::TransactionBuildError);
                 if let Err(e) = result {
-                    self.state = SenderState::Failed(e);
-                    return Ok(false);
+                    self.state = SenderState::Failed(e.clone());
+                    return Err(e);
                 }
                 self.state = SenderState::FinalizedTransaction(transaction);
-                Ok(true)
+                Ok(())
             },
             _ => Err(TPE::InvalidStateError),
         }
@@ -610,8 +596,7 @@ mod test {
         assert_eq!(sender.is_failed(), false);
         assert!(sender.is_finalizing());
         match sender.finalize(KernelFeatures::empty(), &factories) {
-            Ok(true) => (),
-            Ok(false) => panic!("{:?}", sender.failure_reason()),
+            Ok(_0) => (),
             Err(e) => panic!("{:?}", e),
         }
         let tx = sender.get_transaction().unwrap();
@@ -662,8 +647,7 @@ mod test {
         // Transaction should be complete
         assert!(alice.is_finalizing());
         match alice.finalize(KernelFeatures::empty(), &factories) {
-            Ok(true) => (),
-            Ok(false) => panic!("{:?}", alice.failure_reason()),
+            Ok(_0) => (),
             Err(e) => panic!("{:?}", e),
         };
         assert!(alice.is_finalized());
@@ -735,8 +719,7 @@ mod test {
         // Transaction should be complete
         assert!(alice.is_finalizing());
         match alice.finalize(KernelFeatures::empty(), &factories) {
-            Ok(true) => (),
-            Ok(false) => panic!("{:?}", alice.failure_reason()),
+            Ok(_0) => (),
             Err(e) => panic!("{:?}", e),
         };
 
@@ -785,5 +768,56 @@ mod test {
             Err(TransactionProtocolError::TransactionBuildError(_)) => {},
             Err(e) => panic!("Incorrect error: {:?}", e),
         }
+    }
+
+    fn get_fee_larger_than_amount_values() -> (MicroTari, MicroTari, MicroTari) {
+        (MicroTari(2500), MicroTari(51), MicroTari(500))
+    }
+
+    #[test]
+    fn disallow_fee_larger_than_amount() {
+        let factories = CryptoFactories::default();
+        // Alice's parameters
+        let alice = TestParams::new();
+        let (utxo_amount, fee_per_gram, amount) = get_fee_larger_than_amount_values();
+        let (utxo, input) = make_input(&mut OsRng, utxo_amount, &factories.commitment);
+        let mut builder = SenderTransactionProtocol::builder(1);
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(alice.offset.clone())
+            .with_private_nonce(alice.nonce.clone())
+            .with_change_secret(alice.change_key.clone())
+            .with_input(utxo.clone(), input)
+            .with_amount(0, amount);
+        // Verify that the initial 'fee greater than amount' check rejects the transaction when it is constructed
+        match builder.build::<Blake256>(&factories) {
+            Ok(_) => panic!("'BuildError(\"Fee is greater than amount\")' not caught"),
+            Err(e) => assert_eq!(e.message, "Fee is greater than amount".to_string()),
+        };
+    }
+
+    #[test]
+    fn allow_fee_larger_than_amount() {
+        let factories = CryptoFactories::default();
+        // Alice's parameters
+        let alice = TestParams::new();
+        let (utxo_amount, fee_per_gram, amount) = get_fee_larger_than_amount_values();
+        let (utxo, input) = make_input(&mut OsRng, utxo_amount, &factories.commitment);
+        let mut builder = SenderTransactionProtocol::builder(1);
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(alice.offset.clone())
+            .with_private_nonce(alice.nonce.clone())
+            .with_change_secret(alice.change_key.clone())
+            .with_input(utxo.clone(), input)
+            .with_amount(0, amount)
+            .with_prevent_fee_gt_amount(false);
+        // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
+        match builder.build::<Blake256>(&factories) {
+            Ok(_) => assert!(true),
+            Err(e) => panic!("Unexpected error: {:?}", e),
+        };
     }
 }

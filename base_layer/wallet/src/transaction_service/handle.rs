@@ -24,7 +24,7 @@ use crate::{
     output_manager_service::TxId,
     transaction_service::{
         error::TransactionServiceError,
-        storage::database::{CompletedTransaction, InboundTransaction, OutboundTransaction},
+        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
     },
 };
 use aes_gcm::Aes256Gcm;
@@ -37,6 +37,7 @@ use tokio::sync::broadcast;
 use tower::Service;
 
 /// API Request enum
+#[allow(clippy::large_enum_variant)]
 pub enum TransactionServiceRequest {
     GetPendingInboundTransactions,
     GetPendingOutboundTransactions,
@@ -45,6 +46,7 @@ pub enum TransactionServiceRequest {
     GetCancelledPendingOutboundTransactions,
     GetCancelledCompletedTransactions,
     GetCompletedTransaction(TxId),
+    GetAnyTransaction(TxId),
     SetBaseNodePublicKey(CommsPublicKey),
     SendTransaction((CommsPublicKey, MicroTari, MicroTari, String)),
     CancelTransaction(TxId),
@@ -55,6 +57,8 @@ pub enum TransactionServiceRequest {
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
     GenerateCoinbaseTransaction(MicroTari, MicroTari, u64),
+    RestartTransactionProtocols,
+    RestartBroadcastProtocols,
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
     #[cfg(feature = "test_harness")]
@@ -91,6 +95,8 @@ impl fmt::Display for TransactionServiceRequest {
             TransactionServiceRequest::GenerateCoinbaseTransaction(_, _, bh) => {
                 f.write_str(&format!("GenerateCoinbaseTransaction (Blockheight {})", bh))
             },
+            TransactionServiceRequest::RestartTransactionProtocols => f.write_str("RestartTransactionProtocols"),
+            TransactionServiceRequest::RestartBroadcastProtocols => f.write_str("RestartBroadcastProtocols"),
             #[cfg(feature = "test_harness")]
             Self::CompletePendingOutboundTransaction(tx) => {
                 f.write_str(&format!("CompletePendingOutboundTransaction ({})", tx.tx_id))
@@ -105,6 +111,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::MineTransaction(id) => f.write_str(&format!("MineTransaction ({})", id)),
             #[cfg(feature = "test_harness")]
             Self::BroadcastTransaction(id) => f.write_str(&format!("BroadcastTransaction ({})", id)),
+            TransactionServiceRequest::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
         }
     }
 }
@@ -126,6 +133,8 @@ pub enum TransactionServiceResponse {
     EncryptionApplied,
     EncryptionRemoved,
     CoinbaseTransactionGenerated(Box<Transaction>),
+    ProtocolsRestarted,
+    AnyTransaction(Box<Option<WalletTransaction>>),
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -145,6 +154,7 @@ pub enum TransactionEvent {
     ReceivedTransaction(TxId),
     ReceivedTransactionReply(TxId),
     ReceivedFinalizedTransaction(TxId),
+    TransactionDiscoveryInProgress(TxId),
     TransactionDirectSendResult(TxId, bool),
     TransactionStoreForwardSendResult(TxId, bool),
     TransactionCancelled(TxId),
@@ -307,6 +317,21 @@ impl TransactionServiceHandle {
         }
     }
 
+    pub async fn get_any_transaction(
+        &mut self,
+        tx_id: TxId,
+    ) -> Result<Option<WalletTransaction>, TransactionServiceError>
+    {
+        match self
+            .handle
+            .call(TransactionServiceRequest::GetAnyTransaction(tx_id))
+            .await??
+        {
+            TransactionServiceResponse::AnyTransaction(t) => Ok(*t),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn set_base_node_public_key(
         &mut self,
         public_key: CommsPublicKey,
@@ -417,6 +442,28 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::CoinbaseTransactionGenerated(tx) => Ok(*tx),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn restart_transaction_protocols(&mut self) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::RestartTransactionProtocols)
+            .await??
+        {
+            TransactionServiceResponse::ProtocolsRestarted => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn restart_broadcast_protocols(&mut self) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::RestartBroadcastProtocols)
+            .await??
+        {
+            TransactionServiceResponse::ProtocolsRestarted => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

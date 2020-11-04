@@ -51,7 +51,10 @@ use std::fmt::{Display, Error, Formatter};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 use thiserror::Error;
 
-#[derive(Clone, Debug, PartialEq, Error)]
+pub const BLOCK_HASH_LENGTH: usize = 32;
+pub type BlockHash = Vec<u8>;
+
+#[derive(Debug, Error)]
 pub enum BlockHeaderValidationError {
     #[error("The Genesis block header is incorrectly chained")]
     ChainedGenesisBlockHeader,
@@ -123,11 +126,11 @@ impl BlockHeader {
     /// previous block hash is set, and the timestamp is set to the current time and the proof of work is partially
     /// initialized, although the `accumulated_difficulty_<algo>` stats are updated using the previous block's proof
     /// of work information.
-    pub fn from_previous(prev: &BlockHeader) -> BlockHeader {
+    pub fn from_previous(prev: &BlockHeader) -> Result<BlockHeader, BlockHeaderValidationError> {
         let prev_hash = prev.hash();
         let mut pow = ProofOfWork::default();
-        pow.add_difficulty(&prev.pow, prev.achieved_difficulty());
-        BlockHeader {
+        pow.add_difficulty(&prev.pow, prev.achieved_difficulty()?);
+        Ok(BlockHeader {
             version: prev.version,
             height: prev.height + 1,
             prev_hash,
@@ -138,20 +141,26 @@ impl BlockHeader {
             total_kernel_offset: BlindingFactor::default(),
             nonce: 0,
             pow,
-        }
+        })
     }
 
     /// Calculates and returns the achieved difficulty for this header and associated proof of work.
-    pub fn achieved_difficulty(&self) -> Difficulty {
+    pub fn achieved_difficulty(&self) -> Result<Difficulty, PowError> {
         ProofOfWork::achieved_difficulty(self)
     }
 
     /// Calculates the total accumulated difficulty for the blockchain from the genesis block up until (and including)
     /// this block.
-    pub fn total_accumulated_difficulty_inclusive(&self) -> Difficulty {
-        let mut prev_pow = self.pow.clone();
-        prev_pow.add_difficulty(&self.pow, self.achieved_difficulty());
-        prev_pow.total_accumulated_difficulty()
+    pub fn total_accumulated_difficulty_inclusive_squared(&self) -> Result<u128, PowError> {
+        Ok(self.get_proof_of_work()?.total_accumulated_difficulty())
+    }
+
+    /// Gets the accumulated `ProofOfWork` from the genesis block up until (and including) this block.
+    ///
+    /// This function is fallible because it calculates the achieved difficulty.
+    pub fn get_proof_of_work(&self) -> Result<ProofOfWork, PowError> {
+        let difficulty = ProofOfWork::achieved_difficulty(self)?;
+        Ok(ProofOfWork::new_from_difficulty(&self.pow, difficulty))
     }
 
     pub fn into_builder(self) -> BlockBuilder {
@@ -287,6 +296,46 @@ impl Display for BlockHeader {
     }
 }
 
+pub(crate) mod hash_serializer {
+    use super::*;
+    use tari_crypto::tari_utilities::hex::Hex;
+
+    #[allow(clippy::ptr_arg)]
+    pub fn serialize<S>(bytes: &BlockHash, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        if serializer.is_human_readable() {
+            bytes.to_hex().serialize(serializer)
+        } else {
+            serializer.serialize_bytes(bytes.as_bytes())
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<BlockHash, D::Error>
+    where D: Deserializer<'de> {
+        struct BlockHashVisitor;
+
+        impl<'de> Visitor<'de> for BlockHashVisitor {
+            type Value = BlockHash;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("A block header hash in binary format")
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<BlockHash, E>
+            where E: de::Error {
+                BlockHash::from_bytes(v).map_err(E::custom)
+            }
+        }
+
+        if deserializer.is_human_readable() {
+            let s = String::deserialize(deserializer)?;
+            BlockHash::from_hex(&s).map_err(de::Error::custom)
+        } else {
+            deserializer.deserialize_bytes(BlockHashVisitor)
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::{blocks::BlockHeader, tari_utilities::epoch_time::EpochTime};
@@ -297,9 +346,9 @@ mod test {
         h1.nonce = 7600; // Achieved difficulty is 18,138;
         assert_eq!(h1.height, 0, "Default block height");
         let hash1 = h1.hash();
-        let diff1 = h1.achieved_difficulty();
+        let diff1 = h1.achieved_difficulty().unwrap();
         assert_eq!(diff1, 18138.into());
-        let h2 = BlockHeader::from_previous(&h1);
+        let h2 = BlockHeader::from_previous(&h1).unwrap();
         assert_eq!(h2.height, h1.height + 1, "Incrementing block height");
         assert!(h2.timestamp > h1.timestamp, "Timestamp");
         assert_eq!(h2.prev_hash, hash1, "Previous hash");

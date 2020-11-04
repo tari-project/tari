@@ -163,3 +163,29 @@ macro_rules! cfg_test {
         )*
     }
 }
+
+macro_rules! is_fn {
+    (
+        $(#[$outer:meta])*
+        $name: ident, $($enum_key:ident)::+
+    ) => {
+        $(#[$outer])*
+        pub fn $name(&self) -> bool {
+            match self {
+                $($enum_key)::+ => true,
+                _ => false
+            }
+        }
+    };
+    (
+        $(#[$outer:meta])*
+        $name: ident, $($enum_key:ident)::+ ( $($p:tt),* )
+    ) => {
+      pub fn $name(&self) -> bool {
+            match self {
+                $($enum_key)::+($($p),*) => true,
+                _ => false
+            }
+        }
+    };
+}

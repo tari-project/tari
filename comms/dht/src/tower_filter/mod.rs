@@ -41,7 +41,7 @@ where
     type Response = T::Response;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(ready!(self.inner.poll_ready(cx)).map_err(PipelineError::from_debug))
+        Poll::Ready(ready!(self.inner.poll_ready(cx)))
     }
 
     fn call(&mut self, request: Request) -> Self::Future {

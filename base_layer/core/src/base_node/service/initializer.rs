@@ -24,7 +24,11 @@ use crate::{
     base_node::{
         comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
         proto,
-        service::service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
+        service::{
+            blockchain_state::BlockchainStateServiceInitializer,
+            service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
+        },
+        StateMachineHandle,
     },
     blocks::NewBlock,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
@@ -32,10 +36,10 @@ use crate::{
     mempool::Mempool,
     proto as shared_protos,
 };
-use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, future, Future, Stream, StreamExt};
+use futures::{channel::mpsc, future, Future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
-use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
@@ -43,13 +47,12 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
-    handles::ServiceHandlesFuture,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
+    ServiceInitializerContext,
 };
-use tari_shutdown::ShutdownSignal;
-use tokio::{runtime, sync::broadcast};
+use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "c::bn::service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Base Node";
@@ -58,7 +61,7 @@ const SUBSCRIPTION_LABEL: &str = "Base Node";
 pub struct BaseNodeServiceInitializer<T> {
     inbound_message_subscription_factory: Arc<SubscriptionFactory>,
     blockchain_db: BlockchainDatabase<T>,
-    mempool: Mempool<T>,
+    mempool: Mempool,
     consensus_manager: ConsensusManager,
     config: BaseNodeServiceConfig,
 }
@@ -70,7 +73,7 @@ where T: BlockchainBackend
     pub fn new(
         inbound_message_subscription_factory: Arc<SubscriptionFactory>,
         blockchain_db: BlockchainDatabase<T>,
-        mempool: Mempool<T>,
+        mempool: Mempool,
         consensus_manager: ConsensusManager,
         config: BaseNodeServiceConfig,
     ) -> Self
@@ -145,20 +148,14 @@ where T: BlockchainBackend + 'static
 {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         // Create streams for receiving Base Node requests and response messages from comms
         let inbound_request_stream = self.inbound_request_stream();
         let inbound_response_stream = self.inbound_response_stream();
         let inbound_block_stream = self.inbound_block_stream();
         // Connect InboundNodeCommsInterface and OutboundNodeCommsInterface to BaseNodeService
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
-        let (outbound_block_sender_service, outbound_block_stream) = futures_mpsc_channel_unbounded();
+        let (outbound_block_sender_service, outbound_block_stream) = mpsc::unbounded();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
         let (local_block_sender_service, local_block_stream) = reply_channel::unbounded();
         let outbound_nci =
@@ -179,17 +176,16 @@ where T: BlockchainBackend + 'static
         let config = self.config;
 
         // Register handle to OutboundNodeCommsInterface before waiting for handles to be ready
-        handles_fut.register(outbound_nci);
-        handles_fut.register(local_nci);
+        context.register_handle(outbound_nci);
+        context.register_handle(local_nci);
 
-        executor.spawn(async move {
-            let handles = handles_fut.await;
+        context.clone().spawn_when_ready(move |handles| async move {
+            let dht = handles.expect_handle::<Dht>();
+            let outbound_message_service = dht.outbound_requester();
 
-            let outbound_message_service = handles
-                .get_handle::<OutboundMessageRequester>()
-                .expect("OutboundMessageRequester handle required for BaseNodeService");
+            let state_machine = handles.expect_handle::<StateMachineHandle>();
 
-            let streams = BaseNodeStreams::new(
+            let streams = BaseNodeStreams {
                 outbound_request_stream,
                 outbound_block_stream,
                 inbound_request_stream,
@@ -197,13 +193,18 @@ where T: BlockchainBackend + 'static
                 inbound_block_stream,
                 local_request_stream,
                 local_block_stream,
-            );
-            let service = BaseNodeService::new(outbound_message_service, inbound_nch, config).start(streams);
+            };
+            let service =
+                BaseNodeService::new(outbound_message_service, inbound_nch, config, state_machine).start(streams);
             futures::pin_mut!(service);
-            future::select(service, shutdown).await;
+            future::select(service, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "Base Node Service shutdown");
         });
 
-        future::ready(Ok(()))
+        // TODO: Do a base node service cleanup once the dust has settled. The new service uses it's own initializer to
+        //       keep it isolated from existing code that needs to be cleaned up. Since this can be considered a "child"
+        //       service of the base node, the base node service initializer could bring other smaller services together
+        //       and wrap that in a handle.
+        BlockchainStateServiceInitializer::new(self.blockchain_db.clone()).initialize(context)
     }
 }

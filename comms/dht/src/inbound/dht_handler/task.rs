@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    config::DhtConfig,
     discovery::DhtDiscoveryRequester,
     envelope::NodeDestination,
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
@@ -45,7 +44,6 @@ use tower::{Service, ServiceExt};
 const LOG_TARGET: &str = "comms::dht::dht_handler";
 
 pub struct ProcessDhtMessage<S> {
-    config: DhtConfig,
     next_service: S,
     peer_manager: Arc<PeerManager>,
     outbound_service: OutboundMessageRequester,
@@ -58,7 +56,6 @@ impl<S> ProcessDhtMessage<S>
 where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
     pub fn new(
-        config: DhtConfig,
         next_service: S,
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
@@ -68,7 +65,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     ) -> Self
     {
         Self {
-            config,
             next_service,
             peer_manager,
             outbound_service,
@@ -101,12 +97,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message.dht_header.message_tag
         );
         match message.dht_header.message_type {
-            DhtMessageType::Join => self.handle_join(message).await.map_err(PipelineError::from_debug)?,
-            DhtMessageType::Discovery => self.handle_discover(message).await.map_err(PipelineError::from_debug)?,
-            DhtMessageType::DiscoveryResponse => self
-                .handle_discover_response(message)
-                .await
-                .map_err(PipelineError::from_debug)?,
+            DhtMessageType::Join => self.handle_join(message).await?,
+            DhtMessageType::Discovery => self.handle_discover(message).await?,
+            DhtMessageType::DiscoveryResponse => self.handle_discover_response(message).await?,
             // Not a DHT message, call downstream middleware
             _ => {
                 trace!(
@@ -196,32 +189,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
-        let origin_node_id = origin_peer.node_id;
-
-        // Send a join request back to the origin peer of the join request if:
-        // - this join request was not sent directly from the origin peer but was forwarded (from the source peer), and
-        // - that peer is from the same region of network.
-        //
-        // If it was not forwarded then we assume the source peer already has this node's details in
-        // it's peer list.
-        if source_peer.public_key != origin_peer.public_key &&
-            self.peer_manager
-                .in_network_region(
-                    &origin_node_id,
-                    self.node_identity.node_id(),
-                    self.config.num_neighbouring_nodes,
-                )
-                .await?
-        {
-            trace!(
-                target: LOG_TARGET,
-                "Sending Join to joining peer with public key '{}'",
-                origin_peer.public_key
-            );
-
-            self.send_join_direct(origin_peer.public_key).await?;
-        }
-
         if is_saf_message {
             debug!(
                 target: LOG_TARGET,
@@ -230,9 +197,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
-        // Only propagate a join that was not directly sent to this node (presumably in response to a join this node
-        // sent)
-        // TODO: Join should have a response message type
+        let origin_node_id = origin_peer.node_id;
+
+        // Only propagate a join that was not directly sent to this node
         if dht_header.destination != self.node_identity.public_key() &&
             dht_header.destination != self.node_identity.node_id()
         {
@@ -245,7 +212,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             self.outbound_service
                 .send_raw(
                     SendMessageParams::new()
-                        .closest_connected(origin_node_id.clone(), self.config.num_neighbouring_nodes, vec![
+                        .propagate(origin_node_id.clone().into(), vec![
                             origin_node_id,
                             source_peer.node_id.clone(),
                         ])
@@ -335,26 +302,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         // Send the origin the current nodes latest contact info
         self.send_discovery_response(origin_peer.public_key, discover_msg.nonce)
-            .await?;
-
-        Ok(())
-    }
-
-    /// Send a network join update request directly to a specific known peer
-    async fn send_join_direct(&mut self, dest_public_key: CommsPublicKey) -> Result<(), DhtInboundError> {
-        let join_msg = JoinMessage::from(&self.node_identity);
-
-        trace!(target: LOG_TARGET, "Sending direct join request to {}", dest_public_key);
-        self.outbound_service
-            .send_message_no_header(
-                SendMessageParams::new()
-                    .direct_public_key(dest_public_key.clone())
-                    .with_destination(NodeDestination::PublicKey(Box::new(dest_public_key)))
-                    .with_dht_message_type(DhtMessageType::Join)
-                    .force_origin()
-                    .finish(),
-                join_msg,
-            )
             .await?;
 
         Ok(())

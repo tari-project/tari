@@ -32,16 +32,20 @@ use helpers::{
         generate_block,
         generate_new_block,
     },
+    database::create_mem_db,
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::create_new_blockchain,
 };
 use std::{ops::Deref, sync::Arc, time::Duration};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
-    base_node::{comms_interface::Broadcast, service::BaseNodeServiceConfig},
+    base_node::{
+        comms_interface::Broadcast,
+        service::BaseNodeServiceConfig,
+        state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
+    },
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     mempool::{
         Mempool,
         MempoolConfig,
@@ -73,21 +77,17 @@ use tokio::runtime::Runtime;
 fn test_insert_and_process_published_block() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default(), mempool_validator);
+    let mempool_validator = MempoolValidators::new(
+        TxInputAndMaturityValidator::new(store.clone()),
+        TxInputAndMaturityValidator::new(store.clone()),
+    );
+    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
     // Create a block with 4 outputs
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
         to: vec![2 * T, 2 * T, 2 * T, 2 * T]
     )];
-    generate_new_block(
-        &mut store,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants(),
-    )
-    .unwrap();
+    generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
     // Create 6 new transactions to add to the mempool
     let (orphan, _, _) = tx!(1*T, fee: 100*uT);
     let orphan = Arc::new(orphan);
@@ -119,7 +119,7 @@ fn test_insert_and_process_published_block() {
     mempool.insert(tx2.clone()).unwrap();
     mempool.insert(tx3.clone()).unwrap();
     mempool.insert(tx5.clone()).unwrap();
-    mempool.process_published_block(blocks[1].clone()).unwrap();
+    mempool.process_published_block(blocks[1].clone().into()).unwrap();
 
     assert_eq!(
         mempool
@@ -169,14 +169,8 @@ fn test_insert_and_process_published_block() {
     assert_eq!(stats.total_weight, 120);
 
     // Spend tx2, so it goes in Reorg pool, tx5 matures, so goes in Unconfirmed pool
-    generate_block(
-        &mut store,
-        &mut blocks,
-        vec![tx2.deref().clone()],
-        &consensus_manager.consensus_constants(),
-    )
-    .unwrap();
-    mempool.process_published_block(blocks[2].clone()).unwrap();
+    generate_block(&mut store, &mut blocks, vec![tx2.deref().clone()], &consensus_manager).unwrap();
+    mempool.process_published_block(blocks[2].clone().into()).unwrap();
 
     assert_eq!(
         mempool
@@ -228,22 +222,18 @@ fn test_insert_and_process_published_block() {
 fn test_retrieve() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default(), mempool_validator);
+    let mempool_validator = MempoolValidators::new(
+        TxInputAndMaturityValidator::new(store.clone()),
+        TxInputAndMaturityValidator::new(store.clone()),
+    );
+    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
         to: vec![1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T]
     )];
     // "Mine" Block 1
-    generate_new_block(
-        &mut store,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants(),
-    )
-    .unwrap();
-    mempool.process_published_block(blocks[1].clone()).unwrap();
+    generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
+    mempool.process_published_block(blocks[1].clone().into()).unwrap();
     // 1-Block, 8 UTXOs, empty mempool
     let txs = vec![
         txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT),
@@ -283,16 +273,10 @@ fn test_retrieve() {
         tx[7].deref().clone(),
     ];
     // "Mine" block 2
-    generate_block(
-        &mut store,
-        &mut blocks,
-        block2_txns,
-        &consensus_manager.consensus_constants(),
-    )
-    .unwrap();
+    generate_block(&mut store, &mut blocks, block2_txns, &consensus_manager).unwrap();
     println!("{}", blocks[2]);
     outputs.push(utxos);
-    mempool.process_published_block(blocks[2].clone()).unwrap();
+    mempool.process_published_block(blocks[2].clone().into()).unwrap();
     // 2-blocks, 2 unconfirmed txs in mempool, 0 time locked (tx5 time-lock will expire)
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 3);
@@ -327,20 +311,16 @@ fn test_retrieve() {
 fn test_reorg() {
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
-    let mempool = Mempool::new(db.clone(), MempoolConfig::default(), mempool_validator);
+    let mempool_validator = MempoolValidators::new(
+        TxInputAndMaturityValidator::new(db.clone()),
+        TxInputAndMaturityValidator::new(db.clone()),
+    );
+    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
 
     // "Mine" Block 1
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![1 * T, 1 * T])];
-    generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants(),
-    )
-    .unwrap();
-    mempool.process_published_block(blocks[1].clone()).unwrap();
+    generate_new_block(&mut db, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
+    mempool.process_published_block(blocks[1].clone().into()).unwrap();
 
     // "Mine" block 2
     let schemas = vec![
@@ -356,8 +336,8 @@ fn test_reorg() {
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 3);
     let txns2 = txns2.iter().map(|t| t.deref().clone()).collect();
-    generate_block(&mut db, &mut blocks, txns2, &consensus_manager.consensus_constants()).unwrap();
-    mempool.process_published_block(blocks[2].clone()).unwrap();
+    generate_block(&mut db, &mut blocks, txns2, &consensus_manager).unwrap();
+    mempool.process_published_block(blocks[2].clone().into()).unwrap();
 
     // "Mine" block 3
     let schemas = vec![
@@ -376,10 +356,10 @@ fn test_reorg() {
         &mut db,
         &mut blocks,
         vec![txns3[0].clone(), txns3[2].clone()],
-        &consensus_manager.consensus_constants(),
+        &consensus_manager,
     )
     .unwrap();
-    mempool.process_published_block(blocks[3].clone()).unwrap();
+    mempool.process_published_block(blocks[3].clone().into()).unwrap();
 
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 0);
@@ -388,11 +368,11 @@ fn test_reorg() {
 
     db.rewind_to_height(2).unwrap();
 
-    let template = chain_block(&blocks[2], vec![], consensus_manager.consensus_constants());
+    let template = chain_block(&blocks[2], vec![], &consensus_manager);
     let reorg_block3 = db.calculate_mmr_roots(template).unwrap();
 
     mempool
-        .process_reorg(vec![blocks[3].clone()], vec![reorg_block3])
+        .process_reorg(vec![blocks[3].clone().into()], vec![reorg_block3.into()])
         .unwrap();
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 2);
@@ -400,12 +380,12 @@ fn test_reorg() {
     assert_eq!(stats.published_txs, 3);
 
     // "Mine" block 4
-    let template = chain_block(&blocks[3], vec![], consensus_manager.consensus_constants());
+    let template = chain_block(&blocks[3], vec![], &consensus_manager);
     let reorg_block4 = db.calculate_mmr_roots(template).unwrap();
 
     // test that process_reorg can handle the case when removed_blocks is empty
     // see https://github.com/tari-project/tari/issues/2101#issuecomment-680726940
-    mempool.process_reorg(vec![], vec![reorg_block4]).unwrap();
+    mempool.process_reorg(vec![], vec![reorg_block4.into()]).unwrap();
 }
 
 #[test]
@@ -422,42 +402,31 @@ fn test_orphaned_mempool_transactions() {
         &mut miner,
         &mut blocks,
         &mut outputs,
-        schemas,
-        &consensus_manager.consensus_constants(),
+        schemas.clone(),
+        &consensus_manager,
     )
     .unwrap();
-    store.add_block(blocks[1].clone()).unwrap();
+    store.add_block(blocks[1].clone().into()).unwrap();
     let schemas = vec![
         txn_schema!(from: vec![outputs[1][0].clone(), outputs[1][1].clone()], to: vec![], fee: 500*uT, lock: 1100, OutputFeatures::default()),
         txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 300*uT, lock: 1700, OutputFeatures::default()),
         txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 100*uT),
     ];
-    let (txns, _) = schema_to_transaction(&schemas);
-    generate_new_block(
-        &mut miner,
-        &mut blocks,
-        &mut outputs,
-        schemas,
-        &consensus_manager.consensus_constants(),
-    )
-    .unwrap();
+    let (txns, _) = schema_to_transaction(&schemas.clone());
+    generate_new_block(&mut miner, &mut blocks, &mut outputs, schemas, &consensus_manager).unwrap();
     // tx3 and tx4 depend on tx0 and tx1
     let schemas = vec![
         txn_schema!(from: vec![outputs[2][0].clone()], to: vec![], fee: 200*uT),
         txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 500*uT, lock: 1000, OutputFeatures::default()),
         txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 600*uT, lock: 5200, OutputFeatures::default()),
     ];
-    let (txns2, _) = schema_to_transaction(&schemas);
-    generate_new_block(
-        &mut miner,
-        &mut blocks,
-        &mut outputs,
-        schemas,
-        &consensus_manager.consensus_constants(),
-    )
-    .unwrap();
-    let mempool_validator = MempoolValidators::new(TxInputAndMaturityValidator {}, TxInputAndMaturityValidator {});
-    let mempool = Mempool::new(store.clone(), MempoolConfig::default(), mempool_validator);
+    let (txns2, _) = schema_to_transaction(&schemas.clone());
+    generate_new_block(&mut miner, &mut blocks, &mut outputs, schemas, &consensus_manager).unwrap();
+    let mempool_validator = MempoolValidators::new(
+        TxInputAndMaturityValidator::new(store.clone()),
+        TxInputAndMaturityValidator::new(store.clone()),
+    );
+    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
     // There are 2 orphan txs
     vec![txns[2].clone(), txns2[0].clone(), txns2[1].clone(), txns2[2].clone()]
         .into_iter()
@@ -470,10 +439,10 @@ fn test_orphaned_mempool_transactions() {
     assert_eq!(stats.unconfirmed_txs, 1);
     assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.orphan_txs, 2);
-    store.add_block(blocks[1].clone()).unwrap();
-    store.add_block(blocks[2].clone()).unwrap();
-    mempool.process_published_block(blocks[1].clone()).unwrap();
-    mempool.process_published_block(blocks[2].clone()).unwrap();
+    store.add_block(blocks[1].clone().into()).unwrap();
+    store.add_block(blocks[2].clone().into()).unwrap();
+    mempool.process_published_block(blocks[1].clone().into()).unwrap();
+    mempool.process_published_block(blocks[2].clone().into()).unwrap();
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.total_txs, 3);
     assert_eq!(stats.unconfirmed_txs, 1);
@@ -488,7 +457,7 @@ fn request_response_get_stats() {
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_coinbase_lockheight(100)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -537,21 +506,18 @@ fn request_response_get_stats() {
         assert_eq!(received_stats.timelocked_txs, 1);
         assert_eq!(received_stats.published_txs, 0);
         assert_eq!(received_stats.total_weight, 116);
-
-        alice.comms.shutdown().await;
-        bob.comms.shutdown().await;
     });
 }
 
 #[test]
-fn request_response_get_tx_state_with_excess_sig() {
+fn request_response_get_tx_state_by_excess_sig() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_coinbase_lockheight(100)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -589,7 +555,7 @@ fn request_response_get_tx_state_with_excess_sig() {
         assert_eq!(
             alice_node
                 .outbound_mp_interface
-                .get_tx_state_with_excess_sig(tx_excess_sig)
+                .get_tx_state_by_excess_sig(tx_excess_sig)
                 .await
                 .unwrap(),
             TxStorageResponse::PendingPool
@@ -597,7 +563,7 @@ fn request_response_get_tx_state_with_excess_sig() {
         assert_eq!(
             alice_node
                 .outbound_mp_interface
-                .get_tx_state_with_excess_sig(unpublished_tx_excess_sig)
+                .get_tx_state_by_excess_sig(unpublished_tx_excess_sig)
                 .await
                 .unwrap(),
             TxStorageResponse::NotStored
@@ -605,18 +571,14 @@ fn request_response_get_tx_state_with_excess_sig() {
         assert_eq!(
             alice_node
                 .outbound_mp_interface
-                .get_tx_state_with_excess_sig(orphan_tx_excess_sig)
+                .get_tx_state_by_excess_sig(orphan_tx_excess_sig)
                 .await
                 .unwrap(),
             TxStorageResponse::OrphanPool
         );
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
-        carol_node.comms.shutdown().await;
     });
 }
-
+static EMISSION: [u64; 2] = [10, 10];
 #[test]
 fn receive_and_propagate_transaction() {
     let factories = CryptoFactories::default();
@@ -625,23 +587,36 @@ fn receive_and_propagate_transaction() {
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_coinbase_lockheight(100)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .with_block(block0)
         .build();
-    let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
-        &mut runtime,
-        BlockchainDatabaseConfig::default(),
-        BaseNodeServiceConfig::default(),
-        MmrCacheConfig { rewind_hist_len: 10 },
-        MempoolServiceConfig::default(),
-        LivenessConfig::default(),
-        consensus_manager,
-        temp_dir.path().to_str().unwrap(),
-    );
+    let (mut alice_node, mut bob_node, mut carol_node, _consensus_manager) =
+        create_network_with_3_base_nodes_with_config(
+            &mut runtime,
+            BlockchainDatabaseConfig::default(),
+            BaseNodeServiceConfig::default(),
+            MmrCacheConfig { rewind_hist_len: 10 },
+            MempoolServiceConfig::default(),
+            LivenessConfig::default(),
+            consensus_manager,
+            temp_dir.path().to_str().unwrap(),
+        );
+    alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    bob_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
+    carol_node.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
 
     let (tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
     let (orphan, _, _) = tx!(1*T, fee: 100*uT);
@@ -702,10 +677,6 @@ fn receive_and_propagate_transaction() {
                 .unwrap(),
             expect = TxStorageResponse::NotStored,
         );
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
-        carol_node.comms.shutdown().await;
     });
 }
 
@@ -731,14 +702,12 @@ fn service_request_timeout() {
     );
 
     runtime.block_on(async {
-        bob_node.comms.shutdown().await;
+        bob_node.shutdown().await;
 
         match alice_node.outbound_mp_interface.get_stats().await {
             Err(MempoolServiceError::RequestTimedOut) => assert!(true),
             _ => assert!(false),
         }
-
-        alice_node.comms.shutdown().await;
     });
 }
 
@@ -751,12 +720,12 @@ fn block_event_and_reorg_event_handling() {
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =
-        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
+        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants)
+        .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())
         .build();
-    let (alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
+    let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
         BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
@@ -766,6 +735,10 @@ fn block_event_and_reorg_event_handling() {
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
     );
+    alice.mock_base_node_state_machine.publish_status(StatusInfo {
+        bootstrapped: true,
+        state_info: StateInfo::Listening(ListeningInfo::new(true)),
+    });
 
     // Bob creates Block 1 and sends it to Alice. Alice adds it to her chain and creates a block event that the Mempool
     // service will receive.
@@ -802,31 +775,19 @@ fn block_event_and_reorg_event_handling() {
     // These blocks are manually constructed to allow the block event system to be used.
     let mut block1 = bob
         .blockchain_db
-        .calculate_mmr_roots(chain_block(
-            &block0,
-            vec![tx1],
-            &consensus_manager.consensus_constants(),
-        ))
+        .calculate_mmr_roots(chain_block(&block0, vec![tx1], &consensus_manager))
         .unwrap();
     find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from(1));
 
     let mut block2a = bob
         .blockchain_db
-        .calculate_mmr_roots(chain_block(
-            &block1,
-            vec![tx2, tx3],
-            &consensus_manager.consensus_constants(),
-        ))
+        .calculate_mmr_roots(chain_block(&block1, vec![tx2, tx3], &consensus_manager))
         .unwrap();
     find_header_with_achieved_difficulty(&mut block2a.header, Difficulty::from(1));
     // Block2b also builds on Block1 but has a stronger PoW
     let mut block2b = bob
         .blockchain_db
-        .calculate_mmr_roots(chain_block(
-            &block1,
-            vec![tx4, tx5],
-            &consensus_manager.consensus_constants(),
-        ))
+        .calculate_mmr_roots(chain_block(&block1, vec![tx4, tx5], &consensus_manager))
         .unwrap();
     find_header_with_achieved_difficulty(&mut block2b.header, Difficulty::from(10));
 
@@ -885,8 +846,5 @@ fn block_event_and_reorg_event_handling() {
             alice.mempool.has_tx_with_excess_sig(tx3_excess_sig.clone()).unwrap(),
             TxStorageResponse::NotStored
         );
-
-        alice.comms.shutdown().await;
-        bob.comms.shutdown().await;
     });
 }

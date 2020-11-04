@@ -183,7 +183,7 @@ async fn dial_success() {
     let protocol_in = proto_rx2.next().await.unwrap();
     assert_eq!(protocol_in.protocol, &TEST_PROTO);
     unpack_enum!(ProtocolEvent::NewInboundSubstream(node_id, substream_in) = protocol_in.event);
-    assert_eq!(&*node_id, node_identity1.node_id());
+    assert_eq!(&node_id, node_identity1.node_id());
 
     let mut buf = [0u8; MSG.len()];
     substream_in.read_exact(&mut buf).await.unwrap();
@@ -287,8 +287,8 @@ async fn simultaneous_dial_events() {
         .collect::<Vec<_>>();
 
     // TODO: Investigate why two PeerDisconnected events are sometimes received
-    // assert!(count_string_occurrences(&events1, &["PeerDisconnected", "PeerConnectWillClose"]) >= 1);
-    // assert!(count_string_occurrences(&events2, &["PeerDisconnected", "PeerConnectWillClose"]) >= 1);
+    // assert!(count_string_occurrences(&events1, &["PeerDisconnected"]) >= 1);
+    // assert!(count_string_occurrences(&events2, &["PeerDisconnected"]) >= 1);
 }
 
 #[tokio_macros::test_basic]

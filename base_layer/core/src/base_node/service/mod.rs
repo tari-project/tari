@@ -21,14 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
+
 mod initializer;
+pub use initializer::BaseNodeServiceInitializer;
+
 #[allow(clippy::module_inception)]
 mod service;
+pub use service::BaseNodeServiceConfig;
+pub use service_request::BaseNodeServiceRequest;
+pub use service_response::BaseNodeServiceResponse;
+
 mod service_request;
 mod service_response;
 
-// Public re-exports
-pub use initializer::BaseNodeServiceInitializer;
-pub use service::{BaseNodeService, BaseNodeServiceConfig};
-pub use service_request::BaseNodeServiceRequest;
-pub use service_response::BaseNodeServiceResponse;
+pub mod blockchain_state;

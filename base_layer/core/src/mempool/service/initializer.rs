@@ -21,8 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::comms_interface::LocalNodeCommsInterface,
-    chain_storage::BlockchainBackend,
+    base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
     mempool::{
         mempool::Mempool,
         proto,
@@ -31,6 +30,7 @@ use crate::{
             local_service::LocalMempoolService,
             outbound_interface::OutboundMempoolServiceInterface,
             service::{MempoolService, MempoolStreams},
+            MempoolHandle,
         },
         MempoolServiceConfig,
     },
@@ -39,8 +39,7 @@ use crate::{
 use futures::{channel::mpsc, future, Future, Stream, StreamExt};
 use log::*;
 use std::{convert::TryFrom, sync::Arc};
-use tari_broadcast_channel::bounded;
-use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
@@ -48,32 +47,29 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
-    handles::ServiceHandlesFuture,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
+    ServiceInitializerContext,
 };
-use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
+use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "c::bn::mempool_service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Mempool";
 
 /// Initializer for the Mempool service and service future.
-pub struct MempoolServiceInitializer<T> {
+pub struct MempoolServiceInitializer {
     inbound_message_subscription_factory: Arc<SubscriptionFactory>,
-    mempool: Mempool<T>,
+    mempool: Mempool,
     config: MempoolServiceConfig,
 }
 
-impl<T> MempoolServiceInitializer<T>
-where T: BlockchainBackend
-{
+impl MempoolServiceInitializer {
     /// Create a new MempoolServiceInitializer from the inbound message subscriber.
     pub fn new(
-        inbound_message_subscription_factory: Arc<SubscriptionFactory>,
-        mempool: Mempool<T>,
         config: MempoolServiceConfig,
+        mempool: Mempool,
+        inbound_message_subscription_factory: Arc<SubscriptionFactory>,
     ) -> Self
     {
         Self {
@@ -138,30 +134,28 @@ async fn extract_transaction(msg: Arc<PeerMessage>) -> Option<DomainMessage<Tran
     }
 }
 
-impl<T> ServiceInitializer for MempoolServiceInitializer<T>
-where T: BlockchainBackend + 'static
-{
+impl ServiceInitializer for MempoolServiceInitializer {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         // Create streams for receiving Mempool service requests and response messages from comms
         let inbound_request_stream = self.inbound_request_stream();
         let inbound_response_stream = self.inbound_response_stream();
         let inbound_transaction_stream = self.inbound_transaction_stream();
+
         // Connect MempoolOutboundServiceHandle to MempoolService
+        let (request_sender, request_receiver) = reply_channel::unbounded();
+        let mempool_handle = MempoolHandle::new(request_sender);
+        context.register_handle(mempool_handle);
+
         let (outbound_tx_sender, outbound_tx_stream) = mpsc::unbounded();
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
-        let (mempool_state_event_publisher, mempool_state_event_subscriber) = bounded(100, 6);
+        let (mempool_state_event_publisher, _) = broadcast::channel(100);
         let outbound_mp_interface =
             OutboundMempoolServiceInterface::new(outbound_request_sender_service, outbound_tx_sender);
-        let local_mp_interface = LocalMempoolService::new(local_request_sender_service, mempool_state_event_subscriber);
+        let local_mp_interface =
+            LocalMempoolService::new(local_request_sender_service, mempool_state_event_publisher.clone());
         let config = self.config;
         let inbound_handlers = MempoolInboundHandlers::new(
             mempool_state_event_publisher,
@@ -170,32 +164,28 @@ where T: BlockchainBackend + 'static
         );
 
         // Register handle to OutboundMempoolServiceInterface before waiting for handles to be ready
-        handles_fut.register(outbound_mp_interface);
-        handles_fut.register(local_mp_interface);
+        context.register_handle(outbound_mp_interface);
+        context.register_handle(local_mp_interface);
 
-        executor.spawn(async move {
-            let handles = handles_fut.await;
+        context.spawn_when_ready(move |handles| async move {
+            let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
+            let state_machine = handles.expect_handle::<StateMachineHandle>();
+            let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
 
-            let outbound_message_service = handles
-                .get_handle::<OutboundMessageRequester>()
-                .expect("OutboundMessageRequester handle required for MempoolService");
-
-            let base_node = handles
-                .get_handle::<LocalNodeCommsInterface>()
-                .expect("LocalNodeCommsInterface required to initialize ChainStateSyncService");
-
-            let streams = MempoolStreams::new(
+            let streams = MempoolStreams {
                 outbound_request_stream,
                 outbound_tx_stream,
                 inbound_request_stream,
                 inbound_response_stream,
                 inbound_transaction_stream,
                 local_request_stream,
-                base_node.get_block_event_stream(),
-            );
-            let service = MempoolService::new(outbound_message_service, inbound_handlers, config).start(streams);
+                block_event_stream: base_node.get_block_event_stream(),
+                request_receiver,
+            };
+            let service =
+                MempoolService::new(outbound_message_service, inbound_handlers, config, state_machine).start(streams);
             futures::pin_mut!(service);
-            future::select(service, shutdown).await;
+            future::select(service, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "Mempool Service shutdown");
         });
 

@@ -92,8 +92,6 @@ impl From<tari_core::blocks::Block> for grpc::Block {
                         features: kernel.features.bits() as u32,
                         fee: kernel.fee.0,
                         lock_height: kernel.lock_height,
-                        meta_info: kernel.meta_info.as_ref().cloned().unwrap_or_default(),
-                        linked_kernel: kernel.linked_kernel.as_ref().cloned().unwrap_or_default(),
                         excess: Vec::from(kernel.excess.as_bytes()),
                         excess_sig: Some(grpc::Signature {
                             public_nonce: Vec::from(kernel.excess_sig.get_public_nonce().as_bytes()),
@@ -124,6 +122,7 @@ impl From<BlockHeader> for grpc::BlockHeader {
                 pow_algo: match h.pow.pow_algo {
                     PowAlgorithm::Monero => 0,
                     PowAlgorithm::Blake => 1,
+                    PowAlgorithm::Sha3 => 2,
                 },
                 accumulated_monero_difficulty: h.pow.accumulated_monero_difficulty.into(),
                 accumulated_blake_difficulty: h.pow.accumulated_blake_difficulty.into(),
@@ -145,6 +144,7 @@ impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
                 pow_algo: match block.header.pow.pow_algo {
                     PowAlgorithm::Monero => 0,
                     PowAlgorithm::Blake => 1,
+                    PowAlgorithm::Sha3 => 2,
                 },
                 accumulated_monero_difficulty: block.header.pow.accumulated_monero_difficulty.into(),
                 accumulated_blake_difficulty: block.header.pow.accumulated_blake_difficulty.into(),
@@ -189,8 +189,6 @@ impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
                         features: kernel.features.bits() as u32,
                         fee: kernel.fee.0,
                         lock_height: kernel.lock_height,
-                        meta_info: kernel.meta_info.as_ref().cloned().unwrap_or_default(),
-                        linked_kernel: kernel.linked_kernel.as_ref().cloned().unwrap_or_default(),
                         excess: Vec::from(kernel.excess.as_bytes()),
                         excess_sig: Some(grpc::Signature {
                             public_nonce: Vec::from(kernel.excess_sig.get_public_nonce().as_bytes()),

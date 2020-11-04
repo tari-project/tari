@@ -100,12 +100,6 @@ impl ArrayLike for PrunedHashSet {
         Ok(self.hashes.get(index - self.base_offset)?)
     }
 
-    fn get_or_panic(&self, index: usize) -> Self::Value {
-        self.get(index)
-            .unwrap()
-            .expect("PrunedHashSet only tracks peaks before the offset")
-    }
-
     fn clear(&mut self) -> Result<(), Self::Error> {
         self.base_offset = 0;
         self.peak_indices.clear();

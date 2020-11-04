@@ -23,7 +23,7 @@
 //! // Initialise the logger
 //! bootstrap.initialize_logging()?;
 //! assert_eq!(config.network, Network::MainNet);
-//! assert_eq!(config.blocking_threads, 4);
+//! assert_eq!(config.core_threads, Some(4));
 //! ```
 //!
 //! ```shell
@@ -51,7 +51,15 @@ use super::{
     error::ConfigError,
     utils::{install_default_config_file, load_configuration},
 };
-use crate::{dir_utils, initialize_logging, logging, DEFAULT_CONFIG, DEFAULT_LOG_CONFIG};
+use crate::{
+    dir_utils,
+    initialize_logging,
+    logging,
+    DEFAULT_CONFIG,
+    DEFAULT_LOG_CONFIG,
+    DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG,
+    DEFAULT_WALLET_LOG_CONFIG,
+};
 use std::{
     io,
     path::{Path, PathBuf},
@@ -90,6 +98,21 @@ pub struct ConfigBootstrap {
     /// Create and save new node identity if one doesn't exist
     #[structopt(long, alias("create_id"))]
     pub create_id: bool,
+    /// Run in daemon mode, with no interface
+    #[structopt(short, long, alias("daemon"))]
+    pub daemon_mode: bool,
+    /// This will rebuild the db, adding block for block in
+    #[structopt(long, alias("rebuild_db"))]
+    pub rebuild_db: bool,
+    /// Path to input file of commands
+    #[structopt(short, long, alias("input"), parse(from_os_str))]
+    pub input_file: Option<PathBuf>,
+    /// Single input command
+    #[structopt(long)]
+    pub command: Option<String>,
+    /// This will clean out the orphans db at startup
+    #[structopt(long, alias("clean_orphans_db"))]
+    pub clean_orphans_db: bool,
 }
 
 impl Default for ConfigBootstrap {
@@ -100,6 +123,11 @@ impl Default for ConfigBootstrap {
             log_config: dir_utils::default_path(DEFAULT_LOG_CONFIG, None),
             init: false,
             create_id: false,
+            daemon_mode: false,
+            rebuild_db: false,
+            input_file: None,
+            command: None,
+            clean_orphans_db: false,
         }
     }
 }
@@ -112,7 +140,7 @@ impl ConfigBootstrap {
     ///
     /// Without `--init` flag provided configuration and directories will be created only
     /// after user's confirmation.
-    pub fn init_dirs(&mut self) -> Result<(), ConfigError> {
+    pub fn init_dirs(&mut self, application_type: ApplicationType) -> Result<(), ConfigError> {
         if self.base_path.to_str() == Some("") {
             self.base_path = dir_utils::default_path("", None);
         } else {
@@ -132,7 +160,18 @@ impl ConfigBootstrap {
         }
 
         if self.log_config.to_str() == Some("") {
-            self.log_config = dir_utils::default_path(DEFAULT_LOG_CONFIG, Some(&self.base_path));
+            match application_type {
+                ApplicationType::BaseNode => {
+                    self.log_config = dir_utils::default_path(DEFAULT_LOG_CONFIG, Some(&self.base_path));
+                },
+                ApplicationType::ConsoleWallet => {
+                    self.log_config = dir_utils::default_path(DEFAULT_WALLET_LOG_CONFIG, Some(&self.base_path));
+                },
+                ApplicationType::MergeMiningProxy => {
+                    self.log_config =
+                        dir_utils::default_path(DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG, Some(&self.base_path))
+                },
+            }
         }
 
         if !self.config.exists() {
@@ -164,7 +203,18 @@ impl ConfigBootstrap {
                     "Installing new logfile configuration at {}",
                     self.log_config.to_str().unwrap_or("[??]")
                 );
-                install_configuration(&self.log_config, logging::install_default_logfile_config);
+                match application_type {
+                    ApplicationType::BaseNode => {
+                        install_configuration(&self.log_config, logging::install_default_logfile_config)
+                    },
+                    ApplicationType::ConsoleWallet => {
+                        install_configuration(&self.log_config, logging::install_default_wallet_logfile_config)
+                    },
+                    ApplicationType::MergeMiningProxy => install_configuration(
+                        &self.log_config,
+                        logging::install_default_merge_mining_proxy_logfile_config,
+                    ),
+                }
             }
         };
         Ok(())
@@ -176,7 +226,7 @@ impl ConfigBootstrap {
         if initialize_logging(&self.log_config) {
             Ok(())
         } else {
-            Err(ConfigError::new("failed to initalize logging", None))
+            Err(ConfigError::new("Failed to initialize logging", None))
         }
     }
 
@@ -205,9 +255,16 @@ where F: Fn(&Path) -> Result<(), std::io::Error> {
     }
 }
 
+pub enum ApplicationType {
+    BaseNode,
+    ConsoleWallet,
+    MergeMiningProxy,
+}
+
 #[cfg(test)]
 mod test {
     use crate::{
+        configuration::bootstrap::ApplicationType,
         dir_utils,
         dir_utils::default_subdir,
         load_configuration,
@@ -226,19 +283,26 @@ mod test {
             "",
             "--init",
             "--create-id",
+            "--rebuild_db",
+            "--clean_orphans_db",
             "--base-path",
             "no-temp-path-created",
             "--log-config",
             "no-log-config-file-created",
             "--config",
             "no-config-file-created",
+            "--command",
+            "no-command-provided",
         ])
         .expect("failed to process arguments");
         assert!(bootstrap.init);
         assert!(bootstrap.create_id);
+        assert!(bootstrap.rebuild_db);
+        assert!(bootstrap.clean_orphans_db);
         assert_eq!(bootstrap.base_path.to_str(), Some("no-temp-path-created"));
         assert_eq!(bootstrap.log_config.to_str(), Some("no-log-config-file-created"));
         assert_eq!(bootstrap.config.to_str(), Some("no-config-file-created"));
+        assert_eq!(bootstrap.command.unwrap(), "no-command-provided");
 
         // Test command line argument aliases
         let bootstrap = ConfigBootstrap::from_iter_safe(vec![
@@ -268,7 +332,7 @@ mod test {
 
         // Check if home_dir is used by default
         assert_eq!(
-            dirs::home_dir().unwrap().join(".tari"),
+            dirs_next::home_dir().unwrap().join(".tari"),
             dir_utils::default_path("", None)
         );
 
@@ -281,7 +345,9 @@ mod test {
                 .expect("failed to process arguments");
 
         // Initialize bootstrap dirs
-        bootstrap.init_dirs().expect("failed to initialize dirs");
+        bootstrap
+            .init_dirs(ApplicationType::BaseNode)
+            .expect("failed to initialize dirs");
         let config_exists = std::path::Path::new(&bootstrap.config).exists();
         let log_config_exists = std::path::Path::new(&bootstrap.log_config).exists();
         // Load and apply configuration file

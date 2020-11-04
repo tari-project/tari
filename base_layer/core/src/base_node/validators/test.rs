@@ -23,22 +23,22 @@
 use super::{header_iter::HeaderIter, ChainBalanceValidator, HeaderValidator};
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
-    chain_storage::{ChainStorageError, DbTransaction},
-    consensus::{ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
+    chain_storage::DbTransaction,
+    consensus::{consensus_constants::ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     proof_of_work::PowError,
+    test_helpers::create_mem_db,
     transactions::{
         crypto::commitment::HomomorphicCommitmentFactory,
         fee::Fee,
         helpers::spend_utxos,
         tari_amount::uT,
-        transaction::{KernelBuilder, KernelFeatures},
-        types::CryptoFactories,
+        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel, UnblindedOutput},
+        types::{Commitment, CryptoFactories},
         OutputBuilder,
         OutputFeatures,
     },
     txn_schema,
-    validation::{StatelessValidation, ValidationError},
+    validation::{Validation, ValidationError},
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, Hashable};
 use tari_test_utils::unpack_enum;
@@ -56,9 +56,8 @@ fn header_iter_empty_and_invalid_height() {
 
     // Invalid header height
     let iter = HeaderIter::new(&db, 1, 10);
-    let headers = iter.collect::<Vec<_>>();
+    let headers = iter.collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(headers.len(), 1);
-    unpack_enum!(ChainStorageError::ValueNotFound { .. } = headers[0].as_ref().unwrap_err());
 }
 
 #[test]
@@ -94,14 +93,14 @@ fn headers_validation() {
     let genesis = rules.get_genesis_block();
     validator.validate(&genesis.header).unwrap();
 
-    let header = BlockHeader::from_previous(&genesis.header);
+    let header = BlockHeader::from_previous(&genesis.header).unwrap();
     validator.validate(&header).unwrap();
     db.insert_valid_headers(vec![header.clone()]).unwrap();
 
     let header1 = header.clone();
     let mut prev_header = header;
     for _ in 0..3 {
-        let header = BlockHeader::from_previous(&prev_header);
+        let header = BlockHeader::from_previous(&prev_header).unwrap();
         validator.validate(&header).unwrap();
         db.insert_valid_headers(vec![header.clone()]).unwrap();
         prev_header = header;
@@ -110,7 +109,7 @@ fn headers_validation() {
     validator.validate(&header1).unwrap();
     validator.validate(&genesis.header).unwrap();
 
-    let mut header = BlockHeader::from_previous(&prev_header);
+    let mut header = BlockHeader::from_previous(&prev_header).unwrap();
     header.timestamp = EpochTime::now();
     header.pow.target_difficulty = 123456.into();
     let err = validator.validate(&header).unwrap_err();
@@ -119,7 +118,7 @@ fn headers_validation() {
     unpack_enum!(PowError::InvalidTargetDifficulty = err);
     db.insert_valid_headers(vec![header.clone()]).unwrap();
 
-    let mut header = BlockHeader::from_previous(&header);
+    let mut header = BlockHeader::from_previous(&header).unwrap();
     header.timestamp = genesis.header.timestamp;
     let err = validator.validate(&header).unwrap_err();
     unpack_enum!(ValidationError::BlockHeaderError(err) = err);
@@ -129,7 +128,7 @@ fn headers_validation() {
 #[test]
 fn chain_balance_validation() {
     let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManagerBuilder::new(Network::Rincewind).build();
+    let consensus_manager = ConsensusManagerBuilder::new(Network::Ridcully).build();
     let mut genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
     let faucet_utxo = OutputBuilder::new()
@@ -140,16 +139,22 @@ fn chain_balance_validation() {
     let faucet_utxo = faucet_utxo.as_transaction_output(&factories).unwrap();
     let faucet_hash = faucet_utxo.hash();
     genesis.body.add_output(faucet_utxo);
+    genesis.body.add_kernels(&mut vec![kernel]);
+    let total_faucet = faucet_value + consensus_manager.consensus_constants(0).faucet_value();
+    let constants = ConsensusConstantsBuilder::new(Network::LocalNet)
+        .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
+        .with_faucet_value(total_faucet)
+        .build();
     // Create a LocalNet consensus manager that uses rincewind consensus constants and has a custom rincewind genesis
     // block that contains an extra faucet utxo
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
-        .with_consensus_constants(consensus_manager.consensus_constants().clone())
+        .with_consensus_constants(constants)
         .build();
 
     let db = create_mem_db(&consensus_manager);
-    let validator = ChainBalanceValidator::new(db.clone(), consensus_manager.clone(), factories.clone());
 
+    let validator = ChainBalanceValidator::new(db.clone(), consensus_manager.clone(), factories.clone());
     // Validate the genesis state
     validator.validate(&0).unwrap();
 
@@ -175,7 +180,7 @@ fn chain_balance_validation() {
         .unwrap();
     txn.insert_kernel(kernel);
 
-    let header1 = BlockHeader::from_previous(&genesis.header);
+    let header1 = BlockHeader::from_previous(&genesis.header).unwrap();
     txn.insert_header(header1.clone());
     db.commit(txn).unwrap();
 

@@ -24,22 +24,22 @@ use crate::{
     output_manager_service::TxId,
     transaction_service::{
         error::TransactionStorageError,
-        storage::database::{
-            CompletedTransaction,
-            DbKey,
-            DbKeyValuePair,
-            DbValue,
-            InboundTransaction,
-            OutboundTransaction,
-            TransactionBackend,
-            TransactionStatus,
-            WriteOperation,
+        storage::{
+            database::{DbKey, DbKeyValuePair, DbValue, TransactionBackend, WriteOperation},
+            models::{
+                CompletedTransaction,
+                InboundTransaction,
+                OutboundTransaction,
+                TransactionStatus,
+                WalletTransaction,
+            },
         },
     },
 };
 use aes_gcm::Aes256Gcm;
 #[cfg(feature = "test_harness")]
 use chrono::NaiveDateTime;
+use chrono::Utc;
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
@@ -101,9 +101,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
             DbKey::CompletedTransaction(t) => {
                 let mut result = None;
                 if let Some(v) = db.completed_transactions.get(t) {
-                    if !v.cancelled {
-                        result = Some(DbValue::CompletedTransaction(Box::new(v.clone())));
-                    }
+                    result = Some(DbValue::CompletedTransaction(Box::new(v.clone())));
                 }
                 result
             },
@@ -184,14 +182,23 @@ impl TransactionBackend for TransactionMemoryDatabase {
                 }
                 result
             },
-            DbKey::CancelledCompletedTransaction(t) => {
-                let mut result = None;
-                if let Some(v) = db.completed_transactions.get(t) {
-                    if v.cancelled {
-                        result = Some(DbValue::CompletedTransaction(Box::new(v.clone())));
-                    }
+            DbKey::AnyTransaction(t) => {
+                if let Some(v) = db.pending_outbound_transactions.get(t) {
+                    return Ok(Some(DbValue::WalletTransaction(Box::new(
+                        WalletTransaction::PendingOutbound(v.clone()),
+                    ))));
                 }
-                result
+                if let Some(v) = db.pending_inbound_transactions.get(t) {
+                    return Ok(Some(DbValue::WalletTransaction(Box::new(
+                        WalletTransaction::PendingInbound(v.clone()),
+                    ))));
+                }
+                if let Some(v) = db.completed_transactions.get(t) {
+                    return Ok(Some(DbValue::WalletTransaction(Box::new(
+                        WalletTransaction::Completed(v.clone()),
+                    ))));
+                }
+                None
             },
         };
 
@@ -207,7 +214,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
             DbKey::PendingInboundTransaction(k) => {
                 db.pending_inbound_transactions.get(k).map_or(false, |v| !v.cancelled)
             },
-            DbKey::CompletedTransaction(k) => db.completed_transactions.get(k).map_or(false, |v| !v.cancelled),
+            DbKey::CompletedTransaction(k) => db.completed_transactions.get(k).is_some(),
             DbKey::PendingOutboundTransactions => false,
             DbKey::PendingInboundTransactions => false,
             DbKey::CompletedTransactions => false,
@@ -220,7 +227,11 @@ impl TransactionBackend for TransactionMemoryDatabase {
             DbKey::CancelledPendingInboundTransaction(k) => {
                 db.pending_inbound_transactions.get(k).map_or(false, |v| v.cancelled)
             },
-            DbKey::CancelledCompletedTransaction(k) => db.completed_transactions.get(k).map_or(false, |v| v.cancelled),
+            DbKey::AnyTransaction(k) => {
+                db.pending_outbound_transactions.get(k).is_some() ||
+                    db.pending_inbound_transactions.get(k).is_some() ||
+                    db.completed_transactions.get(k).is_some()
+            },
         };
 
         Ok(result)
@@ -268,7 +279,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
                         ));
                     }
                 },
-                DbKey::CompletedTransaction(k) | DbKey::CancelledCompletedTransaction(k) => {
+                DbKey::CompletedTransaction(k) => {
                     if let Some(p) = db.completed_transactions.remove(&k) {
                         return Ok(Some(DbValue::CompletedTransaction(Box::new(p))));
                     } else {
@@ -285,6 +296,7 @@ impl TransactionBackend for TransactionMemoryDatabase {
                     return Err(TransactionStorageError::OperationNotSupported)
                 },
                 DbKey::CancelledCompletedTransactions => return Err(TransactionStorageError::OperationNotSupported),
+                DbKey::AnyTransaction(_) => return Err(TransactionStorageError::OperationNotSupported),
             },
         }
 
@@ -468,6 +480,25 @@ impl TransactionBackend for TransactionMemoryDatabase {
             if tx.status == TransactionStatus::Coinbase && tx.coinbase_block_height == Some(block_height) {
                 tx.cancelled = true;
             }
+        }
+
+        Ok(())
+    }
+
+    fn increment_send_count(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
+        let mut db = acquire_write_lock!(self.db);
+
+        if let Some(tx) = db.completed_transactions.get_mut(&tx_id) {
+            tx.send_count += 1;
+            tx.last_send_timestamp = Some(Utc::now().naive_utc());
+        } else if let Some(tx) = db.pending_outbound_transactions.get_mut(&tx_id) {
+            tx.send_count += 1;
+            tx.last_send_timestamp = Some(Utc::now().naive_utc());
+        } else if let Some(tx) = db.pending_inbound_transactions.get_mut(&tx_id) {
+            tx.send_count += 1;
+            tx.last_send_timestamp = Some(Utc::now().naive_utc());
+        } else {
+            return Err(TransactionStorageError::ValuesNotFound);
         }
 
         Ok(())

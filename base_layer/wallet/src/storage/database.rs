@@ -32,7 +32,7 @@ use tari_comms::types::{CommsPublicKey, CommsSecretKey};
 const LOG_TARGET: &str = "wallet::database";
 
 /// This trait defines the functionality that a database backend need to provide for the Contacts Service
-pub trait WalletBackend: Send + Sync {
+pub trait WalletBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError>;
     /// Modify the state the of the backend with a write operation
@@ -47,16 +47,20 @@ pub trait WalletBackend: Send + Sync {
 pub enum DbKey {
     CommsSecretKey,
     CommsPublicKey,
+    ClientKey(String),
 }
 
 pub enum DbValue {
     CommsSecretKey(CommsSecretKey),
     CommsPublicKey(CommsPublicKey),
+    ClientValue(String),
+    ValueCleared,
 }
 
 #[derive(Clone)]
 pub enum DbKeyValuePair {
     CommsSecretKey(CommsSecretKey),
+    ClientKeyValue(String, String),
 }
 
 pub enum WriteOperation {
@@ -64,6 +68,7 @@ pub enum WriteOperation {
     Remove(DbKey),
 }
 
+#[derive(Clone)]
 pub struct WalletDatabase<T>
 where T: WalletBackend + 'static
 {
@@ -125,6 +130,47 @@ where T: WalletBackend + 'static
             .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
+
+    pub async fn set_client_key_value(&self, key: String, value: String) -> Result<(), WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::ClientKeyValue(key, value)))
+        })
+        .await
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
+    pub async fn get_client_key_value(&self, key: String) -> Result<Option<String>, WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::ClientKey(key.clone())) {
+            Ok(None) => Ok(None),
+            Ok(Some(DbValue::ClientValue(k))) => Ok(Some(k)),
+            Ok(Some(other)) => unexpected_result(DbKey::ClientKey(key), other),
+            Err(e) => log_error(DbKey::ClientKey(key), e),
+        })
+        .await
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(c)
+    }
+
+    pub async fn clear_client_value(&self, key: String) -> Result<bool, WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        let c = tokio::task::spawn_blocking(move || {
+            match db_clone.write(WriteOperation::Remove(DbKey::ClientKey(key.clone()))) {
+                Ok(None) => Ok(false),
+                Ok(Some(DbValue::ValueCleared)) => Ok(true),
+                Ok(Some(other)) => unexpected_result(DbKey::ClientKey(key), other),
+                Err(e) => log_error(DbKey::ClientKey(key), e),
+            }
+        })
+        .await
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(c)
+    }
 }
 
 impl Display for DbKey {
@@ -132,6 +178,7 @@ impl Display for DbKey {
         match self {
             DbKey::CommsSecretKey => f.write_str(&"CommsSecretKey".to_string()),
             DbKey::CommsPublicKey => f.write_str(&"CommsPublicKey".to_string()),
+            DbKey::ClientKey(k) => f.write_str(&format!("ClientKey: {:?}", k)),
         }
     }
 }
@@ -141,6 +188,8 @@ impl Display for DbValue {
         match self {
             DbValue::CommsSecretKey(k) => f.write_str(&format!("CommsSecretKey: {:?}", k)),
             DbValue::CommsPublicKey(k) => f.write_str(&format!("CommsPublicKey: {:?}", k)),
+            DbValue::ClientValue(v) => f.write_str(&format!("ClientValue: {:?}", v)),
+            DbValue::ValueCleared => f.write_str(&"ValueCleared".to_string()),
         }
     }
 }
@@ -189,6 +238,45 @@ mod test {
         assert_eq!(secret_key, stored_key);
         runtime.block_on(db.clear_comms_secret_key()).unwrap();
         assert!(runtime.block_on(db.get_comms_secret_key()).unwrap().is_none());
+
+        let client_key_values = vec![
+            ("key1".to_string(), "value1".to_string()),
+            ("key2".to_string(), "value2".to_string()),
+            ("key3".to_string(), "value3".to_string()),
+        ];
+
+        for kv in client_key_values.iter() {
+            runtime
+                .block_on(db.set_client_key_value(kv.0.clone(), kv.1.clone()))
+                .unwrap();
+        }
+
+        assert!(runtime
+            .block_on(db.get_client_key_value("wrong".to_string()))
+            .unwrap()
+            .is_none());
+
+        runtime
+            .block_on(db.set_client_key_value(client_key_values[0].0.clone(), "updated".to_string()))
+            .unwrap();
+
+        assert_eq!(
+            runtime
+                .block_on(db.get_client_key_value(client_key_values[0].0.clone()))
+                .unwrap()
+                .unwrap(),
+            "updated".to_string()
+        );
+
+        assert!(!runtime.block_on(db.clear_client_value("wrong".to_string())).unwrap());
+
+        assert!(runtime
+            .block_on(db.clear_client_value(client_key_values[0].0.clone()))
+            .unwrap());
+
+        assert!(!runtime
+            .block_on(db.clear_client_value(client_key_values[0].0.clone()))
+            .unwrap());
     }
 
     #[test]

@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::network_discovery::DhtNetworkDiscoveryRoundInfo;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
@@ -27,6 +28,11 @@ pub type DhtEventSender = broadcast::Sender<Arc<DhtEvent>>;
 pub type DhtEventReceiver = broadcast::Receiver<Arc<DhtEvent>>;
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum DhtEvent {
+    /// Emitted by the store and forward service upon receipt of a sufficient number of store and forward messages
     StoreAndForwardMessagesReceived,
+
+    /// Emitted by the NetworkDiscovery actor once a round of peer syncing has completed.
+    NetworkDiscoveryPeersAdded(DhtNetworkDiscoveryRoundInfo),
 }

@@ -67,7 +67,7 @@ impl TraitInfoCollector {
 
     /// Returns true if a method has the `#[rpc(...)]` attribute, otherwise false
     fn is_rpc_method(&self, node: &syn::TraitItemMethod) -> bool {
-        node.attrs.iter().position(|at| at.path.is_ident("rpc")).is_some()
+        node.attrs.iter().any(|at| at.path.is_ident("rpc"))
     }
 
     fn parse_trait_item_method(&mut self, node: &mut syn::TraitItemMethod) -> syn::Result<RpcMethodInfo> {

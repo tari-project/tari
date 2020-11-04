@@ -22,7 +22,6 @@
 
 use crate::{
     blocks::Block,
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
     mempool::{
         error::MempoolError,
         mempool_storage::MempoolStorage,
@@ -37,15 +36,15 @@ use crate::{
 use std::sync::{Arc, RwLock};
 
 /// Struct containing the validators the mempool needs to run, It forces the correct amount of validators are given
-pub struct MempoolValidators<B: BlockchainBackend> {
-    mempool: Validator<Transaction, B>,
-    orphan: Validator<Transaction, B>,
+pub struct MempoolValidators {
+    mempool: Validator<Transaction>,
+    orphan: Validator<Transaction>,
 }
 
-impl<B: BlockchainBackend> MempoolValidators<B> {
+impl MempoolValidators {
     pub fn new(
-        mempool: impl Validation<Transaction, B> + 'static,
-        orphan: impl Validation<Transaction, B> + 'static,
+        mempool: impl Validation<Transaction> + 'static,
+        orphan: impl Validation<Transaction> + 'static,
     ) -> Self
     {
         Self {
@@ -54,7 +53,7 @@ impl<B: BlockchainBackend> MempoolValidators<B> {
         }
     }
 
-    pub fn into_validators(self) -> (Validator<Transaction, B>, Validator<Transaction, B>) {
+    pub fn into_validators(self) -> (Validator<Transaction>, Validator<Transaction>) {
         (self.mempool, self.orphan)
     }
 }
@@ -62,17 +61,16 @@ impl<B: BlockchainBackend> MempoolValidators<B> {
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
 /// that have recently been included in a block.
-pub struct Mempool<T> {
-    pool_storage: Arc<RwLock<MempoolStorage<T>>>,
+#[derive(Clone)]
+pub struct Mempool {
+    pool_storage: Arc<RwLock<MempoolStorage>>,
 }
 
-impl<T> Mempool<T>
-where T: BlockchainBackend
-{
+impl Mempool {
     /// Create a new Mempool with an UnconfirmedPool, OrphanPool, PendingPool and ReOrgPool.
-    pub fn new(blockchain_db: BlockchainDatabase<T>, config: MempoolConfig, validators: MempoolValidators<T>) -> Self {
+    pub fn new(config: MempoolConfig, validators: MempoolValidators) -> Self {
         Self {
-            pool_storage: Arc::new(RwLock::new(MempoolStorage::new(blockchain_db, config, validators))),
+            pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, validators))),
         }
     }
 
@@ -86,7 +84,7 @@ where T: BlockchainBackend
     }
 
     /// Update the Mempool based on the received published block.
-    pub fn process_published_block(&self, published_block: Block) -> Result<(), MempoolError> {
+    pub fn process_published_block(&self, published_block: Arc<Block>) -> Result<(), MempoolError> {
         self.pool_storage
             .write()
             .map_err(|e| MempoolError::BackendError(e.to_string()))?
@@ -95,7 +93,12 @@ where T: BlockchainBackend
 
     /// In the event of a ReOrg, resubmit all ReOrged transactions into the Mempool and process each newly introduced
     /// block from the latest longest chain.
-    pub fn process_reorg(&self, removed_blocks: Vec<Block>, new_blocks: Vec<Block>) -> Result<(), MempoolError> {
+    pub fn process_reorg(
+        &self,
+        removed_blocks: Vec<Arc<Block>>,
+        new_blocks: Vec<Arc<Block>>,
+    ) -> Result<(), MempoolError>
+    {
         self.pool_storage
             .write()
             .map_err(|e| MempoolError::BackendError(e.to_string()))?
@@ -142,13 +145,5 @@ where T: BlockchainBackend
             .read()
             .map_err(|e| MempoolError::BackendError(e.to_string()))?
             .state()
-    }
-}
-
-impl<T> Clone for Mempool<T> {
-    fn clone(&self) -> Self {
-        Mempool {
-            pool_storage: self.pool_storage.clone(),
-        }
     }
 }
