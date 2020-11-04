@@ -62,17 +62,20 @@ payments and atomic swaps.
 
 It is hopefully clear to anyone reading these RFCs that the ambitions of the Tari project extend beyond a
 Mimblewimble-clone-coin.
-It should also be fairly clear that basic Mimblewimble does not have the feature set to provide functionality such as:
+It should also be fairly clear that vanilla Mimblewimble does not have the feature set to provide functionality such as:
 
 * One-sided payments
-* Atomic swaps (possible with scriptless scripts, but not easy)
-* Hash time-locked contracts (possible with scriptless scripts, but not easy)
 * Multiparty side-chain peg outs and peg-ins
 * Generalised smart contracts
 
 Extensions to Mimblewimble have been proposed for most of these features, for example, David Burkett's one-sided payment
-proposal for LiteCoin ([LIP-004]), this project's [HTLC RFC](RFC-0230_HTLC.md), the pegging proposals for the
-Clacks side-chain, and [Scriptless script]s.
+proposal for LiteCoin ([LIP-004]), this project's [HTLC RFC](RFC-0230_HTLC.md) and the pegging proposals for the
+Clacks side-chain.
+
+Some smart contract features are possible in vanilla Mimblewimble using [Scriptless scripts], such as
+
+* Atomic swaps 
+* Hash time-locked contracts
 
 This RFC makes the case that if Tari were to implement a scripting language similar to Bitcoin script, then all of these
 use cases collapse and can be achieved under a single set of (relatively minor) modifications and additions to the
@@ -80,11 +83,11 @@ current Tari and Mimblewimble protocol.
 
 ## Scripting on Mimblewimble
 
-To the author's knowledge, none of existing Mimblewimble projects have employed a scripting language. The reasons for
-this are unclear, but there is at least one narrative in the space that it is
-[not possible](https://forum.grin.mw/t/will-grin-allow-scripting-smart-contracts-in-the-future/7391/2) with
-Mimblewimble. Given that [Grin](https://github.com/mimblewimble/grin) styles itself as a "Minimal implementation of the
-Mimblewimble protocol", this status is unlikely to change soon.
+To the author's knowledge, none of existing Mimblewimble projects have employed a scripting language, nor are there 
+ambitions to do so. 
+ 
+[Grin](https://github.com/mimblewimble/grin) styles itself as a "Minimal implementation of the Mimblewimble protocol",
+so one might infer that this status is unlikely to change soon.
 
 As of this writing, the Beam project also considers Scriptless Script to be the
 [extent of their scripting capabilities](https://docs.beam.mw/Beam_lightning_network_position_paper.pdf).
@@ -98,12 +101,15 @@ to be no plans to include general scripting into the protocol.
 
 ### Scriptless scripts
 
-[Scriptless script] is a wonderfully elegant technology and inclusion of Tari script does not preclude the use of
-Scriptless script in Tari. However, scriptless scripts are difficult to reason about and development of them are best
-left to experts in cryptographic proofs, leaving the development of Mimblewimble smart contracts in the hands of a very
-select group of people.
+[Scriptless script] is a wonderfully elegant technology and inclusion of Tari script does not preclude the use of
+Scriptless script in Tari. However, scriptless scripts have some disadvantages:
 
-It is the opinion of the author that there is no reason why Mimblewimble cannot be extended to include scripting.
+* They are often difficult to reason about, with the result that the development of features based on scriptless scripts
+  is essentially in the hands of a very select group of cryptographers and developers.
+* The use case set is impressive considering that the "scripts" are essentially signature wrangling, but is still 
+  somewhat limited.
+* Every feature must be written and implemented separately using the specific and specialised protocol designed for that
+  feature. That is, it cannot be used as a dynamic scripting framework on a running blockchain.
 
 ## Tari script - a brief motivation
 
@@ -112,26 +118,22 @@ The essential idea of Tari script is as follows:
 Given a standard Tari UTXO, we add _additional restrictions_ on whether that UTXO can be included as a valid input in a
 transaction.
 
-As long as those conditions are suitably committed to, and are not malleable throughout the existence of the UTXO, then
-in general, these conditions are not that different to the requirement of having range proofs attached to UTXOs, which require
-that the value of Tari commitments is non-negative.
-
-Note that range proofs can be discarded after a UTXO is spent, since the global security guarantees of Mimblewimble are
-not concerned that every transaction in history was valid from an inflation perspective, but that the net effect of all
-transactions lead to zero inflation. This sounds worse than it is, since locally, every individual transaction is
-checked for validity at the time of inclusion in the blockchain.
+As long as those conditions are suitably committed to, are not malleable throughout the existence of the UTXO, and one
+can prove that the script came from the UTXO owner, then these conditions are not that different to the 
+requirement of having range proofs attached to UTXOs, which require that the value of Tari commitments is non-negative.
 
 This argument is independent of the nature of the additional restrictions. Specifically, if these restrictions are
 manifested as a script that provides additional constraints over whether a UTXO may be spent, the same arguments apply.
 
-This means that from a philosophical viewpoint, there ought to be no reason that Tari Script is not workable, and
-further, that pruning spent outputs (and possibly the scripts associated with them) is not that different from pruning
-range proofs.
+This means that in a very hand wavy sort of way, there ought to be no reason that Tari Script is not workable.
 
-There is one key difference though that we need to address.
+Note that range proofs can be discarded after a UTXO is spent. This entails that the global security guarantees of Mimblewimble are
+not that every transaction in history was valid from an inflation perspective, but that the net effect of all
+transactions lead to zero spurious inflation. This sounds worse than it is, since locally, every individual transaction is
+checked for validity at the time of inclusion in the blockchain. 
 
 If it somehow happened that two illegal transactions made it into the blockchain (perhaps due to a bug), and the two
-cancelled each other out, such that the global coin supply was still correct, one would never know this when doing a
+cancelled each other out such that the global coin supply was still correct, one would never know this when doing a
 chain synchronisation in pruned mode.
 
 But if there was a steady inflation bug due to invalid range proofs making it into the blockchain, a pruned mode sync
@@ -139,10 +141,14 @@ would still detect that _something_ was awry, because the global coin supply bal
 
 With Tari script, once the script has been pruned away, and then there is a re-org to an earlier point on the chain,
 then there's no way to ensure that the script was honoured.
-This is broadly in keeping with the Mimblewimble security guarantees that individual transactions are not necessarily verified during synchronisation.
+
+This is broadly in keeping with the Mimblewimble security guarantees that individual transactions are not necessarily 
+verified during chain synchronisation.
+
 However, the guarantee that no additional coins are created or destroyed remains intact.
 
-Put another way, the blockchain relies on the network _at the time_ to enforce the Tari script spending rules. This means that the scheme may be susceptible to certain _horizon attacks_.
+Put another way, the blockchain relies on the network _at the time_ to enforce the Tari script spending rules. 
+This means that the scheme may be susceptible to certain _horizon attacks_.
 
 Incidentally, a single honest archival node would be able to detect any fraud on the same chain and provide a simple proof
 that a transaction did not honour the redeem script.
@@ -153,29 +159,38 @@ The assumptions that broadly equate scripting with range proofs in the above arg
 
 * The script (hash) must be committed to the blockchain.
 * The script must not be malleable in any way without invalidating the transaction.
-* The creator of the UTXO must commit to and sign the script (hash).
+* We must be able to prove that the UTXO owner provides the script hash and no-one else.
+* The scripts and their redeeming inputs must be stored on the block chain.
 
-The script commitment, which can be adequately represented by the hash of the canonical serialisation of the script in
-binary, could be placed in the transaction kernel, or in a dedicated merkle mountain range for scripts.
-
-Range proofs are not malleable because one must have knowledge of the UTXO blinding factor in order to generate a valid
-range proof. However, it's trivial to replace scripts with other valid scripts, potentially to the point that miners or
-malicious actors could take the UTXO for themselves.
-
-Therefore, it's imperative the UTXO creator sign the script.
-
-Further, this signature must be present in the _kernel_ in some form, otherwise miners will be able to remove the script
-via cut-through, whereas kernels never get pruned.
-
-One approach to commit to the script hashes is to modify the output commitments using a variation of the [data commitments] approach
-first suggested by [Phyro](https://github.com/phyro). In this approach, when creating a new UTXO, the owner also calculates
-the hash of the locking script, _s_, such that `s = H(script)`. The script hash gets stored in the UTXO itself.
+The next section discusses the specific proposals for achieving these requirements.
 
 ## Protocol modifications
 
+At a high level, Tari script works as follows:
+
+* The script commitment, which can be adequately represented by the hash of the canonical serialisation of the script in
+binary, is recorded in the transaction kernel. 
+* An additional merkle mountain range committing the script history is necessary to prevent miners rewriting the script 
+hash history during chain re-orgs.
+* An additional secret key is provided by UTXO owners that signs both the script and the input data (if any) when it is spent.
+
+Note that, at the outset, the signatures must be present in the _kernel_ in some form, otherwise miners will be able to 
+remove the script via cut-through, whereas kernels never get pruned.
+
+### UTXO data commitments
+
+One approach to commit to the script hashes is to modify the output commitments using a variation of the [data commitments] approach
+first suggested by [Phyro](https://github.com/phyro). In this approach, when creating a new UTXO, the owner also calculates
+the hash of the locking script, _s_, such that `s = H(script)`. The script hash gets stored in the UTXO itself.
+
+Using this approach, the script hash is bound to the UTXO via the UTXO commitment. In combination with the signature, 
+this makes it non-malleable insofar as the UTXO itself is non-malleable.
+
 There are several changes to the protocol data structures that must be made to allow this scheme to work. The first is
 a relatively minor adjustment to the output commitment.
+
 The second is an addition of several pieces of data to the transaction kernel.
+
 The third is the addition of a new section in the transaction and block definition to hold the script data.
 
 Finally, the balance and signature consensus rules must be updated to account for these changes.
@@ -198,12 +213,14 @@ pub struct TransactionOutput {
 Under Tari script, this definition does not change. The information making up the commitment does change slightly, but
 from the perspective of the block and transaction storage, an output is identical pre- and post- Tari script.
 
+_Note:_ Under the current consensus rules, the output features are actually malleable. Under Tari script, we can fix 
+this by moving all output features to script constraints, with the exception of the coinbase output feature.
 
 Now when calculating the transaction or block balance, we calculate a different set of commitments. The current commitment,
 
 $$ C_a = v_a.H + k_a.G $$
 
-is modified with a commitment to the script hash, as follows (see [notation](#notation)):
+is modified with a commitment to the script hash, as follows (see [Notation](#notation)):
 
 $$
 \begin{align}
@@ -217,7 +234,7 @@ $$
 
 Transaction participants will sign the kernel and build the range proof with
 $$ k_a  + k_{a'}\sigma_a $$
-rather than just \\( k \\).
+rather than just \\( k_a \\).
 
 The overall and block balance checks must also be modified to use \\( \hat{C} \\) rather than \\( C \\).
 
@@ -236,7 +253,9 @@ For Tari script, we require the addition of an additional field:
 
 The script key, \\( L_i \\) is the public counterpart of a key chosen by the creator of the UTXO.
 The secret portion of the script key, \\( k_{i'} \\) effectively locks the script hash and prevents third parties from modifying the script portion of the output commitment without detection.
-This was a vulnerability in the original [data commitments] scheme which is resolved with this modification.
+This was a vulnerability in the original [data commitments] scheme which is resolved with this modification.
+
+The product \\( \sigma_i L_i \\) is referred to as the _script product_.
 
 ### Script section
 
@@ -249,50 +268,48 @@ A script object consists of:
 * `data`: The serialised representation of the data to push onto the stack prior to executing of the script,
 * `signature`: A signature of the script + data verified, signed by \\( k_{a'} \\).
 
-The default script, `PUSH(0)` is trivially and universally satisfied. Its hash is known _a priori_ and is
-easily identified in the kernel. Therefore, to save space, we omit these scripts from the script section.
-
 It's possible to have duplicate, non-trivial script hashes in the kernel. Since it is possible to have different inputs
 to the script and still be a valid spend condition, these scripts MUST be repeated in the script section, even if they
-have the same input.
+have the same input, or are the default script (`PUSH(0)`).
+
+_Open question_: Is an MMR of the script section necessary to be included in the header?
 
 ### Transaction balance
 
-The Mimblewimble transaction balance must be modified to take the script hash commitments into account.
+The Mimblewimble transaction balance must be modified to take the script products into account.
 This is fairly straightforward.
 
 Given a set of inputs, outputs, the transaction fee, \\( f \\), and the transaction offset, \\( \delta \\):
 
 $$
 \begin{align}
-\sum\mathrm{Inputs} - \sum\mathrm{Outputs} - \mathrm{fee}.H &\stackrel?= \mathrm{Excess} + \sum\mathrm{script~hashes} + \mathrm{offset}.G  \\\\
+\sum\mathrm{Inputs} - \sum\mathrm{Outputs} - \mathrm{fee}.H &\stackrel?= \mathrm{Excess} \pm \sum\mathrm{script~products} + \mathrm{offset}.G  \\\\
 \Rightarrow \sum \pm\hat{C_i} - f.H  &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G  \\\\
-\Rightarrow \sum \pm C_i \pm L_i\sigma_i - f.H &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G
+\Rightarrow \sum \bigl( \pm C_i \pm L_i\sigma_i \bigr) - f.H &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G
 \end{align}
 $$
 
-Here the \\( \pm \\) operator is used to simplify the notation and indicates the addition operation when the following term is associated with an input and subtraction when the term related to an output.
+Here the \\( \pm \\) operator is used to simplify the notation and indicates the addition operation when the following 
+term is associated with an input and subtraction when the term related to an output.
 
 If the accounting is correct, all values will cancel out:
 
 $$
 \begin{align}
-\sum(\pm k_i.G \pm L_i.\sigma_i) &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G \\\\
-\sum \pm P_i + \sum \pm L_i.\sigma_i &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G \\\\
+\sum(\pm k_i.G \pm L_i\sigma_i) &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G \\\\
+\sum \pm P_i + \sum \pm L_i\sigma_i &\stackrel?= X_s + \sum \pm L_i\sigma_i + \delta.G \\\\
+\sum \pm P_i +  &\stackrel?= X_s +  \delta.G \\\\
 \end{align}
 $$
 
-Given that \\(  \sum \pm P_i = X_s + \delta.G \\), the left hand side becomes, with the offset terms cancelling:
+Given the definition of the excess, \\(  \sum \pm P_i = X_s + \delta.G \\), the balance holds.
 
-$$
-X_s + \sum\pm L_i\sigma_i \stackrel?= X_s + \sum \pm L_i\sigma_i
-$$
-
-and the balance holds.
+If the balance does not hold for whatever reason, the transaction is rejected, as per the _status quo_. 
 
 ### Kernel signature
 
-The kernel signature must also be adapted to account for the fact that the residual of the block balance is no longer simply the public excess, but also includes the script hashes and script keys.
+The kernel signature must also be adapted to account for the fact that the residual of the block balance is no longer 
+simply the public excess, but also includes the script hashes and script keys.
 
 $$
 \begin{align}
@@ -305,7 +322,13 @@ s.G  &= \sum R_i + e.\bigl( \sum \pm P_i \pm \sum L_i\sigma_i \bigr) \\\\
 \end{align}
 $$
 
-The exercise above demonstrates that $$x_s + \sum \pm L_i\sigma_i$$ signs the kernel correctly.
+The exercise above demonstrates that $$x_s + \sum \pm \sigma_i k_{i'}$$ signs the kernel correctly.
+
+In other words, a validating a transaction or block now checks that 
+
+$$ X_s + \sum \pm \sigma_i L_i $$ 
+
+corresponds to the kernel signature, rather than just \\( X_s \\).
 
 The same treatment extends to be block validation check. Note that since the individual kernel excesses can still be
 summed to obtain the overall block balance.
@@ -318,7 +341,7 @@ In addition to the changes given above, there are consensus rule changes for tra
 
 For every valid block or transaction,
 
-1. Every script hash in the kernel MUST be a default script hash or match a script in the script section. If there are
+1. Every script hash in the kernel MUST match a script in the script section. If there are
    duplicate non-trivial script hashes present, there MUST be a script entry for every duplicate.
 2. The script and its input data, if any, MUST execute successfully, i.e. without any errors. After execution, the stack
    MUST have exactly one element and its value MUST be exactly zero.
@@ -326,7 +349,7 @@ For every valid block or transaction,
 
 ## Checking the requirements
 
-Let us evaluate this scheme against the [requirements](#additional-requirements) listed earlier.
+Let us evaluate this scheme against the [Additional requirements](#additional-requirements) listed earlier.
 
 ### Malleability
 
@@ -339,7 +362,7 @@ First, Bob simply tries to modify the kernel, replacing one of the kernel script
 
 #### Changing commitment
 
-Bob then tries to apply the attack described in [data commitments], and tries to modify the UTXO commitment as follows:
+Bob then tries to apply the attack described in [data commitments], and tries to modify the UTXO commitment as follows:
 
 $$
 \begin{align}
@@ -360,14 +383,27 @@ $$
 To do this, Bob must know the value of \\( k_{a'} \\) which requires him to find the discrete log of \\( L_a \\), an
 infeasable exercise.
 
-#### Rogue script hash attack
+### Script product malleability
 
-Now Bob wishes to replace a script on an output with one of their own, \(( \sigma_* \\). They try to do this as follows:
+Since _the sum of script products_ is a term in the balance, in theory, a malicious party could manipulate the individual 
+script products, keeping the sum constant. Then the balance would still hold.
+
+Changing any of the script products entails:
+
+* Changing two or more script hashes, 
+* and/or changing the script key.
+
+Changing any of the script hashes obliges the attacker to provide a valid script that is the preimage of the new hash.
+Assuming this is possible in polynomial time, the attacker must _also_ sign the new hash, proving knowledge of the
+script key.
+
+As an illustration, assume Bob wishes to replace a script on an output with one of his own, \\( \sigma_\* \\). 
+He tries to do this as follows:
 
 $$
 \begin{align}
-(L_1, \sigma_1) &\rightarrow (L_1, \sigma_*) \\\\
-(L_2, \sigma_2) &\rightarrow (L_1, \sigma_2 - \sigma_* + \sigma_1)
+(L_1, \sigma_1) &\rightarrow (L_1, \sigma_\*) \\\\
+(L_2, \sigma_2) &\rightarrow (L_1, \sigma_2 - \sigma_\* + \sigma_1)
 \end{align}
 $$
 
@@ -395,7 +431,7 @@ Recall that by the time the block is assembled, the link between output and scri
 list of scripts and their hashes and must validate that they all produce a zero result.
 
 By extension, UTXOs can still be pruned because the \\( L_a\sigma_a \\) values change sign when used as inputs and will
-cancel out in the overall balance in the same way that the pruned out excesses are.
+cancel out in the overall balance in the same way that the pruned excesses are.
 
 ### Script lock key generation
 
@@ -405,7 +441,9 @@ deterministically derived from the spend key. For example, the script key can be
 
 ## Disadvantages
 
-The most obvious drawback to TariScript is the effect is will have on blockchain size. The kernels are never pruned, and
+### Blockchain bloat
+
+The most obvious drawback to TariScript is the effect it will have on blockchain size. The kernels are never pruned, and
 introduce an additional 32 bytes per input and output to the permanent blockchain size.
 
 Assuming a moderately busy network processing 1,000 transactions per day, with an average of 1 input and 2 outputs per transaction,
@@ -423,7 +461,9 @@ assumptions as before.
 However, this approach adds a significant degree of linkage to the chain data and so it is debatable whether the space savings
 are worthwhile.
 
-The other key drawback of TariScript is the additional information that is handed to entities wishing to perform chain
+### Fodder for chain analysis
+
+Another potential drawback of TariScript is the additional information that is handed to entities wishing to perform chain
 analysis. Even though the script hashes are decoupled from the outputs themselves, one may be able to draw inferences
 from the distribution of the script hashes committed into the chain. These privacy concerns are relatively minor, but they
 certainly add a level of heterogeneity to the blockchain data, which can only serve to aid chainalysis efforts.
@@ -728,7 +768,7 @@ pub enum StackItem {
 
 Tari script places restrictions on _who_ can spend UTXOs. It will also be useful for Tari digital asset applications to
 restrict _how_ or _where_ UTXOs may be spent in some cases. The general term for these sorts of restrictions are termed
-_covenants_. The [Handshake white paper] has a fairly good description of how covenants work.
+_covenants_. The [Handshake white paper] has a fairly good description of how covenants work.
 
 It is beyond the scope of this RFC, but it's anticipated that Tari Script would play a key role in the introduction of
 generalised covenant support into Tari.
@@ -820,7 +860,7 @@ Check the signature, and if it is correct:
 |            | `0` |
 |            |     |
 
-The script has completed and is succesful.
+The script has completed and is successful.
 
 To increase privacy, Alice could also lock the UTXO with a P2PKH
 script:
