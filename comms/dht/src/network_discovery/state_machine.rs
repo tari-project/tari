@@ -126,6 +126,7 @@ pub(super) struct NetworkDiscoveryContext {
     pub connectivity: ConnectivityRequester,
     pub node_identity: Arc<NodeIdentity>,
     pub num_rounds: Arc<AtomicUsize>,
+    pub all_attempted_peers: Arc<RwLock<Vec<NodeId>>>,
     pub event_tx: broadcast::Sender<Arc<DhtEvent>>,
     pub last_round: Arc<RwLock<Option<DhtNetworkDiscoveryRoundInfo>>>,
 }
@@ -151,6 +152,10 @@ impl NetworkDiscoveryContext {
     }
 
     pub(super) async fn set_last_round(&self, last_round: DhtNetworkDiscoveryRoundInfo) {
+        self.all_attempted_peers
+            .write()
+            .await
+            .append(&mut last_round.sync_peers.clone());
         *self.last_round.write().await = Some(last_round);
     }
 
@@ -180,6 +185,7 @@ impl DhtNetworkDiscovery {
                 peer_manager,
                 connectivity,
                 node_identity,
+                all_attempted_peers: Default::default(),
                 num_rounds: Default::default(),
                 last_round: Default::default(),
                 event_tx,
