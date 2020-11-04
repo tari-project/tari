@@ -41,7 +41,11 @@ pub enum NodeCommsResponse {
     TransactionOutputs(Vec<TransactionOutput>),
     HistoricalBlocks(Vec<HistoricalBlock>),
     NewBlockTemplate(NewBlockTemplate),
-    NewBlock(Block),
+    NewBlock {
+        success: bool,
+        error: Option<String>,
+        block: Option<Block>,
+    },
     TargetDifficulty(Difficulty),
     FetchHeadersAfterResponse(Vec<BlockHeader>),
     MmrNodeCount(u32),
@@ -58,7 +62,16 @@ impl Display for NodeCommsResponse {
             TransactionOutputs(_) => write!(f, "TransactionOutputs"),
             HistoricalBlocks(_) => write!(f, "HistoricalBlocks"),
             NewBlockTemplate(_) => write!(f, "NewBlockTemplate"),
-            NewBlock(_) => write!(f, "NewBlock"),
+            NewBlock {
+                success,
+                error,
+                block: _,
+            } => write!(
+                f,
+                "NewBlock({},{},...)",
+                success,
+                error.as_ref().unwrap_or(&"Unspecified".to_string())
+            ),
             TargetDifficulty(_) => write!(f, "TargetDifficulty"),
             FetchHeadersAfterResponse(_) => write!(f, "FetchHeadersAfterResponse"),
             MmrNodeCount(_) => write!(f, "MmrNodeCount"),

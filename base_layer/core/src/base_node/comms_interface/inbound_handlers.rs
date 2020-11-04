@@ -393,8 +393,24 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
+                let metadata = async_db::get_chain_metadata(self.blockchain_db.clone()).await?;
+                if Some(&block_template.header.prev_hash) != metadata.best_block.as_ref() {
+                    return Ok(NodeCommsResponse::NewBlock {
+                        success: false,
+                        error: Some(
+                            "Cannot calculate MMR roots for this block as it is no longer at the tip of this node"
+                                .to_string(),
+                        ),
+                        block: None,
+                    });
+                }
+
                 let block = async_db::calculate_mmr_roots(self.blockchain_db.clone(), block_template.clone()).await?;
-                Ok(NodeCommsResponse::NewBlock(block))
+                Ok(NodeCommsResponse::NewBlock {
+                    success: true,
+                    error: None,
+                    block: Some(block),
+                })
             },
             NodeCommsRequest::FetchMmrNodeCount(tree, height) => {
                 let node_count = async_db::fetch_mmr_node_count(self.blockchain_db.clone(), *tree, *height).await?;
