@@ -154,6 +154,7 @@ define_windows_service!(ffi_service_main, service_main);
 
 #[cfg(feature = "winservice")]
 pub fn service_main(_arguments: Vec<OsString>) {
+
     if let Err(_e) = run_service() {
         // Handle the error
     }
@@ -161,6 +162,26 @@ pub fn service_main(_arguments: Vec<OsString>) {
 
 #[cfg(feature = "winservice")]
 pub fn run_service() -> ServiceResult<()> {
+    let mut bootstrap = ConfigBootstrap::from_args();
+    bootstrap.init_dirs(ApplicationType::BaseNode).unwrap();
+    let cfg = bootstrap.load_configuration().unwrap();
+    bootstrap.initialize_logging().unwrap();
+    let node_config = GlobalConfig::convert_from(cfg)
+        .map_err(|err| {
+            error!(target: LOG_TARGET, "The configuration file has an error. {}", err);
+            ExitCodes::ConfigError(format!("The configuration file has an error. {}", err))
+        })
+        .unwrap();
+
+    debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
+
+    let mut rt = setup_runtime(&node_config)
+        .map_err(|err| {
+            error!(target: LOG_TARGET, "{}", err);
+            ExitCodes::UnknownError
+        })
+        .unwrap();
+
     let (shutdown_tx, shutdown_rx) = mpsc::channel();
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
@@ -188,36 +209,6 @@ pub fn run_service() -> ServiceResult<()> {
     })?;
 
     let handle = thread::spawn(move || {
-        let mut bootstrap = ConfigBootstrap::from_args();
-
-        // Check and initialize configuration files
-        bootstrap.init_dirs(ApplicationType::BaseNode).unwrap();
-
-        // Load and apply configuration file
-        let cfg = bootstrap.load_configuration().unwrap();
-
-        // Initialise the logger
-        bootstrap.initialize_logging().unwrap();
-
-        // Populate the configuration struct
-        let node_config = GlobalConfig::convert_from(cfg)
-            .map_err(|err| {
-                error!(target: LOG_TARGET, "The configuration file has an error. {}", err);
-                ExitCodes::ConfigError(format!("The configuration file has an error. {}", err))
-            })
-            .unwrap();
-
-        debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
-
-        // Set up the Tokio runtime
-        let mut rt = setup_runtime(&node_config)
-            .map_err(|err| {
-                error!(target: LOG_TARGET, "{}", err);
-                ExitCodes::UnknownError
-            })
-            .unwrap();
-
-        // Load or create the Node identity
         let wallet_identity = setup_node_identity(
             &node_config.wallet_identity_file,
             &node_config.public_address,
@@ -225,21 +216,17 @@ pub fn run_service() -> ServiceResult<()> {
                 // If the base node identity exists, we want to be sure that the wallet identity exists
                 node_config.identity_file.exists(),
             PeerFeatures::COMMUNICATION_CLIENT,
-        )
-        .unwrap();
+        ).unwrap();
 
         let node_identity = setup_node_identity(
             &node_config.identity_file,
             &node_config.public_address,
             bootstrap.create_id,
             PeerFeatures::COMMUNICATION_NODE,
-        )
-        .unwrap();
+        ).unwrap();
 
-        // This is the main and only shutdown trigger for the system.
         let shutdown = Shutdown::new();
 
-        // Build, node, build!
         let ctx = rt
             .block_on(builder::configure_and_initialize_node(
                 &node_config,
@@ -264,6 +251,39 @@ pub fn run_service() -> ServiceResult<()> {
 
             rt.spawn(run_grpc(grpc, node_config.grpc_address, shutdown.to_signal()));
         }
+    });
+
+    loop {
+        match shutdown_rx.recv_timeout(Duration::from_secs(0)) {
+            // Break the loop either upon stop or channel disconnect
+            Ok(_) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+
+            // Continue work if no events were received within the timeout
+            Err(mpsc::RecvTimeoutError::Timeout) => (),
+        };
+    }
+
+    //handle.join().unwrap();
+
+/*
+
+        // Populate the configuration struct
+
+
+        // Set up the Tokio runtime
+
+        // Load or create the Node identity
+
+
+
+
+        // This is the main and only shutdown trigger for the system.
+
+
+        // Build, node, build!
+
+
+
 
         // Run, node, run!
         let base_node_handle = rt.spawn(ctx.run());
@@ -281,19 +301,7 @@ pub fn run_service() -> ServiceResult<()> {
         // Wait until tasks have shut down
         drop(rt);
 
-    });
-
-    loop {
-        match shutdown_rx.recv_timeout(Duration::from_secs(5)) {
-            // Break the loop either upon stop or channel disconnect
-            Ok(_) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
-
-            // Continue work if no events were received within the timeout
-            Err(mpsc::RecvTimeoutError::Timeout) => (),
-        };
-    }
-
-    handle.join().unwrap();
+*/
 
     status_handle.set_service_status(ServiceStatus {
         service_type: SERVICE_TYPE,
@@ -304,6 +312,7 @@ pub fn run_service() -> ServiceResult<()> {
         wait_hint: Duration::new(5, 0),
         process_id: None,
     })?;
+
 
     Ok(())
 }
@@ -323,6 +332,7 @@ fn main() {
 }
 
 /// Sets up the base node and runs the cli_loop
+#[cfg(not(feature = "winservice"))]
 fn main_inner() -> Result<(), ExitCodes> {
     // Parse and validate command-line arguments
     let mut bootstrap = ConfigBootstrap::from_args();
