@@ -7,6 +7,7 @@ use crate::{
     },
     utils::formatting::display_compressed_string,
 };
+use tari_wallet::types::DEFAULT_FEE_PER_GRAM;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
     backend::Backend,
@@ -26,6 +27,7 @@ pub struct SendReceiveTab {
     show_edit_contact: bool,
     to_field: String,
     amount_field: String,
+    fee_field: String,
     message_field: String,
     alias_field: String,
     public_key_field: String,
@@ -46,6 +48,7 @@ impl SendReceiveTab {
             show_edit_contact: false,
             to_field: "".to_string(),
             amount_field: "".to_string(),
+            fee_field: u64::from(DEFAULT_FEE_PER_GRAM).to_string(),
             message_field: "".to_string(),
             alias_field: "".to_string(),
             public_key_field: "".to_string(),
@@ -85,6 +88,9 @@ impl SendReceiveTab {
             Span::styled("A", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to edit "),
             Span::styled("Amount", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled("F", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to edit "),
+            Span::styled("Fee-Per-Gram", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" field, "),
             Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to select a contact, "),
@@ -106,13 +112,26 @@ impl SendReceiveTab {
             );
         f.render_widget(to_input, vert_chunks[1]);
 
+        let amount_fee_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+            .split(vert_chunks[2]);
+
         let amount_input = Paragraph::new(self.amount_field.as_ref())
             .style(match self.send_input_mode {
                 SendInputMode::Amount => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
             })
             .block(Block::default().borders(Borders::ALL).title("(A)mount (uT):"));
-        f.render_widget(amount_input, vert_chunks[2]);
+        f.render_widget(amount_input, amount_fee_layout[0]);
+
+        let fee_input = Paragraph::new(self.fee_field.as_ref())
+            .style(match self.send_input_mode {
+                SendInputMode::Fee => Style::default().fg(Color::Magenta),
+                _ => Style::default(),
+            })
+            .block(Block::default().borders(Borders::ALL).title("(F)ee-per-gram (uT):"));
+        f.render_widget(fee_input, amount_fee_layout[1]);
 
         let message_input = Paragraph::new(self.message_field.as_ref())
             .style(match self.send_input_mode {
@@ -132,9 +151,15 @@ impl SendReceiveTab {
             ),
             SendInputMode::Amount => f.set_cursor(
                 // Put cursor past the end of the input text
-                vert_chunks[2].x + self.amount_field.width() as u16 + 1,
+                amount_fee_layout[0].x + self.amount_field.width() as u16 + 1,
                 // Move one line down, from the border to the input line
-                vert_chunks[2].y + 1,
+                amount_fee_layout[0].y + 1,
+            ),
+            SendInputMode::Fee => f.set_cursor(
+                // Put cursor past the end of the input text
+                amount_fee_layout[1].x + self.fee_field.width() as u16 + 1,
+                // Move one line down, from the border to the input line
+                amount_fee_layout[1].y + 1,
             ),
             SendInputMode::Message => f.set_cursor(
                 // Put cursor past the end of the input text
@@ -461,11 +486,20 @@ impl<B: Backend> Component<B> for SendReceiveTab {
                             return;
                         };
 
+                        let fee_per_gram = if let Ok(v) = self.fee_field.parse::<u64>() {
+                            v
+                        } else {
+                            self.error_message =
+                                Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
+                            return;
+                        };
+
                         let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
 
                         match Handle::current().block_on(app_state.send_transaction(
                             self.to_field.clone(),
                             amount,
+                            fee_per_gram,
                             self.message_field.clone(),
                             tx,
                         )) {
@@ -476,6 +510,7 @@ impl<B: Backend> Component<B> for SendReceiveTab {
                             Ok(_) => {
                                 self.to_field = "".to_string();
                                 self.amount_field = "".to_string();
+                                self.fee_field = u64::from(DEFAULT_FEE_PER_GRAM).to_string();
                                 self.message_field = "".to_string();
                                 self.send_input_mode = SendInputMode::None;
                                 self.send_result_watch = Some(rx);
@@ -522,6 +557,15 @@ impl<B: Backend> Component<B> for SendReceiveTab {
                     c => {
                         if c.is_numeric() {
                             self.amount_field.push(c);
+                        }
+                        return;
+                    },
+                },
+                SendInputMode::Fee => match c {
+                    '\n' => self.send_input_mode = SendInputMode::None,
+                    c => {
+                        if c.is_numeric() {
+                            self.fee_field.push(c);
                         }
                         return;
                     },
@@ -630,6 +674,7 @@ impl<B: Backend> Component<B> for SendReceiveTab {
             },
             't' => self.send_input_mode = SendInputMode::To,
             'a' => self.send_input_mode = SendInputMode::Amount,
+            'f' => self.send_input_mode = SendInputMode::Fee,
             'm' => self.send_input_mode = SendInputMode::Message,
             's' => {
                 if self.amount_field.is_empty() || self.to_field.is_empty() {
@@ -672,6 +717,9 @@ impl<B: Backend> Component<B> for SendReceiveTab {
             SendInputMode::Amount => {
                 let _ = self.amount_field.pop();
             },
+            SendInputMode::Fee => {
+                let _ = self.fee_field.pop();
+            },
             SendInputMode::Message => {
                 let _ = self.message_field.pop();
             },
@@ -696,6 +744,7 @@ pub enum SendInputMode {
     To,
     Amount,
     Message,
+    Fee,
 }
 
 #[derive(PartialEq, Debug)]

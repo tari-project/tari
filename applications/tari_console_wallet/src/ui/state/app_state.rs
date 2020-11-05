@@ -116,6 +116,7 @@ impl AppState {
         &mut self,
         public_key: String,
         amount: u64,
+        fee_per_gram: u64,
         message: String,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError>
@@ -126,8 +127,7 @@ impl AppState {
             Err(_) => EmojiId::str_to_pubkey(public_key.as_str()).map_err(|_| UiError::PublicKeyParseError)?,
         };
 
-        // TODO: use configured fee per gram
-        let fee_per_gram = 25 * uT;
+        let fee_per_gram = fee_per_gram * uT;
         let tx_service_handle = inner.wallet.transaction_service.clone();
         tokio::spawn(send_transaction_task(
             public_key,
