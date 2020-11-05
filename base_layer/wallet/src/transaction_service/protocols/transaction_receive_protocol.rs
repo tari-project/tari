@@ -46,7 +46,7 @@ use tari_comms::types::CommsPublicKey;
 
 use tari_core::transactions::{
     transaction::Transaction,
-    transaction_protocol::{proto, recipient::RecipientState, sender::TransactionSenderMessage},
+    transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
     types::PrivateKey,
     OutputFeatures,
     ReceiverTransactionProtocol,

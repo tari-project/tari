@@ -780,7 +780,7 @@ mod test {
         // Alice's parameters
         let alice = TestParams::new();
         let (utxo_amount, fee_per_gram, amount) = get_fee_larger_than_amount_values();
-        let (utxo, input) = make_input(&mut OsRng, utxo_amount, &factories.commitment);
+        let (utxo, input) = make_input(utxo_amount, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)
@@ -803,7 +803,7 @@ mod test {
         // Alice's parameters
         let alice = TestParams::new();
         let (utxo_amount, fee_per_gram, amount) = get_fee_larger_than_amount_values();
-        let (utxo, input) = make_input(&mut OsRng, utxo_amount, &factories.commitment);
+        let (utxo, input) = make_input(utxo_amount, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         builder
             .with_lock_height(0)

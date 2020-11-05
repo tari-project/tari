@@ -133,6 +133,7 @@ macro_rules! sign {
         let meta = TransactionMetadata::default();
         sign!($output, meta)
     }};
+}
 /// Generate a random transaction signature given a key, returning the public key (excess) and the signature.
 pub fn create_random_signature_from_s_key(
     s_key: PrivateKey,

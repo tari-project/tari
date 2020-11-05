@@ -27,7 +27,7 @@ use crate::transactions::{
     aggregated_body::AggregateBody,
     tari_amount::{uT, MicroTari},
     transaction_protocol::{build_challenge, TransactionMetadata},
-    types::{BlindingFactor, Commitment, CryptoFactories, HashDigest, HashOutput, MessageHash, Signature},
+    types::{BlindingFactor, Commitment, CryptoFactories, HashDigest, Signature},
     TransactionInput,
     TransactionOutput,
 };

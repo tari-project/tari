@@ -22,7 +22,7 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::TryFrom;
-use tari_core::transactions::transaction::{OutputFeatures, OutputFlags};
+use tari_core::transactions::{OutputFeatures, OutputFlags};
 
 impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
     type Error = String;

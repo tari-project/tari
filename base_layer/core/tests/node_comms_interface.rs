@@ -22,8 +22,7 @@
 
 #[allow(dead_code)]
 mod helpers;
-
-use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, StreamExt};
+use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, executor::block_on, StreamExt};
 use helpers::{block_builders::append_block, database::create_mem_db};
 use tari_comms::peer_manager::NodeId;
 use tari_core::{
@@ -281,17 +280,12 @@ async fn inbound_fetch_utxos() {
     txn.insert_utxo(utxo.clone());
     assert!(store.commit(txn).is_ok());
 
-    // Create fake UTXO
-    let (utxo_fake, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let hash_fake = utxo_fake.hash();
-
-    // Only retrieve a subset of the actual hashes, including a fake hash in the list
     if let Ok(NodeCommsResponse::TransactionOutputs(received_utxos)) = inbound_nch
-        .handle_request(&NodeCommsRequest::FetchMatchingUtxos(vec![hash_1, hash_fake]))
+        .handle_request(&NodeCommsRequest::FetchMatchingUtxos(vec![hash]))
         .await
     {
         assert_eq!(received_utxos.len(), 1);
-        assert_eq!(received_utxos[0], utxo_1);
+        assert_eq!(received_utxos[0], utxo);
     } else {
         assert!(false);
     }

@@ -23,14 +23,7 @@
 use crate::transactions::{
     fee::Fee,
     tari_amount::*,
-    transaction::{
-        TransactionInput,
-        TransactionOutput,
-        UnblindedOutput,
-        MAX_TRANSACTION_INPUTS,
-        MAX_TRANSACTION_OUTPUTS,
-        MINIMUM_TRANSACTION_FEE,
-    },
+    transaction::{MAX_TRANSACTION_INPUTS, MAX_TRANSACTION_OUTPUTS, MINIMUM_TRANSACTION_FEE},
     transaction_protocol::{
         recipient::RecipientInfo,
         sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},

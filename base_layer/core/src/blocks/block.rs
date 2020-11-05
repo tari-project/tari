@@ -30,8 +30,10 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-        types::CryptoFactories,
+        transaction::{Transaction, TransactionError, TransactionKernel},
+        types::{BlockHash, CryptoFactories},
+        TransactionInput,
+        TransactionOutput,
     },
 };
 use log::*;

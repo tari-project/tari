@@ -22,8 +22,9 @@
 use crate::transactions::{
     fee::Fee,
     tari_amount::*,
-    transaction::{KernelSum, Transaction, TransactionError, TransactionKernel},
+    transaction::{KernelFeatures, KernelSum, Transaction, TransactionError, TransactionKernel},
     types::{BlindingFactor, Commitment, CommitmentFactory, CryptoFactories, PrivateKey, RangeProofService},
+    OutputFlags,
     TransactionInput,
     TransactionOutput,
 };
@@ -227,9 +228,9 @@ impl AggregateBody {
         let mut coinbase_kernel = None;
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase
         for utxo in self.outputs() {
-            if utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
+            if utxo.features().flags.contains(OutputFlags::COINBASE_OUTPUT) {
                 coinbase_counter += 1;
-                if utxo.features.maturity < (height + coinbase_lock_height) {
+                if utxo.features().maturity < (height + coinbase_lock_height) {
                     warn!(target: LOG_TARGET, "Coinbase {} found with maturity set too low", utxo);
                     return Err(TransactionError::InvalidCoinbaseMaturity);
                 }
@@ -263,7 +264,7 @@ impl AggregateBody {
         let utxo = coinbase_utxo.unwrap();
         let rhs =
             &coinbase_kernel.unwrap().excess + &factories.commitment.commit_value(&BlindingFactor::default(), reward.0);
-        if rhs != utxo.commitment {
+        if rhs != *utxo.commitment() {
             warn!(target: LOG_TARGET, "Coinbase {} amount validation failed", utxo);
             return Err(TransactionError::InvalidCoinbase);
         }
@@ -273,7 +274,7 @@ impl AggregateBody {
     /// This function will check all stxo to ensure that feature flags where followed
     pub fn check_stxo_rules(&self, height: u64) -> Result<(), TransactionError> {
         for input in self.inputs() {
-            if input.features.maturity > height {
+            if input.features().maturity > height {
                 warn!(
                     target: LOG_TARGET,
                     "Input found that has not yet matured to spending height: {}", input

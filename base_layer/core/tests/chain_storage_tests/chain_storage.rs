@@ -264,15 +264,10 @@ fn utxo_and_rp_merkle_root() {
     let hash2 = utxo2.hash();
     // Calculate the Range proof MMR root as a check
     let mut rp_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
-<<<<<<< HEAD
-    assert_eq!(rp_mmr_check.push(&utxo0.proof().hash()).unwrap(), 1);
-    assert_eq!(rp_mmr_check.push(&utxo1.proof().hash()).unwrap(), 2);
-    assert_eq!(rp_mmr_check.push(&utxo2.proof().hash()).unwrap(), 3);
-=======
-    assert_eq!(rp_mmr_check.push(utxo0.proof.hash()).unwrap(), 1);
-    assert_eq!(rp_mmr_check.push(utxo1.proof.hash()).unwrap(), 2);
-    assert_eq!(rp_mmr_check.push(utxo2.proof.hash()).unwrap(), 3);
->>>>>>> development
+    assert_eq!(rp_mmr_check.push(utxo0.proof().hash()).unwrap(), 1);
+    assert_eq!(rp_mmr_check.push(utxo1.proof().hash()).unwrap(), 2);
+    assert_eq!(rp_mmr_check.push(utxo2.proof().hash()).unwrap(), 3);
+
     // Store the UTXOs
     let mut txn = DbTransaction::new();
     txn.insert_utxo(utxo1);
@@ -493,14 +488,11 @@ fn add_multiple_blocks() {
     assert_eq!(metadata.height_of_longest_chain, Some(1));
     assert_eq!(metadata.best_block.unwrap(), hash);
     // Adding blocks is idempotent
-<<<<<<< HEAD
-    assert_eq!(store.add_block(block1).unwrap(), BlockAddResult::BlockExists);
-=======
+
     assert_eq!(
         store.add_block(block1.clone().into()).unwrap(),
         BlockAddResult::BlockExists
     );
->>>>>>> development
     // Check the metadata
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain, Some(1));
@@ -1554,12 +1546,7 @@ fn orphan_cleanup_on_reorg() {
     .is_ok());
 
     // Fill orphan block pool
-<<<<<<< HEAD
-    let orphan1 = create_orphan_block(1, vec![], &consensus_manager.consensus_constants());
-    let orphan2 = create_orphan_block(1, vec![], &consensus_manager.consensus_constants());
-    assert_eq!(store.add_block(orphan1).unwrap(), BlockAddResult::OrphanBlock);
-    assert_eq!(store.add_block(orphan2).unwrap(), BlockAddResult::OrphanBlock);
-=======
+
     let orphan1 = create_orphan_block(1, vec![], &consensus_manager);
     let orphan2 = create_orphan_block(1, vec![], &consensus_manager);
     assert_eq!(
@@ -1570,7 +1557,6 @@ fn orphan_cleanup_on_reorg() {
         store.add_block(orphan2.clone().into()).unwrap(),
         BlockAddResult::OrphanBlock
     );
->>>>>>> development
 
     // Adding B1 and B2 to the main chain will produce a reorg from GB->A1->A2->A3->A4 to GB->B1->B2->B3.
     assert_eq!(

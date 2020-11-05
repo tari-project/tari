@@ -2950,7 +2950,11 @@ fn test_transaction_cancellation<T: TransactionBackend + 'static>(backend: T) {
     // Lets cancel the last one using a Comms stack message
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
+    let input = OutputBuilder::new()
+        .with_value(MicroTari::from(100_000))
+        .with_spending_key(PrivateKey::random(&mut OsRng))
+        .build(&factories.commitment)
+        .unwrap();
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -2958,10 +2962,7 @@ fn test_transaction_cancellation<T: TransactionBackend + 'static>(backend: T) {
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(
-            input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
-            input.clone(),
-        )
+        .with_input(input.as_transaction_input(), input.clone())
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -4057,7 +4058,10 @@ fn test_transaction_resending() {
 
     // Send a transaction to Bob
     let alice_total_available = 250000 * uT;
-    let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
+    let uo = OutputBuilder::new()
+        .with_value(alice_total_available)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
     let amount_sent = 10000 * uT;
@@ -4222,7 +4226,11 @@ fn test_resend_on_startup() {
     // First we will check the Send Transction message
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
+    let input = OutputBuilder::new()
+        .with_value(MicroTari::from(100_000))
+        .with_spending_key(PrivateKey::random(&mut OsRng))
+        .build(&factories.commitment)
+        .unwrap();
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -4230,10 +4238,7 @@ fn test_resend_on_startup() {
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(
-            input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
-            input.clone(),
-        )
+        .with_input(input.as_transaction_input(), input.clone())
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
     let mut stp = builder.build::<HashDigest>(&factories).unwrap();
@@ -4469,7 +4474,10 @@ fn test_replying_to_cancelled_tx() {
 
     // Send a transaction to Bob
     let alice_total_available = 250000 * uT;
-    let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
+    let uo = OutputBuilder::new()
+        .with_value(alice_total_available)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
     let amount_sent = 10000 * uT;
@@ -4600,7 +4608,10 @@ fn test_transaction_timeout_cancellation() {
 
     // Send a transaction to Bob
     let alice_total_available = 250000 * uT;
-    let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
+    let uo = OutputBuilder::new()
+        .with_value(alice_total_available)
+        .build(&factories.commitment)
+        .unwrap();
     runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
 
     let amount_sent = 10000 * uT;
@@ -4646,7 +4657,11 @@ fn test_transaction_timeout_cancellation() {
     // First we will check the Send Transction message
     let mut builder = SenderTransactionProtocol::builder(1);
     let amount = MicroTari::from(10_000);
-    let input = UnblindedOutput::new(MicroTari::from(100_000), PrivateKey::random(&mut OsRng), None);
+    let input = OutputBuilder::new()
+        .with_value(100_00)
+        .with_spending_key(PrivateKey::random(&mut OsRng))
+        .build(&factories.commitment)
+        .unwrap();
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177))
@@ -4655,7 +4670,7 @@ fn test_transaction_timeout_cancellation() {
         .with_amount(0, amount)
         .with_message("Yo!".to_string())
         .with_input(
-            input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
+            input.as_transaction_input(),
             input.clone(),
         )
         .with_change_secret(PrivateKey::random(&mut OsRng));

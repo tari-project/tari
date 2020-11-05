@@ -33,7 +33,7 @@ use tari_app_grpc::tari_rpc as grpc;
 use tari_core::{
     blocks::NewBlockTemplate,
     proof_of_work::{monero_rx, monero_rx::MoneroData},
-    transactions::transaction::{TransactionKernel, TransactionOutput},
+    transactions::{transaction::TransactionKernel, TransactionOutput},
 };
 
 pub fn deserialize_monero_block_from_hex<T>(data: T) -> Result<Block, MmProxyError>

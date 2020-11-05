@@ -10,9 +10,13 @@ use std::{fs::File, io::Write};
 use tari_core::{
     tari_utilities::hex::Hex,
     transactions::{
+        helpers,
         tari_amount::{MicroTari, T},
-        transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
+        transaction::{KernelFeatures, TransactionKernel},
         types::{Commitment, CryptoFactories, PrivateKey},
+        OutputBuilder,
+        OutputFeatures,
+        UnblindedOutput,
     },
 };
 use tokio::{sync::mpsc, task};
@@ -86,15 +90,17 @@ async fn write_keys(mut rx: mpsc::Receiver<UnblindedOutput>) {
     let mut key_file = File::create("keys.json").expect("Could not create keys.json");
     let mut written: u64 = 0;
     let mut key_sum = PrivateKey::default();
+    let factories = CryptoFactories::default();
     // The receiver channel will patiently await results until the tx is dropped.
-    while let Some((utxo, key, value)) = rx.recv().await {
-        key_sum = key_sum + key.clone();
+    while let Some(utxo) = rx.recv().await {
+        let output = utxo.as_transaction_output(&factories).unwrap();
         let key = Key {
             key: utxo.blinding_factor().to_hex(),
             value: u64::from(utxo.value()),
             commitment: utxo.commitment().to_hex(),
             proof: output.proof().to_hex(),
         };
+        key_sum = key_sum + utxo.blinding_factor().clone();
         let key_str = format!("{}\n", serde_json::to_string(&key).unwrap());
         let _ = key_file.write_all(key_str.as_bytes());
         let utxo_s = serde_json::to_string(&output).unwrap();

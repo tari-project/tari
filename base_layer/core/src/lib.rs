@@ -41,8 +41,7 @@ extern crate bitflags;
 #[macro_use]
 pub mod transactions;
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod base_node;
+
 #[cfg(feature = "base_node")]
 pub mod blocks;
 #[cfg(feature = "base_node")]
@@ -55,8 +54,7 @@ pub mod iterators;
 pub mod mining;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 pub mod proof_of_work;
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod proto;
+
 #[cfg(feature = "base_node")]
 pub mod validation;
 

@@ -228,7 +228,7 @@ pub async fn generate_wallet_test_data<
             .with_value(5_000_000 + i * 35_000)
             .build(&factories.commitment)
             .unwrap();
-        wallet.runtime.block_on(wallet.output_manager_service.add_output(uo))?;
+        wallet.output_manager_service.add_output(uo).await?;
     }
     info!(target: LOG_TARGET, "Added test outputs to wallet");
     // Generate some Tx history
@@ -254,9 +254,7 @@ pub async fn generate_wallet_test_data<
             .with_value(1_500_000 + i * 530_500)
             .build(&factories.commitment)
             .unwrap();
-        wallet_alice
-            .runtime
-            .block_on(wallet_alice.output_manager_service.add_output(uo))?;
+        wallet_alice.output_manager_service.add_output(uo).await?;
     }
     info!(target: LOG_TARGET, "Alice Wallet created");
     info!(
@@ -280,9 +278,7 @@ pub async fn generate_wallet_test_data<
             .with_value(2_000_000 + i * i * 61_050)
             .build(&factories.commitment)
             .unwrap();
-        wallet_bob
-            .runtime
-            .block_on(wallet_bob.output_manager_service.add_output(uo))?;
+        wallet_bob.output_manager_service.add_output(uo).await?;
     }
     info!(target: LOG_TARGET, "Bob Wallet created");
 

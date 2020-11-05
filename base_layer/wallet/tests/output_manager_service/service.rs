@@ -1191,27 +1191,35 @@ fn test_spent_txo_validation() {
     let mut hashes = Vec::new();
     let key1 = PrivateKey::random(&mut OsRng);
     let value1 = 500;
-    let output1 = UnblindedOutput::new(MicroTari::from(value1), key1.clone(), None);
+    let output1 = OutputBuilder::new()
+        .with_value(MicroTari::from(value1))
+        .with_spending_key(key1.clone())
+        .build(&factories.commitment)
+        .unwrap();
     let tx_output1 = output1.as_transaction_output(&factories).unwrap();
     let output1_hash = tx_output1.hash();
     hashes.push(output1_hash.clone());
     backend
         .write(WriteOperation::Insert(DbKeyValuePair::SpentOutput(
-            output1.spending_key.clone(),
+            output1.spending_key().clone(),
             Box::new(DbUnblindedOutput::from_unblinded_output(output1.clone(), &factories).unwrap()),
         )))
         .unwrap();
 
     let key2 = PrivateKey::random(&mut OsRng);
     let value2 = 800;
-    let output2 = UnblindedOutput::new(MicroTari::from(value2), key2.clone(), None);
+    let output2 = OutputBuilder::new()
+        .with_value(MicroTari::from(value2))
+        .with_spending_key(key2.clone())
+        .build(&factories.commitment)
+        .unwrap();
     let tx_output2 = output2.as_transaction_output(&factories).unwrap();
     let output2_hash = tx_output2.hash();
     hashes.push(output2_hash.clone());
 
     backend
         .write(WriteOperation::Insert(DbKeyValuePair::SpentOutput(
-            output2.spending_key.clone(),
+            output2.spending_key().clone(),
             Box::new(DbUnblindedOutput::from_unblinded_output(output2.clone(), &factories).unwrap()),
         )))
         .unwrap();
@@ -1281,7 +1289,7 @@ fn test_spent_txo_validation() {
 
     runtime.block_on(async {
         let mut delay = delay_for(Duration::from_secs(60)).fuse();
-        let mut acc = 0;
+        let mut acc: u64 = 0;
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {

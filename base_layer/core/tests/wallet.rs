@@ -214,18 +214,19 @@ fn wallet_base_node_integration_test() {
         user_agent: "tari/test-wallet".to_string(),
     };
     let bob_wallet_config = WalletConfig::new(bob_comms_config, factories, None, Network::Rincewind);
-    let bob_runtime = create_runtime();
-    let mut bob_wallet = Wallet::new(
-        bob_wallet_config,
-        bob_runtime,
-        WalletMemoryDatabase::new(),
-        TransactionMemoryDatabase::new(),
-        OutputManagerMemoryDatabase::new(),
-        ContactsServiceMemoryDatabase::new(),
-    )
-    .unwrap();
-    bob_wallet
-        .runtime
+    let _bob_runtime = create_runtime();
+    let bob_wallet = runtime
+        .block_on(Wallet::new(
+            bob_wallet_config,
+            WalletMemoryDatabase::new(),
+            TransactionMemoryDatabase::new(),
+            OutputManagerMemoryDatabase::new(),
+            ContactsServiceMemoryDatabase::new(),
+            shutdown.to_signal(),
+        ))
+        .unwrap();
+
+    runtime
         .block_on(bob_wallet.comms.peer_manager().add_peer(create_peer(
             alice_node_identity.public_key().clone(),
             alice_node_identity.public_address(),

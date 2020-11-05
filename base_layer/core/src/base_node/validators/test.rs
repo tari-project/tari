@@ -30,9 +30,9 @@ use crate::{
     transactions::{
         crypto::commitment::HomomorphicCommitmentFactory,
         fee::Fee,
-        helpers::spend_utxos,
+        helpers::{create_random_signature_from_s_key, spend_utxos},
         tari_amount::uT,
-        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel, UnblindedOutput},
+        transaction::{KernelBuilder, KernelFeatures, TransactionKernel},
         types::{Commitment, CryptoFactories},
         OutputBuilder,
         OutputFeatures,
@@ -138,6 +138,15 @@ fn chain_balance_validation() {
     let faucet_key = faucet_utxo.spending_key().clone();
     let faucet_utxo = faucet_utxo.as_transaction_output(&factories).unwrap();
     let faucet_hash = faucet_utxo.hash();
+    let (pk, sig) = create_random_signature_from_s_key(faucet_key.clone(), 0.into(), 0);
+    let excess = Commitment::from_public_key(&pk);
+    let kernel = TransactionKernel {
+        features: KernelFeatures::empty(),
+        fee: 0 * uT,
+        lock_height: 0,
+        excess,
+        excess_sig: sig,
+    };
     genesis.body.add_output(faucet_utxo);
     genesis.body.add_kernels(&mut vec![kernel]);
     let total_faucet = faucet_value + consensus_manager.consensus_constants(0).faucet_value();
@@ -223,7 +232,7 @@ fn chain_balance_validation() {
     txn.insert_kernel(kernel);
     let coinbase = coinbase.as_transaction_output(&factories).unwrap();
     txn.insert_utxo(coinbase);
-    let mut header2 = BlockHeader::from_previous(&header1);
+    let mut header2 = BlockHeader::from_previous(&header1).unwrap();
     header2.total_kernel_offset = params.offset;
     txn.insert_header(header2.clone());
     db.commit(txn).unwrap();
@@ -267,7 +276,7 @@ fn chain_balance_validation() {
     txn.insert_kernel(kernel);
     let coinbase = coinbase.as_transaction_output(&factories).unwrap();
     txn.insert_utxo(coinbase);
-    let mut header3 = BlockHeader::from_previous(&header2);
+    let mut header3 = BlockHeader::from_previous(&header2).unwrap();
     header3.total_kernel_offset = params.offset;
     txn.insert_header(header3.clone());
     db.commit(txn).unwrap();
@@ -294,7 +303,7 @@ fn chain_balance_validation() {
     txn.insert_kernel(kernel);
     let coinbase = coinbase.as_transaction_output(&factories).unwrap();
     txn.insert_utxo(coinbase);
-    let header4 = BlockHeader::from_previous(&header3);
+    let header4 = BlockHeader::from_previous(&header3).unwrap();
     txn.insert_header(header4);
     db.commit(txn).unwrap();
 

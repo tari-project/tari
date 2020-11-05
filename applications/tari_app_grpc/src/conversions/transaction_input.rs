@@ -22,7 +22,7 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_core::transactions::{transaction::TransactionInput, types::Commitment};
+use tari_core::transactions::{types::Commitment, TransactionInput};
 use tari_crypto::tari_utilities::ByteArray;
 
 impl TryFrom<grpc::TransactionInput> for TransactionInput {
@@ -35,8 +35,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             .ok_or_else(|| "transaction output features not provided".to_string())??;
 
         let commitment = Commitment::from_bytes(&input.commitment).map_err(|err| err.to_string())?;
-
-        Ok(Self { features, commitment })
+        Ok(TransactionInput::new(features, commitment, &input.script_hash))
     }
 }
 
@@ -44,10 +43,11 @@ impl From<TransactionInput> for grpc::TransactionInput {
     fn from(input: TransactionInput) -> Self {
         Self {
             features: Some(grpc::OutputFeatures {
-                flags: input.features.flags.bits() as u32,
-                maturity: input.features.maturity,
+                flags: input.features().flags.bits() as u32,
+                maturity: input.features().maturity,
             }),
-            commitment: Vec::from(input.commitment.as_bytes()),
+            script_hash: input.script_hash().to_vec(),
+            commitment: Vec::from(input.commitment().as_bytes()),
         }
     }
 }

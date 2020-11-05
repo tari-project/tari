@@ -40,7 +40,7 @@ use tari_core::{
             base_node_service_response::Response as BaseNodeResponseProto,
         },
     },
-    transactions::{transaction::TransactionOutput, types::Commitment},
+    transactions::{types::Commitment, TransactionOutput},
 };
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tari_p2p::tari_message::TariMessageType;
@@ -435,7 +435,7 @@ where TBackend: OutputManagerBackend + 'static
                     warn!(
                         target: LOG_TARGET,
                         "Output with value {} not returned from Base Node query ({}) and is thus being invalidated",
-                        v.unblinded_output.value,
+                        v.unblinded_output.value(),
                         request_key,
                     );
                     // If the output that is being invalidated has an associated TxId then get the kernel signature of
@@ -500,7 +500,7 @@ where TBackend: OutputManagerBackend + 'static
                             trace!(
                                 target: LOG_TARGET,
                                 "Output with value {} has been restored to a valid spendable output",
-                                output.unblinded_output.value
+                                output.unblinded_output.value()
                             );
                         }
                     }
@@ -519,7 +519,8 @@ where TBackend: OutputManagerBackend + 'static
                         match self.resources.db.update_spent_output_to_unspent(commitment).await {
                             Ok(uo) => info!(
                                 target: LOG_TARGET,
-                                "Spent output with value {} restored to Unspent output", uo.unblinded_output.value
+                                "Spent output with value {} restored to Unspent output",
+                                uo.unblinded_output.value()
                             ),
                             Err(e) => debug!(target: LOG_TARGET, "Unable to restore Spent output to Unspent: {}", e),
                         }

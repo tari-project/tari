@@ -71,8 +71,7 @@ use tari_core::{
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::MempoolServiceConfig,
-    transactions::{helpers::spend_utxos, types::CryptoFactories},
-    txn_schema,
+    transactions::types::CryptoFactories,
     validation::{block_validators::MockStatelessBlockValidator, mocks::MockValidator},
 };
 use tari_mmr::MmrCacheConfig;
@@ -684,14 +683,12 @@ fn test_sync_peer_banning() {
         let bob_public_key = &bob_node.node_identity.public_key();
         for height in 1..=2 {
             let coinbase_value = consensus_manager.emission_schedule().block_reward(height);
-            let (mut coinbase_utxo, coinbase_kernel, mut coinbase) = create_coinbase(
+            // we add 1000 to the maturity because we want it to fail
+            let (coinbase_utxo, coinbase_kernel, coinbase) = create_coinbase(
                 &factories,
                 coinbase_value,
-                height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
+                height + consensus_manager.consensus_constants(0).coinbase_lock_height() + 1000,
             );
-            // we want these to fail later
-            coinbase_utxo.features.maturity = 1000;
-            coinbase.features.maturity = 1000;
             last_utxo = Some(coinbase);
             let template =
                 chain_block_with_coinbase(&prev_block, vec![], coinbase_utxo, coinbase_kernel, &consensus_manager);
@@ -732,14 +729,7 @@ fn test_sync_peer_banning() {
         // Bob fork with invalid maturity
         let mut bob_prev_block = prev_block;
         for _ in 3..=6 {
-            let utxo = last_utxo.unwrap();
-            let txn = txn_schema!(from: vec![utxo.clone()]);
-            let (tx, outputs, _) = spend_utxos(txn);
-
-            // tx.body.outputs[0].features.maturity = 1000;
-
-            last_utxo = Some(outputs[0].clone());
-            bob_prev_block = append_block(bob_db, &bob_prev_block, vec![tx], &consensus_manager, 3.into()).unwrap();
+            bob_prev_block = append_block(bob_db, &bob_prev_block, vec![], &consensus_manager, 3.into()).unwrap();
         }
 
         assert_eq!(alice_db.get_height().unwrap(), Some(4));

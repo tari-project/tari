@@ -1364,7 +1364,7 @@ mod test {
     };
     use chrono::{Duration as ChronoDuration, Utc};
     use diesel::{Connection, SqliteConnection};
-    use rand::{distributions::Alphanumeric, rngs::OsRng, CryptoRng, Rng, RngCore};
+    use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
     use std::{convert::TryFrom, iter, time::Duration};
     use tari_core::transactions::{
         types::{CryptoFactories, PrivateKey},

@@ -592,19 +592,16 @@ impl Parser {
                             println!(
                                 "\nYou have {} UTXOs: (value, commitment, mature in ? blocks, flags)",
                                 unspent_outputs.len()
-                                uo.commitment().to_hex(),
                             );
-                            let factory = PedersenCommitmentFactory::default();
+                            let _factory = PedersenCommitmentFactory::default();
                             for uo in unspent_outputs.iter() {
-                                let mature_in = std::cmp::max(uo.features.maturity as i64 - current_height, 0);
+                                let mature_in = std::cmp::max(uo.features().maturity as i64 - current_height, 0);
                                 println!(
                                     "   {}, {}, {:>3}, {:?}",
-                                    uo.value,
-                                    uo.as_transaction_input(&factory, OutputFeatures::default())
-                                        .commitment
-                                        .to_hex(),
+                                    uo.value(),
+                                    uo.as_transaction_input().commitment().to_hex(),
                                     mature_in,
-                                    uo.features.flags
+                                    uo.features().flags
                                 );
                             }
                             println!();
@@ -2455,8 +2452,8 @@ async fn get_number_of_spendable_utxos(
                     let mut number = 0usize;
                     if !unspent_outputs.is_empty() {
                         for uo in unspent_outputs.iter() {
-                            let mature_in = std::cmp::max(uo.features.maturity as i64 - current_height, 0);
-                            if mature_in == 0 && uo.value.0 >= *threshold as u64 {
+                            let mature_in = std::cmp::max(uo.features().maturity as i64 - current_height, 0);
+                            if mature_in == 0 && uo.value().0 >= *threshold as u64 {
                                 number += 1;
                             }
                         }

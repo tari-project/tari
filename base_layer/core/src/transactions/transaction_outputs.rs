@@ -223,7 +223,7 @@ pub struct UnblindedOutput {
 
 impl UnblindedOutput {
     /// Creates a new un-blinded output. This constructor is private. Use [OutputBuilder] to create
-    fn new(
+    pub fn new(
         value: MicroTari,
         spending_key: BlindingFactor,
         features: Option<OutputFeatures>,
@@ -403,7 +403,7 @@ impl Ord for UnblindedOutput {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TransactionOutput {
     /// Options for an output's structure or use
-    features: OutputFeatures,
+    pub(crate) features: OutputFeatures,
     /// The homomorphic commitment representing the output amount
     commitment: Commitment,
     /// A proof the commitment is in the right range

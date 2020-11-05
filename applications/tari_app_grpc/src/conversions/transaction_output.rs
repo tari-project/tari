@@ -22,11 +22,7 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_core::transactions::{
-    bullet_rangeproofs::BulletRangeProof,
-    transaction::TransactionOutput,
-    types::Commitment,
-};
+use tari_core::transactions::{bullet_rangeproofs::BulletRangeProof, types::Commitment, TransactionOutput};
 use tari_crypto::tari_utilities::ByteArray;
 
 impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
@@ -38,13 +34,13 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .map(TryInto::try_into)
             .ok_or_else(|| "transaction output features not provided".to_string())??;
 
-        let commitment = Commitment::from_bytes(&output.commitment)
-            .map_err(|err| format!("Invalid output commitment: {}", err.to_string()))?;
-        Ok(Self {
+        let commitment = Commitment::from_bytes(&output.commitment).map_err(|err| err.to_string())?;
+        Ok(TransactionOutput::new(
             features,
             commitment,
-            proof: BulletRangeProof(output.range_proof),
-        })
+            BulletRangeProof(output.range_proof),
+            &output.script_hash,
+        ))
     }
 }
 
@@ -52,11 +48,12 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
     fn from(output: TransactionOutput) -> Self {
         grpc::TransactionOutput {
             features: Some(grpc::OutputFeatures {
-                flags: output.features.flags.bits() as u32,
-                maturity: output.features.maturity,
+                flags: output.features().flags.bits() as u32,
+                maturity: output.features().maturity,
             }),
-            commitment: Vec::from(output.commitment.as_bytes()),
-            range_proof: Vec::from(output.proof.as_bytes()),
+            commitment: Vec::from(output.commitment().as_bytes()),
+            range_proof: Vec::from(output.proof().as_bytes()),
+            script_hash: output.script_hash().to_vec(),
         }
     }
 }

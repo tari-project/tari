@@ -27,6 +27,7 @@ use monero::{
     consensus::deserialize,
     cryptonote::hash::{Hash as MoneroHash, Hashable as MoneroHashable},
 };
+use std::sync::Arc;
 use tari_core::{
     blocks::BlockHeader,
     chain_storage::{
@@ -1159,7 +1160,7 @@ fn lmdb_backend_restore() {
     let consensus = ConsensusManagerBuilder::new(network).build();
 
     let txs = vec![(tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0];
-    let orphan = create_orphan_block(10, txs, &consensus_constants);
+    let orphan = create_orphan_block(10, txs, &consensus);
     let utxo1 = OutputBuilder::new()
         .with_value(10_000)
         .build(&factories.commitment)
@@ -1185,7 +1186,7 @@ fn lmdb_backend_restore() {
         {
             let mut db = create_lmdb_database(&path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
             let mut txn = DbTransaction::new();
-            txn.insert_orphan(orphan);
+            txn.insert_orphan(Arc::new(orphan));
             txn.insert_utxo(utxo1);
             txn.insert_utxo(utxo2);
             txn.insert_kernel(kernel);

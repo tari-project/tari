@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{proof_of_work::Difficulty, tari_utilities::hex::Hex, transactions::types::BlockHash};
+use crate::{tari_utilities::hex::Hex, transactions::types::BlockHash};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Hash)]
 pub struct ChainMetadata {
     /// The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
     pub height_of_longest_chain: Option<u64>,
