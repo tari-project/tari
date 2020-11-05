@@ -160,18 +160,18 @@ impl SendReceiveTab {
 
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(46), Constraint::Min(1)].as_ref())
+            .constraints([Constraint::Length(48), Constraint::Min(1)].as_ref())
             .margin(1)
             .split(help_body_area[0]);
 
-        let qr_code = Paragraph::new(app_state.get_identity().qr_code.as_str())
-            .block(Block::default())
-            .wrap(Wrap { trim: true });
+        let qr_code = Paragraph::new(app_state.get_identity().qr_code.as_str()).block(Block::default());
+        //.wrap(Wrap { trim: true });
         f.render_widget(qr_code, chunks[0]);
 
         let info_chunks = Layout::default()
             .constraints(
                 [
+                    Constraint::Length(1), // Lining up fields with Qr Code
                     Constraint::Length(3),
                     Constraint::Length(3),
                     Constraint::Length(3),
@@ -186,11 +186,11 @@ impl SendReceiveTab {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(Span::styled("Public Key", Style::default().fg(Color::White)));
-        f.render_widget(block, info_chunks[0]);
+        f.render_widget(block, info_chunks[1]);
         let label_layout = Layout::default()
             .constraints([Constraint::Length(1)].as_ref())
             .margin(1)
-            .split(info_chunks[0]);
+            .split(info_chunks[1]);
         let public_key = Paragraph::new(app_state.get_identity().public_key.as_str());
         f.render_widget(public_key, label_layout[0]);
 
@@ -198,11 +198,11 @@ impl SendReceiveTab {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(Span::styled("Public Address", Style::default().fg(Color::White)));
-        f.render_widget(block, info_chunks[1]);
+        f.render_widget(block, info_chunks[2]);
         let label_layout = Layout::default()
             .constraints([Constraint::Length(1)].as_ref())
             .margin(1)
-            .split(info_chunks[1]);
+            .split(info_chunks[2]);
         let public_address = Paragraph::new(app_state.get_identity().public_address.as_str());
         f.render_widget(public_address, label_layout[0]);
 
@@ -210,11 +210,11 @@ impl SendReceiveTab {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(Span::styled("Emoji ID", Style::default().fg(Color::White)));
-        f.render_widget(block, info_chunks[2]);
+        f.render_widget(block, info_chunks[3]);
         let label_layout = Layout::default()
             .constraints([Constraint::Length(1)].as_ref())
             .margin(1)
-            .split(info_chunks[2]);
+            .split(info_chunks[3]);
         let emoji_id = Paragraph::new(app_state.get_identity().emoji_id.as_str());
         f.render_widget(emoji_id, label_layout[0]);
     }
