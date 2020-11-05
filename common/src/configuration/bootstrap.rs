@@ -113,6 +113,8 @@ pub struct ConfigBootstrap {
     /// This will clean out the orphans db at startup
     #[structopt(long, alias("clean_orphans_db"))]
     pub clean_orphans_db: bool,
+    #[structopt(long, alias("enable_mining"))]
+    pub enable_mining: bool,
 }
 
 impl Default for ConfigBootstrap {
@@ -128,6 +130,7 @@ impl Default for ConfigBootstrap {
             input_file: None,
             command: None,
             clean_orphans_db: false,
+            enable_mining: false,
         }
     }
 }
