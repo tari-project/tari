@@ -21,13 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::error::MmProxyError;
-use json::Value;
 use monero::{
     blockdata::{transaction::SubField, Block},
     consensus::{deserialize, serialize},
     cryptonote::hash::Hash,
 };
-use serde_json as json;
 use std::convert::TryFrom;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_core::{
@@ -85,15 +83,6 @@ pub fn add_coinbase(
     } else {
         Err(MmProxyError::MissingDataError("Coinbase Invalid".to_string()))
     }
-}
-
-pub fn default_accept(json: &Value) -> Value {
-    let id = json["id"].as_i64().unwrap_or_else(|| -1);
-    let accept_response = format!(
-        "{} \"id\": {}, \"jsonrpc\": \"2.0\", \"result\": {} \"status\": \"OK\",\"untrusted\": false {}{}",
-        "{", id, "{", "}", "}",
-    );
-    json::from_str(&accept_response).unwrap_or_default()
 }
 
 pub fn extract_tari_hash(monero: &Block) -> Option<&Hash> {
