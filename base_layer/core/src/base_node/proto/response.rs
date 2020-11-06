@@ -113,7 +113,7 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
             NewBlockTemplate(block_template) => ProtoNodeCommsResponse::NewBlockTemplate(block_template.into()),
             NewBlock { success, error, block } => ProtoNodeCommsResponse::NewBlock(ProtoNewBlockResponse {
                 success,
-                error: error.unwrap_or("".to_string()),
+                error: error.unwrap_or_else(|| "".to_string()),
                 block: block.map(|b| b.into()),
             }),
             TargetDifficulty(difficulty) => ProtoNodeCommsResponse::TargetDifficulty(difficulty.as_u64()),

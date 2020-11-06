@@ -180,14 +180,6 @@ impl InnerService {
         monerod_resp: Response<json::Value>,
     ) -> Result<Response<Body>, MmProxyError>
     {
-        let resp = monerod_resp.body();
-        if resp["result"]["status"] != "OK" {
-            return Err(MmProxyError::InvalidMonerodResponse(format!(
-                "Response status failed: {:#}",
-                resp["result"]
-            )));
-        }
-
         let params = match request.body()["params"].as_array() {
             Some(v) => v,
             None => {
