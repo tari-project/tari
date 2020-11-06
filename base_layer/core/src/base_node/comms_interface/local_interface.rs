@@ -132,7 +132,7 @@ impl LocalNodeCommsInterface {
                     }
                 } else {
                     Err(CommsInterfaceError::ApiError(
-                        error.unwrap_or("Unspecified error".to_string()),
+                        error.unwrap_or_else(|| "Unspecified error".to_string()),
                     ))
                 }
             },
