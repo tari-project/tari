@@ -9,7 +9,7 @@ use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     contacts_service::storage::database::Contact,
-    output_manager_service::TxId,
+    output_manager_service::{service::Balance, TxId},
     transaction_service::{
         handle::{TransactionEvent, TransactionEventReceiver, TransactionServiceHandle},
         storage::models::{CompletedTransaction, TransactionStatus},
@@ -215,6 +215,10 @@ impl AppState {
     pub fn get_connected_peers(&self) -> &Vec<Peer> {
         &self.cached_data.connected_peers
     }
+
+    pub fn get_balance(&self) -> &Balance {
+        &self.cached_data.balance
+    }
 }
 
 pub struct AppStateInner {
@@ -299,6 +303,7 @@ impl AppStateInner {
         });
 
         self.data.completed_txs = completed_transactions;
+        self.refresh_balance().await?;
         self.updated = true;
         Ok(())
     }
@@ -361,7 +366,7 @@ impl AppStateInner {
                 });
             },
         }
-
+        self.refresh_balance().await?;
         self.updated = true;
         Ok(())
     }
@@ -403,6 +408,13 @@ impl AppStateInner {
         Ok(())
     }
 
+    pub async fn refresh_balance(&mut self) -> Result<(), UiError> {
+        let balance = self.wallet.output_manager_service.get_balance().await?;
+        self.data.balance = balance;
+        self.updated = true;
+        Ok(())
+    }
+
     pub fn get_shutdown_signal(&self) -> ShutdownSignal {
         self.wallet.comms.shutdown_signal()
     }
@@ -423,6 +435,7 @@ struct AppStateData {
     my_identity: MyIdentity,
     contacts: Vec<UiContact>,
     connected_peers: Vec<Peer>,
+    balance: Balance,
 }
 
 impl AppStateData {
@@ -450,6 +463,7 @@ impl AppStateData {
             my_identity: identity,
             contacts: Vec::new(),
             connected_peers: Vec::new(),
+            balance: Balance::zero(),
         }
     }
 }

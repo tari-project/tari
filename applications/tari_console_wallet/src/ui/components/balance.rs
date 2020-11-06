@@ -18,7 +18,7 @@ impl Balance {
 }
 
 impl<B: Backend> Component<B> for Balance {
-    fn draw(&mut self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
+    fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         // This is a hack to produce only a top margin and not a bottom margin
         let block_title_body = Layout::default()
@@ -44,21 +44,26 @@ impl<B: Backend> Component<B> for Balance {
         ));
         f.render_widget(block, area);
 
+        let balance = app_state.get_balance();
+
         let available_balance = Spans::from(vec![
             Span::styled("Available:", Style::default().fg(Color::Magenta)),
             Span::raw(" "),
-            Span::raw(format!("{}", MicroTari::from(1234567000))),
-            Span::raw(format!(" (Time Locked: {})", MicroTari::from(20000000))),
+            Span::raw(format!("{}", balance.available_balance)),
+            Span::raw(format!(
+                " (Time Locked: {})",
+                balance.time_locked_balance.unwrap_or_else(|| MicroTari::from(0u64))
+            )),
         ]);
         let incoming_balance = Spans::from(vec![
             Span::styled("Pending Incoming:", Style::default().fg(Color::Magenta)),
             Span::raw(" "),
-            Span::raw(format!("{}", MicroTari::from(12345670500))),
+            Span::raw(format!("{}", balance.pending_incoming_balance)),
         ]);
         let outgoing_balance = Spans::from(vec![
             Span::styled("Pending Outgoing:", Style::default().fg(Color::Magenta)),
             Span::raw(" "),
-            Span::raw(format!("{}", MicroTari::from(98754))),
+            Span::raw(format!("{}", balance.pending_outgoing_balance)),
         ]);
 
         let paragraph1 = Paragraph::new(available_balance).block(Block::default());
