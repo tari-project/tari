@@ -78,4 +78,3 @@ Alternatively, xmrig can also be run from the command line as follows (substitut
 ```
 ./xmrig --donate-level 5 -o monerod_url -u stagenet_wallet_address --coin monero --daemon
 ```
-
