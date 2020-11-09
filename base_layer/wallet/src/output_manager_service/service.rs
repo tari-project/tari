@@ -947,6 +947,17 @@ pub struct Balance {
     pub pending_outgoing_balance: MicroTari,
 }
 
+impl Balance {
+    pub fn zero() -> Self {
+        Self {
+            available_balance: Default::default(),
+            time_locked_balance: None,
+            pending_incoming_balance: Default::default(),
+            pending_outgoing_balance: Default::default(),
+        }
+    }
+}
+
 impl fmt::Display for Balance {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Available balance: {}", self.available_balance)?;
