@@ -44,16 +44,15 @@ pub async fn block_heights(
     from_tip: u64,
 ) -> Result<Vec<u64>, Status>
 {
-    let heights = if end_height > 0 {
+    if end_height > 0 {
         Ok(BlockHeader::get_height_range(start_height, end_height))
     } else if from_tip > 0 {
         BlockHeader::get_heights_from_tip(handler, from_tip)
             .await
             .map_err(|e| Status::internal(e.to_string()))
     } else {
-        return Err(Status::invalid_argument("Invalid arguments provided"));
-    };
-    heights
+        Err(Status::invalid_argument("Invalid arguments provided"))
+    }
 }
 
 pub fn block_size(block: &HistoricalBlock) -> u64 {

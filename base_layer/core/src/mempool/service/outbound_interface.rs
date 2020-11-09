@@ -31,8 +31,7 @@ use crate::{
 use futures::channel::mpsc::UnboundedSender;
 use log::*;
 use tari_comms::peer_manager::NodeId;
-use tari_service_framework::reply_channel::SenderService;
-use tower_service::Service;
+use tari_service_framework::{reply_channel::SenderService, Service};
 
 pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
 
@@ -86,14 +85,14 @@ impl OutboundMempoolServiceInterface {
     }
 
     /// Check if the specified transaction is stored in the mempool of a remote base node.
-    pub async fn get_tx_state_with_excess_sig(
+    pub async fn get_tx_state_by_excess_sig(
         &mut self,
         excess_sig: Signature,
     ) -> Result<TxStorageResponse, MempoolServiceError>
     {
         if let MempoolResponse::TxStorage(tx_storage_response) = self
             .request_sender
-            .call(MempoolRequest::GetTxStateWithExcessSig(excess_sig))
+            .call(MempoolRequest::GetTxStateByExcessSig(excess_sig))
             .await??
         {
             Ok(tx_storage_response)

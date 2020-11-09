@@ -19,7 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
+#![cfg_attr(not(debug_assertions), deny(unused_variables))]
+#![cfg_attr(not(debug_assertions), deny(unused_imports))]
+#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+#![deny(unused_must_use)]
+#![deny(unreachable_patterns)]
+#![deny(unknown_lints)]
 use futures::{
     channel::{oneshot, oneshot::Canceled},
     future::{Fuse, FusedFuture, Shared},
@@ -109,6 +115,25 @@ impl OptionalShutdownSignal {
     pub fn none() -> Self {
         Self(None)
     }
+
+    /// Set the shutdown signal. Once set this OptionalShutdownSignal will resolve
+    /// in the same way as the given `ShutdownSignal`.
+    pub fn set(&mut self, signal: ShutdownSignal) -> &mut Self {
+        self.0 = Some(signal);
+        self
+    }
+
+    pub fn is_none(&self) -> bool {
+        self.0.is_none()
+    }
+
+    pub fn into_signal(self) -> Option<ShutdownSignal> {
+        self.0
+    }
+
+    pub fn take(&mut self) -> Option<ShutdownSignal> {
+        self.0.take()
+    }
 }
 
 impl Future for OptionalShutdownSignal {
@@ -125,6 +150,12 @@ impl Future for OptionalShutdownSignal {
 impl From<Option<ShutdownSignal>> for OptionalShutdownSignal {
     fn from(inner: Option<ShutdownSignal>) -> Self {
         Self(inner)
+    }
+}
+
+impl From<ShutdownSignal> for OptionalShutdownSignal {
+    fn from(inner: ShutdownSignal) -> Self {
+        Self(Some(inner))
     }
 }
 

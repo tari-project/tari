@@ -23,19 +23,21 @@
 #[cfg(feature = "base_node")]
 mod blake_pow;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
-mod difficulty;
+pub(crate) mod difficulty;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 mod error;
 #[cfg(feature = "base_node")]
 mod median_timestamp;
 #[cfg(feature = "base_node")]
-#[allow(clippy::enum_variant_names)]
 pub mod monero_rx;
 #[cfg(feature = "base_node")]
 #[allow(clippy::module_inception)]
 mod proof_of_work;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 mod proof_of_work_algorithm;
+
+#[cfg(feature = "base_node")]
+mod sha3_pow;
 #[cfg(feature = "base_node")]
 mod target_difficulty;
 
@@ -43,9 +45,12 @@ mod target_difficulty;
 #[cfg(test)]
 pub use blake_pow::test as blake_test;
 #[cfg(feature = "base_node")]
+#[cfg(test)]
+pub use sha3_pow::test as sha3_test;
+#[cfg(feature = "base_node")]
 pub mod lwma_diff;
 #[cfg(feature = "base_node")]
-pub use blake_pow::{blake_difficulty, blake_difficulty_with_hash};
+pub use blake_pow::blake_difficulty;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 pub use difficulty::{Difficulty, DifficultyAdjustment};
 #[cfg(any(feature = "base_node", feature = "transactions"))]
@@ -56,6 +61,8 @@ pub use median_timestamp::get_median_timestamp;
 pub use monero_rx::monero_difficulty;
 #[cfg(feature = "base_node")]
 pub use proof_of_work::ProofOfWork;
+#[cfg(feature = "base_node")]
+pub use sha3_pow::{sha3_difficulty, sha3_difficulty_with_hash};
 #[cfg(feature = "base_node")]
 pub use target_difficulty::get_target_difficulty;
 

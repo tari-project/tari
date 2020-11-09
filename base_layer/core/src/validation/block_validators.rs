@@ -29,10 +29,10 @@ use crate::{
     },
     chain_storage::{calculate_mmr_roots, BlockchainBackend, DbKey},
     consensus::{ConsensusConstants, ConsensusManager},
-    transactions::{types::CryptoFactories, OutputFlags},
+    transactions::types::CryptoFactories,
     validation::{
         helpers::{check_achieved_and_target_difficulty, check_median_timestamp, is_stxo},
-        StatelessValidation,
+        StatefulValidation,
         Validation,
         ValidationError,
     },
@@ -55,19 +55,17 @@ impl StatelessBlockValidator {
     }
 }
 
-impl StatelessValidation<Block> for StatelessBlockValidator {
+impl Validation<Block> for StatelessBlockValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
-    /// 1. Is there precisely one Coinbase output and is it correctly defined?
     /// 1. Is the block weight of the block under the prescribed limit?
     /// 1. Does it contain only unique inputs and outputs?
     /// 1. Where all the rules for the spent outputs followed?
     /// 1. Was cut through applied in the block?
+    /// 1. Is there precisely one Coinbase output and is it correctly defined with the correct amount?
     /// 1. Is the accounting correct?
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
         let block_id = format!("block #{} ({})", block.header.height, block.hash().to_hex());
-        check_coinbase_output(block, &self.rules.consensus_constants())?;
-        trace!(target: LOG_TARGET, "SV - Coinbase output is ok for {} ", &block_id);
-        check_block_weight(block, &self.rules.consensus_constants())?;
+        check_block_weight(block, &self.rules.consensus_constants(block.header.height))?;
         trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
         check_duplicate_transactions_inputs(block)?;
         trace!(
@@ -80,6 +78,8 @@ impl StatelessValidation<Block> for StatelessBlockValidator {
         trace!(target: LOG_TARGET, "SV - Output constraints are ok for {} ", &block_id);
         check_cut_through(block)?;
         trace!(target: LOG_TARGET, "SV - Cut-through is ok for {} ", &block_id);
+        check_coinbase_output(block, self.rules.clone(), &self.factories)?;
+        trace!(target: LOG_TARGET, "SV - Coinbase output is ok for {} ", &block_id);
         check_accounting_balance(block, self.rules.clone(), &self.factories)?;
         trace!(target: LOG_TARGET, "SV - accounting balance correct for {}", &block_id);
         debug!(
@@ -94,16 +94,15 @@ impl StatelessValidation<Block> for StatelessBlockValidator {
 /// next block on the blockchain.
 pub struct FullConsensusValidator {
     rules: ConsensusManager,
-    factories: CryptoFactories,
 }
 
 impl FullConsensusValidator {
-    pub fn new(rules: ConsensusManager, factories: CryptoFactories) -> Self {
-        Self { rules, factories }
+    pub fn new(rules: ConsensusManager) -> Self {
+        Self { rules }
     }
 }
 
-impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
+impl<B: BlockchainBackend> StatefulValidation<Block, B> for FullConsensusValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Does the block satisfy the stateless checks?
     /// 1. Are all inputs currently in the UTXO set?
@@ -135,7 +134,7 @@ impl<B: BlockchainBackend> Validation<Block, B> for FullConsensusValidator {
     }
 }
 
-impl<B: BlockchainBackend> Validation<BlockHeader, B> for FullConsensusValidator {
+impl<B: BlockchainBackend> StatefulValidation<BlockHeader, B> for FullConsensusValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Is the Proof of Work valid?
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
@@ -182,7 +181,7 @@ impl MockStatelessBlockValidator {
     }
 }
 
-impl StatelessValidation<Block> for MockStatelessBlockValidator {
+impl Validation<Block> for MockStatelessBlockValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Is there precisely one Coinbase output and is it correctly defined?
     /// 1. Is the block weight of the block under the prescribed limit?
@@ -190,8 +189,7 @@ impl StatelessValidation<Block> for MockStatelessBlockValidator {
     /// 1. Where all the rules for the spent outputs followed?
     /// 1. Was cut through applied in the block?
     fn validate(&self, block: &Block) -> Result<(), ValidationError> {
-        check_coinbase_output(block, &self.rules.consensus_constants())?;
-        check_block_weight(block, &self.rules.consensus_constants())?;
+        check_block_weight(block, &self.rules.consensus_constants(block.header.height))?;
         // Check that the inputs are are allowed to be spent
         block.check_stxo_rules().map_err(BlockValidationError::from)?;
         check_cut_through(block)?;
@@ -246,14 +244,24 @@ fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstants) -
     }
 }
 
-fn check_coinbase_output(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+fn check_coinbase_output(
+    block: &Block,
+    rules: ConsensusManager,
+    factories: &CryptoFactories,
+) -> Result<(), ValidationError>
+{
     trace!(
         target: LOG_TARGET,
         "Checking coinbase output on block with hash {}",
         block.hash().to_hex()
     );
+    let total_coinbase = rules.calculate_coinbase_and_fees(block);
     block
-        .check_coinbase_output(consensus_constants)
+        .check_coinbase_output(
+            total_coinbase,
+            rules.consensus_constants(block.header.height),
+            factories,
+        )
         .map_err(ValidationError::from)
 }
 
@@ -280,10 +288,6 @@ fn check_duplicate_transactions_inputs(block: &Block) -> Result<(), ValidationEr
 /// This function checks that all inputs in the blocks are valid UTXO's to be spend
 fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     for utxo in block.body.inputs() {
-        if utxo.features().flags.contains(OutputFlags::COINBASE_OUTPUT) {
-            continue;
-        }
-
         if !db.contains(&DbKey::UnspentOutput(utxo.hash()))? {
             warn!(
                 target: LOG_TARGET,
@@ -325,7 +329,7 @@ fn check_timestamp_ftl(
     consensus_manager: &ConsensusManager,
 ) -> Result<(), ValidationError>
 {
-    if block_header.timestamp > consensus_manager.consensus_constants().ftl() {
+    if block_header.timestamp > consensus_manager.consensus_constants(block_header.height).ftl() {
         warn!(
             target: LOG_TARGET,
             "Invalid Future Time Limit on block:{}",

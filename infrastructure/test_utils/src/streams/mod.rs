@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, hash::Hash};
+use futures::{Stream, StreamExt};
+use std::{collections::HashMap, hash::Hash, time::Duration};
 
 #[allow(dead_code)]
 #[allow(clippy::mutable_key_type)] // Note: Clippy Breaks with Interior Mutability Error
@@ -118,4 +119,23 @@ macro_rules! collect_stream_count {
         let items = $crate::collect_stream!($stream, timeout = $timeout);
         $crate::streams::get_item_counts(items)
     }};
+}
+
+pub async fn assert_in_stream<S, P>(stream: &mut S, mut predicate: P, timeout: Duration)
+where
+    S: Stream + Unpin,
+    P: FnMut(S::Item) -> bool,
+{
+    loop {
+        if let Some(item) = tokio::time::timeout(timeout, stream.next())
+            .await
+            .expect("Timeout before stream emitted")
+        {
+            if (predicate)(item) {
+                break;
+            }
+        } else {
+            panic!("Predicate did not return true before the stream ended");
+        }
+    }
 }

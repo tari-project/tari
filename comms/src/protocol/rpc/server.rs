@@ -37,7 +37,7 @@ use crate::{
     proto,
     protocol::{
         rpc::{
-            context::{RequestContext, RpcCommsContext},
+            context::{RequestContext, RpcCommsProvider},
             message::RpcMessageFlags,
             Handshake,
             RPC_MAX_FRAME_SIZE,
@@ -65,6 +65,11 @@ const LOG_TARGET: &str = "comms::rpc";
 
 pub trait NamedProtocolService {
     const PROTOCOL_NAME: &'static [u8];
+
+    /// Default implementation that returns a pointer to the static protocol name.
+    fn as_protocol_name(&self) -> &'static [u8] {
+        Self::PROTOCOL_NAME
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -111,11 +116,11 @@ impl RpcServer {
         self
     }
 
-    pub(super) async fn serve<S, TSubstream>(
+    pub(super) async fn serve<S, TSubstream, TCommsProvider>(
         self,
         service: S,
         notifications: ProtocolNotificationRx<TSubstream>,
-        context: RpcCommsContext,
+        comms_provider: TCommsProvider,
     ) -> Result<(), RpcError>
     where
         TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -126,8 +131,11 @@ impl RpcServer {
         S::Future: Send + 'static,
         S::Service: Send + 'static,
         <S::Service as Service<Request<Bytes>>>::Future: Send + 'static,
+        TCommsProvider: RpcCommsProvider + Clone + Send + 'static,
     {
-        PeerRpcServer::new(self, service, notifications, context).serve().await
+        PeerRpcServer::new(self, service, notifications, comms_provider)
+            .serve()
+            .await
     }
 }
 
@@ -142,15 +150,15 @@ impl Default for RpcServer {
     }
 }
 
-struct PeerRpcServer<TSvc, TSubstream> {
+pub(super) struct PeerRpcServer<TSvc, TSubstream, TCommsProvider> {
     executor: OptionallyBoundedExecutor,
     config: RpcServer,
     service: TSvc,
     protocol_notifications: Option<ProtocolNotificationRx<TSubstream>>,
-    context: RpcCommsContext,
+    comms_provider: TCommsProvider,
 }
 
-impl<TSvc, TSubstream> PeerRpcServer<TSvc, TSubstream>
+impl<TSvc, TSubstream, TCommsProvider> PeerRpcServer<TSvc, TSubstream, TCommsProvider>
 where
     TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     TSvc: MakeService<ProtocolId, Request<Bytes>, MakeError = RpcError, Response = Response<Body>, Error = RpcStatus>
@@ -159,12 +167,13 @@ where
     TSvc::Service: Send + 'static,
     <TSvc::Service as Service<Request<Bytes>>>::Future: Send + 'static,
     TSvc::Future: Send + 'static,
+    TCommsProvider: RpcCommsProvider + Clone + Send + 'static,
 {
     pub fn new(
         config: RpcServer,
         service: TSvc,
         protocol_notifications: ProtocolNotificationRx<TSubstream>,
-        context: RpcCommsContext,
+        comms_provider: TCommsProvider,
     ) -> Self
     {
         Self {
@@ -172,7 +181,7 @@ where
             config,
             service,
             protocol_notifications: Some(protocol_notifications),
-            context,
+            comms_provider,
         }
     }
 
@@ -211,7 +220,7 @@ where
                 );
 
                 let framed = framing::canonical(substream, self.config.max_frame_size);
-                match self.try_spawn_service(notification.protocol, *node_id, framed).await {
+                match self.try_spawn_service(notification.protocol, node_id, framed).await {
                     Ok(_) => {},
                     Err(err) => {
                         debug!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
@@ -260,7 +269,7 @@ where
             node_id,
             framed: Some(framed),
             service,
-            context: self.context.clone(),
+            comms_provider: self.comms_provider.clone(),
             shutdown_signal: self.config.shutdown_signal.clone(),
         };
 
@@ -272,19 +281,20 @@ where
     }
 }
 
-struct ActivePeerRpcService<TSvc, TSubstream> {
+struct ActivePeerRpcService<TSvc, TSubstream, TCommsProvider> {
     config: RpcServer,
     node_id: NodeId,
     service: TSvc,
     framed: Option<CanonicalFraming<TSubstream>>,
-    context: RpcCommsContext,
+    comms_provider: TCommsProvider,
     shutdown_signal: OptionalShutdownSignal,
 }
 
-impl<TSvc, TSubstream> ActivePeerRpcService<TSvc, TSubstream>
+impl<TSvc, TSubstream, TCommsProvider> ActivePeerRpcService<TSvc, TSubstream, TCommsProvider>
 where
     TSubstream: AsyncRead + AsyncWrite + Unpin,
     TSvc: Service<Request<Bytes>, Response = Response<Body>, Error = RpcStatus>,
+    TCommsProvider: RpcCommsProvider + Send + Clone + 'static,
 {
     async fn start(mut self) {
         debug!(target: LOG_TARGET, "(Peer = `{}`) Rpc server started.", self.node_id);
@@ -315,7 +325,7 @@ where
     }
 
     fn create_request_context(&self) -> RequestContext {
-        RequestContext::new(self.node_id.clone(), self.context.clone())
+        RequestContext::new(self.node_id.clone(), Box::new(self.comms_provider.clone()))
     }
 
     async fn handle<W>(&mut self, sink: &mut W, mut request: Bytes) -> Result<(), RpcError>
@@ -354,9 +364,9 @@ where
 
         let req = Request::with_context(self.create_request_context(), method, decoded_msg.message.into());
 
-        let service_fut = time::timeout(deadline, self.service.call(req));
-        let service_result = match service_fut.await {
-            Ok(a) => a,
+        let service_result = time::timeout(deadline, self.service.call(req)).await;
+        let service_result = match service_result {
+            Ok(v) => v,
             Err(_) => {
                 warn!(
                     target: LOG_TARGET,

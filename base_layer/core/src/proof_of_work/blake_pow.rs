@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::BlockHeader, proof_of_work::Difficulty, U256};
+use crate::{
+    blocks::BlockHeader,
+    proof_of_work::{difficulty::util::big_endian_difficulty, Difficulty},
+};
 use blake2::Blake2b;
 use digest::Digest;
 use tari_crypto::{common::Blake256, tari_utilities::Hashable};
-
-const MAX_TARGET: U256 = U256::MAX;
 
 /// A simple Blake2b-based proof of work. This is currently intended to be used for testing and perhaps Testnet until
 /// Monero merge-mining is active.
@@ -36,13 +37,11 @@ pub fn blake_difficulty(header: &BlockHeader) -> Difficulty {
     blake_difficulty_with_hash(header).0
 }
 
-pub fn blake_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
+fn blake_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
     let bytes = header.hash();
     let hash = Blake2b::digest(&bytes);
     let hash = Blake256::digest(&hash);
-    let scalar = U256::from_big_endian(&hash); // Big endian so the hash has leading zeroes
-    let result = MAX_TARGET / scalar;
-    let difficulty = result.low_u64().into();
+    let difficulty = big_endian_difficulty(&hash);
     (difficulty, hash.to_vec())
 }
 

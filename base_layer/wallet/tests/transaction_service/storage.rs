@@ -41,16 +41,16 @@ use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::storage::{
-        database::{
+        database::{TransactionBackend, TransactionDatabase},
+        memory_db::TransactionMemoryDatabase,
+        models::{
             CompletedTransaction,
             InboundTransaction,
             OutboundTransaction,
-            TransactionBackend,
-            TransactionDatabase,
             TransactionDirection,
             TransactionStatus,
+            WalletTransaction,
         },
-        memory_db::TransactionMemoryDatabase,
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
@@ -96,6 +96,8 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
             direct_send_success: false,
+            send_count: 0,
+            last_send_timestamp: None,
         });
         assert!(
             !runtime.block_on(db.transaction_exists((i + 10) as u64)).unwrap(),
@@ -118,11 +120,32 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             .block_on(db.get_pending_outbound_transaction(outbound_txs[i].tx_id))
             .unwrap();
         assert_eq!(retrieved_outbound_tx, outbound_txs[i]);
+        assert_eq!(retrieved_outbound_tx.send_count, 0);
+        assert!(retrieved_outbound_tx.last_send_timestamp.is_none());
 
         assert_eq!(
             retrieved_outbound_txs.get(&outbound_txs[i].tx_id).unwrap(),
             &outbound_txs[i]
         );
+    }
+
+    runtime
+        .block_on(db.increment_send_count(outbound_txs[0].tx_id))
+        .unwrap();
+    let retrieved_outbound_tx = runtime
+        .block_on(db.get_pending_outbound_transaction(outbound_txs[0].tx_id))
+        .unwrap();
+    assert_eq!(retrieved_outbound_tx.send_count, 1);
+    assert!(retrieved_outbound_tx.last_send_timestamp.is_some());
+
+    let any_outbound_tx = runtime
+        .block_on(db.get_any_transaction(outbound_txs[0].tx_id))
+        .unwrap()
+        .unwrap();
+    if let WalletTransaction::PendingOutbound(tx) = any_outbound_tx {
+        assert_eq!(tx, retrieved_outbound_tx);
+    } else {
+        assert!(false, "Should have found outbound tx");
     }
 
     let rtp = ReceiverTransactionProtocol::new(
@@ -146,6 +169,8 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
             direct_send_success: false,
+            send_count: 0,
+            last_send_timestamp: None,
         });
         assert!(
             !runtime.block_on(db.transaction_exists(i as u64)).unwrap(),
@@ -163,10 +188,27 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let retrieved_inbound_txs = runtime.block_on(db.get_pending_inbound_transactions()).unwrap();
     assert_eq!(inbound_txs.len(), messages.len());
     for i in 0..messages.len() {
-        assert_eq!(
-            retrieved_inbound_txs.get(&inbound_txs[i].tx_id).unwrap(),
-            &inbound_txs[i]
-        );
+        let retrieved_tx = retrieved_inbound_txs.get(&inbound_txs[i].tx_id).unwrap();
+        assert_eq!(retrieved_tx, &inbound_txs[i]);
+        assert_eq!(retrieved_tx.send_count, 0);
+        assert!(retrieved_tx.last_send_timestamp.is_none());
+    }
+
+    runtime.block_on(db.increment_send_count(inbound_txs[0].tx_id)).unwrap();
+    let retrieved_inbound_tx = runtime
+        .block_on(db.get_pending_inbound_transaction(inbound_txs[0].tx_id))
+        .unwrap();
+    assert_eq!(retrieved_inbound_tx.send_count, 1);
+    assert!(retrieved_inbound_tx.last_send_timestamp.is_some());
+
+    let any_inbound_tx = runtime
+        .block_on(db.get_any_transaction(inbound_txs[0].tx_id))
+        .unwrap()
+        .unwrap();
+    if let WalletTransaction::PendingInbound(tx) = any_inbound_tx {
+        assert_eq!(tx, retrieved_inbound_tx);
+    } else {
+        assert!(false, "Should have found inbound tx");
     }
 
     let inbound_pub_key = runtime
@@ -204,6 +246,8 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             cancelled: false,
             direction: TransactionDirection::Outbound,
             coinbase_block_height: None,
+            send_count: 0,
+            last_send_timestamp: None,
         });
         runtime
             .block_on(db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone()))
@@ -233,6 +277,28 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             retrieved_completed_txs.get(&outbound_txs[i].tx_id).unwrap(),
             &completed_txs[i]
         );
+    }
+
+    runtime
+        .block_on(db.increment_send_count(completed_txs[0].tx_id))
+        .unwrap();
+    runtime
+        .block_on(db.increment_send_count(completed_txs[0].tx_id))
+        .unwrap();
+    let retrieved_completed_tx = runtime
+        .block_on(db.get_completed_transaction(completed_txs[0].tx_id))
+        .unwrap();
+    assert_eq!(retrieved_completed_tx.send_count, 2);
+    assert!(retrieved_completed_tx.last_send_timestamp.is_some());
+
+    let any_completed_tx = runtime
+        .block_on(db.get_any_transaction(completed_txs[0].tx_id))
+        .unwrap()
+        .unwrap();
+    if let WalletTransaction::Completed(tx) = any_completed_tx {
+        assert_eq!(tx, retrieved_completed_tx);
+    } else {
+        assert!(false, "Should have found completed tx");
     }
 
     if cfg!(feature = "test_harness") {
@@ -295,6 +361,16 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert_eq!(cancelled_txs.len(), 1);
     assert!(cancelled_txs.remove(&cancelled_tx_id).is_some());
 
+    let any_cancelled_completed_tx = runtime
+        .block_on(db.get_any_transaction(cancelled_tx_id))
+        .unwrap()
+        .unwrap();
+    if let WalletTransaction::Completed(tx) = any_cancelled_completed_tx {
+        assert_eq!(tx.tx_id, cancelled_tx_id);
+    } else {
+        assert!(false, "Should have found cancelled completed tx");
+    }
+
     runtime
         .block_on(db.add_pending_inbound_transaction(
             999,
@@ -342,6 +418,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     runtime
         .block_on(db.get_cancelled_pending_inbound_transaction(999))
         .expect("Should find cancelled inbound tx");
+
     assert_eq!(
         runtime
             .block_on(db.get_cancelled_pending_inbound_transactions())
@@ -354,6 +431,13 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         runtime.block_on(db.get_pending_inbound_transactions()).unwrap().len(),
         0
     );
+
+    let any_cancelled_inbound_tx = runtime.block_on(db.get_any_transaction(999)).unwrap().unwrap();
+    if let WalletTransaction::PendingInbound(tx) = any_cancelled_inbound_tx {
+        assert_eq!(tx.tx_id, 999);
+    } else {
+        assert!(false, "Should have found cancelled inbound tx");
+    }
 
     let mut cancelled_txs = runtime
         .block_on(db.get_cancelled_pending_inbound_transactions())
@@ -431,6 +515,13 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .unwrap();
     assert_eq!(cancelled_txs.len(), 1);
     assert!(cancelled_txs.remove(&998).is_some());
+
+    let any_cancelled_outbound_tx = runtime.block_on(db.get_any_transaction(998)).unwrap().unwrap();
+    if let WalletTransaction::PendingOutbound(tx) = any_cancelled_outbound_tx {
+        assert_eq!(tx.tx_id, 998);
+    } else {
+        assert!(false, "Should have found cancelled outbound tx");
+    }
 }
 
 #[test]

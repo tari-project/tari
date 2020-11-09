@@ -90,7 +90,7 @@ where
 {
     let mut pruned_mmr = prune_mutable_mmr(src)?;
     for hash in additions {
-        pruned_mmr.push(&hash)?;
+        pruned_mmr.push(hash)?;
     }
     for index in deletions {
         pruned_mmr.delete(index);
@@ -108,7 +108,7 @@ where
 {
     let mut mmr = prune_mmr(src)?;
     for hash in additions {
-        mmr.push(&hash)?;
+        mmr.push(hash)?;
     }
     Ok(mmr.get_merkle_root()?)
 }

@@ -407,6 +407,22 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
         }
     }
 
+    fn update_spent_output_to_unspent(
+        &self,
+        commitment: &Commitment,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
+    {
+        let mut db = acquire_write_lock!(self.db);
+        match db.spent_outputs.iter().position(|v| v.output.commitment == *commitment) {
+            Some(pos) => {
+                let output = db.spent_outputs.remove(pos);
+                db.unspent_outputs.push(output.clone());
+                Ok(output.output)
+            },
+            None => Err(OutputManagerStorageError::ValuesNotFound),
+        }
+    }
+
     fn cancel_pending_transaction_at_block_height(&self, block_height: u64) -> Result<(), OutputManagerStorageError> {
         let pending_txs;
         {

@@ -70,10 +70,28 @@ impl RpcStatus {
         }
     }
 
+    pub fn general_default() -> Self {
+        Self::general("General error")
+    }
+
     pub fn timed_out<T: ToString>(details: T) -> Self {
         Self {
             code: RpcStatusCode::Timeout,
             details: details.to_string(),
+        }
+    }
+
+    pub fn not_found<T: ToString>(details: T) -> Self {
+        Self {
+            code: RpcStatusCode::NotFound,
+            details: details.to_string(),
+        }
+    }
+
+    pub fn log_internal_error<'a, E: std::error::Error + 'a>(target: &'a str) -> impl Fn(E) -> Self + 'a {
+        move |err| {
+            log::error!(target: target, "Internal error: {}", err);
+            Self::general_default()
         }
     }
 
@@ -110,8 +128,8 @@ impl From<RpcError> for RpcStatus {
             RpcError::DecodeError(_) => Self::bad_request("Failed to decode request"),
             RpcError::RequestFailed(status) => status,
             err => {
-                error!(target: LOG_TARGET, "Request failed: {}", err);
-                Self::general("Internal server error")
+                error!(target: LOG_TARGET, "Internal error: {}", err);
+                Self::general_default()
             },
         }
     }
@@ -153,8 +171,11 @@ pub enum RpcStatusCode {
     MalformedResponse = 5,
     /// Misc. errors
     General = 6,
+    /// Entity not found
+    NotFound = 7,
+    // The following status represents anything that is not recognised (i.e not one of the above codes).
     /// Unrecognised RPC status code
-    InvalidRpcStatusCode = 7,
+    InvalidRpcStatusCode,
 }
 
 impl RpcStatusCode {
@@ -174,6 +195,7 @@ impl From<u32> for RpcStatusCode {
             4 => Timeout,
             5 => MalformedResponse,
             6 => General,
+            7 => NotFound,
             _ => InvalidRpcStatusCode,
         }
     }
@@ -193,6 +215,7 @@ mod test {
         assert_eq!(RpcStatusCode::from(NotImplemented as u32), NotImplemented);
         assert_eq!(RpcStatusCode::from(MalformedResponse as u32), MalformedResponse);
         assert_eq!(RpcStatusCode::from(Timeout as u32), Timeout);
+        assert_eq!(RpcStatusCode::from(NotFound as u32), NotFound);
         assert_eq!(RpcStatusCode::from(InvalidRpcStatusCode as u32), InvalidRpcStatusCode);
         assert_eq!(RpcStatusCode::from(123), InvalidRpcStatusCode);
     }

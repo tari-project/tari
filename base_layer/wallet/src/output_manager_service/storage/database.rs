@@ -48,7 +48,7 @@ const LOG_TARGET: &str = "wallet::output_manager_service::database";
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. If new data types are
 /// required to be supported by the backends then these enums can be updated to reflect this requirement and the trait
 /// will remain the same
-pub trait OutputManagerBackend: Send + Sync {
+pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError>;
     /// Modify the state the of the backend with a write operation
@@ -94,6 +94,11 @@ pub trait OutputManagerBackend: Send + Sync {
     fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError>;
     /// Remove encryption from the backend.
     fn remove_encryption(&self) -> Result<(), OutputManagerStorageError>;
+    /// Update a Spent output to be Unspent
+    fn update_spent_output_to_unspent(
+        &self,
+        commitment: &Commitment,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
 }
 
 /// Holds the outputs that have been selected for a given pending transaction waiting for confirmation
@@ -168,13 +173,13 @@ macro_rules! fetch {
 /// data access logic required by the module built onto the functionality defined by the trait
 #[derive(Clone)]
 pub struct OutputManagerDatabase<T>
-where T: OutputManagerBackend + Clone + 'static
+where T: OutputManagerBackend + 'static
 {
     db: Arc<T>,
 }
 
 impl<T> OutputManagerDatabase<T>
-where T: OutputManagerBackend + Clone + 'static
+where T: OutputManagerBackend + 'static
 {
     pub fn new(db: T) -> Self {
         Self { db: Arc::new(db) }
@@ -513,6 +518,23 @@ where T: OutputManagerBackend + Clone + 'static
         Ok(uo)
     }
 
+    pub async fn get_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+
+        let uo = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::SpentOutputs) {
+            Ok(None) => log_error(
+                DbKey::SpentOutputs,
+                OutputManagerStorageError::UnexpectedResult("Could not retrieve spent outputs".to_string()),
+            ),
+            Ok(Some(DbValue::SpentOutputs(uo))) => Ok(uo),
+            Ok(Some(other)) => unexpected_result(DbKey::SpentOutputs, other),
+            Err(e) => log_error(DbKey::SpentOutputs, e),
+        })
+        .await
+        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(uo)
+    }
+
     pub async fn get_timelocked_outputs(&self, tip: u64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
 
@@ -562,6 +584,18 @@ where T: OutputManagerBackend + Clone + 'static
     pub async fn revalidate_output(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.revalidate_unspent_output(&commitment))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn update_spent_output_to_unspent(
+        &self,
+        commitment: Commitment,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
+    {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.update_spent_output_to_unspent(&commitment))
             .await
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)

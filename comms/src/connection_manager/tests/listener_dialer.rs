@@ -219,7 +219,7 @@ async fn banned() {
     let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // The listener has banned the dialer peer
     let mut peer = node_identity2.to_peer();
-    peer.ban_for(Duration::from_secs(60 * 60));
+    peer.ban_for(Duration::from_secs(60 * 60), "".to_string());
     peer_manager1.add_peer(peer).await.unwrap();
 
     let noise_config2 = NoiseConfig::new(node_identity2.clone());

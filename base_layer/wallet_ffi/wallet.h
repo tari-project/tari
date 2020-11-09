@@ -75,6 +75,12 @@ struct TariSeedWords;
 
 struct EmojiSet;
 
+struct TariExcess;
+
+struct TariExcessPublicNonce;
+
+struct TariExcessSignature;
+
 /// -------------------------------- Transport Types ----------------------------------------------- ///
 
 // Creates a memory transport type
@@ -236,6 +242,24 @@ bool completed_transaction_is_outbound(struct TariCompletedTransaction *tx,int* 
 
 // Frees memory for a TariCompletedTransaction
 void completed_transaction_destroy(struct TariCompletedTransaction *transaction);
+
+// Gets the TariExcess of a TariCompletedTransaction
+struct TariExcess *completed_transaction_get_excess(struct TariCompletedTransaction *transaction,int* error_out);
+
+// Gets the TariExcessPublicNonce of a TariCompletedTransaction
+struct TariExcessPublicNonce *completed_transaction_get_public_nonce(struct TariCompletedTransaction *transaction,int* error_out);
+
+// Gets the TariExcessSignature of a TariCompletedTransaction
+struct TariExcessSignature *completed_transaction_get_signature(struct TariCompletedTransaction *transaction,int* error_out);
+
+// Frees memory for a TariExcess
+void excess_destroy(struct TariExcess *excess);
+
+// Frees memory for a TariExcessPublicNonce
+void nonce_destroy(struct TariExcessPublicNonce *nonce);
+
+// Frees memory for a TariExcessSignature
+void signature_destroy(struct TariExcessSignature *signature);
 
 /// -------------------------------- CompletedTransactions ------------------------------------------------------ ///
 
@@ -514,6 +538,56 @@ void wallet_apply_encryption(struct TariWallet *wallet, const char *passphrase, 
 // Remove encryption to the databases used in this wallet. If this wallet is currently encrypted this encryption will
 // be removed. If it is not encrypted then this function will still succeed to make the operation idempotent
 void wallet_remove_encryption(struct TariWallet *wallet, int* error_out);
+
+/// Set a Key Value in the Wallet storage used for Client Key Value store
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `key` - The pointer to a Utf8 string representing the Key
+/// `value` - The pointer to a Utf8 string representing the Value ot be stored
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Return a boolean value indicating the operation's success or failure. The error_ptr will hold the error
+/// code if there was a failure
+///
+/// # Safety
+/// None
+bool wallet_set_key_value(struct TariWallet *wallet, const char* key, const char* value, int* error_out);
+
+/// get a stored Value that was previously stored in the Wallet storage used for Client Key Value store
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `key` - The pointer to a Utf8 string representing the Key
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array of the Value string. Note that it returns an null pointer if an
+/// error occured.
+///
+/// # Safety
+/// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+const char *wallet_get_value(struct TariWallet *wallet, const char* key, int* error_out);
+
+/// Clears a Value for the provided Key Value in the Wallet storage used for Client Key Value store
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `key` - The pointer to a Utf8 string representing the Key
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Return a boolean value indicating the operation's success or failure. The error_ptr will hold the error
+/// code if there was a failure
+///
+/// # Safety
+/// None
+bool wallet_clear_value(struct TariWallet *wallet, const char* key, int* error_out);
+
 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);

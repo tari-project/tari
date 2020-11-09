@@ -25,6 +25,7 @@
 <!--- Go over all the following points, and put an `x` in all the boxes that apply. -->
 * [ ] I'm merging against the `development` branch.
 * [ ] I ran `cargo-fmt --all` before pushing.
+* [ ] I ran `cargo test` successfully before submitting my PR.
 * [ ] I have squashed my commits into a single commit.
 * [ ] My change requires a change to the documentation.
 * [ ] I have updated the documentation accordingly.

@@ -32,7 +32,7 @@ use super::{
 };
 use crate::{
     protocol::{
-        rpc::context::RpcCommsContext,
+        rpc::context::{RpcCommsBackend, RpcCommsProvider},
         ProtocolExtension,
         ProtocolExtensionContext,
         ProtocolExtensionError,
@@ -129,15 +129,18 @@ where
     <B::Service as Service<Request<Bytes>>>::Future: Send + 'static,
 {
     /// Start all services
-    pub(crate) async fn serve<TSubstream>(
+    pub(crate) async fn serve<TSubstream, TCommsProvider>(
         self,
         protocol_notifications: ProtocolNotificationRx<TSubstream>,
-        context: RpcCommsContext,
+        comms_provider: TCommsProvider,
     ) -> Result<(), RpcError>
     where
         TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+        TCommsProvider: RpcCommsProvider + Clone + Send + 'static,
     {
-        self.server.serve(self.routes, protocol_notifications, context).await
+        self.server
+            .serve(self.routes, protocol_notifications, comms_provider)
+            .await
     }
 }
 
@@ -180,7 +183,7 @@ where
     fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
         let (proto_notif_tx, proto_notif_rx) = mpsc::channel(10);
         context.add_protocol(&self.protocol_names, proto_notif_tx);
-        let rpc_context = RpcCommsContext::new(context.peer_manager(), context.connectivity());
+        let rpc_context = RpcCommsBackend::new(context.peer_manager(), context.connectivity());
         task::spawn(self.serve(proto_notif_rx, rpc_context));
         Ok(())
     }

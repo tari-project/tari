@@ -176,7 +176,7 @@ impl UnconfirmedPool {
     /// Remove all published transactions from the UnconfirmedPool and discard all double spend transactions.
     /// Returns a list of all transactions that were removed the unconfirmed pool as a result of appearing in the block.
     fn discard_double_spends(&mut self, published_block: &Block) {
-        let mut removed_tx_keys: Vec<Signature> = Vec::new();
+        let mut removed_tx_keys = Vec::new();
         for (tx_key, ptx) in self.txs_by_signature.iter() {
             for input in ptx.transaction.body.inputs() {
                 if published_block.body.inputs().contains(input) {
@@ -198,7 +198,7 @@ impl UnconfirmedPool {
 
     /// Remove all published transactions from the UnconfirmedPoolStorage and discard double spends
     pub fn remove_published_and_discard_double_spends(&mut self, published_block: &Block) -> Vec<Arc<Transaction>> {
-        let mut removed_txs: Vec<Arc<Transaction>> = Vec::new();
+        let mut removed_txs = Vec::new();
         published_block.body.kernels().iter().for_each(|kernel| {
             if let Some(ptx) = self.txs_by_signature.get(&kernel.excess_sig) {
                 self.txs_by_priority.remove(&ptx.priority);
@@ -272,7 +272,12 @@ impl UnconfirmedPool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{consensus::Network, helpers::create_orphan_block, transactions::tari_amount::MicroTari, tx};
+    use crate::{
+        consensus::{ConsensusManagerBuilder, Network},
+        test_helpers::create_orphan_block,
+        transactions::tari_amount::MicroTari,
+        tx,
+    };
 
     #[test]
     fn test_insert_and_retrieve_highest_priority_txs() {
@@ -326,7 +331,7 @@ mod test {
     #[test]
     fn test_remove_published_txs() {
         let network = Network::LocalNet;
-        let consensus_constants = network.create_consensus_constants();
+        let consensus = ConsensusManagerBuilder::new(network).build();
         let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:2, outputs: 1).0);
         let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), inputs:3, outputs: 1).0);
         let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), inputs:2, outputs: 1).0);
@@ -352,11 +357,7 @@ mod test {
         assert!(snapshot_txs.contains(&tx4));
         assert!(snapshot_txs.contains(&tx5));
 
-        let published_block = create_orphan_block(
-            0,
-            vec![(*tx1).clone(), (*tx3).clone(), (*tx5).clone()],
-            &consensus_constants,
-        );
+        let published_block = create_orphan_block(0, vec![(*tx1).clone(), (*tx3).clone(), (*tx5).clone()], &consensus);
         let _ = unconfirmed_pool.remove_published_and_discard_double_spends(&published_block);
 
         assert_eq!(
@@ -390,7 +391,7 @@ mod test {
     #[test]
     fn test_discard_double_spend_txs() {
         let network = Network::LocalNet;
-        let consensus_constants = network.create_consensus_constants();
+        let consensus = ConsensusManagerBuilder::new(network).build();
         let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(50), inputs:2, outputs:1).0);
         let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs:3, outputs:1).0);
         let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(100), inputs:2, outputs:1).0);
@@ -419,11 +420,7 @@ mod test {
             .unwrap();
 
         // The publishing of tx1 and tx3 will be double-spends and orphan tx5 and tx6
-        let published_block = create_orphan_block(
-            0,
-            vec![(*tx1).clone(), (*tx2).clone(), (*tx3).clone()],
-            &consensus_constants,
-        );
+        let published_block = create_orphan_block(0, vec![(*tx1).clone(), (*tx2).clone(), (*tx3).clone()], &consensus);
 
         let _ = unconfirmed_pool.remove_published_and_discard_double_spends(&published_block); // Double spends are discarded
 

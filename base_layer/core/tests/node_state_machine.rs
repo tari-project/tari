@@ -34,6 +34,7 @@ use helpers::{
         find_header_with_achieved_difficulty,
     },
     chain_metadata::{random_peer_metadata, MockChainMetadata},
+    database::create_mem_db,
     nodes::{
         create_network_with_2_base_nodes_with_config,
         create_network_with_3_base_nodes_with_config,
@@ -49,39 +50,41 @@ use tari_core::{
         chain_metadata_service::PeerChainMetadata,
         comms_interface::Broadcast,
         service::BaseNodeServiceConfig,
-        states::{
-            BestChainMetadataBlockSyncInfo,
-            BlockSyncConfig,
-            HorizonSyncConfig,
-            Listening,
-            StateEvent,
-            SyncPeer,
-            SyncPeerConfig,
-            SyncStatus,
-            SyncStatus::Lagging,
+        state_machine_service::{
+            states::{
+                BestChainMetadataBlockSync,
+                BlockSyncConfig,
+                HorizonSyncConfig,
+                Listening,
+                StateEvent,
+                StatusInfo,
+                SyncPeer,
+                SyncPeerConfig,
+                SyncStatus,
+                SyncStatus::Lagging,
+            },
+            BaseNodeStateMachine,
+            BaseNodeStateMachineConfig,
         },
-        BaseNodeStateMachine,
-        BaseNodeStateMachineConfig,
         SyncValidators,
     },
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     mempool::MempoolServiceConfig,
     transactions::types::CryptoFactories,
-    validation::{
-        accum_difficulty_validators::MockAccumDifficultyValidator,
-        block_validators::MockStatelessBlockValidator,
-        mocks::MockValidator,
-    },
+    validation::{block_validators::MockStatelessBlockValidator, mocks::MockValidator},
 };
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_shutdown::Shutdown;
 use tari_test_utils::collect_stream;
 use tempfile::tempdir;
-use tokio::{runtime::Runtime, time};
-
+use tokio::{
+    runtime::Runtime,
+    sync::{broadcast, watch},
+    time,
+};
+static EMISSION: [u64; 2] = [10, 10];
 #[test]
 fn test_listening_lagging() {
     let mut runtime = Runtime::new().unwrap();
@@ -89,7 +92,7 @@ fn test_listening_lagging() {
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -110,41 +113,35 @@ fn test_listening_lagging() {
         temp_dir.path().to_str().unwrap(),
     );
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
+        alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
         BaseNodeStateMachineConfig::default(),
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        status_event_sender,
+        state_change_event_publisher,
     );
     wait_until_online(&mut runtime, &[&alice_node, &bob_node]);
 
-    let await_event_task = runtime.spawn(async move { Listening.next_event(&mut alice_state_machine).await });
+    let await_event_task =
+        runtime.spawn(async move { Listening { is_synced: true }.next_event(&mut alice_state_machine).await });
 
     runtime.block_on(async move {
         let bob_db = bob_node.blockchain_db;
         let mut bob_local_nci = bob_node.local_nci;
 
         // Bob Block 1 - no block event
-        let prev_block = append_block(
-            &bob_db,
-            &prev_block,
-            vec![],
-            &consensus_manager.consensus_constants(),
-            3.into(),
-        )
-        .unwrap();
+        let prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager, 3.into()).unwrap();
         // Bob Block 2 - with block event and liveness service metadata update
         let prev_block = bob_db
-            .calculate_mmr_roots(chain_block(
-                &prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-            ))
+            .calculate_mmr_roots(chain_block(&prev_block, vec![], &consensus_manager))
             .unwrap();
         bob_local_nci
             .submit_block(prev_block, Broadcast::from(true))
@@ -161,9 +158,6 @@ fn test_listening_lagging() {
             StateEvent::FallenBehind(Lagging(_, _)) => assert!(true),
             _ => assert!(false),
         }
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -175,47 +169,47 @@ fn test_event_channel() {
         BaseNodeBuilder::new(Network::Rincewind).start(&mut runtime, temp_dir.path().to_str().unwrap());
     // let shutdown = Shutdown::new();
     let db = create_mem_db(&consensus_manager);
-    let mut shutdown = Shutdown::new();
+    let shutdown = Shutdown::new();
     let mut mock = MockChainMetadata::new();
+    let (state_change_event_publisher, mut state_change_event_subscriber) = broadcast::channel(10);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let state_machine = BaseNodeStateMachine::new(
         &db,
         &node.local_nci,
         &node.outbound_nci,
-        node.comms.peer_manager(),
         node.comms.connectivity(),
-        mock.subscriber(),
+        node.comms.peer_manager(),
+        mock.subscription(),
         BaseNodeStateMachineConfig::default(),
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        status_event_sender,
+        state_change_event_publisher,
     );
-    let rx = state_machine.get_state_change_event_stream();
 
     runtime.spawn(state_machine.run());
 
     let PeerChainMetadata {
         node_id,
         chain_metadata,
-    } = random_peer_metadata(10, 5_000.into());
+    } = random_peer_metadata(10, 5_000);
     runtime
         .block_on(mock.publish_chain_metadata(&node_id, &chain_metadata))
         .expect("Could not publish metadata");
     thread::sleep(Duration::from_millis(50));
     runtime.block_on(async {
-        let mut fused = rx.fuse();
-        let event = fused.next().await;
-        assert_eq!(*event.unwrap(), StateEvent::Initialized);
-        let event = fused.next().await;
-        match *event.unwrap() {
+        let event = state_change_event_subscriber.next().await;
+        assert_eq!(*event.unwrap().unwrap(), StateEvent::Initialized);
+        let event = state_change_event_subscriber.next().await;
+        match *event.unwrap().unwrap() {
             StateEvent::FallenBehind(SyncStatus::Lagging(ref data, ref peers)) => {
                 assert_eq!(data.height_of_longest_chain, Some(10));
-                assert_eq!(data.accumulated_difficulty, Some(5_000.into()));
+                assert_eq!(data.accumulated_difficulty, Some(5_000));
                 assert_eq!(peers[0].node_id, node_id);
             },
             _ => assert!(false),
         }
-        node.comms.shutdown().await;
     });
-    let _ = shutdown.trigger();
 }
 
 #[test]
@@ -225,7 +219,7 @@ fn test_block_sync() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -256,39 +250,40 @@ fn test_block_sync() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, mut status_event_receiver) = watch::channel(StatusInfo::new());
+    let mut mock = MockChainMetadata::new();
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
-        alice_node.chain_metadata_handle.get_event_stream(),
+        alice_node.comms.peer_manager(),
+        mock.subscription(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
         let alice_db = &alice_node.blockchain_db;
         let bob_db = &bob_node.blockchain_db;
         for _ in 1..6 {
-            prev_block = append_block(
-                bob_db,
-                &prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
+            prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager, 1.into()).unwrap();
         }
 
         // Sync Blocks from genesis block to tip
-        let network_tip = bob_db.get_chain_metadata().unwrap();
+        let is_bootstrapped = status_event_receiver.recv().await.unwrap().bootstrapped;
+        assert!(!is_bootstrapped);
+
+        let mut network_tip = bob_db.get_chain_metadata().unwrap();
         let mut sync_peers = vec![SyncPeer {
             node_id: bob_node.node_identity.node_id().clone(),
             chain_metadata: network_tip.clone(),
         }];
-        let state_event = BestChainMetadataBlockSyncInfo {}
+        let state_event = BestChainMetadataBlockSync {}
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
@@ -301,8 +296,28 @@ fn test_block_sync() {
             );
         }
 
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
+        // Bootstrap status changed to true after initial sync was achieved
+        let is_bootstrapped = status_event_receiver.recv().await.unwrap().bootstrapped;
+        assert!(is_bootstrapped);
+
+        // Publish on the metadata that will indicate we are synced in the Listening state
+        let _ = mock
+            .publish_chain_metadata(bob_node.node_identity.node_id(), &network_tip)
+            .await;
+        // Publish a second event saying that we are lagging again so that we will leave the Listening state
+        let higher_difficulty = std::u128::MAX;
+        network_tip.accumulated_difficulty = Some(higher_difficulty);
+
+        let _ = mock
+            .publish_chain_metadata(bob_node.node_identity.node_id(), &network_tip)
+            .await;
+
+        // Run the listening State
+        let _state_event = Listening { is_synced: true }.next_event(&mut alice_state_machine).await;
+
+        // Bootstrap status remains unchanged
+        let is_bootstrapped = status_event_receiver.recv().await.unwrap().bootstrapped;
+        assert!(is_bootstrapped);
     });
 }
 
@@ -313,7 +328,7 @@ fn test_lagging_block_sync() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -344,41 +359,31 @@ fn test_lagging_block_sync() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
+        alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
         let alice_db = &alice_node.blockchain_db;
         let bob_db = &bob_node.blockchain_db;
         for _ in 0..4 {
-            prev_block = append_block(
-                bob_db,
-                &prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
-            alice_db.add_block(prev_block.clone()).unwrap();
+            prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager, 1.into()).unwrap();
+            alice_db.add_block(prev_block.clone().into()).unwrap();
         }
         for _ in 0..4 {
-            prev_block = append_block(
-                bob_db,
-                &prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
+            prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager, 1.into()).unwrap();
         }
         assert_eq!(alice_db.get_height().unwrap(), Some(4));
         assert_eq!(bob_db.get_height().unwrap(), Some(8));
@@ -389,7 +394,7 @@ fn test_lagging_block_sync() {
             node_id: bob_node.node_identity.node_id().clone(),
             chain_metadata: network_tip.clone(),
         }];
-        let state_event = BestChainMetadataBlockSyncInfo {}
+        let state_event = BestChainMetadataBlockSync {}
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
@@ -402,9 +407,6 @@ fn test_lagging_block_sync() {
                 bob_node.blockchain_db.fetch_block(height).unwrap()
             );
         }
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -415,7 +417,7 @@ fn test_block_sync_recovery() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -446,16 +448,20 @@ fn test_block_sync_recovery() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
+        alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -463,24 +469,10 @@ fn test_block_sync_recovery() {
         let bob_db = &bob_node.blockchain_db;
         let carol_db = &carol_node.blockchain_db;
         // Bob and Carol is ahead of Alice and Bob is ahead of Carol
-        prev_block = append_block(
-            bob_db,
-            &prev_block,
-            vec![],
-            &consensus_manager.consensus_constants(),
-            1.into(),
-        )
-        .unwrap();
-        carol_db.add_block(prev_block.clone()).unwrap();
+        prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager, 1.into()).unwrap();
+        carol_db.add_block(prev_block.clone().into()).unwrap();
         for _ in 0..2 {
-            prev_block = append_block(
-                bob_db,
-                &prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
+            prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager, 1.into()).unwrap();
         }
 
         // Sync Blocks from genesis block to tip. Alice will notice that the chain tip is equivalent to Bobs tip and
@@ -492,7 +484,7 @@ fn test_block_sync_recovery() {
             node_id: bob_node.node_identity.node_id().clone(),
             chain_metadata: network_tip.clone(),
         }];
-        let state_event = BestChainMetadataBlockSyncInfo
+        let state_event = BestChainMetadataBlockSync
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
@@ -503,13 +495,8 @@ fn test_block_sync_recovery() {
                 bob_db.fetch_block(height).unwrap().block()
             );
         }
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
-        carol_node.comms.shutdown().await;
     });
 }
-
 #[test]
 fn test_forked_block_sync() {
     let mut runtime = Runtime::new().unwrap();
@@ -517,7 +504,7 @@ fn test_forked_block_sync() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -548,16 +535,20 @@ fn test_forked_block_sync() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
+        alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -565,15 +556,8 @@ fn test_forked_block_sync() {
         let alice_db = &alice_node.blockchain_db;
         let bob_db = &bob_node.blockchain_db;
         for _ in 0..2 {
-            prev_block = append_block(
-                bob_db,
-                &prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
-            alice_db.add_block(prev_block.clone()).unwrap();
+            prev_block = append_block(bob_db, &prev_block, vec![], &consensus_manager, 1.into()).unwrap();
+            alice_db.add_block(prev_block.clone().into()).unwrap();
         }
 
         assert_eq!(alice_db.get_height().unwrap(), Some(2));
@@ -583,25 +567,11 @@ fn test_forked_block_sync() {
         let mut bob_prev_block = prev_block;
         // Alice fork
         for _ in 0..2 {
-            alice_prev_block = append_block(
-                alice_db,
-                &alice_prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
+            alice_prev_block = append_block(alice_db, &alice_prev_block, vec![], &consensus_manager, 1.into()).unwrap();
         }
         // Bob fork
         for _ in 0..7 {
-            bob_prev_block = append_block(
-                bob_db,
-                &bob_prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                1.into(),
-            )
-            .unwrap();
+            bob_prev_block = append_block(bob_db, &bob_prev_block, vec![], &consensus_manager, 1.into()).unwrap();
         }
         assert_eq!(alice_db.get_height().unwrap(), Some(4));
         assert_eq!(bob_db.get_height().unwrap(), Some(9));
@@ -611,7 +581,7 @@ fn test_forked_block_sync() {
             node_id: bob_node.node_identity.node_id().clone(),
             chain_metadata: network_tip.clone(),
         }];
-        let state_event = BestChainMetadataBlockSyncInfo {}
+        let state_event = BestChainMetadataBlockSync {}
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
@@ -624,9 +594,6 @@ fn test_forked_block_sync() {
                 bob_db.fetch_block(height).unwrap()
             );
         }
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -636,8 +603,9 @@ fn test_sync_peer_banning() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
+
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (mut prev_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -663,11 +631,7 @@ fn test_sync_peer_banning() {
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
-        .with_validators(
-            mock_validator,
-            stateless_block_validator,
-            MockAccumDifficultyValidator {},
-        )
+        .with_validators(mock_validator, stateless_block_validator)
         .start(&mut runtime, data_path);
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity)
@@ -694,17 +658,22 @@ fn test_sync_peer_banning() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
+        alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        status_event_sender,
+        state_change_event_publisher,
     );
+    let mut last_utxo = None;
 
     runtime.block_on(async {
         // Shared chain
@@ -714,24 +683,21 @@ fn test_sync_peer_banning() {
         let bob_public_key = &bob_node.node_identity.public_key();
         for height in 1..=2 {
             let coinbase_value = consensus_manager.emission_schedule().block_reward(height);
-            let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
+            // we add 1000 to the maturity because we want it to fail
+            let (coinbase_utxo, coinbase_kernel, coinbase) = create_coinbase(
                 &factories,
                 coinbase_value,
-                height + consensus_manager.consensus_constants().coinbase_lock_height(),
+                height + consensus_manager.consensus_constants(0).coinbase_lock_height() + 1000,
             );
-            let template = chain_block_with_coinbase(
-                &prev_block,
-                vec![],
-                coinbase_utxo,
-                coinbase_kernel,
-                &consensus_manager.consensus_constants(),
-            );
+            last_utxo = Some(coinbase);
+            let template =
+                chain_block_with_coinbase(&prev_block, vec![], coinbase_utxo, coinbase_kernel, &consensus_manager);
             prev_block = bob_db.calculate_mmr_roots(template).unwrap();
             prev_block.header.nonce = OsRng.next_u64();
             find_header_with_achieved_difficulty(&mut prev_block.header, 1.into());
 
-            alice_db.add_block(prev_block.clone()).unwrap();
-            bob_db.add_block(prev_block.clone()).unwrap();
+            alice_db.add_block(prev_block.clone().into()).unwrap();
+            bob_db.add_block(prev_block.clone().into()).unwrap();
         }
         assert_eq!(alice_db.get_height().unwrap(), Some(2));
         assert_eq!(bob_db.get_height().unwrap(), Some(2));
@@ -745,44 +711,37 @@ fn test_sync_peer_banning() {
             let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
                 &factories,
                 coinbase_value,
-                height + consensus_manager.consensus_constants().coinbase_lock_height(),
+                height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
             );
             let template = chain_block_with_coinbase(
                 &alice_prev_block,
                 vec![],
                 coinbase_utxo,
                 coinbase_kernel,
-                &consensus_manager.consensus_constants(),
+                &consensus_manager,
             );
             alice_prev_block = alice_db.calculate_mmr_roots(template).unwrap();
             alice_prev_block.header.nonce = OsRng.next_u64();
             find_header_with_achieved_difficulty(&mut alice_prev_block.header, 1.into());
 
-            alice_db.add_block(alice_prev_block.clone()).unwrap();
+            alice_db.add_block(alice_prev_block.clone().into()).unwrap();
         }
-        // Bob fork with invalid coinbases
+        // Bob fork with invalid maturity
         let mut bob_prev_block = prev_block;
         for _ in 3..=6 {
-            bob_prev_block = append_block(
-                bob_db,
-                &bob_prev_block,
-                vec![],
-                &consensus_manager.consensus_constants(),
-                3.into(),
-            )
-            .unwrap();
+            bob_prev_block = append_block(bob_db, &bob_prev_block, vec![], &consensus_manager, 3.into()).unwrap();
         }
 
         assert_eq!(alice_db.get_height().unwrap(), Some(4));
         assert_eq!(bob_db.get_height().unwrap(), Some(6));
 
-        let mut connectivity_events = alice_node.comms.connectivity().subscribe_event_stream();
+        let mut connectivity_events = alice_node.comms.connectivity().get_event_subscription();
         let network_tip = bob_db.get_chain_metadata().unwrap();
         let mut sync_peers = vec![SyncPeer {
             node_id: bob_node.node_identity.node_id().clone(),
             chain_metadata: network_tip.clone(),
         }];
-        let state_event = BestChainMetadataBlockSyncInfo {}
+        let state_event = BestChainMetadataBlockSync {}
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlockSyncFailure);
@@ -793,8 +752,5 @@ fn test_sync_peer_banning() {
 
         let peer = alice_peer_manager.find_by_public_key(bob_public_key).await.unwrap();
         assert_eq!(peer.is_banned(), true);
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }

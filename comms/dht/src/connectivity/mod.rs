@@ -23,8 +23,8 @@
 #[cfg(test)]
 mod test;
 
-use crate::{DhtActorError, DhtConfig, DhtRequester};
-use futures::StreamExt;
+use crate::{event::DhtEvent, DhtActorError, DhtConfig, DhtRequester};
+use futures::{stream::Fuse, StreamExt};
 use log::*;
 use std::{sync::Arc, time::Instant};
 use tari_comms::{
@@ -36,7 +36,7 @@ use tari_comms::{
 };
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
-use tokio::{task, task::JoinHandle, time};
+use tokio::{sync::broadcast, task, task::JoinHandle, time};
 
 const LOG_TARGET: &str = "comms::dht::connectivity";
 
@@ -72,8 +72,9 @@ pub struct DhtConnectivity {
     random_pool: Vec<NodeId>,
     /// Used to track when the random peer pool was last refreshed
     random_pool_last_refresh: Option<Instant>,
-    ///
     stats: Stats,
+    dht_events: Fuse<broadcast::Receiver<Arc<DhtEvent>>>,
+
     shutdown_signal: Option<ShutdownSignal>,
 }
 
@@ -84,6 +85,7 @@ impl DhtConnectivity {
         node_identity: Arc<NodeIdentity>,
         connectivity: ConnectivityRequester,
         dht_requester: DhtRequester,
+        dht_events: broadcast::Receiver<Arc<DhtEvent>>,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -97,6 +99,7 @@ impl DhtConnectivity {
             dht_requester,
             random_pool_last_refresh: None,
             stats: Stats::new(),
+            dht_events: dht_events.fuse(),
             shutdown_signal: Some(shutdown_signal),
         }
     }
@@ -104,7 +107,7 @@ impl DhtConnectivity {
     /// Spawn a DhtConnectivity actor. This will immediately subscribe to the connection manager event stream to
     /// prevent unexpected missed events.
     pub fn spawn(self) -> JoinHandle<Result<(), DhtConnectivityError>> {
-        let connectivity_events = self.connectivity.subscribe_event_stream();
+        let connectivity_events = self.connectivity.get_event_subscription();
         task::spawn(async move {
             match self.run(connectivity_events).await {
                 Ok(_) => Ok(()),
@@ -123,7 +126,7 @@ impl DhtConnectivity {
             .take()
             .expect("DhtConnectivity initialized without a shutdown_signal");
 
-        self.initialize_neighbours().await?;
+        self.refresh_neighbour_pool().await?;
 
         let mut ticker = time::interval(self.config.connectivity_update_interval).fuse();
 
@@ -135,6 +138,14 @@ impl DhtConnectivity {
                             debug!(target: LOG_TARGET, "Error handling connectivity event: {:?}", err);
                         }
                     }
+               },
+
+               event = self.dht_events.select_next_some() => {
+                   if let Ok(event) = event {
+                        if let Err(err) = self.handle_dht_event(&event).await {
+                            debug!(target: LOG_TARGET, "Error handling DHT event: {:?}", err);
+                        }
+                   }
                },
 
                _ = ticker.next() => {
@@ -153,77 +164,76 @@ impl DhtConnectivity {
         Ok(())
     }
 
-    async fn initialize_neighbours(&mut self) -> Result<(), DhtConnectivityError> {
-        self.neighbours = self
-            .fetch_neighbouring_peers(self.config.num_neighbouring_nodes, &[])
-            .await?;
-        info!(
-            target: LOG_TARGET,
-            "Adding {} neighbouring peer(s)",
-            self.neighbours.len(),
-        );
-        debug!(
-            target: LOG_TARGET,
-            "Adding {} peer(s) to connectivity manager: {}",
-            self.neighbours.len(),
-            self.neighbours
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
+    async fn handle_dht_event(&mut self, event: &DhtEvent) -> Result<(), DhtConnectivityError> {
+        #[allow(clippy::single_match)]
+        match event {
+            DhtEvent::NetworkDiscoveryPeersAdded(info) => {
+                if info.has_new_neighbours() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Network discovery discovered {} more neighbouring peers. Reinitializing pools",
+                        info.num_new_peers
+                    );
+                    self.refresh_peer_pools().await?;
+                }
+            },
+            _ => {},
+        }
 
-        self.connectivity.add_managed_peers(self.neighbours.clone()).await?;
         Ok(())
     }
 
-    async fn reinitialize_pools(&mut self) -> Result<(), DhtConnectivityError> {
+    async fn refresh_peer_pools(&mut self) -> Result<(), DhtConnectivityError> {
         info!(
             target: LOG_TARGET,
             "Reinitializing neighbour pool. Draining neighbour list (len={})",
             self.neighbours.len(),
         );
-        for neighbour in self.neighbours.drain(..) {
-            self.connectivity.remove_peer(neighbour).await?;
-        }
 
-        self.initialize_neighbours().await?;
+        self.refresh_neighbour_pool().await?;
         self.refresh_random_pool().await?;
 
         Ok(())
     }
 
-    async fn handle_connectivity_event(&mut self, event: &ConnectivityEvent) -> Result<(), DhtConnectivityError> {
-        use ConnectivityEvent::*;
-        match event {
-            PeerConnected(conn) => {
-                self.handle_new_peer_connected(conn).await?;
-            },
-            ManagedPeerDisconnected(node_id) |
-            ManagedPeerConnectFailed(node_id) |
-            PeerOffline(node_id) |
-            PeerBanned(node_id) => {
-                self.replace_managed_peer(node_id).await?;
-            },
-            ConnectivityStateDegraded(n) | ConnectivityStateOnline(n) => {
-                if self.config.auto_join && self.can_send_join() {
-                    info!(target: LOG_TARGET, "Joining the network automatically");
-                    self.dht_requester
-                        .send_join()
-                        .await
-                        .map_err(DhtConnectivityError::SendJoinFailed)?;
-                    // If join is only being sent to a single peer, allow it to be resent
-                    if *n > 1 {
-                        self.stats.mark_join_sent();
-                    }
-                }
-            },
-            ConnectivityStateOffline => {
-                self.reinitialize_pools().await?;
-            },
-            _ => {},
-        }
+    async fn refresh_neighbour_pool(&mut self) -> Result<(), DhtConnectivityError> {
+        let mut new_neighbours = self
+            .fetch_neighbouring_peers(self.config.num_neighbouring_nodes, &[])
+            .await?;
 
+        let (intersection, difference) = self
+            .neighbours
+            .iter()
+            .cloned()
+            .partition::<Vec<_>, _>(|n| !new_neighbours.contains(n));
+        // Only retain the peers that aren't already added
+        new_neighbours.retain(|n| !intersection.contains(&n));
+        self.neighbours.retain(|n| intersection.contains(&n));
+
+        info!(
+            target: LOG_TARGET,
+            "Adding {} neighbouring peer(s), removing {} peers",
+            new_neighbours.len(),
+            difference.len()
+        );
+        debug!(
+            target: LOG_TARGET,
+            "Adding {} peer(s) to connectivity manager: {}",
+            new_neighbours.len(),
+            new_neighbours
+                .iter()
+                .map(|n| format!("{}, ", n))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+
+        for peer in difference {
+            self.connectivity.remove_peer(peer).await?;
+        }
+        self.connectivity.add_managed_peers(new_neighbours.clone()).await?;
+        for peer in new_neighbours {
+            self.insert_neighbour(peer);
+        }
         Ok(())
     }
 
@@ -249,29 +259,31 @@ impl DhtConnectivity {
                 "Unable to refresh random peer pool because there are insufficient known peers",
             );
         } else {
-            let (keep, to_remove) = self
+            let (intersection, difference) = self
                 .random_pool
-                .iter()
-                .partition::<Vec<_>, _>(|n| random_peers.contains(n));
+                .drain(..)
+                .partition::<Vec<_>, _>(|n| !random_peers.contains(n));
             // Remove the peers that we want to keep from the `random_peers` to be added
-            random_peers.retain(|n| !keep.contains(&n));
+            random_peers.retain(|n| !intersection.contains(&n));
+            self.random_pool = intersection;
             debug!(
                 target: LOG_TARGET,
                 "Adding new peers to random peer pool (#new = {}, #keeping = {}, #removing = {})",
                 random_peers.len(),
-                keep.len(),
-                to_remove.len()
+                self.random_pool.len(),
+                difference.len()
             );
             trace!(
                 target: LOG_TARGET,
                 "Random peers: Adding = {:?}, Removing = {:?}",
                 random_peers,
-                to_remove
+                difference
             );
-            self.connectivity.add_managed_peers(random_peers).await?;
-            for n in to_remove {
+            self.connectivity.add_managed_peers(random_peers.clone()).await?;
+            for n in difference {
                 self.connectivity.remove_peer(n.clone()).await?;
             }
+            self.random_pool.extend(random_peers);
         }
         self.random_pool_last_refresh = Some(Instant::now());
         Ok(())
@@ -322,8 +334,41 @@ impl DhtConnectivity {
             self.connectivity
                 .add_managed_peers(vec![conn.peer_node_id().clone()])
                 .await?;
+        }
 
-            return Ok(());
+        Ok(())
+    }
+
+    async fn handle_connectivity_event(&mut self, event: &ConnectivityEvent) -> Result<(), DhtConnectivityError> {
+        use ConnectivityEvent::*;
+        match event {
+            PeerConnected(conn) => {
+                self.handle_new_peer_connected(conn).await?;
+            },
+            ManagedPeerDisconnected(node_id) |
+            ManagedPeerConnectFailed(node_id) |
+            PeerOffline(node_id) |
+            PeerBanned(node_id) => {
+                self.replace_managed_peer(node_id).await?;
+            },
+            ConnectivityStateOnline(n) => {
+                if self.config.auto_join && self.should_send_join() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Node is online ({} peer(s) connected). Sending announce.", n
+                    );
+                    self.dht_requester
+                        .send_join()
+                        .await
+                        .map_err(DhtConnectivityError::SendJoinFailed)?;
+
+                    self.stats.mark_join_sent();
+                }
+            },
+            ConnectivityStateOffline => {
+                self.refresh_peer_pools().await?;
+            },
+            _ => {},
         }
 
         Ok(())
@@ -514,7 +559,7 @@ impl DhtConnectivity {
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }
 
-    fn can_send_join(&self) -> bool {
+    fn should_send_join(&self) -> bool {
         let cooldown = self.config.join_cooldown_interval;
         self.stats
             .join_last_sent_at()

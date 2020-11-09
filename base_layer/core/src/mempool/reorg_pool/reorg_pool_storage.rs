@@ -100,8 +100,8 @@ impl ReorgPoolStorage {
     /// can be resubmitted to the Unconfirmed Pool.
     pub fn remove_reorged_txs_and_discard_double_spends(
         &mut self,
-        removed_blocks: Vec<Block>,
-        new_blocks: &Vec<Block>,
+        removed_blocks: Vec<Arc<Block>>,
+        new_blocks: &[Arc<Block>],
     ) -> Vec<Arc<Transaction>>
     {
         for block in new_blocks {

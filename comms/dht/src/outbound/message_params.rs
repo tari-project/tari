@@ -71,7 +71,7 @@ pub struct FinalSendMessageParams {
 impl Default for FinalSendMessageParams {
     fn default() -> Self {
         Self {
-            broadcast_strategy: BroadcastStrategy::Flood,
+            broadcast_strategy: BroadcastStrategy::Flood(Default::default()),
             destination: Default::default(),
             encryption: Default::default(),
             dht_message_type: Default::default(),
@@ -110,12 +110,15 @@ impl SendMessageParams {
         self
     }
 
-    /// Set broadcast_strategy to Closest.`excluded_peers` are excluded.
-    pub fn closest(&mut self, node_id: NodeId, n: usize, excluded_peers: Vec<NodeId>) -> &mut Self {
+    /// Use the `Closest` broadcast strategy.
+    ///
+    /// # Parameters
+    /// `node_id` - Select the closest known peers to this `NodeId`
+    /// `excluded_peers` - vector of `NodeId`s to exclude from broadcast.
+    pub fn closest(&mut self, node_id: NodeId, excluded_peers: Vec<NodeId>) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
             excluded_peers,
             node_id,
-            n,
             connected_only: false,
         }));
         self
@@ -123,11 +126,10 @@ impl SendMessageParams {
 
     /// Set broadcast_strategy to Closest.`excluded_peers` are excluded. Only peers that are currently connected will be
     /// included.
-    pub fn closest_connected(&mut self, node_id: NodeId, n: usize, excluded_peers: Vec<NodeId>) -> &mut Self {
+    pub fn closest_connected(&mut self, node_id: NodeId, excluded_peers: Vec<NodeId>) -> &mut Self {
         self.params_mut().broadcast_strategy = BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
             excluded_peers,
             node_id,
-            n,
             connected_only: true,
         }));
         self
@@ -146,8 +148,8 @@ impl SendMessageParams {
     }
 
     /// Set broadcast_strategy to Flood
-    pub fn flood(&mut self) -> &mut Self {
-        self.params_mut().broadcast_strategy = BroadcastStrategy::Flood;
+    pub fn flood(&mut self, excluded: Vec<NodeId>) -> &mut Self {
+        self.params_mut().broadcast_strategy = BroadcastStrategy::Flood(excluded);
         self
     }
 

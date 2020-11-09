@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     blocks::{blockheader::BlockHeader, Block},
     chain_storage::{
@@ -73,9 +72,17 @@ use crate::{
 };
 use croaring::Bitmap;
 use digest::Digest;
+use fs2::FileExt;
 use lmdb_zero::{Database, Environment, WriteTransaction};
 use log::*;
-use std::{collections::VecDeque, path::Path, sync::Arc, time::Instant};
+use std::{
+    collections::VecDeque,
+    fs,
+    fs::File,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Instant,
+};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 use tari_mmr::{
     functions::{calculate_pruned_mmr_root, prune_mutable_mmr, PrunedMutableMmr},
@@ -88,7 +95,7 @@ use tari_mmr::{
     MmrCacheConfig,
     MutableMmr,
 };
-use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBStore};
+use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
 
 type DatabaseRef = Arc<Database<'static>>;
 
@@ -99,6 +106,7 @@ pub struct LMDBDatabase<D>
 where D: Digest
 {
     env: Arc<Environment>,
+    env_config: LMDBConfig,
     metadata_db: DatabaseRef,
     mem_metadata: ChainMetadata, // Memory copy of stored metadata
     headers_db: DatabaseRef,
@@ -118,12 +126,13 @@ where D: Digest
     range_proof_checkpoints: LMDBVec<MerkleCheckPoint>,
     curr_range_proof_checkpoint: MerkleCheckPoint,
     is_mem_metadata_dirty: bool,
+    _file_lock: Arc<File>,
 }
 
 impl<D> LMDBDatabase<D>
 where D: Digest + Send + Sync
 {
-    pub fn new(store: LMDBStore, mmr_cache_config: MmrCacheConfig) -> Result<Self, ChainStorageError> {
+    pub fn new(store: LMDBStore, mmr_cache_config: MmrCacheConfig, file_lock: File) -> Result<Self, ChainStorageError> {
         let utxo_checkpoints = LMDBVec::new(store.env(), get_database(&store, LMDB_DB_UTXO_MMR_CP_BACKEND)?);
         let kernel_checkpoints = LMDBVec::new(store.env(), get_database(&store, LMDB_DB_KERNEL_MMR_CP_BACKEND)?);
         let range_proof_checkpoints =
@@ -162,7 +171,9 @@ where D: Digest + Send + Sync
             },
             range_proof_checkpoints,
             env,
+            env_config: store.env_config(),
             is_mem_metadata_dirty: false,
+            _file_lock: Arc::new(file_lock),
         })
     }
 
@@ -309,7 +320,7 @@ where D: Digest + Send + Sync
     fn op_insert(&mut self, txn: &WriteTransaction<'_>, kv_pair: &DbKeyValuePair) -> Result<(), ChainStorageError> {
         match kv_pair {
             DbKeyValuePair::Metadata(k, v) => {
-                lmdb_replace(&txn, &self.metadata_db, &(k.clone() as u32), &v)?;
+                lmdb_replace(&txn, &self.metadata_db, &(*k as u32), &v)?;
                 self.is_mem_metadata_dirty = true;
             },
             DbKeyValuePair::BlockHeader(k, v) => {
@@ -348,7 +359,7 @@ where D: Digest + Send + Sync
                 lmdb_insert(&txn, &self.kernels_db, &k, &v)?;
             },
             DbKeyValuePair::OrphanBlock(k, v) => {
-                lmdb_replace(&txn, &self.orphans_db, &k, &v)?;
+                lmdb_replace(&txn, &self.orphans_db, &k, &**v)?;
             },
         }
         Ok(())
@@ -459,7 +470,7 @@ where D: Digest + Send + Sync
             MmrTree::Utxo => {
                 let mut pruned_mmr = prune_mutable_mmr(&*self.utxo_mmr)?;
                 for hash in self.curr_utxo_checkpoint.nodes_added() {
-                    pruned_mmr.push(&hash)?;
+                    pruned_mmr.push(hash.clone())?;
                 }
                 for index in self.curr_utxo_checkpoint.nodes_deleted().to_vec() {
                     pruned_mmr.delete_and_compress(index, false);
@@ -470,14 +481,14 @@ where D: Digest + Send + Sync
             MmrTree::Kernel => {
                 let mut pruned_mmr = prune_mutable_mmr(&*self.kernel_mmr)?;
                 for hash in self.curr_kernel_checkpoint.nodes_added() {
-                    pruned_mmr.push(&hash)?;
+                    pruned_mmr.push(hash.clone())?;
                 }
                 pruned_mmr
             },
             MmrTree::RangeProof => {
                 let mut pruned_mmr = prune_mutable_mmr(&*self.range_proof_mmr)?;
                 for hash in self.curr_range_proof_checkpoint.nodes_added() {
-                    pruned_mmr.push(&hash)?;
+                    pruned_mmr.push(hash.clone())?;
                 }
                 pruned_mmr
             },
@@ -507,14 +518,18 @@ where D: Digest + Send + Sync
 
 pub fn create_lmdb_database<P: AsRef<Path>>(
     path: P,
+    config: LMDBConfig,
     mmr_cache_config: MmrCacheConfig,
 ) -> Result<LMDBDatabase<HashDigest>, ChainStorageError>
 {
     let flags = db::CREATE;
     let _ = std::fs::create_dir_all(&path);
+
+    let file_lock = acquire_exclusive_file_lock(&path.as_ref().to_path_buf())?;
+
     let lmdb_store = LMDBBuilder::new()
         .set_path(path)
-        .set_environment_size(1_000)
+        .set_env_config(config)
         .set_max_number_of_databases(15)
         .add_database(LMDB_DB_METADATA, flags)
         .add_database(LMDB_DB_HEADERS, flags)
@@ -529,7 +544,46 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND, flags)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
-    LMDBDatabase::<HashDigest>::new(lmdb_store, mmr_cache_config)
+    LMDBDatabase::<HashDigest>::new(lmdb_store, mmr_cache_config, file_lock)
+}
+
+pub fn create_recovery_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), ChainStorageError> {
+    let new_path = path.as_ref().join("temp_recovery");
+    let _ = fs::create_dir_all(&new_path);
+
+    let data_file = path.as_ref().join("data.mdb");
+    let lock_file = path.as_ref().join("lock.mdb");
+
+    let new_data_file = new_path.join("data.mdb");
+    let new_lock_file = new_path.join("lock.mdb");
+
+    fs::rename(data_file, new_data_file)
+        .map_err(|err| ChainStorageError::CriticalError(format!("Could not copy LMDB store:{}", err)))?;
+    fs::rename(lock_file, new_lock_file)
+        .map_err(|err| ChainStorageError::CriticalError(format!("Could not copy LMDB store:{}", err)))?;
+    Ok(())
+}
+
+pub fn remove_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), ChainStorageError> {
+    fs::remove_dir_all(&path)
+        .map_err(|err| ChainStorageError::CriticalError(format!("Could not remove LMDB store:{}", err)))?;
+    Ok(())
+}
+
+pub fn acquire_exclusive_file_lock(db_path: &PathBuf) -> Result<File, ChainStorageError> {
+    let lock_file_path = db_path.join(".chain_storage_file.lock");
+
+    let file = File::create(lock_file_path)?;
+    // Attempt to acquire exclusive OS level Write Lock
+    if let Err(e) = file.try_lock_exclusive() {
+        error!(
+            target: LOG_TARGET,
+            "Could not acquire exclusive write lock on database lock file: {:?}", e
+        );
+        return Err(ChainStorageError::CannotAcquireFileLock);
+    }
+
+    Ok(file)
 }
 
 impl<D> BlockchainBackend for LMDBDatabase<D>
@@ -539,6 +593,8 @@ where D: Digest + Send + Sync
         if txn.operations.is_empty() {
             return Ok(());
         }
+
+        LMDBStore::resize_if_required(&self.env, &self.env_config)?;
 
         let mark = Instant::now();
         let num_operations = txn.operations.len();
@@ -564,7 +620,7 @@ where D: Digest + Send + Sync
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
         Ok(match key {
             DbKey::Metadata(k) => {
-                let val: Option<MetadataValue> = lmdb_get(&self.env, &self.metadata_db, &(k.clone() as u32))?;
+                let val: Option<MetadataValue> = lmdb_get(&self.env, &self.metadata_db, &(*k as u32))?;
                 val.map(DbValue::Metadata)
             },
             DbKey::BlockHeader(k) => {
@@ -631,7 +687,7 @@ where D: Digest + Send + Sync
     {
         let mut pruned_mmr = self.get_pruned_mmr(&tree)?;
         for hash in additions {
-            pruned_mmr.push(&hash)?;
+            pruned_mmr.push(hash)?;
         }
         if tree == MmrTree::Utxo {
             for hash in deletions {
@@ -904,6 +960,7 @@ where D: Digest + Send + Sync
     }
 }
 
+#[allow(clippy::ptr_arg)]
 fn validate_merkle_root<D, B>(
     mmr: &MutableMmr<D, B>,
     current_cp: &MerkleCheckPoint,
@@ -964,7 +1021,7 @@ fn fetch_best_block(env: &Environment, db: &Database) -> Result<Option<BlockHash
 }
 
 // Fetches the accumulated work from the provided metadata db.
-fn fetch_accumulated_work(env: &Environment, db: &Database) -> Result<Option<Difficulty>, ChainStorageError> {
+fn fetch_accumulated_work(env: &Environment, db: &Database) -> Result<Option<u128>, ChainStorageError> {
     let k = MetadataKey::AccumulatedWork;
     let val: Option<MetadataValue> = lmdb_get(&env, &db, &(k as u32))?;
     match val {
@@ -1002,9 +1059,10 @@ mod test {
         let flags = db::CREATE;
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
+        let config = LMDBConfig::new_from_mb(1000, 100, 100);
         let lmdb_store = LMDBBuilder::new()
             .set_path(path)
-            .set_environment_size(1_000)
+            .set_env_config(config)
             .set_max_number_of_databases(15)
             .add_database("1", flags)
             .add_database("2", flags)
@@ -1015,7 +1073,7 @@ mod test {
         let db1 = lmdb_store.get_handle("1").unwrap().db();
         let db2 = lmdb_store.get_handle("2").unwrap().db();
 
-        let txn2 = WriteTransaction::new(env.clone()).unwrap();
+        let _txn2 = WriteTransaction::new(env.clone()).unwrap();
         {
             let txn = WriteTransaction::new(env.clone()).unwrap();
             lmdb_insert(&txn, &db1, &123, &"here").unwrap();

@@ -4,8 +4,13 @@
 //! through to functions that bootstrap entire blockchains in `sample_blockchains`.
 
 pub mod block_builders;
+pub mod block_proxy;
 pub mod chain_metadata;
+pub mod database;
 pub mod event_stream;
+pub mod mock_state_machine;
 pub mod nodes;
 pub mod pow_blockchain;
 pub mod sample_blockchains;
+pub mod test_block_builder;
+pub mod test_blockchain;

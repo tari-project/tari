@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::validation::{StatelessValidation, ValidationError};
+use crate::validation::{Validation, ValidationError};
 
 pub struct AndThenValidator<T, U> {
     first: T,
@@ -33,10 +33,10 @@ impl<T, U> AndThenValidator<T, U> {
     }
 }
 
-impl<T, U, I> StatelessValidation<I> for AndThenValidator<T, U>
+impl<T, U, I> Validation<I> for AndThenValidator<T, U>
 where
-    T: StatelessValidation<I>,
-    U: StatelessValidation<I>,
+    T: Validation<I>,
+    U: Validation<I>,
 {
     fn validate(&self, item: &I) -> Result<(), ValidationError> {
         self.first.validate(item)?;

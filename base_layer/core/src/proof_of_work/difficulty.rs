@@ -22,6 +22,7 @@
 
 use crate::proof_of_work::error::DifficultyAdjustmentError;
 use newtype_ops::newtype_ops;
+use num_format::{Locale, ToFormattedString};
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops::Div};
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
@@ -78,7 +79,8 @@ impl Div for Difficulty {
 
 impl fmt::Display for Difficulty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        let formatted = self.0.to_formatted_string(&Locale::en);
+        write!(f, "{}", formatted)
     }
 }
 
@@ -109,6 +111,25 @@ pub trait DifficultyAdjustment {
     fn get_difficulty(&self) -> Difficulty;
 }
 
+#[cfg(feature = "base_node")]
+pub mod util {
+    use super::*;
+    use crate::U256;
+
+    /// This will provide the difficulty of the hash assuming the hash is big_endian
+    pub(crate) fn big_endian_difficulty(hash: &[u8]) -> Difficulty {
+        let scalar = U256::from_big_endian(hash); // Big endian so the hash has leading zeroes
+        let result = U256::MAX / scalar;
+        result.low_u64().into()
+    }
+
+    /// This will provide the difficulty of the hash assuming the hash is little_endian
+    pub(crate) fn little_endian_difficulty(hash: &[u8]) -> Difficulty {
+        let scalar = U256::from_little_endian(&hash); // Little endian so the hash has trailing zeroes
+        let result = U256::MAX / scalar;
+        result.low_u64().into()
+    }
+}
 #[cfg(test)]
 mod test {
     use crate::proof_of_work::difficulty::Difficulty;
@@ -121,5 +142,11 @@ mod test {
         );
         assert_eq!(Difficulty::default() + Difficulty::from(42), Difficulty::from(43));
         assert_eq!(&Difficulty::from(15) + &Difficulty::from(5), Difficulty::from(20));
+    }
+
+    #[test]
+    fn test_format() {
+        let d = Difficulty::from(1_000_000);
+        assert_eq!("1,000,000", format!("{}", d));
     }
 }

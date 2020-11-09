@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package tari.transaction_protocol;
+
+message TransactionCancelledMessage {
+    // The transaction id for the cancelled transaction
+    uint64 tx_id = 1;
+}
+

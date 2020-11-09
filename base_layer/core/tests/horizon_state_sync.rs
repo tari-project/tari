@@ -24,22 +24,27 @@
 mod helpers;
 
 use crate::helpers::block_builders::append_block_with_coinbase;
+use futures::StreamExt;
 use helpers::{block_builders::create_genesis_block, nodes::create_network_with_2_base_nodes_with_config};
 use tari_core::{
     base_node::{
+        comms_interface::BlockEvent,
         service::BaseNodeServiceConfig,
-        states::{
-            BestChainMetadataBlockSyncInfo,
-            BlockSyncConfig,
-            HeaderSync,
-            HorizonStateSync,
-            HorizonSyncConfig,
-            StateEvent,
-            SyncPeer,
-            SyncPeerConfig,
+        state_machine_service::{
+            states::{
+                BestChainMetadataBlockSync,
+                BlockSyncConfig,
+                HeaderSync,
+                HorizonStateSync,
+                HorizonSyncConfig,
+                StateEvent,
+                StatusInfo,
+                SyncPeer,
+                SyncPeerConfig,
+            },
+            BaseNodeStateMachine,
+            BaseNodeStateMachineConfig,
         },
-        BaseNodeStateMachine,
-        BaseNodeStateMachineConfig,
         SyncValidators,
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase, BlockchainDatabaseConfig, MmrTree},
@@ -55,8 +60,11 @@ use tari_p2p::services::liveness::LivenessConfig;
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
 use tempfile::tempdir;
-use tokio::runtime::Runtime;
-
+use tokio::{
+    runtime::Runtime,
+    sync::{broadcast, watch},
+};
+static EMISSION: [u64; 2] = [10, 10];
 #[test]
 fn test_pruned_mode_sync_with_future_horizon_sync_height() {
     // Number of blocks to create in addition to the genesis
@@ -68,7 +76,7 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (genesis_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -98,16 +106,20 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
+        alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         shutdown.to_signal(),
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -163,7 +175,7 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         assert_eq!(alice_kernel_nodes, bob_kernel_nodes);
 
         // Synchronize full blocks
-        let state_event = BestChainMetadataBlockSyncInfo
+        let state_event = BestChainMetadataBlockSync
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
@@ -175,9 +187,6 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         );
 
         check_final_state(&alice_db, &bob_db);
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -188,7 +197,7 @@ fn test_pruned_mode_sync_with_spent_utxos() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (genesis_block, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -218,12 +227,14 @@ fn test_pruned_mode_sync_with_spent_utxos() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, _status_event_receiver) = tokio::sync::watch::channel(StatusInfo::new());
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
+        alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(
@@ -233,6 +244,8 @@ fn test_pruned_mode_sync_with_spent_utxos() {
             MockValidator::new(true),
         ),
         shutdown.to_signal(),
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -329,15 +342,12 @@ fn test_pruned_mode_sync_with_spent_utxos() {
             .next_event(&mut alice_state_machine)
             .await;
         assert_eq!(state_event, StateEvent::HorizonStateSynchronized);
-        let state_event = BestChainMetadataBlockSyncInfo
+        let state_event = BestChainMetadataBlockSync
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
 
         check_final_state(&alice_db, &bob_db);
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -361,7 +371,7 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
     // block that contains an extra faucet utxo
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis_block.clone())
-        .with_consensus_constants(consensus_manager.consensus_constants().clone())
+        .with_consensus_constants(consensus_manager.consensus_constants(0).clone())
         .build();
 
     let blockchain_db_config = BlockchainDatabaseConfig {
@@ -387,12 +397,14 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
+        alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(
@@ -402,6 +414,8 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
             MockValidator::new(true),
         ),
         shutdown.to_signal(),
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -479,15 +493,12 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
             .next_event(&mut alice_state_machine)
             .await;
         assert_eq!(state_event, StateEvent::HorizonStateSynchronized);
-        let state_event = BestChainMetadataBlockSyncInfo
+        let state_event = BestChainMetadataBlockSync
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
 
         check_final_state(&alice_db, &bob_db);
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }
 
@@ -510,9 +521,8 @@ fn check_final_state<B: BlockchainBackend>(alice_db: &BlockchainDatabase<B>, bob
 
     // Check headers
     let network_tip_height = network_tip.height_of_longest_chain.unwrap_or(0);
-    let block_nums = (0..=network_tip_height).collect::<Vec<u64>>();
-    let alice_headers = alice_db.fetch_headers(block_nums.clone()).unwrap();
-    let bob_headers = bob_db.fetch_headers(block_nums).unwrap();
+    let alice_headers = alice_db.fetch_headers(0, network_tip_height).unwrap();
+    let bob_headers = bob_db.fetch_headers(0, network_tip_height).unwrap();
     assert_eq!(alice_headers, bob_headers);
 
     // Check Kernel MMR nodes
@@ -598,7 +608,7 @@ fn test_pruned_mode_sync_fail_final_validation() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (genesis_block, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -628,16 +638,20 @@ fn test_pruned_mode_sync_fail_final_validation() {
         sync_peer_config: SyncPeerConfig::default(),
     };
     let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, _) = watch::channel(StatusInfo::new());
     let mut alice_state_machine = BaseNodeStateMachine::new(
         &alice_node.blockchain_db,
         &alice_node.local_nci,
         &alice_node.outbound_nci,
-        alice_node.comms.peer_manager(),
         alice_node.comms.connectivity(),
+        alice_node.comms.peer_manager(),
         alice_node.chain_metadata_handle.get_event_stream(),
         state_machine_config,
         SyncValidators::new(MockValidator::new(true), MockValidator::new(false)),
         shutdown.to_signal(),
+        status_event_sender,
+        state_change_event_publisher,
     );
 
     runtime.block_on(async {
@@ -685,17 +699,20 @@ fn test_pruned_mode_sync_fail_final_validation() {
         assert!(alice_db.get_horizon_sync_state().unwrap().is_none());
         let local_metadata = alice_db.get_chain_metadata().unwrap();
         assert!(local_metadata.best_block.is_some());
-
+        let (state_change_event_publisher, _) = broadcast::channel(10);
+        let (status_event_sender, _) = watch::channel(StatusInfo::new());
         let mut alice_state_machine = BaseNodeStateMachine::new(
             &alice_node.blockchain_db,
             &alice_node.local_nci,
             &alice_node.outbound_nci,
-            alice_node.comms.peer_manager(),
             alice_node.comms.connectivity(),
+            alice_node.comms.peer_manager(),
             alice_node.chain_metadata_handle.get_event_stream(),
             state_machine_config,
             SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
             shutdown.to_signal(),
+            status_event_sender,
+            state_change_event_publisher,
         );
 
         // Synchronize Kernels and UTXOs
@@ -723,10 +740,14 @@ fn test_pruned_mode_sync_fail_final_validation() {
         assert_eq!(alice_kernel_nodes, bob_kernel_nodes);
 
         // Synchronize full blocks
-        let state_event = BestChainMetadataBlockSyncInfo
+        let mut block_events = alice_node.local_nci.get_block_event_stream();
+        let state_event = BestChainMetadataBlockSync
             .next_event(&mut alice_state_machine, &network_tip, &mut sync_peers)
             .await;
         assert_eq!(state_event, StateEvent::BlocksSynchronized);
+        let next_event = block_events.next().await.unwrap().unwrap();
+        unpack_enum!(BlockEvent::BlockSyncComplete(block) = &*next_event);
+        assert_eq!(block.header.height, network_tip.height_of_longest_chain());
         let alice_metadata = alice_db.get_chain_metadata().unwrap();
         // Local height should now be at the horizon sync height
         assert_eq!(
@@ -735,8 +756,5 @@ fn test_pruned_mode_sync_fail_final_validation() {
         );
 
         check_final_state(&alice_db, &bob_db);
-
-        alice_node.comms.shutdown().await;
-        bob_node.comms.shutdown().await;
     });
 }

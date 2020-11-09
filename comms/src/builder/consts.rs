@@ -30,7 +30,3 @@ pub const CONNECTION_MANAGER_REQUEST_BUFFER_SIZE: usize = 10;
 /// Connection manager events buffer size. The size should allow more than enough "time" for slow subscribers to read
 /// the events while not being wasteful.
 pub const CONNECTION_MANAGER_EVENTS_BUFFER_SIZE: usize = 30;
-/// Buffer size of the messaging event channel. The size should allow more than enough "time" for slow subscribers to
-/// read the events while not being wasteful. An MessageReceived event is published per message, which could happen
-/// quite a lot, so a little more room to buffer here is recommended.
-pub const MESSAGING_EVENTS_BUFFER_SIZE: usize = 100;

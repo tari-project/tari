@@ -1,3 +1,10 @@
+#![cfg_attr(not(debug_assertions), deny(unused_variables))]
+#![cfg_attr(not(debug_assertions), deny(unused_imports))]
+#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+#![deny(unused_must_use)]
+#![deny(unreachable_patterns)]
+#![deny(unknown_lints)]
 //! # Tari Comms DHT
 //!
 //! ## Overview
@@ -139,6 +146,9 @@ pub use dht::{Dht, DhtInitializationError};
 mod discovery;
 pub use discovery::DhtDiscoveryRequester;
 
+mod network_discovery;
+pub use network_discovery::NetworkDiscoveryConfig;
+
 mod storage;
 pub use storage::DbConnectionUrl;
 
@@ -147,16 +157,14 @@ pub use dedup::DedupLayer;
 
 mod logging_middleware;
 mod proto;
-mod tower_filter;
-mod utils;
-
+mod rpc;
 mod schema;
-
-pub mod event;
+mod tower_filter;
 
 pub mod broadcast_strategy;
 pub mod domain_message;
 pub mod envelope;
+pub mod event;
 pub mod inbound;
 pub mod outbound;
 pub mod store_forward;

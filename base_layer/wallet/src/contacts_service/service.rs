@@ -28,6 +28,7 @@ use crate::contacts_service::{
 use futures::{pin_mut, StreamExt};
 use log::*;
 use tari_service_framework::reply_channel;
+use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "wallet:contacts_service";
 
@@ -37,6 +38,7 @@ where T: ContactsBackend + 'static
     db: ContactsDatabase<T>,
     request_stream:
         Option<reply_channel::Receiver<ContactsServiceRequest, Result<ContactsServiceResponse, ContactsServiceError>>>,
+    shutdown_signal: Option<ShutdownSignal>,
 }
 
 impl<T> ContactsService<T>
@@ -49,11 +51,13 @@ where T: ContactsBackend + 'static
         >,
 
         db: ContactsDatabase<T>,
+        shutdown_signal: ShutdownSignal,
     ) -> Self
     {
         Self {
             db,
             request_stream: Some(request_stream),
+            shutdown_signal: Some(shutdown_signal),
         }
     }
 
@@ -64,6 +68,12 @@ where T: ContactsBackend + 'static
             .expect("Contacts Service initialized without request_stream")
             .fuse();
         pin_mut!(request_stream);
+
+        let shutdown = self
+            .shutdown_signal
+            .take()
+            .expect("Output Manager Service initialized without shutdown signal");
+        pin_mut!(shutdown);
 
         info!(target: LOG_TARGET, "Contacts Service started");
         loop {
@@ -78,6 +88,10 @@ where T: ContactsBackend + 'static
                         Err(resp)
                     });
                 },
+                _ = shutdown => {
+                    info!(target: LOG_TARGET, "Contacts service shutting down because it received the shutdown signal");
+                    break;
+                }
                 complete => {
                     info!(target: LOG_TARGET, "Contacts service shutting down");
                     break;

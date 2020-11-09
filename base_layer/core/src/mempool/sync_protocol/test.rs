@@ -21,18 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{BlockchainBackend, BlockchainDatabase, MemoryDatabase},
-    consensus::{ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     mempool::{
         async_mempool,
         proto,
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
-        MempoolSyncProtocolExtension,
         MempoolValidators,
     },
-    transactions::{helpers::create_tx, tari_amount::uT, transaction::Transaction, types::HashDigest},
+    transactions::{helpers::create_tx, tari_amount::uT, transaction::Transaction},
     validation::mocks::MockValidator,
 };
 use futures::{channel::mpsc, Sink, SinkExt, Stream, StreamExt};
@@ -60,25 +56,16 @@ pub fn create_transactions(n: usize) -> Vec<Transaction> {
     .collect()
 }
 
-fn new_mempool_with_transactions(
-    n: usize,
-) -> (
-    Mempool<MemoryDatabase<HashDigest>>,
-    BlockchainDatabase<MemoryDatabase<HashDigest>>,
-    Vec<Transaction>,
-) {
-    let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_mem_db(&consensus_manager);
+fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) {
     let mempool_validator = MempoolValidators::new(MockValidator::new(true), MockValidator::new(true));
-    let mempool = Mempool::new(store.clone(), Default::default(), mempool_validator);
+    let mempool = Mempool::new(Default::default(), mempool_validator);
 
     let transactions = create_transactions(n);
     for txn in &transactions {
         mempool.insert(Arc::new(txn.clone())).unwrap();
     }
 
-    (mempool, store, transactions)
+    (mempool, transactions)
 }
 
 fn setup(
@@ -86,12 +73,12 @@ fn setup(
 ) -> (
     ProtocolNotificationTx<MemorySocket>,
     ConnectivityEventTx,
-    Mempool<MemoryDatabase<HashDigest>>,
+    Mempool,
     Vec<Transaction>,
 ) {
     let (protocol_notif_tx, protocol_notif_rx) = mpsc::channel(1);
     let (connectivity_events_tx, connectivity_events_rx) = broadcast::channel(10);
-    let (mempool, _blockchain_db, transactions) = new_mempool_with_transactions(num_txns);
+    let (mempool, transactions) = new_mempool_with_transactions(num_txns);
     let protocol = MempoolSyncProtocol::new(
         Default::default(),
         protocol_notif_rx,
@@ -121,7 +108,7 @@ async fn empty_set() {
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
 
-    let (mempool2, _, _) = new_mempool_with_transactions(0);
+    let (mempool2, _) = new_mempool_with_transactions(0);
     MempoolPeerProtocol::new(Default::default(), framed, node2.node_id().clone(), mempool2.clone())
         .start_responder()
         .await
@@ -151,7 +138,7 @@ async fn synchronise() {
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
 
-    let (mempool2, _, transactions2) = new_mempool_with_transactions(3);
+    let (mempool2, transactions2) = new_mempool_with_transactions(3);
     MempoolPeerProtocol::new(Default::default(), framed, node2.node_id().clone(), mempool2.clone())
         .start_responder()
         .await
@@ -185,7 +172,7 @@ async fn duplicate_set() {
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
 
-    let (mempool2, _, transactions2) = new_mempool_with_transactions(1);
+    let (mempool2, transactions2) = new_mempool_with_transactions(1);
     mempool2.insert(Arc::new(transactions1[0].clone())).unwrap();
     MempoolPeerProtocol::new(Default::default(), framed, node2.node_id().clone(), mempool2.clone())
         .start_responder()
@@ -214,12 +201,12 @@ async fn responder() {
     protocol_notif
         .send(ProtocolNotification::new(
             MEMPOOL_SYNC_PROTOCOL.clone(),
-            ProtocolEvent::NewInboundSubstream(Box::new(node1.node_id().clone()), sock_in),
+            ProtocolEvent::NewInboundSubstream(node1.node_id().clone(), sock_in),
         ))
         .await
         .unwrap();
 
-    let (mempool2, _, transactions2) = new_mempool_with_transactions(1);
+    let (mempool2, transactions2) = new_mempool_with_transactions(1);
     async_mempool::insert(mempool2.clone(), Arc::new(transactions1[0].clone()))
         .await
         .unwrap();
@@ -249,7 +236,7 @@ async fn initiator_messages() {
     protocol_notif
         .send(ProtocolNotification::new(
             MEMPOOL_SYNC_PROTOCOL.clone(),
-            ProtocolEvent::NewInboundSubstream(Box::new(node1.node_id().clone()), sock_in),
+            ProtocolEvent::NewInboundSubstream(node1.node_id().clone(), sock_in),
         ))
         .await
         .unwrap();
@@ -325,7 +312,7 @@ async fn responder_messages() {
     assert!(framed.next().await.is_none());
 }
 
-fn get_snapshot<B: BlockchainBackend>(mempool: &Mempool<B>) -> Vec<Transaction> {
+fn get_snapshot(mempool: &Mempool) -> Vec<Transaction> {
     mempool.snapshot().unwrap().iter().map(|t| &**t).cloned().collect()
 }
 

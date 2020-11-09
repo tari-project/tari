@@ -30,7 +30,7 @@ pub enum PeerManagerError {
     PeerNotFoundError,
     #[error("The peer has been banned")]
     BannedPeer,
-    #[error("An problem has been encountered with the database: {0}")]
+    #[error("A problem has been encountered with the database: {0}")]
     DatabaseError(#[from] KeyValStoreError),
     #[error("An error occurred while migrating the database: {0}")]
     MigrationError(String),

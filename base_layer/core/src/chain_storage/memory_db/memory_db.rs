@@ -88,7 +88,7 @@ where D: Digest
     utxos: HashMap<HashOutput, MerkleNode<TransactionOutput>>,
     stxos: HashMap<HashOutput, MerkleNode<TransactionOutput>>,
     kernels: HashMap<HashOutput, TransactionKernel>,
-    orphans: HashMap<HashOutput, Block>,
+    orphans: HashMap<HashOutput, Arc<Block>>,
     // Define MMRs to use both a memory-backed base and a memory-backed pruned MMR
     utxo_mmr: MmrCache<D, MemDbVec<MmrHash>, MemDbVec<MerkleCheckPoint>>,
     utxo_checkpoints: MemDbVec<MerkleCheckPoint>,
@@ -153,7 +153,7 @@ where D: Digest + Send + Sync
     }
 
     // Fetches the chain metadata accumulated work.
-    fn fetch_accumulated_work(&self) -> Result<Option<Difficulty>, ChainStorageError> {
+    fn fetch_accumulated_work(&self) -> Result<Option<u128>, ChainStorageError> {
         Ok(
             if let Some(DbValue::Metadata(MetadataValue::AccumulatedWork(accumulated_work))) =
                 self.fetch(&DbKey::Metadata(MetadataKey::AccumulatedWork))?
@@ -245,7 +245,7 @@ where D: Digest + Send + Sync
                         db.kernels.insert(k, *v);
                     },
                     DbKeyValuePair::OrphanBlock(k, v) => {
-                        db.orphans.insert(k, *v);
+                        db.orphans.insert(k, v);
                     },
                 },
                 WriteOperation::Delete(delete) => match delete {
@@ -384,10 +384,7 @@ where D: Digest + Send + Sync
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
         let db = self.db_access()?;
         let result = match key {
-            DbKey::Metadata(k) => db
-                .metadata
-                .get(&(k.clone() as u32))
-                .map(|v| DbValue::Metadata(v.clone())),
+            DbKey::Metadata(k) => db.metadata.get(&(*k as u32)).map(|v| DbValue::Metadata(v.clone())),
             DbKey::BlockHeader(k) => db.headers.get(k).map(|v| DbValue::BlockHeader(Box::new(v.clone()))),
             DbKey::BlockHash(hash) => db
                 .block_hashes
@@ -403,7 +400,10 @@ where D: Digest + Send + Sync
                 .kernels
                 .get(k)
                 .map(|v| DbValue::TransactionKernel(Box::new(v.clone()))),
-            DbKey::OrphanBlock(k) => db.orphans.get(k).map(|v| DbValue::OrphanBlock(Box::new(v.clone()))),
+            DbKey::OrphanBlock(k) => db
+                .orphans
+                .get(k)
+                .map(|v| DbValue::OrphanBlock(Box::new(Clone::clone(&**v)))),
         };
         Ok(result)
     }
@@ -444,7 +444,7 @@ where D: Digest + Send + Sync
         let db = self.db_access()?;
         let mut pruned_mmr = get_pruned_mmr(&db, &tree)?;
         for hash in additions {
-            pruned_mmr.push(&hash)?;
+            pruned_mmr.push(hash)?;
         }
         if tree == MmrTree::Utxo {
             deletions.iter().for_each(|hash| {
@@ -593,7 +593,7 @@ where D: Digest + Send + Sync
     where F: FnMut(Result<(HashOutput, Block), ChainStorageError>) {
         let db = self.db_access()?;
         for (key, val) in db.orphans.iter() {
-            f(Ok((key.clone(), val.clone())));
+            f(Ok((key.clone(), Clone::clone(&**val))));
         }
         Ok(())
     }
@@ -753,6 +753,7 @@ where D: Digest + Send + Sync
     }
 }
 
+#[allow(clippy::ptr_arg)]
 fn validate_merkle_root<D, B>(
     mmr: &MutableMmr<D, B>,
     current_cp: &MerkleCheckPoint,
@@ -853,7 +854,7 @@ fn get_pruned_mmr<D: Digest>(
         MmrTree::Utxo => {
             let mut pruned_mmr = prune_mutable_mmr(&db.utxo_mmr)?;
             for hash in db.curr_utxo_checkpoint.nodes_added() {
-                pruned_mmr.push(&hash)?;
+                pruned_mmr.push(hash.clone())?;
             }
             db.curr_utxo_checkpoint
                 .nodes_deleted()
@@ -868,14 +869,14 @@ fn get_pruned_mmr<D: Digest>(
         MmrTree::Kernel => {
             let mut pruned_mmr = prune_mutable_mmr(&db.kernel_mmr)?;
             for hash in db.curr_kernel_checkpoint.nodes_added() {
-                pruned_mmr.push(&hash)?;
+                pruned_mmr.push(hash.clone())?;
             }
             pruned_mmr
         },
         MmrTree::RangeProof => {
             let mut pruned_mmr = prune_mutable_mmr(&db.range_proof_mmr)?;
             for hash in db.curr_range_proof_checkpoint.nodes_added() {
-                pruned_mmr.push(&hash)?;
+                pruned_mmr.push(hash.clone())?;
             }
             pruned_mmr
         },

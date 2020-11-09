@@ -23,6 +23,7 @@
 
 use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
 
+use crate::helpers::database::create_mem_db;
 use tari_core::{
     blocks::Block,
     chain_storage::{
@@ -34,7 +35,6 @@ use tari_core::{
         Validators,
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, Network},
-    helpers::create_mem_db,
     transactions::{
         tari_amount::{uT, T},
         types::{CryptoFactories, HashDigest},
@@ -43,6 +43,9 @@ use tari_core::{
     txn_schema,
 };
 use tari_mmr::MmrCacheConfig;
+use tari_storage::lmdb_store::LMDBConfig;
+
+static EMISSION: [u64; 2] = [10, 10];
 
 /// Create a simple 6 block memory-backed database.
 /// Genesis block:
@@ -91,53 +94,25 @@ pub fn create_blockchain_db_no_cut_through() -> (
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
     // Block 1
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![60*T], fee: 100*uT)];
-    assert!(generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants()
-    )
-    .is_ok());
+    assert!(generate_new_block(&mut db, &mut blocks, &mut outputs, txs, &consensus_manager).is_ok());
     // Block 2
     let txs = vec![
         txn_schema!(from: vec![outputs[1][0].clone()], to: vec![20*T, 5*T, 1*T], fee: 120*uT),
         txn_schema!(from: vec![outputs[1][1].clone()], to: vec![15*T], fee: 75*uT),
     ];
-    assert!(generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants()
-    )
-    .is_ok());
+    assert!(generate_new_block(&mut db, &mut blocks, &mut outputs, txs, &consensus_manager).is_ok());
     // Block 3
     let txs = vec![
         txn_schema!(from: vec![outputs[2][1].clone(), outputs[2][2].clone()], to: vec![]),
         txn_schema!(from: vec![outputs[2][4].clone(), outputs[2][3].clone()], to: vec![40*T], fee: 100*uT),
     ];
-    assert!(generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants()
-    )
-    .is_ok());
+    assert!(generate_new_block(&mut db, &mut blocks, &mut outputs, txs, &consensus_manager).is_ok());
     // Block 4
     let txs = vec![txn_schema!(
         from: vec![outputs[2][0].clone()],
         to: vec![1 * T, 2 * T, 3 * T, 4 * T]
     )];
-    assert!(generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants()
-    )
-    .is_ok());
+    assert!(generate_new_block(&mut db, &mut blocks, &mut outputs, txs, &consensus_manager).is_ok());
     // Block 5
     let txs = vec![
         txn_schema!(
@@ -150,14 +125,7 @@ pub fn create_blockchain_db_no_cut_through() -> (
         ),
         txn_schema!(from: vec![outputs[3][2].clone()], to: vec![500_000 * uT]),
     ];
-    assert!(generate_new_block(
-        &mut db,
-        &mut blocks,
-        &mut outputs,
-        txs,
-        &consensus_manager.consensus_constants()
-    )
-    .is_ok());
+    assert!(generate_new_block(&mut db, &mut blocks, &mut outputs, txs, &consensus_manager).is_ok());
     (db, blocks, outputs, consensus_manager)
 }
 
@@ -172,7 +140,7 @@ pub fn create_new_blockchain(
 ) {
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -198,14 +166,14 @@ pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
 {
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), 0.999, 100.into())
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let db = create_lmdb_database(path, MmrCacheConfig::default()).unwrap();
-    let db = BlockchainDatabase::new(db, &consensus_manager, validators, config).unwrap();
+    let db = create_lmdb_database(path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
+    let db = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
     (db, vec![block0], vec![vec![output]], consensus_manager)
 }

@@ -50,9 +50,9 @@ impl<'a, B> HeaderIter<'a, B> {
         }
     }
 
-    fn next_chunk(&self) -> Vec<u64> {
+    fn next_chunk(&self) -> (u64, u64) {
         let upper_bound = cmp::min(self.cursor + self.chunk_size, self.height as usize);
-        (self.cursor..=upper_bound).map(|n| n as u64).collect()
+        (self.cursor as u64, upper_bound as u64)
     }
 }
 
@@ -65,14 +65,17 @@ impl<B: BlockchainBackend> Iterator for HeaderIter<'_, B> {
         }
 
         if self.chunk.is_empty() {
-            let block_nums = self.next_chunk();
+            let (start, end) = self.next_chunk();
             // We're done: No more block headers to fetch
-            if block_nums.is_empty() {
+            if start > end {
                 return None;
             }
 
-            match self.db.fetch_headers(block_nums) {
+            match self.db.fetch_headers(start, end) {
                 Ok(headers) => {
+                    if headers.is_empty() {
+                        return None;
+                    }
                     self.cursor += headers.len();
                     self.chunk.extend(headers);
                 },

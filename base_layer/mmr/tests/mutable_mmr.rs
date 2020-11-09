@@ -54,7 +54,7 @@ fn delete() {
     let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
     assert_eq!(mmr.is_empty(), Ok(true));
     for i in 0..5 {
-        assert!(mmr.push(&int_to_hash(i)).is_ok());
+        assert!(mmr.push(int_to_hash(i)).is_ok());
     }
     assert_eq!(mmr.len(), 5);
     let root = mmr.get_merkle_root().unwrap();
@@ -68,7 +68,7 @@ fn delete() {
     assert_eq!(mmr.is_empty(), Ok(false));
     assert_eq!(mmr.get_merkle_root(), Ok(root));
     // Delete some nodes
-    assert!(mmr.push(&int_to_hash(5)).is_ok());
+    assert!(mmr.push(int_to_hash(5)).is_ok());
     assert!(mmr.delete_and_compress(0, false));
     assert!(mmr.delete_and_compress(2, false));
     assert!(mmr.delete_and_compress(4, true));
@@ -111,7 +111,7 @@ fn build_mmr() {
     // Create a small mutable MMR
     let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
     for i in 0..5 {
-        assert!(mmr.push(&int_to_hash(i)).is_ok());
+        assert!(mmr.push(int_to_hash(i)).is_ok());
     }
     // MutableMmr::len gives the size in terms of leaf nodes:
     assert_eq!(mmr.len(), 5);
@@ -130,18 +130,18 @@ fn equality_check() {
     let mut ma = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
     let mut mb = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
     assert!(ma == mb);
-    assert!(ma.push(&int_to_hash(1)).is_ok());
+    assert!(ma.push(int_to_hash(1)).is_ok());
     assert!(ma != mb);
-    assert!(mb.push(&int_to_hash(1)).is_ok());
+    assert!(mb.push(int_to_hash(1)).is_ok());
     assert!(ma == mb);
-    assert!(ma.push(&int_to_hash(2)).is_ok());
+    assert!(ma.push(int_to_hash(2)).is_ok());
     assert!(ma != mb);
     assert!(ma.delete(1));
     // Even though the two trees have the same apparent elements, they're still not equal, because we don't actually
     // delete anything
     assert!(ma != mb);
     // Add the same hash to mb and then delete it
-    assert!(mb.push(&int_to_hash(2)).is_ok());
+    assert!(mb.push(int_to_hash(2)).is_ok());
     assert!(mb.delete(1));
     // Now they're equal!
     assert!(ma == mb);
@@ -151,7 +151,7 @@ fn equality_check() {
 fn restore_from_leaf_nodes() {
     let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
     for i in 0..12 {
-        assert!(mmr.push(&int_to_hash(i)).is_ok());
+        assert!(mmr.push(int_to_hash(i)).is_ok());
     }
     assert!(mmr.delete_and_compress(2, true));
     assert!(mmr.delete_and_compress(4, true));
@@ -169,8 +169,8 @@ fn restore_from_leaf_nodes() {
 
     // Change the state more before the restore
     let mmr_root = mmr.get_merkle_root();
-    assert!(mmr.push(&int_to_hash(7)).is_ok());
-    assert!(mmr.push(&int_to_hash(8)).is_ok());
+    assert!(mmr.push(int_to_hash(7)).is_ok());
+    assert!(mmr.push(int_to_hash(8)).is_ok());
     assert!(mmr.delete_and_compress(3, true));
 
     // Restore from compact state

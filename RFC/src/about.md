@@ -4,13 +4,10 @@ Tari is a community-driven project. The documents presented in this RFC collecti
 iterations before reaching this point:
 
 * Ideas and questions are posted in #tari-dev on [#FreeNode IRC](https://freenode.net/). This is typically short-form
-  content with rapid feedback. Often, these conversations will lead to someone posting a proposal as a [pull request] into
-  [proposals].
-* [Proposals] get debated and refined using Github's Review and [pull request] systems. After the content has
-  stabilised, and the community accepts the proposal, it can be written up as a formal RFC.
+  content with rapid feedback. Often, these conversations will lead to someone posting an [issue] or RFC [pull request].
 * RFCs are "Requests for Comment", so although the proposals in these documents are usually well-thought out, they are
   not cast in stone. RFCs can, and should, undergo further evaluation and discussion by the community. RFC comments are
-  best made using Github [issues].
+  best made using Github [issue]s.
 
 New RFC's should follow the format given in the [RFC template](./RFC_template.md).
 ## Lifecycle
@@ -26,6 +23,5 @@ RFCs go through the following lifecycle, which roughly corresponds to the [COSS]
 | Retired     | ![retired](theme/images/status-retired.svg)       | The RFC is no longer in use on the Tari network.                                                                                                                                                                    |
 
 
-[proposals]: https://github.com/tari-project/RFC/tree/master/proposals 'Tari proposals'
-[pull request]: https://github.com/tari-project/RFC/pulls 'Tari RFC pull requests'
-[issues]: https://github.com/tari-project/RFC/issues 'Tari RFC Issues'
+[pull request]: https://github.com/tari-project/tari/pulls?q=is%3Aopen+is%3Apr+label%3ARFC 'Tari RFC pull requests'
+[issue]: https://github.com/tari-project/tari/issues?q=is%3Aissue+label%3ARFC 'Tari RFC Issues'

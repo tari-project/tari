@@ -40,7 +40,7 @@ pub type ProtocolNotificationRx<TSubstream> = mpsc::Receiver<ProtocolNotificatio
 
 #[derive(Debug, Clone)]
 pub enum ProtocolEvent<TSubstream> {
-    NewInboundSubstream(Box<NodeId>, TSubstream),
+    NewInboundSubstream(NodeId, TSubstream),
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +95,11 @@ impl<TSubstream> Protocols<TSubstream> {
         self
     }
 
+    pub fn extend(&mut self, protocols: Self) -> &mut Self {
+        self.protocols.extend(protocols.protocols);
+        self
+    }
+
     pub fn get_supported_protocols(&self) -> Vec<ProtocolId> {
         let mut p = Vec::with_capacity(self.protocols.len() + 1);
         p.push(IDENTITY_PROTOCOL.clone());
@@ -118,6 +123,10 @@ impl<TSubstream> Protocols<TSubstream> {
             },
             None => Err(ProtocolError::ProtocolNotRegistered),
         }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &ProtocolId> {
+        self.protocols.iter().map(|(protocol_id, _)| protocol_id)
     }
 }
 
@@ -161,16 +170,13 @@ mod test {
         protocols.add(&protos, tx);
 
         protocols
-            .notify(
-                &protos[0],
-                ProtocolEvent::NewInboundSubstream(Box::new(NodeId::new()), ()),
-            )
+            .notify(&protos[0], ProtocolEvent::NewInboundSubstream(NodeId::new(), ()))
             .await
             .unwrap();
 
         let notification = rx.next().await.unwrap();
         unpack_enum!(ProtocolEvent::NewInboundSubstream(peer_id, _s) = notification.event);
-        assert_eq!(*peer_id, NodeId::new());
+        assert_eq!(peer_id, NodeId::new());
     }
 
     #[runtime::test_basic]
@@ -180,7 +186,7 @@ mod test {
         let err = protocols
             .notify(
                 &ProtocolId::from_static(b"/tari/test/0"),
-                ProtocolEvent::NewInboundSubstream(Box::new(NodeId::new()), ()),
+                ProtocolEvent::NewInboundSubstream(NodeId::new(), ()),
             )
             .await
             .unwrap_err();

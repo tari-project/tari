@@ -48,9 +48,12 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
     if block_header.height == 0 || rules.get_genesis_block_hash() == block_header.hash() {
         return Ok(()); // Its the genesis block, so we dont have to check median
     }
-    let min_height = height.saturating_sub(rules.consensus_constants().get_median_timestamp_count() as u64);
-    let block_nums = (min_height..=height).collect();
-    let timestamps = fetch_headers(db, block_nums)?
+    let min_height = height.saturating_sub(
+        rules
+            .consensus_constants(block_header.height)
+            .get_median_timestamp_count() as u64,
+    );
+    let timestamps = fetch_headers(db, min_height, height)?
         .iter()
         .map(|h| h.timestamp)
         .collect::<Vec<_>>();
@@ -58,6 +61,7 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
         error!(target: LOG_TARGET, "Validation could not get median timestamp");
         ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestamp)
     })?;
+
     if block_header.timestamp < median_timestamp {
         warn!(
             target: LOG_TARGET,
@@ -84,30 +88,32 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
     let pow_algo = block_header.pow.pow_algo;
     // Monero has extra data to check.
     if pow_algo == PowAlgorithm::Monero {
-        let _monero_data = MoneroData::new(&block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
+        MoneroData::new(&block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
         // TODO: We need some way of getting the seed height and or count.
         // Current proposals are to either store the height of first seed use, or count the seed use.
         let seed_height = 0;
         if (seed_height != 0) &&
-            (block_header.height - seed_height > rules.consensus_constants().max_randomx_seed_height())
+            (block_header.height - seed_height >
+                rules.consensus_constants(block_header.height).max_randomx_seed_height())
         {
             return Err(ValidationError::BlockHeaderError(
                 BlockHeaderValidationError::OldSeedHash,
             ));
         }
     }
-    let achieved = block_header.achieved_difficulty();
+    let achieved = block_header.achieved_difficulty()?;
     // This tests the target diff.
     let target = if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
-        let constants = rules.consensus_constants();
+        let constants = rules.consensus_constants(block_header.height);
         let block_window = constants.get_difficulty_block_window() as usize;
         let target_difficulties = db.fetch_target_difficulties(pow_algo, height, block_window)?;
         get_target_difficulty(
             target_difficulties,
             block_window,
-            constants.get_diff_target_block_interval(),
+            constants.get_diff_target_block_interval(pow_algo),
             constants.min_pow_difficulty(pow_algo),
-            constants.get_difficulty_max_block_interval(),
+            constants.max_pow_difficulty(pow_algo),
+            constants.get_difficulty_max_block_interval(pow_algo),
         )
         .map_err(|e| {
             error!(target: LOG_TARGET, "Validation could not get target difficulty: {}", e);
@@ -137,7 +143,7 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
             target
         );
         return Err(ValidationError::BlockHeaderError(
-            BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow),
+            BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow { achieved, target }),
         ));
     }
     Ok(())

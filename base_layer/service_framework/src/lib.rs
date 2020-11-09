@@ -1,3 +1,10 @@
+#![cfg_attr(not(debug_assertions), deny(unused_variables))]
+#![cfg_attr(not(debug_assertions), deny(unused_imports))]
+#![cfg_attr(not(debug_assertions), deny(dead_code))]
+#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
+#![deny(unused_must_use)]
+#![deny(unreachable_patterns)]
+#![deny(unknown_lints)]
 //! # Service framework
 //!
 //! This module contains the building blocks for async services.
@@ -67,15 +74,20 @@
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
 
-mod initializer;
-mod stack;
+mod context;
+pub use context::{LazyService, ServiceHandles, ServiceInitializerContext};
 
-pub mod handles;
+mod initializer;
+pub use initializer::{ServiceInitializationError, ServiceInitializer};
+
+mod stack;
+pub use stack::StackBuilder;
+
 pub mod reply_channel;
 pub mod tower;
 
-pub use self::{
-    initializer::{ServiceInitializationError, ServiceInitializer},
-    reply_channel::RequestContext,
-    stack::StackBuilder,
-};
+mod utilities;
+pub use utilities::RegisterHandle;
+
+// Re-export
+pub use tower_service::Service;

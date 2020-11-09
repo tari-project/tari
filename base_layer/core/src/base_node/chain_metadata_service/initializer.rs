@@ -22,48 +22,34 @@
 
 use super::{service::ChainMetadataService, LOG_TARGET};
 use crate::base_node::{chain_metadata_service::handle::ChainMetadataHandle, comms_interface::LocalNodeCommsInterface};
-use futures::{future, future::select, pin_mut};
+use futures::{future, pin_mut};
 use log::*;
 use std::future::Future;
-use tari_broadcast_channel as broadcast_channel;
+use tari_comms::connectivity::ConnectivityRequester;
 use tari_p2p::services::liveness::LivenessHandle;
-use tari_service_framework::{handles::ServiceHandlesFuture, ServiceInitializationError, ServiceInitializer};
-use tari_shutdown::ShutdownSignal;
-use tokio::runtime;
-
-// Must be set to 1 to ensure outdated chain metadata is discarded.
-const BROADCAST_EVENT_BUFFER_SIZE: usize = 1;
+use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::sync::broadcast;
 
 pub struct ChainMetadataServiceInitializer;
 
 impl ServiceInitializer for ChainMetadataServiceInitializer {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
-        let (publisher, subscriber) = broadcast_channel::bounded(BROADCAST_EVENT_BUFFER_SIZE, 5);
-        let handle = ChainMetadataHandle::new(subscriber);
-        handles_fut.register(handle);
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+        // Buffer size set to 1 because only the most recent metadata is applicable
+        let (publisher, _) = broadcast::channel(1);
 
-        executor.spawn(async move {
-            let handles = handles_fut.await;
+        let handle = ChainMetadataHandle::new(publisher.clone());
+        context.register_handle(handle);
 
-            let liveness = handles
-                .get_handle::<LivenessHandle>()
-                .expect("Liveness service required to initialize ChainStateSyncService");
+        context.spawn_when_ready(|handles| async move {
+            let liveness = handles.expect_handle::<LivenessHandle>();
+            let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
+            let connectivity = handles.expect_handle::<ConnectivityRequester>();
 
-            let base_node = handles
-                .get_handle::<LocalNodeCommsInterface>()
-                .expect("LocalNodeCommsInterface required to initialize ChainStateSyncService");
-
-            let service_run = ChainMetadataService::new(liveness, base_node, publisher).run();
+            let service_run = ChainMetadataService::new(liveness, base_node, connectivity, publisher).run();
             pin_mut!(service_run);
-            select(service_run, shutdown).await;
+            future::select(service_run, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "ChainMetadataService has shut down");
         });
 

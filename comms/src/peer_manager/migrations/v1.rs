@@ -24,10 +24,9 @@ use crate::{
     net_address::MultiaddressesWithStats,
     peer_manager::{
         connection_stats::PeerConnectionStats,
-        migrations::Migration,
+        migrations::{v2::PeerV2, Migration},
         node_id::deserialize_node_id_from_hex,
         NodeId,
-        Peer,
         PeerFeatures,
         PeerFlags,
         PeerId,
@@ -63,6 +62,7 @@ pub struct PeerV1 {
     added_at: NaiveDateTime,
 }
 
+/// This migration is to add user_agent field
 pub struct MigrationV1;
 
 impl Migration<LMDBDatabase> for MigrationV1 {
@@ -73,7 +73,7 @@ impl Migration<LMDBDatabase> for MigrationV1 {
             match old_peer {
                 Ok((key, peer)) => {
                     debug!(target: LOG_TARGET, "Migrating peer `{}`", peer.node_id.short_str());
-                    let result = db.insert(&key, &Peer {
+                    let result = db.insert(&key, &PeerV2 {
                         id: peer.id,
                         public_key: peer.public_key,
                         node_id: peer.node_id,

@@ -64,8 +64,8 @@ done
 
 mkdir -p "$destDir/pkgRoot/usr/local/share/doc/$instName"
 COPY_DOC_FILES=(
-  "rincewind-simple.toml"
-  "tari_config_sample.toml"
+  "tari-sample.toml"
+  "tari_config_example.toml"
 #  "log4rs.yml"
   "log4rs-sample.yml"
   "README.md"

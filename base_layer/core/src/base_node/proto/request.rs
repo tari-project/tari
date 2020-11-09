@@ -24,8 +24,8 @@ use super::base_node::{
     base_node_service_request::Request as ProtoNodeCommsRequest,
     BlockHeights,
     FetchHeadersAfter as ProtoFetchHeadersAfter,
+    FetchMatchingMmrNodes as ProtoFetchMmrNodes,
     FetchMmrNodeCount as ProtoFetchMmrNodeCount,
-    FetchMmrNodes as ProtoFetchMmrNodes,
     HashOutputs,
 };
 use crate::{
@@ -51,9 +51,9 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchHeadersAfter(request) => {
                 ci::NodeCommsRequest::FetchHeadersAfter(request.hashes, request.stopping_hash)
             },
-            FetchUtxos(hash_outputs) => ci::NodeCommsRequest::FetchUtxos(hash_outputs.outputs),
-            FetchTxos(hash_outputs) => ci::NodeCommsRequest::FetchTxos(hash_outputs.outputs),
-            FetchBlocks(block_heights) => ci::NodeCommsRequest::FetchBlocks(block_heights.heights),
+            FetchMatchingUtxos(hash_outputs) => ci::NodeCommsRequest::FetchMatchingUtxos(hash_outputs.outputs),
+            FetchMatchingTxos(hash_outputs) => ci::NodeCommsRequest::FetchMatchingTxos(hash_outputs.outputs),
+            FetchMatchingBlocks(block_heights) => ci::NodeCommsRequest::FetchMatchingBlocks(block_heights.heights),
             FetchBlocksWithHashes(block_hashes) => ci::NodeCommsRequest::FetchBlocksWithHashes(block_hashes.outputs),
             FetchBlocksWithKernels(signatures) => {
                 let mut sigs = Vec::new();
@@ -80,13 +80,10 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
                 ci::NodeCommsRequest::GetNewBlockTemplate(PowAlgorithm::try_from(pow_algo)?)
             },
             GetNewBlock(block_template) => ci::NodeCommsRequest::GetNewBlock(block_template.try_into()?),
-            GetTargetDifficulty(pow_algo) => {
-                ci::NodeCommsRequest::GetTargetDifficulty(PowAlgorithm::try_from(pow_algo)?)
-            },
             FetchMmrNodeCount(request) => {
                 ci::NodeCommsRequest::FetchMmrNodeCount(request.tree.try_into()?, request.height)
             },
-            FetchMmrNodes(request) => ci::NodeCommsRequest::FetchMmrNodes(
+            FetchMatchingMmrNodes(request) => ci::NodeCommsRequest::FetchMatchingMmrNodes(
                 request.tree.try_into()?,
                 request.pos,
                 request.count,
@@ -108,9 +105,9 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchHeadersAfter(hashes, stopping_hash) => {
                 ProtoNodeCommsRequest::FetchHeadersAfter(ProtoFetchHeadersAfter { hashes, stopping_hash })
             },
-            FetchUtxos(hash_outputs) => ProtoNodeCommsRequest::FetchUtxos(hash_outputs.into()),
-            FetchTxos(hash_outputs) => ProtoNodeCommsRequest::FetchTxos(hash_outputs.into()),
-            FetchBlocks(block_heights) => ProtoNodeCommsRequest::FetchBlocks(block_heights.into()),
+            FetchMatchingUtxos(hash_outputs) => ProtoNodeCommsRequest::FetchMatchingUtxos(hash_outputs.into()),
+            FetchMatchingTxos(hash_outputs) => ProtoNodeCommsRequest::FetchMatchingTxos(hash_outputs.into()),
+            FetchMatchingBlocks(block_heights) => ProtoNodeCommsRequest::FetchMatchingBlocks(block_heights.into()),
             FetchBlocksWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchBlocksWithHashes(block_hashes.into()),
             FetchBlocksWithKernels(signatures) => {
                 let sigs = signatures.into_iter().map(Into::into).collect();
@@ -126,17 +123,18 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             },
             GetNewBlockTemplate(pow_algo) => ProtoNodeCommsRequest::GetNewBlockTemplate(pow_algo as u64),
             GetNewBlock(block_template) => ProtoNodeCommsRequest::GetNewBlock(block_template.into()),
-            GetTargetDifficulty(pow_algo) => ProtoNodeCommsRequest::GetTargetDifficulty(pow_algo as u64),
             FetchMmrNodeCount(tree, height) => ProtoNodeCommsRequest::FetchMmrNodeCount(ProtoFetchMmrNodeCount {
                 tree: tree as i32,
                 height,
             }),
-            FetchMmrNodes(tree, pos, count, hist_height) => ProtoNodeCommsRequest::FetchMmrNodes(ProtoFetchMmrNodes {
-                tree: tree as i32,
-                pos,
-                count,
-                hist_height,
-            }),
+            FetchMatchingMmrNodes(tree, pos, count, hist_height) => {
+                ProtoNodeCommsRequest::FetchMatchingMmrNodes(ProtoFetchMmrNodes {
+                    tree: tree as i32,
+                    pos,
+                    count,
+                    hist_height,
+                })
+            },
         }
     }
 }

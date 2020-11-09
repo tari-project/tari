@@ -42,7 +42,6 @@ use crate::{
         service::FetchStoredMessageQuery,
         StoreAndForwardRequester,
     },
-    utils::try_convert_all,
 };
 use digest::Digest;
 use futures::{channel::mpsc, future, stream, Future, SinkExt, StreamExt};
@@ -56,7 +55,7 @@ use tari_comms::{
     types::{Challenge, CommsPublicKey},
     utils::signature,
 };
-use tari_utilities::ByteArray;
+use tari_utilities::{convert::try_convert_all, ByteArray};
 use tower::{Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::storeforward::handler";
@@ -123,9 +122,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         match message.dht_header.message_type {
             DhtMessageType::SafRequestMessages => {
                 if self.node_identity.has_peer_features(PeerFeatures::DHT_STORE_FORWARD) {
-                    self.handle_stored_messages_request(message)
-                        .await
-                        .map_err(PipelineError::from_debug)?
+                    self.handle_stored_messages_request(message).await?
                 } else {
                     // TODO: #banheuristics - requester should not have requested store and forward messages from this
                     //       node
@@ -140,10 +137,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 }
             },
 
-            DhtMessageType::SafStoredMessages => self
-                .handle_stored_messages(message)
-                .await
-                .map_err(PipelineError::from_debug)?,
+            DhtMessageType::SafStoredMessages => self.handle_stored_messages(message).await?,
             // Not a SAF message, call downstream middleware
             _ => {
                 trace!(
@@ -527,13 +521,13 @@ mod test {
         proto::envelope::DhtHeader,
         store_forward::{message::StoredMessagePriority, StoredMessage},
         test_utils::{
+            build_peer_manager,
             create_dht_actor_mock,
             create_store_and_forward_mock,
             make_dht_header,
             make_dht_inbound_message,
             make_keypair,
             make_node_identity,
-            make_peer_manager,
             service_spy,
         },
     };
@@ -573,7 +567,7 @@ mod test {
         let spy = service_spy();
         let (requester, mock_state) = create_store_and_forward_mock();
 
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (oms_tx, mut oms_rx) = mpsc::channel(1);
 
         let node_identity = make_node_identity();
@@ -675,7 +669,7 @@ mod test {
         let spy = service_spy();
         let (requester, _) = create_store_and_forward_mock();
 
-        let peer_manager = make_peer_manager();
+        let peer_manager = build_peer_manager();
         let (oms_tx, _) = mpsc::channel(1);
 
         let node_identity = make_node_identity();

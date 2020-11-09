@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{StatelessValidation, Validation};
+use super::{StatefulValidation, Validation};
 use crate::{chain_storage::BlockchainBackend, validation::error::ValidationError};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -44,7 +44,7 @@ impl MockValidator {
     }
 }
 
-impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
+impl<T, B: BlockchainBackend> StatefulValidation<T, B> for MockValidator {
     fn validate(&self, _item: &T, _db: &B) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
@@ -56,7 +56,7 @@ impl<T, B: BlockchainBackend> Validation<T, B> for MockValidator {
     }
 }
 
-impl<T> StatelessValidation<T> for MockValidator {
+impl<T> Validation<T> for MockValidator {
     fn validate(&self, _item: &T) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
@@ -70,17 +70,17 @@ impl<T> StatelessValidation<T> for MockValidator {
 
 #[cfg(test)]
 mod test {
-    use crate::validation::{mocks::MockValidator, StatelessValidation};
+    use crate::validation::{mocks::MockValidator, Validation};
 
     #[test]
     fn mock_is_valid() {
         let validator = MockValidator::new(true);
-        assert!(<MockValidator as StatelessValidation<_>>::validate(&validator, &()).is_ok());
+        assert!(<MockValidator as Validation<_>>::validate(&validator, &()).is_ok());
     }
 
     #[test]
     fn mock_is_invalid() {
         let validator = MockValidator::new(false);
-        assert!(<MockValidator as StatelessValidation<_>>::validate(&validator, &()).is_err());
+        assert!(<MockValidator as Validation<_>>::validate(&validator, &()).is_err());
     }
 }

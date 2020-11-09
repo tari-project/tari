@@ -20,15 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{future, future::Either, stream::FusedStream, FutureExt, Stream, StreamExt};
+use futures::{future, future::Either, FutureExt, Stream, StreamExt};
 use std::time::Duration;
 
 pub async fn event_stream_next<TStream>(stream: &mut TStream, timeout: Duration) -> Option<TStream::Item>
-where TStream: Stream + FusedStream + Unpin {
-    let either = future::select(stream.select_next_some(), tokio::time::delay_for(timeout).fuse()).await;
+where TStream: Stream + Unpin {
+    let either = future::select(stream.next(), tokio::time::delay_for(timeout).fuse()).await;
 
     match either {
-        Either::Left((v, _)) => Some(v),
+        Either::Left((v, _)) => v,
         Either::Right(_) => None,
     }
 }

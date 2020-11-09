@@ -39,3 +39,9 @@ pub enum MerkleMountainRangeError {
     #[error("Conflicting or invalid configuration parameters provided.")]
     InvalidConfig,
 }
+
+impl MerkleMountainRangeError {
+    pub fn backend_error<E: ToString>(err: E) -> Self {
+        Self::BackendError(err.to_string())
+    }
+}

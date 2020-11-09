@@ -4,11 +4,11 @@ authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet key management"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.2.1"
+version = "0.2.11"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "^0.7", path = "../../../tari_crypto" }
+tari_crypto = { version = "^0.8" }
 rand = "0.7.2"
 digest = "0.8.0"
 sha2 = "0.8.0"

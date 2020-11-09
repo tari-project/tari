@@ -25,7 +25,6 @@ use crate::{
     inbound::DecryptedDhtMessage,
     outbound::{OutboundMessageRequester, SendMessageParams},
     store_forward::error::StoreAndForwardError,
-    DhtConfig,
 };
 use futures::{task::Context, Future};
 use log::*;
@@ -39,13 +38,11 @@ const LOG_TARGET: &str = "comms::dht::storeforward::forward";
 pub struct ForwardLayer {
     outbound_service: OutboundMessageRequester,
     is_enabled: bool,
-    config: DhtConfig,
 }
 
 impl ForwardLayer {
-    pub fn new(config: DhtConfig, outbound_service: OutboundMessageRequester, is_enabled: bool) -> Self {
+    pub fn new(outbound_service: OutboundMessageRequester, is_enabled: bool) -> Self {
         Self {
-            config,
             outbound_service,
             is_enabled,
         }
@@ -59,7 +56,6 @@ impl<S> Layer<S> for ForwardLayer {
         ForwardMiddleware::new(
             service,
             // Pass in just the config item needed by the middleware for almost free copies
-            self.config.clone(),
             self.outbound_service.clone(),
             self.is_enabled,
         )
@@ -73,15 +69,13 @@ impl<S> Layer<S> for ForwardLayer {
 pub struct ForwardMiddleware<S> {
     next_service: S,
     outbound_service: OutboundMessageRequester,
-    config: DhtConfig,
     is_enabled: bool,
 }
 
 impl<S> ForwardMiddleware<S> {
-    pub fn new(service: S, config: DhtConfig, outbound_service: OutboundMessageRequester, is_enabled: bool) -> Self {
+    pub fn new(service: S, outbound_service: OutboundMessageRequester, is_enabled: bool) -> Self {
         Self {
             next_service: service,
-            config,
             outbound_service,
             is_enabled,
         }
@@ -102,7 +96,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
 
     fn call(&mut self, message: DecryptedDhtMessage) -> Self::Future {
         let next_service = self.next_service.clone();
-        let config = self.config.clone();
         let outbound_service = self.outbound_service.clone();
         let is_enabled = self.is_enabled;
         async move {
@@ -122,7 +115,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
                 message.tag,
                 message.dht_header.message_tag
             );
-            let forwarder = Forwarder::new(next_service, config, outbound_service);
+            let forwarder = Forwarder::new(next_service, outbound_service);
             forwarder.handle(message).await
         }
     }
@@ -132,15 +125,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
 /// to the next service.
 struct Forwarder<S> {
     next_service: S,
-    config: DhtConfig,
     outbound_service: OutboundMessageRequester,
 }
 
 impl<S> Forwarder<S> {
-    pub fn new(service: S, config: DhtConfig, outbound_service: OutboundMessageRequester) -> Self {
+    pub fn new(service: S, outbound_service: OutboundMessageRequester) -> Self {
         Self {
             next_service: service,
-            config,
             outbound_service,
         }
     }
@@ -157,7 +148,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 message.tag,
                 message.dht_header.message_tag
             );
-            self.forward(&message).await.map_err(PipelineError::from_debug)?;
+            self.forward(&message).await?;
         }
 
         // The message has been forwarded, but other middleware may be interested (i.e. StoreMiddleware)
@@ -208,7 +199,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let mut send_params = SendMessageParams::new();
         match (dest_node_id, is_saf_stored) {
             (Some(node_id), Some(true)) => {
-                send_params.closest_connected(node_id.clone(), self.config.num_neighbouring_nodes, excluded_peers);
+                send_params.closest_connected(node_id.clone(), excluded_peers);
             },
             _ => {
                 send_params.propagate(dht_header.destination.clone(), excluded_peers);
@@ -251,7 +242,7 @@ mod test {
         let spy = service_spy();
         let (oms_tx, mut oms_rx) = mpsc::channel(1);
         let oms = OutboundMessageRequester::new(oms_tx);
-        let mut service = ForwardLayer::new(DhtConfig::default(), oms, true).layer(spy.to_service::<PipelineError>());
+        let mut service = ForwardLayer::new(oms, true).layer(spy.to_service::<PipelineError>());
 
         let node_identity = make_node_identity();
         let inbound_msg = make_dht_inbound_message(&node_identity, b"".to_vec(), DhtMessageFlags::empty(), false);
@@ -273,8 +264,7 @@ mod test {
         let oms_mock_state = oms_mock.get_state();
         rt.spawn(oms_mock.run());
 
-        let mut service =
-            ForwardLayer::new(DhtConfig::default(), oms_requester, true).layer(spy.to_service::<PipelineError>());
+        let mut service = ForwardLayer::new(oms_requester, true).layer(spy.to_service::<PipelineError>());
 
         let sample_body = b"Lorem ipsum";
         let inbound_msg = make_dht_inbound_message(

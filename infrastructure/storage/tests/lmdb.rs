@@ -31,7 +31,7 @@ use std::{
     thread,
 };
 use tari_storage::{
-    lmdb_store::{db, LMDBBuilder, LMDBDatabase, LMDBError, LMDBStore},
+    lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBDatabase, LMDBError, LMDBStore},
     IterationResult,
 };
 use tari_utilities::ExtendBytes;
@@ -92,7 +92,7 @@ fn init(name: &str) -> Result<LMDBStore, LMDBError> {
     std::fs::create_dir(&path).unwrap_or_default();
     LMDBBuilder::new()
         .set_path(&path)
-        .set_environment_size(10)
+        .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(2)
         .add_database("users", db::CREATE)
         .build()
@@ -278,7 +278,7 @@ fn exists_and_delete() {
 }
 
 #[test]
-fn lmbd_resize_on_create() {
+fn lmdb_resize_on_create() {
     let db_env_name = "resize";
     {
         let path = get_path(&db_env_name);
@@ -290,7 +290,11 @@ fn lmbd_resize_on_create() {
             // Create db with large preset environment size
             let env = LMDBBuilder::new()
                 .set_path(&path)
-                .set_environment_size(PRESET_SIZE * 100)
+                .set_env_config(LMDBConfig::new(
+                    100 * PRESET_SIZE * 1024 * 1024,
+                    1024 * 1024,
+                    512 * 1024,
+                ))
                 .set_max_number_of_databases(1)
                 .add_database(&db_name, db::CREATE)
                 .build()
@@ -313,7 +317,7 @@ fn lmbd_resize_on_create() {
             // Load existing db environment
             let env = LMDBBuilder::new()
                 .set_path(&path)
-                .set_environment_size(PRESET_SIZE)
+                .set_env_config(LMDBConfig::new(PRESET_SIZE * 1024 * 1024, 1024 * 1024, 512 * 1024))
                 .set_max_number_of_databases(1)
                 .add_database(&db_name, db::CREATE)
                 .build()
@@ -326,6 +330,50 @@ fn lmbd_resize_on_create() {
             assert_eq!(size_used_round_1, size_used_round_2);
             assert_eq!(space_remaining, PRESET_SIZE * 1024 * 1024);
             assert!(env_info.mapsize >= 2 * (PRESET_SIZE * 1024 * 1024));
+        }
+    }
+    clean_up(&db_env_name); // In Windows file handles must be released before files can be deleted
+}
+
+#[test]
+fn test_lmdb_resize_before_full() {
+    let db_env_name = "resize_dynamic";
+    {
+        let path = get_path(&db_env_name);
+        std::fs::create_dir(&path).unwrap_or_default();
+        let db_name = "test_full";
+        {
+            // Create db with 1MB capacity
+            let store = LMDBBuilder::new()
+                .set_path(&path)
+                .set_env_config(LMDBConfig::new(1024 * 1024, 512 * 1024, 100 * 1024))
+                .set_max_number_of_databases(1)
+                .add_database(&db_name, db::CREATE)
+                .build()
+                .unwrap();
+            let db = store.get_handle(&db_name).unwrap();
+
+            // Add enough data to exceed our 1MB db
+            let value = load_users();
+            // one insertion requires approx 92KB so after ~11 insertions
+            // our 1MB env size should be out of space
+            // however the db should now be allocating additional space as it fills up
+            for key in 0..32 {
+                if let Err(_e) = db.insert(&key, &value) {
+                    // println!("LMDBError {:#?}", _e);
+                    panic!("Failed to resize the LMDB store.");
+                }
+            }
+            let env_info = store.env().info().unwrap();
+            let psize = store.env().stat().unwrap().psize as usize;
+            let page_size_total = psize * env_info.last_pgno;
+            let percent_left = 1.0 - page_size_total as f64 / env_info.mapsize as f64;
+
+            // check the allocated size is now greater than it was initially
+            assert!(page_size_total > 1024 * 1024);
+            assert!(percent_left > 0.0);
+
+            store.flush().unwrap();
         }
     }
     clean_up(&db_env_name); // In Windows file handles must be released before files can be deleted

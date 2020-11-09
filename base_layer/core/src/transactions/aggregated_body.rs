@@ -19,12 +19,12 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::transactions::{
     fee::Fee,
     tari_amount::*,
-    transaction::{KernelSum, Transaction, TransactionError, TransactionKernel},
+    transaction::{KernelFeatures, KernelSum, Transaction, TransactionError, TransactionKernel},
     types::{BlindingFactor, Commitment, CommitmentFactory, CryptoFactories, PrivateKey, RangeProofService},
+    OutputFlags,
     TransactionInput,
     TransactionOutput,
 };
@@ -82,6 +82,11 @@ impl AggregateBody {
     /// Provide read-only access to the output list
     pub fn outputs(&self) -> &Vec<TransactionOutput> {
         &self.outputs
+    }
+
+    /// Should be used for tests only. Get a mutable reference to the outputs
+    pub fn outputs_mut(&mut self) -> &mut Vec<TransactionOutput> {
+        &mut self.outputs
     }
 
     /// Provide read-only access to the kernel list
@@ -180,9 +185,9 @@ impl AggregateBody {
     pub fn verify_kernel_signatures(&self) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking kernel signatures",);
         for kernel in self.kernels.iter() {
-            kernel.verify_signature().or_else(|e| {
+            kernel.verify_signature().map_err(|e| {
                 warn!(target: LOG_TARGET, "Kernel ({}) signature failed {:?}.", kernel, e);
-                Err(e)
+                e
             })?;
         }
         Ok(())
@@ -194,6 +199,90 @@ impl AggregateBody {
             fee += kernel.fee;
         }
         fee
+    }
+
+    /// This function will check spent kernel rules like tx lock height etc
+    pub fn check_kernel_rules(&self, height: u64) -> Result<(), TransactionError> {
+        for kernel in self.kernels() {
+            if kernel.lock_height > height {
+                warn!(target: LOG_TARGET, "Kernel lock height was not reached: {}", kernel);
+                return Err(TransactionError::InvalidKernel);
+            }
+        }
+        Ok(())
+    }
+
+    /// Run through the outputs of the block and check that
+    /// 1. There is exactly ONE coinbase output
+    /// 1. The output's maturity is correctly set
+    /// 1. The amount is correct.
+    pub fn check_coinbase_output(
+        &self,
+        reward: MicroTari,
+        coinbase_lock_height: u64,
+        factories: &CryptoFactories,
+        height: u64,
+    ) -> Result<(), TransactionError>
+    {
+        let mut coinbase_utxo = None;
+        let mut coinbase_kernel = None;
+        let mut coinbase_counter = 0; // there should be exactly 1 coinbase
+        for utxo in self.outputs() {
+            if utxo.features().flags.contains(OutputFlags::COINBASE_OUTPUT) {
+                coinbase_counter += 1;
+                if utxo.features().maturity < (height + coinbase_lock_height) {
+                    warn!(target: LOG_TARGET, "Coinbase {} found with maturity set too low", utxo);
+                    return Err(TransactionError::InvalidCoinbaseMaturity);
+                }
+                coinbase_utxo = Some(utxo.clone());
+            }
+        }
+        if coinbase_counter != 1 {
+            warn!(
+                target: LOG_TARGET,
+                "{} coinbases found in body. Only a single coinbase is permitted.", coinbase_counter,
+            );
+            return Err(TransactionError::InvalidCoinbaseCount);
+        }
+
+        let mut coinbase_counter = 0; // there should be exactly 1 coinbase kernel as well
+        for kernel in self.kernels() {
+            if kernel.features.contains(KernelFeatures::COINBASE_KERNEL) {
+                coinbase_counter += 1;
+                coinbase_kernel = Some(kernel.clone());
+            }
+        }
+        if coinbase_counter != 1 {
+            warn!(
+                target: LOG_TARGET,
+                "{} coinbase kernels found in body. Only a single coinbase kernel is permitted.", coinbase_counter,
+            );
+            return Err(TransactionError::InvalidCoinbaseCount);
+        }
+        // Unwrap used here are fine as they should have an amount in them by here. If the coinbase's are missing the
+        // counters should be 0 and the fn should have returned an error by now.
+        let utxo = coinbase_utxo.unwrap();
+        let rhs =
+            &coinbase_kernel.unwrap().excess + &factories.commitment.commit_value(&BlindingFactor::default(), reward.0);
+        if rhs != *utxo.commitment() {
+            warn!(target: LOG_TARGET, "Coinbase {} amount validation failed", utxo);
+            return Err(TransactionError::InvalidCoinbase);
+        }
+        Ok(())
+    }
+
+    /// This function will check all stxo to ensure that feature flags where followed
+    pub fn check_stxo_rules(&self, height: u64) -> Result<(), TransactionError> {
+        for input in self.inputs() {
+            if input.features().maturity > height {
+                warn!(
+                    target: LOG_TARGET,
+                    "Input found that has not yet matured to spending height: {}", input
+                );
+                return Err(TransactionError::InputMaturity);
+            }
+        }
+        Ok(())
     }
 
     /// Validate this transaction by checking the following:

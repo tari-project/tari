@@ -26,7 +26,7 @@ use crate::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
         service::TransactionServiceResources,
-        storage::database::{TransactionBackend, TransactionStatus},
+        storage::{database::TransactionBackend, models::TransactionStatus},
     },
 };
 use futures::{channel::mpsc::Receiver, FutureExt, StreamExt};
@@ -53,12 +53,13 @@ use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_p2p::tari_message::TariMessageType;
 use tokio::{sync::broadcast, time::delay_for};
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::chain_monitoring_protocol";
+const LOG_TARGET_STRESS: &str = "stress_test::chain_monitoring_protocol";
 
 /// This protocol defines the process of monitoring a mempool and base node to detect when a Broadcast transaction is
 /// Mined or leaves the mempool in which case it should be cancelled
 
 pub struct TransactionChainMonitoringProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     id: u64,
     tx_id: TxId,
@@ -71,7 +72,7 @@ where TBackend: TransactionBackend + Clone + 'static
 }
 
 impl<TBackend> TransactionChainMonitoringProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -124,7 +125,7 @@ where TBackend: TransactionBackend + Clone + 'static
 
         // This is the main loop of the protocol and following the following steps
         // 1) Check transaction being monitored is still in the Broadcast state and needs to be monitored
-        // 2) Send a MempoolRequest::GetTxStateWithExcessSig to Mempool and a Mined? Request to base node
+        // 2) Send a MempoolRequest::GetTxStateByExcessSig to Mempool and a Mined? Request to base node
         // 3) Wait for both a Mempool response and Base Node response for the correct Id OR a Timeout
         //      a) If the Tx is not in the mempool AND is not mined the protocol ends and Tx should be cancelled
         //      b) If the Tx is in the mempool AND not mined > perform another iteration
@@ -178,7 +179,7 @@ where TBackend: TransactionBackend + Clone + 'static
             let tx_excess_sig = completed_tx.transaction.body.kernels()[0].excess_sig.clone();
             let mempool_request = MempoolProto::MempoolServiceRequest {
                 request_key: self.id,
-                request: Some(MempoolProto::mempool_service_request::Request::GetTxStateWithExcessSig(
+                request: Some(MempoolProto::mempool_service_request::Request::GetTxStateByExcessSig(
                     tx_excess_sig.into(),
                 )),
             };
@@ -193,7 +194,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             // Send Base Node query
-            let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
+            let request = BaseNodeRequestProto::FetchMatchingUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
             let service_request = BaseNodeProto::BaseNodeServiceRequest {
                 request_key: self.id,
                 request: Some(request),
@@ -211,6 +212,8 @@ where TBackend: TransactionBackend + Clone + 'static
             let mut received_mempool_response = None;
             let mut mempool_response_received = false;
             let mut base_node_response_received = false;
+            let mut shutdown = self.resources.shutdown_signal.clone();
+
             // Loop until both a Mempool response AND a Base node response is received OR the Timeout expires.
             loop {
                 futures::select! {
@@ -238,10 +241,25 @@ where TBackend: TransactionBackend + Clone + 'static
                                 "Chain monitoring protocol (Id: {}) timeout updated to {:?}", self.id, self.timeout
                             );
                             break;
+                        } else {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Chain monitoring protocol event 'updated_timeout' triggered (Id: {}) ({:?})",
+                                self.id,
+                                updated_timeout,
+                            );
                         }
                     },
                     () = delay => {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Chain monitoring protocol event 'time_out' triggered (Id: {}) ", self.id
+                        );
                         break;
+                    },
+                    _ = shutdown => {
+                        info!(target: LOG_TARGET, "Transaction Chain Monitoring Protocol (id: {}) shutting down because it received the shutdown signal", self.id);
+                        return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                     },
                 }
 
@@ -487,6 +505,10 @@ where TBackend: TransactionBackend + Clone + 'static
 
                 info!(
                     target: LOG_TARGET,
+                    "Transaction (TxId: {:?}) detected as mined on the Base Layer", completed_tx.tx_id
+                );
+                debug!(
+                    target: LOG_TARGET_STRESS,
                     "Transaction (TxId: {:?}) detected as mined on the Base Layer", completed_tx.tx_id
                 );
 

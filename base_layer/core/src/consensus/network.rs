@@ -23,22 +23,25 @@
 use super::consensus_constants::ConsensusConstants;
 use tari_common::configuration::Network as GlobalNetwork;
 /// Specifies the configured chain network.
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Network {
     /// Mainnet of Tari, currently should panic if network is set to this.
     MainNet,
     /// Alpha net version
     Rincewind,
+    /// Second test net version
+    Ridcully,
     /// Local network constants used inside of unit and integration tests. Contains the genesis block to be used for
     /// that chain.
     LocalNet,
 }
 
 impl Network {
-    pub fn create_consensus_constants(self) -> ConsensusConstants {
+    pub fn create_consensus_constants(&self) -> Vec<ConsensusConstants> {
         match self {
             Network::MainNet => ConsensusConstants::mainnet(),
             Network::Rincewind => ConsensusConstants::rincewind(),
+            Network::Ridcully => ConsensusConstants::ridcully(),
             Network::LocalNet => ConsensusConstants::localnet(),
         }
     }
@@ -49,6 +52,8 @@ impl From<GlobalNetwork> for Network {
         match global_network {
             GlobalNetwork::MainNet => Network::MainNet,
             GlobalNetwork::Rincewind => Network::Rincewind,
+            GlobalNetwork::Ridcully => Network::Ridcully,
+            GlobalNetwork::LocalNet => Network::LocalNet,
         }
     }
 }

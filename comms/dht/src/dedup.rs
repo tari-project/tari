@@ -78,11 +78,7 @@ where S: Service<DhtInboundMessage, Response = (), Error = PipelineError> + Clon
                 message.tag,
                 message.dht_header.message_tag
             );
-            if dht_requester
-                .insert_message_hash(hash)
-                .await
-                .map_err(PipelineError::from_debug)?
-            {
+            if dht_requester.insert_message_hash(hash).await? {
                 trace!(
                     target: LOG_TARGET,
                     "Received duplicate message {} from peer '{}' (Trace: {}). Message discarded.",

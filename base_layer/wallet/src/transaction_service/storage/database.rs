@@ -20,25 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{output_manager_service::TxId, transaction_service::error::TransactionStorageError};
+use crate::{
+    output_manager_service::TxId,
+    transaction_service::{
+        error::TransactionStorageError,
+        storage::models::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TransactionDirection,
+            TransactionStatus,
+        },
+    },
+};
 use aes_gcm::Aes256Gcm;
-use chrono::{NaiveDateTime, Utc};
+#[cfg(feature = "test_harness")]
+use chrono::NaiveDateTime;
+use chrono::Utc;
 use log::*;
-use serde::{Deserialize, Serialize};
+
+use crate::transaction_service::storage::models::WalletTransaction;
 use std::{
     collections::HashMap,
-    convert::TryFrom,
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::Transaction,
-    types::{BlindingFactor, PrivateKey},
-    ReceiverTransactionProtocol,
-    SenderTransactionProtocol,
-};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction, types::BlindingFactor};
 
 const LOG_TARGET: &str = "wallet::transaction_service::database";
 
@@ -46,7 +54,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::database";
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. If new data types are
 /// required to be supported by the backends then these enums can be updated to reflect this requirement and the trait
 /// will remain the same
-pub trait TransactionBackend: Send + Sync {
+pub trait TransactionBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, TransactionStorageError>;
     /// Check if a record with the provided key exists in the backend.
@@ -77,7 +85,7 @@ pub trait TransactionBackend: Send + Sync {
     fn cancel_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Cancel Completed transaction, this will update the transaction status
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
-    /// Search all oending transaction for the provided tx_id and if it exists return the public key of the counterparty
+    /// Search all pending transaction for the provided tx_id and if it exists return the public key of the counterparty
     fn get_pending_transaction_counterparty_pub_key_by_tx_id(
         &self,
         tx_id: TxId,
@@ -97,218 +105,8 @@ pub trait TransactionBackend: Send + Sync {
     fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), TransactionStorageError>;
     /// Remove encryption from the backend.
     fn remove_encryption(&self) -> Result<(), TransactionStorageError>;
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum TransactionStatus {
-    /// This transaction has been completed between the parties but has not been broadcast to the base layer network.
-    Completed,
-    /// This transaction has been broadcast to the base layer network and is currently in one or more base node
-    /// mempools.
-    Broadcast,
-    /// This transaction has been mined and included in a block.
-    Mined,
-    /// This transaction was generated as part of importing a spendable UTXO
-    Imported,
-    /// This transaction is still being negotiated by the parties
-    Pending,
-    /// This is a created Coinbase Transaction
-    Coinbase,
-}
-
-impl TryFrom<i32> for TransactionStatus {
-    type Error = TransactionStorageError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(TransactionStatus::Completed),
-            1 => Ok(TransactionStatus::Broadcast),
-            2 => Ok(TransactionStatus::Mined),
-            3 => Ok(TransactionStatus::Imported),
-            4 => Ok(TransactionStatus::Pending),
-            _ => Err(TransactionStorageError::ConversionError),
-        }
-    }
-}
-
-impl Default for TransactionStatus {
-    fn default() -> Self {
-        TransactionStatus::Pending
-    }
-}
-
-impl Display for TransactionStatus {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        // No struct or tuple variants
-        match self {
-            TransactionStatus::Completed => write!(f, "Completed"),
-            TransactionStatus::Broadcast => write!(f, "Broadcast"),
-            TransactionStatus::Mined => write!(f, "Mined"),
-            TransactionStatus::Imported => write!(f, "Imported"),
-            TransactionStatus::Pending => write!(f, "Pending"),
-            TransactionStatus::Coinbase => write!(f, "Coinbase"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct InboundTransaction {
-    pub tx_id: TxId,
-    pub source_public_key: CommsPublicKey,
-    pub amount: MicroTari,
-    pub receiver_protocol: ReceiverTransactionProtocol,
-    pub status: TransactionStatus,
-    pub message: String,
-    pub timestamp: NaiveDateTime,
-    pub cancelled: bool,
-    pub direct_send_success: bool,
-}
-
-impl InboundTransaction {
-    pub fn new(
-        tx_id: TxId,
-        source_public_key: CommsPublicKey,
-        amount: MicroTari,
-        receiver_protocol: ReceiverTransactionProtocol,
-        status: TransactionStatus,
-        message: String,
-        timestamp: NaiveDateTime,
-    ) -> Self
-    {
-        Self {
-            tx_id,
-            source_public_key,
-            amount,
-            receiver_protocol,
-            status,
-            message,
-            timestamp,
-            cancelled: false,
-            direct_send_success: false,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct OutboundTransaction {
-    pub tx_id: TxId,
-    pub destination_public_key: CommsPublicKey,
-    pub amount: MicroTari,
-    pub fee: MicroTari,
-    pub sender_protocol: SenderTransactionProtocol,
-    pub status: TransactionStatus,
-    pub message: String,
-    pub timestamp: NaiveDateTime,
-    pub cancelled: bool,
-    pub direct_send_success: bool,
-}
-
-impl OutboundTransaction {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        tx_id: TxId,
-        destination_public_key: CommsPublicKey,
-        amount: MicroTari,
-        fee: MicroTari,
-        sender_protocol: SenderTransactionProtocol,
-        status: TransactionStatus,
-        message: String,
-        timestamp: NaiveDateTime,
-        direct_send_success: bool,
-    ) -> Self
-    {
-        Self {
-            tx_id,
-            destination_public_key,
-            amount,
-            fee,
-            sender_protocol,
-            status,
-            message,
-            timestamp,
-            cancelled: false,
-            direct_send_success,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct CompletedTransaction {
-    pub tx_id: TxId,
-    pub source_public_key: CommsPublicKey,
-    pub destination_public_key: CommsPublicKey,
-    pub amount: MicroTari,
-    pub fee: MicroTari,
-    pub transaction: Transaction,
-    pub status: TransactionStatus,
-    pub message: String,
-    pub timestamp: NaiveDateTime,
-    pub cancelled: bool,
-    pub direction: TransactionDirection,
-    pub coinbase_block_height: Option<u64>,
-}
-
-impl CompletedTransaction {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        tx_id: TxId,
-        source_public_key: CommsPublicKey,
-        destination_public_key: CommsPublicKey,
-        amount: MicroTari,
-        fee: MicroTari,
-        transaction: Transaction,
-        status: TransactionStatus,
-        message: String,
-        timestamp: NaiveDateTime,
-        direction: TransactionDirection,
-        coinbase_block_height: Option<u64>,
-    ) -> Self
-    {
-        Self {
-            tx_id,
-            source_public_key,
-            destination_public_key,
-            amount,
-            fee,
-            transaction,
-            status,
-            message,
-            timestamp,
-            cancelled: false,
-            direction,
-            coinbase_block_height,
-        }
-    }
-}
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum TransactionDirection {
-    Inbound,
-    Outbound,
-    Unknown,
-}
-
-impl TryFrom<i32> for TransactionDirection {
-    type Error = TransactionStorageError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(TransactionDirection::Inbound),
-            1 => Ok(TransactionDirection::Outbound),
-            2 => Ok(TransactionDirection::Unknown),
-            _ => Err(TransactionStorageError::ConversionError),
-        }
-    }
-}
-
-impl Display for TransactionDirection {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        // No struct or tuple variants
-        match self {
-            TransactionDirection::Inbound => write!(f, "Inbound"),
-            TransactionDirection::Outbound => write!(f, "Outbound"),
-            TransactionDirection::Unknown => write!(f, "Unknown"),
-        }
-    }
+    /// Increment the send counter and timestamp of a transaction
+    fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -324,7 +122,7 @@ pub enum DbKey {
     CancelledCompletedTransactions,
     CancelledPendingOutboundTransaction(TxId),
     CancelledPendingInboundTransaction(TxId),
-    CancelledCompletedTransaction(TxId),
+    AnyTransaction(TxId),
 }
 
 #[derive(Debug)]
@@ -335,6 +133,7 @@ pub enum DbValue {
     PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
     CompletedTransactions(HashMap<TxId, CompletedTransaction>),
+    WalletTransaction(Box<WalletTransaction>),
 }
 
 pub enum DbKeyValuePair {
@@ -346,77 +145,6 @@ pub enum DbKeyValuePair {
 pub enum WriteOperation {
     Insert(DbKeyValuePair),
     Remove(DbKey),
-}
-
-impl From<CompletedTransaction> for InboundTransaction {
-    fn from(ct: CompletedTransaction) -> Self {
-        Self {
-            tx_id: ct.tx_id,
-            source_public_key: ct.source_public_key,
-            amount: ct.amount,
-            receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
-            status: ct.status,
-            message: ct.message,
-            timestamp: ct.timestamp,
-            cancelled: ct.cancelled,
-            direct_send_success: false,
-        }
-    }
-}
-
-impl From<CompletedTransaction> for OutboundTransaction {
-    fn from(ct: CompletedTransaction) -> Self {
-        Self {
-            tx_id: ct.tx_id,
-            destination_public_key: ct.destination_public_key,
-            amount: ct.amount,
-            fee: ct.fee,
-            sender_protocol: SenderTransactionProtocol::new_placeholder(),
-            status: ct.status,
-            message: ct.message,
-            timestamp: ct.timestamp,
-            cancelled: ct.cancelled,
-            direct_send_success: false,
-        }
-    }
-}
-
-impl From<OutboundTransaction> for CompletedTransaction {
-    fn from(tx: OutboundTransaction) -> Self {
-        Self {
-            tx_id: tx.tx_id,
-            source_public_key: Default::default(),
-            destination_public_key: tx.destination_public_key,
-            amount: tx.amount,
-            fee: tx.fee,
-            status: tx.status,
-            message: tx.message,
-            timestamp: tx.timestamp,
-            cancelled: tx.cancelled,
-            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default()),
-            direction: TransactionDirection::Outbound,
-            coinbase_block_height: None,
-        }
-    }
-}
-
-impl From<InboundTransaction> for CompletedTransaction {
-    fn from(tx: InboundTransaction) -> Self {
-        Self {
-            tx_id: tx.tx_id,
-            source_public_key: tx.source_public_key,
-            destination_public_key: Default::default(),
-            amount: tx.amount,
-            fee: MicroTari::from(0),
-            status: tx.status,
-            message: tx.message,
-            timestamp: tx.timestamp,
-            cancelled: tx.cancelled,
-            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default()),
-            direction: TransactionDirection::Inbound,
-            coinbase_block_height: None,
-        }
-    }
 }
 
 /// This structure holds an inner type that implements the `TransactionBackend` trait and contains the more complex
@@ -612,12 +340,32 @@ where T: TransactionBackend + 'static
     ) -> Result<CompletedTransaction, TransactionStorageError>
     {
         let db_clone = self.db.clone();
-        let key = if cancelled {
-            DbKey::CancelledCompletedTransaction(tx_id)
-        } else {
-            DbKey::CompletedTransaction(tx_id)
-        };
-        let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&key) {
+        let key = DbKey::CompletedTransaction(tx_id);
+        let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::CompletedTransaction(tx_id)) {
+            Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
+            Ok(Some(DbValue::CompletedTransaction(pt))) => {
+                if pt.cancelled == cancelled {
+                    Ok(pt)
+                } else {
+                    Err(TransactionStorageError::ValueNotFound(key))
+                }
+            },
+            Ok(Some(other)) => unexpected_result(key, other),
+            Err(e) => log_error(key, e),
+        })
+        .await
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(*t)
+    }
+
+    pub async fn get_completed_transaction_cancelled_or_not(
+        &self,
+        tx_id: TxId,
+    ) -> Result<CompletedTransaction, TransactionStorageError>
+    {
+        let db_clone = self.db.clone();
+        let key = DbKey::CompletedTransaction(tx_id);
+        let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::CompletedTransaction(tx_id)) {
             Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
             Ok(Some(DbValue::CompletedTransaction(pt))) => Ok(pt),
             Ok(Some(other)) => unexpected_result(key, other),
@@ -733,6 +481,21 @@ where T: TransactionBackend + 'static
         &self,
     ) -> Result<HashMap<TxId, CompletedTransaction>, TransactionStorageError> {
         self.get_completed_transactions_by_cancelled(true).await
+    }
+
+    // TODO: all the single getters should use an Option rather than an error to indicate not found.
+    pub async fn get_any_transaction(&self, tx_id: TxId) -> Result<Option<WalletTransaction>, TransactionStorageError> {
+        let db_clone = self.db.clone();
+        let key = DbKey::AnyTransaction(tx_id);
+        let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&key) {
+            Ok(None) => Ok(None),
+            Ok(Some(DbValue::WalletTransaction(pt))) => Ok(Some(*pt)),
+            Ok(Some(other)) => unexpected_result(key, other),
+            Err(e) => log_error(key, e),
+        })
+        .await
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(t)
     }
 
     async fn get_completed_transactions_by_cancelled(
@@ -899,6 +662,14 @@ where T: TransactionBackend + 'static
             .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)
     }
+
+    pub async fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.increment_send_count(tx_id))
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
 }
 
 impl Display for DbKey {
@@ -924,7 +695,7 @@ impl Display for DbKey {
             DbKey::CancelledPendingInboundTransaction(_) => {
                 f.write_str(&"Cancelled Pending Inbound Transaction".to_string())
             },
-            DbKey::CancelledCompletedTransaction(_) => f.write_str(&"Cancelled Completed Transaction".to_string()),
+            DbKey::AnyTransaction(_) => f.write_str(&"Any Transaction".to_string()),
         }
     }
 }
@@ -938,6 +709,7 @@ impl Display for DbValue {
             DbValue::PendingOutboundTransactions(_) => f.write_str(&"All Pending Outbound Transactions".to_string()),
             DbValue::PendingInboundTransactions(_) => f.write_str(&"All Pending Inbound Transactions".to_string()),
             DbValue::CompletedTransactions(_) => f.write_str(&"All Complete Transactions".to_string()),
+            DbValue::WalletTransaction(_) => f.write_str(&"Any Wallet Transaction".to_string()),
         }
     }
 }

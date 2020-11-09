@@ -28,4 +28,5 @@ use serde::{Deserialize, Serialize};
 pub struct BaseNodeServiceResponse {
     pub request_key: RequestKey,
     pub response: NodeCommsResponse,
+    pub is_synced: bool,
 }

@@ -37,6 +37,7 @@ pub fn create_runtime() -> Runtime {
 
 /// Create a runtime and report if it panics. If there are tasks still running after the panic, this
 /// will carry on running forever.
+// #[deprecated(note = "use tokio_macros::test instead")]
 pub fn test_async<F>(f: F)
 where F: FnOnce(&mut TestRuntime) {
     let mut rt = TestRuntime::from(create_runtime());

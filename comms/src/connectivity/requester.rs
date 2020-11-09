@@ -26,7 +26,11 @@ use super::{
     manager::ConnectivityStatus,
     ConnectivitySelection,
 };
-use crate::{connection_manager::ConnectionManagerError, peer_manager::NodeId, PeerConnection};
+use crate::{
+    connection_manager::{ConnectionDirection, ConnectionManagerError},
+    peer_manager::NodeId,
+    PeerConnection,
+};
 use futures::{
     channel::{mpsc, oneshot},
     SinkExt,
@@ -54,6 +58,7 @@ pub enum ConnectivityEvent {
     ManagedPeerConnectFailed(NodeId),
     PeerBanned(NodeId),
     PeerOffline(NodeId),
+    PeerConnectionWillClose(NodeId, ConnectionDirection),
 
     ConnectivityStateInitialized,
     ConnectivityStateOnline(usize),
@@ -72,6 +77,9 @@ impl fmt::Display for ConnectivityEvent {
             ManagedPeerConnectFailed(node_id) => write!(f, "ManagedPeerConnectFailed({})", node_id),
             PeerBanned(node_id) => write!(f, "PeerBanned({})", node_id),
             PeerOffline(node_id) => write!(f, "PeerOffline({})", node_id),
+            PeerConnectionWillClose(node_id, direction) => {
+                write!(f, "PeerConnectionWillClose({}, {})", node_id, direction)
+            },
             ConnectivityStateInitialized => write!(f, "ConnectivityStateInitialized"),
             ConnectivityStateOnline(n) => write!(f, "ConnectivityStateOnline({})", n),
             ConnectivityStateDegraded(n) => write!(f, "ConnectivityStateDegraded({})", n),
@@ -92,7 +100,8 @@ pub enum ConnectivityRequest {
     ),
     GetConnection(NodeId, oneshot::Sender<Option<PeerConnection>>),
     GetAllConnectionStates(oneshot::Sender<Vec<PeerConnectionState>>),
-    BanPeer(NodeId, Duration),
+    GetActiveConnections(oneshot::Sender<Vec<PeerConnection>>),
+    BanPeer(NodeId, Duration, String),
 }
 
 #[derive(Debug, Clone)]
@@ -106,8 +115,12 @@ impl ConnectivityRequester {
         Self { sender, event_tx }
     }
 
-    pub fn subscribe_event_stream(&self) -> ConnectivityEventRx {
+    pub fn get_event_subscription(&self) -> ConnectivityEventRx {
         self.event_tx.subscribe()
+    }
+
+    pub(crate) fn get_event_publisher(&self) -> ConnectivityEventTx {
+        self.event_tx.clone()
     }
 
     pub async fn dial_peer(&mut self, peer: NodeId) -> Result<PeerConnection, ConnectivityError> {
@@ -179,9 +192,24 @@ impl ConnectivityRequester {
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
-    pub async fn ban_peer(&mut self, node_id: NodeId, duration: Duration) -> Result<(), ConnectivityError> {
+    pub async fn get_active_connections(&mut self) -> Result<Vec<PeerConnection>, ConnectivityError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(ConnectivityRequest::BanPeer(node_id, duration))
+            .send(ConnectivityRequest::GetActiveConnections(reply_tx))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
+    }
+
+    pub async fn ban_peer(
+        &mut self,
+        node_id: NodeId,
+        duration: Duration,
+        reason: String,
+    ) -> Result<(), ConnectivityError>
+    {
+        self.sender
+            .send(ConnectivityRequest::BanPeer(node_id, duration, reason))
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         Ok(())
@@ -190,7 +218,7 @@ impl ConnectivityRequester {
     /// Waits for the node to get at least one connection.
     /// This is useful for testing and is not typically be needed in application code.
     pub async fn wait_for_connectivity(&mut self, timeout: Duration) -> Result<(), ConnectivityError> {
-        let mut connectivity_events = self.subscribe_event_stream();
+        let mut connectivity_events = self.get_event_subscription();
         let status = self.get_connectivity_status().await?;
         if status.is_online() {
             return Ok(());

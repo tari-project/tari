@@ -94,10 +94,10 @@ impl OutboundMessageRequester {
             .expect("MessageSendStates::inner is empty!"))
     }
 
-    /// Send to a pre-configured number of closest peers, for further message propagation.
+    /// Send to a pre-configured number of peers, for further message propagation.
     ///
-    /// Optionally, the NodeDestination can be set to propagate to a particular peer, or network region
-    /// in addition to each peer directly (Same as send_direct_neighbours).
+    /// If the node destination is set, the message will be propagated to peers that are closer to the destination (if
+    /// available). Otherwise, random peers are selected (gossip).
     pub async fn propagate<T>(
         &mut self,
         destination: NodeDestination,
@@ -122,10 +122,12 @@ impl OutboundMessageRequester {
         .map_err(Into::into)
     }
 
-    /// Send to a pre-configured number of closest peers, for further message propagation.
+    /// Send to a pre-configured number of random peers, for further message propagation.
     ///
     /// Optionally, the NodeDestination can be set to propagate to a particular peer, or network region
-    /// in addition to each peer directly (Same as send_direct_neighbours).
+    /// in addition to each peer directly.
+    ///
+    /// This strategy can be used to broadcast a message without a particular destination to the rest of the network.
     pub async fn broadcast<T>(
         &mut self,
         destination: NodeDestination,
@@ -150,14 +152,14 @@ impl OutboundMessageRequester {
         .map_err(Into::into)
     }
 
-    /// Send to _ALL_ known peers.
+    /// Send to peers closer to the given `NodeId`. This strategy will attempt to establish new some closer connections.
     ///
-    /// This should be used with caution as, depending on the number of known peers, a lot of network
-    /// traffic could be generated from this node.
-    pub async fn send_flood<T>(
+    /// Use this strategy to broadcast a message destined for a particular peer.
+    pub async fn closest_broadcast<T>(
         &mut self,
-        destination: NodeDestination,
+        destination_node_id: NodeId,
         encryption: OutboundEncryption,
+        exclude_peers: Vec<NodeId>,
         message: OutboundDomainMessage<T>,
     ) -> Result<MessageSendStates, DhtOutboundError>
     where
@@ -165,7 +167,32 @@ impl OutboundMessageRequester {
     {
         self.send_message(
             SendMessageParams::new()
-                .flood()
+                .closest(destination_node_id.clone(), exclude_peers)
+                .with_encryption(encryption)
+                .with_destination(destination_node_id.into())
+                .finish(),
+            message,
+        )
+        .await?
+        .resolve()
+        .await
+        .map_err(Into::into)
+    }
+
+    /// Send to all _connected_ peers.
+    pub async fn flood<T>(
+        &mut self,
+        destination: NodeDestination,
+        encryption: OutboundEncryption,
+        exclude_peers: Vec<NodeId>,
+        message: OutboundDomainMessage<T>,
+    ) -> Result<MessageSendStates, DhtOutboundError>
+    where
+        T: prost::Message,
+    {
+        self.send_message(
+            SendMessageParams::new()
+                .flood(exclude_peers)
                 .with_destination(destination)
                 .with_encryption(encryption)
                 .finish(),

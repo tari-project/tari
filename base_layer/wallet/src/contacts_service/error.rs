@@ -26,6 +26,7 @@ use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum ContactsServiceError {
     #[error("Contact is not found")]
     ContactNotFound,

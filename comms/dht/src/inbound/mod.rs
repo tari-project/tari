@@ -21,16 +21,18 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod decryption;
-mod deserialize;
-mod dht_handler;
-mod error;
-mod message;
-mod validate;
+pub use decryption::DecryptionLayer;
 
-pub use self::{
-    decryption::DecryptionLayer,
-    deserialize::DeserializeLayer,
-    dht_handler::DhtHandlerLayer,
-    message::{DecryptedDhtMessage, DhtInboundMessage},
-    validate::ValidateLayer,
-};
+mod deserialize;
+pub use deserialize::DeserializeLayer;
+
+mod dht_handler;
+pub use dht_handler::DhtHandlerLayer;
+
+mod error;
+
+mod message;
+pub use message::{DecryptedDhtMessage, DhtInboundMessage};
+
+mod validate;
+pub use validate::ValidateLayer;

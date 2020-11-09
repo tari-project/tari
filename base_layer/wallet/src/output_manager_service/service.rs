@@ -25,7 +25,7 @@ use crate::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError},
         handle::{OutputManagerEvent, OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
-        protocols::utxo_validation_protocol::{UtxoValidationProtocol, UtxoValidationRetry, UtxoValidationType},
+        protocols::txo_validation_protocol::{TxoValidationProtocol, TxoValidationRetry, TxoValidationType},
         storage::{
             database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
             models::DbUnblindedOutput,
@@ -63,19 +63,21 @@ use tari_key_manager::{
 };
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::reply_channel;
+use tari_shutdown::ShutdownSignal;
 use tokio::{
     sync::{broadcast, Mutex},
     task::JoinHandle,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
+const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
 /// outputs. When the outputs are detected on the blockchain the Transaction service will call this Service to confirm
 /// them to be moved to the spent and unspent output lists respectively.
 pub struct OutputManagerService<TBackend, BNResponseStream>
-where TBackend: OutputManagerBackend + Clone + 'static
+where TBackend: OutputManagerBackend + 'static
 {
     resources: OutputManagerResources<TBackend>,
     key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
@@ -84,11 +86,12 @@ where TBackend: OutputManagerBackend + Clone + 'static
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_response_stream: Option<BNResponseStream>,
     base_node_response_publisher: broadcast::Sender<Arc<BaseNodeProto::BaseNodeServiceResponse>>,
+    shutdown_signal: Option<ShutdownSignal>,
 }
 
 impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream>
 where
-    TBackend: OutputManagerBackend + Clone + 'static,
+    TBackend: OutputManagerBackend + 'static,
     BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
 {
     #[allow(clippy::too_many_arguments)]
@@ -105,6 +108,7 @@ where
         event_publisher: OutputManagerEventSender,
         factories: CryptoFactories,
         coinbase_lock_height: u64,
+        shutdown_signal: ShutdownSignal,
     ) -> Result<OutputManagerService<TBackend, BNResponseStream>, OutputManagerError>
     {
         // Check to see if there is any persisted state, otherwise start fresh
@@ -154,6 +158,7 @@ where
             request_stream: Some(request_stream),
             base_node_response_stream: Some(base_node_response_stream),
             base_node_response_publisher,
+            shutdown_signal: Some(shutdown_signal),
         })
     }
 
@@ -171,6 +176,12 @@ where
             .expect("Output Manager Service initialized without base_node_response_stream")
             .fuse();
         pin_mut!(base_node_response_stream);
+
+        let shutdown = self
+            .shutdown_signal
+            .take()
+            .expect("Output Manager Service initialized without shutdown signal");
+        pin_mut!(shutdown);
 
         let mut utxo_validation_handles: FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>> =
             FuturesUnordered::new();
@@ -212,6 +223,10 @@ where
                         Ok(join_result_inner) => self.complete_utxo_validation_protocol(join_result_inner).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving UTXO Validation protocol: {:?}", e),
                     };
+                }
+                _ = shutdown => {
+                    info!(target: LOG_TARGET, "Output manager service shutting down because it received the shutdown signal");
+                    break;
                 }
                 complete => {
                     info!(target: LOG_TARGET, "Output manager service shutting down");
@@ -289,11 +304,11 @@ where
             },
             OutputManagerRequest::GetSeedWords => self.get_seed_words().await.map(OutputManagerResponse::SeedWords),
             OutputManagerRequest::SetBaseNodePublicKey(pk) => self
-                .set_base_node_public_key(pk, utxo_validation_handles)
+                .set_base_node_public_key(pk)
                 .await
                 .map(|_| OutputManagerResponse::BaseNodePublicKeySet),
-            OutputManagerRequest::ValidateUtxos(retries) => self
-                .validate_outputs(UtxoValidationType::Unspent, retries, utxo_validation_handles)
+            OutputManagerRequest::ValidateUtxos(validation_type, retries) => self
+                .validate_outputs(validation_type, retries, utxo_validation_handles)
                 .map(OutputManagerResponse::UtxoValidationStarted),
             OutputManagerRequest::GetInvalidOutputs => {
                 let outputs = self
@@ -332,11 +347,10 @@ where
     ) -> Result<(), OutputManagerError>
     {
         // Publish this response to any protocols that are subscribed
-        if let Err(e) = self.base_node_response_publisher.send(Arc::new(response)) {
+        if let Err(_e) = self.base_node_response_publisher.send(Arc::new(response)) {
             trace!(
                 target: LOG_TARGET,
-                "Could not publish Base Node Response, no subscribers to receive. (Err {:?})",
-                e
+                "Could not publish Base Node Response, no subscribers to receive."
             );
         }
 
@@ -345,8 +359,8 @@ where
 
     fn validate_outputs(
         &mut self,
-        validation_type: UtxoValidationType,
-        retry_strategy: UtxoValidationRetry,
+        validation_type: TxoValidationType,
+        retry_strategy: TxoValidationRetry,
         utxo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<u64, OutputManagerError>
     {
@@ -355,7 +369,7 @@ where
             Some(pk) => {
                 let id = OsRng.next_u64();
 
-                let utxo_validation_protocol = UtxoValidationProtocol::new(
+                let utxo_validation_protocol = TxoValidationProtocol::new(
                     id,
                     validation_type,
                     retry_strategy,
@@ -387,14 +401,16 @@ where
                     "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
                 );
                 match error {
-                    // This is the only error where we do not want to send this event as it was sent as a Timeout event
-                    // in the protocol
+                    // An event for this error has already been sent at this time
                     OutputManagerError::MaximumAttemptsExceeded => (),
+                    // An event for this error has already been sent at this time
+                    OutputManagerError::BaseNodeNotSynced => (),
+                    // A generic event is sent for all other errors
                     _ => {
                         let _ = self
                             .resources
                             .event_publisher
-                            .send(OutputManagerEvent::UtxoValidationFailure(id))
+                            .send(OutputManagerEvent::TxoValidationFailure(id))
                             .map_err(|e| {
                                 trace!(
                                     target: LOG_TARGET,
@@ -550,7 +566,8 @@ where
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
             .with_amount(0, amount)
-            .with_message(message);
+            .with_message(message)
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
 
         for uo in outputs.iter() {
             let input = uo.unblinded_output.as_transaction_input();
@@ -596,6 +613,11 @@ where
 
         debug!(
             target: LOG_TARGET,
+            "Prepared transaction (TxId: {}) to send",
+            stp.get_tx_id()?
+        );
+        debug!(
+            target: LOG_TARGET_STRESS,
             "Prepared transaction (TxId: {}) to send",
             stp.get_tx_id()?
         );
@@ -753,22 +775,9 @@ where
     async fn set_base_node_public_key(
         &mut self,
         base_node_public_key: CommsPublicKey,
-        utxo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<(), OutputManagerError>
     {
-        let startup_query = self.resources.base_node_public_key.is_none();
-
         self.resources.base_node_public_key = Some(base_node_public_key);
-
-        if startup_query {
-            // This validation is not critical so if the Base node is not reachable we will wait until the next restart
-            // after 5 attempts
-            self.validate_outputs(
-                UtxoValidationType::Invalid,
-                UtxoValidationRetry::Limited(5),
-                utxo_validation_handles,
-            )?;
-        }
         Ok(())
     }
 
@@ -931,7 +940,7 @@ impl fmt::Display for Balance {
 /// This struct is a collection of the common resources that a async task in the service requires.
 #[derive(Clone)]
 pub struct OutputManagerResources<TBackend>
-where TBackend: OutputManagerBackend + Clone + 'static
+where TBackend: OutputManagerBackend + 'static
 {
     pub config: OutputManagerServiceConfig,
     pub db: OutputManagerDatabase<TBackend>,

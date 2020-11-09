@@ -191,10 +191,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     pub async fn handle(mut self) -> Result<(), PipelineError> {
         let request = self.request.take().expect("request cannot be None");
         debug!(target: LOG_TARGET, "Processing outbound request {}", request);
-        let messages = self
-            .generate_outbound_messages(request)
-            .await
-            .map_err(PipelineError::from_debug)?;
+        let messages = self.generate_outbound_messages(request).await?;
         trace!(
             target: LOG_TARGET,
             "Passing {} message(s) to next_service",
@@ -271,7 +268,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     is_discovery_enabled,
                 );
 
-                let is_broadcast = broadcast_strategy.is_broadcast();
+                let is_broadcast = broadcast_strategy.is_multi_message();
 
                 // Discovery is required if:
                 //  - Discovery is enabled for this request
@@ -491,7 +488,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     encrypted_body.into(),
                 ))
             },
-            OutboundEncryption::None => {
+            OutboundEncryption::ClearText => {
                 trace!(target: LOG_TARGET, "Encryption not requested for message");
 
                 if include_origin {
@@ -585,7 +582,7 @@ mod test {
 
         service
             .call(DhtOutboundRequest::SendMessage(
-                Box::new(SendMessageParams::new().flood().finish()),
+                Box::new(SendMessageParams::new().flood(vec![]).finish()),
                 "custom_msg".as_bytes().into(),
                 reply_tx,
             ))

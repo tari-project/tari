@@ -44,11 +44,14 @@ pub fn unbounded<TReq, TResp>() -> (SenderService<TReq, TResp>, Receiver<TReq, T
 }
 
 /// Receiver for a (Request, Reply) tuple, where Reply is a oneshot::Sender
-pub type Rx<TReq, TRes> = mpsc::UnboundedReceiver<(TReq, oneshot::Sender<TRes>)>;
+type Rx<TReq, TRes> = mpsc::UnboundedReceiver<(TReq, oneshot::Sender<TRes>)>;
 /// Sender for a (Request, Reply) tuple, where Reply is a oneshot::Sender
-pub type Tx<TReq, TRes> = mpsc::UnboundedSender<(TReq, oneshot::Sender<TRes>)>;
+type Tx<TReq, TRes> = mpsc::UnboundedSender<(TReq, oneshot::Sender<TRes>)>;
 
-/// Requester is sends requests on a given `Tx` sender and returns a
+pub type TrySenderService<TReq, TResp, TErr> = SenderService<TReq, Result<TResp, TErr>>;
+pub type TryReceiver<TReq, TResp, TErr> = Receiver<TReq, Result<TResp, TErr>>;
+
+/// Requester sends `TReq` requests on a given `Tx` sender, and returns an
 /// AwaitResponseFuture which will resolve to the generic `TRes`.
 ///
 /// This should be used to make requests which require a response.

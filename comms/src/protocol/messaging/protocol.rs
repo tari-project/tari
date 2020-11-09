@@ -23,7 +23,7 @@
 use super::error::MessagingProtocolError;
 use crate::{
     compat::IoCompat,
-    connectivity::ConnectivityRequester,
+    connectivity::{ConnectivityEvent, ConnectivityRequester},
     framing,
     message::{InboundMessage, MessageTag, OutboundMessage},
     multiplexing::Substream,
@@ -50,7 +50,7 @@ use tokio::sync::broadcast;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
-pub static MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"/tari/messaging/0.1.0");
+pub(super) static MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"/tari/messaging/0.1.0");
 const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 150;
 
 /// The maximum amount of inbound messages to accept within the `RATE_LIMIT_RESTOCK_INTERVAL` window
@@ -113,7 +113,7 @@ pub struct MessagingProtocol {
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     internal_messaging_event_tx: mpsc::Sender<MessagingEvent>,
     internal_messaging_event_rx: Fuse<mpsc::Receiver<MessagingEvent>>,
-    shutdown_signal: Option<ShutdownSignal>,
+    shutdown_signal: ShutdownSignal,
     complete_trigger: Shutdown,
 }
 
@@ -121,7 +121,7 @@ impl MessagingProtocol {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: MessagingConfig,
-        connection_manager_requester: ConnectivityRequester,
+        connectivity: ConnectivityRequester,
         proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
         request_rx: mpsc::Receiver<MessagingRequest>,
         messaging_events_tx: MessagingEventSender,
@@ -133,7 +133,7 @@ impl MessagingProtocol {
             mpsc::channel(INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE);
         Self {
             config,
-            connectivity: connection_manager_requester,
+            connectivity,
             proto_notification: proto_notification.fuse(),
             request_rx: request_rx.fuse(),
             active_queues: Default::default(),
@@ -141,7 +141,7 @@ impl MessagingProtocol {
             internal_messaging_event_rx: internal_messaging_event_rx.fuse(),
             internal_messaging_event_tx,
             inbound_message_tx,
-            shutdown_signal: Some(shutdown_signal),
+            shutdown_signal,
             complete_trigger: Shutdown::new(),
         }
     }
@@ -151,10 +151,8 @@ impl MessagingProtocol {
     }
 
     pub async fn run(mut self) {
-        let mut shutdown_signal = self
-            .shutdown_signal
-            .take()
-            .expect("Messaging initialized without shutdown_signal");
+        let mut shutdown_signal = self.shutdown_signal.clone();
+        let mut connectivity_events = self.connectivity.get_event_subscription().fuse();
 
         loop {
             futures::select! {
@@ -172,6 +170,12 @@ impl MessagingProtocol {
                     }
                 },
 
+                event = connectivity_events.select_next_some() => {
+                    if let Ok(event) = event {
+                        self.handle_connectivity_event(&event);
+                    }
+                }
+
                 notification = self.proto_notification.select_next_some() => {
                     self.handle_protocol_notification(notification).await;
                 },
@@ -188,6 +192,21 @@ impl MessagingProtocol {
     pub fn framed<TSubstream>(socket: TSubstream) -> Framed<IoCompat<TSubstream>, LengthDelimitedCodec>
     where TSubstream: AsyncRead + AsyncWrite + Unpin {
         framing::canonical(socket, MAX_FRAME_LENGTH)
+    }
+
+    fn handle_connectivity_event(&mut self, event: &ConnectivityEvent) {
+        use ConnectivityEvent::*;
+        #[allow(clippy::single_match)]
+        match event {
+            PeerConnectionWillClose(node_id, _) => {
+                // If the peer connection will close, cut off the pipe to send further messages.
+                // Any messages in the channel will be sent (hopefully) before the connection is disconnected.
+                if let Some(sender) = self.active_queues.remove(node_id) {
+                    sender.close_channel();
+                }
+            },
+            _ => {},
+        }
     }
 
     async fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
@@ -298,7 +317,6 @@ impl MessagingProtocol {
     }
 
     async fn handle_protocol_notification(&mut self, notification: ProtocolNotification<Substream>) {
-        debug_assert_eq!(notification.protocol, MESSAGING_PROTOCOL);
         match notification.event {
             // Peer negotiated to speak the messaging protocol with us
             ProtocolEvent::NewInboundSubstream(node_id, substream) => {
@@ -308,7 +326,7 @@ impl MessagingProtocol {
                     node_id.short_str()
                 );
 
-                self.spawn_inbound_handler(*node_id, substream);
+                self.spawn_inbound_handler(node_id, substream);
             },
         }
     }

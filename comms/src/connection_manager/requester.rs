@@ -38,14 +38,6 @@ pub enum ConnectionManagerRequest {
     CancelDial(NodeId),
     /// Register a oneshot to get triggered when the node is listening, or has failed to listen
     NotifyListening(oneshot::Sender<Multiaddr>),
-    /// Retrieve an active connection for a given node id if one exists.
-    GetActiveConnection(NodeId, oneshot::Sender<Option<PeerConnection>>),
-    /// Retrieve all active connections
-    GetActiveConnections(oneshot::Sender<Vec<PeerConnection>>),
-    /// Retrieve the number of active connections
-    GetNumActiveConnections(oneshot::Sender<usize>),
-    /// Disconnect a peer
-    DisconnectPeer(NodeId),
 }
 
 /// Responsible for constructing requests to the ConnectionManagerService
@@ -66,44 +58,17 @@ impl ConnectionManagerRequester {
     }
 }
 
-macro_rules! request_fn {
-   ($name:ident($($param:ident:$param_ty:ty),+) -> $ret:ty, request = $($request:ident)::+ $(,)?) => {
-        pub async fn $name(
-            &mut self,
-            $($param: $param_ty),+
-        ) -> Result<$ret, ConnectionManagerError>
-        {
-            let (reply_tx, reply_rx) = oneshot::channel();
-            self.sender
-                .send($($request)::+($($param),+, reply_tx))
-                .await
-                .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
-            reply_rx.await.map_err(|_| ConnectionManagerError::ActorRequestCanceled)
-        }
-   };
-   ($name:ident() -> $ret:ty, request = $($request:ident)::+ $(,)?) => {
-        pub async fn $name(&mut self) -> Result<$ret, ConnectionManagerError>
-        {
-            let (reply_tx, reply_rx) = oneshot::channel();
-            self.sender
-                .send($($request)::+(reply_tx))
-                .await
-                .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
-            reply_rx.await.map_err(|_| ConnectionManagerError::ActorRequestCanceled)
-        }
-   };
-}
-
 impl ConnectionManagerRequester {
-    request_fn!(get_active_connections() -> Vec<PeerConnection>, request = ConnectionManagerRequest::GetActiveConnections);
-
-    request_fn!(get_num_active_connections() -> usize, request = ConnectionManagerRequest::GetNumActiveConnections);
-
-    request_fn!(get_active_connection(node_id: NodeId) -> Option<PeerConnection>, request = ConnectionManagerRequest::GetActiveConnection);
-
-    /// Returns a ConnectionManagerEvent stream
+    /// Returns a new ConnectionManagerEvent subscription
     pub fn get_event_subscription(&self) -> broadcast::Receiver<Arc<ConnectionManagerEvent>> {
         self.event_tx.subscribe()
+    }
+
+    /// Returns a ConnectionManagerEvent publisher.
+    ///
+    /// The CommsBuilder uses to make the publisher available to the connection manager.
+    pub(crate) fn get_event_publisher(&self) -> broadcast::Sender<Arc<ConnectionManagerEvent>> {
+        self.event_tx.clone()
     }
 
     /// Attempt to connect to a remote peer
@@ -142,15 +107,6 @@ impl ConnectionManagerRequester {
     pub(crate) async fn send_dial_peer_no_reply(&mut self, node_id: NodeId) -> Result<(), ConnectionManagerError> {
         let (reply_tx, _) = oneshot::channel();
         self.send_dial_peer(node_id, reply_tx).await?;
-        Ok(())
-    }
-
-    /// Disconnect a peer. The peer will disconnect after a preconfigured linger time.
-    pub async fn disconnect_peer(&mut self, node_id: NodeId) -> Result<(), ConnectionManagerError> {
-        self.sender
-            .send(ConnectionManagerRequest::DisconnectPeer(node_id))
-            .await
-            .map_err(|_| ConnectionManagerError::SendToActorFailed)?;
         Ok(())
     }
 

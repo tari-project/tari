@@ -29,8 +29,8 @@ pub enum ProtocolError {
     IoError(#[from] io::Error),
     #[error("The ProtocolId was longer than {}", u8::max_value())]
     ProtocolIdTooLong,
-    #[error("Protocol negotiation failed because the peer did not accept any protocols")]
-    ProtocolOutboundNegotiationFailed,
+    #[error("Protocol negotiation failed because the peer did not accept any of the given protocols: {0}")]
+    ProtocolOutboundNegotiationFailed(String),
     #[error("Protocol negotiation failed because the peer did not offer any protocols supported by this node")]
     ProtocolInboundNegotiationFailed,
     #[error("Optimistic protocol negotiation failed because the peer did not offer a protocol supported by this node")]

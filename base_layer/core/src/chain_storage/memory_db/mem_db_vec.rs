@@ -70,9 +70,9 @@ where T: PartialEq + Eq + Hash + Clone
         self.key_to_item.get(&key).map(Clone::clone)
     }
 
-    fn get_or_panic(&self, index: usize) -> T {
-        self.get(index).unwrap()
-    }
+    // fn get_or_panic(&self, index: usize) -> T {
+    //     self.get(index).unwrap()
+    // }
 
     fn clear(&mut self) {
         self.key_to_item.clear();
@@ -205,10 +205,6 @@ where T: PartialEq + Eq + Hash + Clone
             .read()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?
             .get(index))
-    }
-
-    fn get_or_panic(&self, index: usize) -> Self::Value {
-        self.storage.read().unwrap().get_or_panic(index)
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {

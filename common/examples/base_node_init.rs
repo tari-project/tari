@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
-use tari_common::{ConfigBootstrap, DefaultConfigLoader, NetworkConfigPath};
+use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, DefaultConfigLoader, NetworkConfigPath};
 
 #[derive(StructOpt, Debug)]
 /// The reference Tari cryptocurrency base node implementation
@@ -26,7 +26,7 @@ fn welcome() -> String {
 
 // Following config is loading from key `my_node.{network}` where
 // `{network} = my_node.use_network` parameter.
-// This achieved with DefaultConfigLoader trait, which inhertis default impl
+// This achieved with DefaultConfigLoader trait, which inherits default impl
 // when struct implements Serialize, Deserialize, Default and NetworkConfigPath.
 // ```ignore
 // let my_config = MyNodeConfig::try_from(&config)?
@@ -53,7 +53,7 @@ impl NetworkConfigPath for MyNodeConfig {
 fn main() -> anyhow::Result<()> {
     Arguments::clap().print_help()?;
     let mut args = Arguments::from_args();
-    args.bootstrap.init_dirs()?;
+    args.bootstrap.init_dirs(ApplicationType::BaseNode)?;
     println!("CLI arguments:\n");
     dbg!(&args);
 

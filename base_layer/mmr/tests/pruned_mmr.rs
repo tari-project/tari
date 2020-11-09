@@ -54,8 +54,8 @@ fn pruned_mmrs() {
         assert_eq!(pruned.get_merkle_root(), root);
         // The pruned MMR works just like the normal one
         let new_hash = int_to_hash(*size);
-        assert!(pruned.push(&new_hash).is_ok());
-        assert!(pruned.push(&int_to_hash(*size + 1)).is_ok());
+        assert!(pruned.push(new_hash.clone()).is_ok());
+        assert!(pruned.push(int_to_hash(*size + 1)).is_ok());
         assert_eq!(pruned.get_merkle_root(), mmr2.get_merkle_root());
         // But you can only get recent hashes
         assert_eq!(pruned.get_leaf_hash(*size / 2), Ok(None));
@@ -91,7 +91,7 @@ pub fn calculate_pruned_mmr_roots() {
         calculate_pruned_mmr_root(&src, additions.clone(), deletions.clone()).expect("Did not calculate new root");
     assert_ne!(src_root, root);
     // Double check
-    additions.iter().for_each(|h| {
+    additions.into_iter().for_each(|h| {
         src.push(h).unwrap();
     });
     deletions.iter().for_each(|i| {
@@ -111,7 +111,7 @@ pub fn calculate_mmr_roots() {
     let root = calculate_mmr_root(&src, additions.clone()).expect("Did not calculate new root");
     assert_ne!(src_root, root);
     // Double check
-    additions.iter().for_each(|h| {
+    additions.into_iter().for_each(|h| {
         src.push(h).unwrap();
     });
     let new_root = src.get_merkle_root().expect("Did not calculate new root");

@@ -42,6 +42,7 @@ impl LinearWeightedMovingAverage {
         }
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn calculate(&self) -> Difficulty {
         let timestamps = &self.timestamps;
         if timestamps.len() <= 1 {

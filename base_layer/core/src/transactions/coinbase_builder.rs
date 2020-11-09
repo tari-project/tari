@@ -22,7 +22,7 @@
 //
 
 use crate::{
-    consensus::{emission::EmissionSchedule, ConsensusConstants},
+    consensus::{emission::Emission, ConsensusConstants},
     transactions::{
         tari_amount::{uT, MicroTari},
         transaction::{KernelBuilder, KernelFeatures, Transaction, TransactionBuilder},
@@ -107,7 +107,7 @@ impl CoinbaseBuilder {
     pub fn build(
         self,
         constants: &ConsensusConstants,
-        emission_schedule: &EmissionSchedule,
+        emission_schedule: &dyn Emission,
     ) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError>
     {
         let height = self
@@ -187,9 +187,11 @@ mod test {
             coinbase_builder::CoinbaseBuildError,
             helpers::TestParams,
             tari_amount::uT,
-            types::CryptoFactories,
+            transaction::{KernelFeatures, TransactionError},
+            types::{BlindingFactor, CryptoFactories},
             CoinbaseBuilder,
             OutputBuilder,
+            OutputFeatures,
             OutputFlags,
         },
     };
@@ -207,7 +209,7 @@ mod test {
         let (builder, rules, _) = get_builder();
         assert_eq!(
             builder
-                .build(rules.consensus_constants(), rules.emission_schedule())
+                .build(rules.consensus_constants(0), rules.emission_schedule())
                 .unwrap_err(),
             CoinbaseBuildError::MissingBlockHeight
         );
@@ -219,7 +221,7 @@ mod test {
         let builder = builder.with_block_height(42);
         assert_eq!(
             builder
-                .build(rules.consensus_constants(), rules.emission_schedule())
+                .build(rules.consensus_constants(42), rules.emission_schedule())
                 .unwrap_err(),
             CoinbaseBuildError::MissingFees
         );
@@ -232,7 +234,7 @@ mod test {
         let builder = builder.with_block_height(42).with_fees(0 * uT).with_nonce(p.nonce);
         assert_eq!(
             builder
-                .build(rules.consensus_constants(), rules.emission_schedule())
+                .build(rules.consensus_constants(42), rules.emission_schedule())
                 .unwrap_err(),
             CoinbaseBuildError::MissingSpendKey
         );
@@ -248,7 +250,7 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
         let (tx, unblinded_output) = builder
-            .build(rules.consensus_constants(), rules.emission_schedule())
+            .build(rules.consensus_constants(42), rules.emission_schedule())
             .unwrap();
         let utxo = &tx.body.outputs()[0];
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
@@ -266,5 +268,175 @@ mod test {
         ));
         assert!(utxo.verify_range_proof(&factories.range_proof).unwrap());
         assert!(utxo.features().flags.contains(OutputFlags::COINBASE_OUTPUT));
+        assert_eq!(
+            tx.body.check_coinbase_output(
+                block_reward,
+                rules.consensus_constants(0).coinbase_lock_height(),
+                &factories,
+                42
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn invalid_coinbase_maturity() {
+        let p = TestParams::new();
+        let (builder, rules, factories) = get_builder();
+        let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
+        let builder = builder
+            .with_block_height(42)
+            .with_fees(145 * uT)
+            .with_nonce(p.nonce.clone())
+            .with_spend_key(p.spend_key.clone());
+        let (mut tx, _) = builder
+            .build(rules.consensus_constants(42), rules.emission_schedule())
+            .unwrap();
+        tx.body.outputs_mut()[0].features.maturity = 1;
+        assert_eq!(
+            tx.body.check_coinbase_output(
+                block_reward,
+                rules.consensus_constants(0).coinbase_lock_height(),
+                &factories,
+                42
+            ),
+            Err(TransactionError::InvalidCoinbaseMaturity)
+        );
+    }
+
+    #[test]
+    fn invalid_coinbase_value() {
+        let p = TestParams::new();
+        let (builder, rules, factories) = get_builder();
+        // We just want some small amount here.
+        let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
+        let builder = builder
+            .with_block_height(42)
+            .with_fees(1 * uT)
+            .with_nonce(p.nonce.clone())
+            .with_spend_key(p.spend_key.clone());
+        let (mut tx, _) = builder
+            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .unwrap();
+        let block_reward = rules.emission_schedule().block_reward(42) + missing_fee;
+        let builder = CoinbaseBuilder::new(factories.clone());
+        let builder = builder
+            .with_block_height(4200000)
+            .with_fees(1 * uT)
+            .with_nonce(p.nonce.clone())
+            .with_spend_key(p.spend_key.clone());
+        let (tx2, _) = builder
+            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .unwrap();
+        let mut coinbase2 = tx2.body.outputs()[0].clone();
+        let mut coinbase_kernel2 = tx2.body.kernels()[0].clone();
+        coinbase2.features = OutputFeatures::default();
+        coinbase_kernel2.features = KernelFeatures::empty();
+        tx.body.add_output(coinbase2);
+        tx.body.add_kernel(coinbase_kernel2);
+
+        // test catches that coinbase amount is wrong
+        assert_eq!(
+            tx.body.check_coinbase_output(
+                block_reward,
+                rules.consensus_constants(0).coinbase_lock_height(),
+                &factories,
+                42
+            ),
+            Err(TransactionError::InvalidCoinbase)
+        );
+        // testing that "block" is still valid
+        assert_eq!(
+            tx.body
+                .validate_internal_consistency(&BlindingFactor::default(), block_reward, &factories),
+            Ok(())
+        );
+        // lets construct a correct one now, with the correct amount.
+        let builder = CoinbaseBuilder::new(factories.clone());
+        let builder = builder
+            .with_block_height(42)
+            .with_fees(missing_fee)
+            .with_nonce(p.nonce.clone())
+            .with_spend_key(p.spend_key.clone());
+        let (tx3, _) = builder
+            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .unwrap();
+        assert!(tx3
+            .body
+            .check_coinbase_output(
+                block_reward,
+                rules.consensus_constants(0).coinbase_lock_height(),
+                &factories,
+                42
+            )
+            .is_ok());
+    }
+
+    #[test]
+    fn invalid_coinbase_amount() {
+        let p = TestParams::new();
+        let (builder, rules, factories) = get_builder();
+        // We just want some small amount here.
+        let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
+        let builder = builder
+            .with_block_height(42)
+            .with_fees(1 * uT)
+            .with_nonce(p.nonce.clone())
+            .with_spend_key(p.spend_key.clone());
+        let (mut tx, _) = builder
+            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .unwrap();
+        let block_reward = rules.emission_schedule().block_reward(42) + missing_fee;
+        let builder = CoinbaseBuilder::new(factories.clone());
+        let builder = builder
+            .with_block_height(4200000)
+            .with_fees(1 * uT)
+            .with_nonce(p.nonce.clone())
+            .with_spend_key(p.spend_key.clone());
+        let (tx2, _) = builder
+            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .unwrap();
+        let mut tx_kernel_test = tx.clone();
+
+        // let add duplicate coinbase flagged utxo
+        let coinbase2 = tx2.body.outputs()[0].clone();
+        let mut coinbase_kernel2 = tx2.body.kernels()[0].clone();
+        coinbase_kernel2.features = KernelFeatures::empty();
+        tx.body.add_output(coinbase2);
+        tx.body.add_kernel(coinbase_kernel2);
+
+        // lets add duplciate coinbase kernel
+        let mut coinbase2 = tx2.body.outputs()[0].clone();
+        coinbase2.features = OutputFeatures::default();
+        let coinbase_kernel2 = tx2.body.kernels()[0].clone();
+        tx_kernel_test.body.add_output(coinbase2);
+        tx_kernel_test.body.add_kernel(coinbase_kernel2);
+
+        // test catches that coinbase count on the utxo is wrong
+        assert_eq!(
+            tx.body.check_coinbase_output(
+                block_reward,
+                rules.consensus_constants(0).coinbase_lock_height(),
+                &factories,
+                42
+            ),
+            Err(TransactionError::InvalidCoinbaseCount)
+        );
+        // test catches that coinbase count on the kernel is wrong
+        assert_eq!(
+            tx_kernel_test.body.check_coinbase_output(
+                block_reward,
+                rules.consensus_constants(0).coinbase_lock_height(),
+                &factories,
+                42
+            ),
+            Err(TransactionError::InvalidCoinbaseCount)
+        );
+        // testing that "block" is still valid
+        assert_eq!(
+            tx.body
+                .validate_internal_consistency(&BlindingFactor::default(), block_reward, &factories),
+            Ok(())
+        );
     }
 }

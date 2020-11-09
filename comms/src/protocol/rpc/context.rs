@@ -22,19 +22,30 @@
 
 use super::RpcError;
 use crate::{
-    connectivity::ConnectivityRequester,
+    connectivity::{ConnectivityRequester, ConnectivitySelection},
     peer_manager::{NodeId, Peer},
+    PeerConnection,
     PeerManager,
 };
-use std::sync::Arc;
+use async_trait::async_trait;
+use std::{fmt, sync::Arc};
 
+/// Abstraction of the comms backend calls provided to RPC services.
+#[async_trait]
+pub trait RpcCommsProvider: Send + Sync {
+    async fn fetch_peer(&self, node_id: &NodeId) -> Result<Peer, RpcError>;
+    async fn dial_peer(&mut self, node_id: &NodeId) -> Result<PeerConnection, RpcError>;
+    async fn select_connections(&mut self, selection: ConnectivitySelection) -> Result<Vec<PeerConnection>, RpcError>;
+}
+
+/// Provides access to the `PeerManager` and connectivity manager.
 #[derive(Clone, Debug)]
-pub(crate) struct RpcCommsContext {
+pub(crate) struct RpcCommsBackend {
     connectivity: ConnectivityRequester,
     peer_manager: Arc<PeerManager>,
 }
 
-impl RpcCommsContext {
+impl RpcCommsBackend {
     pub(super) fn new(peer_manager: Arc<PeerManager>, connectivity: ConnectivityRequester) -> Self {
         Self {
             peer_manager,
@@ -47,23 +58,56 @@ impl RpcCommsContext {
     }
 }
 
-#[derive(Debug, Clone)]
+#[async_trait]
+impl RpcCommsProvider for RpcCommsBackend {
+    async fn fetch_peer(&self, node_id: &NodeId) -> Result<Peer, RpcError> {
+        self.peer_manager.find_by_node_id(node_id).await.map_err(Into::into)
+    }
+
+    async fn dial_peer(&mut self, node_id: &NodeId) -> Result<PeerConnection, RpcError> {
+        self.connectivity.dial_peer(node_id.clone()).await.map_err(Into::into)
+    }
+
+    async fn select_connections(&mut self, selection: ConnectivitySelection) -> Result<Vec<PeerConnection>, RpcError> {
+        self.connectivity
+            .select_connections(selection)
+            .await
+            .map_err(Into::into)
+    }
+}
+
 pub struct RequestContext {
-    context: RpcCommsContext,
+    backend: Box<dyn RpcCommsProvider>,
     node_id: NodeId,
 }
 
 impl RequestContext {
-    pub(super) fn new(node_id: NodeId, context: RpcCommsContext) -> Self {
-        Self { node_id, context }
+    pub(super) fn new(node_id: NodeId, backend: Box<dyn RpcCommsProvider>) -> Self {
+        Self { node_id, backend }
     }
 
-    pub async fn load_peer(&self) -> Result<Peer, RpcError> {
-        let peer = self.context.peer_manager.find_by_node_id(&self.node_id).await?;
-        Ok(peer)
+    pub fn peer_node_id(&self) -> &NodeId {
+        &self.node_id
     }
 
-    pub fn connectivity(&self) -> ConnectivityRequester {
-        self.context.connectivity.clone()
+    pub(crate) async fn fetch_peer(&self) -> Result<Peer, RpcError> {
+        self.backend.fetch_peer(&self.node_id).await
+    }
+
+    async fn dial_peer(&mut self, node_id: &NodeId) -> Result<PeerConnection, RpcError> {
+        self.backend.dial_peer(node_id).await
+    }
+
+    async fn select_connections(&mut self, selection: ConnectivitySelection) -> Result<Vec<PeerConnection>, RpcError> {
+        self.backend.select_connections(selection).await
+    }
+}
+
+impl fmt::Debug for RequestContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RequestContext")
+            .field("node_id", &self.node_id)
+            .field("backend", &"dyn RpcCommsProvider")
+            .finish()
     }
 }

@@ -21,12 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
-        protocols::utxo_validation_protocol::UtxoValidationRetry,
+        protocols::txo_validation_protocol::{TxoValidationRetry, TxoValidationType},
         storage::database::OutputManagerBackend,
         OutputManagerServiceInitializer,
         TxId,
@@ -51,6 +52,7 @@ use tari_comms::{
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
     CommsNode,
+    UnspawnedCommsNode,
 };
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::{
@@ -69,11 +71,12 @@ use tari_crypto::{
 };
 use tari_p2p::{
     comms_connector::pubsub_connector,
-    initialization::{initialize_comms, CommsConfig},
-    services::comms_outbound::CommsOutboundServiceInitializer,
+    initialization,
+    initialization::{CommsConfig, P2pInitializer},
 };
 use tari_service_framework::StackBuilder;
-use tokio::runtime::Runtime;
+use tari_shutdown::ShutdownSignal;
+use tokio::runtime;
 
 const LOG_TARGET: &str = "wallet";
 
@@ -110,11 +113,12 @@ impl WalletConfig {
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
+#[derive(Clone)]
 pub struct Wallet<T, U, V, W>
 where
     T: WalletBackend + 'static,
-    U: TransactionBackend + Clone + 'static,
-    V: OutputManagerBackend + Clone + 'static,
+    U: TransactionBackend + 'static,
+    V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
 {
     pub comms: CommsNode,
@@ -123,8 +127,8 @@ where
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
     pub contacts_service: ContactsServiceHandle,
+    pub base_node_service: BaseNodeServiceHandle,
     pub db: WalletDatabase<T>,
-    pub runtime: Runtime,
     pub factories: CryptoFactories,
     #[cfg(feature = "test_harness")]
     pub transaction_backend: U,
@@ -136,80 +140,71 @@ where
 impl<T, U, V, W> Wallet<T, U, V, W>
 where
     T: WalletBackend + 'static,
-    U: TransactionBackend + Clone + 'static,
-    V: OutputManagerBackend + Clone + 'static,
+    U: TransactionBackend + 'static,
+    V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
 {
-    pub fn new(
+    pub async fn new(
         config: WalletConfig,
-        mut runtime: Runtime,
         wallet_backend: T,
         transaction_backend: U,
         output_manager_backend: V,
         contacts_backend: W,
+        shutdown_signal: ShutdownSignal,
     ) -> Result<Wallet<T, U, V, W>, WalletError>
     {
         let db = WalletDatabase::new(wallet_backend);
 
         // Persist the Comms Private Key provided to this function
-        runtime.block_on(db.set_comms_secret_key(config.comms_config.node_identity.secret_key().clone()))?;
+        db.set_comms_secret_key(config.comms_config.node_identity.secret_key().clone())
+            .await?;
 
         #[cfg(feature = "test_harness")]
         let transaction_backend_handle = transaction_backend.clone();
 
         let factories = config.factories;
         let (publisher, subscription_factory) =
-            pubsub_connector(runtime.handle().clone(), config.buffer_size, config.rate_limit);
-        let subscription_factory = Arc::new(subscription_factory);
+            pubsub_connector(runtime::Handle::current(), config.buffer_size, config.rate_limit);
+        let peer_message_subscription_factory = Arc::new(subscription_factory);
+        let transport_type = config.comms_config.transport_type.clone();
+        let node_identity = config.comms_config.node_identity.clone();
 
-        debug!(target: LOG_TARGET, "Initializing Wallet Comms");
-
-        let (comms, dht) = runtime.block_on(initialize_comms(
-            config.comms_config.clone(),
-            publisher,
-            vec![],
-            Default::default(),
-        ))?;
-
-        debug!(target: LOG_TARGET, "Wallet Comms Initialized");
-
-        let fut = StackBuilder::new(runtime.handle().clone(), comms.shutdown_signal())
-            .add_initializer(CommsOutboundServiceInitializer::new(dht.outbound_requester()))
+        debug!(target: LOG_TARGET, "Wallet Initializing");
+        let mut handles = StackBuilder::new(shutdown_signal)
+            .add_initializer(P2pInitializer::new(config.comms_config, publisher, vec![]))
             .add_initializer(OutputManagerServiceInitializer::new(
                 OutputManagerServiceConfig::default(),
-                subscription_factory.clone(),
+                peer_message_subscription_factory.clone(),
                 output_manager_backend,
                 factories.clone(),
                 config.network,
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
-                subscription_factory,
+                peer_message_subscription_factory.clone(),
                 transaction_backend,
-                comms.node_identity(),
+                node_identity.clone(),
                 factories.clone(),
                 config.network,
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
-            .finish();
+            .add_initializer(BaseNodeServiceInitializer::new(
+                BaseNodeServiceConfig::default(),
+                peer_message_subscription_factory,
+            ))
+            .build()
+            .await?;
 
-        let handles = runtime
-            .block_on(fut)
-            .map_err(|e| {
-                error!(target: LOG_TARGET, "Error creating Wallet stack: {:?}", e);
-                e
-            })
-            .expect("Service initialization failed");
+        let comms = handles
+            .take_handle::<UnspawnedCommsNode>()
+            .expect("P2pInitializer was not added to the stack");
+        let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
 
-        let output_manager_handle = handles
-            .get_handle::<OutputManagerHandle>()
-            .expect("Could not get Output Manager Service Handle");
-        let transaction_service_handle = handles
-            .get_handle::<TransactionServiceHandle>()
-            .expect("Could not get Transaction Service Handle");
-        let contacts_handle = handles
-            .get_handle::<ContactsServiceHandle>()
-            .expect("Could not get Contacts Service Handle");
+        let output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
+        let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
+        let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
+        let dht = handles.expect_handle::<Dht>();
+        let base_node_service = handles.expect_handle::<BaseNodeServiceHandle>();
 
         let store_and_forward_requester = dht.store_and_forward_requester();
 
@@ -220,8 +215,8 @@ where
             output_manager_service: output_manager_handle,
             transaction_service: transaction_service_handle,
             contacts_service: contacts_handle,
+            base_node_service,
             db,
-            runtime,
             factories,
             #[cfg(feature = "test_harness")]
             transaction_backend: transaction_backend_handle,
@@ -233,13 +228,23 @@ where
 
     /// This method consumes the wallet so that the handles are dropped which will result in the services async loops
     /// exiting.
-    pub fn shutdown(mut self) {
-        self.runtime.block_on(self.comms.shutdown());
+    pub async fn wait_until_shutdown(self) {
+        self.comms.clone().wait_until_shutdown().await;
     }
 
     /// This function will set the base_node that the wallet uses to broadcast transactions and monitor the blockchain
     /// state
-    pub fn set_base_node_peer(&mut self, public_key: CommsPublicKey, net_address: String) -> Result<(), WalletError> {
+    pub async fn set_base_node_peer(
+        &mut self,
+        public_key: CommsPublicKey,
+        net_address: String,
+    ) -> Result<(), WalletError>
+    {
+        info!(
+            "Wallet setting base node peer, public key: {}, net address: {}.",
+            public_key, net_address
+        );
+
         let address = net_address.parse::<Multiaddr>()?;
         let peer = Peer::new(
             public_key.clone(),
@@ -251,16 +256,21 @@ where
             String::new(),
         );
 
-        self.runtime
-            .block_on(self.comms.peer_manager().add_peer(peer.clone()))?;
-        self.runtime
-            .block_on(self.comms.connectivity().add_managed_peers(vec![peer.node_id.clone()]))?;
-        self.runtime.block_on(
-            self.transaction_service
-                .set_base_node_public_key(peer.public_key.clone()),
-        )?;
-        self.runtime
-            .block_on(self.output_manager_service.set_base_node_public_key(peer.public_key))?;
+        self.comms.peer_manager().add_peer(peer.clone()).await?;
+        self.comms
+            .connectivity()
+            .add_managed_peers(vec![peer.node_id.clone()])
+            .await?;
+
+        self.transaction_service
+            .set_base_node_public_key(peer.public_key.clone())
+            .await?;
+
+        self.output_manager_service
+            .set_base_node_public_key(peer.public_key.clone())
+            .await?;
+
+        self.base_node_service.set_base_node_public_key(peer.public_key).await?;
 
         Ok(())
     }
@@ -268,7 +278,7 @@ where
     /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
     /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
     /// generated transaction is returned.
-    pub fn import_utxo(
+    pub async fn import_utxo(
         &mut self,
         amount: MicroTari,
         spending_key: &PrivateKey,
@@ -282,14 +292,12 @@ where
             .build(&self.factories.commitment)
             .map_err(|_| WalletError::ImportError)?;
 
-        self.runtime
-            .block_on(self.output_manager_service.add_output(unblinded_output.clone()))?;
+        self.output_manager_service.add_output(unblinded_output.clone()).await?;
 
-        let tx_id = self.runtime.block_on(self.transaction_service.import_utxo(
-            amount,
-            source_public_key.clone(),
-            message,
-        ))?;
+        let tx_id = self
+            .transaction_service
+            .import_utxo(amount, source_public_key.clone(), message)
+            .await?;
 
         info!(
             target: LOG_TARGET,
@@ -326,18 +334,20 @@ where
 
     /// Have all the wallet components that need to start a sync process with the set base node to confirm the wallets
     /// state is accurately reflected on the blockchain
-    pub fn validate_utxos(&mut self, retries: UtxoValidationRetry) -> Result<u64, WalletError> {
-        self.runtime
-            .block_on(self.store_and_forward_requester.request_saf_messages_from_neighbours())?;
+    pub async fn validate_utxos(&mut self, retries: TxoValidationRetry) -> Result<u64, WalletError> {
+        self.store_and_forward_requester
+            .request_saf_messages_from_neighbours()
+            .await?;
 
         let request_key = self
-            .runtime
-            .block_on(self.output_manager_service.validate_utxos(retries))?;
+            .output_manager_service
+            .validate_txos(TxoValidationType::Unspent, retries)
+            .await?;
         Ok(request_key)
     }
 
     /// Do a coin split
-    pub fn coin_split(
+    pub async fn coin_split(
         &mut self,
         amount_per_split: MicroTari,
         split_count: usize,
@@ -346,19 +356,17 @@ where
         lock_height: Option<u64>,
     ) -> Result<TxId, WalletError>
     {
-        let coin_split_tx = self.runtime.block_on(self.output_manager_service.create_coin_split(
-            amount_per_split,
-            split_count,
-            fee_per_gram,
-            lock_height,
-        ));
+        let coin_split_tx = self
+            .output_manager_service
+            .create_coin_split(amount_per_split, split_count, fee_per_gram, lock_height)
+            .await;
 
         match coin_split_tx {
             Ok((tx_id, split_tx, amount, fee)) => {
-                let coin_tx = self.runtime.block_on(
-                    self.transaction_service
-                        .submit_transaction(tx_id, split_tx, fee, amount, message),
-                );
+                let coin_tx = self
+                    .transaction_service
+                    .submit_transaction(tx_id, split_tx, fee, amount, message)
+                    .await;
                 match coin_tx {
                     Ok(_) => Ok(tx_id),
                     Err(e) => Err(WalletError::TransactionServiceError(e)),
@@ -370,25 +378,23 @@ where
 
     /// Apply encryption to all the Wallet db backends. The Wallet backend will test if the db's are already encrypted
     /// in which case this will fail.
-    pub fn apply_encryption(&mut self, passphrase: String) -> Result<(), WalletError> {
+    pub async fn apply_encryption(&mut self, passphrase: String) -> Result<(), WalletError> {
         let passphrase_hash = Blake256::new().chain(passphrase.as_bytes()).result().to_vec();
         let key = GenericArray::from_slice(passphrase_hash.as_slice());
         let cipher = Aes256Gcm::new(key);
 
-        self.runtime.block_on(self.db.apply_encryption(cipher.clone()))?;
-        self.runtime
-            .block_on(self.output_manager_service.apply_encryption(cipher.clone()))?;
-        self.runtime
-            .block_on(self.transaction_service.apply_encryption(cipher))?;
+        self.db.apply_encryption(cipher.clone()).await?;
+        self.output_manager_service.apply_encryption(cipher.clone()).await?;
+        self.transaction_service.apply_encryption(cipher).await?;
         Ok(())
     }
 
     /// Remove encryption from all the Wallet db backends. If any backends do not have encryption applied then this will
     /// fail
-    pub fn remove_encryption(&mut self) -> Result<(), WalletError> {
-        self.runtime.block_on(self.db.remove_encryption())?;
-        self.runtime.block_on(self.output_manager_service.remove_encryption())?;
-        self.runtime.block_on(self.transaction_service.remove_encryption())?;
+    pub async fn remove_encryption(&mut self) -> Result<(), WalletError> {
+        self.db.remove_encryption().await?;
+        self.output_manager_service.remove_encryption().await?;
+        self.transaction_service.remove_encryption().await?;
         Ok(())
     }
 }

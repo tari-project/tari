@@ -1,4 +1,11 @@
 table! {
+    client_key_values (key) {
+        key -> Text,
+        value -> Text,
+    }
+}
+
+table! {
     completed_transactions (tx_id) {
         tx_id -> BigInt,
         source_public_key -> Binary,
@@ -12,6 +19,8 @@ table! {
         cancelled -> Integer,
         direction -> Nullable<Integer>,
         coinbase_block_height -> Nullable<BigInt>,
+        send_count -> Integer,
+        last_send_timestamp -> Nullable<Timestamp>,
     }
 }
 
@@ -32,6 +41,8 @@ table! {
         timestamp -> Timestamp,
         cancelled -> Integer,
         direct_send_success -> Integer,
+        send_count -> Integer,
+        last_send_timestamp -> Nullable<Timestamp>,
     }
 }
 
@@ -56,6 +67,8 @@ table! {
         timestamp -> Timestamp,
         cancelled -> Integer,
         direct_send_success -> Integer,
+        send_count -> Integer,
+        last_send_timestamp -> Nullable<Timestamp>,
     }
 }
 
@@ -90,6 +103,7 @@ table! {
 }
 
 allow_tables_to_appear_in_same_query!(
+    client_key_values,
     completed_transactions,
     contacts,
     inbound_transactions,

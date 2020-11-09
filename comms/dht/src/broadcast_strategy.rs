@@ -21,15 +21,29 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::envelope::NodeDestination;
-use std::{fmt, fmt::Formatter};
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+};
 use tari_comms::{peer_manager::node_id::NodeId, types::CommsPublicKey};
 
 #[derive(Debug, Clone)]
 pub struct BroadcastClosestRequest {
-    pub n: usize,
     pub node_id: NodeId,
     pub excluded_peers: Vec<NodeId>,
     pub connected_only: bool,
+}
+
+impl Display for BroadcastClosestRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ClosestRequest: node_id = {}, excluded_peers = {} peer(s), connected_only = {}",
+            self.node_id,
+            self.excluded_peers.len(),
+            self.connected_only
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -38,8 +52,8 @@ pub enum BroadcastStrategy {
     DirectNodeId(Box<NodeId>),
     /// Send to a particular peer matching the given Public Key
     DirectPublicKey(Box<CommsPublicKey>),
-    /// Send to all known peers
-    Flood,
+    /// Send to all connected peers. If no peers are connected, no messages are sent.
+    Flood(Vec<NodeId>),
     /// Send to a random set of peers of size n that are Communication Nodes, excluding the given node IDs
     Random(usize, Vec<NodeId>),
     /// Send to all n nearest Communication Nodes according to the given BroadcastClosestRequest
@@ -55,8 +69,8 @@ impl fmt::Display for BroadcastStrategy {
         match self {
             DirectPublicKey(pk) => write!(f, "DirectPublicKey({})", pk),
             DirectNodeId(node_id) => write!(f, "DirectNodeId({})", node_id),
-            Flood => write!(f, "Flood"),
-            Closest(request) => write!(f, "Closest({})", request.n),
+            Flood(excluded) => write!(f, "Flood({} excluded)", excluded.len()),
+            Closest(request) => write!(f, "Closest({})", request),
             Random(n, excluded) => write!(f, "Random({}, {} excluded)", n, excluded.len()),
             Broadcast(excluded) => write!(f, "Broadcast({} excluded)", excluded.len()),
             Propagate(destination, excluded) => write!(f, "Propagate({}, {} excluded)", destination, excluded.len(),),
@@ -65,10 +79,11 @@ impl fmt::Display for BroadcastStrategy {
 }
 
 impl BroadcastStrategy {
-    pub fn is_broadcast(&self) -> bool {
+    /// Returns true if this strategy will send multiple messages, otherwise false
+    pub fn is_multi_message(&self) -> bool {
         use BroadcastStrategy::*;
         match self {
-            Closest(_) | Flood | Broadcast(_) | Random(_, _) | Propagate(_, _) => true,
+            Closest(_) | Flood(_) | Broadcast(_) | Random(_, _) | Propagate(_, _) => true,
             _ => false,
         }
     }
@@ -119,11 +134,10 @@ mod test {
             BroadcastStrategy::Propagate(Default::default(), Default::default()).is_direct(),
             false
         );
-        assert_eq!(BroadcastStrategy::Flood.is_direct(), false);
+        assert_eq!(BroadcastStrategy::Flood(Default::default()).is_direct(), false);
         assert_eq!(
             BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
                 node_id: NodeId::default(),
-                n: 0,
                 excluded_peers: Default::default(),
                 connected_only: false
             }))
@@ -144,10 +158,11 @@ mod test {
         assert!(BroadcastStrategy::Broadcast(Default::default(),)
             .direct_public_key()
             .is_none());
-        assert!(BroadcastStrategy::Flood.direct_public_key().is_none());
+        assert!(BroadcastStrategy::Flood(Default::default())
+            .direct_public_key()
+            .is_none());
         assert!(BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
             node_id: NodeId::default(),
-            n: 0,
             excluded_peers: Default::default(),
             connected_only: false
         }))
@@ -170,10 +185,9 @@ mod test {
         assert!(BroadcastStrategy::Broadcast(Default::default(),)
             .direct_node_id()
             .is_none());
-        assert!(BroadcastStrategy::Flood.direct_node_id().is_none());
+        assert!(BroadcastStrategy::Flood(Default::default()).direct_node_id().is_none());
         assert!(BroadcastStrategy::Closest(Box::new(BroadcastClosestRequest {
             node_id: NodeId::default(),
-            n: 0,
             excluded_peers: Default::default(),
             connected_only: false
         }))

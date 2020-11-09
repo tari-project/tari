@@ -21,29 +21,24 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 syntax = "proto3";
 
-package tari.base_node;
+package tari.rpc;
 
 import "types.proto";
 import "google/protobuf/wrappers.proto";
 import "google/protobuf/timestamp.proto";
 
-
 // The gRPC interface for interacting with the wallet.
 service Wallet {
-    // This returns a coinbase transction
-    rpc GetCoinbase(CoinbaseRequest) returns (CoinbaseSupply);
+    // This returns a coinbase transaction
+    rpc GetCoinbase (GetCoinbaseRequest) returns (GetCoinbaseResponse);
 }
 
-
-
-// Network difficulty response
-message CoinbaseRequest {
-    uint64 fee= 1;
-    uint64 height = 2;
+message GetCoinbaseRequest {
+    uint64 reward = 1;
+    uint64 fee = 2;
+    uint64 height = 3;
 }
 
-// A generic single value response for a specific height
-message CoinbaseSupply {
-    TransactionKernel kernel = 1;
-    TransactionOutput utxo = 2;
+message GetCoinbaseResponse {
+    Transaction transaction = 1;
 }

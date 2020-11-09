@@ -22,7 +22,7 @@
 
 use crate::{
     connectivity::DhtConnectivity,
-    test_utils::{create_dht_actor_mock, make_node_identity, make_peer_manager, DhtMockState},
+    test_utils::{build_peer_manager, create_dht_actor_mock, make_node_identity, DhtMockState},
     DhtConfig,
 };
 use rand::{rngs::OsRng, seq::SliceRandom};
@@ -40,6 +40,7 @@ use tari_comms::{
 };
 use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert;
+use tokio::sync::broadcast;
 
 async fn setup(
     config: DhtConfig,
@@ -54,7 +55,7 @@ async fn setup(
     Shutdown,
 )
 {
-    let peer_manager = make_peer_manager();
+    let peer_manager = build_peer_manager();
     for peer in initial_peers {
         peer_manager.add_peer(peer).await.unwrap();
     }
@@ -66,6 +67,7 @@ async fn setup(
     let (dht_requester, mock) = create_dht_actor_mock(1);
     let dht_state = mock.get_shared_state();
     mock.spawn();
+    let (event_publisher, _) = broadcast::channel(1);
 
     let dht_connectivity = DhtConnectivity::new(
         config,
@@ -73,6 +75,7 @@ async fn setup(
         node_identity.clone(),
         connectivity,
         dht_requester,
+        event_publisher.subscribe(),
         shutdown.to_signal(),
     );
 
@@ -240,9 +243,9 @@ async fn insert_neighbour() {
     }
 
     // Check the first 7 node ids match our neighbours, the last element depends on distance and ordering of inserts
-    // (these are random). insert_neighbour only cares about inserting the element in the right order and preserving the
-    // length of the neighbour list. It doesnt care if it kicks out a closer peer (that is left for the calling
-    // code).
+    // (these are random). insert_neighbour only cares about inserting the element in the right order and preserving
+    // the length of the neighbour list. It doesnt care if it kicks out a closer peer (that is left for the
+    // calling code).
     let ordered_node_ids = node_identities
         .iter()
         .take(7)

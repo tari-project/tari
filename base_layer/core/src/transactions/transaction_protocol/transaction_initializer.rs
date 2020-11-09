@@ -23,7 +23,7 @@
 use crate::transactions::{
     fee::Fee,
     tari_amount::*,
-    transaction::{MAX_TRANSACTION_INPUTS, MINIMUM_TRANSACTION_FEE},
+    transaction::{MAX_TRANSACTION_INPUTS, MAX_TRANSACTION_OUTPUTS, MINIMUM_TRANSACTION_FEE},
     transaction_protocol::{
         recipient::RecipientInfo,
         sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},
@@ -36,12 +36,15 @@ use crate::transactions::{
     UnblindedOutput,
 };
 use digest::Digest;
+use log::*;
 use std::{
     cmp::max,
     collections::HashMap,
     fmt::{Debug, Error, Formatter},
 };
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::fixed_set::FixedSet};
+
+pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
 /// The SenderTransactionInitializer is a Builder that helps set up the initial state for the Sender party of a new
 /// transaction Typically you don't instantiate this object directly. Rather use
@@ -65,6 +68,7 @@ pub struct SenderTransactionInitializer {
     excess_blinding_factor: BlindingFactor,
     private_nonce: Option<PrivateKey>,
     message: Option<String>,
+    prevent_fee_gt_amount: bool,
 }
 
 pub struct BuildError {
@@ -93,6 +97,7 @@ impl SenderTransactionInitializer {
             private_nonce: None,
             excess_blinding_factor: BlindingFactor::default(),
             message: None,
+            prevent_fee_gt_amount: true,
         }
     }
 
@@ -156,6 +161,12 @@ impl SenderTransactionInitializer {
         self
     }
 
+    /// Enable or disable spending of an amount less than the fee
+    pub fn with_prevent_fee_gt_amount(&mut self, prevent_fee_gt_amount: bool) -> &mut Self {
+        self.prevent_fee_gt_amount = prevent_fee_gt_amount;
+        self
+    }
+
     /// Tries to make a change output with the given transaction parameters and add it to the set of outputs. The total
     /// fee, including the additional change output (if any) is returned along with the amount of change.
     /// The change output **always has default output features**.
@@ -214,6 +225,11 @@ impl SenderTransactionInitializer {
         })
     }
 
+    fn calculate_total_amount(&self, amount_to_self: &MicroTari) -> MicroTari {
+        let to_others: MicroTari = self.amounts.clone().into_vec().iter().sum();
+        to_others + amount_to_self
+    }
+
     /// Construct a `SenderTransactionProtocol` instance in and appropriate state. The data stored
     /// in the struct is _moved_ into the new struct. If any data is missing, the `self` instance is returned in the
     /// error (so that you can continue building) along with a string listing the missing fields.
@@ -226,20 +242,20 @@ impl SenderTransactionInitializer {
         Self::check_value("Missing Fee per gram", &self.fee_per_gram, &mut message);
         Self::check_value("Missing Offset", &self.offset, &mut message);
         Self::check_value("Missing Private nonce", &self.private_nonce, &mut message);
-        if !self.amounts.is_full() {
-            message.push(format!("Missing all {} amounts", self.amounts.size()));
-        }
-        if self.inputs.is_empty() {
-            message.push("Missing Input".to_string());
-        }
-        // Prevent overflow attacks by imposing sane limits on some key parameters
-        if self.inputs.len() > MAX_TRANSACTION_INPUTS {
-            message.push("Too many inputs".into());
-        }
         if !message.is_empty() {
             return self.build_err(&message.join(","));
         }
-        // Everything is here. Let's send some Tari!
+        if !self.amounts.is_full() {
+            let size = self.amounts.size();
+            return self.build_err(&*format!("Missing all {} amounts", size));
+        }
+        if self.inputs.is_empty() {
+            return self.build_err("A transaction cannot have zero inputs");
+        }
+        // Prevent overflow attacks by imposing sane limits on inputs
+        if self.inputs.len() > MAX_TRANSACTION_INPUTS {
+            return self.build_err("Too many inputs in transaction");
+        }
         // Calculate the fee based on whether we need to add a residual change output or not
         let (total_fee, change) = match self.add_change_if_required(&factories.commitment) {
             Ok((fee, change)) => (fee, change),
@@ -249,7 +265,7 @@ impl SenderTransactionInitializer {
         if total_fee < MINIMUM_TRANSACTION_FEE {
             return self.build_err("Fee is less than the minimum");
         }
-
+        // Create transaction outputs
         let outputs = match self
             .outputs
             .iter()
@@ -261,11 +277,15 @@ impl SenderTransactionInitializer {
                 return self.build_err(&e.to_string());
             },
         };
+        // Prevent overflow attacks by imposing sane limits on outputs
+        if outputs.len() > MAX_TRANSACTION_OUTPUTS {
+            return self.build_err("Too many outputs in transaction");
+        }
 
-        let nonce = self.private_nonce.unwrap();
+        let nonce = self.private_nonce.clone().unwrap();
         let public_nonce = PublicKey::from_secret_key(&nonce);
-        let offset = self.offset.unwrap();
-        let excess_blinding_factor = self.excess_blinding_factor;
+        let offset = self.offset.clone().unwrap();
+        let excess_blinding_factor = self.excess_blinding_factor.clone();
         let offset_blinding_factor = &excess_blinding_factor - &offset;
         let excess = PublicKey::from_secret_key(&offset_blinding_factor);
         let amount_to_self = self.outputs.iter().fold(MicroTari::from(0), |sum, o| sum + o.value());
@@ -280,6 +300,24 @@ impl SenderTransactionInitializer {
         for i in 0..num_ids {
             ids.push(calculate_tx_id::<D>(&public_nonce, i));
         }
+
+        // The fee should be less than the amount. This isn't a protocol requirement, but it's what you want 99.999%
+        // of the time, however, always preventing this will also prevent spending dust in some edge cases.
+        if total_fee > self.calculate_total_amount(&amount_to_self) {
+            let ids_clone = ids.to_vec();
+            warn!(
+                target: LOG_TARGET,
+                "Fee ({}) is greater than amount ({}) for Transaction (TxId: {}).",
+                total_fee,
+                self.calculate_total_amount(&amount_to_self),
+                ids_clone[0]
+            );
+            if self.prevent_fee_gt_amount {
+                return self.build_err("Fee is greater than amount");
+            }
+        }
+
+        // Everything is here. Let's send some Tari!
         let sender_info = RawTransactionInfo {
             num_recipients: self.num_recipients,
             amount_to_self,
@@ -289,8 +327,6 @@ impl SenderTransactionInitializer {
             metadata: TransactionMetadata {
                 fee: total_fee,
                 lock_height: self.lock_height.unwrap(),
-                meta_info: None,
-                linked_kernel: None,
             },
             inputs: self.inputs,
             outputs,
@@ -304,6 +340,7 @@ impl SenderTransactionInitializer {
             signatures: Vec::new(),
             message: self.message.unwrap_or_else(|| "".to_string()),
         };
+
         let state = SenderState::Initializing(Box::new(sender_info));
         let state = state
             .initialize()
@@ -347,7 +384,7 @@ mod test {
         // We should have a bunch of fields missing still, but we can recover and continue
         assert_eq!(
             err.message,
-            "Missing Lock Height,Missing Fee per gram,Missing Offset,Missing Private nonce,Missing Input"
+            "Missing Lock Height,Missing Fee per gram,Missing Offset,Missing Private nonce"
         );
         let mut builder = err.builder;
         builder
@@ -407,7 +444,8 @@ mod test {
             .with_private_nonce(p.nonce)
             .with_output(output)
             .with_input(utxo, input)
-            .with_fee_per_gram(MicroTari(20));
+            .with_fee_per_gram(MicroTari(20))
+            .with_prevent_fee_gt_amount(false);
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.state {
@@ -447,7 +485,8 @@ mod test {
             .with_private_nonce(p.nonce)
             .with_output(output)
             .with_input(utxo, input)
-            .with_fee_per_gram(MicroTari(20));
+            .with_fee_per_gram(MicroTari(20))
+            .with_prevent_fee_gt_amount(false);
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.state {
@@ -487,7 +526,7 @@ mod test {
             builder.with_input(utxo, input);
         }
         let err = builder.build::<Blake256>(&factories).unwrap_err();
-        assert_eq!(err.message, "Too many inputs");
+        assert_eq!(err.message, "Too many inputs in transaction");
     }
 
     #[test]

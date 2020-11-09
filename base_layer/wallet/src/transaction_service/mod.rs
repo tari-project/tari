@@ -26,6 +26,7 @@ pub mod handle;
 pub mod protocols;
 pub mod service;
 pub mod storage;
+pub mod tasks;
 
 use crate::{
     output_manager_service::handle::OutputManagerHandle,
@@ -40,7 +41,7 @@ use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
 use tari_comms::peer_manager::NodeIdentity;
-use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_comms_dht::Dht;
 use tari_core::{
     base_node::proto::base_node as BaseNodeProto,
     consensus::{ConsensusConstantsBuilder, Network},
@@ -54,13 +55,12 @@ use tari_p2p::{
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
-    handles::ServiceHandlesFuture,
     reply_channel,
     ServiceInitializationError,
     ServiceInitializer,
+    ServiceInitializerContext,
 };
-use tari_shutdown::ShutdownSignal;
-use tokio::{runtime, sync::broadcast};
+use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "wallet::transaction_service";
 const SUBSCRIPTION_LABEL: &str = "Transaction Service";
@@ -163,33 +163,41 @@ where T: TransactionBackend
             .map(map_decode::<BaseNodeProto::BaseNodeServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
+
+    fn transaction_cancelled_stream(&self) -> impl Stream<Item = DomainMessage<proto::TransactionCancelledMessage>> {
+        trace!(
+            target: LOG_TARGET,
+            "Subscription '{}' for topic '{:?}' created.",
+            SUBSCRIPTION_LABEL,
+            TariMessageType::TransactionCancelled
+        );
+        self.subscription_factory
+            .get_subscription(TariMessageType::TransactionCancelled, SUBSCRIPTION_LABEL)
+            .map(map_decode::<proto::TransactionCancelledMessage>)
+            .filter_map(ok_or_skip_result)
+    }
 }
 
 impl<T> ServiceInitializer for TransactionServiceInitializer<T>
-where T: TransactionBackend + Clone + 'static
+where T: TransactionBackend + 'static
 {
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
-    fn initialize(
-        &mut self,
-        executor: runtime::Handle,
-        handles_fut: ServiceHandlesFuture,
-        shutdown: ShutdownSignal,
-    ) -> Self::Future
-    {
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         let (sender, receiver) = reply_channel::unbounded();
         let transaction_stream = self.transaction_stream();
         let transaction_reply_stream = self.transaction_reply_stream();
         let transaction_finalized_stream = self.transaction_finalized_stream();
         let mempool_response_stream = self.mempool_response_stream();
         let base_node_response_stream = self.base_node_response_stream();
+        let transaction_cancelled_stream = self.transaction_cancelled_stream();
 
         let (publisher, _) = broadcast::channel(200);
 
         let transaction_handle = TransactionServiceHandle::new(sender, publisher.clone());
 
         // Register handle before waiting for handles to be ready
-        handles_fut.register(transaction_handle);
+        context.register_handle(transaction_handle);
 
         let backend = self
             .backend
@@ -200,15 +208,9 @@ where T: TransactionBackend + Clone + 'static
         let factories = self.factories.clone();
         let config = self.config.clone();
         let constants = ConsensusConstantsBuilder::new(self.network).build();
-        executor.spawn(async move {
-            let handles = handles_fut.await;
-
-            let outbound_message_service = handles
-                .get_handle::<OutboundMessageRequester>()
-                .expect("OMS handle required for TransactionService");
-            let output_manager_service = handles
-                .get_handle::<OutputManagerHandle>()
-                .expect("Output Manager Service handle required for TransactionService");
+        context.spawn_when_ready(move |handles| async move {
+            let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
+            let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
 
             let service = TransactionService::new(
                 config,
@@ -219,16 +221,18 @@ where T: TransactionBackend + Clone + 'static
                 transaction_finalized_stream,
                 mempool_response_stream,
                 base_node_response_stream,
+                transaction_cancelled_stream,
                 output_manager_service,
                 outbound_message_service,
                 publisher,
                 node_identity,
                 factories,
                 constants,
+                handles.get_shutdown_signal(),
             )
             .start();
             futures::pin_mut!(service);
-            future::select(service, shutdown).await;
+            future::select(service, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "Transaction Service shutdown");
         });
 

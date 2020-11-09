@@ -24,7 +24,7 @@ use crate::transaction_service::{
     error::{TransactionServiceError, TransactionServiceProtocolError},
     handle::TransactionEvent,
     service::TransactionServiceResources,
-    storage::database::{TransactionBackend, TransactionStatus},
+    storage::{database::TransactionBackend, models::TransactionStatus},
 };
 use futures::{channel::mpsc::Receiver, FutureExt, StreamExt};
 use log::*;
@@ -51,11 +51,12 @@ use tari_p2p::tari_message::TariMessageType;
 use tokio::{sync::broadcast, time::delay_for};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
+const LOG_TARGET_STRESS: &str = "stress_test::broadcast_protocol";
 
 /// This protocol defines the process of monitoring a mempool and base node to detect when a Completed transaction is
 /// Broadcast to the mempool or potentially Mined
 pub struct TransactionBroadcastProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     id: u64,
     resources: TransactionServiceResources<TBackend>,
@@ -67,7 +68,7 @@ where TBackend: TransactionBackend + Clone + 'static
 }
 
 impl<TBackend> TransactionBroadcastProtocol<TBackend>
-where TBackend: TransactionBackend + Clone + 'static
+where TBackend: TransactionBackend + 'static
 {
     pub fn new(
         id: u64,
@@ -174,7 +175,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 hashes.push(o.hash());
             }
 
-            let request = BaseNodeRequestProto::FetchUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
+            let request = BaseNodeRequestProto::FetchMatchingUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
             let service_request = BaseNodeProto::BaseNodeServiceRequest {
                 request_key: self.id,
                 request: Some(request),
@@ -188,6 +189,7 @@ where TBackend: TransactionBackend + Clone + 'static
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
+            let mut shutdown = self.resources.shutdown_signal.clone();
             let mut delay = delay_for(self.timeout).fuse();
             futures::select! {
                 mempool_response = mempool_response_receiver.select_next_some() => {
@@ -244,6 +246,10 @@ where TBackend: TransactionBackend + Clone + 'static
                             e
                         });
                 },
+                 _ = shutdown => {
+                    info!(target: LOG_TARGET, "Transaction Broadcast Protocol (id: {}) shutting down because it received the shutdown signal", self.id);
+                    return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
+                }
             }
         }
 
@@ -347,6 +353,17 @@ where TBackend: TransactionBackend + Clone + 'static
                             // Broadcast state
                             info!(
                                 target: LOG_TARGET,
+                                "Completed Transaction (TxId: {} and Kernel Excess Sig: {}) detected as Broadcast to \
+                                 Base Node Mempool in {:?}",
+                                self.id,
+                                completed_tx.transaction.body.kernels()[0]
+                                    .excess_sig
+                                    .get_signature()
+                                    .to_hex(),
+                                ts
+                            );
+                            debug!(
+                                target: LOG_TARGET_STRESS,
                                 "Completed Transaction (TxId: {} and Kernel Excess Sig: {}) detected as Broadcast to \
                                  Base Node Mempool in {:?}",
                                 self.id,

@@ -69,11 +69,10 @@ mod test;
 mod error;
 use error::MempoolProtocolError;
 
-mod extension;
-pub use extension::MempoolSyncProtocolExtension;
+mod initializer;
+pub use initializer::MempoolSyncInitializer;
 
 use crate::{
-    chain_storage::BlockchainBackend,
     mempool::{async_mempool, proto, Mempool, MempoolServiceConfig},
     transactions::transaction::Transaction,
 };
@@ -104,27 +103,25 @@ use tokio::{sync::Semaphore, task};
 const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
 
-pub static MEMPOOL_SYNC_PROTOCOL: Bytes = Bytes::from_static(b"/tari/mempool-sync/1.0");
+pub static MEMPOOL_SYNC_PROTOCOL: Bytes = Bytes::from_static(b"t/mempool-sync/1");
 
-pub struct MempoolSyncProtocol<TSubstream, B> {
+pub struct MempoolSyncProtocol<TSubstream> {
     config: MempoolServiceConfig,
     protocol_notifier: ProtocolNotificationRx<TSubstream>,
     connectivity_events: Fuse<ConnectivityEventRx>,
-    mempool: Mempool<B>,
+    mempool: Mempool,
     num_synched: Arc<AtomicUsize>,
     permits: Arc<Semaphore>,
 }
 
-impl<TSubstream, B> MempoolSyncProtocol<TSubstream, B>
-where
-    TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
-    B: BlockchainBackend + 'static,
+impl<TSubstream> MempoolSyncProtocol<TSubstream>
+where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
 {
     pub fn new(
         config: MempoolServiceConfig,
         protocol_notifier: ProtocolNotificationRx<TSubstream>,
         connectivity_events: ConnectivityEventRx,
-        mempool: Mempool<B>,
+        mempool: Mempool,
     ) -> Self
     {
         Self {
@@ -184,7 +181,7 @@ where
     fn handle_protocol_notification(&mut self, notification: ProtocolNotification<TSubstream>) {
         match notification.event {
             ProtocolEvent::NewInboundSubstream(node_id, substream) => {
-                self.spawn_inbound_handler(Clone::clone(&*node_id), substream);
+                self.spawn_inbound_handler(node_id, substream);
             },
         }
     }
@@ -259,23 +256,21 @@ where
     }
 }
 
-struct MempoolPeerProtocol<TSubstream, B> {
+struct MempoolPeerProtocol<TSubstream> {
     config: MempoolServiceConfig,
     framed: CanonicalFraming<TSubstream>,
-    mempool: Mempool<B>,
+    mempool: Mempool,
     peer_node_id: NodeId,
 }
 
-impl<TSubstream, B> MempoolPeerProtocol<TSubstream, B>
-where
-    TSubstream: AsyncRead + AsyncWrite + Unpin,
-    B: BlockchainBackend + 'static,
+impl<TSubstream> MempoolPeerProtocol<TSubstream>
+where TSubstream: AsyncRead + AsyncWrite + Unpin
 {
     pub fn new(
         config: MempoolServiceConfig,
         framed: CanonicalFraming<TSubstream>,
         peer_node_id: NodeId,
-        mempool: Mempool<B>,
+        mempool: Mempool,
     ) -> Self
     {
         Self {

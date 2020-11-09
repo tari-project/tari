@@ -30,14 +30,12 @@ use crate::{
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainMetadata, HistoricalBlock, MmrTree},
-    proof_of_work::{Difficulty, PowAlgorithm},
+    proof_of_work::PowAlgorithm,
     transactions::types::{Commitment, HashOutput, Signature},
 };
-use futures::{stream::Fuse, StreamExt};
 use std::sync::Arc;
-use tari_service_framework::reply_channel::SenderService;
+use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
-use tower_service::Service;
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
@@ -70,10 +68,6 @@ impl LocalNodeCommsInterface {
         self.block_event_sender.subscribe()
     }
 
-    pub fn get_block_event_stream_fused(&self) -> Fuse<BlockEventReceiver> {
-        self.get_block_event_stream().fuse()
-    }
-
     /// Request metadata from the current local node.
     pub async fn get_metadata(&mut self) -> Result<ChainMetadata, CommsInterfaceError> {
         match self.request_sender.call(NodeCommsRequest::GetChainMetadata).await?? {
@@ -86,7 +80,7 @@ impl LocalNodeCommsInterface {
     pub async fn get_blocks(&mut self, block_heights: Vec<u64>) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchBlocks(block_heights))
+            .call(NodeCommsRequest::FetchMatchingBlocks(block_heights))
             .await??
         {
             NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),
@@ -134,25 +128,14 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Request the PoW target difficulty for mining on the main chain from the base node service.
-    pub async fn get_target_difficulty(
-        &mut self,
-        pow_algorithm: PowAlgorithm,
-    ) -> Result<Difficulty, CommsInterfaceError>
-    {
-        match self
-            .request_sender
-            .call(NodeCommsRequest::GetTargetDifficulty(pow_algorithm))
-            .await??
-        {
-            NodeCommsResponse::TargetDifficulty(difficulty) => Ok(difficulty),
-            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
-        }
-    }
-
     /// Submit a block to the base node service. Internal_only flag will prevent propagation.
     pub async fn submit_block(&mut self, block: Block, propagate: Broadcast) -> Result<(), CommsInterfaceError> {
         self.block_sender.call((block, propagate)).await?
+    }
+
+    pub fn publish_block_event(&mut self, event: BlockEvent) -> usize {
+        // If event send fails, that means that there are no receivers (i.e. it was sent to zero receivers)
+        self.block_event_sender.send(Arc::new(event)).unwrap_or(0)
     }
 
     /// Fetches the set of leaf node hashes and their deletion status' for the nth to nth+count leaf node index in the
@@ -167,7 +150,7 @@ impl LocalNodeCommsInterface {
     {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchMmrNodes(tree, pos, count, hist_height))
+            .call(NodeCommsRequest::FetchMatchingMmrNodes(tree, pos, count, hist_height))
             .await??
         {
             NodeCommsResponse::MmrNodes(added, deleted) => Ok((added, deleted)),
