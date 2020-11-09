@@ -448,8 +448,9 @@ impl AppStateData {
             .dark_color(unicode::Dense1x2::Dark)
             .light_color(unicode::Dense1x2::Light)
             .build()
-            .trim()
-            .to_string();
+            .lines()
+            .skip(1)
+            .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
 
         let identity = MyIdentity {
             public_key: node_identity.public_key().to_string(),
