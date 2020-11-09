@@ -80,16 +80,16 @@ impl<B: Backend> App<B> {
     }
 
     pub fn on_control_key(&mut self, c: char) {
-        if let 'c' = c {
-            self.should_quit = true;
+        match c {
+            'q' | 'c' => {
+                self.should_quit = true;
+            },
+            _ => (),
         }
     }
 
     pub fn on_key(&mut self, c: char) {
         match c {
-            'q' => {
-                self.should_quit = true;
-            },
             '\t' => {
                 self.tabs.next();
             },
