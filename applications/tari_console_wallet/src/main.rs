@@ -124,11 +124,9 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     debug!(target: LOG_TARGET, "Starting app");
 
-    let node_identity = wallet.comms.node_identity().as_ref().clone();
-
     let handle = runtime.handle().clone();
     let result = match wallet_mode(bootstrap) {
-        WalletMode::Tui => tui_mode(handle, config, node_identity, wallet.clone(), base_node),
+        WalletMode::Tui => tui_mode(handle, config, wallet.clone(), base_node),
         WalletMode::Grpc => grpc_mode(handle, wallet.clone(), config),
         WalletMode::Script(path) => script_mode(handle, path, wallet.clone(), config),
         WalletMode::Command(command) => command_mode(handle, command, wallet.clone(), config),

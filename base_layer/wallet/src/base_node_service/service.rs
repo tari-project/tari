@@ -195,7 +195,7 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
 
     /// Sends a request to the connected base node to retrieve chain metadata.
     async fn refresh_chain_metadata(&mut self) -> Result<(), BaseNodeServiceError> {
-        debug!(target: LOG_TARGET, "Refresh chain metadata");
+        trace!(target: LOG_TARGET, "Refresh chain metadata");
         let base_node_peer = self
             .base_node_peer
             .clone()
@@ -236,7 +236,7 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
             .await
             .map_err(BaseNodeServiceError::OutboundError)?;
 
-        debug!(target: LOG_TARGET, "Refresh chain metadata sent");
+        debug!(target: LOG_TARGET, "Refresh chain metadata message sent");
 
         Ok(())
     }
@@ -287,7 +287,7 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
     }
 
     fn publish_event(&mut self, event: BaseNodeEvent) {
-        debug!(target: LOG_TARGET, "Publishing event: {:?}", event);
+        trace!(target: LOG_TARGET, "Publishing event: {:?}", event);
         let _ = self.event_publisher.send(Arc::new(event)).map_err(|_| {
             trace!(
                 target: LOG_TARGET,

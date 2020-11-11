@@ -237,7 +237,7 @@ pub fn parse_peer_seeds(seeds: &[String]) -> Vec<Peer> {
     for s in seeds {
         let parts: Vec<&str> = s.split("::").map(|s| s.trim()).collect();
         if parts.len() != 2 {
-            warn!(target: LOG_TARGET, "Invalid peer seed: {}", s);
+            debug!(target: LOG_TARGET, "Invalid peer seed: {}", s);
             continue;
         }
         let pub_key = match PublicKey::from_hex(parts[0]) {

@@ -1,10 +1,26 @@
-use crate::ui::{state::wallet_event_monitor::WalletEventMonitor, UiContact, UiError};
+use crate::ui::{
+    state::wallet_event_monitor::WalletEventMonitor,
+    UiContact,
+    UiError,
+    CUSTOM_BASE_NODE_ADDRESS_KEY,
+    CUSTOM_BASE_NODE_PUBLIC_KEY_KEY,
+};
 use futures::{stream::Fuse, StreamExt};
+use log::*;
 use qrcode::{render::unicode, QrCode};
 use std::sync::Arc;
 use tari_common::Network;
-use tari_comms::{connectivity::ConnectivityEventRx, peer_manager::Peer, types::CommsPublicKey, NodeIdentity};
-use tari_core::transactions::tari_amount::{uT, MicroTari};
+use tari_comms::{
+    connectivity::ConnectivityEventRx,
+    multiaddr::Multiaddr,
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    types::CommsPublicKey,
+    NodeIdentity,
+};
+use tari_core::transactions::{
+    tari_amount::{uT, MicroTari},
+    types::PublicKey,
+};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
@@ -29,8 +45,21 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(node_identity: &NodeIdentity, network: Network, wallet: WalletSqlite, base_node: Peer) -> Self {
-        let inner = AppStateInner::new(node_identity, network, wallet, base_node);
+    pub fn new(
+        node_identity: &NodeIdentity,
+        network: Network,
+        wallet: WalletSqlite,
+        base_node_peer_config: Peer,
+        base_node_peer_custom: Option<Peer>,
+    ) -> Self
+    {
+        let inner = AppStateInner::new(
+            node_identity,
+            network,
+            wallet,
+            base_node_peer_config,
+            base_node_peer_custom,
+        );
         let cached_data = inner.data.clone();
         Self {
             inner: Arc::new(RwLock::new(inner)),
@@ -225,8 +254,36 @@ impl AppState {
         &self.cached_data.base_node_state
     }
 
-    pub fn get_base_node_peer(&self) -> &Peer {
-        &self.cached_data.base_node_peer
+    pub fn get_config_base_node(&self) -> &Peer {
+        &self.cached_data.base_node_peer_config
+    }
+
+    pub async fn set_custom_base_node(&mut self, public_key: String, address: String) -> Result<(), UiError> {
+        let pub_key = PublicKey::from_hex(public_key.as_str())?;
+        let addr = address.parse::<Multiaddr>().map_err(|_| UiError::AddressParseError)?;
+        let node_id = NodeId::from_key(&pub_key)?;
+        let peer = Peer::new(
+            pub_key,
+            node_id,
+            addr.into(),
+            PeerFlags::default(),
+            PeerFeatures::COMMUNICATION_NODE,
+            &[],
+            Default::default(),
+        );
+
+        let mut inner = self.inner.write().await;
+        inner.set_custom_base_node_peer(peer).await?;
+        Ok(())
+    }
+
+    pub async fn clear_custom_base_node(&mut self) -> Result<(), UiError> {
+        {
+            let mut inner = self.inner.write().await;
+            inner.clear_custom_base_node_peer().await?;
+        }
+        self.update_cache().await;
+        Ok(())
     }
 }
 
@@ -237,8 +294,15 @@ pub struct AppStateInner {
 }
 
 impl AppStateInner {
-    pub fn new(node_identity: &NodeIdentity, network: Network, wallet: WalletSqlite, base_node: Peer) -> Self {
-        let data = AppStateData::new(node_identity, network, base_node);
+    pub fn new(
+        node_identity: &NodeIdentity,
+        network: Network,
+        wallet: WalletSqlite,
+        base_node_peer_config: Peer,
+        base_node_peer_custom: Option<Peer>,
+    ) -> Self
+    {
+        let data = AppStateData::new(node_identity, network, base_node_peer_config, base_node_peer_custom);
 
         AppStateInner {
             updated: false,
@@ -451,6 +515,73 @@ impl AppStateInner {
             .expect("The wallet base node service was never initialized!")
             .get_event_stream_fused()
     }
+
+    pub async fn set_custom_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {
+        self.wallet
+            .set_base_node_peer(
+                peer.public_key.clone(),
+                peer.clone()
+                    .addresses
+                    .first()
+                    .ok_or_else(|| UiError::NoAddressError)?
+                    .to_string(),
+            )
+            .await?;
+        self.data.base_node_peer_custom = Some(peer.clone());
+        self.updated = true;
+
+        self.wallet
+            .db
+            .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), peer.public_key.to_string())
+            .await?;
+        self.wallet
+            .db
+            .set_client_key_value(
+                CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(),
+                peer.addresses
+                    .first()
+                    .ok_or_else(|| UiError::NoAddressError)?
+                    .to_string(),
+            )
+            .await?;
+
+        info!(
+            target: LOG_TARGET,
+            "Setting custom base node peer for wallet: {}::{}",
+            peer.public_key,
+            peer.addresses
+                .first()
+                .ok_or_else(|| UiError::NoAddressError)?
+                .to_string(),
+        );
+
+        Ok(())
+    }
+
+    pub async fn clear_custom_base_node_peer(&mut self) -> Result<(), UiError> {
+        self.data.base_node_peer_custom = None;
+        self.updated = true;
+        let peer = self.data.base_node_peer_config.clone();
+        self.wallet
+            .set_base_node_peer(
+                peer.public_key.clone(),
+                peer.addresses
+                    .first()
+                    .ok_or_else(|| UiError::NoAddressError)?
+                    .to_string(),
+            )
+            .await?;
+
+        self.wallet
+            .db
+            .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())
+            .await?;
+        self.wallet
+            .db
+            .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
+            .await?;
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -462,11 +593,18 @@ struct AppStateData {
     connected_peers: Vec<Peer>,
     balance: Balance,
     base_node_state: BaseNodeState,
-    base_node_peer: Peer,
+    base_node_peer_config: Peer,
+    base_node_peer_custom: Option<Peer>,
 }
 
 impl AppStateData {
-    pub fn new(node_identity: &NodeIdentity, network: Network, base_node: Peer) -> Self {
+    pub fn new(
+        node_identity: &NodeIdentity,
+        network: Network,
+        base_node_peer_config: Peer,
+        base_node_peer_custom: Option<Peer>,
+    ) -> Self
+    {
         let eid = EmojiId::from_pubkey(node_identity.public_key()).to_string();
         let qr_link = format!("tari://{}/pubkey/{}", network, &node_identity.public_key().to_hex());
         let code = QrCode::new(qr_link).unwrap();
@@ -494,7 +632,8 @@ impl AppStateData {
             connected_peers: Vec::new(),
             balance: Balance::zero(),
             base_node_state: BaseNodeState::default(),
-            base_node_peer: base_node,
+            base_node_peer_config,
+            base_node_peer_custom,
         }
     }
 }

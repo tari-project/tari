@@ -473,70 +473,71 @@ impl<B: Backend> Component<B> for SendReceiveTab {
             if 'n' == c {
                 self.confirmation_dialog = None;
                 return;
-            }
-            match self.confirmation_dialog {
-                None => (),
-                Some(ConfirmationDialogType::ConfirmSend) => {
-                    if 'y' == c {
-                        let amount = if let Ok(v) = self.amount_field.parse::<u64>() {
-                            v
-                        } else {
-                            self.error_message =
-                                Some("Amount should be an integer\nPress Enter to continue.".to_string());
-                            return;
-                        };
-
-                        let fee_per_gram = if let Ok(v) = self.fee_field.parse::<u64>() {
-                            v
-                        } else {
-                            self.error_message =
-                                Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
-                            return;
-                        };
-
-                        let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
-
-                        match Handle::current().block_on(app_state.send_transaction(
-                            self.to_field.clone(),
-                            amount,
-                            fee_per_gram,
-                            self.message_field.clone(),
-                            tx,
-                        )) {
-                            Err(e) => {
+            } else if 'y' == c {
+                match self.confirmation_dialog {
+                    None => (),
+                    Some(ConfirmationDialogType::ConfirmSend) => {
+                        if 'y' == c {
+                            let amount = if let Ok(v) = self.amount_field.parse::<u64>() {
+                                v
+                            } else {
                                 self.error_message =
-                                    Some(format!("Error sending transaction:\n{}\nPress Enter to continue.", e))
-                            },
-                            Ok(_) => {
-                                self.to_field = "".to_string();
-                                self.amount_field = "".to_string();
-                                self.fee_field = u64::from(DEFAULT_FEE_PER_GRAM).to_string();
-                                self.message_field = "".to_string();
-                                self.send_input_mode = SendInputMode::None;
-                                self.send_result_watch = Some(rx);
-                            },
-                        }
-                        self.confirmation_dialog = None;
-                        return;
-                    }
-                },
-                Some(ConfirmationDialogType::ConfirmDeleteContact) => {
-                    if 'y' == c {
-                        if let Some(c) = self
-                            .contacts_list_state
-                            .selected()
-                            .and_then(|i| app_state.get_contact(i))
-                            .cloned()
-                        {
-                            if let Err(_e) = Handle::current().block_on(app_state.delete_contact(c.public_key)) {
+                                    Some("Amount should be an integer\nPress Enter to continue.".to_string());
+                                return;
+                            };
+
+                            let fee_per_gram = if let Ok(v) = self.fee_field.parse::<u64>() {
+                                v
+                            } else {
                                 self.error_message =
-                                    Some("Could not delete selected contact\nPress Enter to continue.".to_string());
+                                    Some("Fee-per-gram should be an integer\nPress Enter to continue.".to_string());
+                                return;
+                            };
+
+                            let (tx, rx) = watch::channel(UiTransactionSendStatus::Initiated);
+
+                            match Handle::current().block_on(app_state.send_transaction(
+                                self.to_field.clone(),
+                                amount,
+                                fee_per_gram,
+                                self.message_field.clone(),
+                                tx,
+                            )) {
+                                Err(e) => {
+                                    self.error_message =
+                                        Some(format!("Error sending transaction:\n{}\nPress Enter to continue.", e))
+                                },
+                                Ok(_) => {
+                                    self.to_field = "".to_string();
+                                    self.amount_field = "".to_string();
+                                    self.fee_field = u64::from(DEFAULT_FEE_PER_GRAM).to_string();
+                                    self.message_field = "".to_string();
+                                    self.send_input_mode = SendInputMode::None;
+                                    self.send_result_watch = Some(rx);
+                                },
                             }
+                            self.confirmation_dialog = None;
+                            return;
                         }
-                        self.confirmation_dialog = None;
-                        return;
-                    }
-                },
+                    },
+                    Some(ConfirmationDialogType::ConfirmDeleteContact) => {
+                        if 'y' == c {
+                            if let Some(c) = self
+                                .contacts_list_state
+                                .selected()
+                                .and_then(|i| app_state.get_contact(i))
+                                .cloned()
+                            {
+                                if let Err(_e) = Handle::current().block_on(app_state.delete_contact(c.public_key)) {
+                                    self.error_message =
+                                        Some("Could not delete selected contact\nPress Enter to continue.".to_string());
+                                }
+                            }
+                            self.confirmation_dialog = None;
+                            return;
+                        }
+                    },
+                }
             }
         }
 
