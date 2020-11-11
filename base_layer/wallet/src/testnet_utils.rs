@@ -147,7 +147,7 @@ pub async fn create_wallet(
         listener_liveness_max_sessions: 0,
     };
 
-    let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind);
+    let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind, None);
 
     Wallet::new(
         config,

@@ -35,7 +35,7 @@ use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, Stream, StreamExt};
 use log::*;
 use rand::rngs::OsRng;
-use tari_comms::types::CommsPublicKey;
+use tari_comms::peer_manager::Peer;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
 use tari_core::{
     base_node::{
@@ -90,7 +90,7 @@ pub struct BaseNodeService<BNResponseStream> {
     request_stream: Option<Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>>,
     outbound_messaging: OutboundMessageRequester,
     event_publisher: BaseNodeEventSender,
-    base_node_public_key: Option<CommsPublicKey>,
+    base_node_peer: Option<Peer>,
     shutdown_signal: Option<ShutdownSignal>,
     state: BaseNodeState,
     requests: Vec<RequestMetadata>,
@@ -114,7 +114,7 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
             request_stream: Some(request_stream),
             outbound_messaging,
             event_publisher,
-            base_node_public_key: None,
+            base_node_peer: None,
             shutdown_signal: Some(shutdown_signal),
             state: BaseNodeState::default(),
             requests: Vec::new(),
@@ -196,10 +196,10 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
     /// Sends a request to the connected base node to retrieve chain metadata.
     async fn refresh_chain_metadata(&mut self) -> Result<(), BaseNodeServiceError> {
         debug!(target: LOG_TARGET, "Refresh chain metadata");
-        let dest_public_key = self
-            .base_node_public_key
+        let base_node_peer = self
+            .base_node_peer
             .clone()
-            .ok_or_else(|| BaseNodeServiceError::NoBaseNodePublicKey)?;
+            .ok_or_else(|| BaseNodeServiceError::NoBaseNodePeer)?;
 
         let request_key = generate_request_key(&mut OsRng);
         let now = Utc::now().naive_utc();
@@ -213,7 +213,7 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
                 // convert to std Duration
                 let age = Duration::from_millis(age.num_milliseconds() as u64);
 
-                age <= self.config.request_keys_max_age
+                age <= self.config.request_max_age
             });
 
         trace!(target: LOG_TARGET, "current requests: {:?}", current_requests);
@@ -228,6 +228,8 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
         };
 
         let message = OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request);
+
+        let dest_public_key = base_node_peer.public_key;
 
         self.outbound_messaging
             .send_direct(dest_public_key, message)
@@ -280,8 +282,8 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
         Ok(())
     }
 
-    fn set_base_node_public_key(&mut self, base_node_public_key: CommsPublicKey) {
-        self.base_node_public_key = Some(base_node_public_key);
+    fn set_base_node_peer(&mut self, peer: Box<Peer>) {
+        self.base_node_peer = Some(*peer);
     }
 
     fn publish_event(&mut self, event: BaseNodeEvent) {
@@ -305,9 +307,9 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
             "Handling Wallet Base Node Service Request: {:?}", request
         );
         match request {
-            BaseNodeServiceRequest::SetBaseNodePublicKey(public_key) => {
-                self.set_base_node_public_key(public_key);
-                Ok(BaseNodeServiceResponse::BaseNodePublicKeySet)
+            BaseNodeServiceRequest::SetBaseNodePeer(peer) => {
+                self.set_base_node_peer(peer);
+                Ok(BaseNodeServiceResponse::BaseNodePeerSet)
             },
             BaseNodeServiceRequest::GetChainMetadata => Ok(BaseNodeServiceResponse::ChainMetadata(
                 self.state.chain_metadata.clone(),

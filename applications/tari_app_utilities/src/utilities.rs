@@ -232,7 +232,7 @@ pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
 /// ## Returns
 /// A list of peers, peers which do not have a valid public key are excluded
 pub fn parse_peer_seeds(seeds: &[String]) -> Vec<Peer> {
-    info!("Adding {} peers to the peer database", seeds.len());
+    info!("Parsing {} peers", seeds.len());
     let mut result = Vec::with_capacity(seeds.len());
     for s in seeds {
         let parts: Vec<&str> = s.split("::").map(|s| s.trim()).collect();

@@ -88,6 +88,7 @@ pub struct WalletConfig {
     pub buffer_size: usize,
     pub rate_limit: usize,
     pub network: Network,
+    pub base_node_service_config: Option<BaseNodeServiceConfig>,
 }
 
 impl WalletConfig {
@@ -96,6 +97,7 @@ impl WalletConfig {
         factories: CryptoFactories,
         transaction_service_config: Option<TransactionServiceConfig>,
         network: Network,
+        base_node_service_config: Option<BaseNodeServiceConfig>,
     ) -> Self
     {
         Self {
@@ -107,6 +109,7 @@ impl WalletConfig {
             // This is the default rate limit fot the pubsub_connector for the mobile wallet
             rate_limit: 5,
             network,
+            base_node_service_config,
         }
     }
 }
@@ -127,7 +130,7 @@ where
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
     pub contacts_service: ContactsServiceHandle,
-    pub base_node_service: BaseNodeServiceHandle,
+    pub base_node_service: Option<BaseNodeServiceHandle>,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
     #[cfg(feature = "test_harness")]
@@ -170,7 +173,7 @@ where
         let node_identity = config.comms_config.node_identity.clone();
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
-        let mut handles = StackBuilder::new(shutdown_signal)
+        let mut stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(config.comms_config, publisher, vec![]))
             .add_initializer(OutputManagerServiceInitializer::new(
                 OutputManagerServiceConfig::default(),
@@ -187,13 +190,22 @@ where
                 factories.clone(),
                 config.network,
             ))
-            .add_initializer(ContactsServiceInitializer::new(contacts_backend))
-            .add_initializer(BaseNodeServiceInitializer::new(
-                BaseNodeServiceConfig::default(),
+            .add_initializer(ContactsServiceInitializer::new(contacts_backend));
+
+        let mut base_node_service_enabled = false;
+
+        if let Some(base_node_service_config) = config.base_node_service_config {
+            debug!(target: LOG_TARGET, "Base Node Service enabled by config. Initializing.");
+            stack = stack.add_initializer(BaseNodeServiceInitializer::new(
+                base_node_service_config,
                 peer_message_subscription_factory,
-            ))
-            .build()
-            .await?;
+            ));
+            base_node_service_enabled = true;
+        } else {
+            debug!(target: LOG_TARGET, "Wallet Base Node Service is not enabled.");
+        }
+
+        let mut handles = stack.build().await?;
 
         let comms = handles
             .take_handle::<UnspawnedCommsNode>()
@@ -204,9 +216,13 @@ where
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();
-        let base_node_service = handles.expect_handle::<BaseNodeServiceHandle>();
-
         let store_and_forward_requester = dht.store_and_forward_requester();
+
+        let base_node_service_handle = if base_node_service_enabled {
+            Some(handles.expect_handle::<BaseNodeServiceHandle>())
+        } else {
+            None
+        };
 
         Ok(Wallet {
             comms,
@@ -215,7 +231,7 @@ where
             output_manager_service: output_manager_handle,
             transaction_service: transaction_service_handle,
             contacts_service: contacts_handle,
-            base_node_service,
+            base_node_service: base_node_service_handle,
             db,
             factories,
             #[cfg(feature = "test_harness")]
@@ -232,8 +248,8 @@ where
         self.comms.clone().wait_until_shutdown().await;
     }
 
-    /// This function will set the base_node that the wallet uses to broadcast transactions and monitor the blockchain
-    /// state
+    /// This function will set the base_node that the wallet uses to broadcast transactions, monitor outputs, and
+    /// monitor the base node state.
     pub async fn set_base_node_peer(
         &mut self,
         public_key: CommsPublicKey,
@@ -270,7 +286,9 @@ where
             .set_base_node_public_key(peer.public_key.clone())
             .await?;
 
-        self.base_node_service.set_base_node_public_key(peer.public_key).await?;
+        if let Some(mut base_node_service) = self.base_node_service.clone() {
+            base_node_service.set_service_peer(peer).await?;
+        }
 
         Ok(())
     }

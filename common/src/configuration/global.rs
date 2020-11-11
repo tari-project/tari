@@ -91,6 +91,9 @@ pub struct GlobalConfig {
     pub transaction_broadcast_send_timeout: Duration,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
+    pub wallet_base_node_service_peer: String,
+    pub wallet_base_node_service_refresh_interval: u64,
+    pub wallet_base_node_service_request_max_age: u64,
     pub prevent_fee_gt_amount: bool,
     pub monerod_url: String,
     pub monerod_username: String,
@@ -383,6 +386,26 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
     };
 
+    let key = "wallet.base_node_service_peer";
+    let wallet_base_node_service_peer = match cfg.get_str(key) {
+        Ok(peer) => peer,
+        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+    };
+
+    let key = "wallet.base_node_service_refresh_interval";
+    let wallet_base_node_service_refresh_interval = match cfg.get_int(key) {
+        Ok(seconds) => seconds as u64,
+        Err(ConfigError::NotFound(_)) => 10,
+        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+    };
+
+    let key = "wallet.base_node_service_request_max_age";
+    let wallet_base_node_service_request_max_age = match cfg.get_int(key) {
+        Ok(seconds) => seconds as u64,
+        Err(ConfigError::NotFound(_)) => 60,
+        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+    };
+
     let key = "common.liveness_max_sessions";
     let liveness_max_sessions = cfg
         .get_int(key)
@@ -507,6 +530,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         transaction_broadcast_send_timeout,
         wallet_command_send_wait_stage,
         wallet_command_send_wait_timeout,
+        wallet_base_node_service_peer,
+        wallet_base_node_service_refresh_interval,
+        wallet_base_node_service_request_max_age,
         prevent_fee_gt_amount,
         proxy_host_address,
         monerod_url,

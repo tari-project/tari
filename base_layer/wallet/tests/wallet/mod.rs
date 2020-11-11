@@ -135,6 +135,7 @@ async fn create_wallet(
         factories,
         Some(transaction_service_config),
         Network::Rincewind,
+        None,
     );
 
     let wallet = Wallet::new(
@@ -578,7 +579,7 @@ async fn test_import_utxo() {
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
     };
-    let config = WalletConfig::new(comms_config, factories.clone(), None, Network::Rincewind);
+    let config = WalletConfig::new(comms_config, factories.clone(), None, Network::Rincewind, None);
     let mut alice_wallet = Wallet::new(
         config,
         WalletMemoryDatabase::new(),
@@ -645,7 +646,7 @@ async fn test_data_generation() {
         user_agent: "tari/test-wallet".to_string(),
     };
 
-    let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind);
+    let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind, None);
 
     let transaction_backend = TransactionMemoryDatabase::new();
 

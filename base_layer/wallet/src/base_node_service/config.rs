@@ -28,29 +28,29 @@ const LOG_TARGET: &str = "wallet::base_node_service::config";
 #[derive(Clone)]
 pub struct BaseNodeServiceConfig {
     pub refresh_interval: Duration,
-    pub request_keys_max_age: Duration,
+    pub request_max_age: Duration,
 }
 
 impl Default for BaseNodeServiceConfig {
     fn default() -> Self {
         Self {
-            refresh_interval: Duration::from_secs(30),
-            request_keys_max_age: Duration::from_secs(120),
+            refresh_interval: Duration::from_secs(10),
+            request_max_age: Duration::from_secs(60),
         }
     }
 }
 
 impl BaseNodeServiceConfig {
-    pub fn new(refresh_interval: Duration, request_keys_max_age: Duration) -> Self {
+    pub fn new(refresh_interval: u64, request_max_age: u64) -> Self {
         info!(
             target: LOG_TARGET,
-            "Setting new wallet base node service config, refresh_interval: {:?}, request_keys_max_age: {:?}",
+            "Setting new wallet base node service config, refresh interval: {}s, request max age: {}s",
             refresh_interval,
-            request_keys_max_age
+            request_max_age
         );
         Self {
-            refresh_interval,
-            request_keys_max_age,
+            refresh_interval: Duration::from_secs(refresh_interval),
+            request_max_age: Duration::from_secs(request_max_age),
         }
     }
 }

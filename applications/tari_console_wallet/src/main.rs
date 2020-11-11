@@ -7,7 +7,7 @@
 #![deny(unknown_lints)]
 #![recursion_limit = "512"]
 use log::*;
-use rand::{rngs::OsRng, RngCore};
+use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{fs, sync::Arc};
 use structopt::StructOpt;
 use tari_app_utilities::{
@@ -15,12 +15,16 @@ use tari_app_utilities::{
     utilities::{parse_peer_seeds, setup_wallet_transport_type, ExitCodes},
 };
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig, Network};
-use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms::{
+    peer_manager::{Peer, PeerFeatures},
+    NodeIdentity,
+};
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_core::{consensus::Network as NetworkType, transactions::types::CryptoFactories};
 use tari_p2p::initialization::CommsConfig;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_wallet::{
+    base_node_service::config::BaseNodeServiceConfig,
     error::WalletError,
     storage::sqlite_utilities::initialize_sqlite_database_backends,
     transaction_service::config::TransactionServiceConfig,
@@ -109,7 +113,14 @@ fn main_inner() -> Result<(), ExitCodes> {
         return Ok(());
     }
 
-    let wallet = runtime.block_on(setup_wallet(&config, node_identity, shutdown.to_signal()))?;
+    let base_node = get_base_node_peer(&config)?;
+
+    let wallet = runtime.block_on(setup_wallet(
+        &config,
+        node_identity,
+        base_node.clone(),
+        shutdown.to_signal(),
+    ))?;
 
     debug!(target: LOG_TARGET, "Starting app");
 
@@ -117,7 +128,7 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     let handle = runtime.handle().clone();
     let result = match wallet_mode(bootstrap) {
-        WalletMode::Tui => tui_mode(handle, config, node_identity, wallet.clone()),
+        WalletMode::Tui => tui_mode(handle, config, node_identity, wallet.clone(), base_node),
         WalletMode::Grpc => grpc_mode(handle, wallet.clone(), config),
         WalletMode::Script(path) => script_mode(handle, path, wallet.clone(), config),
         WalletMode::Command(command) => command_mode(handle, command, wallet.clone(), config),
@@ -135,6 +146,32 @@ fn main_inner() -> Result<(), ExitCodes> {
     println!("Done.");
 
     result
+}
+
+fn get_base_node_peer(config: &GlobalConfig) -> Result<Peer, ExitCodes> {
+    // pick a random peer from peer seeds config
+    // todo: strategy for picking peer seed: random or lowest latency
+    let peer_seeds = parse_peer_seeds(&config.peer_seeds);
+    let peer_seed = peer_seeds.choose(&mut OsRng);
+
+    // get the configured base node service peer
+    let base_node_peers = parse_peer_seeds(&[config.wallet_base_node_service_peer.clone()]);
+    let base_node = base_node_peers.first();
+
+    let peer = match (peer_seed, base_node) {
+        // base node service peer is defined, so use that
+        (_, Some(node)) => node.clone(),
+        // only peer seeds were provided in config
+        (Some(seed), None) => seed.clone(),
+        // invalid configuration
+        _ => {
+            return Err(ExitCodes::ConfigError(
+                "No peer seeds or base node peer defined in config!".to_string(),
+            ))
+        },
+    };
+
+    Ok(peer)
 }
 
 fn wallet_mode(bootstrap: ConfigBootstrap) -> WalletMode {
@@ -156,6 +193,7 @@ fn wallet_mode(bootstrap: ConfigBootstrap) -> WalletMode {
 async fn setup_wallet(
     config: &GlobalConfig,
     node_identity: Arc<NodeIdentity>,
+    base_node: Peer,
     shutdown_signal: ShutdownSignal,
 ) -> Result<WalletSqlite, ExitCodes>
 {
@@ -205,6 +243,11 @@ async fn setup_wallet(
         Network::LocalNet => NetworkType::LocalNet,
     };
 
+    let base_node_service_config = BaseNodeServiceConfig::new(
+        config.wallet_base_node_service_refresh_interval,
+        config.wallet_base_node_service_request_max_age,
+    );
+
     let factories = CryptoFactories::default();
     let mut wallet_config = WalletConfig::new(
         comms_config.clone(),
@@ -214,6 +257,7 @@ async fn setup_wallet(
             ..Default::default()
         }),
         network,
+        Some(base_node_service_config),
     );
     wallet_config.buffer_size = std::cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
 
@@ -234,24 +278,19 @@ async fn setup_wallet(
         }
     })?;
 
-    debug!(target: LOG_TARGET, "Setting peer seeds");
-
-    // TODO update this to come from an explicit config field. This will be replaced by gRPC interface.
-    if !config.peer_seeds.is_empty() {
-        let seed_peers = parse_peer_seeds(&config.peer_seeds);
-        let random_seed_peer = OsRng.next_u32() as usize % seed_peers.len();
-        wallet
-            .set_base_node_peer(
-                seed_peers[random_seed_peer].public_key.clone(),
-                seed_peers[random_seed_peer]
-                    .addresses
-                    .first()
-                    .expect("The seed peers should have an address")
-                    .to_string(),
-            )
-            .await
-            .map_err(|e| ExitCodes::WalletError(format!("Error setting wallet base node peer. {}", e)))?;
-    }
+    // TODO gRPC interfaces for setting base node
+    debug!(target: LOG_TARGET, "Setting base node peer");
+    wallet
+        .set_base_node_peer(
+            base_node.public_key.clone(),
+            base_node
+                .addresses
+                .first()
+                .expect("The base node peer should have an address!")
+                .to_string(),
+        )
+        .await
+        .map_err(|e| ExitCodes::WalletError(format!("Error setting wallet base node peer. {}", e)))?;
 
     // Restart transaction protocols
     if let Err(e) = wallet.transaction_service.restart_transaction_protocols().await {

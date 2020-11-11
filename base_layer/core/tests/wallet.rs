@@ -169,6 +169,7 @@ fn wallet_base_node_integration_test() {
             ..Default::default()
         }),
         Network::Rincewind,
+        None,
     );
     let mut runtime = create_runtime();
     let mut alice_wallet = runtime
@@ -213,7 +214,7 @@ fn wallet_base_node_integration_test() {
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
     };
-    let bob_wallet_config = WalletConfig::new(bob_comms_config, factories.clone(), None, Network::Rincewind);
+    let bob_wallet_config = WalletConfig::new(bob_comms_config, factories.clone(), None, Network::Rincewind, None);
 
     let bob_wallet = runtime
         .block_on(Wallet::new(
