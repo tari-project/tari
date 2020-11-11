@@ -195,6 +195,7 @@ mkdir $distDir/dist
 
 COPY_FILES=(
   "target/release/tari_base_node"
+  "target/release/tari_console_wallet"
   "target/release/tari_merge_mining_proxy"
   "common/config/presets/tari-sample.toml"
   "common/config/tari_config_example.toml"
