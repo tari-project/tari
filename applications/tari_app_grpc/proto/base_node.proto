@@ -66,11 +66,13 @@ service BaseNode {
 /// return type of GetTipInfo
 message TipInfoResponse{
     MetaData metadata = 1;
+    bool initial_sync_achieved = 2;
 }
 /// return type of GetNewBlockTemplate
 message NewBlockTemplateResponse{
     NewBlockTemplate new_block_template = 1;
     uint64 block_reward = 2;
+    bool initial_sync_achieved = 3;
 }
 
 /// An Empty placeholder for endpoints without request parameters
@@ -145,6 +147,7 @@ message CalcTimingResponse {
     uint64 min = 2;
     double avg = 3;
 }
+
 // The request used for querying headers from the base node. The parameters `from_height` and `num_headers` can be used
 // to page through the current best chain.
 message ListHeadersRequest {
@@ -173,23 +176,21 @@ message GetBlocksResponse {
     repeated HistoricalBlock blocks = 1;
 }
 
-
 enum Sorting {
     SORTING_DESC = 0;
     SORTING_ASC = 1;
 }
 
-
 message MetaData {
-        // The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
-        uint64 height_of_longest_chain = 1;
-        // The block hash of the current tip of the longest valid chain, or `None` for an empty chain
-        bytes best_block = 2;
-        // The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
-        // tracked (i.e. the database is in full archival mode).
-        uint64 pruning_horizon = 4;
-        // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
-        bytes accumulated_difficulty = 5;
+    // The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
+    uint64 height_of_longest_chain = 1;
+    // The block hash of the current tip of the longest valid chain, or `None` for an empty chain
+    bytes best_block = 2;
+    // The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
+    // tracked (i.e. the database is in full archival mode).
+    uint64 pruning_horizon = 4;
+    // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
+    bytes accumulated_difficulty = 5;
 }
 
 // This is the message that is returned for a miner after it asks for a new block.
