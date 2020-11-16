@@ -92,6 +92,8 @@ so one might infer that this status is unlikely to change soon.
 As of this writing, the Beam project also considers Scriptless Script to be the
 [extent of their scripting capabilities](https://docs.beam.mw/Beam_lightning_network_position_paper.pdf).
 
+TODO - update EBam
+
 [Mimblewimble coin](https://github.com/mwcproject/mwc-node/blob/master/doc/roadmap.md) is a fork of Grin and "considers
 the protocol ossified".
 
@@ -160,7 +162,7 @@ The assumptions that broadly equate scripting with range proofs in the above arg
 * The script (hash) must be committed to the blockchain.
 * The script must not be malleable in any way without invalidating the transaction.
 * We must be able to prove that the UTXO owner provides the script hash and no-one else.
-* The scripts and their redeeming inputs must be stored on the block chain.
+* The scripts and their redeeming inputs must be stored on the block chain. TODO - inputs must be committed
 
 The next section discusses the specific proposals for achieving these requirements.
 
@@ -170,7 +172,7 @@ At a high level, Tari script works as follows:
 
 * The script commitment, which can be adequately represented by the hash of the canonical serialisation of the script in
 binary, is recorded in the transaction kernel. 
-* An additional merkle mountain range committing the script history is necessary to prevent miners rewriting the script 
+* An additional merkle mountain range committing the script history (including the redeeming inputs) is necessary to prevent miners rewriting the script 
 hash history during chain re-orgs.
 * An additional secret key is provided by UTXO owners that signs both the script and the input data (if any) when it is spent.
 
@@ -181,7 +183,7 @@ remove the script via cut-through, whereas kernels never get pruned.
 
 One approach to commit to the script hashes is to modify the output commitments using a variation of the [data commitments] approach
 first suggested by [Phyro](https://github.com/phyro). In this approach, when creating a new UTXO, the owner also calculates
-the hash of the locking script, _s_, such that `s = H(script)`. The script hash gets stored in the UTXO itself.
+the hash of the locking script, \\( sigma \\), such that \\(\sigma = H(script) \\). The script hash gets stored in the UTXO itself.
 
 Using this approach, the script hash is bound to the UTXO via the UTXO commitment. In combination with the signature, 
 this makes it non-malleable insofar as the UTXO itself is non-malleable.
@@ -260,13 +262,13 @@ The product \\( \sigma_i L_i \\) is referred to as the _script product_.
 ### Script section
 
 A new section in the Mimblewimble aggregate body is an array of script objects. The length of the array is equal to the
-(sum of the) number of non-default script hashes in the kernel(s).
+length of the input script hashes in the kernel(s).
 
 A script object consists of:
 * `script`: The serialised binary representation of the script. The hash of this data MUST equal one of the script
   hashes supplied in the kernel input script hash array,
 * `data`: The serialised representation of the data to push onto the stack prior to executing of the script,
-* `signature`: A signature of the script + data verified, signed by \\( k_{a'} \\).
+* `signature`: A signature of the script + data, signed by \\( k_{a'} \\).
 
 It's possible to have duplicate, non-trivial script hashes in the kernel. Since it is possible to have different inputs
 to the script and still be a valid spend condition, these scripts MUST be repeated in the script section, even if they
@@ -341,11 +343,11 @@ In addition to the changes given above, there are consensus rule changes for tra
 
 For every valid block or transaction,
 
-1. Every script hash in the kernel MUST match a script in the script section. If there are
+1. Every script hash in the kernel input seet MUST match a script in the script section. If there are
    duplicate non-trivial script hashes present, there MUST be a script entry for every duplicate.
 2. The script and its input data, if any, MUST execute successfully, i.e. without any errors. After execution, the stack
    MUST have exactly one element and its value MUST be exactly zero.
-3. The Coinbase output MUST use a default script.
+3. The Coinbase output MUST use a default script hash.
 
 ## Checking the requirements
 
@@ -366,9 +368,9 @@ Bob then tries to apply the attack described in [data commitments], and tries to
 
 $$
 \begin{align}
-\hat{C} &= k_i.G + k_{a'}\sigma_a.G + v.H  \\\\
-\Rightarrow \hat{C_b} &= k_i.G + k_{a'}\sigma_a.G + v.H - k_{a'}\sigma_a.G + k_{b'}\sigma_a.G \\\\
-&= k_i.G + v.H + k_{b'}.G \\\\
+\hat{C} &= k_a.G + k_{a'}\sigma_a.G + v.H  \\\\
+\Rightarrow \hat{C_b} &= k_a.G + k_{a'}\sigma_a.G + v.H - k_{a'}\sigma_a.G + k_{b'}\sigma_b.G \\\\
+&= k_a.G + v.H + k_{b'}\sigma_b.G \\\\
 &= C_a + L_b\sigma_b
 \end{align}
 $$
