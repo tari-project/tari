@@ -28,6 +28,8 @@ use thiserror::Error;
 pub enum BaseNodeServiceError {
     #[error("No base node peer set")]
     NoBaseNodePeer,
+    #[error("No base node service peers were configured")]
+    NoBaseNodeServicePeers,
     #[error("Unexpected API Response")]
     UnexpectedApiResponse,
     #[error("Transport channel error: `{0}`")]

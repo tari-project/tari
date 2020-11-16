@@ -43,32 +43,53 @@ impl<B: Backend> Component<B> for BaseNode {
     where B: Backend {
         let base_node_state = app_state.get_base_node_state();
 
-        let chain_info = match base_node_state.chain_metadata.clone() {
-            None => Spans::from(vec![
-                Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
-                Span::raw(" "),
-                Span::styled("Connecting...", Style::default().fg(Color::Reset)),
-            ]),
-            Some(metadata) => {
-                let tip = metadata.height_of_longest_chain();
-
-                let synced = base_node_state.is_synced.unwrap_or_default();
-                let (tip_color, sync_text) = if synced {
-                    (Color::Green, "Synced ✅")
-                } else {
-                    (Color::Yellow, "Syncing ⏱")
-                };
-
-                let tip_info = vec![
+        let chain_info = if base_node_state.online {
+            match base_node_state.chain_metadata.clone() {
+                None => Spans::from(vec![
                     Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
                     Span::raw(" "),
-                    Span::styled(format!("#{}", tip), Style::default().fg(tip_color)),
-                    Span::raw(" "),
-                    Span::styled(sync_text.to_string(), Style::default().fg(Color::DarkGray)),
-                ];
+                    Span::styled("Connecting...", Style::default().fg(Color::Reset)),
+                ]),
+                Some(metadata) => {
+                    let tip = metadata.height_of_longest_chain();
 
-                Spans::from(tip_info)
-            },
+                    let synced = base_node_state.is_synced.unwrap_or_default();
+                    let (tip_color, sync_text) = if synced {
+                        (Color::Green, "Synced ✅")
+                    } else {
+                        (Color::Yellow, "Syncing ⏱")
+                    };
+
+                    let latency = base_node_state.latency.unwrap_or_default().as_millis();
+                    let latency_color = match latency {
+                        0 => Color::Gray, // offline? default duration is 0
+                        1..=800 => Color::Green,
+                        801..=1200 => Color::Yellow,
+                        _ => Color::Red,
+                    };
+
+                    let tip_info = vec![
+                        Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
+                        Span::raw(" "),
+                        Span::styled(format!("#{}", tip), Style::default().fg(tip_color)),
+                        Span::raw("  "),
+                        Span::styled(sync_text.to_string(), Style::default().fg(Color::DarkGray)),
+                        Span::raw("  "),
+                        Span::styled("Latency", Style::default().fg(Color::DarkGray)),
+                        Span::raw(" "),
+                        Span::styled(latency.to_string(), Style::default().fg(latency_color)),
+                        Span::styled(" ms", Style::default().fg(Color::DarkGray)),
+                    ];
+
+                    Spans::from(tip_info)
+                },
+            }
+        } else {
+            Spans::from(vec![
+                Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
+                Span::raw(" "),
+                Span::styled("Offline", Style::default().fg(Color::Red)),
+            ])
         };
 
         let chain_metadata_paragraph =

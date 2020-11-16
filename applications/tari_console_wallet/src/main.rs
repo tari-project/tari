@@ -7,7 +7,6 @@
 #![deny(unknown_lints)]
 #![recursion_limit = "512"]
 use log::*;
-use rand::{rngs::OsRng, Rng};
 use std::{fs, str::FromStr, sync::Arc};
 use structopt::StructOpt;
 use tari_app_utilities::{
@@ -111,14 +110,10 @@ fn main_inner() -> Result<(), ExitCodes> {
         return Ok(());
     }
 
-    let base_node = get_base_node_peer(&config)?;
+    let base_nodes = get_base_node_peers(&config)?;
+    let base_node = base_nodes.first().expect("No base node service peer defined.").clone();
 
-    let wallet = runtime.block_on(setup_wallet(
-        &config,
-        node_identity,
-        base_node.clone(),
-        shutdown.to_signal(),
-    ))?;
+    let wallet = runtime.block_on(setup_wallet(&config, node_identity, base_nodes, shutdown.to_signal()))?;
 
     debug!(target: LOG_TARGET, "Starting app");
 
@@ -144,30 +139,36 @@ fn main_inner() -> Result<(), ExitCodes> {
     result
 }
 
-fn get_base_node_peer(config: &GlobalConfig) -> Result<Peer, ExitCodes> {
-    // base node service peer is defined, so use that
-    if let Ok(base_node) = SeedPeer::from_str(&config.wallet_base_node_service_peer).map(Peer::from) {
-        return Ok(base_node);
-    }
-
-    // pick a random peer from peer seeds config
-    // todo: strategy for picking peer seed: random or lowest latency
-    let mut peer_seeds = config
-        .peer_seeds
+fn get_base_node_peers(config: &GlobalConfig) -> Result<Vec<Peer>, ExitCodes> {
+    // get the configured base node service peers
+    let mut base_node_peers = config
+        .wallet_base_node_service_peers
         .iter()
         .map(|s| SeedPeer::from_str(s))
         .map(|r| r.map(Peer::from))
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| ExitCodes::ConfigError(format!("Malformed seed peer: {}", err)))?;
+        .map_err(|err| ExitCodes::ConfigError(format!("Malformed base node service peer: {}", err)))?;
 
-    if !peer_seeds.is_empty() {
-        let idx = OsRng.gen_range(0, peer_seeds.len());
-        return Ok(peer_seeds.remove(idx));
+    // add the peer seeds, if fallback is configured
+    if config.wallet_base_node_service_fallback_enabled {
+        let peer_seeds = config
+            .peer_seeds
+            .iter()
+            .map(|s| SeedPeer::from_str(s))
+            .map(|r| r.map(Peer::from))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| ExitCodes::ConfigError(format!("Malformed seed peer: {}", err)))?;
+
+        base_node_peers.extend(peer_seeds);
     }
 
-    Err(ExitCodes::ConfigError(
-        "No peer seeds or base node peer defined in config!".to_string(),
-    ))
+    if base_node_peers.is_empty() {
+        Err(ExitCodes::ConfigError(
+            "No base node peers or peer seeds defined in config!".to_string(),
+        ))
+    } else {
+        Ok(base_node_peers)
+    }
 }
 
 fn wallet_mode(bootstrap: ConfigBootstrap) -> WalletMode {
@@ -189,7 +190,7 @@ fn wallet_mode(bootstrap: ConfigBootstrap) -> WalletMode {
 async fn setup_wallet(
     config: &GlobalConfig,
     node_identity: Arc<NodeIdentity>,
-    base_node: Peer,
+    base_nodes: Vec<Peer>,
     shutdown_signal: ShutdownSignal,
 ) -> Result<WalletSqlite, ExitCodes>
 {
@@ -264,7 +265,7 @@ async fn setup_wallet(
     let mut wallet = Wallet::new(
         wallet_config,
         wallet_backend,
-        transaction_backend.clone(),
+        transaction_backend,
         output_manager_backend,
         contacts_backend,
         shutdown_signal,
@@ -281,14 +282,7 @@ async fn setup_wallet(
     // TODO gRPC interfaces for setting base node
     debug!(target: LOG_TARGET, "Setting base node peer");
     wallet
-        .set_base_node_peer(
-            base_node.public_key.clone(),
-            base_node
-                .addresses
-                .first()
-                .expect("The base node peer should have an address!")
-                .to_string(),
-        )
+        .set_base_node_peers(base_nodes)
         .await
         .map_err(|e| ExitCodes::WalletError(format!("Error setting wallet base node peer. {}", e)))?;
 

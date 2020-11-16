@@ -1,8 +1,11 @@
-use crate::ui::{
-    components::Component,
-    state::AppState,
-    widgets::{draw_dialog, MultiColumnList},
-    MAX_WIDTH,
+use crate::{
+    ui::{
+        components::Component,
+        state::AppState,
+        widgets::{draw_dialog, MultiColumnList},
+        MAX_WIDTH,
+    },
+    utils::formatting::display_address,
 };
 use log::*;
 use tari_crypto::tari_utilities::hex::Hex;
@@ -72,7 +75,7 @@ impl NetworkTab {
         column_list.render(f, list_areas[0], &mut ListState::default());
     }
 
-    pub fn draw_base_node_peer<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
+    pub fn draw_base_node_peer<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Base Node Peer",
@@ -85,34 +88,48 @@ impl NetworkTab {
             .margin(1)
             .split(area);
 
-        let instructions = Paragraph::new(Spans::from(vec![
+        let mut instructions = vec![
             Span::raw("Press "),
             Span::styled("P", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to edit "),
+            Span::raw(" to set custom "),
             Span::styled(
                 "Base Node Public Key and Address",
                 Style::default().add_modifier(Modifier::BOLD),
             ),
-            Span::raw(" fields, "),
-            Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw(" to clear the clear the custom base node & revert to config"),
-        ]))
-        .block(Block::default());
-        f.render_widget(instructions, base_node_layout[0]);
+            Span::raw(" fields. "),
+        ];
 
-        let pubkey_input = Paragraph::new(self.public_key_field.as_ref())
-            .style(match self.base_node_edit_mode {
-                BaseNodeInputMode::PublicKey => Style::default().fg(Color::Magenta),
-                _ => Style::default(),
-            })
+        if app_state.get_custom_base_node().is_some() {
+            instructions.extend(vec![
+                Span::raw("Press "),
+                Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to clear the custom base node & revert to config."),
+            ]);
+        }
+
+        let instructions_p = Paragraph::new(Spans::from(instructions)).block(Block::default());
+        f.render_widget(instructions_p, base_node_layout[0]);
+
+        let peer = app_state.get_current_base_node();
+        let (public_key, style) = match self.base_node_edit_mode {
+            BaseNodeInputMode::PublicKey => (self.public_key_field.clone(), Style::default().fg(Color::Magenta)),
+            BaseNodeInputMode::Address => (self.public_key_field.clone(), Style::default()),
+            BaseNodeInputMode::None => (peer.public_key.to_hex(), Style::default()),
+        };
+
+        let pubkey_input = Paragraph::new(public_key)
+            .style(style)
             .block(Block::default().borders(Borders::ALL).title("(P)ublic Key:"));
         f.render_widget(pubkey_input, base_node_layout[1]);
 
-        let address_input = Paragraph::new(self.address_field.as_ref())
-            .style(match self.base_node_edit_mode {
-                BaseNodeInputMode::Address => Style::default().fg(Color::Magenta),
-                _ => Style::default(),
-            })
+        let (public_address, style) = match self.base_node_edit_mode {
+            BaseNodeInputMode::PublicKey => (self.address_field.clone(), Style::default()),
+            BaseNodeInputMode::Address => (self.address_field.clone(), Style::default().fg(Color::Magenta)),
+            BaseNodeInputMode::None => (display_address(&peer), Style::default()),
+        };
+
+        let address_input = Paragraph::new(public_address)
+            .style(style)
             .block(Block::default().borders(Borders::ALL).title("Address:"));
         f.render_widget(address_input, base_node_layout[2]);
     }
@@ -167,10 +184,7 @@ impl<B: Backend> Component<B> for NetworkTab {
                 self.previous_address_field = self.address_field.clone();
                 let config_base_node = app_state.get_config_base_node().clone();
                 let public_key = config_base_node.public_key.to_hex();
-                let public_address = match config_base_node.addresses.first() {
-                    Some(address) => address.to_string(),
-                    None => "".to_string(),
-                };
+                let public_address = display_address(&config_base_node);
                 self.public_key_field = public_key;
                 self.address_field = public_address;
                 self.confirmation_dialog = false;
@@ -226,7 +240,9 @@ impl<B: Backend> Component<B> for NetworkTab {
                 self.base_node_edit_mode = BaseNodeInputMode::PublicKey;
             },
             'c' => {
-                self.confirmation_dialog = true;
+                if app_state.get_custom_base_node().is_some() {
+                    self.confirmation_dialog = true;
+                }
             },
             _ => {},
         }
@@ -243,8 +259,18 @@ impl<B: Backend> Component<B> for NetworkTab {
             BaseNodeInputMode::None => {},
         }
     }
-}
 
+    fn on_esc(&mut self, _app_state: &mut AppState) {
+        match self.base_node_edit_mode {
+            BaseNodeInputMode::PublicKey | BaseNodeInputMode::Address => {
+                self.public_key_field = self.previous_public_key_field.clone();
+                self.address_field = self.previous_address_field.clone();
+                self.base_node_edit_mode = BaseNodeInputMode::None;
+            },
+            BaseNodeInputMode::None => {},
+        }
+    }
+}
 #[derive(PartialEq, Debug)]
 pub enum BaseNodeInputMode {
     None,

@@ -35,17 +35,20 @@ pub type BaseNodeEventReceiver = broadcast::Receiver<Arc<BaseNodeEvent>>;
 #[derive(Debug)]
 pub enum BaseNodeServiceRequest {
     GetChainMetadata,
+    SetBaseNodePeers(Vec<Peer>),
     SetBaseNodePeer(Box<Peer>),
 }
 /// API Response enum
 #[derive(Debug)]
 pub enum BaseNodeServiceResponse {
     ChainMetadata(Option<ChainMetadata>),
+    BaseNodePeersSet,
     BaseNodePeerSet,
 }
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BaseNodeEvent {
     BaseNodeState(BaseNodeState),
+    BaseNodePeerSet(Box<Peer>),
 }
 
 /// The Base Node Service Handle is a struct that contains the interfaces used to communicate with a running
@@ -72,7 +75,18 @@ impl BaseNodeServiceHandle {
         self.event_stream_sender.subscribe().fuse()
     }
 
-    pub async fn set_service_peer(&mut self, peer: Peer) -> Result<(), BaseNodeServiceError> {
+    pub async fn set_service_peers(&mut self, peers: Vec<Peer>) -> Result<(), BaseNodeServiceError> {
+        match self
+            .handle
+            .call(BaseNodeServiceRequest::SetBaseNodePeers(peers))
+            .await??
+        {
+            BaseNodeServiceResponse::BaseNodePeersSet => Ok(()),
+            _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), BaseNodeServiceError> {
         match self
             .handle
             .call(BaseNodeServiceRequest::SetBaseNodePeer(Box::new(peer)))

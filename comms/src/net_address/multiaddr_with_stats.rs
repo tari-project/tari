@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     cmp::{Ord, Ordering},
     fmt,
+    hash::{Hash, Hasher},
     time::Duration,
 };
 
@@ -169,6 +170,12 @@ impl PartialOrd for MutliaddrWithStats {
 impl PartialEq for MutliaddrWithStats {
     fn eq(&self, other: &MutliaddrWithStats) -> bool {
         self.address == other.address
+    }
+}
+
+impl Hash for MutliaddrWithStats {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.address.hash(state)
     }
 }
 

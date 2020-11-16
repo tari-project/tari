@@ -89,7 +89,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("wallet.transaction_broadcast_send_timeout", 600)
         .unwrap();
     cfg.set_default("wallet.prevent_fee_gt_amount", true).unwrap();
-    cfg.set_default("wallet.base_node_service_peer", "").unwrap();
+    cfg.set_default("wallet.base_node_service_peers", Vec::<String>::new())
+        .unwrap();
 
     //---------------------------------- Mainnet Defaults --------------------------------------------//
 
@@ -303,6 +304,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.ridcully.dns_seeds_name_server", "1.1.1.1:53")
         .unwrap();
     cfg.set_default("base_node.ridcully.dns_seeds_use_dnssec", true)
+        .unwrap();
+    cfg.set_default("wallet.base_node_service_peers", Vec::<String>::new())
         .unwrap();
 
     set_transport_defaults(&mut cfg);

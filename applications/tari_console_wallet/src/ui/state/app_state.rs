@@ -254,8 +254,16 @@ impl AppState {
         &self.cached_data.base_node_state
     }
 
+    pub fn get_current_base_node(&self) -> &Peer {
+        &self.cached_data.base_node_peer
+    }
+
     pub fn get_config_base_node(&self) -> &Peer {
         &self.cached_data.base_node_peer_config
+    }
+
+    pub fn get_custom_base_node(&self) -> &Option<Peer> {
+        &self.cached_data.base_node_peer_custom
     }
 
     pub async fn set_custom_base_node(&mut self, public_key: String, address: String) -> Result<(), UiError> {
@@ -496,6 +504,13 @@ impl AppStateInner {
         Ok(())
     }
 
+    pub async fn refresh_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {
+        self.data.base_node_peer = peer;
+        self.updated = true;
+
+        Ok(())
+    }
+
     pub fn get_shutdown_signal(&self) -> ShutdownSignal {
         self.wallet.comms.shutdown_signal()
     }
@@ -593,6 +608,7 @@ struct AppStateData {
     connected_peers: Vec<Peer>,
     balance: Balance,
     base_node_state: BaseNodeState,
+    base_node_peer: Peer,
     base_node_peer_config: Peer,
     base_node_peer_custom: Option<Peer>,
 }
@@ -623,6 +639,7 @@ impl AppStateData {
             emoji_id: eid,
             qr_code: image,
         };
+        let base_node_peer = base_node_peer_config.clone();
 
         AppStateData {
             pending_txs: Vec::new(),
@@ -632,6 +649,7 @@ impl AppStateData {
             connected_peers: Vec::new(),
             balance: Balance::zero(),
             base_node_state: BaseNodeState::default(),
+            base_node_peer,
             base_node_peer_config,
             base_node_peer_custom,
         }

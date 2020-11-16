@@ -105,9 +105,13 @@ base_node_query_timeout = 120
 #command_send_wait_stage = "Broadcast"
 #command_send_wait_timeout = 300
 
-# The base node that the wallet should use for service requests and tracking chain state
-# base_node_service_peer = "public_key::net_address"
-# base_node_service_peer = "e856839057aac496b9e25f10821116d02b58f20129e9b9ba681b830568e47c4d::/onion3/exe2zgehnw3tvrbef3ep6taiacr6sdyeb54be2s25fpru357r4skhtad:18141" #tbn-oregon
+# The base nodes that the wallet should use for service requests and tracking chain state.
+# base_node_service_peers = ["public_key::net_address", ...]
+# base_node_service_peers = ["e856839057aac496b9e25f10821116d02b58f20129e9b9ba681b830568e47c4d::/onion3/exe2zgehnw3tvrbef3ep6taiacr6sdyeb54be2s25fpru357r4skhtad:18141"]
+
+# This determines if the wallet should also use the peer_seeds as backup base node service peers.
+# Defaults to true. If set to false, then at least one base node service peer should be provided above.
+# base_node_service_fallback_enabled = true
 
 # Configuration for the wallet's base node service
 # The refresh interval, defaults to 10 seconds

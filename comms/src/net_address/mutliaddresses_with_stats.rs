@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{ops::Index, time::Duration};
 
 /// This struct is used to store a set of different net addresses such as IPv4, IPv6, Tor or I2P for a single peer.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, Eq)]
 pub struct MultiaddressesWithStats {
     pub addresses: Vec<MutliaddrWithStats>,
     last_attempted: Option<DateTime<Utc>>,

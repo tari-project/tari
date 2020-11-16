@@ -20,17 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ui::{
-    components::{
-        base_node::BaseNode,
-        network_tab::NetworkTab,
-        send_receive_tab::SendReceiveTab,
-        tabs_container::TabsContainer,
-        transactions_tab::TransactionsTab,
-        Component,
+use crate::{
+    ui::{
+        components::{
+            base_node::BaseNode,
+            network_tab::NetworkTab,
+            send_receive_tab::SendReceiveTab,
+            tabs_container::TabsContainer,
+            transactions_tab::TransactionsTab,
+            Component,
+        },
+        state::AppState,
+        MAX_WIDTH,
     },
-    state::AppState,
-    MAX_WIDTH,
+    utils::formatting::display_address,
 };
 use log::*;
 use tari_common::Network;
@@ -79,20 +82,14 @@ impl<B: Backend> App<B> {
         // If there is a custom peer we initialize the Network tab with it, otherwise we use the peer provided from
         // config
         let (public_key_str, public_address_str) = if let Some(custom_peer) = custom_peer {
-            let public_address = match custom_peer.addresses.first() {
-                Some(address) => address.to_string(),
-                None => "".to_string(),
-            };
+            let public_address = display_address(&custom_peer);
             info!(
                 target: LOG_TARGET,
                 "Using stored custom base node - {}::{}", custom_peer.public_key, public_address
             );
             (custom_peer.public_key.to_hex(), public_address)
         } else {
-            let public_address = match base_node_config.addresses.first() {
-                Some(address) => address.to_string(),
-                None => "".to_string(),
-            };
+            let public_address = display_address(&base_node_config);
             info!(
                 target: LOG_TARGET,
                 "Using configuration specified base node - {}::{}", base_node_config.public_key, public_address

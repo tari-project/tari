@@ -88,6 +88,7 @@ impl SendReceiveTab {
             Span::styled("A", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to edit "),
             Span::styled("Amount", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(", "),
             Span::styled("F", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to edit "),
             Span::styled("Fee-Per-Gram", Style::default().add_modifier(Modifier::BOLD)),

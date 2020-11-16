@@ -21,7 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
+    base_node_service::{
+        config::BaseNodeServiceConfig,
+        error::BaseNodeServiceError,
+        handle::BaseNodeServiceHandle,
+        BaseNodeServiceInitializer,
+    },
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
     output_manager_service::{
@@ -248,6 +253,31 @@ where
         self.comms.clone().wait_until_shutdown().await;
     }
 
+    /// This function will set the list of base_nodes that the wallet base node service can use, and set the first one
+    /// as the current base node peer for all wallet services.
+    pub async fn set_base_node_peers(&mut self, peers: Vec<Peer>) -> Result<(), WalletError> {
+        info!("Wallet setting {} base node peers.", peers.len());
+
+        if let Some(mut base_node_service) = self.base_node_service.clone() {
+            base_node_service.set_service_peers(peers.clone()).await?;
+        }
+
+        let base_node = peers
+            .first()
+            .ok_or_else(|| BaseNodeServiceError::NoBaseNodeServicePeers)?;
+        self.set_base_node_peer(
+            base_node.public_key.clone(),
+            base_node
+                .addresses
+                .first()
+                .expect("Base node peer should have at least one net address.")
+                .to_string(),
+        )
+        .await?;
+
+        Ok(())
+    }
+
     /// This function will set the base_node that the wallet uses to broadcast transactions, monitor outputs, and
     /// monitor the base node state.
     pub async fn set_base_node_peer(
@@ -287,7 +317,7 @@ where
             .await?;
 
         if let Some(mut base_node_service) = self.base_node_service.clone() {
-            base_node_service.set_service_peer(peer).await?;
+            base_node_service.set_base_node_peer(peer).await?;
         }
 
         Ok(())

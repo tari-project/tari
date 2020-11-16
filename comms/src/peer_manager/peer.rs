@@ -37,7 +37,12 @@ use bitflags::bitflags;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Display, time::Duration};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    hash::{Hash, Hasher},
+    time::Duration,
+};
 use tari_crypto::tari_utilities::hex::serialize_to_hex;
 
 bitflags! {
@@ -56,7 +61,7 @@ pub struct PeerIdentity {
 /// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a
 /// collection of the NetAddressesWithStats that this Peer can be reached by. The struct also maintains a set of flags
 /// describing the status of the Peer.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Eq)]
 pub struct Peer {
     /// The local id of the peer. If this is None, the peer has never been persisted
     pub(super) id: Option<PeerId>,
@@ -85,7 +90,7 @@ pub struct Peer {
     /// User agent advertised by the peer
     pub user_agent: String,
     /// Metadata field. This field is for use by upstream clients to record extra info about a peer.
-    /// We use a hashmap here so that we can use more than one "info set"
+    /// We use a btreemap here so that we can use more than one "info set"
     pub metadata: HashMap<u8, Vec<u8>>,
 }
 
@@ -323,6 +328,12 @@ impl Display for Peer {
 impl PartialEq for Peer {
     fn eq(&self, other: &Self) -> bool {
         self.public_key == other.public_key
+    }
+}
+
+impl Hash for Peer {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.public_key.hash(state)
     }
 }
 

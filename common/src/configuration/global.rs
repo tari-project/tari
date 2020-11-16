@@ -98,9 +98,10 @@ pub struct GlobalConfig {
     pub transaction_broadcast_send_timeout: Duration,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
-    pub wallet_base_node_service_peer: String,
+    pub wallet_base_node_service_peers: Vec<String>,
     pub wallet_base_node_service_refresh_interval: u64,
     pub wallet_base_node_service_request_max_age: u64,
+    pub wallet_base_node_service_fallback_enabled: bool,
     pub prevent_fee_gt_amount: bool,
     pub monerod_url: String,
     pub monerod_username: String,
@@ -435,10 +436,14 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
     };
 
-    let key = "wallet.base_node_service_peer";
-    let wallet_base_node_service_peer = match cfg.get_str(key) {
-        Ok(peer) => peer,
-        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+    let key = "wallet.base_node_service_peers";
+    // Wallet base node service peers can be an array or a comma separated list (e.g. in an ENVVAR)
+    let wallet_base_node_service_peers = match cfg.get_array(&key) {
+        Ok(peers) => peers.into_iter().map(|v| v.into_str().unwrap()).collect(),
+        Err(..) => match cfg.get_str(&key) {
+            Ok(s) => s.split(',').map(|v| v.to_string()).collect(),
+            Err(err) => return Err(ConfigurationError::new(&key, &err.to_string())),
+        },
     };
 
     let key = "wallet.base_node_service_refresh_interval";
@@ -452,6 +457,13 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let wallet_base_node_service_request_max_age = match cfg.get_int(key) {
         Ok(seconds) => seconds as u64,
         Err(ConfigError::NotFound(_)) => 60,
+        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+    };
+
+    let key = "wallet.base_node_service_fallback_enabled";
+    let wallet_base_node_service_fallback_enabled = match cfg.get_bool(key) {
+        Ok(enabled) => enabled,
+        Err(ConfigError::NotFound(_)) => true,
         Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
     };
 
@@ -586,9 +598,10 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         transaction_broadcast_send_timeout,
         wallet_command_send_wait_stage,
         wallet_command_send_wait_timeout,
-        wallet_base_node_service_peer,
+        wallet_base_node_service_peers,
         wallet_base_node_service_refresh_interval,
         wallet_base_node_service_request_max_age,
+        wallet_base_node_service_fallback_enabled,
         prevent_fee_gt_amount,
         proxy_host_address,
         monerod_url,
