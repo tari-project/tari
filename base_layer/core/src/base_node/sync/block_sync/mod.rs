@@ -21,19 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
-pub use error::BlockchainStateServiceError;
+pub use error::BlockSyncError;
 
-mod handle;
-pub use handle::{BlockchainStateRequest, BlockchainStateServiceHandle};
-
-mod initializer;
-pub use initializer::BlockchainStateServiceInitializer;
-
-mod service;
-
-#[cfg(test)]
-mod mock;
-#[cfg(test)]
-pub use mock::{create_blockchain_state_service_mock, BlockchainStateMockState};
-#[cfg(test)]
-mod tests;
+mod synchronizer;
+pub use synchronizer::BlockSynchronizer;

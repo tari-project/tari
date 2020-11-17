@@ -20,46 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::helpers::BaseNodeRequestError},
-    chain_storage::ChainStorageError,
-    transactions::transaction::TransactionError,
-};
-use thiserror::Error;
-use tokio::task;
+mod config;
+pub use self::config::BlockSyncConfig;
 
-#[derive(Debug, Error)]
-pub enum HorizonSyncError {
-    #[error("Peer sent an empty response")]
-    EmptyResponse,
-    #[error("Peer sent an invalid response")]
-    IncorrectResponse,
-    #[error("Exceeded maximum sync attempts")]
-    MaxSyncAttemptsReached,
-    #[error("Chain storage error: {0}")]
-    ChainStorageError(#[from] ChainStorageError),
-    #[error("Comms interface error: {0}")]
-    CommsInterfaceError(#[from] CommsInterfaceError),
-    // #[error("Final state validation failed: {0}")]
-    // FinalStateValidationFailed(ValidationError),
-    #[error("Join error: {0}")]
-    JoinError(#[from] task::JoinError),
-    #[error("Invalid kernel signature: {0}")]
-    InvalidKernelSignature(TransactionError),
-    // #[error("Validation failed for {0} MMR")]
-    // InvalidMmrRoot(MmrTree),
-    #[error("Base node request error: {0}")]
-    BaseNodeRequestError(#[from] BaseNodeRequestError),
-}
+mod block_sync;
+pub use block_sync::{BlockSyncError, BlockSynchronizer};
 
-impl HorizonSyncError {
-    pub fn is_recoverable(&self) -> bool {
-        // use HorizonSyncError::*;
-        unimplemented!()
-        // match self {
-        // FinalStateValidationFailed(_) | InvalidMmrRoot(_) => false,
-        //  InvalidMmrRoot(_) => false,
-        // _ => true,
-        // }
-    }
-}
+mod header_sync;
+pub use header_sync::{BlockHeaderSyncError, HeaderSynchronizer};
+
+mod hooks;
+
+pub mod rpc;
+
+mod sync_peers;
+pub use sync_peers::{SyncPeer, SyncPeers};
+
+mod validators;
+pub use validators::SyncValidators;

@@ -32,6 +32,14 @@ pub struct MockValidator {
     is_valid: Arc<AtomicBool>,
 }
 
+pub struct SharedFlag(Arc<AtomicBool>);
+
+impl SharedFlag {
+    pub fn set(&self, v: bool) {
+        self.0.store(v, Ordering::SeqCst);
+    }
+}
+
 impl MockValidator {
     pub fn new(is_valid: bool) -> Self {
         Self {
@@ -39,8 +47,8 @@ impl MockValidator {
         }
     }
 
-    pub fn shared_flag(&self) -> Arc<AtomicBool> {
-        self.is_valid.clone()
+    pub fn shared_flag(&self) -> SharedFlag {
+        SharedFlag(self.is_valid.clone())
     }
 }
 

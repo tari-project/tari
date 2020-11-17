@@ -407,7 +407,7 @@ mod test {
                 &factories,
                 42
             ),
-            Err(TransactionError::InvalidCoinbaseCount)
+            Err(TransactionError::MoreThanOneCoinbase)
         );
         // test catches that coinbase count on the kernel is wrong
         assert_eq!(
@@ -417,7 +417,7 @@ mod test {
                 &factories,
                 42
             ),
-            Err(TransactionError::InvalidCoinbaseCount)
+            Err(TransactionError::MoreThanOneCoinbase)
         );
         // testing that "block" is still valid
         assert_eq!(

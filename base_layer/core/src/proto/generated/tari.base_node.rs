@@ -113,9 +113,17 @@ pub struct SyncBlocksRequest {
     /// Start sending from this hash (exclusive)
     #[prost(bytes, tag = "1")]
     pub start_hash: std::vec::Vec<u8>,
-    /// Number of blocks to send. If this is zero (empty) the peer SHOULD send to their tip height
-    #[prost(uint64, tag = "2")]
-    pub count: u64,
+    /// The hash of the last block that should be synced
+    #[prost(bytes, tag = "2")]
+    pub end_hash: std::vec::Vec<u8>,
+}
+/// Response that contains the full body of a block
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockBodyResponse {
+    #[prost(bytes, tag = "1")]
+    pub hash: std::vec::Vec<u8>,
+    #[prost(message, optional, tag = "2")]
+    pub body: ::std::option::Option<super::types::AggregateBody>,
 }
 /// Request message used to initiate a sync
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -127,12 +135,15 @@ pub struct SyncHeadersRequest {
     #[prost(uint64, tag = "2")]
     pub count: u64,
 }
+/// Find at which point the chain splits.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FindChainSplitRequest {
+    /// A set of block hashes ordered in height descending order from the chain tip.
     #[prost(bytes, repeated, tag = "1")]
     pub block_hashes: ::std::vec::Vec<std::vec::Vec<u8>>,
+    /// The maximum number of headers to return starting at the first header after the matched height
     #[prost(uint64, tag = "2")]
-    pub count: u64,
+    pub header_count: u64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FindChainSplitResponse {
@@ -143,7 +154,10 @@ pub struct FindChainSplitResponse {
     /// The index of the hash that matched from `FindChainSplitRequest::block_hashes`. This value could also be used to
     /// know how far back a split occurs.
     #[prost(uint32, tag = "2")]
-    pub found_hash_index: u32,
+    pub fork_hash_index: u32,
+    //// The current header height of this node
+    #[prost(uint64, tag = "3")]
+    pub tip_height: u64,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

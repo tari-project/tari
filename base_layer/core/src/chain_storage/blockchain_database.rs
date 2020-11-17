@@ -36,7 +36,7 @@ use crate::{
     },
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusManager},
-    proof_of_work::{monero_rx::MoneroData, Difficulty, PowAlgorithm, ProofOfWork, TargetDifficultyWindow},
+    proof_of_work::{monero_rx::MoneroData, PowAlgorithm, ProofOfWork, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
@@ -591,7 +591,7 @@ where B: BlockchainBackend
 
     /// Returns `n` hashes from height _h - offset_ where _h_ is the tip header height back to `h - n - offset`.
     pub fn fetch_block_hashes_from_header_tip(
-        self,
+        &self,
         n: usize,
         offset: usize,
     ) -> Result<Vec<HashOutput>, ChainStorageError>
@@ -600,11 +600,14 @@ where B: BlockchainBackend
             return Ok(Vec::new());
         }
 
-        // TODO: This can be substantially optimised by allowing the underlying database implementation to fetch hashes
-        //       from its indexes instead of fetching and hashing each header.
         let db = self.db_read_access()?;
         let tip_header = db.fetch_last_header()?;
-        let end_height = tip_header.height.saturating_sub(offset as u64);
+        let end_height = match tip_header.height.checked_sub(offset as u64) {
+            Some(h) => h,
+            None => {
+                return Ok(Vec::new());
+            },
+        };
         let start = end_height.saturating_sub(n as u64 - 1);
         let headers = fetch_headers(&*db, start, end_height)?;
         Ok(headers.into_iter().map(|h| h.hash()).rev().collect())
@@ -1327,8 +1330,7 @@ fn insert_block(txn: &mut DbTransaction, block: Arc<Block>) -> Result<(), ChainS
     if block.header.pow.pow_algo == PowAlgorithm::Monero {
         let monero_seed = MoneroData::from_header(&block.header)
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
-            .key
-            .to_string();
+            .key;
         txn.insert_monero_seed_height(&monero_seed, block.header.height);
     }
 

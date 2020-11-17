@@ -23,13 +23,11 @@
 use crate::{
     base_node::{
         comms_interface::CommsInterfaceError,
-        state_machine_service::{
-            states::{block_sync::BlockSyncError, sync_peers::SyncPeer, SyncPeers},
-            BaseNodeStateMachine,
-        },
+        state_machine_service::BaseNodeStateMachine,
+        sync::{SyncPeer, SyncPeers},
     },
-    blocks::block_header::BlockHeader,
-    chain_storage::{BlockchainBackend, MmrTree},
+    chain_storage::{BlockchainBackend, ChainStorageError, MmrTree},
+    proof_of_work::PowError,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -39,7 +37,10 @@ use croaring::Bitmap;
 use log::*;
 use rand::seq::SliceRandom;
 use std::time::Duration;
-use tari_comms::connectivity::ConnectivityRequester;
+use tari_comms::{
+    connectivity::{ConnectivityError, ConnectivityRequester},
+    peer_manager::PeerManagerError,
+};
 
 // If more than one sync peer discovered with the correct chain, enable or disable the selection of a random sync peer
 // to query headers and blocks.
@@ -48,6 +49,25 @@ const RANDOM_SYNC_PEER_WITH_CHAIN: bool = true;
 const DEFAULT_PEER_BAN_DURATION: Duration = Duration::from_secs(24 * 60 * 60);
 // The length of time for a short term ban of a misbehaving/malfunctioning sync peer
 const SHORT_TERM_PEER_BAN_DURATION: Duration = Duration::from_secs(30 * 60);
+
+// TODO: Deprecate
+#[derive(Debug, thiserror::Error)]
+pub enum BaseNodeRequestError {
+    #[error("Maximum request attempts reached error")]
+    MaxRequestAttemptsReached,
+    #[error("No sync peers error")]
+    NoSyncPeers,
+    #[error("Chain storage error: `{0}`")]
+    ChainStorageError(#[from] ChainStorageError),
+    #[error("Peer manager error: `{0}`")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("Connectivity error: `{0}`")]
+    ConnectivityError(#[from] ConnectivityError),
+    #[error("Comms interface error: `{0}`")]
+    CommsInterfaceError(#[from] CommsInterfaceError),
+    #[error("PowError: `{0}`")]
+    PowError(#[from] PowError),
+}
 
 /// Configuration for the Sync Peer Selection and Banning.
 #[derive(Clone, Copy)]
@@ -69,14 +89,14 @@ impl Default for SyncPeerConfig {
 
 /// Selects the first sync peer or a random peer from the set of sync peers that have the current network tip depending
 /// on the selected configuration.
-pub fn select_sync_peer(config: &SyncPeerConfig, sync_peers: &[SyncPeer]) -> Result<SyncPeer, BlockSyncError> {
+pub fn select_sync_peer(config: &SyncPeerConfig, sync_peers: &[SyncPeer]) -> Result<SyncPeer, BaseNodeRequestError> {
     if config.random_sync_peer_with_chain {
         sync_peers.choose(&mut rand::thread_rng())
     } else {
         sync_peers.first()
     }
     .map(Clone::clone)
-    .ok_or(BlockSyncError::NoSyncPeers)
+    .ok_or(BaseNodeRequestError::NoSyncPeers)
 }
 
 /// Excluded the provided peer from the sync peers.
@@ -84,12 +104,12 @@ pub fn exclude_sync_peer(
     log_target: &str,
     sync_peers: &mut SyncPeers,
     sync_peer: &SyncPeer,
-) -> Result<(), BlockSyncError>
+) -> Result<(), BaseNodeRequestError>
 {
     trace!(target: log_target, "Excluding peer ({}) from sync peers.", sync_peer);
     sync_peers.retain(|p| p.node_id != sync_peer.node_id);
     if sync_peers.is_empty() {
-        return Err(BlockSyncError::NoSyncPeers);
+        return Err(BaseNodeRequestError::NoSyncPeers);
     }
     Ok(())
 }
@@ -102,142 +122,13 @@ pub async fn ban_sync_peer(
     sync_peer: &SyncPeer,
     ban_duration: Duration,
     reason: String,
-) -> Result<(), BlockSyncError>
+) -> Result<(), BaseNodeRequestError>
 {
     info!(target: log_target, "Banning peer {} from local node.", sync_peer);
     connectivity
         .ban_peer_until(sync_peer.node_id.clone(), ban_duration, reason)
         .await?;
     exclude_sync_peer(log_target, sync_peers, &sync_peer)
-}
-
-/// Ban and disconnect entire set of sync peers.
-pub async fn ban_all_sync_peers<B: BlockchainBackend + 'static>(
-    log_target: &str,
-    shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut SyncPeers,
-    ban_duration: Duration,
-    reason: String,
-) -> Result<(), BlockSyncError>
-{
-    while !sync_peers.is_empty() {
-        ban_sync_peer(
-            log_target,
-            &mut shared.connectivity,
-            sync_peers,
-            &sync_peers[0].clone(),
-            ban_duration,
-            reason.clone(),
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-/// Request a set of headers from a remote sync peer.
-pub async fn request_headers<B: BlockchainBackend + 'static>(
-    log_target: &str,
-    shared: &mut BaseNodeStateMachine<B>,
-    sync_peers: &mut SyncPeers,
-    block_nums: &[u64],
-    request_retry_attempts: usize,
-) -> Result<(Vec<BlockHeader>, SyncPeer), BlockSyncError>
-{
-    let config = shared.config.sync_peer_config;
-    for attempt in 1..=request_retry_attempts {
-        let sync_peer = select_sync_peer(&config, sync_peers)?;
-        debug!(
-            target: log_target,
-            "Requesting {} headers from {}.",
-            block_nums.len(),
-            sync_peer.node_id
-        );
-        match shared
-            .outbound_nci
-            .request_headers_from_peer(block_nums.to_vec(), Some(sync_peer.node_id.clone()))
-            .await
-        {
-            Ok(headers) => {
-                debug!(target: log_target, "Received {} headers from peer", headers.len());
-                if block_nums.len() == headers.len() {
-                    if (0..block_nums.len()).all(|i| headers[i].height == block_nums[i]) {
-                        return Ok((headers, sync_peer));
-                    } else {
-                        debug!(target: log_target, "This was NOT the headers we were expecting.");
-                        debug!(
-                            target: log_target,
-                            "Banning peer {} from local node, because they supplied the incorrect headers", sync_peer
-                        );
-                        ban_sync_peer(
-                            log_target,
-                            &mut shared.connectivity,
-                            sync_peers,
-                            &sync_peer,
-                            config.short_term_peer_ban_duration,
-                            "Peer supplied the incorrect headers".to_string(),
-                        )
-                        .await?;
-                    }
-                } else {
-                    debug!(
-                        target: log_target,
-                        "Incorrect number of headers returned. Expected {}. Got {}",
-                        block_nums.len(),
-                        headers.len()
-                    );
-                    debug!(
-                        target: log_target,
-                        "Banning peer {} from local node, because they supplied the incorrect number of headers",
-                        sync_peer
-                    );
-                    ban_sync_peer(
-                        log_target,
-                        &mut shared.connectivity,
-                        sync_peers,
-                        &sync_peer,
-                        config.short_term_peer_ban_duration,
-                        "Peer supplied the incorrect headers".to_string(),
-                    )
-                    .await?;
-                }
-            },
-            Err(CommsInterfaceError::UnexpectedApiResponse) => {
-                debug!(target: log_target, "Remote node provided an unexpected api response.",);
-                debug!(
-                    target: log_target,
-                    "Banning peer {} from local node, because they provided an unexpected api response", sync_peer
-                );
-                ban_sync_peer(
-                    log_target,
-                    &mut shared.connectivity,
-                    sync_peers,
-                    &sync_peer,
-                    config.short_term_peer_ban_duration,
-                    "Peer provided an unexpected api response".to_string(),
-                )
-                .await?;
-            },
-            Err(CommsInterfaceError::RequestTimedOut) => {
-                debug!(
-                    target: log_target,
-                    "Failed to fetch header from peer: {:?}. Retrying.",
-                    CommsInterfaceError::RequestTimedOut,
-                );
-                ban_sync_peer(
-                    log_target,
-                    &mut shared.connectivity,
-                    sync_peers,
-                    &sync_peer,
-                    config.short_term_peer_ban_duration,
-                    "Failed to fetch header from peer".to_string(),
-                )
-                .await?;
-            },
-            Err(e) => return Err(BlockSyncError::CommsInterfaceError(e)),
-        }
-        debug!(target: log_target, "Retrying header download. Attempt {}", attempt);
-    }
-    Err(BlockSyncError::MaxRequestAttemptsReached)
 }
 
 /// Request the total merkle mountain range node count upto the specified height for the selected MMR from remote base
@@ -249,7 +140,7 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
     tree: MmrTree,
     height: u64,
     request_retry_attempts: usize,
-) -> Result<(u32, SyncPeer), BlockSyncError>
+) -> Result<(u32, SyncPeer), BaseNodeRequestError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
@@ -298,14 +189,14 @@ pub async fn request_mmr_node_count<B: BlockchainBackend + 'static>(
                 )
                 .await?;
             },
-            Err(e) => return Err(BlockSyncError::CommsInterfaceError(e)),
+            Err(e) => return Err(e.into()),
         }
         debug!(
             target: log_target,
             "Retrying mmr node count request. Attempt {}", attempt
         );
     }
-    Err(BlockSyncError::MaxRequestAttemptsReached)
+    Err(BaseNodeRequestError::MaxRequestAttemptsReached)
 }
 
 /// Request the total merkle mountain range node count upto the specified height for the selected MMR from remote base
@@ -320,7 +211,7 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
     count: u32,
     height: u64,
     request_retry_attempts: usize,
-) -> Result<(Vec<HashOutput>, Bitmap, SyncPeer), BlockSyncError>
+) -> Result<(Vec<HashOutput>, Bitmap, SyncPeer), BaseNodeRequestError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
@@ -373,11 +264,11 @@ pub async fn request_mmr_nodes<B: BlockchainBackend + 'static>(
                 )
                 .await?;
             },
-            Err(e) => return Err(BlockSyncError::CommsInterfaceError(e)),
+            Err(e) => return Err(BaseNodeRequestError::CommsInterfaceError(e)),
         }
         debug!(target: log_target, "Retrying mmr nodes download. Attempt {}", attempt);
     }
-    Err(BlockSyncError::MaxRequestAttemptsReached)
+    Err(BaseNodeRequestError::MaxRequestAttemptsReached)
 }
 
 /// Request the total merkle mountain range node count upto the specified height for the selected MMR from remote base
@@ -388,7 +279,7 @@ pub async fn request_kernels<B: BlockchainBackend + 'static>(
     sync_peers: &mut SyncPeers,
     hashes: Vec<HashOutput>,
     request_retry_attempts: usize,
-) -> Result<(Vec<TransactionKernel>, SyncPeer), BlockSyncError>
+) -> Result<(Vec<TransactionKernel>, SyncPeer), BaseNodeRequestError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
@@ -439,11 +330,11 @@ pub async fn request_kernels<B: BlockchainBackend + 'static>(
                 )
                 .await?;
             },
-            Err(e) => return Err(BlockSyncError::CommsInterfaceError(e)),
+            Err(e) => return Err(BaseNodeRequestError::CommsInterfaceError(e)),
         }
         debug!(target: log_target, "Retrying kernels download. Attempt {}", attempt);
     }
-    Err(BlockSyncError::MaxRequestAttemptsReached)
+    Err(BaseNodeRequestError::MaxRequestAttemptsReached)
 }
 
 /// Request the total merkle mountain range node count upto the specified height for the selected MMR from remote base
@@ -454,7 +345,7 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
     sync_peers: &mut SyncPeers,
     hashes: &[&HashOutput],
     request_retry_attempts: usize,
-) -> Result<(Vec<TransactionOutput>, SyncPeer), BlockSyncError>
+) -> Result<(Vec<TransactionOutput>, SyncPeer), BaseNodeRequestError>
 {
     let config = shared.config.sync_peer_config;
     for attempt in 1..=request_retry_attempts {
@@ -512,9 +403,9 @@ pub async fn request_txos<B: BlockchainBackend + 'static>(
                 )
                 .await?;
             },
-            Err(e) => return Err(BlockSyncError::CommsInterfaceError(e)),
+            Err(e) => return Err(BaseNodeRequestError::CommsInterfaceError(e)),
         }
         debug!(target: log_target, "Retrying kernels download. Attempt {}", attempt);
     }
-    Err(BlockSyncError::MaxRequestAttemptsReached)
+    Err(BaseNodeRequestError::MaxRequestAttemptsReached)
 }

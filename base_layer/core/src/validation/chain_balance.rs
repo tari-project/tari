@@ -51,10 +51,10 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
 impl<B: BlockchainBackend> Validation<BlockHeader> for ChainBalanceValidator<B> {
     fn validate(&self, horizon_header: &BlockHeader) -> Result<(), ValidationError> {
         let hash = horizon_header.hash();
-        let total_offset = self.fetch_total_offset_commitment(hash.clone())?;
         let emission_h = self.get_emission_commitment_at(horizon_header.height);
         let kernel_excess = self.db.fetch_kernel_commitment_sum(&hash)?;
         let output = self.db.fetch_utxo_commitment_sum(&hash)?;
+        let total_offset = self.fetch_total_offset_commitment(hash)?;
 
         let input = &(&emission_h + &kernel_excess) + &total_offset;
 
@@ -67,10 +67,10 @@ impl<B: BlockchainBackend> Validation<BlockHeader> for ChainBalanceValidator<B> 
 }
 
 impl<B: BlockchainBackend> ChainBalanceValidator<B> {
-    fn fetch_total_offset_commitment(&self, header: HashOutput) -> Result<Commitment, ValidationError> {
+    fn fetch_total_offset_commitment(&self, hash: HashOutput) -> Result<Commitment, ValidationError> {
         let offset = self
             .db
-            .fetch_header_accumulated_data(header)?
+            .fetch_header_accumulated_data(hash)?
             .ok_or_else(|| ValidationError::CustomError("Could not find header accumulated data".to_string()))?
             .total_kernel_offset;
         Ok(self.factories.commitment.commit(&offset, &0u64.into()))

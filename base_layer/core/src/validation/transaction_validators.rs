@@ -93,7 +93,8 @@ fn verify_timelocks(tx: &Transaction, current_height: u64) -> Result<(), Validat
 fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
     // `ChainMetadata::best_block` must always have the hash of the tip block.
     // NOTE: the backend makes no guarantee that the tip header has a corresponding full body (interrupted header sync,
-    // pruned node) however the chain metadata MUST always be correct
+    // pruned node) however the chain metadata best height MUST always correspond to the highest full block
+    // this node can provide
     let metadata = db.fetch_chain_metadata()?;
     let data = db
         .fetch_block_accumulated_data(metadata.best_block())?

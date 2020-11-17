@@ -149,7 +149,7 @@ impl LocalNodeCommsInterface {
         self.block_sender.call((block, propagate)).await?
     }
 
-    pub fn publish_block_event(&mut self, event: BlockEvent) -> usize {
+    pub fn publish_block_event(&self, event: BlockEvent) -> usize {
         // If event send fails, that means that there are no receivers (i.e. it was sent to zero receivers)
         self.block_event_sender.send(Arc::new(event)).unwrap_or(0)
     }

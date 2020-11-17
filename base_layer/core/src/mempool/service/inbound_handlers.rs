@@ -185,6 +185,10 @@ impl MempoolInboundHandlers {
                     let _ = self.event_publisher.send(MempoolStateEvent::Updated);
                 }
             },
+            BlockSyncRewind(removed_blocks) if !removed_blocks.is_empty() => {
+                async_mempool::process_reorg(self.mempool.clone(), removed_blocks.clone(), vec![]).await?;
+                let _ = self.event_publisher.send(MempoolStateEvent::Updated);
+            },
             BlockSyncComplete(tip_block) => {
                 async_mempool::process_published_block(self.mempool.clone(), tip_block.clone()).await?;
                 let _ = self.event_publisher.send(MempoolStateEvent::Updated);

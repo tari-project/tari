@@ -116,8 +116,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.mainnet.dns_seeds_name_server", "1.1.1.1:53")
         .unwrap();
     cfg.set_default("base_node.mainnet.dns_seeds_use_dnssec", true).unwrap();
-    cfg.set_default("base_node.mainnet.block_sync_strategy", "ViaBestChainMetadata")
-        .unwrap();
     cfg.set_default(
         "base_node.mainnet.data_dir",
         default_subdir("mainnet/", Some(&bootstrap.base_path)),
@@ -178,8 +176,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.ridcully.pruned_mode_cleanup_interval", 50)
         .unwrap();
     cfg.set_default("base_node.ridcully.peer_seeds", Vec::<String>::new())
-        .unwrap();
-    cfg.set_default("base_node.ridcully.block_sync_strategy", "ViaBestChainMetadata")
         .unwrap();
     cfg.set_default(
         "base_node.ridcully.data_dir",

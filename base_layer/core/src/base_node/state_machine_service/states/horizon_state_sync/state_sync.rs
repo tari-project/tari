@@ -22,17 +22,12 @@
 
 use super::error::HorizonSyncError;
 use crate::{
-    base_node::state_machine_service::{
-        states::{
-            helpers,
-            helpers::exclude_sync_peer,
-            sync_peers::SyncPeer,
-            BlockSyncInfo,
-            StateEvent,
-            StateInfo,
-            SyncPeers,
+    base_node::{
+        state_machine_service::{
+            states::{helpers, helpers::exclude_sync_peer},
+            BaseNodeStateMachine,
         },
-        BaseNodeStateMachine,
+        sync::{SyncPeer, SyncPeers},
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, MmrTree},
     iterators::NonOverlappingIntegerPairIter,
@@ -45,98 +40,32 @@ use croaring::Bitmap;
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_crypto::tari_utilities::Hashable;
-// use tokio::task::spawn_blocking;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct HorizonStateSync {
-    pub local_metadata: ChainMetadata,
-    pub network_metadata: ChainMetadata,
-    pub sync_peers: SyncPeers,
-    pub sync_height: u64,
-}
-
-impl HorizonStateSync {
-    pub fn new(
-        local_metadata: ChainMetadata,
-        network_metadata: ChainMetadata,
-        sync_peers: SyncPeers,
-        sync_height: u64,
-    ) -> Self
-    {
-        Self {
-            local_metadata,
-            network_metadata,
-            sync_peers,
-            sync_height,
-        }
-    }
-
-    pub async fn next_event<B: BlockchainBackend + 'static>(
-        &mut self,
-        shared: &mut BaseNodeStateMachine<B>,
-    ) -> StateEvent
-    {
-        shared
-            .set_state_info(StateInfo::HorizonSync(BlockSyncInfo::new(
-                self.network_metadata.height_of_longest_chain(),
-                self.local_metadata.height_of_longest_chain(),
-                self.sync_peers.clone(),
-            )))
-            .await;
-
-        if !self.local_metadata.is_pruned_node() {
-            warn!(
-                target: LOG_TARGET,
-                "HorizonStateSync invoked but node is not in pruned mode"
-            );
-            return StateEvent::HorizonStateSynchronized;
-        }
-
-        info!(
-            target: LOG_TARGET,
-            "Synchronizing horizon state to height {}. Network tip height is {}.",
-            self.sync_height,
-            self.network_metadata.height_of_longest_chain()
-        );
-        let local_tip_height = self.local_metadata.height_of_longest_chain();
-        if local_tip_height >= self.sync_height {
-            debug!(target: LOG_TARGET, "Horizon state already synchronized.");
-            return StateEvent::HorizonStateSynchronized;
-        }
-        debug!(
-            target: LOG_TARGET,
-            "Horizon sync starting to height {}", self.sync_height
-        );
-
-        let mut horizon_header_sync = HorizonStateSynchronization {
-            shared,
-            local_metadata: &self.local_metadata,
-            sync_peers: &mut self.sync_peers,
-            horizon_sync_height: self.sync_height,
-        };
-        match horizon_header_sync.synchronize().await {
-            Ok(()) => {
-                info!(target: LOG_TARGET, "Horizon state has synchronised.");
-                StateEvent::HorizonStateSynchronized
-            },
-            Err(err) => {
-                warn!(target: LOG_TARGET, "Synchronizing horizon state has failed. {}", err);
-                StateEvent::HorizonStateSyncFailure
-            },
-        }
-    }
-}
-
-struct HorizonStateSynchronization<'a, 'b, 'c, B> {
+pub struct HorizonStateSynchronization<'a, B> {
     shared: &'a mut BaseNodeStateMachine<B>,
-    sync_peers: &'b mut SyncPeers,
-    local_metadata: &'c ChainMetadata,
+    sync_peers: &'a mut SyncPeers,
+    local_metadata: &'a ChainMetadata,
     horizon_sync_height: u64,
 }
 
-impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> {
+impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
+    pub fn new(
+        shared: &'a mut BaseNodeStateMachine<B>,
+        sync_peers: &'a mut SyncPeers,
+        local_metadata: &'a ChainMetadata,
+        horizon_sync_height: u64,
+    ) -> Self
+    {
+        Self {
+            shared,
+            sync_peers,
+            local_metadata,
+            horizon_sync_height,
+        }
+    }
+
     pub async fn synchronize(&mut self) -> Result<(), HorizonSyncError> {
         debug!(target: LOG_TARGET, "Preparing database for horizon sync");
         self.prepare_for_sync().await?;

@@ -46,6 +46,17 @@ impl<T> RollingVec<T> {
         self.inner_mut().push(item);
     }
 
+    pub fn insert(&mut self, index: usize, item: T) {
+        assert!(index < self.capacity());
+        assert!(index < self.len());
+
+        if self.is_full() {
+            self.inner_mut().remove(0);
+        }
+
+        self.inner_mut().insert(index, item);
+    }
+
     #[inline]
     pub fn is_full(&self) -> bool {
         // len never exceeds capacity

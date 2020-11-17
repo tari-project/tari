@@ -23,12 +23,11 @@
 use crate::{
     base_node::{
         proto::{FindChainSplitRequest, FindChainSplitResponse, SyncBlocksRequest, SyncHeadersRequest},
-        service::blockchain_state::BlockchainStateServiceHandle,
-        sync_rpc::BaseNodeSyncService,
+        sync::rpc::BaseNodeSyncService,
     },
-    blocks::BlockHeader,
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     iterators::NonOverlappingIntegerPairIter,
-    proto::{generated as proto, generated::core::Block},
+    proto,
 };
 use futures::{channel::mpsc, stream, SinkExt};
 use log::*;
@@ -38,85 +37,89 @@ use tokio::task;
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";
 
-pub struct BaseNodeSyncRpcService {
-    base_node: BlockchainStateServiceHandle,
+pub struct BaseNodeSyncRpcService<B> {
+    db: AsyncBlockchainDb<B>,
 }
 
-impl BaseNodeSyncRpcService {
-    pub fn new(base_node: BlockchainStateServiceHandle) -> Self {
-        Self { base_node }
+impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
+    pub fn new(db: AsyncBlockchainDb<B>) -> Self {
+        Self { db }
     }
 
     #[inline]
-    fn base_node(&self) -> BlockchainStateServiceHandle {
-        self.base_node.clone()
-    }
-
-    async fn get_start_header_and_end_height(
-        &self,
-        block_hash: Vec<u8>,
-        mut count: u64,
-    ) -> Result<(BlockHeader, u64), RpcStatus>
-    {
-        let mut base_node = self.base_node();
-        let start_header = base_node
-            .get_header_by_hash(block_hash)
-            .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
-            .ok_or_else(|| RpcStatus::not_found("Header not found with given hash"))?;
-
-        if count == 0 {
-            let metadata = base_node
-                .get_chain_metadata()
-                .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
-            count = metadata.height_of_longest_chain();
-        }
-
-        Ok((start_header, count))
+    fn db(&self) -> AsyncBlockchainDb<B> {
+        self.db.clone()
     }
 }
 
 #[tari_comms::async_trait]
-impl BaseNodeSyncService for BaseNodeSyncRpcService {
+impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcService<B> {
     async fn sync_blocks(
         &self,
         request: Request<SyncBlocksRequest>,
-    ) -> Result<Streaming<proto::core::Block>, RpcStatus>
+    ) -> Result<Streaming<proto::base_node::BlockBodyResponse>, RpcStatus>
     {
         let peer_node_id = request.context().peer_node_id().clone();
         let message = request.into_message();
 
-        let (start_header, count) = self
-            .get_start_header_and_end_height(message.start_hash, message.count)
-            .await?;
+        let db = self.db();
+        let start_header = db
+            .fetch_header_by_block_hash(message.start_hash)
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found("Header not found with given hash"))?;
 
-        let chunk_size = cmp::min(10, count) as usize;
+        let metadata = db
+            .get_chain_metadata()
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
+        let start = start_header.height + 1;
+        if start < metadata.effective_pruned_height() {
+            return Err(RpcStatus::bad_request(format!(
+                "Requested full block body at height {}, however this node has an effective pruned height of {}",
+                start,
+                metadata.effective_pruned_height()
+            )));
+        }
+
+        if start > metadata.height_of_longest_chain() {
+            return Ok(Streaming::empty());
+        }
+
+        let end_header = db
+            .fetch_header_by_block_hash(message.end_hash)
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found("Requested end block sync hash was not found"))?;
+
+        let end = end_header.height;
+        if start > end {
+            return Err(RpcStatus::bad_request(format!(
+                "Start block #{} is higher than end block #{}",
+                start, end
+            )));
+        }
+
         debug!(
             target: LOG_TARGET,
-            "Initiating block sync with peer `{}` from height {} to {} (chunk_size={})",
-            peer_node_id,
-            start_header.height,
-            Some(message.count)
-                .filter(|n| *n != 0)
-                .map(|n| n.to_string())
-                .unwrap_or_else(|| "∞".to_string()),
-            chunk_size
+            "Initiating block sync with peer `{}` from height {} to {}", peer_node_id, start, end,
         );
 
-        let (mut tx, rx) = mpsc::channel(chunk_size);
+        // Number of blocks to load and push to the stream before loading the next batch
+        const BATCH_SIZE: usize = 4;
+        let (mut tx, rx) = mpsc::channel(BATCH_SIZE);
 
-        let mut base_node = self.base_node();
         task::spawn(async move {
-            let iter = NonOverlappingIntegerPairIter::new(
-                start_header.height,
-                start_header.height.saturating_add(count).saturating_add(1),
-                chunk_size,
-            );
+            let iter = NonOverlappingIntegerPairIter::new(start, end + 1, BATCH_SIZE);
             for (start, end) in iter {
-                trace!(target: LOG_TARGET, "Sending blocks #{} - #{}", start, end);
-                let blocks = base_node
-                    .get_blocks(start..=end)
+                if tx.is_closed() {
+                    break;
+                }
+
+                debug!(target: LOG_TARGET, "Sending blocks #{} - #{}", start, end);
+                let blocks = db
+                    .fetch_blocks(start..=end)
                     .await
                     .map_err(RpcStatus::log_internal_error(LOG_TARGET));
 
@@ -125,7 +128,15 @@ impl BaseNodeSyncService for BaseNodeSyncRpcService {
                         break;
                     },
                     Ok(blocks) => {
-                        let mut blocks = stream::iter(blocks.into_iter().map(Block::from).map(Ok).map(Ok));
+                        let mut blocks = stream::iter(
+                            blocks
+                                .into_iter()
+                                .map(|hb| hb.block)
+                                .map(proto::base_node::BlockBodyResponse::from)
+                                .map(Ok)
+                                .map(Ok),
+                        );
+
                         // Ensure task stops if the peer prematurely stops their RPC session
                         if tx.send_all(&mut blocks).await.is_err() {
                             break;
@@ -152,38 +163,52 @@ impl BaseNodeSyncService for BaseNodeSyncRpcService {
         request: Request<SyncHeadersRequest>,
     ) -> Result<Streaming<proto::core::BlockHeader>, RpcStatus>
     {
-        let mut base_node = self.base_node();
+        let db = self.db();
         let peer_node_id = request.context().peer_node_id().clone();
         let message = request.into_message();
 
-        let (start_header, count) = self
-            .get_start_header_and_end_height(message.start_hash, message.count)
-            .await?;
+        let start_header = db
+            .fetch_header_by_block_hash(message.start_hash)
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found("Header not found with given hash"))?;
 
-        let chunk_size = cmp::min(10, count) as usize;
+        let mut count = message.count;
+        if count == 0 {
+            let tip_header = db
+                .fetch_tip_header()
+                .await
+                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+            count = tip_header.height.saturating_sub(start_header.height);
+        }
+        if count == 0 {
+            return Ok(Streaming::empty());
+        }
+
+        let chunk_size = cmp::min(100, count) as usize;
         debug!(
             target: LOG_TARGET,
             "Initiating header sync with peer `{}` from height {} to {} (chunk_size={})",
             peer_node_id,
             start_header.height,
-            Some(message.count)
-                .filter(|n| *n != 0)
-                .map(|n| n.to_string())
-                .unwrap_or_else(|| "∞".to_string()),
+            count,
             chunk_size
         );
 
         let (mut tx, rx) = mpsc::channel(chunk_size);
         task::spawn(async move {
             let iter = NonOverlappingIntegerPairIter::new(
-                start_header.height,
+                start_header.height + 1,
                 start_header.height.saturating_add(count).saturating_add(1),
                 chunk_size,
             );
             for (start, end) in iter {
-                trace!(target: LOG_TARGET, "Sending headers #{} - #{}", start, end);
-                let headers = base_node
-                    .get_headers(start..=end)
+                if tx.is_closed() {
+                    break;
+                }
+                debug!(target: LOG_TARGET, "Sending headers #{} - #{}", start, end);
+                let headers = db
+                    .fetch_headers(start..=end)
                     .await
                     .map_err(RpcStatus::log_internal_error(LOG_TARGET));
 
@@ -222,8 +247,8 @@ impl BaseNodeSyncService for BaseNodeSyncRpcService {
     {
         let height = request.into_message();
         let header = self
-            .base_node()
-            .get_header_by_height(height)
+            .db()
+            .fetch_header(height)
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
             .ok_or_else(|| RpcStatus::not_found(format!("Header not found at height {}", height)))?;
@@ -236,34 +261,70 @@ impl BaseNodeSyncService for BaseNodeSyncRpcService {
         request: Request<FindChainSplitRequest>,
     ) -> Result<Response<FindChainSplitResponse>, RpcStatus>
     {
-        const MAX_ALLOWED_BLOCK_HASHES: usize = 500;
-        const MAX_ALLOWED_COUNT: u64 = 100;
+        const MAX_ALLOWED_BLOCK_HASHES: usize = 1000;
+        const MAX_ALLOWED_HEADER_COUNT: u64 = 1000;
 
+        let peer = request.context().peer_node_id().clone();
         let message = request.into_message();
+        if message.block_hashes.is_empty() {
+            return Err(RpcStatus::bad_request(
+                "Cannot find chain split because no hashes were sent",
+            ));
+        }
         if message.block_hashes.len() > MAX_ALLOWED_BLOCK_HASHES {
             return Err(RpcStatus::bad_request(format!(
                 "Cannot query more than {} block hashes",
                 MAX_ALLOWED_BLOCK_HASHES,
             )));
         }
-        if message.count > MAX_ALLOWED_COUNT {
+        if message.header_count > MAX_ALLOWED_HEADER_COUNT {
             return Err(RpcStatus::bad_request(format!(
                 "Cannot ask for more than {} headers",
-                MAX_ALLOWED_COUNT,
+                MAX_ALLOWED_HEADER_COUNT,
             )));
         }
 
-        let mut base_node = self.base_node();
-        let maybe_headers = base_node
-            .find_headers_after_hash(message.block_hashes, message.count)
+        let db = self.db();
+        let maybe_headers = db
+            .find_headers_after_hash(message.block_hashes, message.header_count)
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
         match maybe_headers {
-            Some((idx, headers)) => Ok(Response::new(FindChainSplitResponse {
-                found_hash_index: idx as u32,
-                headers: headers.into_iter().map(Into::into).collect(),
-            })),
-            None => Err(RpcStatus::not_found("No link found to main chain")),
+            Some((idx, headers)) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Sending forked index {} and {} header(s) to peer `{}`",
+                    idx,
+                    headers.len(),
+                    peer
+                );
+                let metadata = db
+                    .get_chain_metadata()
+                    .await
+                    .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
+                Ok(Response::new(FindChainSplitResponse {
+                    fork_hash_index: idx as u32,
+                    headers: headers.into_iter().map(Into::into).collect(),
+                    tip_height: metadata.height_of_longest_chain(),
+                }))
+            },
+            None => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Unable to find link to main chain from peer `{}`", peer
+                );
+                Err(RpcStatus::not_found("No link found to main chain"))
+            },
         }
+    }
+
+    async fn get_chain_metadata(&self, _: Request<()>) -> Result<Response<proto::base_node::ChainMetadata>, RpcStatus> {
+        let chain_metadata = self
+            .db()
+            .get_chain_metadata()
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+        Ok(Response::new(chain_metadata.into()))
     }
 }
