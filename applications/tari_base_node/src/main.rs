@@ -165,11 +165,11 @@ fn main_inner() -> Result<(), ExitCodes> {
         &node_config.public_address,
         bootstrap.create_id ||
             // If the base node identity exists, we want to be sure that the wallet identity exists
-            node_config.identity_file.exists(),
+            node_config.base_node_identity_file.exists(),
         PeerFeatures::COMMUNICATION_CLIENT,
     )?;
     let node_identity = setup_node_identity(
-        &node_config.identity_file,
+        &node_config.base_node_identity_file,
         &node_config.public_address,
         bootstrap.create_id,
         PeerFeatures::COMMUNICATION_NODE,
@@ -179,8 +179,9 @@ fn main_inner() -> Result<(), ExitCodes> {
     if bootstrap.create_id {
         info!(
             target: LOG_TARGET,
-            "Node ID created at '{}'. Done.",
-            node_config.identity_file.to_string_lossy()
+            "Base node's node ID created at '{}', Wallet's node ID created at '{}'. Done.",
+            node_config.base_node_identity_file.to_string_lossy(),
+            node_config.wallet_identity_file.to_string_lossy(),
         );
         return Ok(());
     }
@@ -221,7 +222,7 @@ fn main_inner() -> Result<(), ExitCodes> {
             node_config.clone(),
         );
 
-        rt.spawn(run_grpc(grpc, node_config.grpc_address, shutdown.to_signal()));
+        rt.spawn(run_grpc(grpc, node_config.grpc_base_node_address, shutdown.to_signal()));
     }
 
     // Run, node, run!

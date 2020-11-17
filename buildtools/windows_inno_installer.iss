@@ -23,15 +23,21 @@
 
 
 #define MyOrgName "Tari"
-#define MyAppName "Base Node"
 ;#define MyAppVersion "?.?.?-???????-release"
 #define MyAppPublisher "The Tari Development Community"
 #define MyAppURL "https://github.com/tari-project/tari"
 #define MyAppSupp "Tari Website"
 #define MyAppSuppURL "http://www.tari.com"
-#define MyAppExeName "start_tari_basenode.bat"
+#define BaseNodeName "Base Node"
+#define BaseNodeExeName "start_tari_basenode.bat"
+#define ConsoleWalletName "Console Wallet"
+#define ConsoleWalletExeName "start_tari_console_wallet.bat"
 #define TorServicesName "Tor Services"
 #define TorServicesExeName "start_tor.bat"
+#define MergeMiningProxyName "Merge Mining Proxy"
+#define MergeMiningProxyExeName "start_tari_merge_mining_proxy.bat"
+#define MergeMiningName "XMRig"
+#define MergeMiningExeName "start_xmrig.bat"
 #define ReadmeName "README.txt"
 
 [Setup]
@@ -39,9 +45,9 @@
 ; Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
 AppId={{35C6E863-EDE5-4CBD-A824-E1418ECB1D1D}
-AppName={#MyOrgName} {#MyAppName}
+AppName={#MyOrgName} {#BaseNodeName}
 AppVersion={#MyAppVersion}
-;AppVerName={#MyAppName} {#MyAppVersion}
+;AppVerName={#BaseNodeName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppSuppURL}
@@ -78,34 +84,75 @@ Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.md"; Flags: ignorever
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\README.md"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion
-Source: "..\applications\tari_base_node\windows\start_tari_basenode.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\tari_base_node\windows\start_tari_base_node.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\tari_console_wallet\windows\start_tari_console_wallet.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\tari_merge_mining_proxy\windows\start_tari_merge_mining_proxy.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\tari_merge_mining_proxy\windows\start_xmrig.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\start_tor.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\tari_base_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_base_node\windows\runtime\start_tari_basenode.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_base_node\windows\runtime\start_tor.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\target\release\tari_console_wallet.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\target\release\tari_merge_mining_proxy.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\runtime\run_the_base_node.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_base_node\windows\runtime\start_tor.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_base_node\windows\runtime\start_tari_base_node.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_console_wallet\windows\runtime\run_the_console_wallet.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_console_wallet\windows\runtime\start_tari_console_wallet.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_merge_mining_proxy\windows\runtime\run_the_merge_mining_proxy.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_merge_mining_proxy\windows\runtime\start_tari_merge_mining_proxy.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_merge_mining_proxy\windows\runtime\run_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_merge_mining_proxy\windows\runtime\start_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\common\config\presets\windows.toml"; DestDir: "{app}\config"; Flags: ignoreversion
 Source: "tari_logo_purple.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
 Source: "tor.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
+Source: "xmr-logo.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
 Source: "install_sqlite.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_tor_services.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_vs2019_redist.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "install_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "get-xmrig-win.ps1"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\common\xmrig_config\config_example.json"; DestDir: "{app}\config"; DestName: "config_xmrig.json"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\runtime\{#MyAppExeName}"; WorkingDir: "{app}"
-Name: "{group}\{#TorServicesName}"; Filename: "{app}\runtime\{#TorServicesExeName}"; WorkingDir: "{app}"
+Name: "{group}\Start {#BaseNodeName}"; Filename: "{app}\runtime\{#BaseNodeExeName}"; WorkingDir: "{app}"
+Name: "{group}\Start {#ConsoleWalletName}"; Filename: "{app}\runtime\{#ConsoleWalletExeName}"; WorkingDir: "{app}"
+Name: "{group}\Start {#MergeMiningProxyName}"; Filename: "{app}\runtime\{#MergeMiningProxyExeName}"; WorkingDir: "{app}"
+Name: "{group}\Start {#MergeMiningName}"; Filename: "{app}\runtime\{#MergeMiningExeName}"; WorkingDir: "{app}"
+Name: "{group}\Start {#TorServicesName}"; Filename: "{app}\runtime\{#TorServicesExeName}"; WorkingDir: "{app}"
 Name: "{group}\{#ReadmeName}"; Filename: "{app}\{#ReadmeName}"; WorkingDir: "{app}"
-Name: "{group}\{cm:ProgramOnTheWeb,{#MyAppName}}"; Filename: "{#MyAppURL}"
+Name: "{group}\{cm:ProgramOnTheWeb,{#BaseNodeName}}"; Filename: "{#MyAppURL}"
 Name: "{group}\{cm:TariWeb,{#MyAppSupp}}"; Filename: "{#MyAppSuppURL}"
-Name: "{group}\{cm:UninstallProgram,{#MyOrgName} {#MyAppName} - Testnet}"; Filename: "{uninstallexe}"
-Name: "{userdesktop}\{#MyOrgName} {#MyAppName}"; Filename: "{app}\runtime\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\{cm:UninstallProgram,{#MyOrgName} - Testnet}"; Filename: "{uninstallexe}"
+Name: "{userdesktop}\{#MyOrgName} {#BaseNodeName}"; Filename: "{app}\runtime\{#BaseNodeExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userdesktop}\{#MyOrgName} {#ConsoleWalletName}"; Filename: "{app}\runtime\{#ConsoleWalletExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userdesktop}\{#MyOrgName} {#MergeMiningProxyName}"; Filename: "{app}\runtime\{#MergeMiningProxyExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userdesktop}\{#MyOrgName} {#MergeMiningName}"; Filename: "{app}\runtime\{#MergeMiningExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{userdesktop}\{#MyOrgName} - {#TorServicesName}"; Filename: "{app}\runtime\{#TorServicesExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
-Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: quicklaunchicon
+Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#BaseNodeName}"; Filename: "{app}\{#BaseNodeExeName}"; Tasks: quicklaunchicon
 
 ;[Setup]
 ;PrivilegesRequired=admin
 
 [Run]
-Filename: "{app}\runtime\install_sqlite.bat"; Description: "Install SQLite"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall 
-Filename: "{app}\runtime\install_tor_services.bat"; Description: "Install Tor Services"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall 
-Filename: "{app}\runtime\install_vs2019_redist.bat"; Description: "Install Redistributable for Visual Studio 2019"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall 
+Filename: "{app}\runtime\install_sqlite.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install SQLite"
+Filename: "{app}\runtime\install_tor_services.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install Tor Services"
+Filename: "{app}\runtime\install_xmrig.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install XMRig"
+Filename: "{app}\runtime\install_vs2019_redist.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install Redistributable for Visual Studio 2019"
+
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\config"
+Type: filesandordirs; Name: "{app}\log"
+Type: filesandordirs; Name: "{app}\runtime"
+Type: files; Name: "{app}\LICENSE.md"
+Type: files; Name: "{app}\LICENSE.txt"
+Type: files; Name: "{app}\README.md"
+Type: files; Name: "{app}\README.txt"
+Type: files; Name: "{app}\start_tari_base_node.lnk"
+Type: files; Name: "{app}\start_tari_console_wallet.lnk"
+Type: files; Name: "{app}\start_tari_merge_mining_proxy.lnk"
+Type: files; Name: "{app}\start_xmrig.lnk"
+Type: files; Name: "{app}\start_tor.lnk"
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\config"
+Type: filesandordirs; Name: "{app}\log"
+Type: filesandordirs; Name: "{app}\runtime"

@@ -20,7 +20,7 @@ BUNDLE='
 target/release/tari_base_node
 scripts/install_tor.sh
 common/config/presets/tari-sample.toml
-common/logging/log4rs-sample.yml
+common/logging/log4rs-sample-base-node.yml
 applications/tari_base_node/install-osx.sh
 applications/tari_base_node/start_tor.sh
 applications/tari_base_node/README.md

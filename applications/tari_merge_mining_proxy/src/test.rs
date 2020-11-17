@@ -31,8 +31,8 @@ fn default_test_config() -> MergeMiningProxyConfig {
         monerod_username: "".to_string(),
         monerod_password: "".to_string(),
         monerod_use_auth: false,
-        grpc_address: "127.0.0.1:9999".parse().unwrap(),
-        grpc_wallet_address: "127.0.0.1:9998".parse().unwrap(),
+        grpc_base_node_address: "127.0.0.1:9999".parse().unwrap(),
+        grpc_console_wallet_address: "127.0.0.1:9998".parse().unwrap(),
     }
 }
 

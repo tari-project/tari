@@ -60,15 +60,15 @@ if exist "%TARI_SQLITE_DIR%\%sqlite_runtime%" (
     )
 )
 
-rem Find the base node executable
+rem Find the console wallet executable
 if exist "%my_exe_path%\%my_exe%" (
-    set base_node=%my_exe_path%\%my_exe%
+    set console_wallet=%my_exe_path%\%my_exe%
     echo.
     echo Using "%my_exe%" found in my_exe_path
     echo.
 ) else (
     if exist "%base_path%\%my_exe%" (
-        set base_node=%base_path%\%my_exe%
+        set console_wallet=%base_path%\%my_exe%
         echo.
         echo Using "%my_exe%" found in base_path
         echo.
@@ -76,7 +76,7 @@ if exist "%my_exe_path%\%my_exe%" (
         set FOUND=
         for %%X in (%my_exe%) do (set FOUND=%%~$PATH:X)
         if defined FOUND (
-            set base_node=%my_exe%
+            set console_wallet=%my_exe%
             echo.
             echo Using "%my_exe%" found in system path:
             where "%my_exe%"
@@ -92,18 +92,18 @@ if exist "%my_exe_path%\%my_exe%" (
 )
 
 rem First time run
-if not exist "%config_path%\node_id.json" (
-    "%base_node%" --create-id --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
+if not exist "%config_path%\console_wallet_id.json" (
+    "%console_wallet%" --create-id --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
     echo.
     echo.
-    echo Created "%config_path%\node_id.json". 
+    echo Created "%config_path%\console_wallet_id.json".
     echo.
 ) else (
     echo.
     echo.
-    echo Using old "%config_path%\node_id.json"
+    echo Using old "%config_path%\console_wallet_id.json"
     echo.
 )
 
 rem Consecutive runs
-"%base_node%" --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
+"%console_wallet%" --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"

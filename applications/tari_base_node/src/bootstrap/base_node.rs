@@ -156,10 +156,10 @@ where B: BlockchainBackend + 'static
         let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
-        identity_management::save_as_json(&config.identity_file, &*comms.node_identity())
+        identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity())
             .map_err(|e| anyhow!("Failed to save node identity: {:?}", e))?;
         if let Some(hs) = comms.hidden_service() {
-            identity_management::save_as_json(&config.tor_identity_file, hs.tor_identity())
+            identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity())
                 .map_err(|e| anyhow!("Failed to save tor identity: {:?}", e))?;
         }
 
@@ -236,14 +236,16 @@ where B: BlockchainBackend + 'static
                 auth,
                 onion_port,
             } => {
-                let identity = Some(&config.tor_identity_file).filter(|p| p.exists()).and_then(|p| {
-                    // If this fails, we can just use another address
-                    identity_management::load_from_json::<_, TorIdentity>(p).ok()
-                });
+                let identity = Some(&config.base_node_tor_identity_file)
+                    .filter(|p| p.exists())
+                    .and_then(|p| {
+                        // If this fails, we can just use another address
+                        identity_management::load_from_json::<_, TorIdentity>(p).ok()
+                    });
                 info!(
                     target: LOG_TARGET,
                     "Tor identity at path '{}' {:?}",
-                    config.tor_identity_file.to_string_lossy(),
+                    config.base_node_tor_identity_file.to_string_lossy(),
                     identity
                         .as_ref()
                         .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))

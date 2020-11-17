@@ -55,8 +55,8 @@ use crate::{
     dir_utils,
     initialize_logging,
     logging,
+    DEFAULT_BASE_NODE_LOG_CONFIG,
     DEFAULT_CONFIG,
-    DEFAULT_LOG_CONFIG,
     DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG,
     DEFAULT_WALLET_LOG_CONFIG,
 };
@@ -120,7 +120,7 @@ impl Default for ConfigBootstrap {
         ConfigBootstrap {
             base_path: dir_utils::default_path("", None),
             config: dir_utils::default_path(DEFAULT_CONFIG, None),
-            log_config: dir_utils::default_path(DEFAULT_LOG_CONFIG, None),
+            log_config: dir_utils::default_path(DEFAULT_BASE_NODE_LOG_CONFIG, None),
             init: false,
             create_id: false,
             daemon_mode: false,
@@ -162,7 +162,7 @@ impl ConfigBootstrap {
         if self.log_config.to_str() == Some("") {
             match application_type {
                 ApplicationType::BaseNode => {
-                    self.log_config = dir_utils::default_path(DEFAULT_LOG_CONFIG, Some(&self.base_path));
+                    self.log_config = dir_utils::default_path(DEFAULT_BASE_NODE_LOG_CONFIG, Some(&self.base_path));
                 },
                 ApplicationType::ConsoleWallet => {
                     self.log_config = dir_utils::default_path(DEFAULT_WALLET_LOG_CONFIG, Some(&self.base_path));
@@ -205,7 +205,7 @@ impl ConfigBootstrap {
                 );
                 match application_type {
                     ApplicationType::BaseNode => {
-                        install_configuration(&self.log_config, logging::install_default_logfile_config)
+                        install_configuration(&self.log_config, logging::install_default_base_node_logfile_config)
                     },
                     ApplicationType::ConsoleWallet => {
                         install_configuration(&self.log_config, logging::install_default_wallet_logfile_config)
@@ -269,8 +269,8 @@ mod test {
         dir_utils::default_subdir,
         load_configuration,
         ConfigBootstrap,
+        DEFAULT_BASE_NODE_LOG_CONFIG,
         DEFAULT_CONFIG,
-        DEFAULT_LOG_CONFIG,
     };
     use std::path::PathBuf;
     use structopt::StructOpt;
@@ -366,13 +366,13 @@ mod test {
         // Initialize logging
         let logging_initialized = bootstrap.initialize_logging().is_ok();
         let log_network_file_exists = std::path::Path::new(&bootstrap.base_path)
-            .join("log/network.log")
+            .join("log/base-node/network.log")
             .exists();
         let log_base_layer_file_exists = std::path::Path::new(&bootstrap.base_path)
-            .join("log/base_layer.log")
+            .join("log/base-node/base_layer.log")
             .exists();
         let log_other_file_exists = std::path::Path::new(&bootstrap.base_path)
-            .join("log/other.log")
+            .join("log/base-node/other.log")
             .exists();
 
         // Change back to current dir
@@ -403,7 +403,7 @@ mod test {
         assert!(log_config_exists);
         assert_eq!(
             &bootstrap.log_config,
-            &PathBuf::from(data_path.to_owned() + &DEFAULT_LOG_CONFIG.to_string())
+            &PathBuf::from(data_path.to_owned() + &DEFAULT_BASE_NODE_LOG_CONFIG.to_string())
         );
 
         // Assert logging results

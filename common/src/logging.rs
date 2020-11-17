@@ -36,21 +36,21 @@ pub fn initialize_logging(config_file: &Path) -> bool {
     true
 }
 
-/// Installs a new default logfile configuration, copied from `log4rs-sample.yml` to the given path.
-pub fn install_default_logfile_config(path: &Path) -> Result<(), std::io::Error> {
-    let source = include_str!("../logging/log4rs-sample.yml");
+/// Installs a new default logfile configuration, copied from `log4rs-sample-base-node.yml` to the given path.
+pub fn install_default_base_node_logfile_config(path: &Path) -> Result<(), std::io::Error> {
+    let source = include_str!("../logging/log4rs-sample-base-node.yml");
     fs::write(path, source)
 }
 
-/// Installs a new default logfile configuration, copied from `log4rs-sample.yml` to the given path.
+/// Installs a new default logfile configuration, copied from `log4rs-sample-wallet.yml` to the given path.
 pub fn install_default_wallet_logfile_config(path: &Path) -> Result<(), std::io::Error> {
     let source = include_str!("../logging/log4rs-sample-wallet.yml");
     fs::write(path, source)
 }
 
-/// Installs a new default logfile configuration, copied from `log4rs-sample.yml` to the given path.
+/// Installs a new default logfile configuration, copied from `log4rs-sample-proxy.yml` to the given path.
 pub fn install_default_merge_mining_proxy_logfile_config(path: &Path) -> Result<(), std::io::Error> {
-    let source = include_str!("../logging/log4rs-sample.yml");
+    let source = include_str!("../logging/log4rs-sample-proxy.yml");
     fs::write(path, source)
 }
 

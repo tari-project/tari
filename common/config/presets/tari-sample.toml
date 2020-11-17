@@ -17,8 +17,8 @@ peer_seeds = [
     "ac7fba427913a653a27b69c05549e14d9e87cb7849ea0c740d6c8a5855a3882a::/onion3/avteohvrvvfy4fff7ona2wy6yhb7i4ss4aklp74v64knofvev3vd5yyd:18141",
 ]
 grpc_enabled = true
-grpc_address = "127.0.0.1:18142"
-grpc_wallet_address = "127.0.0.1:18143"
+grpc_base_node_address = "127.0.0.1:18142"
+grpc_console_wallet_address = "127.0.0.1:18143"
 transport = "tor"
 
 [merge_mining_proxy.ridcully]
