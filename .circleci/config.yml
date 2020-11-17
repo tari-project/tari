@@ -51,12 +51,6 @@ commands:
           keys:
             - v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
       - run:
-          name: Cargo fmt
-          command: |
-            TOOLCHAIN=$(cat rust-toolchain)
-            rustup component add --toolchain $TOOLCHAIN rustfmt
-            cargo fmt --all -- --check
-      - run:
           name: Build
           command: cargo build --all --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
       - save_cache:
