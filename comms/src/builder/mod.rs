@@ -52,13 +52,14 @@ use crate::{
     types::CommsDatabase,
 };
 use futures::channel::mpsc;
-use std::sync::Arc;
+use std::{fs::File, sync::Arc};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::broadcast;
 
 /// The `CommsBuilder` provides a simple builder API for getting Tari comms p2p messaging up and running.
 pub struct CommsBuilder {
     peer_storage: Option<CommsDatabase>,
+    peer_storage_file_lock: Option<File>,
     node_identity: Option<Arc<NodeIdentity>>,
     dial_backoff: BoxedBackoff,
     hidden_service_ctl: Option<tor::HiddenServiceController>,
@@ -72,6 +73,7 @@ impl Default for CommsBuilder {
     fn default() -> Self {
         Self {
             peer_storage: None,
+            peer_storage_file_lock: None,
             node_identity: None,
             dial_backoff: Box::new(ExponentialBackoff::default()),
             hidden_service_ctl: None,
@@ -161,8 +163,9 @@ impl CommsBuilder {
     }
 
     /// Set the peer storage database to use.
-    pub fn with_peer_storage(mut self, peer_storage: CommsDatabase) -> Self {
+    pub fn with_peer_storage(mut self, peer_storage: CommsDatabase, file_lock: Option<File>) -> Self {
         self.peer_storage = Some(peer_storage);
+        self.peer_storage_file_lock = file_lock;
         self
     }
 
@@ -175,13 +178,15 @@ impl CommsBuilder {
     }
 
     fn make_peer_manager(&mut self) -> Result<Arc<PeerManager>, CommsBuilderError> {
+        let file_lock = self.peer_storage_file_lock.take();
+
         match self.peer_storage.take() {
             Some(storage) => {
                 // TODO: Peer manager should be refactored to be backend agnostic
                 #[cfg(not(test))]
                 PeerManager::migrate_lmdb(&storage.inner())?;
 
-                let peer_manager = PeerManager::new(storage).map_err(CommsBuilderError::PeerManagerError)?;
+                let peer_manager = PeerManager::new(storage, file_lock).map_err(CommsBuilderError::PeerManagerError)?;
                 Ok(Arc::new(peer_manager))
             },
             None => Err(CommsBuilderError::PeerStorageNotProvided),

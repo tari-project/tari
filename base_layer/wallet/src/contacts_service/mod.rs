@@ -75,8 +75,9 @@ where T: ContactsBackend + 'static
 
         let shutdown_signal = context.get_shutdown_signal();
 
-        context.spawn_when_ready(move |_| async move {
-            let service = ContactsService::new(receiver, ContactsDatabase::new(backend)).start();
+        context.spawn_when_ready(move |handles| async move {
+            let service =
+                ContactsService::new(receiver, ContactsDatabase::new(backend), handles.get_shutdown_signal()).start();
             futures::pin_mut!(service);
             future::select(service, shutdown_signal).await;
             info!(target: LOG_TARGET, "Contacts service shutdown");

@@ -150,7 +150,7 @@ async fn setup_comms_dht(
         .with_listener_address(node_identity.public_address())
         .with_shutdown_signal(shutdown_signal)
         .with_node_identity(node_identity)
-        .with_peer_storage(storage)
+        .with_peer_storage(storage,None)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(100)))
         .build()
         .unwrap();

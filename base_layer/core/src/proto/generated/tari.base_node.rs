@@ -56,7 +56,7 @@ pub mod base_node_service_response {
         NewBlockTemplate(super::super::core::NewBlockTemplate),
         /// Indicates a NewBlock response.
         #[prost(message, tag = "8")]
-        NewBlock(super::super::core::Block),
+        NewBlock(super::NewBlockResponse),
         /// Indicates a TargetDifficulty response.
         #[prost(uint64, tag = "9")]
         TargetDifficulty(u64),
@@ -90,6 +90,15 @@ pub struct TransactionOutputs {
 pub struct HistoricalBlocks {
     #[prost(message, repeated, tag = "1")]
     pub blocks: ::std::vec::Vec<super::core::HistoricalBlock>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NewBlockResponse {
+    #[prost(bool, tag = "1")]
+    pub success: bool,
+    #[prost(string, tag = "2")]
+    pub error: std::string::String,
+    #[prost(message, optional, tag = "3")]
+    pub block: ::std::option::Option<super::core::Block>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MmrNodes {

@@ -71,17 +71,11 @@
 
 [wallet]
 
-# Enable the gRPC server for the wallet library. Set this to true if you want to enable third-party wallet software
-#grpc_enabled = true
-
-# The socket to expose for the gRPC wallet server. This value is ignored if grpc_enabled is false.
-# Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-#grpc_address = "tcp://127.0.0.1:80400"
-
 # The relative folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you
 #  a) have backed up your seed phrase and
 #  b) know what you are doing!
-wallet_file = "wallet\\wallet.dat"
+wallet_db_file = "wallet\\wallet.dat"
+console_wallet_db_file = "wallet\\console-wallet.dat"
 
 # This is the timeout period that will be used to monitor TXO queries to the base node (default = 30). Larger values
 # are needed for wallets with many (>1000) TXOs to be validated.
@@ -111,6 +105,16 @@ base_node_query_timeout = 120
 #command_send_wait_stage = "Broadcast"
 #command_send_wait_timeout = 300
 
+# The base node that the wallet should use for service requests and tracking chain state
+# base_node_service_peer = "public_key::net_address"
+# base_node_service_peer = "e856839057aac496b9e25f10821116d02b58f20129e9b9ba681b830568e47c4d::/onion3/exe2zgehnw3tvrbef3ep6taiacr6sdyeb54be2s25fpru357r4skhtad:18141" #tbn-oregon
+
+# Configuration for the wallet's base node service
+# The refresh interval, defaults to 10 seconds
+# base_node_service_refresh_interval = 10
+# The maximum age of service requests in seconds, requests older than this are discarded
+# base_node_service_request_max_age = 60
+
 #[base_node.transport.tor]
 #control_address = "/ip4/127.0.0.1/tcp/9051"
 #control_auth_type = "none" # or "password"
@@ -131,9 +135,8 @@ base_node_query_timeout = 120
 
 # Select the network to connect to. Valid options are:
 #   mainnet - the "real" Tari network (default)
-#   Ridcully - the Tari test net
+#   ridcully - the Tari test net
 network = "ridcully"
-
 
 # Configuration options for testnet
 
@@ -161,6 +164,7 @@ db_type = "lmdb"
 #num_mining_threads = 1
 
 # The relative path to store persistent data
+data_dir = "ridcully"
 
 # When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
 # any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
@@ -197,17 +201,22 @@ peer_seeds = [
 #public_address = "/ip4/172.2.3.4/tcp/18189"
 
 # Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
-#grpc_enabled = false
-
+grpc_enabled = true
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-#grpc_address = "tcp://127.0.0.1:18141"
+grpc_base_node_address = "127.0.0.1:18142"
+# The socket to expose for the gRPC wallet server. This value is ignored if grpc_enabled is false.
+# Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
+grpc_console_wallet_address = "127.0.0.1:18143"
 
 # A path to the file that stores your node identity and secret key
-identity_file = ".\\config\\node_id.json"
+base_node_identity_file = ".\\config\\base_node_id.json"
 
 # A path to the file that stores your wallet's node identity and secret key
-wallet_identity_file = ".\\config\\wallet-identity.json"
+wallet_identity_file = ".\\config\\wallet_id.json"
+
+# A path to the file that stores your console wallet's node identity and secret key
+console_wallet_identity_file = ".\\config\\console_wallet_id.json"
 
 # -------------- Transport configuration --------------
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
@@ -229,7 +238,7 @@ tor_control_address = "/ip4/127.0.0.1/tcp/9051"
 # Authentication to use for the tor control server
 tor_control_auth = "none" # or "password=xxxxxx"
 # The onion port to use.
-tor_onion_port = 18150
+tor_onion_port = 18141
 # The address to which traffic on the node's onion address will be forwarded
 # tor_forward_address = "/ip4/127.0.0.1/tcp/0"
 # Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
@@ -245,152 +254,20 @@ tor_onion_port = 18150
 #socks5_auth = "none" # or "username_password=username:xxxxxxx"
 
 # A path to the file that stores the tor hidden service private key, if using the tor transport.
-tor_identity_file = ".\\config\\tor.json"
+base_node_tor_identity_file = ".\\config\\base_node_tor.json"
 
 # A path to the file that stores the wallet's tor hidden service private key, if using the tor transport.
-wallet_tor_identity_file = ".\\config\\wallet-tor.json"
+wallet_tor_identity_file = ".\\config\\wallet_tor.json"
 
-
-[base_node.mainnet]
-# The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
-# almost all use cases.
-#db_type = "lmdb"
-
-# The maximum number of orphans that can be stored in the Orphan block pool. Default value is "720".
-#orphan_storage_capacity = 720
-# The size that the orphan pool will be allowed to grow before it is cleaned out, with threshold being tested every
-# time before fetch and add blocks. Default value is "0", which indicates the orphan pool will not be cleaned out.
-#orphan_db_clean_out_threshold = 0
-# The pruning horizon that indicates how many full blocks without pruning must be kept by the base node. Default value
-# is "0", which indicates an archival node without any pruning.
-#pruning_horizon = 0
-
-# Enable if this node must be a mining node
-#enable_mining = true
-#num_mining_threads = 1
-
-# The relative path to store persistent data
-#data_dir = "mainnet"
-
-# When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
-# any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
-# you knew about last time you ran the software. But what about when you run the software for the first time? That's
-# where this allowlist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
-# new nodes can use to introduce themselves to the network.
-# peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
-peer_seeds = []
-
-# Configure the maximum number of threads available for base node operation. These threads are spawned lazily, so a higher
-# number is recommended.
-# max_threads = 512
-
-# The number of threads to spawn and keep active at all times. The default is the number of cores available on this node.
-# core_threads = <number of cores>
-
-# Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
-#grpc_enabled = false
-
-# The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
-# Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-#grpc_address = "tcp://127.0.0.1:18041"
-
-# A path to the file that stores your node identity and secret key
-#identity_file = "./node_id.json" # or ".\\node_id.json"
-
-# A path to the file that stores your wallet's node identity and secret key
-#wallet_identity_file = "./wallet-identity.json" # or ".\\config\\wallet-identity.json"
-
-# -------------- Transport configuration --------------
-# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
-# e.g. tor onion addresses will not be contactable.
-#transport = "tcp"
-# The address and port to listen for peer connections over TCP.
-#tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
-# Address of the SOCK5 service to use to resolve tor addresses
-# tcp_tor_socks_address # disabled by default
-# tcp_tor_socks_auth = "none"
-
-# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
-# onion v2, onion v3 and dns addresses.
-#transport = "tor"
-# Address of the tor control server
-#tor_control_address = "/ip4/127.0.0.1/tcp/9051"
-# Authentication to use for the tor control server
-#tor_control_auth = "none" # or "password=xxxxxx"
-# The onion port to use.
-#tor_onion_port = 18141
-# The address to which traffic on the node's onion address will be forwarded
-# tor_forward_address = "/ip4/127.0.0.1/tcp/0"
-# Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
-# use the first address returned by the tor control port (GETINFO /net/listeners/socks).
-#tor_socks_address_override=
-
-# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
-#transport = "socks5"
-# The address of the SOCKS5 proxy
-#socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
-# The address to which traffic will be forwarded
-#socks5_listener_address = "/ip4/127.0.0.1/tcp/18189"
-#socks5_auth = "none" # or "username_password=username:xxxxxxx"
-
-# A path to the file that stores the tor hidden service private key, if using the tor transport.
-#tor_identity_file = "./tor.json" # or ".\\tor.json"
-
-# A path to the file that stores the wallet's tor hidden service private key, if using the tor transport.
-#wallet_tor_identity_file = "./wallet-tor.json" # or ".\\wallet-tor.json"
+# A path to the file that stores the console wallet's tor hidden service private key, if using the tor transport.
+console_wallet_tor_identity_file = ".\\config\\cosole_wallet_tor.json"
 
 ########################################################################################################################
 #                                                                                                                      #
 #                                             Mempool Configuration Options                                            #
 #                                                                                                                      #
 ########################################################################################################################
-[mempool.testnet]
-
-# The maximum number of transactions that can be stored in the Unconfirmed Transaction pool. This is the main waiting
-# area in the mempool and almost all transactions will end up in this pool before being mined. It's for this reason
-# that this parameter will have the greatest impact on actual memory usage by your mempool. If you are not mining,
-# you can reduce this parameter to reduce memory consumption by your node, at the expense of network bandwith. For
-# reference, a single block can hold about 4,000 transactions
-# Default = 40,000 transactions
-# unconfirmed_pool_storage_capacity = 40000
-
-# The maximum number of transactions that can be stored in the Orphan Transaction pool. This pool keep transactions
-# that are 'orphans', i.e. transactions with inputs that don't exist in the UTXO set. If you're not mining, and
-# memory usage is a concern, this can safely be set to zero. Even so, orphan transactions do not appear that often
-# (it's usually a short chain of spends that are broadcast in quick succession). The other potential source of orphan
-# transactions are from DOS attacks and setting the `tx_ttl` parameter to a low value is an effective countermeasure
-# in this case. Default: 250 transactions
-# orphan_pool_storage_capacity = 250
-
-# The maximum amount of time an orphan transaction will be permitted to stay in the mempool before being rejected.
-# This should be set to a fairly long enough to allow the parent transaction to arrive; but low enough also to thwart
-# DOS attacks. Default: 300 seconds
-#orphan_tx_ttl = 300
-
-# The maximum number of transactions that can be stored in the Pending Transaction pool. This pool holds transactions
-# that are valid, but cannot be included in a block yet becuase there is a consensus rule holding it back, usually a
-# time lock. Once the conditions holding the transaction in the pending pool are resolved, the transaction will move
-# into the unconfirmed pool.  Default: 5,000 transactions
-# pending_pool_storage_capacity = 5000
-
-# The ReorgPool consists of all transactions that have recently been added to blocks.
-# When a potential blockchain reorganization occurs the transactions can be recovered from the ReorgPool and can be
-# added back into the UnconfirmedPool. Transactions in the ReOrg pool have a limited Time-to-live and will be removed
-# from the pool when the Time-to-live thresholds is reached. Also, when the capacity of the pool has been reached, the
-# oldest transactions will be removed to make space for incoming transactions. The pool capacity and TTL parameters
-# have the same meaning as those for the pending pool, but applied to the reorg pool; obviously.
-# Defaults: 10,000 transactions and 300 seconds
-#reorg_pool_storage_capacity = 10_000
-#reorg_tx_ttl = 300
-
-# The maximum number of transactions that can be skipped when compiling a set of highest priority transactions,
-# skipping over large transactions are performed in an attempt to fit more transactions into the remaining space.
-# This parameter only affects mining nodes. You can ignore it if you are only running a base node. Even so, changing
-# this parameter should not affect profitabilty in any meaningful way, since the transaction weights are selected to
-# closely mirror how much block space they take up
-#weight_tx_skip_count = 20
-
-[mempool.mainnet]
+[mempool.ridcully]
 
 # The maximum number of transactions that can be stored in the Unconfirmed Transaction pool. This is the main waiting
 # area in the mempool and almost all transactions will end up in this pool before being mined. It's for this reason
@@ -453,7 +330,7 @@ peer_seeds = []
 
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-#grpc_address = "tcp://127.0.0.1:18042"
+#grpc_address = "127.0.0.1:18042"
 
 ########################################################################################################################
 #                                                                                                                      #
@@ -465,7 +342,7 @@ peer_seeds = []
 [merge_mining_proxy.ridcully]
 
 # URL to monerod, currently set to a seed node
-monerod_url = "http://192.110.160.146:38081"
+monerod_url = "http://18.133.55.120:38081"
 
 # Address of the tari_merge_mining_proxy application
 proxy_host_address = "127.0.0.1:7878"

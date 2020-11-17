@@ -29,7 +29,7 @@ use log::*;
 use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
 use tari_app_utilities::utilities::ExitCodes;
 use tari_common::GlobalConfig;
-use tari_comms::NodeIdentity;
+use tari_comms::{peer_manager::Peer, NodeIdentity};
 
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
@@ -95,16 +95,18 @@ pub fn tui_mode(
     node_config: GlobalConfig,
     node_identity: NodeIdentity,
     wallet: WalletSqlite,
+    base_node: Peer,
 ) -> Result<(), ExitCodes>
 {
     let grpc = WalletGrpcServer::new(wallet.clone());
-    handle.spawn(run_grpc(grpc, node_config.grpc_wallet_address));
+    handle.spawn(run_grpc(grpc, node_config.grpc_console_wallet_address));
 
     let app = App::<CrosstermBackend<Stdout>>::new(
         "Tari Console Wallet".into(),
         &node_identity,
         wallet,
         node_config.network,
+        base_node,
     );
     handle.enter(|| run(app))?;
 
@@ -120,18 +122,18 @@ pub fn grpc_mode(handle: Handle, wallet: WalletSqlite, node_config: GlobalConfig
     println!("Starting grpc server");
     let grpc = WalletGrpcServer::new(wallet);
     handle
-        .block_on(run_grpc(grpc, node_config.grpc_wallet_address))
+        .block_on(run_grpc(grpc, node_config.grpc_console_wallet_address))
         .map_err(ExitCodes::GrpcError)?;
     println!("Shutting down");
     Ok(())
 }
 
-async fn run_grpc(grpc: WalletGrpcServer, grpc_wallet_address: SocketAddr) -> Result<(), String> {
-    info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_wallet_address);
+async fn run_grpc(grpc: WalletGrpcServer, grpc_console_wallet_address: SocketAddr) -> Result<(), String> {
+    info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_console_wallet_address);
 
     Server::builder()
         .add_service(tari_app_grpc::tari_rpc::wallet_server::WalletServer::new(grpc))
-        .serve(grpc_wallet_address)
+        .serve(grpc_console_wallet_address)
         .await
         .map_err(|e| format!("GRPC server returned error:{}", e))?;
     info!(target: LOG_TARGET, "Stopping GRPC");

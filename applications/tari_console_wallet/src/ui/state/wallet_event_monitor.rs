@@ -25,7 +25,11 @@ use futures::stream::StreamExt;
 use log::*;
 use std::sync::Arc;
 use tari_comms::connectivity::ConnectivityEvent;
-use tari_wallet::{output_manager_service::TxId, transaction_service::handle::TransactionEvent};
+use tari_wallet::{
+    base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
+    output_manager_service::TxId,
+    transaction_service::handle::TransactionEvent,
+};
 use tokio::sync::RwLock;
 
 const LOG_TARGET: &str = "wallet::console_wallet::wallet_event_monitor";
@@ -45,6 +49,8 @@ impl WalletEventMonitor {
         let mut transaction_service_events = self.app_state_inner.read().await.get_transaction_service_event_stream();
 
         let mut connectivity_events = self.app_state_inner.read().await.get_connectivity_event_stream();
+
+        let mut base_node_events = self.app_state_inner.read().await.get_base_node_event_stream();
 
         info!(target: LOG_TARGET, "Wallet Event Monitor starting");
         loop {
@@ -79,20 +85,33 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet event {:?}", msg);
-                                     match (*msg).clone() {
-                                        ConnectivityEvent::PeerDisconnected(_) |
-                                        ConnectivityEvent::ManagedPeerDisconnected(_) |
-                                        ConnectivityEvent::PeerConnected(_) |
-                                        ConnectivityEvent::PeerBanned(_) |
-                                        ConnectivityEvent::PeerOffline(_) |
-                                        ConnectivityEvent::PeerConnectionWillClose(_, _) => {
-                                            self.trigger_peer_state_refresh().await;
-                                        },
-                                        /// Only the above variants trigger state refresh
-                                        _ => (),
-                                     }
+                                match (*msg).clone() {
+                                    ConnectivityEvent::PeerDisconnected(_) |
+                                    ConnectivityEvent::ManagedPeerDisconnected(_) |
+                                    ConnectivityEvent::PeerConnected(_) |
+                                    ConnectivityEvent::PeerBanned(_) |
+                                    ConnectivityEvent::PeerOffline(_) |
+                                    ConnectivityEvent::PeerConnectionWillClose(_, _) => {
+                                    self.trigger_peer_state_refresh().await;
+                                    },
+                                    /// Only the above variants trigger state refresh
+                                    _ => (),
+                                }
                             },
                             Err(_) => debug!(target: LOG_TARGET, "Lagging read on Connectivity event broadcast channel"),
+                        }
+                    },
+                    result = base_node_events.select_next_some() => {
+                        match result {
+                            Ok(msg) => {
+                                trace!(target: LOG_TARGET, "Wallet Event Monitor received base node event {:?}", msg);
+                                match (*msg).clone() {
+                                    BaseNodeEvent::BaseNodeState(state) => {
+                                        self.trigger_base_node_state_refresh(state).await;
+                                    }
+                                }
+                            },
+                            Err(_) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel"),
                         }
                     },
                     complete => {
@@ -119,6 +138,14 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.refresh_connected_peers_state().await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+        }
+    }
+
+    async fn trigger_base_node_state_refresh(&mut self, state: BaseNodeState) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_base_node_state(state).await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
     }

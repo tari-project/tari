@@ -1,14 +1,11 @@
 # A simple set of sane defaults for connecting to the Ridcully testnet
-[common]
-#peer_database = "~/.tari/peers"
 
 [base_node]
 network = "ridcully"
 
-
 [base_node.ridcully]
 db_type = "lmdb"
-transport = "tor"
+enable_mining = false
 peer_seeds = [
     #tbn-nvir
     "30c9e74dcf2a3f967457cf10f09b0cb2d0b112b6e98fc76bf64cf27597a6961f::/onion3/zyjmhhwj572dnizdbe672vzzyqfmlzjs4k4mp4bmso6wysn2megndzad:18141",
@@ -19,19 +16,14 @@ peer_seeds = [
     #tbn-sydney
     "ac7fba427913a653a27b69c05549e14d9e87cb7849ea0c740d6c8a5855a3882a::/onion3/avteohvrvvfy4fff7ona2wy6yhb7i4ss4aklp74v64knofvev3vd5yyd:18141",
 ]
-enable_mining = false
 grpc_enabled = true
-grpc_address = "127.0.0.1:18142"
-grpc_wallet_address = "127.0.0.1:18143"
+grpc_base_node_address = "127.0.0.1:18142"
+grpc_console_wallet_address = "127.0.0.1:18143"
+transport = "tor"
 
 [merge_mining_proxy.ridcully]
-monerod_url = "http://192.110.160.146:38081"
+monerod_url = "http://18.133.55.120:38081"
 proxy_host_address = "127.0.0.1:7878"
-# If authentication is being used for curl
 monerod_use_auth=false
-
-# Username for curl
 monerod_username=""
-
-# Password for curl
 monerod_password=""

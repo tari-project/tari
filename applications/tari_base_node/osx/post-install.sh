@@ -194,7 +194,7 @@ fi
 if [ ! -f "$DATA_DIR/config.toml" ]; then
   echo "Copying configuraton files"
 #  cp tari-sample.toml $DATA_DIR/config.toml
-#  cp log4rs-sample.yml $DATA_DIR/log4rs.yml
+#  cp log4rs-sample-base-node.yml $DATA_DIR/log4rs.yml
 
   # Configure Base Node
   tari_base_node --init --create-id

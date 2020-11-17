@@ -65,6 +65,7 @@ use tari_key_manager::{
 };
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::reply_channel;
+use tari_shutdown::ShutdownSignal;
 use tokio::{
     sync::{broadcast, Mutex},
     task::JoinHandle,
@@ -87,6 +88,7 @@ where TBackend: OutputManagerBackend + 'static
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_response_stream: Option<BNResponseStream>,
     base_node_response_publisher: broadcast::Sender<Arc<BaseNodeProto::BaseNodeServiceResponse>>,
+    shutdown_signal: Option<ShutdownSignal>,
 }
 
 impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream>
@@ -108,6 +110,7 @@ where
         event_publisher: OutputManagerEventSender,
         factories: CryptoFactories,
         coinbase_lock_height: u64,
+        shutdown_signal: ShutdownSignal,
     ) -> Result<OutputManagerService<TBackend, BNResponseStream>, OutputManagerError>
     {
         // Check to see if there is any persisted state, otherwise start fresh
@@ -157,6 +160,7 @@ where
             request_stream: Some(request_stream),
             base_node_response_stream: Some(base_node_response_stream),
             base_node_response_publisher,
+            shutdown_signal: Some(shutdown_signal),
         })
     }
 
@@ -174,6 +178,12 @@ where
             .expect("Output Manager Service initialized without base_node_response_stream")
             .fuse();
         pin_mut!(base_node_response_stream);
+
+        let shutdown = self
+            .shutdown_signal
+            .take()
+            .expect("Output Manager Service initialized without shutdown signal");
+        pin_mut!(shutdown);
 
         let mut utxo_validation_handles: FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>> =
             FuturesUnordered::new();
@@ -215,6 +225,10 @@ where
                         Ok(join_result_inner) => self.complete_utxo_validation_protocol(join_result_inner).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving UTXO Validation protocol: {:?}", e),
                     };
+                }
+                _ = shutdown => {
+                    info!(target: LOG_TARGET, "Output manager service shutting down because it received the shutdown signal");
+                    break;
                 }
                 complete => {
                     info!(target: LOG_TARGET, "Output manager service shutting down");
@@ -931,6 +945,17 @@ pub struct Balance {
     pub pending_incoming_balance: MicroTari,
     /// The current balance of funds encumbered in pending outbound transactions that have not been confirmed
     pub pending_outgoing_balance: MicroTari,
+}
+
+impl Balance {
+    pub fn zero() -> Self {
+        Self {
+            available_balance: Default::default(),
+            time_locked_balance: None,
+            pending_incoming_balance: Default::default(),
+            pending_outgoing_balance: Default::default(),
+        }
+    }
 }
 
 impl fmt::Display for Balance {

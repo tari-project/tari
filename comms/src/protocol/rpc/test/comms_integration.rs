@@ -47,7 +47,7 @@ async fn run_service() {
         .with_listener_address(node_identity1.public_address())
         .with_node_identity(node_identity1)
         .with_shutdown_signal(shutdown.to_signal())
-        .with_peer_storage(CommsDatabase::new())
+        .with_peer_storage(CommsDatabase::new(), None)
         .build()
         .unwrap()
         .add_rpc_server(RpcServer::new().add_service(rpc_service))
@@ -60,7 +60,7 @@ async fn run_service() {
         .with_listener_address(node_identity2.public_address())
         .with_shutdown_signal(shutdown.to_signal())
         .with_node_identity(node_identity2.clone())
-        .with_peer_storage(CommsDatabase::new())
+        .with_peer_storage(CommsDatabase::new(), None)
         .build()
         .unwrap();
 

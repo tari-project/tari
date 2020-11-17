@@ -71,10 +71,20 @@
   "wallet": {
     "section": "Wallet Configuration Options",
     "description": "",
-    "wallet_file": {
+    "wallet_db_file": {
       "name": "Wallet path",
       "description": "The folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you\n  a) have backed up your seed phrase and\n  b) know what you are doing!",
       "default": "$BASE/wallet/wallet.dat",
+      "type": "path"
+    }
+  },
+  "wallet": {
+    "section": "Wallet Configuration Options",
+    "description": "",
+    "console_wallet_db_file": {
+      "name": "Console wallet path",
+      "description": "The folder to store your local key data and transaction history. DO NOT EVER DELETE THIS FILE unless you\n  a) have backed up your seed phrase and\n  b) know what you are doing!",
+      "default": "$BASE/wallet/console-wallet.dat",
       "type": "path"
     }
   },

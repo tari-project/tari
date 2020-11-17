@@ -2933,6 +2933,7 @@ pub unsafe extern "C" fn wallet_create(
                         ..Default::default()
                     }),
                     Network::Rincewind,
+                    None,
                 ),
                 wallet_backend,
                 transaction_backend.clone(),
@@ -6182,10 +6183,6 @@ mod test {
                 .join(db_name)
                 .with_extension("sqlite3");
 
-            let connection =
-                run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
-            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
-
             let alice_config = comms_config_create(
                 address_alice_str,
                 transport_type_alice,
@@ -6195,17 +6192,6 @@ mod test {
                 error_ptr,
             );
 
-            let mut runtime = Runtime::new().unwrap();
-            let stored_key = runtime.block_on(wallet_backend.get_comms_secret_key()).unwrap();
-
-            assert!(stored_key.is_none(), "No key should be stored yet");
-            let generated_public_key1 = (*alice_config).node_identity.public_key().clone();
-
-            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
-            assert_eq!(*error_ptr, 0, "No error expected");
-
-            assert_eq!(&(*public_key_alice), (*alice_config).node_identity.public_key());
-
             let alice_config2 = comms_config_create(
                 address_alice_str,
                 transport_type_alice,
@@ -6214,6 +6200,23 @@ mod test {
                 20,
                 error_ptr,
             );
+
+            let mut runtime = Runtime::new().unwrap();
+
+            let connection =
+                run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
+            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
+
+            let stored_key = runtime.block_on(wallet_backend.get_comms_secret_key()).unwrap();
+            drop(wallet_backend);
+            assert!(stored_key.is_none(), "No key should be stored yet");
+            let generated_public_key1 = (*alice_config).node_identity.public_key().clone();
+
+            comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
+            assert_eq!(*error_ptr, 0, "No error expected");
+
+            assert_eq!(&(*public_key_alice), (*alice_config).node_identity.public_key());
+
             assert_ne!(&generated_public_key1, (*alice_config2).node_identity.public_key());
 
             let alice_wallet = wallet_create(
@@ -6235,13 +6238,20 @@ mod test {
                 error_ptr,
             );
 
-            let stored_key = (*alice_wallet)
-                .runtime
+            assert_eq!(*error_ptr, 0, "No error expected");
+            wallet_destroy(alice_wallet);
+
+            let connection =
+                run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
+            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
+
+            let stored_key = runtime
                 .block_on(wallet_backend.get_comms_secret_key())
                 .unwrap()
                 .unwrap();
             let public_stored_key = CommsPublicKey::from_secret_key(&stored_key);
             assert_eq!(public_stored_key, (*public_key_alice));
+            drop(wallet_backend);
 
             // Test the file path based version
             let backup_path_alice =
@@ -6250,16 +6260,16 @@ mod test {
             let original_path_cstring = CString::new(sql_database_path.to_str().unwrap()).unwrap();
             let original_path_str: *const c_char = CString::into_raw(original_path_cstring.clone()) as *const c_char;
             file_partial_backup(original_path_str, backup_path_alice_str, error_ptr);
+
             let sql_database_path = alice_temp_dir.path().join("backup").with_extension("sqlite3");
             let connection =
                 run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
-            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
+            let wallet_backend = WalletDatabase::new(WalletSqliteDatabase::new(connection, None).unwrap());
 
             let stored_key = runtime.block_on(wallet_backend.get_comms_secret_key()).unwrap();
 
             assert!(stored_key.is_none(), "key should be cleared");
-
-            wallet_destroy(alice_wallet);
+            drop(wallet_backend);
 
             let alice_config3 = comms_config_create(
                 address_alice_str,

@@ -1,10 +1,10 @@
 # A sample log configuration file for running in release mode. By default, this configuration splits up log messages to
 # three destinations:
 #    * Console: For log messages with level INFO and higher
-#    * log/network.log: TRACE-level logs related to networking. This file will be quite busy since there
+#    * log/base-node/network.log: TRACE-level logs related to networking. This file will be quite busy since there
 #      are lots of P2P debug messages, and so this traffic is segregated from the application log messages
-#    * log/base_layer.log: Non-comms related TRACE-level messages and higher are logged into this file
-#    * log/other.log: Third-party crates' messages will be logged here at an WARN level or higher
+#    * log/base-node/base_layer.log: Non-comms related TRACE-level messages and higher are logged into this file
+#    * log/base-node/other.log: Third-party crates' messages will be logged here at an WARN level or higher
 #
 #  See https://docs.rs/log4rs/0.8.3/log4rs/encode/pattern/index.html for deciphering the log pattern. The log format
 #  used in this sample configuration prints messages as:
@@ -20,7 +20,7 @@ appenders:
   # An appender named "network" that writes to a file with a custom pattern encoder
   network:
     kind: rolling_file
-    path: "log/network.log"
+    path: "log/base-node/network.log"
     policy:
       kind: compound
       trigger:
@@ -30,14 +30,14 @@ appenders:
         kind: fixed_window
         base: 1
         count: 10
-        pattern: "log/network.{}.log"
+        pattern: "log/base-node/network.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
   # An appender named "base_layer" that writes to a file with a custom pattern encoder
   base_layer:
     kind: rolling_file
-    path: "log/base_layer.log"
+    path: "log/base-node/base_layer.log"
     policy:
       kind: compound
       trigger:
@@ -47,14 +47,14 @@ appenders:
         kind: fixed_window
         base: 1
         count: 10
-        pattern: "log/base_layer.{}.log"
+        pattern: "log/base-node/base_layer.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
   # An appender named "other" that writes to a file with a custom pattern encoder
   other:
     kind: rolling_file
-    path: "log/other.log"
+    path: "log/base-node/other.log"
     policy:
       kind: compound
       trigger:
@@ -64,14 +64,14 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "log/other.{}.log"
+        pattern: "log/base-node/other.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
   # An appender named "mm_proxy" that writes to a file with a custom pattern encoder
   mm_proxy:
     kind: rolling_file
-    path: "log/mm_proxy.log"
+    path: "log/base-node/mm_proxy.log"
     policy:
       kind: compound
       trigger:
@@ -81,14 +81,14 @@ appenders:
         kind: fixed_window
         base: 1
         count: 10
-        pattern: "log/mm_proxy.{}.log"
+        pattern: "log/base-node/mm_proxy.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
   # An appender named "stress_test" that writes to a file with a custom pattern encoder
   stress_test:
     kind: rolling_file
-    path: "log/stress_test.log"
+    path: "log/base-node/stress_test.log"
     policy:
       kind: compound
       trigger:
@@ -98,7 +98,7 @@ appenders:
         kind: fixed_window
         base: 1
         count: 10
-        pattern: "log/stress_test.{}.log"
+        pattern: "log/base-node/stress_test.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 

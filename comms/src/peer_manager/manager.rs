@@ -35,7 +35,7 @@ use crate::{
     types::{CommsDatabase, CommsPublicKey},
 };
 use multiaddr::Multiaddr;
-use std::{fmt, time::Duration};
+use std::{fmt, fs::File, time::Duration};
 use tari_storage::{lmdb_store::LMDBDatabase, IterationResult};
 use tokio::sync::RwLock;
 
@@ -43,14 +43,16 @@ use tokio::sync::RwLock;
 /// It also provides functionality to add, find and delete peers.
 pub struct PeerManager {
     peer_storage: RwLock<PeerStorage<KeyValueWrapper<CommsDatabase>>>,
+    _file_lock: Option<File>,
 }
 
 impl PeerManager {
     /// Constructs a new empty PeerManager
-    pub fn new(database: CommsDatabase) -> Result<PeerManager, PeerManagerError> {
+    pub fn new(database: CommsDatabase, file_lock: Option<File>) -> Result<PeerManager, PeerManagerError> {
         let storage = PeerStorage::new_indexed(KeyValueWrapper::new(database))?;
         Ok(Self {
             peer_storage: RwLock::new(storage),
+            _file_lock: file_lock,
         })
     }
 
@@ -346,7 +348,7 @@ mod test {
     #[runtime::test_basic]
     async fn get_broadcast_identities() {
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
         let mut test_peers = Vec::new();
         // Create 20 peers were the 1st and last one is bad
         test_peers.push(create_test_peer(true, PeerFeatures::COMMUNICATION_NODE));
@@ -458,7 +460,7 @@ mod test {
     async fn calc_region_threshold() {
         let n = 5;
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
         let network_region_node_id = create_test_peer(false, Default::default()).node_id;
         let mut test_peers = (0..10)
             .map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_NODE))
@@ -526,7 +528,7 @@ mod test {
     async fn closest_peers() {
         let n = 5;
         // Create peer manager with random peers
-        let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
         let network_region_node_id = create_test_peer(false, Default::default()).node_id;
         let test_peers = (0..10)
             .map(|_| create_test_peer(false, PeerFeatures::COMMUNICATION_NODE))
@@ -558,7 +560,7 @@ mod test {
 
     #[runtime::test_basic]
     async fn add_or_update_online_peer() {
-        let peer_manager = PeerManager::new(HashmapDatabase::new()).unwrap();
+        let peer_manager = PeerManager::new(HashmapDatabase::new(), None).unwrap();
         let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
         peer.set_offline(true);
         peer.connection_stats.set_connection_failed();

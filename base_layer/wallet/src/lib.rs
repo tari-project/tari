@@ -11,6 +11,7 @@
 
 #[macro_use]
 mod macros;
+pub mod base_node_service;
 pub mod contacts_service;
 pub mod error;
 pub mod output_manager_service;

@@ -152,6 +152,7 @@ where T: OutputManagerBackend + 'static
                 publisher,
                 factories,
                 constants.coinbase_lock_height(),
+                handles.get_shutdown_signal(),
             )
             .await
             .expect("Could not initialize Output Manager Service")

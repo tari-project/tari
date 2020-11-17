@@ -1,7 +1,8 @@
-# Tari Base Node and Wallet Runtime Instructions
+# Tari Components Runtime Instructions
 
 This `README` file, in the installation folder, contains important instructions 
-before running `tari_base_node.exe` the first time.  
+before running `tari_base_node.exe`, `tari_console_wallet.exe` and 
+`tari_merge_mining_proxy.exe` the first time.  
 
 ## Pre-requisites 
 
@@ -10,40 +11,12 @@ installed automatically if selected:
 - SQLite
 - Tor Services
 - Redistributable for Microsoft Visual Studio 2019 
+- XMRig
 
 Notes: 
 - Minimum Windows 7 64bit with Windows Powershell 3.0 required, 
   Windows 10 64bit recommended.
 - Minimum 1.2 GB free disk space required at the initial runtime. 
-
-## Runtime
-
-- Execute the `.\start_tari_basenode` shortcut; this will also start the Tor 
-  services that needs to be running before the base node can run (do not close 
-  the Tor console).
-- The Tor console will output `[notice] Bootstrapped 100% (done): Done` 
-  when the Tor services have fully started.
-- Runtime artefacts:
-  - The blockchain will be created in the `.\rincewind` folder.
-  - The wallet will be created in the `.\wallet` folfder.
-  - All log files will be created in the `.\log` folder.
-  - The following configuration files will be created in the `.\config` folder if 
-    the default runtime configuration `..\..\common\config\presets\windows.toml` 
-    was used:
-    - `wallet-identity.json`
-    - `wallet-tor.json`
-    - `node_id.json`
-    - `tor.json`
-    - `log4rs.yml`
-
-## Start Fresh
-
-- To delete log files, delete the `.\log` folder.
-- To re-sync the blockchain, delete the `.\rincewind` folder.
-- To destroy your wallet and loose all your hard-earned tXTR Tari coins, delete 
-  the `.\wallet` folder.
-
-# Installation Options
 
 ## Automatic Installation
 
@@ -57,7 +30,9 @@ Notes:
   |   LICENSE.txt
   |   README.md
   |   README.txt
-  |   start_tari_basenode.lnk
+  |   start_tari_base_node.lnk
+  |   start_tari_console_wallet.lnk
+  |   start_tari_merge_mining_proxy.lnk
   |   start_tor.lnk
   |   unins000.dat
   |   unins000.exe
@@ -67,14 +42,56 @@ Notes:
           install_sqlite.bat
           install_tor_services.bat
           install_vs2019_redist.bat
+          install_xmrig.bat
           run_the_base_node.bat
-          start_tari_basenode.bat
+          run_the_console_wallet.bat
+          run_the_merge_mining_proxy.bat
+          start_tari_base_node.bat
+          start_tari_console_wallet.bat
+          start_tari_merge_mining_proxy.bat
           start_tor.bat
           tari_base_node.exe
+          tari_console_wallet.exe
+          tari_merge_mining_proxy.exe
   ```
   - The following environment variables are created with a default installation:
     - `TARI_TOR_SERVICES_DIR = %USERPROFILE%\.tor_services\Tor`
     - `TARI_SQLITE_DIR       = %USERPROFILE%\.sqlite`
+
+## Runtime
+
+- Execute the `.\start_tari_base_node` shortcut; this will also start the Tor 
+  services if not running already that needs to be running before the base node 
+  can run (do not close the Tor console).
+- Execute the `.\start_tari_console_wallet` shortcut; this will also start the 
+  Tor services that needs to be running before the base node can run (do not 
+  close the Tor console).
+- The Tor console will output `[notice] Bootstrapped 100% (done): Done` 
+  when the Tor services have fully started.
+- Execute the `.\start_tari_merge_mining_proxy` shortcut.
+- Runtime artefacts:
+  - The blockchain will be created in the `.\ridcully` folder.
+  - The wallet will be created in the `.\wallet` folfder.
+  - All log files will be created in the `.\log\base_node`, `.\log\wallet` and 
+    `.\log\proxy` folders.
+  - The following configuration files will be created in the `.\config` folder if 
+    the default runtime configuration `..\..\common\config\presets\windows.toml` 
+    was used:
+    - `node_id.json`
+    - `wallet_id.json`
+    - `console_wallet_id.json`
+    - `base_node_tor.json`
+    - `wallet_tor.json`
+    - `log4rs_base_node.yml`
+    - `log4rs_console_wallet.yml`
+    - `log4rs_merge_mining_proxy.yml`
+
+## Start Fresh
+
+- To delete log files, delete the `.\log` folder.
+- To re-sync the blockchain, delete the `.\ridcully` folder.
+- To destroy your wallet and loose all your hard-earned tXTR Tari coins, delete 
+  the `.\wallet` folder.
 
 ## Manual Installation
 
@@ -119,7 +136,19 @@ Notes:
   [Redistributable for Visual Studio 2019](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
   - Download and install `x64: vc_redist.x64.exe`
 
-### Tari Base Node Runtime
+- XMrig:
+  [XMRig](https://xmrig.com/download)
+  - Download 64bit Precompiled Binaries for Windows for XMreig. 
+  - Extract all files to local path, e.g. `%USERPROFILE%\.xmrig`.
+  - Add the path to the Tari environment variable, e.g. type
+    ```
+    setx TARI_XMRIG_DIR %USERPROFILE%\.xmrig
+    setx /m USERNAME %USERNAME%
+    ```
+  
+    in a command console.
+
+### Build the Tari Base Node (and Integrated Wallet)
 
 - Folder Structure
   - All references to folders from here on are relative to 
@@ -132,6 +161,40 @@ Notes:
   - Copy `tari_base_node.exe` to `.`, `.\runtime` or other local path.
   - If not extracted to `.` or `.\runtime`, ensure the folder containing 
     `tari_base_node.exe` is in the path.
+
+- Tari Base Node Runtime Configuration File
+  - Copy  `..\..\common\config\presets\windows.toml` to `.\config`
+
+### Build the Tari Console Wallet
+
+- Folder Structure
+  - All references to folders from here on are relative to 
+    `applications\tari_console_wallet\windows`, within the Tari project source 
+    code folder structure.
+
+- Tari Console Wallet Executable
+  - Build `tari_console_wallet.exe` according to 
+    [Building from source (Windows 10)](https://github.com/tari-project/tari#building-from-source-windows-10).
+  - Copy `tari_console_wallet.exe` to `.`, `.\runtime` or other local path.
+  - If not extracted to `.` or `.\runtime`, ensure the folder containing 
+    `tari_console_wallet.exe` is in the path.
+
+- Tari console Wallet Runtime Configuration File
+  - Copy  `..\..\common\config\presets\windows.toml` to `.\config`
+
+### Build the Tari Merge Mining Proxy
+
+- Folder Structure
+  - All references to folders from here on are relative to 
+    `applications\tari_merge_mining_proxy\windows`, within the Tari project 
+    source code folder structure.
+
+- Tari Merge Mining Proxy Executable
+  - Build `tari_merge_mining_proxy.exe` according to 
+    [Building from source (Windows 10)](https://github.com/tari-project/tari#building-from-source-windows-10).
+  - Copy `tari_merge_mining_proxy.exe` to `.`, `.\runtime` or other local path.
+  - If not extracted to `.` or `.\runtime`, ensure the folder containing 
+    `tari_merge_mining_proxy.exe` is in the path.
 
 - Tari Base Node Runtime Configuration File
   - Copy  `..\..\common\config\presets\windows.toml` to `.\config`

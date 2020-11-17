@@ -30,7 +30,7 @@ lazy_static! {
     static ref BN_SYNC_CALLS: AtomicU64 = AtomicU64::new(0);
 }
 
-pub fn get_dummy_base_node_status() -> Option<u64> {
+pub fn _get_dummy_base_node_status() -> Option<u64> {
     let seconds = BN_SYNC_CALLS.fetch_add(1, Ordering::SeqCst) / 4;
 
     if seconds / 6 % 2 == 0 {

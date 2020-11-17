@@ -69,10 +69,15 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 
     // Wallet settings
     cfg.set_default("wallet.grpc_enabled", false).unwrap();
-    cfg.set_default("wallet.grpc_address", "tcp://127.0.0.1:18040").unwrap();
+    cfg.set_default("wallet.grpc_address", "127.0.0.1:18040").unwrap();
     cfg.set_default(
-        "wallet.wallet_file",
+        "wallet.wallet_db_file",
         default_subdir("wallet/wallet.dat", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "wallet.console_wallet_db_file",
+        default_subdir("wallet/console-wallet.dat", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default("wallet.base_node_query_timeout", 900).unwrap();
@@ -84,6 +89,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("wallet.transaction_broadcast_send_timeout", 600)
         .unwrap();
     cfg.set_default("wallet.prevent_fee_gt_amount", true).unwrap();
+    cfg.set_default("wallet.base_node_service_peer", "").unwrap();
 
     //---------------------------------- Mainnet Defaults --------------------------------------------//
 
@@ -108,23 +114,33 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default(
-        "base_node.mainnet.identity_file",
-        default_subdir("mainnet/node_id.json", Some(&bootstrap.base_path)),
+        "base_node.mainnet.base_node_identity_file",
+        default_subdir("mainnet/base_node_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.mainnet.tor_identity_file",
-        default_subdir("mainnet/tor.json", Some(&bootstrap.base_path)),
+        "base_node.mainnet.base_node_tor_identity_file",
+        default_subdir("mainnet/base_node_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.mainnet.wallet_identity_file",
-        default_subdir("mainnet/wallet-identity.json", Some(&bootstrap.base_path)),
+        default_subdir("mainnet/wallet_id.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.mainnet.console_wallet_identity_file",
+        default_subdir("mainnet/console_wallet_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.mainnet.wallet_tor_identity_file",
-        default_subdir("mainnet/wallet-tor.json", Some(&bootstrap.base_path)),
+        default_subdir("mainnet/wallet_tor.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.mainnet.console_wallet_tor_identity_file",
+        default_subdir("mainnet/console_wallet_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
@@ -133,7 +149,9 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default("base_node.mainnet.grpc_enabled", false).unwrap();
-    cfg.set_default("base_node.mainnet.grpc_address", "127.0.0.1:18042")
+    cfg.set_default("base_node.mainnet.grpc_base_node_address", "127.0.0.1:18142")
+        .unwrap();
+    cfg.set_default("base_node.mainnet.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
     cfg.set_default("base_node.mainnet.enable_mining", false).unwrap();
     cfg.set_default("base_node.mainnet.num_mining_threads", 1).unwrap();
@@ -158,23 +176,33 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default(
-        "base_node.rincewind.tor_identity_file",
-        default_subdir("rincewind/tor.json", Some(&bootstrap.base_path)),
+        "base_node.rincewind.base_node_tor_identity_file",
+        default_subdir("rincewind/base_node_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.rincewind.wallet_identity_file",
-        default_subdir("rincewind/wallet-identity.json", Some(&bootstrap.base_path)),
+        default_subdir("rincewind/wallet_id.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.rincewind.console_wallet_identity_file",
+        default_subdir("rincewind/console_wallet_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.rincewind.wallet_tor_identity_file",
-        default_subdir("rincewind/wallet-tor.json", Some(&bootstrap.base_path)),
+        default_subdir("rincewind/wallet_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.rincewind.identity_file",
-        default_subdir("rincewind/node_id.json", Some(&bootstrap.base_path)),
+        "base_node.rincewind.console_wallet_tor_identity_file",
+        default_subdir("rincewind/console_wallet_tor.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.rincewind.base_node_identity_file",
+        default_subdir("rincewind/base_node_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
@@ -184,9 +212,9 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     .unwrap();
 
     cfg.set_default("base_node.rincewind.grpc_enabled", false).unwrap();
-    cfg.set_default("base_node.rincewind.grpc_address", "127.0.0.1:18142")
+    cfg.set_default("base_node.rincewind.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();
-    cfg.set_default("base_node.rincewind.grpc_wallet_address", "127.0.0.1:18143")
+    cfg.set_default("base_node.rincewind.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
     cfg.set_default("base_node.rincewind.enable_mining", false).unwrap();
     cfg.set_default("base_node.rincewind.enable_wallet", true).unwrap();
@@ -215,23 +243,33 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default(
-        "base_node.ridcully.tor_identity_file",
-        default_subdir("ridcully/tor.json", Some(&bootstrap.base_path)),
+        "base_node.ridcully.base_node_tor_identity_file",
+        default_subdir("ridcully/base_node_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.ridcully.wallet_identity_file",
-        default_subdir("ridcully/wallet-identity.json", Some(&bootstrap.base_path)),
+        default_subdir("ridcully/wallet_id.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.ridcully.console_wallet_identity_file",
+        default_subdir("ridcully/console_wallet_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.ridcully.wallet_tor_identity_file",
-        default_subdir("ridcully/wallet-tor.json", Some(&bootstrap.base_path)),
+        default_subdir("ridcully/wallet_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.ridcully.identity_file",
-        default_subdir("ridcully/node_id.json", Some(&bootstrap.base_path)),
+        "base_node.ridcully.console_wallet_tor_identity_file",
+        default_subdir("ridcully/console_wallet_tor.json", Some(&bootstrap.base_path)),
+    )
+    .unwrap();
+    cfg.set_default(
+        "base_node.ridcully.base_node_identity_file",
+        default_subdir("ridcully/base_node_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
@@ -241,9 +279,9 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     .unwrap();
 
     cfg.set_default("base_node.ridcully.grpc_enabled", false).unwrap();
-    cfg.set_default("base_node.ridcully.grpc_address", "127.0.0.1:18142")
+    cfg.set_default("base_node.ridcully.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();
-    cfg.set_default("base_node.ridcully.grpc_wallet_address", "127.0.0.1:18143")
+    cfg.set_default("base_node.ridcully.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
     cfg.set_default("base_node.ridcully.enable_mining", false).unwrap();
     cfg.set_default("base_node.ridcully.enable_wallet", true).unwrap();

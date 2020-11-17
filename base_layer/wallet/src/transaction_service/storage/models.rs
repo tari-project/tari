@@ -62,7 +62,10 @@ impl TryFrom<i32> for TransactionStatus {
             2 => Ok(TransactionStatus::Mined),
             3 => Ok(TransactionStatus::Imported),
             4 => Ok(TransactionStatus::Pending),
-            _ => Err(TransactionStorageError::ConversionError),
+            5 => Ok(TransactionStatus::Coinbase),
+            _ => Err(TransactionStorageError::ConversionError(
+                "Invalid TransactionStatus".to_string(),
+            )),
         }
     }
 }
@@ -243,7 +246,9 @@ impl TryFrom<i32> for TransactionDirection {
             0 => Ok(TransactionDirection::Inbound),
             1 => Ok(TransactionDirection::Outbound),
             2 => Ok(TransactionDirection::Unknown),
-            _ => Err(TransactionStorageError::ConversionError),
+            _ => Err(TransactionStorageError::ConversionError(
+                "Invalid TransactionDirection".to_string(),
+            )),
         }
     }
 }

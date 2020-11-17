@@ -93,7 +93,7 @@ if exist "%my_exe_path%\%my_exe%" (
 
 rem First time run
 if not exist "%config_path%\node_id.json" (
-    "%base_node%" --create-id --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs.yml" --base-path "%base_path%"
+    "%base_node%" --create-id --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
     echo.
     echo.
     echo Created "%config_path%\node_id.json". 
@@ -106,4 +106,4 @@ if not exist "%config_path%\node_id.json" (
 )
 
 rem Consecutive runs
-"%base_node%" --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs.yml" --base-path "%base_path%"
+"%base_node%" --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"

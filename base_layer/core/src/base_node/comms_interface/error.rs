@@ -56,4 +56,6 @@ pub enum CommsInterfaceError {
     InvalidPeerResponse(String),
     #[error("Invalid Block Header: {0}")]
     InvalidBlockHeader(#[from] BlockHeaderValidationError),
+    #[error("API responded with an error: {0}")]
+    ApiError(String),
 }

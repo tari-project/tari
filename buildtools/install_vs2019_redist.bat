@@ -13,7 +13,8 @@ goto END:
 
 :INSTALL_VS2019_REDIST
 rem Download install file
-powershell wget https://aka.ms/vs/16/release/%vc_redist_install% -outfile "%TEMP%\%vc_redist_install%"
+del /f "%TEMP%\%vc_redist_install%" 2>null
+powershell Invoke-WebRequest https://aka.ms/vs/16/release/%vc_redist_install% -outfile "%TEMP%\%vc_redist_install%"
 rem Install
 "%TEMP%\%vc_redist_install%"
 goto :eof

@@ -125,6 +125,8 @@ pub enum TransactionServiceError {
     CoinbaseBuildError(#[from] CoinbaseBuildError),
     #[error("Pending Transaction Timed out")]
     Timeout,
+    #[error("Shutdown Signal Received")]
+    Shutdown,
 }
 
 #[derive(Debug, Error)]
@@ -143,8 +145,8 @@ pub enum TransactionStorageError {
     TransactionAlreadyExists,
     #[error("Out of range error: `{0}`")]
     OutOfRangeError(#[from] OutOfRangeError),
-    #[error("Error converting a type")]
-    ConversionError,
+    #[error("Error converting a type: `{0}`")]
+    ConversionError(String),
     #[error("Serde json error: `{0}`")]
     SerdeJsonError(#[from] SerdeJsonError),
     #[error("R2d2 error")]

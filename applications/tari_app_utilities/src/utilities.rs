@@ -88,7 +88,7 @@ impl fmt::Display for ExitCodes {
     }
 }
 
-/// Creates a transport type for the base node's wallet using the provided configuration
+/// Creates a transport type for the console wallet using the provided configuration
 /// ## Paramters
 /// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
 ///
@@ -97,7 +97,7 @@ impl fmt::Display for ExitCodes {
 pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
     debug!(
         target: LOG_TARGET,
-        "Wallet transport is set to '{:?}'", config.comms_transport
+        "Console wallet transport is set to '{:?}'", config.comms_transport
     );
 
     let add_to_port = |addr: Multiaddr, n| -> Multiaddr {
@@ -131,7 +131,7 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
             // to ensure that different wallet implementations cannot be differentiated by their port.
             let port_mapping = (18101u16, "127.0.0.1:0".parse::<SocketAddr>().unwrap()).into();
 
-            let tor_identity_path = Path::new(&config.wallet_tor_identity_file);
+            let tor_identity_path = Path::new(&config.console_wallet_tor_identity_file);
             let identity = if tor_identity_path.exists() {
                 // If this fails, we can just use another address
                 load_from_json::<_, TorIdentity>(&tor_identity_path).ok()
@@ -140,7 +140,7 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
             };
             info!(
                 target: LOG_TARGET,
-                "Wallet tor identity at path '{}' {:?}",
+                "Console wallet tor identity at path '{}' {:?}",
                 tor_identity_path.to_string_lossy(),
                 identity
                     .as_ref()
@@ -232,7 +232,7 @@ pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
 /// ## Returns
 /// A list of peers, peers which do not have a valid public key are excluded
 pub fn parse_peer_seeds(seeds: &[String]) -> Vec<Peer> {
-    info!("Adding {} peers to the peer database", seeds.len());
+    info!("Parsing {} peers", seeds.len());
     let mut result = Vec::with_capacity(seeds.len());
     for s in seeds {
         let parts: Vec<&str> = s.split("::").map(|s| s.trim()).collect();

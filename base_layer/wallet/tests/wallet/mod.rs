@@ -49,23 +49,23 @@ use tari_core::{
 use tari_crypto::common::Blake256;
 use tari_p2p::transport::TransportType;
 use tari_wallet::{
-    contacts_service::storage::{
-        database::Contact,
-        memory_db::ContactsServiceMemoryDatabase,
-        sqlite_db::ContactsServiceSqliteDatabase,
-    },
+    contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
     error::{WalletError, WalletStorageError},
-    output_manager_service::storage::{memory_db::OutputManagerMemoryDatabase, sqlite_db::OutputManagerSqliteDatabase},
+    output_manager_service::storage::memory_db::OutputManagerMemoryDatabase,
     storage::{
         database::WalletDatabase,
         memory_db::WalletMemoryDatabase,
         sqlite_db::WalletSqliteDatabase,
-        sqlite_utilities::{partial_wallet_backup, run_migration_and_create_sqlite_connection},
+        sqlite_utilities::{
+            initialize_sqlite_database_backends,
+            partial_wallet_backup,
+            run_migration_and_create_sqlite_connection,
+        },
     },
     transaction_service::{
         config::TransactionServiceConfig,
         handle::TransactionEvent,
-        storage::{memory_db::TransactionMemoryDatabase, sqlite_db::TransactionServiceSqliteDatabase},
+        storage::memory_db::TransactionMemoryDatabase,
     },
     wallet::WalletConfig,
     Wallet,
@@ -92,6 +92,7 @@ async fn create_wallet(
     database_name: &str,
     factories: CryptoFactories,
     shutdown_signal: ShutdownSignal,
+    passphrase: Option<String>,
 ) -> WalletSqlite
 {
     let comms_config = CommsConfig {
@@ -120,12 +121,9 @@ async fn create_wallet(
         .clone()
         .join(database_name)
         .with_extension("sqlite3");
-    let connection = run_migration_and_create_sqlite_connection(&sql_database_path).expect("Could not open Sqlite db");
 
-    let wallet_backend = WalletSqliteDatabase::new(connection.clone(), None).unwrap();
-    let transaction_backend = TransactionServiceSqliteDatabase::new(connection.clone(), None);
-    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
-    let contacts_backend = ContactsServiceSqliteDatabase::new(connection);
+    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) =
+        initialize_sqlite_database_backends(sql_database_path, passphrase).unwrap();
 
     let transaction_service_config = TransactionServiceConfig {
         resend_response_cooldown: Duration::from_secs(1),
@@ -137,6 +135,7 @@ async fn create_wallet(
         factories,
         Some(transaction_service_config),
         Network::Rincewind,
+        None,
     );
 
     let wallet = Wallet::new(
@@ -156,7 +155,8 @@ async fn create_wallet(
 async fn test_wallet() {
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();
-    let db_tempdir = tempdir().unwrap();
+    let alice_db_tempdir = tempdir().unwrap();
+    let bob_db_tempdir = tempdir().unwrap();
 
     let factories = CryptoFactories::default();
     let alice_identity =
@@ -169,19 +169,21 @@ async fn test_wallet() {
 
     let mut alice_wallet = create_wallet(
         alice_identity.clone(),
-        &db_tempdir.path(),
+        &alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
+        None,
     )
     .await;
 
     let bob_wallet = create_wallet(
         bob_identity.clone(),
-        &db_tempdir.path(),
+        &bob_db_tempdir.path(),
         "bob_db",
         factories.clone(),
         shutdown_b.to_signal(),
+        None,
     )
     .await;
 
@@ -270,7 +272,7 @@ async fn test_wallet() {
     assert_eq!(contacts, got_contacts);
 
     // Test applying and removing encryption
-    let current_wallet_path = db_tempdir.path().join("alice_db").with_extension("sqlite3");
+    let current_wallet_path = alice_db_tempdir.path().join("alice_db").with_extension("sqlite3");
 
     alice_wallet
         .apply_encryption("It's turtles all the way down".to_string())
@@ -287,8 +289,13 @@ async fn test_wallet() {
         Err(_) => assert!(false, "Should be the Already Encrypted error"),
     }
 
+    drop(alice_event_stream);
+    shutdown_a.trigger().unwrap();
+    alice_wallet.wait_until_shutdown().await;
+
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
+
     if let Err(WalletStorageError::InvalidEncryptionCipher) = WalletSqliteDatabase::new(connection.clone(), None) {
         assert!(true);
     } else {
@@ -320,21 +327,59 @@ async fn test_wallet() {
         .to_vec();
     let key = GenericArray::from_slice(passphrase_hash.as_slice());
     let cipher = Aes256Gcm::new(key);
-    let _ = WalletSqliteDatabase::new(connection.clone(), Some(cipher))
-        .expect("Should be able to instantiate db with cipher");
+    let db = WalletSqliteDatabase::new(connection, Some(cipher)).expect("Should be able to instantiate db with cipher");
+    drop(db);
+
+    let mut shutdown_a = Shutdown::new();
+    let mut alice_wallet = create_wallet(
+        alice_identity.clone(),
+        &alice_db_tempdir.path(),
+        "alice_db",
+        factories.clone(),
+        shutdown_a.to_signal(),
+        Some("It's turtles all the way down".to_string()),
+    )
+    .await;
 
     alice_wallet.remove_encryption().await.unwrap();
 
-    let _ = WalletSqliteDatabase::new(connection.clone(), None).expect("Should be able to instantiate db with cipher");
+    shutdown_a.trigger().unwrap();
+    alice_wallet.wait_until_shutdown().await;
+
+    let connection =
+        run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
+    let db = WalletSqliteDatabase::new(connection, None).expect(
+        "Should be able to instantiate db with
+    cipher",
+    );
+    drop(db);
 
     // Test the partial db backup in this test so that we can work with the data generated during the test
-    let backup_wallet_path = db_tempdir.path().join("alice_db_backup").with_extension("sqlite3");
+    let mut shutdown_a = Shutdown::new();
+    let alice_wallet = create_wallet(
+        alice_identity.clone(),
+        &alice_db_tempdir.path(),
+        "alice_db",
+        factories.clone(),
+        shutdown_a.to_signal(),
+        None,
+    )
+    .await;
+
+    let backup_db_tempdir = tempdir().unwrap();
+    let backup_wallet_path = backup_db_tempdir
+        .path()
+        .join("alice_db_backup")
+        .with_extension("sqlite3");
 
     alice_wallet
         .db
         .set_comms_secret_key(alice_identity.secret_key().clone())
         .await
         .unwrap();
+
+    shutdown_a.trigger().unwrap();
+    alice_wallet.wait_until_shutdown().await;
 
     partial_wallet_backup(current_wallet_path.clone(), backup_wallet_path.clone())
         .await
@@ -346,24 +391,31 @@ async fn test_wallet() {
     let comms_private_key = wallet_db.get_comms_secret_key().await.unwrap();
     assert!(comms_private_key.is_some());
     // Checking that the backup has had its Comms Private Key is cleared.
-    let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path).expect("Could not open Sqlite db");
+    let connection = run_migration_and_create_sqlite_connection(&backup_wallet_path).expect(
+        "Could not open Sqlite
+    db",
+    );
     let backup_wallet_db = WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap());
     let comms_private_key = backup_wallet_db.get_comms_secret_key().await.unwrap();
     assert!(comms_private_key.is_none());
 
-    shutdown_a.trigger().unwrap();
     shutdown_b.trigger().unwrap();
-    alice_wallet.wait_until_shutdown().await;
+
     bob_wallet.wait_until_shutdown().await;
 }
 
+// TODO Figure out why this test is so flakey. It is an integration test that is fairly simple on the surface but there
+// is something about it that is very flakey.
+#[ignore]
 #[test]
 fn test_store_and_forward_send_tx() {
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();
     let mut shutdown_c = Shutdown::new();
     let factories = CryptoFactories::default();
-    let db_tempdir = tempdir().unwrap();
+    let alice_db_tempdir = tempdir().unwrap();
+    let bob_db_tempdir = tempdir().unwrap();
+    let carol_db_tempdir = tempdir().unwrap();
 
     let mut alice_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
     let mut bob_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
@@ -384,17 +436,19 @@ fn test_store_and_forward_send_tx() {
 
     let mut alice_wallet = alice_runtime.block_on(create_wallet(
         alice_identity.clone(),
-        &db_tempdir.path(),
+        &alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
         shutdown_a.to_signal(),
+        None,
     ));
     let bob_wallet = bob_runtime.block_on(create_wallet(
         bob_identity.clone(),
-        &db_tempdir.path(),
+        &bob_db_tempdir.path(),
         "bob_db",
         factories.clone(),
         shutdown_b.to_signal(),
+        None,
     ));
 
     alice_runtime
@@ -441,10 +495,11 @@ fn test_store_and_forward_send_tx() {
 
     let carol_wallet = carol_runtime.block_on(create_wallet(
         carol_identity.clone(),
-        &db_tempdir.path(),
+        &carol_db_tempdir.path(),
         "carol_db",
         factories.clone(),
         shutdown_c.to_signal(),
+        None,
     ));
 
     let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream_fused();
@@ -468,7 +523,7 @@ fn test_store_and_forward_send_tx() {
                 event = carol_event_stream.select_next_some() => {
                     match &*event.unwrap() {
                         TransactionEvent::ReceivedTransaction(_) => tx_recv = true,
-                            TransactionEvent::TransactionCancelled(_) => tx_cancelled = true,
+                        TransactionEvent::TransactionCancelled(_) => tx_cancelled = true,
                         _ => (),
                     }
                     if tx_recv && tx_cancelled {
@@ -524,7 +579,7 @@ async fn test_import_utxo() {
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
     };
-    let config = WalletConfig::new(comms_config, factories.clone(), None, Network::Rincewind);
+    let config = WalletConfig::new(comms_config, factories.clone(), None, Network::Rincewind, None);
     let mut alice_wallet = Wallet::new(
         config,
         WalletMemoryDatabase::new(),
@@ -591,7 +646,7 @@ async fn test_data_generation() {
         user_agent: "tari/test-wallet".to_string(),
     };
 
-    let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind);
+    let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind, None);
 
     let transaction_backend = TransactionMemoryDatabase::new();
 
@@ -628,4 +683,21 @@ async fn test_data_generation() {
 
     shutdown.trigger().unwrap();
     wallet.wait_until_shutdown().await;
+}
+
+#[test]
+fn test_db_file_locking() {
+    let db_tempdir = tempdir().unwrap();
+    let wallet_path = db_tempdir.path().join("alice_db").with_extension("sqlite3");
+
+    let connection = run_migration_and_create_sqlite_connection(&wallet_path).expect("Could not open Sqlite db");
+
+    match run_migration_and_create_sqlite_connection(&wallet_path) {
+        Err(WalletStorageError::CannotAcquireFileLock) => assert!(true),
+        _ => assert!(false, "Should not be able to acquire file lock"),
+    }
+
+    drop(connection);
+
+    assert!(run_migration_and_create_sqlite_connection(&wallet_path).is_ok());
 }

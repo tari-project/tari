@@ -106,7 +106,8 @@ static EMISSION: [u64; 2] = [10, 10];
 #[test]
 fn wallet_base_node_integration_test() {
     let shutdown = Shutdown::new();
-    let temp_dir = tempdir().unwrap();
+    let alice_temp_dir = tempdir().unwrap();
+    let bob_temp_dir = tempdir().unwrap();
     let factories = CryptoFactories::default();
 
     let alice_node_identity = random_node_identity();
@@ -139,7 +140,7 @@ fn wallet_base_node_integration_test() {
         .with_mempool_service_config(MempoolServiceConfig::default())
         .with_liveness_service_config(LivenessConfig::default())
         .with_consensus_manager(consensus_manager.clone())
-        .start(&mut base_node_runtime, temp_dir.path().to_str().unwrap());
+        .start(&mut base_node_runtime, alice_temp_dir.path().to_str().unwrap());
 
     log::info!("Finished Starting Base Node");
 
@@ -149,7 +150,7 @@ fn wallet_base_node_integration_test() {
         transport_type: TransportType::Memory {
             listener_address: alice_node_identity.public_address(),
         },
-        datastore_path: temp_dir.path().to_path_buf(),
+        datastore_path: alice_temp_dir.path().to_path_buf(),
         peer_database_name: random_string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
@@ -168,6 +169,7 @@ fn wallet_base_node_integration_test() {
             ..Default::default()
         }),
         Network::Rincewind,
+        None,
     );
     let mut runtime = create_runtime();
     let mut alice_wallet = runtime
@@ -202,7 +204,7 @@ fn wallet_base_node_integration_test() {
         transport_type: TransportType::Memory {
             listener_address: bob_node_identity.public_address(),
         },
-        datastore_path: temp_dir.path().to_path_buf(),
+        datastore_path: bob_temp_dir.path().to_path_buf(),
         peer_database_name: random_string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
@@ -212,7 +214,7 @@ fn wallet_base_node_integration_test() {
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
     };
-    let bob_wallet_config = WalletConfig::new(bob_comms_config, factories.clone(), None, Network::Rincewind);
+    let bob_wallet_config = WalletConfig::new(bob_comms_config, factories.clone(), None, Network::Rincewind, None);
 
     let bob_wallet = runtime
         .block_on(Wallet::new(

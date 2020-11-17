@@ -100,5 +100,5 @@ pub fn build_connection_manager(
 }
 
 pub fn build_peer_manager() -> Arc<PeerManager> {
-    Arc::new(PeerManager::new(HashmapDatabase::new()).unwrap())
+    Arc::new(PeerManager::new(HashmapDatabase::new(), None).unwrap())
 }

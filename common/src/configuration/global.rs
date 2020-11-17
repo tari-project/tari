@@ -61,22 +61,26 @@ pub struct GlobalConfig {
     pub pruned_mode_cleanup_interval: u64,
     pub core_threads: Option<usize>,
     pub max_threads: Option<usize>,
-    pub identity_file: PathBuf,
+    pub base_node_identity_file: PathBuf,
     pub public_address: Multiaddr,
     pub grpc_enabled: bool,
-    pub grpc_address: SocketAddr,
-    pub grpc_wallet_address: SocketAddr,
+    pub grpc_base_node_address: SocketAddr,
+    pub grpc_console_wallet_address: SocketAddr,
     pub peer_seeds: Vec<String>,
     pub peer_db_path: PathBuf,
     pub block_sync_strategy: String,
     pub enable_mining: bool,
     pub enable_wallet: bool,
     pub num_mining_threads: usize,
-    pub tor_identity_file: PathBuf,
+    pub base_node_tor_identity_file: PathBuf,
     pub wallet_db_file: PathBuf,
+    pub console_wallet_db_file: PathBuf,
     pub wallet_identity_file: PathBuf,
+    pub console_wallet_identity_file: PathBuf,
     pub wallet_tor_identity_file: PathBuf,
+    pub console_wallet_tor_identity_file: PathBuf,
     pub wallet_peer_db_path: PathBuf,
+    pub console_wallet_peer_db_path: PathBuf,
     pub buffer_size_base_node: usize,
     pub buffer_size_base_node_wallet: usize,
     pub buffer_rate_limit_base_node: usize,
@@ -91,6 +95,9 @@ pub struct GlobalConfig {
     pub transaction_broadcast_send_timeout: Duration,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
+    pub wallet_base_node_service_peer: String,
+    pub wallet_base_node_service_refresh_interval: u64,
+    pub wallet_base_node_service_request_max_age: u64,
     pub prevent_fee_gt_amount: bool,
     pub monerod_url: String,
     pub monerod_username: String,
@@ -226,9 +233,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let max_threads =
         optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
-    // NodeIdentity path
-    let key = config_string("base_node", &net_str, "identity_file");
-    let identity_file = cfg
+    // Base node identity path
+    let key = config_string("base_node", &net_str, "base_node_identity_file");
+    let base_node_identity_file = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
         .into();
@@ -240,15 +247,28 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
         .into();
 
+    // Console wallet identity path
+    let key = config_string("base_node", &net_str, "console_wallet_identity_file");
+    let console_wallet_identity_file = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
+
     let key = config_string("base_node", &net_str, "wallet_tor_identity_file");
     let wallet_tor_identity_file = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
         .into();
 
+    let key = config_string("base_node", &net_str, "console_wallet_tor_identity_file");
+    let console_wallet_tor_identity_file = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
+
     // Tor private key persistence
-    let key = config_string("base_node", &net_str, "tor_identity_file");
-    let tor_identity_file = cfg
+    let key = config_string("base_node", &net_str, "base_node_tor_identity_file");
+    let base_node_tor_identity_file = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
         .into();
@@ -272,8 +292,8 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_bool(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
 
-    let key = config_string("base_node", &net_str, "grpc_address");
-    let grpc_address = cfg
+    let key = config_string("base_node", &net_str, "grpc_base_node_address");
+    let grpc_base_node_address = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         .and_then(|addr| {
@@ -281,8 +301,8 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
 
-    let key = config_string("base_node", &net_str, "grpc_wallet_address");
-    let grpc_wallet_address = cfg
+    let key = config_string("base_node", &net_str, "grpc_console_wallet_address");
+    let grpc_console_wallet_address = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         .and_then(|addr| {
@@ -304,6 +324,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     // Peer DB path
     let peer_db_path = data_dir.join("peer_db");
     let wallet_peer_db_path = data_dir.join("wallet_peer_db");
+    let console_wallet_peer_db_path = data_dir.join("console_wallet_peer_db");
 
     let key = config_string("base_node", &net_str, "block_sync_strategy");
     let block_sync_strategy = cfg
@@ -327,9 +348,16 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
-    // set wallet_file
-    let key = "wallet.wallet_file".to_string();
+    // set wallet_db_file
+    let key = "wallet.wallet_db_file".to_string();
     let wallet_db_file = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .into();
+
+    // set console_wallet_db_file
+    let key = "wallet.console_wallet_db_file".to_string();
+    let console_wallet_db_file = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
         .into();
@@ -380,6 +408,26 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let wallet_command_send_wait_timeout = match cfg.get_int(key) {
         Ok(timeout) => timeout as u64,
         Err(ConfigError::NotFound(_)) => 300,
+        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+    };
+
+    let key = "wallet.base_node_service_peer";
+    let wallet_base_node_service_peer = match cfg.get_str(key) {
+        Ok(peer) => peer,
+        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+    };
+
+    let key = "wallet.base_node_service_refresh_interval";
+    let wallet_base_node_service_refresh_interval = match cfg.get_int(key) {
+        Ok(seconds) => seconds as u64,
+        Err(ConfigError::NotFound(_)) => 10,
+        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+    };
+
+    let key = "wallet.base_node_service_request_max_age";
+    let wallet_base_node_service_request_max_age = match cfg.get_int(key) {
+        Ok(seconds) => seconds as u64,
+        Err(ConfigError::NotFound(_)) => 60,
         Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
     };
 
@@ -477,22 +525,26 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         pruned_mode_cleanup_interval,
         core_threads,
         max_threads,
-        identity_file,
+        base_node_identity_file,
         public_address,
         grpc_enabled,
-        grpc_address,
-        grpc_wallet_address,
+        grpc_base_node_address,
+        grpc_console_wallet_address,
         peer_seeds,
         peer_db_path,
         block_sync_strategy,
         enable_mining,
         enable_wallet,
         num_mining_threads,
-        tor_identity_file,
+        base_node_tor_identity_file,
         wallet_identity_file,
+        console_wallet_identity_file,
         wallet_db_file,
+        console_wallet_db_file,
         wallet_tor_identity_file,
+        console_wallet_tor_identity_file,
         wallet_peer_db_path,
+        console_wallet_peer_db_path,
         buffer_size_base_node,
         buffer_size_base_node_wallet,
         buffer_rate_limit_base_node,
@@ -507,6 +559,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         transaction_broadcast_send_timeout,
         wallet_command_send_wait_stage,
         wallet_command_send_wait_timeout,
+        wallet_base_node_service_peer,
+        wallet_base_node_service_refresh_interval,
+        wallet_base_node_service_request_max_age,
         prevent_fee_gt_amount,
         proxy_host_address,
         monerod_url,

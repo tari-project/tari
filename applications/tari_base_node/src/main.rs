@@ -165,11 +165,11 @@ fn main_inner() -> Result<(), ExitCodes> {
         &node_config.public_address,
         bootstrap.create_id ||
             // If the base node identity exists, we want to be sure that the wallet identity exists
-            node_config.identity_file.exists(),
+            node_config.base_node_identity_file.exists(),
         PeerFeatures::COMMUNICATION_CLIENT,
     )?;
     let node_identity = setup_node_identity(
-        &node_config.identity_file,
+        &node_config.base_node_identity_file,
         &node_config.public_address,
         bootstrap.create_id,
         PeerFeatures::COMMUNICATION_NODE,
@@ -179,8 +179,9 @@ fn main_inner() -> Result<(), ExitCodes> {
     if bootstrap.create_id {
         info!(
             target: LOG_TARGET,
-            "Node ID created at '{}'. Done.",
-            node_config.identity_file.to_string_lossy()
+            "Base node's node ID created at '{}', Wallet's node ID created at '{}'. Done.",
+            node_config.base_node_identity_file.to_string_lossy(),
+            node_config.wallet_identity_file.to_string_lossy(),
         );
         return Ok(());
     }
@@ -221,21 +222,26 @@ fn main_inner() -> Result<(), ExitCodes> {
             node_config.clone(),
         );
 
-        rt.spawn(run_grpc(grpc, node_config.grpc_address, shutdown.to_signal()));
+        rt.spawn(run_grpc(grpc, node_config.grpc_base_node_address, shutdown.to_signal()));
     }
 
     // Run, node, run!
-    let parser = Parser::new(rt.handle().clone(), &ctx, &node_config);
-    cli::print_banner(parser.get_commands(), 3);
-    let base_node_handle = rt.spawn(ctx.run());
+    let base_node_handle;
+    if !bootstrap.daemon_mode {
+        let parser = Parser::new(rt.handle().clone(), &ctx, &node_config);
+        cli::print_banner(parser.get_commands(), 3);
+        base_node_handle = rt.spawn(ctx.run());
 
-    info!(
-        target: LOG_TARGET,
-        "Node has been successfully configured and initialized. Starting CLI loop."
-    );
+        info!(
+            target: LOG_TARGET,
+            "Node has been successfully configured and initialized. Starting CLI loop."
+        );
 
-    cli_loop(parser, shutdown);
-
+        cli_loop(Some(parser), shutdown);
+    } else {
+        println!("Node has been successfully configured and initialized in daemon mode.");
+        base_node_handle = rt.spawn(ctx.run());
+    }
     match rt.block_on(base_node_handle) {
         Ok(_) => info!(target: LOG_TARGET, "Node shutdown successfully."),
         Err(e) => error!(target: LOG_TARGET, "Node has crashed: {}", e),
@@ -273,7 +279,7 @@ async fn run_grpc(
 ///
 /// ## Returns
 /// Doesn't return anything
-fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
+fn cli_loop(parser: Option<Parser>, mut shutdown: Shutdown) {
     let cli_config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
@@ -281,35 +287,66 @@ fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
         .output_stream(OutputStreamType::Stdout)
         .build();
     let mut rustyline = Editor::with_config(cli_config);
-    rustyline.set_helper(Some(parser));
-    loop {
-        let readline = rustyline.readline(">> ");
-        match readline {
-            Ok(line) => {
-                rustyline.add_history_entry(line.as_str());
-                if let Some(p) = rustyline.helper_mut().as_deref_mut() {
-                    p.handle_command(&line, &mut shutdown)
+    match parser {
+        Some(parser) => {
+            rustyline.set_helper(Some(parser));
+            loop {
+                let readline = rustyline.readline(">> ");
+                match readline {
+                    Ok(line) => {
+                        rustyline.add_history_entry(line.as_str());
+                        if let Some(p) = rustyline.helper_mut().as_deref_mut() {
+                            p.handle_command(&line, &mut shutdown)
+                        }
+                    },
+                    Err(ReadlineError::Interrupted) => {
+                        // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
+                        println!("The node is shutting down because Ctrl+C was received...");
+                        info!(
+                            target: LOG_TARGET,
+                            "Termination signal received from user. Shutting node down."
+                        );
+                        if shutdown.trigger().is_err() {
+                            error!(target: LOG_TARGET, "Shutdown signal failed to trigger");
+                        };
+                        break;
+                    },
+                    Err(err) => {
+                        println!("Error: {:?}", err);
+                        break;
+                    },
                 }
-            },
-            Err(ReadlineError::Interrupted) => {
-                // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
-                println!("The node is shutting down because Ctrl+C was received...");
-                info!(
-                    target: LOG_TARGET,
-                    "Termination signal received from user. Shutting node down."
-                );
-                if shutdown.trigger().is_err() {
-                    error!(target: LOG_TARGET, "Shutdown signal failed to trigger");
+                if shutdown.is_triggered() {
+                    break;
                 };
-                break;
-            },
-            Err(err) => {
-                println!("Error: {:?}", err);
-                break;
-            },
-        }
-        if shutdown.is_triggered() {
-            break;
-        };
+            }
+        },
+        None => {
+            loop {
+                let readline = rustyline.readline("");
+                match readline {
+                    Ok(_) => {},
+                    Err(ReadlineError::Interrupted) => {
+                        // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
+                        println!("The node is shutting down because Ctrl+C was received...");
+                        info!(
+                            target: LOG_TARGET,
+                            "Termination signal received from user. Shutting node down."
+                        );
+                        if shutdown.trigger().is_err() {
+                            error!(target: LOG_TARGET, "Shutdown signal failed to trigger");
+                        };
+                        break;
+                    },
+                    Err(err) => {
+                        println!("Error: {:?}", err);
+                        break;
+                    },
+                }
+                if shutdown.is_triggered() {
+                    break;
+                };
+            }
+        },
     }
 }

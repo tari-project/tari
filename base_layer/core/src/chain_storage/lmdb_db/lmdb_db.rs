@@ -74,9 +74,17 @@ use crate::{
 };
 use croaring::Bitmap;
 use digest::Digest;
+use fs2::FileExt;
 use lmdb_zero::{Database, Environment, WriteTransaction};
 use log::*;
-use std::{collections::VecDeque, fs, path::Path, sync::Arc, time::Instant};
+use std::{
+    collections::VecDeque,
+    fs,
+    fs::File,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Instant,
+};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 use tari_mmr::{
     functions::{calculate_pruned_mmr_root, prune_mutable_mmr, PrunedMutableMmr},
@@ -120,12 +128,13 @@ where D: Digest
     range_proof_checkpoints: LMDBVec<MerkleCheckPoint>,
     curr_range_proof_checkpoint: MerkleCheckPoint,
     is_mem_metadata_dirty: bool,
+    _file_lock: Arc<File>,
 }
 
 impl<D> LMDBDatabase<D>
 where D: Digest + Send + Sync
 {
-    pub fn new(store: LMDBStore, mmr_cache_config: MmrCacheConfig) -> Result<Self, ChainStorageError> {
+    pub fn new(store: LMDBStore, mmr_cache_config: MmrCacheConfig, file_lock: File) -> Result<Self, ChainStorageError> {
         let utxo_checkpoints = LMDBVec::new(store.env(), get_database(&store, LMDB_DB_UTXO_MMR_CP_BACKEND)?);
         let kernel_checkpoints = LMDBVec::new(store.env(), get_database(&store, LMDB_DB_KERNEL_MMR_CP_BACKEND)?);
         let range_proof_checkpoints =
@@ -166,6 +175,7 @@ where D: Digest + Send + Sync
             env,
             env_config: store.env_config(),
             is_mem_metadata_dirty: false,
+            _file_lock: Arc::new(file_lock),
         })
     }
 
@@ -516,6 +526,9 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
 {
     let flags = db::CREATE;
     let _ = std::fs::create_dir_all(&path);
+
+    let file_lock = acquire_exclusive_file_lock(&path.as_ref().to_path_buf())?;
+
     let lmdb_store = LMDBBuilder::new()
         .set_path(path)
         .set_env_config(config)
@@ -533,7 +546,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND, flags)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
-    LMDBDatabase::<HashDigest>::new(lmdb_store, mmr_cache_config)
+    LMDBDatabase::<HashDigest>::new(lmdb_store, mmr_cache_config, file_lock)
 }
 
 pub fn create_recovery_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), ChainStorageError> {
@@ -557,6 +570,22 @@ pub fn remove_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), ChainStorageE
     fs::remove_dir_all(&path)
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not remove LMDB store:{}", err)))?;
     Ok(())
+}
+
+pub fn acquire_exclusive_file_lock(db_path: &PathBuf) -> Result<File, ChainStorageError> {
+    let lock_file_path = db_path.join(".chain_storage_file.lock");
+
+    let file = File::create(lock_file_path)?;
+    // Attempt to acquire exclusive OS level Write Lock
+    if let Err(e) = file.try_lock_exclusive() {
+        error!(
+            target: LOG_TARGET,
+            "Could not acquire exclusive write lock on database lock file: {:?}", e
+        );
+        return Err(ChainStorageError::CannotAcquireFileLock);
+    }
+
+    Ok(file)
 }
 
 impl<D> BlockchainBackend for LMDBDatabase<D>
