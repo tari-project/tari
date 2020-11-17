@@ -10,9 +10,10 @@
 #
 
 if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
-  echo "$0 (clean|latest-tag|'any-string-version')"
+  echo "$0 (clean|latest-tag|latest-tagv|'any-string-version')"
   echo " 'clean' cargo clean and lock remove"
   echo " 'latest-tag' pull and switch too latest git tag"
+  echo " 'latest-tagv' pull and switch too latest git tag starting with 'v'"
   echo " 'any-string-version' archive string to tag with"
   echo "   ie: $0 nightly-development-test-\$(date +'%Y-%m-%d')"
   exit 1
@@ -129,13 +130,20 @@ else
 fi
 
 if [ "$1" == "latest-tag" ]; then
+if [[ "$1" =~ ^latest* ]]; then
   if [ "$gitclean" == "uncommitted" ]; then
-    echo "Can't use latest-tag with uncommitted changes"
+    echo "Can't use latest options with uncommitted changes"
     echo  "Suggest commit and push before re-running $0";
     exit 5
   fi
   git fetch --all --tags
-  gitTagVersion=$(git describe --tags `git rev-list --tags --max-count=1`)
+  if [ "$1" == "latest-tag" ]; then
+    gitTagVersion=$(git describe --tags `git rev-list --tags --max-count=1`)
+  fi
+
+  if [ "$1" == "latest-tagv" ]; then
+    gitTagVersion=$(git describe --tags --match "v[0-9]*" --abbrev=4 HEAD)
+  fi
   git checkout tags/$gitTagVersion -B $gitTagVersion-build
 else
   gitTagVersion="${1}"
