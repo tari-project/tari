@@ -29,7 +29,7 @@ use log::*;
 use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
 use tari_app_utilities::utilities::ExitCodes;
 use tari_common::GlobalConfig;
-use tari_comms::{peer_manager::Peer, NodeIdentity};
+use tari_comms::peer_manager::Peer;
 
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
@@ -93,7 +93,6 @@ pub fn script_mode(handle: Handle, path: PathBuf, wallet: WalletSqlite, config: 
 pub fn tui_mode(
     handle: Handle,
     node_config: GlobalConfig,
-    node_identity: NodeIdentity,
     wallet: WalletSqlite,
     base_node: Peer,
 ) -> Result<(), ExitCodes>
@@ -101,13 +100,12 @@ pub fn tui_mode(
     let grpc = WalletGrpcServer::new(wallet.clone());
     handle.spawn(run_grpc(grpc, node_config.grpc_console_wallet_address));
 
-    let app = App::<CrosstermBackend<Stdout>>::new(
+    let app = handle.block_on(App::<CrosstermBackend<Stdout>>::new(
         "Tari Console Wallet".into(),
-        &node_identity,
         wallet,
         node_config.network,
         base_node,
-    );
+    ));
     handle.enter(|| run(app))?;
 
     info!(
