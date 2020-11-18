@@ -182,6 +182,14 @@ peer_seeds = [
     #tbn-sydney
     "ac7fba427913a653a27b69c05549e14d9e87cb7849ea0c740d6c8a5855a3882a::/onion3/avteohvrvvfy4fff7ona2wy6yhb7i4ss4aklp74v64knofvev3vd5yyd:18141",
 ]
+# DNS seeds
+# The DNS records in these hostnames should provide TXT records as per https://github.com/tari-project/tari/pull/2319
+# Enter a domain name for the TXT records: seeds.tari.com
+dns_seeds = []
+# The name server used to resolve DNS seeds
+# dns_seeds_name_server = "1.1.1.1:53"
+# Set to true to only accept DNS records that pass DNSSEC validation (Default: true)
+# dns_seeds_use_dnssec = true
 
 # Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then
 # it is recommended to leave this setting as it. Available values are ViaBestChainMetadata and ViaRandomPeer.

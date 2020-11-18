@@ -22,9 +22,11 @@
 
 use crate::{
     context::{create_context_notifier_pair, ServiceHandles},
-    initializer::{BoxedServiceInitializer, ServiceInitializationError, ServiceInitializer},
+    initializer::{BoxedServiceInitializer, InitializerFn, ServiceInitializationError, ServiceInitializer},
+    ServiceInitializerContext,
 };
 use futures::future;
+use std::future::Future;
 use tari_shutdown::ShutdownSignal;
 
 /// Responsible for building and collecting handles and (usually long-running) service futures.
@@ -52,6 +54,15 @@ impl StackBuilder {
         I::Future: Send + 'static,
     {
         self.add_initializer_boxed(initializer.boxed())
+    }
+
+    /// Add an impl of ServiceInitializer to the stack
+    pub fn add_initializer_fn<TFunc, TFut>(self, initializer: TFunc) -> Self
+    where
+        TFunc: FnOnce(ServiceInitializerContext) -> TFut + Send + 'static,
+        TFut: Future<Output = Result<(), ServiceInitializationError>> + Send + 'static,
+    {
+        self.add_initializer_boxed(InitializerFn::new(initializer).boxed())
     }
 
     /// Add a ServiceInitializer which has been boxed using `ServiceInitializer::boxed`

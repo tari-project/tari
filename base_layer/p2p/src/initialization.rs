@@ -22,13 +22,25 @@
 
 use crate::{
     comms_connector::{InboundDomainConnector, PeerMessage, PubsubDomainConnector},
+    dns_seed::DnsSeedResolver,
+    seed_peer::SeedPeer,
     transport::{TorConfig, TransportType},
 };
 use fs2::FileExt;
-use futures::{channel::mpsc, Sink};
+use futures::{channel::mpsc, future, Sink};
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use std::{error::Error, fs::File, future::Future, iter, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    error::Error,
+    fs::File,
+    future::Future,
+    iter,
+    net::SocketAddr,
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tari_comms::{
     backoff::ConstantBackoff,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerManagerError},
@@ -128,6 +140,15 @@ pub struct CommsConfig {
     pub listener_liveness_allowlist_cidrs: Vec<String>,
     /// User agent string for this node
     pub user_agent: String,
+    /// Unparsed peer seeds
+    pub peer_seeds: Vec<String>,
+    /// DNS seeds hosts. The DNS TXT records are queried from these hosts and the resulting peers added to the comms
+    /// peer list.
+    pub dns_seeds: Vec<String>,
+    /// DNS resolver to use for DNS seeds.
+    pub dns_seeds_name_server: SocketAddr,
+    /// All DNS seed records must pass DNSSEC validation
+    pub dns_seeds_use_dnssec: bool,
 }
 
 /// Initialize Tari Comms configured for tests
@@ -294,7 +315,7 @@ async fn initialize_hidden_service(
 
 async fn configure_comms_and_dht<TSink>(
     builder: CommsBuilder,
-    config: CommsConfig,
+    config: &CommsConfig,
     connector: InboundDomainConnector<TSink>,
 ) -> Result<(UnspawnedCommsNode, Dht), CommsInitializationError>
 where
@@ -409,17 +430,15 @@ async fn add_all_peers(
 ) -> Result<(), CommsInitializationError>
 {
     for peer in peers {
-        let peer_desc = peer.to_string();
-        debug!(target: LOG_TARGET, "Adding seed peer [{}]", peer);
-
         if &peer.public_key == node_identity.public_key() {
             debug!(
                 target: LOG_TARGET,
-                "Attempting to add yourself [{}] as a seed peer to comms layer, ignoring request", peer_desc
+                "Attempting to add yourself [{}] as a seed peer to comms layer, ignoring request", peer
             );
             continue;
         }
 
+        debug!(target: LOG_TARGET, "Adding seed peer [{}]", peer);
         peer_manager
             .add_peer(peer)
             .await
@@ -431,16 +450,76 @@ async fn add_all_peers(
 pub struct P2pInitializer {
     config: CommsConfig,
     connector: Option<PubsubDomainConnector>,
-    seed_peers: Vec<Peer>,
 }
 
 impl P2pInitializer {
-    pub fn new(config: CommsConfig, connector: PubsubDomainConnector, seed_peers: Vec<Peer>) -> Self {
+    pub fn new(config: CommsConfig, connector: PubsubDomainConnector) -> Self {
         Self {
             config,
             connector: Some(connector),
-            seed_peers,
         }
+    }
+
+    // Following are inlined due to Rust ICE: https://github.com/rust-lang/rust/issues/73537
+    #[inline(always)]
+    fn try_parse_seed_peers(peer_seeds_str: &[String]) -> Result<Vec<Peer>, ServiceInitializationError> {
+        peer_seeds_str
+            .iter()
+            .map(|s| SeedPeer::from_str(s))
+            .map(|r| r.map(Peer::from))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
+    #[inline(always)]
+    async fn try_resolve_dns_seeds(
+        resolver_addr: SocketAddr,
+        dns_seeds: &[String],
+        use_dnssec: bool,
+    ) -> Result<Vec<Peer>, ServiceInitializationError>
+    {
+        if dns_seeds.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        debug!(target: LOG_TARGET, "Resolving DNS seeds...");
+        let start = Instant::now();
+
+        let resolver = if use_dnssec {
+            DnsSeedResolver::connect_secure(resolver_addr).await?
+        } else {
+            DnsSeedResolver::connect(resolver_addr).await?
+        };
+        let resolving = dns_seeds.iter().map(|addr| {
+            let mut resolver = resolver.clone();
+            async move { (resolver.resolve(addr.clone()).await, addr) }
+        });
+
+        let peers = future::join_all(resolving)
+            .await
+            .into_iter()
+            // Log and ignore errors
+            .filter_map(|(result, addr)| match result {
+                Ok(peers) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Found {} peer(s) from `{}` in {:.0?}",
+                        peers.len(),
+                        addr,
+                        start.elapsed()
+                    );
+                    Some(peers)
+                },
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "DNS seed `{}` failed to resolve: {}", addr, err);
+                    None
+                },
+            })
+            .flatten()
+            .map(Into::into)
+            .collect::<Vec<_>>();
+
+        Ok(peers)
     }
 }
 
@@ -450,7 +529,6 @@ impl ServiceInitializer for P2pInitializer {
     fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         let config = self.config.clone();
         let connector = self.connector.take().expect("P2pInitializer called more than once");
-        let peers = self.seed_peers.drain(..).collect();
 
         async move {
             let mut builder = CommsBuilder::new()
@@ -462,7 +540,17 @@ impl ServiceInitializer for P2pInitializer {
                 builder = builder.allow_test_addresses();
             }
 
-            let (comms, dht) = configure_comms_and_dht(builder, config, connector).await?;
+            let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
+
+            let peers = Self::try_parse_seed_peers(&config.peer_seeds)?;
+            add_all_peers(&comms.peer_manager(), &comms.node_identity(), peers).await?;
+
+            let peers = Self::try_resolve_dns_seeds(
+                config.dns_seeds_name_server,
+                &config.dns_seeds,
+                config.dns_seeds_use_dnssec,
+            )
+            .await?;
             add_all_peers(&comms.peer_manager(), &comms.node_identity(), peers).await?;
 
             context.register_handle(comms.connectivity());

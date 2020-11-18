@@ -106,6 +106,11 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.mainnet.peer_seeds", Vec::<String>::new())
         .unwrap();
+    cfg.set_default("base_node.mainnet.dns_seeds", Vec::<String>::new())
+        .unwrap();
+    cfg.set_default("base_node.mainnet.dns_seeds_name_server", "1.1.1.1:53")
+        .unwrap();
+    cfg.set_default("base_node.mainnet.dns_seeds_use_dnssec", true).unwrap();
     cfg.set_default("base_node.mainnet.block_sync_strategy", "ViaBestChainMetadata")
         .unwrap();
     cfg.set_default(
@@ -167,6 +172,12 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.rincewind.pruned_mode_cleanup_interval", 50)
         .unwrap();
     cfg.set_default("base_node.rincewind.peer_seeds", Vec::<String>::new())
+        .unwrap();
+    cfg.set_default("base_node.rincewind.dns_seeds", Vec::<String>::new())
+        .unwrap();
+    cfg.set_default("base_node.rincewind.dns_seeds_name_server", "1.1.1.1:53")
+        .unwrap();
+    cfg.set_default("base_node.rincewind.dns_seeds_use_dnssec", true)
         .unwrap();
     cfg.set_default("base_node.rincewind.block_sync_strategy", "ViaBestChainMetadata")
         .unwrap();
@@ -288,6 +299,10 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.ridcully.num_mining_threads", 1).unwrap();
 
     cfg.set_default("base_node.ridcully.peer_seeds", Vec::<String>::new())
+        .unwrap();
+    cfg.set_default("base_node.ridcully.dns_seeds_name_server", "1.1.1.1:53")
+        .unwrap();
+    cfg.set_default("base_node.ridcully.dns_seeds_use_dnssec", true)
         .unwrap();
 
     set_transport_defaults(&mut cfg);

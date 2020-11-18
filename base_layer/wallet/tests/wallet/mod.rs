@@ -47,7 +47,7 @@ use tari_core::{
     transactions::{tari_amount::uT, transaction::UnblindedOutput, types::PrivateKey},
 };
 use tari_crypto::common::Blake256;
-use tari_p2p::transport::TransportType;
+use tari_p2p::{transport::TransportType, DEFAULT_DNS_SEED_RESOLVER};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
     error::{WalletError, WalletStorageError},
@@ -114,6 +114,10 @@ async fn create_wallet(
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
+        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        peer_seeds: Default::default(),
+        dns_seeds: Default::default(),
+        dns_seeds_use_dnssec: false,
     };
 
     let sql_database_path = comms_config
@@ -578,6 +582,10 @@ async fn test_import_utxo() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
+        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        peer_seeds: Default::default(),
+        dns_seeds: Default::default(),
+        dns_seeds_use_dnssec: false,
     };
     let config = WalletConfig::new(comms_config, factories.clone(), None, Network::Rincewind, None);
     let mut alice_wallet = Wallet::new(
@@ -644,6 +652,10 @@ async fn test_data_generation() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
+        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        peer_seeds: Default::default(),
+        dns_seeds: Default::default(),
+        dns_seeds_use_dnssec: false,
     };
 
     let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind, None);

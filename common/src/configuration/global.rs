@@ -67,6 +67,9 @@ pub struct GlobalConfig {
     pub grpc_base_node_address: SocketAddr,
     pub grpc_console_wallet_address: SocketAddr,
     pub peer_seeds: Vec<String>,
+    pub dns_seeds: Vec<String>,
+    pub dns_seeds_name_server: SocketAddr,
+    pub dns_seeds_use_dnssec: bool,
     pub peer_db_path: PathBuf,
     pub block_sync_strategy: String,
     pub enable_mining: bool,
@@ -310,7 +313,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
 
-    // Peer seeds
+    // Peer and DNS seeds
     let key = config_string("base_node", &net_str, "peer_seeds");
     // Peer seeds can be an array or a comma separated list (e.g. in an ENVVAR)
     let peer_seeds = match cfg.get_array(&key) {
@@ -320,6 +323,27 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
             Err(err) => return Err(ConfigurationError::new(&key, &err.to_string())),
         },
     };
+
+    let key = config_string("base_node", &net_str, "dns_seeds_name_server");
+    let dns_seeds_name_server = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        .and_then(|s| {
+            s.parse::<SocketAddr>()
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        })?;
+
+    let key = config_string("base_node", &net_str, "dns_seeds_use_dnssec");
+    let dns_seeds_use_dnssec = cfg
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
+    let key = config_string("base_node", &net_str, "dns_seeds");
+    let dns_seeds = optional(cfg.get_array(&key))?
+        .unwrap_or_default()
+        .into_iter()
+        .map(|v| v.into_str().unwrap())
+        .collect::<Vec<_>>();
 
     // Peer DB path
     let peer_db_path = data_dir.join("peer_db");
@@ -531,6 +555,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         grpc_base_node_address,
         grpc_console_wallet_address,
         peer_seeds,
+        dns_seeds,
+        dns_seeds_name_server,
+        dns_seeds_use_dnssec,
         peer_db_path,
         block_sync_strategy,
         enable_mining,

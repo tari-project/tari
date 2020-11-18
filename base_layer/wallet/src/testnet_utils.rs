@@ -145,6 +145,10 @@ pub async fn create_wallet(
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
+        dns_seeds: Default::default(),
+        dns_seeds_name_server: "1.1.1.1:53".parse().unwrap(),
+        dns_seeds_use_dnssec: false,
+        peer_seeds: Default::default(),
     };
 
     let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind, None);
