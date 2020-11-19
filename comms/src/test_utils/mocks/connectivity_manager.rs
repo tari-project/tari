@@ -184,6 +184,7 @@ impl ConnectivityManagerMock {
                     .send(self.state.active_conns.lock().await.values().cloned().collect())
                     .unwrap();
             },
+            WaitStarted(reply) => reply.send(()).unwrap(),
         }
     }
 }

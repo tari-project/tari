@@ -192,6 +192,9 @@ impl ConnectivityManagerActor {
         use ConnectivityRequest::*;
         trace!(target: LOG_TARGET, "Request: {:?}", req);
         match req {
+            WaitStarted(reply) => {
+                let _ = reply.send(());
+            },
             GetConnectivityStatus(reply) => {
                 let _ = reply.send(self.status);
             },

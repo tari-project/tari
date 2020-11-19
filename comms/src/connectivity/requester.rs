@@ -90,6 +90,7 @@ impl fmt::Display for ConnectivityEvent {
 
 #[derive(Debug)]
 pub enum ConnectivityRequest {
+    WaitStarted(oneshot::Sender<()>),
     DialPeer(NodeId, oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>),
     GetConnectivityStatus(oneshot::Sender<ConnectivityStatus>),
     AddManagedPeers(Vec<NodeId>),
@@ -213,6 +214,15 @@ impl ConnectivityRequester {
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         Ok(())
+    }
+
+    pub async fn wait_started(&mut self) -> Result<(), ConnectivityError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(ConnectivityRequest::WaitStarted(reply_tx))
+            .await
+            .map_err(|_| ConnectivityError::ActorDisconnected)?;
+        reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
     /// Waits for the node to get at least one connection.
