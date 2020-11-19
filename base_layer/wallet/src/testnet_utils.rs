@@ -482,14 +482,11 @@ pub async fn generate_wallet_test_data<
     loop {
         futures::select! {
             event = wallet_event_stream.select_next_some() => {
-                match &*event.unwrap() {
-                    TransactionEvent::TransactionDirectSendResult(_,_) => {
-                        count+=1;
-                        if count >= 10 {
-                            break;
-                        }
-                    },
-                    _ => (),
+                            if let TransactionEvent::TransactionDirectSendResult(_,_) = &*event.unwrap() {
+                     count+=1;
+                     if count >= 10 {
+                        break;
+                   }
                 }
             },
             () = delay => {
@@ -588,15 +585,12 @@ pub async fn generate_wallet_test_data<
     loop {
         futures::select! {
             event = wallet_event_stream.select_next_some() => {
-                match &*event.unwrap() {
-                    TransactionEvent::ReceivedFinalizedTransaction(_) => {
-                        count+=1;
-                        if count >= 5 {
-                            break;
-                        }
-                    },
-                    _ => (),
-                }
+            if let TransactionEvent::ReceivedFinalizedTransaction(_) = &*event.unwrap() {
+                     count+=1;
+                     if count >= 5 {
+                        break;
+                    }
+                 }
             },
             () = delay => {
                 break;

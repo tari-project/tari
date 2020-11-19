@@ -10,6 +10,7 @@ edition = "2018"
 [features]
 default = []
 envlog = ["env_logger"]
+winservice = ["windows-service", "tari_shutdown"]
 
 [dependencies]
 tari_app_grpc = { path = "../tari_app_grpc" }
@@ -44,8 +45,21 @@ url = "2.1.1"
 
 env_logger = { version = "0.7.1", optional = true }
 
+windows-service = { version = "0.3.1", optional = true }
+tari_shutdown = { path = "../../infrastructure/shutdown", optional = true }
+
 [build-dependencies]
 tonic-build = "0.2"
 
 [dev-dependencies]
 futures-test = "0.3.5"
+
+[[bin]]
+name = "tari_merge_mining_proxy"
+path = "src/main.rs"
+
+[[bin]]
+name = "tari_merge_mining_proxy_service"
+path = "src/main_service.rs"
+required-features = ["winservice"]
+

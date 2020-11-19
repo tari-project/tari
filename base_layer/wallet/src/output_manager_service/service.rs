@@ -194,21 +194,21 @@ where
                 request_context = request_stream.select_next_some() => {
                 trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request, &mut utxo_validation_handles).await.or_else(|resp| {
+                    let _ = reply_tx.send(self.handle_request(request, &mut utxo_validation_handles).await.map_err(|resp| {
                         warn!(target: LOG_TARGET, "Error handling request: {:?}", resp);
-                        Err(resp)
-                    })).or_else(|resp| {
+                        resp
+                    })).map_err(|resp| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
-                        Err(resp)
+                        resp
                     });
                 },
                  // Incoming messages from the Comms layer
                 msg = base_node_response_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
-                    let result = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
+                    let result = self.handle_base_node_response(inner_msg).await.map_err(|resp| {
                         warn!(target: LOG_TARGET, "Error handling base node service response from {}: {:?}, Trace: {}", origin_public_key, resp, msg.dht_header.message_tag);
-                        Err(resp)
+                        resp
                     });
 
                     if result.is_err() {

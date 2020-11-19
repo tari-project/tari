@@ -74,7 +74,7 @@ impl WalletEventMonitor {
                                             self.trigger_tx_state_refresh(tx_id).await;
                                         }
                                     },
-                                    /// Only the above variants trigger state refresh
+                                    // Only the above variants trigger state refresh
                                     _ => (),
                                 }
                             },
@@ -94,7 +94,7 @@ impl WalletEventMonitor {
                                     ConnectivityEvent::PeerConnectionWillClose(_, _) => {
                                     self.trigger_peer_state_refresh().await;
                                     },
-                                    /// Only the above variants trigger state refresh
+                                    // Only the above variants trigger state refresh
                                     _ => (),
                                 }
                             },

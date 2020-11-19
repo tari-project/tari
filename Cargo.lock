@@ -1098,6 +1098,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "err-derive"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22deed3a8124cff5fa835713fa105621e43bbdc46690c3a6b68328a012d350d4"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2 1.0.24",
+ "quote 1.0.7",
+ "rustversion",
+ "syn 1.0.42",
+ "synstructure",
+]
+
+[[package]]
 name = "ethbloom"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2080,6 +2094,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "043175f069eda7b85febe4a74abbaeff828d9f8b448515d3151a14a3542811aa"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "merge_mining_proxy_service_installer"
+version = "0.1.0"
+dependencies = [
+ "windows-service",
+]
+
+[[package]]
+name = "merge_mining_proxy_service_uninstaller"
+version = "0.1.0"
+dependencies = [
+ "windows-service",
 ]
 
 [[package]]
@@ -3171,6 +3199,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustversion"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb5d2a036dc6d2d8fd16fde3498b04306e29bd193bf306a57427019b823d5acd"
+
+[[package]]
 name = "rustyline"
 version = "6.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4064,6 +4098,7 @@ dependencies = [
  "tari_common",
  "tari_core",
  "tari_crypto",
+ "tari_shutdown",
  "tari_utilities",
  "thiserror",
  "tokio",
@@ -4074,6 +4109,7 @@ dependencies = [
  "tracing-futures",
  "tracing-subscriber",
  "url 2.1.1",
+ "windows-service",
 ]
 
 [[package]]
@@ -5201,6 +5237,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "widestring"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c168940144dd21fd8046987c16a46a33d5fc84eec29ef9dcddc2ac9e31526b7c"
+
+[[package]]
 name = "winapi"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5242,6 +5284,18 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[package]]
+name = "windows-service"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdfb0437cd780b66551aa81b466470f1159b1878ed45438b738de8bc6e5012b6"
+dependencies = [
+ "bitflags 1.2.1",
+ "err-derive",
+ "widestring",
+ "winapi 0.3.9",
+]
 
 [[package]]
 name = "winreg"

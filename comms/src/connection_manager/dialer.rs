@@ -461,7 +461,7 @@ where
                         },
                         // Inflight dial was cancelled
                         (state, Err(ConnectionManagerError::DialCancelled)) => break (state, Err(ConnectionManagerError::DialCancelled)),
-                        (mut state, Err(err)) => {
+                        (state, Err(_)) => {
                             if state.num_attempts() >= max_attempts {
                                 break (state, Err(ConnectionManagerError::ConnectFailedMaximumAttemptsReached));
                             }

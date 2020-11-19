@@ -334,11 +334,10 @@ console_wallet_tor_identity_file = ".\\config\\cosole_wallet_tor.json"
 [validator_node]
 
 # Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
-#grpc_enabled = false
+# grpc_enabled = true
 
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-#grpc_address = "127.0.0.1:18042"
 
 ########################################################################################################################
 #                                                                                                                      #
