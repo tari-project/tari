@@ -814,7 +814,7 @@ where B: BlockchainBackend
         );
 
         // Remove pending horizon sync state
-       // txn.delete_metadata(MetadataKey::HorizonSyncState);
+        // txn.delete_metadata(MetadataKey::HorizonSyncState);
 
         let _res = commit(&mut *db, txn);
         unimplemented!();
