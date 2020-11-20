@@ -262,6 +262,19 @@ impl Peer {
     pub fn get_metadata(&self, key: u8) -> Option<&Vec<u8>> {
         self.metadata.get(&key)
     }
+
+    pub fn to_short_string(&self) -> String {
+        format!(
+            "{}::{}",
+            self.public_key,
+            self.addresses
+                .addresses
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    }
 }
 
 /// Display Peer as `[peer_id]: <pubkey>`

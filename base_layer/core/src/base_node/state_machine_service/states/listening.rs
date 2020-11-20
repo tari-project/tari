@@ -117,6 +117,7 @@ impl Listening {
                                 metadata: peer.chain_metadata.clone(),
                                 last_updated: EpochTime::now(),
                             };
+
                             // If this fails, its not the end of the world, we just want to keep record of the stats of
                             // the peer
                             let _ = shared
@@ -125,26 +126,29 @@ impl Listening {
                                 .await;
                         }
                         // Find the best network metadata and set of sync peers with the best tip.
-                        let best_metadata = best_metadata(peer_metadata_list.as_slice());
-                        let local_tip_height = local.height_of_longest_chain();
-                        let sync_peers = select_sync_peers(local_tip_height, &best_metadata, &peer_metadata_list);
+                        if let Some(best_metadata) = best_metadata(peer_metadata_list.as_slice()) {
+                            let local_tip_height = local.height_of_longest_chain();
+                            let sync_peers = select_sync_peers(local_tip_height, &best_metadata, &peer_metadata_list);
 
-                        let sync_mode = determine_sync_mode(&local, best_metadata, sync_peers);
-                        if sync_mode.is_lagging() {
-                            debug!(target: LOG_TARGET, "{}", sync_mode);
-                            return StateEvent::FallenBehind(sync_mode);
-                        } else {
-                            if !shared.bootstrapped_sync && sync_mode == SyncStatus::UpToDate {
-                                shared.bootstrapped_sync = true;
-                                debug!(
-                                    target: LOG_TARGET,
-                                    "Initial sync achieved, bootstrap done: {}", sync_mode
-                                );
+                            let sync_mode = determine_sync_mode(&local, best_metadata, sync_peers);
+                            if sync_mode.is_lagging() {
+                                debug!(target: LOG_TARGET, "{}", sync_mode);
+                                return StateEvent::FallenBehind(sync_mode);
+                            } else {
+                                if !shared.bootstrapped_sync && sync_mode == SyncStatus::UpToDate {
+                                    shared.bootstrapped_sync = true;
+                                    debug!(
+                                        target: LOG_TARGET,
+                                        "Initial sync achieved, bootstrap done: {}", sync_mode
+                                    );
+                                }
+                                self.is_synced = true;
+                                shared
+                                    .set_state_info(StateInfo::Listening(ListeningInfo::new(true)))
+                                    .await;
                             }
-                            self.is_synced = true;
-                            shared
-                                .set_state_info(StateInfo::Listening(ListeningInfo::new(true)))
-                                .await;
+                        } else {
+                            debug!(target: LOG_TARGET, "No sync peers had metadata")
                         }
                     }
                 },
@@ -182,27 +186,23 @@ fn select_sync_peers(
 {
     peer_metadata_list
         .iter()
-        // Metadata sanity checks
-        .filter(|p| p.chain_metadata.accumulated_difficulty.is_some() && p.chain_metadata.best_block.is_some())
         // Check if the peer can provide blocks higher than the local tip height
-        .filter(|p| {
-            let peer_horizon_height = p.chain_metadata.effective_pruned_height;
-            local_tip_height >= peer_horizon_height
+        .filter(|peer| {
+                let peer_horizon_height = peer.chain_metadata.effective_pruned_height();
+                local_tip_height >= peer_horizon_height && peer.chain_metadata.best_block() == best_metadata.best_block()
         })
-        // Filter for peers that match the best metadata
-        .filter(|p| p.chain_metadata.best_block == best_metadata.best_block)
         .cloned()
         .collect()
 }
 
 /// Determine the best metadata from a set of metadata received from the network.
-fn best_metadata(metadata_list: &[PeerChainMetadata]) -> ChainMetadata {
+fn best_metadata(metadata_list: &[PeerChainMetadata]) -> Option<ChainMetadata> {
     // TODO: Use heuristics to weed out outliers / dishonest nodes.
-    metadata_list.iter().fold(ChainMetadata::default(), |best, current| {
-        if current.chain_metadata.accumulated_difficulty.unwrap_or_else(|| 0) >=
-            best.accumulated_difficulty.unwrap_or_else(|| 0)
+    metadata_list.iter().fold(None, |best, current| {
+        if current.chain_metadata.accumulated_difficulty() >=
+            best.as_ref().map(|cm| cm.accumulated_difficulty()).unwrap_or_else(|| 0)
         {
-            current.chain_metadata.clone()
+            Some(current.chain_metadata.clone())
         } else {
             best
         }
@@ -212,50 +212,39 @@ fn best_metadata(metadata_list: &[PeerChainMetadata]) -> ChainMetadata {
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
 fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers: SyncPeers) -> SyncStatus {
     use SyncStatus::*;
-    match network.accumulated_difficulty {
-        None => {
-            info!(
-                target: LOG_TARGET,
-                "The rest of the network doesn't appear to have any up-to-date chain data, so we're going to assume \
-                 we're at the tip"
-            );
-            UpToDate
-        },
-        Some(network_tip_accum_difficulty) => {
-            let local_tip_accum_difficulty = local.accumulated_difficulty.unwrap_or_else(|| 0);
-            if local_tip_accum_difficulty < network_tip_accum_difficulty {
-                let local_tip_height = local.height_of_longest_chain();
-                let network_tip_height = network.height_of_longest_chain();
-                info!(
-                    target: LOG_TARGET,
-                    "Our local blockchain accumulated difficulty is a little behind that of the network. We're at \
-                     block #{} with an accumulated difficulty of {}, and the network chain tip is at #{} with an \
-                     accumulated difficulty of {}",
-                    local_tip_height,
-                    local_tip_accum_difficulty,
-                    network_tip_height,
-                    network_tip_accum_difficulty,
-                );
+    let network_tip_accum_difficulty = network.accumulated_difficulty();
+    let local_tip_accum_difficulty = local.accumulated_difficulty();
+    if local_tip_accum_difficulty < network_tip_accum_difficulty {
+        let local_tip_height = local.height_of_longest_chain();
+        let network_tip_height = network.height_of_longest_chain();
+        info!(
+            target: LOG_TARGET,
+            "Our local blockchain accumulated difficulty is a little behind that of the network. We're at block #{} \
+             with an accumulated difficulty of {}, and the network chain tip is at #{} with an accumulated difficulty \
+             of {}",
+            local_tip_height,
+            local_tip_accum_difficulty,
+            network_tip_height,
+            network_tip_accum_difficulty,
+        );
 
-                let network_horizon_block = local.horizon_block(network_tip_height);
-                if local_tip_height < network_horizon_block {
-                    LaggingBehindHorizon(network, sync_peers)
-                } else {
-                    Lagging(network, sync_peers)
-                }
-            } else {
-                info!(
-                    target: LOG_TARGET,
-                    "Our blockchain is up-to-date. We're at block {} with an accumulated difficulty of {} and the \
-                     network chain tip is at {} with an accumulated difficulty of {}",
-                    local.height_of_longest_chain(),
-                    local_tip_accum_difficulty,
-                    network.height_of_longest_chain(),
-                    network_tip_accum_difficulty,
-                );
-                UpToDate
-            }
-        },
+        let network_horizon_block = local.horizon_block(network_tip_height);
+        if local_tip_height < network_horizon_block {
+            LaggingBehindHorizon(network, sync_peers)
+        } else {
+            Lagging(network, sync_peers)
+        }
+    } else {
+        info!(
+            target: LOG_TARGET,
+            "Our blockchain is up-to-date. We're at block {} with an accumulated difficulty of {} and the network \
+             chain tip is at {} with an accumulated difficulty of {}",
+            local.height_of_longest_chain(),
+            local_tip_accum_difficulty,
+            network.height_of_longest_chain(),
+            network_tip_accum_difficulty,
+        );
+        UpToDate
     }
 }
 

@@ -21,13 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    chain_storage::{BlockAccumulatedData, BlockchainBackend, BlockchainDatabase, MmrTree},
     transactions::{transaction::Transaction, types::CryptoFactories},
-    validation::{
-        helpers::{is_stxo, is_utxo},
-        Validation,
-        ValidationError,
-    },
+    validation::{Validation, ValidationError},
 };
 use log::*;
 use tari_crypto::tari_utilities::hash::Hashable;
@@ -76,7 +72,7 @@ impl<B: BlockchainBackend> Validation<Transaction> for TxInputAndMaturityValidat
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let db = self.db.db_read_access()?;
         verify_not_stxos(tx, &*db)?;
-        verify_inputs_are_utxos(tx, &*db)?;
+        // verify_inputs_are_utxos(tx, &*db)?;
         let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
         verify_timelocks(tx, tip_height)?;
         Ok(())
@@ -94,38 +90,28 @@ fn verify_timelocks(tx: &Transaction, current_height: u64) -> Result<(), Validat
 
 // This function checks that the inputs and outputs do not exist in the STxO set.
 fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
-    for input in tx.body.inputs() {
-        if is_stxo(db, input.hash())? {
-            // we dont want to log this as a node or wallet might retransmit a transaction
-            debug!(
-                target: LOG_TARGET,
-                "Transaction validation failed due to already spent input: {}", input
-            );
-            return Err(ValidationError::ContainsSTxO);
-        }
-    }
-    for output in tx.body.outputs() {
-        if is_stxo(db, output.hash())? {
-            debug!(
-                target: LOG_TARGET,
-                "Transaction validation failed due to previously spent output: {}", output
-            );
-            return Err(ValidationError::ContainsSTxO);
-        }
-    }
-    Ok(())
-}
+    // TODO: Implement tip header.
+    // let tip = db.fetch_tip_header()?;
+    let tip = db.fetch_last_header()?;
 
-// This function checks that all inputs in the transaction are valid UTXO's to be spend.
-fn verify_inputs_are_utxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
+    let BlockAccumulatedData { deleted, .. } = db.fetch_block_accumulated_data(&tip.hash())?;
     for input in tx.body.inputs() {
-        if !is_utxo(db, input.hash())? {
-            debug!(
+        if let Some(index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &input.hash())? {
+            if deleted.contains(index) {
+                warn!(
+                    target: LOG_TARGET,
+                    "Transaction validation failed due to already spent input: {}", input
+                );
+                return Err(ValidationError::ContainsSTxO);
+            }
+        } else {
+            warn!(
                 target: LOG_TARGET,
-                "Transaction validation failed due to unknown input: {}", input
+                "Transaction validation failed because the block has invalid input: {} which does not exist", input
             );
             return Err(ValidationError::UnknownInputs);
         }
     }
+
     Ok(())
 }

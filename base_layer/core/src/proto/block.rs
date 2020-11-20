@@ -25,12 +25,11 @@ use crate::{
     blocks::{blockheader::BLOCK_HASH_LENGTH, Block, BlockHeader, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
     chain_storage::HistoricalBlock,
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
-    proto::utils::try_convert_all,
     transactions::types::BlindingFactor,
 };
 use prost_types::Timestamp;
 use std::convert::{TryFrom, TryInto};
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray, ByteArrayError};
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray};
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime`
 pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> EpochTime {
@@ -158,9 +157,6 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
     type Error = String;
 
     fn try_from(historical_block: proto::HistoricalBlock) -> Result<Self, Self::Error> {
-        let spent_commitments =
-            try_convert_all(historical_block.spent_commitments).map_err(|err: ByteArrayError| err.to_string())?;
-
         let block = historical_block
             .block
             .map(TryInto::try_into)
@@ -168,7 +164,6 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
 
         Ok(Self {
             confirmations: historical_block.confirmations,
-            spent_commitments,
             block,
         })
     }
@@ -178,7 +173,7 @@ impl From<HistoricalBlock> for proto::HistoricalBlock {
     fn from(block: HistoricalBlock) -> Self {
         Self {
             confirmations: block.confirmations,
-            spent_commitments: block.spent_commitments.into_iter().map(Into::into).collect(),
+            spent_commitments: vec![],
             block: Some(block.block.into()),
         }
     }

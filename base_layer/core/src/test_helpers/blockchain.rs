@@ -22,18 +22,46 @@
 
 use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::{BlockchainDatabase, MemoryDatabase},
+    chain_storage::{
+        create_lmdb_database,
+        BlockAccumulatedData,
+        BlockHeaderAccumulatedData,
+        BlockchainBackend,
+        BlockchainDatabase,
+        BlockchainDatabaseConfig,
+        ChainMetadata,
+        ChainStorageError,
+        DbKey,
+        DbTransaction,
+        DbValue,
+        LMDBDatabase,
+        MmrTree,
+        Validators,
+    },
     consensus::{
         chain_strength_comparer::ChainStrengthComparerBuilder,
         ConsensusConstantsBuilder,
+        ConsensusManager,
         ConsensusManagerBuilder,
         Network,
     },
-    transactions::types::HashDigest,
+    proof_of_work::{Difficulty, PowAlgorithm},
+    transactions::{
+        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+        types::{CryptoFactories, HashOutput},
+    },
+    validation::{
+        block_validators::{FullConsensusValidator, StatelessBlockValidator},
+        mocks::MockValidator,
+    },
 };
+use std::{ops::Deref, path::PathBuf};
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_storage::lmdb_store::LMDBConfig;
+use tari_test_utils::paths::create_temporary_data_path;
 
 /// Create a new blockchain database containing no blocks.
-pub fn create_new_blockchain() -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
+pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
     let genesis = genesis_template();
@@ -45,10 +73,207 @@ pub fn create_new_blockchain() -> BlockchainDatabase<MemoryDatabase<HashDigest>>
         })
         .on_ties(ChainStrengthComparerBuilder::new().by_height().build())
         .build();
-    super::create_mem_db(&consensus_manager)
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    create_store_with_consensus_and_validators(&consensus_manager, validators)
 }
 
 fn genesis_template() -> NewBlockTemplate {
     let header = BlockHeader::new(0);
     header.into_builder().build().into()
+}
+
+pub fn create_store_with_consensus_and_validators(
+    rules: &ConsensusManager,
+    validators: Validators<TempDatabase>,
+) -> BlockchainDatabase<TempDatabase>
+{
+    let backend = create_test_db();
+    BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap()
+}
+
+pub fn create_store_with_consensus(rules: &ConsensusManager) -> BlockchainDatabase<TempDatabase> {
+    let factories = CryptoFactories::default();
+    let validators = Validators::new(
+        FullConsensusValidator::new(rules.clone()),
+        StatelessBlockValidator::new(rules.clone(), factories),
+    );
+    create_store_with_consensus_and_validators(rules, validators)
+}
+pub fn create_store() -> BlockchainDatabase<TempDatabase> {
+    let network = Network::Ridcully;
+    let rules = ConsensusManagerBuilder::new(network).build();
+    create_store_with_consensus(&rules)
+}
+
+pub fn create_test_db() -> TempDatabase {
+    TempDatabase::new()
+}
+
+pub struct TempDatabase {
+    path: PathBuf,
+    db: LMDBDatabase,
+}
+
+impl TempDatabase {
+    fn new() -> Self {
+        let temp_path = create_temporary_data_path();
+
+        Self {
+            db: create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap(),
+            path: temp_path,
+        }
+    }
+}
+
+impl Deref for TempDatabase {
+    type Target = LMDBDatabase;
+
+    fn deref(&self) -> &Self::Target {
+        &self.db
+    }
+}
+
+impl Drop for TempDatabase {
+    fn drop(&mut self) {
+        if std::path::Path::new(&self.path).exists() {
+            match std::fs::remove_dir_all(&self.path) {
+                Err(e) => println!("\n{:?}\n", e),
+                _ => (),
+            }
+        }
+    }
+}
+
+impl BlockchainBackend for TempDatabase {
+    fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError> {
+        self.db.write(tx)
+    }
+
+    fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
+        self.db.fetch(key)
+    }
+
+    fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError> {
+        self.db.contains(key)
+    }
+
+    fn fetch_header_accumulated_data(
+        &self,
+        hash: &HashOutput,
+    ) -> Result<Option<BlockHeaderAccumulatedData>, ChainStorageError>
+    {
+        self.db.fetch_header_accumulated_data(hash)
+    }
+
+    fn is_empty(&self) -> Result<bool, ChainStorageError> {
+        self.db.is_empty()
+    }
+
+    fn fetch_block_accumulated_data(
+        &self,
+        header_hash: &HashOutput,
+    ) -> Result<BlockAccumulatedData, ChainStorageError>
+    {
+        self.db.fetch_block_accumulated_data(header_hash)
+    }
+
+    fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError> {
+        self.db.fetch_kernels_in_block(header_hash)
+    }
+
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError> {
+        self.db.fetch_output(output_hash)
+    }
+
+    fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
+        self.db.fetch_outputs_in_block(header_hash)
+    }
+
+    fn fetch_inputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionInput>, ChainStorageError> {
+        self.db.fetch_inputs_in_block(header_hash)
+    }
+
+    fn fetch_mmr_node_count(&self, tree: MmrTree, height: u64) -> Result<u32, ChainStorageError> {
+        self.db.fetch_mmr_node_count(tree, height)
+    }
+
+    fn fetch_mmr_node(
+        &self,
+        tree: MmrTree,
+        pos: u32,
+        hist_height: Option<u64>,
+    ) -> Result<(HashOutput, bool), ChainStorageError>
+    {
+        self.db.fetch_mmr_node(tree, pos, hist_height)
+    }
+
+    fn fetch_mmr_nodes(
+        &self,
+        tree: MmrTree,
+        pos: u32,
+        count: u32,
+        hist_height: Option<u64>,
+    ) -> Result<Vec<(HashOutput, bool)>, ChainStorageError>
+    {
+        self.db.fetch_mmr_nodes(tree, pos, count, hist_height)
+    }
+
+    fn insert_mmr_node(&mut self, tree: MmrTree, hash: HashOutput, deleted: bool) -> Result<(), ChainStorageError> {
+        self.db.insert_mmr_node(tree, hash, deleted)
+    }
+
+    fn delete_mmr_node(&mut self, tree: MmrTree, hash: &HashOutput) -> Result<(), ChainStorageError> {
+        self.db.delete_mmr_node(tree, hash)
+    }
+
+    fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &HashOutput) -> Result<Option<u32>, ChainStorageError> {
+        self.db.fetch_mmr_leaf_index(tree, hash)
+    }
+
+    fn get_orphan_count(&self) -> Result<usize, ChainStorageError> {
+        self.db.get_orphan_count()
+    }
+
+    fn fetch_last_header(&self) -> Result<BlockHeader, ChainStorageError> {
+        self.db.fetch_last_header()
+    }
+
+    fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
+        self.db.fetch_chain_metadata()
+    }
+
+    fn fetch_target_difficulties(
+        &self,
+        pow_algo: PowAlgorithm,
+        height: u64,
+        block_window: usize,
+    ) -> Result<Vec<(EpochTime, Difficulty)>, ChainStorageError>
+    {
+        self.db.fetch_target_difficulties(pow_algo, height, block_window)
+    }
+
+    fn count_utxos(&self) -> Result<usize, ChainStorageError> {
+        self.db.count_utxos()
+    }
+
+    fn count_kernels(&self) -> Result<usize, ChainStorageError> {
+        self.db.count_kernels()
+    }
+
+    fn fetch_orphan_chain_tips(&self) -> Result<Vec<HashOutput>, ChainStorageError> {
+        self.db.fetch_orphan_chain_tips()
+    }
+
+    fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<HashOutput>, ChainStorageError> {
+        self.db.fetch_orphan_children_of(hash)
+    }
+
+    fn delete_oldest_orphans(
+        &mut self,
+        horizon_height: u64,
+        orphan_storage_capacity: usize,
+    ) -> Result<(), ChainStorageError>
+    {
+        self.db.delete_oldest_orphans(horizon_height, orphan_storage_capacity)
+    }
 }

@@ -44,7 +44,7 @@ use tonic::{Request, Response, Status};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-const LOG_TARGET: &str = "base_node::grpc";
+const LOG_TARGET: &str = "tari::base_node::grpc";
 const GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS: usize = 1_000_000;
 const GET_TOKENS_IN_CIRCULATION_PAGE_SIZE: usize = 1_000;
 // The maximum number of difficulty ints that can be requested at a time. These will be streamed to the
@@ -87,6 +87,7 @@ pub async fn get_heights(
 
 #[tonic::async_trait]
 impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
+    type FetchMatchingUtxosStream = mpsc::Receiver<Result<tari_rpc::FetchMatchingUtxosResponse, Status>>;
     type GetBlocksStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
@@ -220,7 +221,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
                 return Err(Status::internal(err.to_string()));
             },
-            Ok(data) => data.height_of_longest_chain.unwrap_or(0),
+            Ok(data) => data.height_of_longest_chain(),
         };
 
         let sorting: Sorting = request.sorting();
@@ -309,10 +310,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .map_err(|_| Status::invalid_argument("No valid pow algo selected".to_string()))?;
         let mut handler = self.node_service.clone();
 
-        let new_template = handler
-            .get_new_block_template(algo)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+        let new_template = handler.get_new_block_template(algo).await.map_err(|e| {
+            warn!(
+                target: LOG_TARGET,
+                "Could not get new block template: {}",
+                e.to_string()
+            );
+            return Status::internal(e.to_string());
+        })?;
 
         let height = new_template.header.height;
 
@@ -511,6 +516,61 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         });
 
         debug!(target: LOG_TARGET, "Sending SearchKernels response stream to client");
+        Ok(Response::new(rx))
+    }
+
+    async fn fetch_matching_utxos(
+        &self,
+        request: Request<tari_rpc::FetchMatchingUtxosRequest>,
+    ) -> Result<Response<Self::FetchMatchingUtxosStream>, Status>
+    {
+        debug!(target: LOG_TARGET, "Incoming GRPC request for FetchMatchingUtxos");
+        let request = request.into_inner();
+
+        let converted: Result<Vec<_>, _> = request.hashes.into_iter().map(|s| s.try_into()).collect();
+        let hashes = converted.map_err(|_| Status::internal("Failed to convert one or more arguments."))?;
+
+        let mut handler = self.node_service.clone();
+
+        let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        self.executor.spawn(async move {
+            let outputs = match handler.fetch_matching_utxos(hashes).await {
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error communicating with local base node: {:?}", err,
+                    );
+                    return;
+                },
+                Ok(data) => data,
+            };
+            for output in outputs {
+                match tx
+                    .send(Ok(tari_rpc::FetchMatchingUtxosResponse {
+                        output: Some(output.into()),
+                    }))
+                    .await
+                {
+                    Ok(_) => (),
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Error sending output via GRPC:  {}", err);
+
+                        match tx.send(Err(Status::unknown("Error sending data"))).await {
+                            Ok(_) => (),
+                            Err(send_err) => {
+                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                            },
+                        }
+                        return;
+                    },
+                }
+            }
+        });
+
+        debug!(
+            target: LOG_TARGET,
+            "Sending FindMatchingUtxos response stream to client"
+        );
         Ok(Response::new(rx))
     }
 

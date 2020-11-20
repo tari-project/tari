@@ -38,7 +38,7 @@ fn hash_with_bitmap(hash: &HashSlice, bitmap: &mut Bitmap) -> Hash {
 /// MMRs with no elements should provide sane defaults. The merkle root must be the hash of an empty string, b"".
 #[test]
 fn zero_length_mmr() {
-    let mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
+    let mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create()).unwrap();
     assert_eq!(mmr.len(), 0);
     assert_eq!(mmr.is_empty(), Ok(true));
     let empty_hash = Hasher::digest(b"").to_vec();
@@ -51,7 +51,7 @@ fn zero_length_mmr() {
 #[test]
 // Note the hardcoded hashes are only valid when using Blake256 as the Hasher
 fn delete() {
-    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
+    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create()).unwrap();
     assert_eq!(mmr.is_empty(), Ok(true));
     for i in 0..5 {
         assert!(mmr.push(int_to_hash(i)).is_ok());
@@ -109,7 +109,7 @@ fn build_mmr() {
     assert_eq!(mmr_check.len(), Ok(8));
     let mut bitmap = Bitmap::create();
     // Create a small mutable MMR
-    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
+    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create()).unwrap();
     for i in 0..5 {
         assert!(mmr.push(int_to_hash(i)).is_ok());
     }
@@ -127,8 +127,8 @@ fn build_mmr() {
 
 #[test]
 fn equality_check() {
-    let mut ma = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
-    let mut mb = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
+    let mut ma = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create()).unwrap();
+    let mut mb = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create()).unwrap();
     assert!(ma == mb);
     assert!(ma.push(int_to_hash(1)).is_ok());
     assert!(ma != mb);
@@ -149,7 +149,7 @@ fn equality_check() {
 
 #[test]
 fn restore_from_leaf_nodes() {
-    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create());
+    let mut mmr = MutableMmr::<Hasher, _>::new(Vec::default(), Bitmap::create()).unwrap();
     for i in 0..12 {
         assert!(mmr.push(int_to_hash(i)).is_ok());
     }

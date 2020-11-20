@@ -23,27 +23,20 @@
 
 use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
 
-use crate::helpers::database::create_mem_db;
 use tari_core::{
     blocks::Block,
-    chain_storage::{
-        create_lmdb_database,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        LMDBDatabase,
-        MemoryDatabase,
-        Validators,
-    },
+    chain_storage::{create_lmdb_database, BlockchainDatabase, BlockchainDatabaseConfig, LMDBDatabase, Validators},
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, Network},
+    test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
     transactions::{
         tari_amount::{uT, T},
         transaction::UnblindedOutput,
-        types::{CryptoFactories, HashDigest},
+        types::CryptoFactories,
     },
     txn_schema,
 };
-use tari_mmr::MmrCacheConfig;
 use tari_storage::lmdb_store::LMDBConfig;
+// use crate::helpers::database::{TempDatabase, create_store_with_consensus};
 
 static EMISSION: [u64; 2] = [10, 10];
 
@@ -85,7 +78,7 @@ static EMISSION: [u64; 2] = [10, 10];
 /// (3.2)       -> 500_000    (5.6)
 ///             -> change     (5.7)
 pub fn create_blockchain_db_no_cut_through() -> (
-    BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    BlockchainDatabase<TempDatabase>,
     Vec<Block>,
     Vec<Vec<UnblindedOutput>>,
     ConsensusManager,
@@ -133,7 +126,7 @@ pub fn create_blockchain_db_no_cut_through() -> (
 pub fn create_new_blockchain(
     network: Network,
 ) -> (
-    BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    BlockchainDatabase<TempDatabase>,
     Vec<Block>,
     Vec<Vec<UnblindedOutput>>,
     ConsensusManager,
@@ -147,18 +140,23 @@ pub fn create_new_blockchain(
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let db = create_mem_db(&consensus_manager);
-    (db, vec![block0], vec![vec![output]], consensus_manager)
+    // let db = create_lmdb_database(&consensus_manager);
+    (
+        create_store_with_consensus(&consensus_manager),
+        vec![block0],
+        vec![vec![output]],
+        consensus_manager,
+    )
 }
 
 /// Create a new blockchain database containing only the Genesis block
 pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
     network: Network,
     path: P,
-    validators: Validators<LMDBDatabase<HashDigest>>,
+    validators: Validators<LMDBDatabase>,
     config: BlockchainDatabaseConfig,
 ) -> (
-    BlockchainDatabase<LMDBDatabase<HashDigest>>,
+    BlockchainDatabase<LMDBDatabase>,
     Vec<Block>,
     Vec<Vec<UnblindedOutput>>,
     ConsensusManager,
@@ -173,7 +171,7 @@ pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let db = create_lmdb_database(path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
+    let db = create_lmdb_database(path, LMDBConfig::default()).unwrap();
     let db = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
     (db, vec![block0], vec![vec![output]], consensus_manager)
 }

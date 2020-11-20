@@ -43,14 +43,14 @@ use std::{fmt, sync::Arc};
 #[derive(Clone)]
 pub struct SyncValidators {
     pub header: Arc<Validator<BlockHeader>>,
-    pub final_state: Arc<Validator<u64>>,
+    pub final_state: Arc<Validator<BlockHeader>>,
 }
 
 impl SyncValidators {
     pub fn new<THeader, TFinal>(header: THeader, final_state: TFinal) -> Self
     where
         THeader: Validation<BlockHeader> + 'static,
-        TFinal: Validation<u64> + 'static,
+        TFinal: Validation<BlockHeader> + 'static,
     {
         Self {
             header: Arc::new(Box::new(header)),

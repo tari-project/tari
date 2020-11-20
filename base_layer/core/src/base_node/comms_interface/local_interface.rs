@@ -31,7 +31,10 @@ use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainMetadata, HistoricalBlock, MmrTree},
     proof_of_work::PowAlgorithm,
-    transactions::types::{Commitment, HashOutput, Signature},
+    transactions::{
+        transaction::TransactionOutput,
+        types::{Commitment, HashOutput, Signature},
+    },
 };
 use std::sync::Arc;
 use tari_service_framework::{reply_channel::SenderService, Service};
@@ -170,8 +173,23 @@ impl LocalNodeCommsInterface {
         }
     }
 
+    pub async fn fetch_matching_utxos(
+        &mut self,
+        hashes: Vec<HashOutput>,
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError>
+    {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchMatchingUtxos(hashes))
+            .await??
+        {
+            NodeCommsResponse::TransactionOutputs(outputs) => Ok(outputs),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
     /// Fetches the blocks with the specified utxo commitments
-    pub async fn get_blocks_with_utxos(
+    pub async fn fetch_blocks_with_utxos(
         &mut self,
         commitments: Vec<Commitment>,
     ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>

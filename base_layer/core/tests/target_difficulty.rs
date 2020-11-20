@@ -23,10 +23,7 @@
 #[allow(dead_code)]
 mod helpers;
 
-use helpers::{
-    database::create_mem_db,
-    pow_blockchain::{calculate_accumulated_difficulty, create_test_pow_blockchain},
-};
+use helpers::pow_blockchain::{calculate_accumulated_difficulty, create_test_pow_blockchain};
 use std::collections::HashMap;
 use tari_core::{
     consensus::{
@@ -36,7 +33,10 @@ use tari_core::{
         Network,
     },
     proof_of_work::{get_target_difficulty, PowAlgorithm},
+    test_helpers::blockchain::create_store,
 };
+
+// use crate::helpers::database::create_store;
 
 #[test]
 fn test_target_difficulty_at_tip() {
@@ -46,7 +46,7 @@ fn test_target_difficulty_at_tip() {
     let block_window = constants.get_difficulty_block_window() as usize;
     let target_time = constants.get_diff_target_block_interval(PowAlgorithm::Blake);
     let max_block_time = constants.get_difficulty_max_block_interval(PowAlgorithm::Blake);
-    let store = create_mem_db(&consensus_manager);
+    let store = create_store();
 
     let pow_algos = vec![
         PowAlgorithm::Blake, //  GB default
@@ -61,7 +61,7 @@ fn test_target_difficulty_at_tip() {
         PowAlgorithm::Blake,
     ];
     create_test_pow_blockchain(&store, pow_algos.clone(), &consensus_manager);
-    let height = store.get_chain_metadata().unwrap().height_of_longest_chain.unwrap();
+    let height = store.get_chain_metadata().unwrap().height_of_longest_chain();
 
     let pow_algo = PowAlgorithm::Monero;
     let target_difficulties = store.fetch_target_difficulties(pow_algo, height, block_window).unwrap();
@@ -102,7 +102,7 @@ fn test_target_difficulty_with_height() {
     let block_window = constants.get_difficulty_block_window() as usize;
     let target_time = constants.get_diff_target_block_interval(PowAlgorithm::Blake);
     let max_block_time = constants.get_difficulty_max_block_interval(PowAlgorithm::Blake);
-    let store = create_mem_db(&consensus_manager);
+    let store = create_store();
 
     let pow_algos = vec![
         PowAlgorithm::Blake, // GB default

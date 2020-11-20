@@ -58,6 +58,9 @@ service BaseNode {
     rpc GetTipInfo(Empty) returns (TipInfoResponse);
     // Search for blocks containing the specified kernels
     rpc SearchKernels(SearchKernelsRequest) returns (stream HistoricalBlock);
+    // Fetch any utxos that exist in the main chain
+    rpc FetchMatchingUtxos(FetchMatchingUtxosRequest) returns (stream FetchMatchingUtxosResponse);
+
 }
 
 /// return type of GetTipInfo
@@ -210,4 +213,12 @@ message MinerData{
 // This is the request type for the Search Kernels rpc
 message SearchKernelsRequest{
     repeated Signature signatures = 1;
+}
+
+message FetchMatchingUtxosRequest {
+    repeated bytes hashes = 1;
+}
+
+message FetchMatchingUtxosResponse {
+    TransactionOutput output = 1;
 }

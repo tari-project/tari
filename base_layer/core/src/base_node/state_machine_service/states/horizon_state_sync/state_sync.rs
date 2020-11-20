@@ -44,7 +44,7 @@ use crate::{
 use croaring::Bitmap;
 use log::*;
 use tari_crypto::tari_utilities::Hashable;
-use tokio::task::spawn_blocking;
+// use tokio::task::spawn_blocking;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
@@ -268,21 +268,22 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
         Ok(())
     }
 
-    async fn validate_mmr_root(&self, tree: MmrTree) -> Result<(), HorizonSyncError> {
-        debug!(target: LOG_TARGET, "Validating {} MMR root", tree);
-        if async_db::validate_merkle_root(self.db(), MmrTree::Kernel, self.horizon_sync_height).await? {
-            debug!(
-                target: LOG_TARGET,
-                "{} MMR root is VALID at height {}", tree, self.horizon_sync_height
-            );
-            Ok(())
-        } else {
-            warn!(
-                target: LOG_TARGET,
-                "{} MMR root is INVALID at height {}", tree, self.horizon_sync_height
-            );
-            Err(HorizonSyncError::InvalidMmrRoot(tree))
-        }
+    async fn validate_mmr_root(&self, _tree: MmrTree) -> Result<(), HorizonSyncError> {
+        unimplemented!()
+        // debug!(target: LOG_TARGET, "Validating {} MMR root", tree);
+        // if async_db::validate_merkle_root(self.db(), MmrTree::Kernel, self.horizon_sync_height).await? {
+        //     debug!(
+        //         target: LOG_TARGET,
+        //         "{} MMR root is VALID at height {}", tree, self.horizon_sync_height
+        //     );
+        //     Ok(())
+        // } else {
+        //     warn!(
+        //         target: LOG_TARGET,
+        //         "{} MMR root is INVALID at height {}", tree, self.horizon_sync_height
+        //     );
+        //     Err(HorizonSyncError::InvalidMmrRoot(tree))
+        // }
     }
 
     async fn ban_sync_peer(&mut self, sync_peer: &SyncPeer, reason: String) -> Result<(), HorizonSyncError> {
@@ -453,7 +454,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
                 }
 
                 // Download a partial UTXO set
-                let (mut utxos, sync_peer3) = helpers::request_txos(
+                let (utxos, sync_peer3) = helpers::request_txos(
                     LOG_TARGET,
                     self.shared,
                     self.sync_peers,
@@ -492,21 +493,23 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
                                 )
                                 .await?;
                             } else {
+                                unimplemented!();
                                 // Inserting the UTXO will also insert the corresponding UTXO and RangeProof MMR
                                 // Nodes.
-                                async_db::insert_utxo(db.clone(), utxos.remove(0)).await?;
+                                // async_db::insert_utxo(db.clone(), utxos.remove(0)).await?;
                             }
                         }
 
-                        async_db::horizon_sync_create_mmr_checkpoint(self.db(), MmrTree::Utxo).await?;
-                        async_db::horizon_sync_create_mmr_checkpoint(self.db(), MmrTree::RangeProof).await?;
-                        trace!(
-                            target: LOG_TARGET,
-                            "{} UTXOs with MMR nodes inserted into database",
-                            utxo_hashes.len()
-                        );
+                        unimplemented!();
+                        // async_db::horizon_sync_create_mmr_checkpoint(self.db(), MmrTree::Utxo).await?;
+                        // async_db::horizon_sync_create_mmr_checkpoint(self.db(), MmrTree::RangeProof).await?;
+                        // trace!(
+                        //     target: LOG_TARGET,
+                        //     "{} UTXOs with MMR nodes inserted into database",
+                        //     utxo_hashes.len()
+                        // );
 
-                        break;
+                        // break;
                     },
                     Err(err @ HorizonSyncError::EmptyResponse { .. }) |
                     Err(err @ HorizonSyncError::IncorrectResponse { .. }) => {
@@ -544,29 +547,31 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<'_, '_, '_, B> 
     // the horizon state to the blockchain backend.
     async fn finalize_horizon_sync(&self) -> Result<(), HorizonSyncError> {
         debug!(target: LOG_TARGET, "Validating horizon state");
-        let validator = self.shared.sync_validators.final_state.clone();
-        let horizon_sync_height = self.horizon_sync_height;
-        let validation_result = spawn_blocking(move || {
-            validator
-                .validate(&horizon_sync_height)
-                .map_err(HorizonSyncError::FinalStateValidationFailed)
-        })
-        .await?;
-
-        match validation_result {
-            Ok(_) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Horizon state validation succeeded! Committing horizon state."
-                );
-                async_db::horizon_sync_commit(self.db()).await?;
-                Ok(())
-            },
-            Err(err) => {
-                debug!(target: LOG_TARGET, "Horizon state validation failed!");
-                Err(err)
-            },
-        }
+        let _validator = self.shared.sync_validators.final_state.clone();
+        let _horizon_sync_height = self.horizon_sync_height;
+        unimplemented!()
+        // let validation_result = spawn_blocking(move || {
+        //
+        //     validator
+        //         .validate(&horizon_sync_height)
+        //         .map_err(HorizonSyncError::FinalStateValidationFailed)
+        // })
+        // .await?;
+        //
+        // match validation_result {
+        //     Ok(_) => {
+        //         debug!(
+        //             target: LOG_TARGET,
+        //             "Horizon state validation succeeded! Committing horizon state."
+        //         );
+        //         async_db::horizon_sync_commit(self.db()).await?;
+        //         Ok(())
+        //     },
+        //     Err(err) => {
+        //         debug!(target: LOG_TARGET, "Horizon state validation failed!");
+        //         Err(err)
+        //     },
+        // }
     }
 
     async fn rollback(&self) -> Result<(), HorizonSyncError> {

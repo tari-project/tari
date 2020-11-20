@@ -23,7 +23,6 @@
 #[allow(dead_code)]
 mod helpers;
 use crate::helpers::block_builders::construct_chained_blocks;
-use croaring::Bitmap;
 use futures::join;
 use helpers::{
     block_builders::{
@@ -53,13 +52,13 @@ use tari_core::{
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
     blocks::{BlockHeader, NewBlock},
-    chain_storage::{BlockAddResult, BlockchainDatabaseConfig, DbTransaction, MmrTree},
+    chain_storage::{BlockAddResult, BlockchainDatabaseConfig, DbTransaction},
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::MempoolServiceConfig,
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
-        helpers::{create_test_kernel, create_utxo, schema_to_transaction},
-        tari_amount::{uT, MicroTari, T},
+        helpers::schema_to_transaction,
+        tari_amount::{uT, T},
         types::CryptoFactories,
     },
     txn_schema,
@@ -99,7 +98,7 @@ fn request_response_get_metadata() {
 
     runtime.block_on(async {
         let received_metadata = alice_node.outbound_nci.get_metadata().await.unwrap();
-        assert_eq!(received_metadata.height_of_longest_chain, Some(0));
+        assert_eq!(received_metadata.height_of_longest_chain(), 0);
 
         alice_node.shutdown().await;
         bob_node.shutdown().await;
@@ -192,81 +191,83 @@ fn request_and_response_fetch_headers_with_hashes() {
 
 #[test]
 fn request_and_response_fetch_kernels() {
-    let mut runtime = Runtime::new().unwrap();
-    let temp_dir = tempdir().unwrap();
-    let (mut alice_node, bob_node, carol_node, _consensus_manager) =
-        create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
-
-    let kernel1 = create_test_kernel(5.into(), 0);
-    let kernel2 = create_test_kernel(10.into(), 1);
-    let hash1 = kernel1.hash();
-    let hash2 = kernel2.hash();
-
-    let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1.clone());
-    txn.insert_kernel(kernel2.clone());
-    assert!(bob_node.blockchain_db.commit(txn).is_ok());
-    let mut txn = DbTransaction::new();
-    txn.insert_kernel(kernel1.clone());
-    txn.insert_kernel(kernel2.clone());
-    assert!(carol_node.blockchain_db.commit(txn).is_ok());
-
-    runtime.block_on(async {
-        let received_kernels = alice_node
-            .outbound_nci
-            .fetch_kernels(vec![hash1.clone()])
-            .await
-            .unwrap();
-        assert_eq!(received_kernels.len(), 1);
-        assert_eq!(received_kernels[0], kernel1);
-
-        let received_kernels = alice_node.outbound_nci.fetch_kernels(vec![hash1, hash2]).await.unwrap();
-        assert_eq!(received_kernels.len(), 2);
-        assert!(received_kernels.contains(&kernel1));
-        assert!(received_kernels.contains(&kernel2));
-
-        alice_node.shutdown().await;
-        bob_node.shutdown().await;
-        carol_node.shutdown().await;
-    });
+    unimplemented!();
+    // let mut runtime = Runtime::new().unwrap();
+    // let temp_dir = tempdir().unwrap();
+    // let (mut alice_node, bob_node, carol_node, _consensus_manager) =
+    //     create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
+    //
+    // let kernel1 = create_test_kernel(5.into(), 0);
+    // let kernel2 = create_test_kernel(10.into(), 1);
+    // let hash1 = kernel1.hash();
+    // let hash2 = kernel2.hash();
+    //
+    // let mut txn = DbTransaction::new();
+    // txn.insert_kernel(kernel1.clone(),);
+    // txn.insert_kernel(kernel2.clone());
+    // assert!(bob_node.blockchain_db.commit(txn).is_ok());
+    // let mut txn = DbTransaction::new();
+    // txn.insert_kernel(kernel1.clone());
+    // txn.insert_kernel(kernel2.clone());
+    // assert!(carol_node.blockchain_db.commit(txn).is_ok());
+    //
+    // runtime.block_on(async {
+    //     let received_kernels = alice_node
+    //         .outbound_nci
+    //         .fetch_kernels(vec![hash1.clone()])
+    //         .await
+    //         .unwrap();
+    //     assert_eq!(received_kernels.len(), 1);
+    //     assert_eq!(received_kernels[0], kernel1);
+    //
+    //     let received_kernels = alice_node.outbound_nci.fetch_kernels(vec![hash1, hash2]).await.unwrap();
+    //     assert_eq!(received_kernels.len(), 2);
+    //     assert!(received_kernels.contains(&kernel1));
+    //     assert!(received_kernels.contains(&kernel2));
+    //
+    //     alice_node.shutdown().await;
+    //     bob_node.shutdown().await;
+    //     carol_node.shutdown().await;
+    // });
 }
 
 #[test]
 fn request_and_response_fetch_utxos() {
-    let mut runtime = Runtime::new().unwrap();
-    let factories = CryptoFactories::default();
-    let temp_dir = tempdir().unwrap();
-    let (mut alice_node, bob_node, carol_node, _consensus_manager) =
-        create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
-
-    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
-    let hash1 = utxo1.hash();
-    let hash2 = utxo2.hash();
-
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1.clone());
-    txn.insert_utxo(utxo2.clone());
-    assert!(bob_node.blockchain_db.commit(txn).is_ok());
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1.clone());
-    txn.insert_utxo(utxo2.clone());
-    assert!(carol_node.blockchain_db.commit(txn).is_ok());
-
-    runtime.block_on(async {
-        let received_utxos = alice_node.outbound_nci.fetch_utxos(vec![hash1.clone()]).await.unwrap();
-        assert_eq!(received_utxos.len(), 1);
-        assert_eq!(received_utxos[0], utxo1);
-
-        let received_utxos = alice_node.outbound_nci.fetch_utxos(vec![hash1, hash2]).await.unwrap();
-        assert_eq!(received_utxos.len(), 2);
-        assert!(received_utxos.contains(&utxo1));
-        assert!(received_utxos.contains(&utxo2));
-
-        alice_node.shutdown().await;
-        bob_node.shutdown().await;
-        carol_node.shutdown().await;
-    });
+    unimplemented!()
+    // let mut runtime = Runtime::new().unwrap();
+    // let factories = CryptoFactories::default();
+    // let temp_dir = tempdir().unwrap();
+    // let (mut alice_node, bob_node, carol_node, _consensus_manager) =
+    //     create_network_with_3_base_nodes(&mut runtime, temp_dir.path().to_str().unwrap());
+    //
+    // let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+    // let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+    // let hash1 = utxo1.hash();
+    // let hash2 = utxo2.hash();
+    //
+    // let mut txn = DbTransaction::new();
+    // txn.insert_utxo(utxo1.clone());
+    // txn.insert_utxo(utxo2.clone());
+    // assert!(bob_node.blockchain_db.commit(txn).is_ok());
+    // let mut txn = DbTransaction::new();
+    // txn.insert_utxo(utxo1.clone());
+    // txn.insert_utxo(utxo2.clone());
+    // assert!(carol_node.blockchain_db.commit(txn).is_ok());
+    //
+    // runtime.block_on(async {
+    //     let received_utxos = alice_node.outbound_nci.fetch_utxos(vec![hash1.clone()]).await.unwrap();
+    //     assert_eq!(received_utxos.len(), 1);
+    //     assert_eq!(received_utxos[0], utxo1);
+    //
+    //     let received_utxos = alice_node.outbound_nci.fetch_utxos(vec![hash1, hash2]).await.unwrap();
+    //     assert_eq!(received_utxos.len(), 2);
+    //     assert!(received_utxos.contains(&utxo1));
+    //     assert!(received_utxos.contains(&utxo2));
+    //
+    //     alice_node.shutdown().await;
+    //     bob_node.shutdown().await;
+    //     carol_node.shutdown().await;
+    // });
 }
 
 #[test]
@@ -827,157 +828,158 @@ fn local_submit_block() {
 
 #[test]
 fn request_and_response_fetch_mmr_node_and_count() {
-    let mut runtime = Runtime::new().unwrap();
-    let factories = CryptoFactories::default();
-    let temp_dir = tempdir().unwrap();
-    let network = Network::LocalNet;
-    let consensus_constants = network.create_consensus_constants();
-    let (block0, _) = create_genesis_block(&factories, &consensus_constants[0]);
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
-        .with_block(block0.clone())
-        .build();
-    let (mut alice_node, mut bob_node, _) = create_network_with_2_base_nodes_with_config(
-        &mut runtime,
-        BlockchainDatabaseConfig::default(),
-        BaseNodeServiceConfig::default(),
-        MmrCacheConfig::default(),
-        MempoolServiceConfig::default(),
-        LivenessConfig::default(),
-        consensus_manager.clone(),
-        temp_dir.path().to_str().unwrap(),
-    );
-
-    let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
-    let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
-    let (utxo3, _) = create_utxo(MicroTari(20_000), &factories, None);
-    let (utxo4, _) = create_utxo(MicroTari(25_000), &factories, None);
-    let kernel1 = create_test_kernel(5.into(), 0);
-    let kernel2 = create_test_kernel(15.into(), 1);
-    let kernel3 = create_test_kernel(20.into(), 2);
-    let utxo_hash1 = utxo1.hash();
-    let utxo_hash2 = utxo2.hash();
-    let utxo_hash3 = utxo3.hash();
-    let utxo_hash4 = utxo4.hash();
-    let rp_hash2 = utxo2.proof.hash();
-    let rp_hash3 = utxo3.proof.hash();
-    let kernel_hash2 = kernel2.hash();
-    let kernel_hash3 = kernel3.hash();
-
-    let mut blocks = vec![block0];
-    let db = &mut bob_node.blockchain_db;
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo1.clone());
-    txn.insert_utxo(utxo2.clone());
-    txn.insert_kernel(kernel1.clone());
-    assert!(db.commit(txn).is_ok());
-    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
-
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo3.clone());
-    txn.spend_utxo(utxo_hash1.clone());
-    txn.insert_kernel(kernel2.clone());
-    assert!(db.commit(txn).is_ok());
-    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
-
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo4.clone());
-    txn.spend_utxo(utxo_hash3.clone());
-    txn.insert_kernel(kernel3.clone());
-    assert!(db.commit(txn).is_ok());
-    generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
-
-    runtime.block_on(async {
-        let node_count = alice_node
-            .outbound_nci
-            .fetch_mmr_node_count(MmrTree::Utxo, 2, None)
-            .await
-            .unwrap();
-        assert_eq!(node_count, 4);
-        let node_count = alice_node
-            .outbound_nci
-            .fetch_mmr_node_count(MmrTree::Kernel, 2, None)
-            .await
-            .unwrap();
-        assert_eq!(node_count, 3);
-        let node_count = alice_node
-            .outbound_nci
-            .fetch_mmr_node_count(MmrTree::RangeProof, 2, None)
-            .await
-            .unwrap();
-        assert_eq!(node_count, 4);
-
-        let (added, deleted) = alice_node
-            .outbound_nci
-            .fetch_mmr_nodes(MmrTree::Utxo, 1, 4, 5, None)
-            .await
-            .unwrap();
-        let deleted = Bitmap::deserialize(&deleted).to_vec();
-        assert_eq!(added, vec![utxo_hash1, utxo_hash2, utxo_hash3, utxo_hash4.clone()]);
-        assert_eq!(deleted, vec![1, 3]);
-        let (added, deleted) = alice_node
-            .outbound_nci
-            .fetch_mmr_nodes(MmrTree::Kernel, 2, 2, 5, None)
-            .await
-            .unwrap();
-        let deleted = Bitmap::deserialize(&deleted).to_vec();
-        assert_eq!(added, vec![kernel_hash2, kernel_hash3]);
-        assert_eq!(deleted.len(), 0);
-        let (added, deleted) = alice_node
-            .outbound_nci
-            .fetch_mmr_nodes(MmrTree::RangeProof, 2, 2, 5, None)
-            .await
-            .unwrap();
-        let deleted = Bitmap::deserialize(&deleted).to_vec();
-        assert_eq!(added, vec![rp_hash2, rp_hash3]);
-        assert_eq!(deleted.len(), 0);
-
-        // Out of bounds queries
-        let node_count = alice_node
-            .outbound_nci
-            .fetch_mmr_node_count(MmrTree::Utxo, 5, None)
-            .await
-            .unwrap();
-        assert_eq!(node_count, 5);
-        let node_count = alice_node
-            .outbound_nci
-            .fetch_mmr_node_count(MmrTree::Kernel, 6, None)
-            .await
-            .unwrap();
-        assert_eq!(node_count, 4);
-        let node_count = alice_node
-            .outbound_nci
-            .fetch_mmr_node_count(MmrTree::RangeProof, 7, None)
-            .await
-            .unwrap();
-        assert_eq!(node_count, 5);
-
-        let (added, deleted) = alice_node
-            .outbound_nci
-            .fetch_mmr_nodes(MmrTree::Utxo, 4, 5, 5, None)
-            .await
-            .unwrap();
-        let deleted = Bitmap::deserialize(&deleted).to_vec();
-        assert_eq!(added.len(), 0);
-        assert_eq!(deleted.len(), 0);
-        let (added, deleted) = alice_node
-            .outbound_nci
-            .fetch_mmr_nodes(MmrTree::Kernel, 4, 5, 5, None)
-            .await
-            .unwrap();
-        let deleted = Bitmap::deserialize(&deleted).to_vec();
-        assert_eq!(added.len(), 0);
-        assert_eq!(deleted.len(), 0);
-        let (added, deleted) = alice_node
-            .outbound_nci
-            .fetch_mmr_nodes(MmrTree::RangeProof, 4, 5, 5, None)
-            .await
-            .unwrap();
-        let deleted = Bitmap::deserialize(&deleted).to_vec();
-        assert_eq!(added.len(), 0);
-        assert_eq!(deleted.len(), 0);
-
-        alice_node.shutdown().await;
-        bob_node.shutdown().await;
-    });
+    // let mut runtime = Runtime::new().unwrap();
+    // let factories = CryptoFactories::default();
+    // let temp_dir = tempdir().unwrap();
+    // let network = Network::LocalNet;
+    // let consensus_constants = network.create_consensus_constants();
+    // let (block0, _) = create_genesis_block(&factories, &consensus_constants[0]);
+    // let consensus_manager = ConsensusManagerBuilder::new(network)
+    //     .with_consensus_constants(consensus_constants[0].clone())
+    //     .with_block(block0.clone())
+    //     .build();
+    // let (mut alice_node, mut bob_node, _) = create_network_with_2_base_nodes_with_config(
+    //     &mut runtime,
+    //     BlockchainDatabaseConfig::default(),
+    //     BaseNodeServiceConfig::default(),
+    //     MmrCacheConfig::default(),
+    //     MempoolServiceConfig::default(),
+    //     LivenessConfig::default(),
+    //     consensus_manager.clone(),
+    //     temp_dir.path().to_str().unwrap(),
+    // );
+    //
+    // let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
+    // let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
+    // let (utxo3, _) = create_utxo(MicroTari(20_000), &factories, None);
+    // let (utxo4, _) = create_utxo(MicroTari(25_000), &factories, None);
+    // let kernel1 = create_test_kernel(5.into(), 0);
+    // let kernel2 = create_test_kernel(15.into(), 1);
+    // let kernel3 = create_test_kernel(20.into(), 2);
+    // let utxo_hash1 = utxo1.hash();
+    // let utxo_hash2 = utxo2.hash();
+    // let utxo_hash3 = utxo3.hash();
+    // let utxo_hash4 = utxo4.hash();
+    // let rp_hash2 = utxo2.proof.hash();
+    // let rp_hash3 = utxo3.proof.hash();
+    // let kernel_hash2 = kernel2.hash();
+    // let kernel_hash3 = kernel3.hash();
+    //
+    // let mut blocks = vec![block0];
+    // let db = &mut bob_node.blockchain_db;
+    // let mut txn = DbTransaction::new();
+    // txn.insert_utxo(utxo1.clone());
+    // txn.insert_utxo(utxo2.clone());
+    // txn.insert_kernel(kernel1.clone());
+    // assert!(db.commit(txn).is_ok());
+    // generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
+    //
+    // let mut txn = DbTransaction::new();
+    // txn.insert_utxo(utxo3.clone());
+    // txn.spend_utxo(utxo_hash1.clone());
+    // txn.insert_kernel(kernel2.clone());
+    // assert!(db.commit(txn).is_ok());
+    // generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
+    //
+    // let mut txn = DbTransaction::new();
+    // txn.insert_utxo(utxo4.clone());
+    // txn.spend_utxo(utxo_hash3.clone());
+    // txn.insert_kernel(kernel3.clone());
+    // assert!(db.commit(txn).is_ok());
+    // generate_block(db, &mut blocks, vec![], &consensus_manager).unwrap();
+    //
+    // runtime.block_on(async {
+    //     let node_count = alice_node
+    //         .outbound_nci
+    //         .fetch_mmr_node_count(MmrTree::Utxo, 2, None)
+    //         .await
+    //         .unwrap();
+    //     assert_eq!(node_count, 4);
+    //     let node_count = alice_node
+    //         .outbound_nci
+    //         .fetch_mmr_node_count(MmrTree::Kernel, 2, None)
+    //         .await
+    //         .unwrap();
+    //     assert_eq!(node_count, 3);
+    //     let node_count = alice_node
+    //         .outbound_nci
+    //         .fetch_mmr_node_count(MmrTree::RangeProof, 2, None)
+    //         .await
+    //         .unwrap();
+    //     assert_eq!(node_count, 4);
+    //
+    //     let (added, deleted) = alice_node
+    //         .outbound_nci
+    //         .fetch_mmr_nodes(MmrTree::Utxo, 1, 4, 5, None)
+    //         .await
+    //         .unwrap();
+    //     let deleted = Bitmap::deserialize(&deleted).to_vec();
+    //     assert_eq!(added, vec![utxo_hash1, utxo_hash2, utxo_hash3, utxo_hash4.clone()]);
+    //     assert_eq!(deleted, vec![1, 3]);
+    //     let (added, deleted) = alice_node
+    //         .outbound_nci
+    //         .fetch_mmr_nodes(MmrTree::Kernel, 2, 2, 5, None)
+    //         .await
+    //         .unwrap();
+    //     let deleted = Bitmap::deserialize(&deleted).to_vec();
+    //     assert_eq!(added, vec![kernel_hash2, kernel_hash3]);
+    //     assert_eq!(deleted.len(), 0);
+    //     let (added, deleted) = alice_node
+    //         .outbound_nci
+    //         .fetch_mmr_nodes(MmrTree::RangeProof, 2, 2, 5, None)
+    //         .await
+    //         .unwrap();
+    //     let deleted = Bitmap::deserialize(&deleted).to_vec();
+    //     assert_eq!(added, vec![rp_hash2, rp_hash3]);
+    //     assert_eq!(deleted.len(), 0);
+    //
+    //     // Out of bounds queries
+    //     let node_count = alice_node
+    //         .outbound_nci
+    //         .fetch_mmr_node_count(MmrTree::Utxo, 5, None)
+    //         .await
+    //         .unwrap();
+    //     assert_eq!(node_count, 5);
+    //     let node_count = alice_node
+    //         .outbound_nci
+    //         .fetch_mmr_node_count(MmrTree::Kernel, 6, None)
+    //         .await
+    //         .unwrap();
+    //     assert_eq!(node_count, 4);
+    //     let node_count = alice_node
+    //         .outbound_nci
+    //         .fetch_mmr_node_count(MmrTree::RangeProof, 7, None)
+    //         .await
+    //         .unwrap();
+    //     assert_eq!(node_count, 5);
+    //
+    //     let (added, deleted) = alice_node
+    //         .outbound_nci
+    //         .fetch_mmr_nodes(MmrTree::Utxo, 4, 5, 5, None)
+    //         .await
+    //         .unwrap();
+    //     let deleted = Bitmap::deserialize(&deleted).to_vec();
+    //     assert_eq!(added.len(), 0);
+    //     assert_eq!(deleted.len(), 0);
+    //     let (added, deleted) = alice_node
+    //         .outbound_nci
+    //         .fetch_mmr_nodes(MmrTree::Kernel, 4, 5, 5, None)
+    //         .await
+    //         .unwrap();
+    //     let deleted = Bitmap::deserialize(&deleted).to_vec();
+    //     assert_eq!(added.len(), 0);
+    //     assert_eq!(deleted.len(), 0);
+    //     let (added, deleted) = alice_node
+    //         .outbound_nci
+    //         .fetch_mmr_nodes(MmrTree::RangeProof, 4, 5, 5, None)
+    //         .await
+    //         .unwrap();
+    //     let deleted = Bitmap::deserialize(&deleted).to_vec();
+    //     assert_eq!(added.len(), 0);
+    //     assert_eq!(deleted.len(), 0);
+    //
+    //     alice_node.shutdown().await;
+    //     bob_node.shutdown().await;
+    // });
+    unimplemented!()
 }

@@ -338,7 +338,7 @@ pub enum HeaderSyncError {
 }
 
 fn calc_sync_height(network_tip: u64, local_metadata: &ChainMetadata, horizon_offset: u64) -> u64 {
-    let pruning_horizon = local_metadata.pruning_horizon;
+    let pruning_horizon = local_metadata.pruning_horizon();
     let target_height = network_tip.saturating_sub(pruning_horizon + horizon_offset);
     // Can never sync to lower than our current network tip
     cmp::max(target_height, local_metadata.height_of_longest_chain())

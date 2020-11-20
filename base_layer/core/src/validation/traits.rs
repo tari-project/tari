@@ -29,7 +29,7 @@ pub type Validator<T> = Box<dyn Validation<T>>;
 /// validate function. Typically this will be an implementation of the `BlockchainBackend` trait.
 pub trait StatefulValidation<T, B>: Send + Sync {
     /// General validation code that can run independent of external state
-    fn validate(&self, item: &T, db: &B) -> Result<(), ValidationError>;
+    fn validate(&self, item: &T, backend: &B) -> Result<(), ValidationError>;
 }
 
 /// The core validation trait.

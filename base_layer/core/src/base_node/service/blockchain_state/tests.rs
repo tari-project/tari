@@ -22,17 +22,18 @@
 
 use crate::{
     base_node::service::blockchain_state::{service::BlockchainStateService, BlockchainStateServiceHandle},
-    chain_storage::{BlockchainDatabase, MemoryDatabase},
+    chain_storage::BlockchainDatabase,
     tari_utilities::Hashable,
-    test_helpers::{blockchain::create_new_blockchain, create_block},
+    test_helpers::{
+        blockchain::{create_new_blockchain, create_store, TempDatabase},
+        create_block,
+    },
     transactions::types::HashDigest,
 };
 use futures::channel::mpsc;
 use tokio::task;
 
-type TestDb = BlockchainDatabase<MemoryDatabase<HashDigest>>;
-
-fn setup() -> (BlockchainStateServiceHandle, TestDb) {
+fn setup() -> (BlockchainStateServiceHandle, BlockchainDatabase<TempDatabase>) {
     let db = create_new_blockchain();
     let (request_tx, request_rx) = mpsc::channel(1);
     let service = BlockchainStateService::new(db.clone(), request_rx);
@@ -40,7 +41,7 @@ fn setup() -> (BlockchainStateServiceHandle, TestDb) {
     (BlockchainStateServiceHandle::new(request_tx), db)
 }
 
-fn add_many_chained_blocks(size: usize, db: &TestDb) {
+fn add_many_chained_blocks(size: usize, db: &BlockchainDatabase<TempDatabase>) {
     let mut prev_block_hash = db.fetch_block(0).unwrap().block.hash();
     for i in 1..=size as u64 {
         let mut block = create_block(1, i, vec![]);

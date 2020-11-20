@@ -22,16 +22,16 @@
 
 use crate::chain_storage::error::ChainStorageError;
 use lmdb_zero::{
+    del,
     error::{self, LmdbResultExt},
     put,
-    ConstAccessor,
+    traits::{AsLmdbBytes, FromLmdbBytes},
     ConstTransaction,
     Cursor,
     CursorIter,
     Database,
-    Environment,
+    Error,
     MaybeOwned,
-    ReadTransaction,
     WriteTransaction,
 };
 use log::*;
@@ -64,56 +64,116 @@ where T: DeserializeOwned {
 
 pub fn lmdb_insert<K, V>(txn: &WriteTransaction<'_>, db: &Database, key: &K, val: &V) -> Result<(), ChainStorageError>
 where
-    K: Serialize,
+    K: AsLmdbBytes + ?Sized,
     V: Serialize,
 {
-    let key_buf = serialize(key)?;
     let val_buf = serialize(val)?;
-    txn.access()
-        .put(&db, &key_buf, &val_buf, put::NOOVERWRITE)
-        .map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Could not add insert value into lmdb transaction: {:?}", e
-            );
-            ChainStorageError::AccessError(e.to_string())
-        })
+    txn.access().put(&db, key, &val_buf, put::NOOVERWRITE).map_err(|e| {
+        error!(
+            target: LOG_TARGET,
+            "Could not add insert value into lmdb transaction: {:?}", e
+        );
+        ChainStorageError::AccessError(e.to_string())
+    })
+}
+
+pub fn lmdb_insert_dup<K, V>(
+    txn: &WriteTransaction<'_>,
+    db: &Database,
+    key: &K,
+    val: &V,
+) -> Result<(), ChainStorageError>
+where
+    K: AsLmdbBytes + ?Sized,
+    V: Serialize,
+{
+    let val_buf = serialize(val)?;
+    txn.access().put(&db, key, &val_buf, put::Flags::empty()).map_err(|e| {
+        error!(
+            target: LOG_TARGET,
+            "Could not add insert value into lmdb transaction: {:?}", e
+        );
+        ChainStorageError::AccessError(e.to_string())
+    })
 }
 
 pub fn lmdb_replace<K, V>(txn: &WriteTransaction<'_>, db: &Database, key: &K, val: &V) -> Result<(), ChainStorageError>
 where
-    K: Serialize,
+    K: AsLmdbBytes + ?Sized,
     V: Serialize,
 {
-    let key_buf = serialize(key)?;
     let val_buf = serialize(val)?;
-    txn.access()
-        .put(&db, &key_buf, &val_buf, put::Flags::empty())
-        .map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Could not add replace value into lmdb transaction: {:?}", e
-            );
-            ChainStorageError::AccessError(e.to_string())
-        })
+    txn.access().put(&db, key, &val_buf, put::Flags::empty()).map_err(|e| {
+        error!(
+            target: LOG_TARGET,
+            "Could not add replace value into lmdb transaction: {:?}", e
+        );
+        ChainStorageError::AccessError(e.to_string())
+    })
 }
 
 /// Deletes the given key. An error is returned if the key does not exist
 pub fn lmdb_delete<K>(txn: &WriteTransaction<'_>, db: &Database, key: &K) -> Result<(), ChainStorageError>
-where K: Serialize {
-    let key_buf = serialize(key)?;
-    txn.access().del_key(&db, &key_buf)?;
+where K: AsLmdbBytes + ?Sized {
+    txn.access().del_key(&db, key)?;
     Ok(())
 }
 
-pub fn lmdb_get_txn<K, V>(txn: &ConstTransaction<'_>, db: &Database, key: &K) -> Result<Option<V>, ChainStorageError>
+pub fn lmdb_delete_key_value<K, V>(
+    txn: &WriteTransaction<'_>,
+    db: &Database,
+    key: &K,
+    value: &V,
+) -> Result<(), ChainStorageError>
 where
-    K: Serialize,
+    K: AsLmdbBytes + ?Sized,
+    V: Serialize,
+{
+    txn.access().del_item(&db, key, &serialize(value)?)?;
+    Ok(())
+}
+
+pub fn lmdb_delete_keys_starting_with<V>(
+    txn: &WriteTransaction<'_>,
+    db: &Database,
+    key: &str,
+) -> Result<Vec<V>, ChainStorageError>
+where
+    V: DeserializeOwned,
+{
+    let mut access = txn.access();
+    let mut cursor = txn.cursor(db).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        ChainStorageError::AccessError(e.to_string())
+    })?;
+
+    debug!(target: LOG_TARGET, "Deleting rows matching pattern: {}", key);
+
+    let mut row = match cursor.seek_range_k(&access, key) {
+        Ok(r) => r,
+        Err(_) => return Ok(vec![]),
+    };
+    trace!(target: LOG_TARGET, "Key: {}", row.0);
+    let mut result = vec![];
+    while row.0.starts_with(key) {
+        let val = deserialize::<V>(row.1)?;
+        result.push(val);
+        cursor.del(&mut access, del::NODUPDATA)?;
+        row = match cursor.next(&access) {
+            Ok(r) => r,
+            Err(_) => break,
+        }
+    }
+    Ok(result)
+}
+
+pub fn lmdb_get<K, V>(txn: &ConstTransaction<'_>, db: &Database, key: &K) -> Result<Option<V>, ChainStorageError>
+where
+    K: AsLmdbBytes + ?Sized,
     V: DeserializeOwned,
 {
     let access = txn.access();
-    let key_buf = serialize(key)?;
-    match access.get(&db, &key_buf).to_opt() {
+    match access.get(&db, key).to_opt() {
         Ok(None) => Ok(None),
         Err(e) => {
             error!(target: LOG_TARGET, "Could not get value from lmdb: {:?}", e);
@@ -132,20 +192,63 @@ where
     }
 }
 
-pub fn lmdb_get<K, V>(env: &Environment, db: &Database, key: &K) -> Result<Option<V>, ChainStorageError>
+pub fn lmdb_get_multiple<K, V>(txn: &ConstTransaction<'_>, db: &Database, key: &K) -> Result<Vec<V>, ChainStorageError>
 where
-    K: Serialize,
+    K: AsLmdbBytes + FromLmdbBytes + ?Sized,
     V: DeserializeOwned,
 {
-    let txn = ReadTransaction::new(env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-    lmdb_get_txn(&txn, db, key)
+    let access = txn.access();
+    let mut cursor = txn.cursor(db).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        ChainStorageError::AccessError(e.to_string())
+    })?;
+    let mut result = vec![];
+    let row = match cursor.seek_k(&access, key) {
+        Ok(r) => r,
+        Err(e) => {
+            if e == Error::Code(error::NOTFOUND) {
+                return Ok(result);
+            }
+            error!(target: LOG_TARGET, "Error in lmdb_get_multiple:{}", e.to_string());
+            // No matches
+            return Err(e.into());
+        },
+    };
+    result.push(deserialize(row)?);
+    loop {
+        let row = match cursor.next_dup::<'_, K, [u8]>(&access) {
+            Ok(r) => r.1,
+            Err(_) => break,
+        };
+        result.push(deserialize(row)?);
+    }
+    Ok(result)
 }
 
-pub fn lmdb_exists_txn<K>(txn: &ConstTransaction<'_>, db: &Database, key: &K) -> Result<bool, ChainStorageError>
-where K: Serialize {
+pub fn lmdb_last<V>(txn: &ConstTransaction<'_>, db: &Database) -> Result<Option<V>, ChainStorageError>
+where V: DeserializeOwned {
+    let mut cursor = txn.cursor(db)?;
     let access = txn.access();
-    let key_buf = serialize(key)?;
-    match access.get::<[u8], [u8]>(&db, &key_buf).to_opt() {
+    match cursor.last::<[u8], [u8]>(&access).to_opt() {
+        Err(e) => {
+            error!(target: LOG_TARGET, "Could not get value from lmdb: {:?}", e);
+            Err(ChainStorageError::AccessError(e.to_string()))
+        },
+        Ok(None) => Ok(None),
+        Ok(Some((_k, v))) => deserialize(v).map(|v| Some(v)).map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Could not could not deserialize value from lmdb: {:?}", e
+            );
+            ChainStorageError::AccessError(e.to_string())
+        }),
+    }
+}
+
+pub fn lmdb_exists<K>(txn: &ConstTransaction<'_>, db: &Database, key: &K) -> Result<bool, ChainStorageError>
+where K: AsLmdbBytes + ?Sized {
+    let access = txn.access();
+    match access.get::<K, [u8]>(&db, key).to_opt() {
         Ok(None) => Ok(false),
         Err(e) => {
             error!(target: LOG_TARGET, "Could not read from lmdb: {:?}", e);
@@ -155,14 +258,7 @@ where K: Serialize {
     }
 }
 
-pub fn lmdb_exists<K>(env: &Environment, db: &Database, key: &K) -> Result<bool, ChainStorageError>
-where K: Serialize {
-    let txn = ReadTransaction::new(env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-    lmdb_exists_txn(&txn, db, key)
-}
-
-pub fn lmdb_len(env: &Environment, db: &Database) -> Result<usize, ChainStorageError> {
-    let txn = ReadTransaction::new(env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+pub fn lmdb_len(txn: &ConstTransaction<'_>, db: &Database) -> Result<usize, ChainStorageError> {
     let stats = txn.db_stat(&db).map_err(|e| {
         error!(target: LOG_TARGET, "Could not read length from lmdb: {:?}", e);
         ChainStorageError::AccessError(e.to_string())
@@ -170,48 +266,87 @@ pub fn lmdb_len(env: &Environment, db: &Database) -> Result<usize, ChainStorageE
     Ok(stats.entries)
 }
 
-pub fn lmdb_iter_next<K, V>(c: &mut Cursor, access: &ConstAccessor) -> Result<(K, V), error::Error>
+pub fn lmdb_fetch_keys_starting_with<V>(
+    key: &str,
+    txn: &ConstTransaction<'_>,
+    db: &Database,
+) -> Result<Vec<V>, ChainStorageError>
 where
-    K: DeserializeOwned,
     V: DeserializeOwned,
 {
-    let (key_bytes, val_bytes) = c.next(access)?;
-    let key = deserialize::<K>(key_bytes)?;
-    let val = deserialize::<V>(val_bytes)?;
-    Ok((key, val))
-}
-
-pub fn lmdb_for_each<F, K, V>(env: &Environment, db: &Database, mut f: F) -> Result<(), ChainStorageError>
-where
-    F: FnMut(Result<(K, V), ChainStorageError>),
-    K: DeserializeOwned,
-    V: DeserializeOwned,
-{
-    let txn = ReadTransaction::new(env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
     let access = txn.access();
-    let cursor = txn.cursor(db).map_err(|e| {
+    let mut cursor = txn.cursor(db).map_err(|e| {
         error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
         ChainStorageError::AccessError(e.to_string())
     })?;
-    let head = |c: &mut Cursor, a: &ConstAccessor| {
-        let (key_bytes, val_bytes) = c.first(a)?;
-        let key = deserialize::<K>(key_bytes)?;
-        let val = deserialize::<V>(val_bytes)?;
-        Ok((key, val))
+
+    trace!(target: LOG_TARGET, "Getting rows matching pattern: {}", key);
+
+    let mut row = match cursor.seek_range_k(&access, key) {
+        Ok(r) => r,
+        Err(_) => return Ok(vec![]),
     };
-    let cursor = MaybeOwned::Owned(cursor);
-    let iter = CursorIter::new(cursor, &access, head, lmdb_iter_next).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not get next cursor from lmdb: {:?}", e);
-        ChainStorageError::AccessError(e.to_string())
-    })?;
-    for p in iter {
-        f(p.map_err(|e| ChainStorageError::AccessError(e.to_string())));
+    trace!(target: LOG_TARGET, "Key: {}", row.0);
+    let mut result = vec![];
+    while row.0.starts_with(key) {
+        let val = deserialize::<V>(row.1)?;
+        result.push(val);
+        row = match cursor.next(&access) {
+            Ok(r) => r,
+            Err(_) => break,
+        }
     }
-    Ok(())
+    Ok(result)
 }
 
-pub fn lmdb_clear_db(txn: &WriteTransaction<'_>, db: &Database) -> Result<(), ChainStorageError> {
-    txn.access()
-        .clear_db(&db)
-        .map_err(|e| ChainStorageError::AccessError(e.to_string()))
+pub fn lmdb_list_keys(txn: &ConstTransaction<'_>, db: &Database) -> Result<Vec<Vec<u8>>, ChainStorageError> {
+    let access = txn.access();
+    let mut cursor = txn.cursor(db).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        ChainStorageError::AccessError(e.to_string())
+    })?;
+    let mut iter = CursorIter::new(
+        MaybeOwned::Borrowed(&mut cursor),
+        &access,
+        |c, a| c.first(a),
+        Cursor::next::<[u8], [u8]>,
+    )?;
+
+    let mut result = vec![];
+    while let Some(row) = iter.next() {
+        result.push(Vec::from(row?.0));
+    }
+    Ok(result)
+}
+
+pub fn lmdb_filter_map_values<F, V, R>(
+    txn: &ConstTransaction<'_>,
+    db: &Database,
+    f: F,
+) -> Result<Vec<R>, ChainStorageError>
+where
+    F: Fn(V) -> Result<Option<R>, ChainStorageError>,
+    V: DeserializeOwned,
+{
+    let access = txn.access();
+    let mut cursor = txn.cursor(db).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        ChainStorageError::AccessError(e.to_string())
+    })?;
+    let mut iter = CursorIter::new(
+        MaybeOwned::Borrowed(&mut cursor),
+        &access,
+        |c, a| c.first(a),
+        Cursor::next::<[u8], [u8]>,
+    )?;
+
+    let mut result = vec![];
+    while let Some(row) = iter.next() {
+        // result.push(Vec::from(row?.0));
+        let val = deserialize::<V>(row?.1)?;
+        if let Some(r) = f(val)? {
+            result.push(r);
+        }
+    }
+    Ok(result)
 }

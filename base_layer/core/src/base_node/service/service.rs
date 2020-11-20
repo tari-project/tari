@@ -344,7 +344,14 @@ where B: BlockchainBackend + 'static
         let inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
             let (request, reply_tx) = request_context.split();
-            let result = reply_tx.send(inbound_nch.handle_request(&request).await);
+            let res = inbound_nch.handle_request(&request).await;
+            if let Err(ref e) = res {
+                error!(
+                    target: LOG_TARGET,
+                    "BaseNodeService failed to handle local request {:?}", e
+                );
+            }
+            let result = reply_tx.send(res);
             if let Err(e) = result {
                 error!(
                     target: LOG_TARGET,

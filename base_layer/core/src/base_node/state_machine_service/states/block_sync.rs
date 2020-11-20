@@ -181,10 +181,6 @@ pub enum BlockSyncError {
     ForkChainNotLinked,
     #[error("Invalid chain link error")]
     InvalidChainLink,
-    #[error("Empty blockchain error")]
-    EmptyBlockchain,
-    #[error("Empty network best block error")]
-    EmptyNetworkBestBlock,
     #[error("No sync peers error")]
     NoSyncPeers,
     #[error("Chain storage error: `{0}`")]
@@ -250,10 +246,6 @@ impl BestChainMetadataBlockSync {
                 warn!(target: LOG_TARGET, "No remaining sync peers.",);
                 StateEvent::BlockSyncFailure
             },
-            Err(BlockSyncError::EmptyNetworkBestBlock) => {
-                warn!(target: LOG_TARGET, "An empty network best block hash was received.",);
-                StateEvent::BlockSyncFailure
-            },
             Err(BlockSyncError::CommsInterfaceError(e)) => {
                 warn!(target: LOG_TARGET, "Unable to perform network queries: {}", e);
                 StateEvent::BlockSyncFailure
@@ -272,101 +264,97 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     let local_metadata = shared.db.get_chain_metadata()?;
     // Filter the peers we can sync from: any peer which has an effective pruning horizon less than this nodes
     // current height
-    sync_peers.retain(|p| p.chain_metadata.effective_pruned_height <= local_metadata.height_of_longest_chain());
+    sync_peers.retain(|p| p.chain_metadata.effective_pruned_height() <= local_metadata.height_of_longest_chain());
     if sync_peers.is_empty() {
         return Err(BlockSyncError::NoSyncPeers);
     }
 
-    if let Some(local_block_hash) = local_metadata.best_block.as_ref() {
-        if let Some(network_block_hash) = network_metadata.best_block.as_ref() {
-            debug!(
-                target: LOG_TARGET,
-                "Checking if current chain lagging on best network chain."
-            );
-            let local_tip_height = local_metadata.height_of_longest_chain();
-            let network_tip_height = network_metadata.height_of_longest_chain();
-            let mut sync_height = local_tip_height + 1;
-            if check_chain_split(
-                shared,
-                sync_peers,
-                local_tip_height,
-                network_tip_height,
-                local_block_hash,
-                network_block_hash,
-            )
-            .await?
-            {
-                debug!(target: LOG_TARGET, "Chain split detected, finding chain split height.");
-                let min_tip_height = min(local_tip_height, network_tip_height);
-                sync_height = find_chain_split_height(shared, sync_peers, min_tip_height).await?;
-                info!(target: LOG_TARGET, "Chain split found at height {}.", sync_height);
-            } else {
-                debug!(
-                    target: LOG_TARGET,
-                    "Block hash {} is common between our chain and the network.",
-                    local_block_hash.to_hex()
-                );
-            }
+    let local_block_hash = local_metadata.best_block();
 
-            shared.info = StateInfo::BlockSync(BlockSyncInfo::new(
-                network_tip_height,
-                local_tip_height,
-                sync_peers.clone(),
-            ));
-            shared.publish_event_info();
-
-            // Searching through the orphan database for every block to be added during a large block sync can
-            // be inefficient - this is one way to optimize it by clearing out the database before hand
-            if shared.config.block_sync_config.orphan_db_clean_out_threshold > 0 &&
-                network_tip_height as i64 - sync_height as i64 >
-                    shared.config.block_sync_config.orphan_db_clean_out_threshold as i64
-            {
-                match async_db::cleanup_all_orphans(shared.db.clone()).await {
-                    Ok(_) => info!(
-                        target: LOG_TARGET,
-                        "Orphan database cleaned out in preparation for multiple blocks sync ({} blocks)",
-                        network_tip_height as i64 - sync_height as i64
-                    ),
-                    Err(e) => warn!(
-                        target: LOG_TARGET,
-                        "Orphan database could not be cleaned out ({} blocks) in preparation for multiple blocks \
-                         sync: {:?}.",
-                        network_tip_height as i64 - sync_height as i64,
-                        e,
-                    ),
-                }
-            }
-
-            while sync_height <= network_tip_height {
-                shared.info = StateInfo::BlockSync(BlockSyncInfo::new(
-                    network_tip_height,
-                    local_tip_height,
-                    sync_peers.clone(),
-                ));
-                shared.publish_event_info();
-
-                let max_height = min(
-                    sync_height + (shared.config.block_sync_config.block_request_size - 1) as u64,
-                    network_tip_height,
-                );
-                let block_nums: Vec<u64> = (sync_height..=max_height).collect();
-                let block_nums_count = block_nums.len() as u64;
-                request_and_add_blocks(shared, sync_peers, block_nums).await?;
-                sync_height += block_nums_count;
-            }
-            let metadata = async_db::get_chain_metadata(shared.db()).await?;
-            let last_block = async_db::fetch_block(shared.db(), metadata.height_of_longest_chain()).await?;
-
-            check_actual_difficulty_matches_advertised(shared, &last_block.block.header, sync_peers).await?;
-
-            shared
-                .local_node_interface
-                .publish_block_event(BlockEvent::BlockSyncComplete(Arc::new(last_block.block)));
-            return Ok(());
-        }
-        return Err(BlockSyncError::EmptyNetworkBestBlock);
+    let network_block_hash = network_metadata.best_block();
+    debug!(
+        target: LOG_TARGET,
+        "Checking if current chain lagging on best network chain."
+    );
+    let local_tip_height = local_metadata.height_of_longest_chain();
+    let network_tip_height = network_metadata.height_of_longest_chain();
+    let mut sync_height = local_tip_height + 1;
+    if check_chain_split(
+        shared,
+        sync_peers,
+        local_tip_height,
+        network_tip_height,
+        local_block_hash,
+        network_block_hash,
+    )
+    .await?
+    {
+        debug!(target: LOG_TARGET, "Chain split detected, finding chain split height.");
+        let min_tip_height = min(local_tip_height, network_tip_height);
+        sync_height = find_chain_split_height(shared, sync_peers, min_tip_height).await?;
+        info!(target: LOG_TARGET, "Chain split found at height {}.", sync_height);
+    } else {
+        debug!(
+            target: LOG_TARGET,
+            "Block hash {} is common between our chain and the network.",
+            local_block_hash.to_hex()
+        );
     }
-    Err(BlockSyncError::EmptyBlockchain)
+
+    shared.info = StateInfo::BlockSync(BlockSyncInfo::new(
+        network_tip_height,
+        local_tip_height,
+        sync_peers.clone(),
+    ));
+    shared.publish_event_info();
+
+    // Searching through the orphan database for every block to be added during a large block sync can
+    // be inefficient - this is one way to optimize it by clearing out the database before hand
+    if shared.config.block_sync_config.orphan_db_clean_out_threshold > 0 &&
+        network_tip_height as i64 - sync_height as i64 >
+            shared.config.block_sync_config.orphan_db_clean_out_threshold as i64
+    {
+        match async_db::cleanup_all_orphans(shared.db.clone()).await {
+            Ok(_) => info!(
+                target: LOG_TARGET,
+                "Orphan database cleaned out in preparation for multiple blocks sync ({} blocks)",
+                network_tip_height as i64 - sync_height as i64
+            ),
+            Err(e) => warn!(
+                target: LOG_TARGET,
+                "Orphan database could not be cleaned out ({} blocks) in preparation for multiple blocks sync: {:?}.",
+                network_tip_height as i64 - sync_height as i64,
+                e,
+            ),
+        }
+    }
+
+    while sync_height <= network_tip_height {
+        shared.info = StateInfo::BlockSync(BlockSyncInfo::new(
+            network_tip_height,
+            local_tip_height,
+            sync_peers.clone(),
+        ));
+        shared.publish_event_info();
+
+        let max_height = min(
+            sync_height + (shared.config.block_sync_config.block_request_size - 1) as u64,
+            network_tip_height,
+        );
+        let block_nums: Vec<u64> = (sync_height..=max_height).collect();
+        let block_nums_count = block_nums.len() as u64;
+        request_and_add_blocks(shared, sync_peers, block_nums).await?;
+        sync_height += block_nums_count;
+    }
+    let metadata = async_db::get_chain_metadata(shared.db()).await?;
+    let last_block = async_db::fetch_block(shared.db(), metadata.height_of_longest_chain()).await?;
+
+    check_actual_difficulty_matches_advertised(shared, &last_block.block.header, sync_peers).await?;
+
+    shared
+        .local_node_interface
+        .publish_block_event(BlockEvent::BlockSyncComplete(Arc::new(last_block.block)));
+    return Ok(());
 }
 
 async fn check_actual_difficulty_matches_advertised<B: BlockchainBackend + 'static>(
@@ -381,12 +369,9 @@ async fn check_actual_difficulty_matches_advertised<B: BlockchainBackend + 'stat
     let peers_to_ban = sync_peers
         .iter()
         .filter_map(|p| {
-            let peer_acc_difficulty = p.chain_metadata.accumulated_difficulty.as_ref().expect(
-                "accumulated_difficulty was None in block sync. This is a bug in the component that provided the sync \
-                 peers.",
-            );
+            let peer_acc_difficulty = p.chain_metadata.accumulated_difficulty();
 
-            if peer_acc_difficulty > &actual_acc_difficulty {
+            if peer_acc_difficulty > actual_acc_difficulty {
                 warn!(
                     target: LOG_TARGET,
                     "Peer `{}` advertised a higher difficulty than it was able to provide. Advertised: {} Actual: {}. \
@@ -395,7 +380,7 @@ async fn check_actual_difficulty_matches_advertised<B: BlockchainBackend + 'stat
                     peer_acc_difficulty,
                     actual_acc_difficulty
                 );
-                Some((p.clone(), *peer_acc_difficulty))
+                Some((p.clone(), peer_acc_difficulty))
             } else {
                 None
             }
@@ -466,8 +451,8 @@ async fn find_chain_split_height<B: BlockchainBackend + 'static>(
         .await?;
         for header in headers {
             // Check if header is linked to local chain
-            if let Ok(prev_header) =
-                async_db::fetch_header_by_block_hash(shared.db.clone(), header.prev_hash.clone()).await
+            if let Some(prev_header) =
+                async_db::fetch_header_by_block_hash(shared.db.clone(), header.prev_hash.clone()).await?
             {
                 return if prev_header.height + 1 == header.height {
                     Ok(header.height)

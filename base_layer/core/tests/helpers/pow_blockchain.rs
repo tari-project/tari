@@ -28,7 +28,7 @@ use monero::{
 };
 use tari_core::{
     blocks::Block,
-    chain_storage::{BlockchainBackend, BlockchainDatabase, MemoryDatabase},
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{
         get_target_difficulty,
@@ -38,7 +38,7 @@ use tari_core::{
         DifficultyAdjustment,
         PowAlgorithm,
     },
-    transactions::types::HashDigest,
+    test_helpers::blockchain::TempDatabase,
 };
 
 pub fn create_test_pow_blockchain<T: BlockchainBackend>(
@@ -97,7 +97,7 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
             new_block.header.pow.pow_data = serialized.clone();
         }
 
-        let height = db.get_chain_metadata().unwrap().height_of_longest_chain.unwrap();
+        let height = db.get_chain_metadata().unwrap().height_of_longest_chain();
         let target_difficulties = db
             .fetch_target_difficulties(pow_algo, height, constants.get_difficulty_block_window() as usize)
             .unwrap();
@@ -117,7 +117,7 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
 
 // Calculated the accumulated difficulty for the selected blocks in the blockchain db.
 pub fn calculate_accumulated_difficulty(
-    db: &BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    db: &BlockchainDatabase<TempDatabase>,
     pow_algo: PowAlgorithm,
     heights: Vec<u64>,
     consensus_constants: &ConsensusConstants,

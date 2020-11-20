@@ -21,9 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{blocks::BlockHeader, proof_of_work::Difficulty, U256};
+use log::*;
 use sha3::{Digest, Sha3_256};
-use tari_crypto::tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 
+const LOG_TARGET: &str = "c::bn::pow::sha3";
 const MAX_TARGET: U256 = U256::MAX;
 
 /// A simple sha3 proof of work. This is currently intended to be used for testing and perhaps Testnet until
@@ -54,6 +56,7 @@ pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
 pub fn sha3_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
     let hash = sha3_hash(header);
     let hash = Sha3_256::digest(&hash);
+    trace!(target: LOG_TARGET, "Sha3 hash result: {}", hash.to_vec().to_hex());
     let scalar = U256::from_big_endian(&hash); // Big endian so the hash has leading zeroes
     let result = MAX_TARGET / scalar;
     let difficulty = result.low_u64().into();

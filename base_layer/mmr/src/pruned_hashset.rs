@@ -22,6 +22,7 @@
 
 use crate::{common::find_peaks, error::MerkleMountainRangeError, ArrayLike, Hash, MerkleMountainRange};
 use digest::Digest;
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
 /// This is a specialised struct that represents a pruned hash set for Merkle Mountain Ranges.
@@ -33,7 +34,7 @@ use std::convert::TryFrom;
 /// MMR with n_0 leaf nodes.
 ///
 /// The awesome thing is that this struct can be dropped into [MerkleMountainRange] as a backend and it. just. works.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct PrunedHashSet {
     /// The size of the base MMR. Only peaks are available for indices less than this value
     base_offset: usize,

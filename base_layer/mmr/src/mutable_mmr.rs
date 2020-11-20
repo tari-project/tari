@@ -58,9 +58,9 @@ where
     B: ArrayLike<Value = Hash>,
 {
     /// Create a new mutable MMR using the backend provided
-    pub fn new(mmr_backend: B, deleted: Bitmap) -> MutableMmr<D, B> {
+    pub fn new(mmr_backend: B, deleted: Bitmap) -> Result<MutableMmr<D, B>, MerkleMountainRangeError> {
         let mmr = MerkleMountainRange::new(mmr_backend);
-        MutableMmr { mmr, deleted, size: 0 }
+        Ok(MutableMmr {  size:  mmr.get_leaf_count()? as u32, mmr, deleted })
     }
 
     /// Clear the MutableMmr and assign the MMR state from the set of leaf_hashes and deleted nodes given in `state`.

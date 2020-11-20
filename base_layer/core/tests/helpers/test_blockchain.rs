@@ -31,16 +31,16 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{collections::HashMap, sync::Arc};
 use tari_core::{
-    chain_storage::{BlockAddResult, BlockchainDatabase, MemoryDatabase},
+    chain_storage::{BlockAddResult, BlockchainDatabase},
     consensus::{ConsensusManager, Network},
-    transactions::types::HashDigest,
+    test_helpers::blockchain::TempDatabase,
 };
 use tari_crypto::tari_utilities::Hashable;
 
 const LOG_TARGET: &str = "tari_core::tests::helpers::test_blockchain";
 
 pub struct TestBlockchain {
-    store: BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    store: BlockchainDatabase<TempDatabase>,
     blocks: HashMap<String, BlockProxy>,
     hash_to_block: HashMap<Vec<u8>, String>,
     consensus_manager: ConsensusManager,
@@ -117,7 +117,7 @@ impl TestBlockchain {
 
         while tip.height > 0 {
             result.push(self.get_block_by_hash(&tip.hash()).unwrap().name.as_str());
-            tip = self.store.fetch_header_by_block_hash(tip.prev_hash).unwrap();
+            tip = self.store.fetch_header_by_block_hash(tip.prev_hash).unwrap().unwrap();
         }
         result.push(self.get_block_by_hash(&tip.hash()).unwrap().name.as_str());
 

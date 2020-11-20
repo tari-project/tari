@@ -24,8 +24,16 @@ const tariWallet = protoDescriptor2.tari.rpc;
 walletClient = new tariWallet.Wallet('127.0.0.1:50061', grpc.credentials.createInsecure());
 grpc_promise.promisifyAll(walletClient);
 
+describe('Transaction builder', function() {
+   it("Can generate a signature challenge", async function(){
+       let tb = new TransactionBuilder();
+       tb.buildChallenge("f4aad10d3ba02cafb490c943c689c98895bd87197de841450dffb7ad28a17238", 1, 60);
+   });
+});
+
+
 describe('Base Node',function () {
-    this.timeout(10000);
+    this.timeout(30000);
 
     let client;
     before(async function() {
@@ -97,29 +105,32 @@ describe('Base Node',function () {
             let builder = new TransactionBuilder();
             const privateKey = builder.generatePrivateKey("test");
             let blockTemplate = await baseNode.getBlockTemplate();
-            let transaction = builder.generateCoinbase(blockTemplate.block_reward, privateKey, 60);
+            console.log("Block template:", blockTemplate);
+            let transaction = builder.generateCoinbase(blockTemplate.block_reward, privateKey, 0, 60);
             return baseNode.submitBlockWithCoinbase(blockTemplate.block, transaction).then(async () =>
             {
                 let tip = await baseNode.getTipHeight();
                 console.log("Tip:", tip);
-                expect(tip).to.equal(blockTemplate.block.height);
+                expect(tip).to.equal(parseInt(blockTemplate.block.header.height));
             });
         });
     });
 
     describe('Create a really long chain', function () {
         this.timeout(60000);
-        it.skip('describe', async function () {
+        it('describe', async function () {
             let b = await (new BaseNodeProcess()).startAndConnect();
-            for (var i=0;i<300;i++) {
-                await b.mineBlock(walletClient);
+            for (var i=0;i<3000;i++) {
+                console.log("Mining:", i);
+                await b.mineBlock();
+
             }
         })
 
     });
 
     describe('Start miner and seed nodes', function() {
-        this.timeout(60000);
+        this.timeout(6000);
         it("block is propagated", async function(){
             var seeds = [];
             var proc = new BaseNodeProcess();
@@ -148,5 +159,7 @@ describe('Base Node',function () {
             await waitFor(async() => seedClient.getTipHeight(), 2, 45000);
             expect(await seedClient.getTipHeight()).to.equal(2);
         });
-    })
+    });
+
+
 });

@@ -35,6 +35,7 @@ use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, Stream, StreamExt};
 use log::*;
 use rand::rngs::OsRng;
+use std::convert::TryInto;
 use tari_comms::peer_manager::Peer;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
 use tari_core::{
@@ -262,7 +263,11 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
                     let now = Utc::now().naive_utc();
                     let state = BaseNodeState {
                         is_synced: Some(message.is_synced),
-                        chain_metadata: Some(chain_metadata.into()),
+                        chain_metadata: Some(
+                            chain_metadata
+                                .try_into()
+                                .map_err(|_| BaseNodeServiceError::UnexpectedApiResponse)?,
+                        ),
                         updated: Some(now),
                     };
                     self.publish_event(BaseNodeEvent::BaseNodeState(state.clone()));

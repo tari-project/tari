@@ -19,7 +19,6 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use crate::{
     blocks::{
         blockheader::{BlockHeader, BlockHeaderValidationError},
@@ -27,11 +26,11 @@ use crate::{
         BlockValidationError,
         NewBlockTemplate,
     },
-    chain_storage::{calculate_mmr_roots, BlockchainBackend, DbKey},
+    chain_storage::{calculate_mmr_roots, BlockAccumulatedData, BlockchainBackend, MmrTree},
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::types::CryptoFactories,
     validation::{
-        helpers::{check_achieved_and_target_difficulty, check_median_timestamp, is_stxo},
+        helpers::{check_achieved_and_target_difficulty, check_median_timestamp},
         StatefulValidation,
         Validation,
         ValidationError,
@@ -112,23 +111,23 @@ impl<B: BlockchainBackend> StatefulValidation<Block, B> for FullConsensusValidat
     /// 1. Is the block header timestamp greater than the median timestamp?
     /// 1. Is the Proof of Work valid?
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
-    fn validate(&self, block: &Block, db: &B) -> Result<(), ValidationError> {
+    fn validate(&self, block: &Block, backend: &B) -> Result<(), ValidationError> {
         let block_id = format!("block #{} ({})", block.header.height, block.hash().to_hex());
-        check_inputs_are_utxos(block, db)?;
-        check_not_stxos(block, db)?;
+        check_inputs_are_utxos(block, backend)?;
+        check_not_duplicate_txos(block, backend)?;
         trace!(
             target: LOG_TARGET,
             "Block validation: All inputs and outputs are valid for {}",
             &block_id
         );
-        check_mmr_roots(block, db)?;
+        check_mmr_roots(block, backend)?;
         trace!(
             target: LOG_TARGET,
             "Block validation: MMR roots are valid for {}",
             &block_id
         );
         // Validate the block header (PoW etc.)
-        self.validate(&block.header, db)?;
+        self.validate(&block.header, backend)?;
         debug!(target: LOG_TARGET, "Block validation: Block is VALID for {}", &block_id);
         Ok(())
     }
@@ -138,7 +137,7 @@ impl<B: BlockchainBackend> StatefulValidation<BlockHeader, B> for FullConsensusV
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Is the Proof of Work valid?
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
-    fn validate(&self, header: &BlockHeader, db: &B) -> Result<(), ValidationError> {
+    fn validate(&self, header: &BlockHeader, backend: &B) -> Result<(), ValidationError> {
         let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
         check_timestamp_ftl(&header, &self.rules)?;
         trace!(
@@ -146,14 +145,14 @@ impl<B: BlockchainBackend> StatefulValidation<BlockHeader, B> for FullConsensusV
             "BlockHeader validation: FTL timestamp is ok for {} ",
             &header_id
         );
-        let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
-        check_median_timestamp(db, header, tip_height, self.rules.clone())?;
+        let tip_height = backend.fetch_chain_metadata()?.height_of_longest_chain();
+        check_median_timestamp(backend, header, tip_height, self.rules.clone())?;
         trace!(
             target: LOG_TARGET,
             "BlockHeader validation: Median timestamp is ok for {} ",
             &header_id
         );
-        check_achieved_and_target_difficulty(db, header, tip_height, self.rules.clone())?;
+        check_achieved_and_target_difficulty(backend, header, tip_height, self.rules.clone())?;
         trace!(
             target: LOG_TARGET,
             "BlockHeader validation: Achieved difficulty is ok for {} ",
@@ -287,37 +286,37 @@ fn check_duplicate_transactions_inputs(block: &Block) -> Result<(), ValidationEr
 
 /// This function checks that all inputs in the blocks are valid UTXO's to be spend
 fn check_inputs_are_utxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
-    for utxo in block.body.inputs() {
-        if !db.contains(&DbKey::UnspentOutput(utxo.hash()))? {
+    let BlockAccumulatedData { deleted, .. } = db.fetch_block_accumulated_data(&block.header.prev_hash)?;
+    for input in block.body.inputs() {
+        if let Some(index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &input.hash())? {
+            if deleted.contains(index) {
+                warn!(
+                    target: LOG_TARGET,
+                    "Block validation failed due to already spent input: {}", input
+                );
+                return Err(ValidationError::ContainsSTxO);
+            }
+        } else {
             warn!(
                 target: LOG_TARGET,
-                "Block validation failed because the block has invalid input: {}", utxo
+                "Block validation failed because the block has invalid input: {} which does not exist", input
             );
             return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
         }
     }
+
     Ok(())
 }
 
 // This function checks that the inputs and outputs do not exist in the STxO set.
-fn check_not_stxos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
-    for input in block.body.inputs() {
-        if is_stxo(db, input.hash())? {
-            // we dont want to log this as a node or wallet might retransmit a transaction
-            debug!(
-                target: LOG_TARGET,
-                "Block validation failed due to already spent input: {}", input
-            );
-            return Err(ValidationError::ContainsSTxO);
-        }
-    }
+fn check_not_duplicate_txos<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
     for output in block.body.outputs() {
-        if is_stxo(db, output.hash())? {
-            debug!(
+        if db.fetch_mmr_leaf_index(MmrTree::Utxo, &output.hash())?.is_some() {
+            warn!(
                 target: LOG_TARGET,
                 "Block validation failed due to previously spent output: {}", output
             );
-            return Err(ValidationError::ContainsSTxO);
+            return Err(ValidationError::ContainsTxO);
         }
     }
     Ok(())
@@ -342,24 +341,28 @@ fn check_timestamp_ftl(
     Ok(())
 }
 
-fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), ValidationError> {
+fn check_mmr_roots<B: BlockchainBackend>(block: &Block, database: &B) -> Result<(), ValidationError> {
     let template = NewBlockTemplate::from(block.clone());
-    let tmp_block = calculate_mmr_roots(db, template)?;
+    let tmp_block = calculate_mmr_roots(database, template)?;
     let tmp_header = &tmp_block.header;
     let header = &block.header;
     if header.kernel_mr != tmp_header.kernel_mr {
         warn!(
             target: LOG_TARGET,
-            "Block header kernel MMR roots in {} do not match calculated roots",
-            block.hash().to_hex()
+            "Block header kernel MMR roots in {} do not match calculated roots. Expected: {}, Actual:{}",
+            block.hash().to_hex(),
+            header.kernel_mr.to_hex(),
+            tmp_header.kernel_mr.to_hex()
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
     };
     if header.output_mr != tmp_header.output_mr {
         warn!(
             target: LOG_TARGET,
-            "Block header output MMR roots in {} do not match calculated roots",
-            block.hash().to_hex()
+            "Block header output MMR roots in {} do not match calculated roots. Expected: {}, Actual:{}",
+            block.hash().to_hex(),
+            header.output_mr.to_hex(),
+            tmp_header.output_mr.to_hex()
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
     };

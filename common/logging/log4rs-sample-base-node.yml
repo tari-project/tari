@@ -81,6 +81,7 @@ loggers:
     appenders:
       - base_layer
     additive: false
+
   # Route log events sent to the "wallet" logger to the "base_layer" appender
   wallet:
     level: info

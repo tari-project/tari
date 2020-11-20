@@ -22,18 +22,11 @@
 
 use tari_core::{
     blocks::{Block, BlockHeader},
-    chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
     consensus::ConsensusManager,
     transactions::transaction::Transaction,
-    validation::mocks::MockValidator,
 };
-use tari_wallet::types::HashDigest;
 
-pub fn create_mem_db(consensus_manager: &ConsensusManager) -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
-    let db = MemoryDatabase::<HashDigest>::default();
-    BlockchainDatabase::new(db, consensus_manager, validators, Default::default(), false).unwrap()
-}
+// use tari_test_utils::paths::create_temporary_data_path;
 
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument

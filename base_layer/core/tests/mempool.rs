@@ -32,10 +32,10 @@ use helpers::{
         generate_block,
         generate_new_block,
     },
-    database::create_mem_db,
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::create_new_blockchain,
 };
+// use crate::helpers::database::create_store;
 use std::{ops::Deref, sync::Arc, time::Duration};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
@@ -55,6 +55,7 @@ use tari_core::{
         TxStorageResponse,
     },
     proof_of_work::Difficulty,
+    test_helpers::blockchain::create_store,
     transactions::{
         helpers::{schema_to_transaction, spend_utxos},
         proto,
@@ -392,7 +393,7 @@ fn test_orphaned_mempool_transactions() {
     let network = Network::LocalNet;
     let (store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
     // A parallel store that will "mine" the orphan chain
-    let mut miner = create_mem_db(&consensus_manager);
+    let mut miner = create_store();
     let schemas = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
         to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T]

@@ -44,20 +44,18 @@ use tari_core::{
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
-        MemoryDatabase,
         Validators,
     },
     consensus::ConsensusManagerBuilder,
     mempool::{service::LocalMempoolService, Mempool, MempoolConfig, MempoolValidators},
     mining::{Miner, MinerInstruction},
-    transactions::types::{CryptoFactories, HashDigest},
+    transactions::types::CryptoFactories,
     validation::{
         block_validators::{FullConsensusValidator, StatelessBlockValidator},
         transaction_validators::{TxInputAndMaturityValidator, TxInternalConsistencyValidator},
         ValidationExt,
     },
 };
-use tari_mmr::MmrCacheConfig;
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
@@ -251,19 +249,20 @@ pub async fn configure_and_initialize_node(
 {
     let result = match &config.db_type {
         DatabaseType::Memory => {
-            let backend = MemoryDatabase::<HashDigest>::default();
-            build_node_context(
-                backend,
-                node_identity,
-                wallet_node_identity,
-                config,
-                interrupt_signal,
-                cleanup_orphans_at_startup,
-            )
-            .await?
+            // let backend = MemoryDatabase::<HashDigest>::default();
+            // build_node_context(
+            //     backend,
+            //     node_identity,
+            //     wallet_node_identity,
+            //     config,
+            //     interrupt_signal,
+            //     cleanup_orphans_at_startup,
+            // )
+            // .await?
+            unimplemented!();
         },
         DatabaseType::LMDB(p) => {
-            let backend = create_lmdb_database(&p, config.db_config.clone(), MmrCacheConfig::default())?;
+            let backend = create_lmdb_database(&p, config.db_config.clone())?;
             build_node_context(
                 backend,
                 node_identity,

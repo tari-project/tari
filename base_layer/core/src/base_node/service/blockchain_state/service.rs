@@ -124,22 +124,12 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
             })
     }
 
-    fn fetch_header_by_hash(
+    async fn fetch_header_by_hash(
         db: BlockchainDatabase<B>,
         hash: HashOutput,
-    ) -> impl Future<Output = Result<Option<BlockHeader>, BlockchainStateServiceError>>
+    ) -> Result<Option<BlockHeader>, BlockchainStateServiceError>
     {
-        async_db::fetch_header_by_block_hash(db, hash)
-            .and_then(|h| future::ready(Ok(Some(h))))
-            .or_else(|err| {
-                future::ready({
-                    if err.is_value_not_found() {
-                        Ok(None)
-                    } else {
-                        Err(err.into())
-                    }
-                })
-            })
+        Ok(async_db::fetch_header_by_block_hash(db, hash).await?)
     }
 
     async fn fetch_blocks(
@@ -157,7 +147,7 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
 
         if start.is_none() {
             // `(..n)` means fetch blocks with the lowest height possible until `n`
-            start = Some(metadata.as_ref().unwrap().effective_pruned_height);
+            start = Some(metadata.as_ref().unwrap().effective_pruned_height());
         }
         if end.is_none() {
             // `(n..)` means fetch blocks until this node's tip
@@ -205,8 +195,8 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
     ) -> Result<Option<(usize, Vec<BlockHeader>)>, BlockchainStateServiceError>
     {
         for (i, hash) in ordered_hashes.into_iter().enumerate() {
-            match async_db::fetch_header_by_block_hash(db.clone(), hash).await {
-                Ok(header) => {
+            match async_db::fetch_header_by_block_hash(db.clone(), hash).await? {
+                Some(header) => {
                     if count == 0 {
                         return Ok(Some((i, Vec::new())));
                     }
@@ -221,8 +211,7 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
                     let headers = async_db::fetch_headers(db.clone(), header.height + 1, end_height).await?;
                     return Ok(Some((i, headers)));
                 },
-                Err(err) if err.is_value_not_found() => continue,
-                Err(err) => return Err(err.into()),
+                None => continue,
             };
         }
         Ok(None)

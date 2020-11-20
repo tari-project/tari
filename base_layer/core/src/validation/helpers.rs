@@ -30,11 +30,7 @@ use crate::{
 use log::*;
 use tari_crypto::tari_utilities::hash::Hashable;
 pub const LOG_TARGET: &str = "c::val::helpers";
-use crate::{
-    chain_storage::{DbKey, MmrTree},
-    proof_of_work::get_median_timestamp,
-    transactions::types::HashOutput,
-};
+use crate::proof_of_work::get_median_timestamp;
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// This function tests that the block timestamp is greater than the median timestamp at the specified height.
@@ -147,21 +143,4 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
         ));
     }
     Ok(())
-}
-
-pub fn is_stxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ValidationError> {
-    // Check if the UTXO MMR contains the specified deleted UTXO hash, the backend stxo_db is not used for this task as
-    // archival nodes and pruning nodes might have different STXOs in their stxo_db as horizon state STXOs are
-    // discarded by pruned nodes.
-    match db.fetch_mmr_leaf_index(MmrTree::Utxo, &hash)? {
-        Some(leaf_index) => {
-            let (_, deleted) = db.fetch_mmr_node(MmrTree::Utxo, leaf_index, None)?;
-            Ok(deleted)
-        },
-        None => Ok(false),
-    }
-}
-
-pub fn is_utxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ValidationError> {
-    db.contains(&DbKey::UnspentOutput(hash)).map_err(Into::into)
 }
