@@ -23,7 +23,10 @@
 use super::{error::ChainMetadataSyncError, LOG_TARGET};
 use crate::{
     base_node::{
-        chain_metadata_service::handle::{ChainMetadataEvent, PeerChainMetadata},
+        chain_metadata_service::{
+            error::ChainMetadataSyncError::ConversionError,
+            handle::{ChainMetadataEvent, PeerChainMetadata},
+        },
         comms_interface::{BlockEvent, LocalNodeCommsInterface},
         proto,
     },
@@ -32,7 +35,7 @@ use crate::{
 use futures::stream::StreamExt;
 use log::*;
 use prost::Message;
-use std::{sync::Arc, time::Instant};
+use std::{convert::TryInto, sync::Arc, time::Instant};
 use tari_common::log_if_error;
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -241,12 +244,14 @@ impl ChainMetadataService {
     ) -> Result<(), ChainMetadataSyncError>
     {
         if let Some(chain_metadata_bytes) = metadata.get(MetadataKey::ChainMetadata) {
-            let chain_metadata: ChainMetadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
+            let chain_metadata: ChainMetadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?
+                .try_into()
+                .map_err(|s| ConversionError(s))?;
             debug!(
                 target: LOG_TARGET,
                 "Received chain metadata from NodeId '{}' #{}",
                 node_id,
-                chain_metadata.height_of_longest_chain.unwrap_or(0)
+                chain_metadata.height_of_longest_chain()
             );
 
             if let Some(pos) = self
@@ -273,12 +278,14 @@ impl ChainMetadataService {
             .get(MetadataKey::ChainMetadata)
             .ok_or_else(|| ChainMetadataSyncError::NoChainMetadata)?;
 
-        let chain_metadata: ChainMetadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
+        let chain_metadata: ChainMetadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?
+            .try_into()
+            .map_err(|s| ConversionError(s))?;
         debug!(
             target: LOG_TARGET,
             "Received chain metadata from NodeId '{}' #{}",
             node_id,
-            chain_metadata.height_of_longest_chain.unwrap_or(0)
+            chain_metadata.height_of_longest_chain()
         );
 
         if let Some(pos) = self

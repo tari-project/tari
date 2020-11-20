@@ -22,9 +22,8 @@
 
 use crate::{
     base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::block_sync::BlockSyncError},
-    chain_storage::{ChainStorageError, MmrTree},
+    chain_storage::ChainStorageError,
     transactions::transaction::TransactionError,
-    validation::ValidationError,
 };
 use thiserror::Error;
 use tokio::task;
@@ -43,22 +42,24 @@ pub enum HorizonSyncError {
     CommsInterfaceError(#[from] CommsInterfaceError),
     #[error("Block sync error: {0}")]
     BlockSyncError(#[from] BlockSyncError),
-    #[error("Final state validation failed: {0}")]
-    FinalStateValidationFailed(ValidationError),
+    // #[error("Final state validation failed: {0}")]
+    // FinalStateValidationFailed(ValidationError),
     #[error("Join error: {0}")]
     JoinError(#[from] task::JoinError),
     #[error("Invalid kernel signature: {0}")]
     InvalidKernelSignature(TransactionError),
-    #[error("Validation failed for {0} MMR")]
-    InvalidMmrRoot(MmrTree),
+    /* #[error("Validation failed for {0} MMR")]
+     * InvalidMmrRoot(MmrTree), */
 }
 
 impl HorizonSyncError {
     pub fn is_recoverable(&self) -> bool {
-        use HorizonSyncError::*;
-        match self {
-            FinalStateValidationFailed(_) | InvalidMmrRoot(_) => false,
-            _ => true,
-        }
+        // use HorizonSyncError::*;
+        unimplemented!()
+        // match self {
+        // FinalStateValidationFailed(_) | InvalidMmrRoot(_) => false,
+        //  InvalidMmrRoot(_) => false,
+        // _ => true,
+        // }
     }
 }

@@ -580,7 +580,7 @@ impl Parser {
                         warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err);
                         return;
                     },
-                    Ok(data) => data.height_of_longest_chain.unwrap() as i64,
+                    Ok(data) => data.height_of_longest_chain() as i64,
                 };
                 match handler2.get_unspent_outputs().await {
                     Err(e) => {
@@ -878,7 +878,7 @@ impl Parser {
         };
         let mut handler = self.node_service.clone();
         self.executor.spawn(async move {
-            match handler.get_blocks_with_utxos(vec![commitment.clone()]).await {
+            match handler.fetch_blocks_with_utxos(vec![commitment.clone()]).await {
                 Err(err) => {
                     println!("Failed to retrieve blocks: {:?}", err);
                     warn!(
@@ -1618,7 +1618,7 @@ impl Parser {
         self.executor.spawn(async move {
             let meta = node.get_metadata().await.expect("Could not retrieve chain meta");
 
-            let mut height = meta.height_of_longest_chain.expect("Could not retrieve chain height");
+            let mut height = meta.height_of_longest_chain();
             let mut missing_blocks = Vec::new();
             let mut missing_headers = Vec::new();
             print!("Searching for height: ");
@@ -1673,7 +1673,7 @@ impl Parser {
         self.executor.spawn(async move {
             let meta = node.get_metadata().await.expect("Could not retrieve chain meta");
 
-            let mut height = meta.height_of_longest_chain.expect("Could not retrieve chain height");
+            let mut height = meta.height_of_longest_chain();
             // Currently gets the stats for: tx count, hash rate estimation, target difficulty, solvetime.
             let mut results: Vec<(usize, f64, u64, u64, usize)> = Vec::new();
             let period_end = match u64::from_str(&command_arg[0]) {
@@ -2449,7 +2449,7 @@ async fn get_number_of_spendable_utxos(
 {
     match node_service.get_metadata().await {
         Ok(data) => {
-            let current_height = data.height_of_longest_chain.unwrap() as i64;
+            let current_height = data.height_of_longest_chain() as i64;
             match wallet_output_service.get_unspent_outputs().await {
                 Ok(unspent_outputs) => {
                     let mut number = 0usize;

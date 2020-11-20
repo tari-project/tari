@@ -139,9 +139,15 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.proof().hash()).collect();
 
     let mut header = BlockHeader::from(header);
-    header.kernel_mr = MutableMmr::<HashDigest, _>::new(kernel_hashes, Bitmap::create()).get_merkle_root()?;
-    header.output_mr = MutableMmr::<HashDigest, _>::new(out_hashes, Bitmap::create()).get_merkle_root()?;
-    header.range_proof_mr = MutableMmr::<HashDigest, _>::new(rp_hashes, Bitmap::create()).get_merkle_root()?;
+    header.kernel_mr = MutableMmr::<HashDigest, _>::new(kernel_hashes, Bitmap::create())
+        .unwrap()
+        .get_merkle_root()?;
+    header.output_mr = MutableMmr::<HashDigest, _>::new(out_hashes, Bitmap::create())
+        .unwrap()
+        .get_merkle_root()?;
+    header.range_proof_mr = MutableMmr::<HashDigest, _>::new(rp_hashes, Bitmap::create())
+        .unwrap()
+        .get_merkle_root()?;
     Ok(Block { header, body })
 }
 

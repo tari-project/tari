@@ -39,7 +39,7 @@ use tari_core::{
         OutboundNodeCommsInterface,
     },
     blocks::Block,
-    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     mempool::{
         service::LocalMempoolService,
@@ -50,7 +50,7 @@ use tari_core::{
         MempoolValidators,
         OutboundMempoolServiceInterface,
     },
-    transactions::types::HashDigest,
+    test_helpers::blockchain::{create_test_db, TempDatabase},
     validation::{
         mocks::MockValidator,
         transaction_validators::TxInputAndMaturityValidator,
@@ -75,7 +75,7 @@ pub struct NodeInterfaces {
     pub local_nci: LocalNodeCommsInterface,
     pub outbound_mp_interface: OutboundMempoolServiceInterface,
     pub outbound_message_service: OutboundMessageRequester,
-    pub blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    pub blockchain_db: BlockchainDatabase<TempDatabase>,
     pub mempool: Mempool,
     pub local_mp_interface: LocalMempoolService,
     pub chain_metadata_handle: ChainMetadataHandle,
@@ -103,7 +103,7 @@ pub struct BaseNodeBuilder {
     mempool_config: Option<MempoolConfig>,
     mempool_service_config: Option<MempoolServiceConfig>,
     liveness_service_config: Option<LivenessConfig>,
-    validators: Option<Validators<MemoryDatabase<HashDigest>>>,
+    validators: Option<Validators<TempDatabase>>,
     consensus_manager: Option<ConsensusManager>,
     network: Network,
 }
@@ -176,7 +176,7 @@ impl BaseNodeBuilder {
 
     pub fn with_validators(
         mut self,
-        block: impl StatefulValidation<Block, MemoryDatabase<HashDigest>> + 'static,
+        block: impl StatefulValidation<Block, TempDatabase> + 'static,
         orphan: impl Validation<Block> + 'static,
     ) -> Self
     {
@@ -193,14 +193,13 @@ impl BaseNodeBuilder {
 
     /// Build the test base node and start its services.
     pub fn start(self, runtime: &mut Runtime, data_path: &str) -> (NodeInterfaces, ConsensusManager) {
-        let mmr_cache_config = self.mmr_cache_config.unwrap_or(MmrCacheConfig { rewind_hist_len: 10 });
         let validators = self
             .validators
             .unwrap_or(Validators::new(MockValidator::new(true), MockValidator::new(true)));
         let consensus_manager = self
             .consensus_manager
             .unwrap_or(ConsensusManagerBuilder::new(self.network).build());
-        let db = MemoryDatabase::<HashDigest>::new(mmr_cache_config);
+        let db = create_test_db();
         let blockchain_db_config = self.blockchain_db_config.unwrap_or(BlockchainDatabaseConfig::default());
         let blockchain_db =
             BlockchainDatabase::new(db, &consensus_manager, validators, blockchain_db_config, false).unwrap();
@@ -433,7 +432,7 @@ fn setup_base_node_services(
     runtime: &mut Runtime,
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
-    blockchain_db: BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    blockchain_db: BlockchainDatabase<TempDatabase>,
     mempool: Mempool,
     consensus_manager: ConsensusManager,
     base_node_service_config: BaseNodeServiceConfig,

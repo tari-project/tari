@@ -60,7 +60,6 @@ use tari_core::{
     txn_schema,
     validation::mocks::MockValidator,
 };
-use tari_crypto::tari_utilities::Hashable;
 use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_shutdown::Shutdown;
@@ -145,10 +144,10 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         // Both nodes are running in pruned mode and can not use block sync to synchronize state. Sync horizon state
         // from genesis block to horizon_sync_height and then block sync to the tip.
         let network_tip = bob_db.get_chain_metadata().unwrap();
-        assert_eq!(network_tip.effective_pruned_height, 6);
+        assert_eq!(network_tip.effective_pruned_height(), 6);
         let mut sync_peers = vec![SyncPeer {
             node_id: bob_node.node_identity.node_id().clone(),
-            chain_metadata: network_tip.clone(),
+            chain_metadata: Some(network_tip.clone()),
         }];
 
         // Synchronize headers
@@ -166,7 +165,7 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         let alice_metadata = alice_db.get_chain_metadata().unwrap();
         // Local height should now be at the horizon sync height
         assert_eq!(alice_metadata.height_of_longest_chain(), sync_height);
-        assert_eq!(alice_metadata.effective_pruned_height, sync_height);
+        assert_eq!(alice_metadata.effective_pruned_height(), sync_height);
 
         // Check Kernel MMR nodes after horizon sync
         let alice_num_kernels = alice_db.fetch_mmr_node_count(MmrTree::Kernel, sync_height).unwrap();
@@ -188,8 +187,8 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         let alice_metadata = alice_db.get_chain_metadata().unwrap();
         // Local height should now be at the horizon sync height
         assert_eq!(
-            alice_metadata.effective_pruned_height,
-            network_tip.height_of_longest_chain() - network_tip.pruning_horizon
+            alice_metadata.effective_pruned_height(),
+            network_tip.height_of_longest_chain() - network_tip.pruning_horizon()
         );
 
         check_final_state(&alice_db, &bob_db);
@@ -332,11 +331,11 @@ fn test_pruned_mode_sync_with_spent_utxos() {
         let network_tip = bob_db.get_chain_metadata().unwrap();
         // effective_pruned_height is 6 because the interval is 5 - we have 12 blocks but the last time the node was
         // pruned was at 10 (10 - 4 = 6)
-        assert_eq!(network_tip.effective_pruned_height, 6);
+        assert_eq!(network_tip.effective_pruned_height(), 6);
         assert_eq!(network_tip.height_of_longest_chain(), 12);
         let mut sync_peers = vec![SyncPeer {
             node_id: bob_node.node_identity.node_id().clone(),
-            chain_metadata: network_tip.clone(),
+            chain_metadata: Some(network_tip.clone()),
         }];
         let state_event = HeaderSync::new(network_tip.clone(), sync_peers.clone())
             .next_event(&mut alice_state_machine)
@@ -500,98 +499,99 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
 }
 
 fn check_final_state<B: BlockchainBackend>(alice_db: &BlockchainDatabase<B>, bob_db: &BlockchainDatabase<B>) {
-    let network_tip = bob_db.get_chain_metadata().unwrap();
-
-    let alice_metadata = alice_db.get_chain_metadata().unwrap();
-    assert_eq!(
-        alice_metadata.height_of_longest_chain(),
-        network_tip.height_of_longest_chain()
-    );
-    assert_eq!(
-        alice_metadata.best_block.as_ref().unwrap(),
-        network_tip.best_block.as_ref().unwrap()
-    );
-    assert_eq!(
-        alice_metadata.accumulated_difficulty.as_ref().unwrap(),
-        network_tip.accumulated_difficulty.as_ref().unwrap()
-    );
-
-    // Check headers
-    let network_tip_height = network_tip.height_of_longest_chain.unwrap_or(0);
-    let alice_headers = alice_db.fetch_headers(0, network_tip_height).unwrap();
-    let bob_headers = bob_db.fetch_headers(0, network_tip_height).unwrap();
-    assert_eq!(alice_headers, bob_headers);
-
-    // Check Kernel MMR nodes
-    let alice_num_kernels = alice_db
-        .fetch_mmr_node_count(MmrTree::Kernel, network_tip_height)
-        .unwrap();
-    let bob_num_kernels = bob_db
-        .fetch_mmr_node_count(MmrTree::Kernel, network_tip_height)
-        .unwrap();
-    assert_eq!(alice_num_kernels, bob_num_kernels);
-    let alice_kernel_nodes = alice_db
-        .fetch_mmr_nodes(MmrTree::Kernel, 0, alice_num_kernels, Some(network_tip_height))
-        .unwrap();
-    let bob_kernel_nodes = bob_db
-        .fetch_mmr_nodes(MmrTree::Kernel, 0, bob_num_kernels, Some(network_tip_height))
-        .unwrap();
-    assert_eq!(alice_kernel_nodes, bob_kernel_nodes);
-
-    // Check Kernels
-    let alice_kernel_hashes = alice_kernel_nodes.iter().map(|n| n.0.clone()).collect::<Vec<_>>();
-    let bob_kernels_hashes = bob_kernel_nodes.iter().map(|n| n.0.clone()).collect::<Vec<_>>();
-    let alice_kernels = alice_db.fetch_kernels(alice_kernel_hashes).unwrap();
-    let bob_kernels = bob_db.fetch_kernels(bob_kernels_hashes).unwrap();
-    assert_eq!(alice_kernels, bob_kernels);
-
-    // Check UTXO MMR nodes
-    let alice_num_utxos = alice_db
-        .fetch_mmr_node_count(MmrTree::Utxo, network_tip_height)
-        .unwrap();
-    let bob_num_utxos = bob_db.fetch_mmr_node_count(MmrTree::Utxo, network_tip_height).unwrap();
-    assert_eq!(alice_num_utxos, bob_num_utxos);
-    let alice_utxo_nodes = alice_db
-        .fetch_mmr_nodes(MmrTree::Utxo, 0, alice_num_utxos, Some(network_tip_height))
-        .unwrap();
-    let bob_utxo_nodes = bob_db
-        .fetch_mmr_nodes(MmrTree::Utxo, 0, bob_num_utxos, Some(network_tip_height))
-        .unwrap();
-    assert_eq!(alice_utxo_nodes, bob_utxo_nodes);
-    // Check UTXOs
-    let mut alice_utxos = Vec::new();
-    for (hash, deleted) in alice_utxo_nodes {
-        if !deleted {
-            alice_utxos.push(alice_db.fetch_utxo(hash).unwrap());
-        }
-    }
-    let mut bob_utxos = Vec::new();
-    for (hash, deleted) in bob_utxo_nodes {
-        if !deleted {
-            bob_utxos.push(bob_db.fetch_utxo(hash).unwrap());
-        }
-    }
-    assert_eq!(alice_utxos, bob_utxos);
-
-    // Check RangeProof MMR nodes
-    let alice_num_rps = alice_db
-        .fetch_mmr_node_count(MmrTree::RangeProof, network_tip_height)
-        .unwrap();
-    let bob_num_rps = bob_db
-        .fetch_mmr_node_count(MmrTree::RangeProof, network_tip_height)
-        .unwrap();
-    assert_eq!(alice_num_rps, bob_num_rps);
-    let alice_rps_nodes = alice_db
-        .fetch_mmr_nodes(MmrTree::RangeProof, 0, alice_num_rps, Some(network_tip_height))
-        .unwrap();
-    let bob_rps_nodes = bob_db
-        .fetch_mmr_nodes(MmrTree::RangeProof, 0, bob_num_rps, Some(network_tip_height))
-        .unwrap();
-    assert_eq!(alice_rps_nodes, bob_rps_nodes);
-
-    let block = alice_db.fetch_block(network_tip_height).unwrap();
-    assert_eq!(block.block.header.height, network_tip_height);
-    assert_eq!(block.block.header.hash(), network_tip.best_block.unwrap());
+    // let network_tip = bob_db.get_chain_metadata().unwrap();
+    //
+    // let alice_metadata = alice_db.get_chain_metadata().unwrap();
+    // assert_eq!(
+    //     alice_metadata.height_of_longest_chain(),
+    //     network_tip.height_of_longest_chain()
+    // );
+    // assert_eq!(
+    //     alice_metadata.best_block.as_ref().unwrap(),
+    //     network_tip.best_block.as_ref().unwrap()
+    // );
+    // assert_eq!(
+    //     alice_metadata.accumulated_difficulty.as_ref().unwrap(),
+    //     network_tip.accumulated_difficulty.as_ref().unwrap()
+    // );
+    //
+    // // Check headers
+    // let network_tip_height = network_tip.height_of_longest_chain.unwrap_or(0);
+    // let alice_headers = alice_db.fetch_headers(0, network_tip_height).unwrap();
+    // let bob_headers = bob_db.fetch_headers(0, network_tip_height).unwrap();
+    // assert_eq!(alice_headers, bob_headers);
+    //
+    // // Check Kernel MMR nodes
+    // let alice_num_kernels = alice_db
+    //     .fetch_mmr_node_count(MmrTree::Kernel, network_tip_height)
+    //     .unwrap();
+    // let bob_num_kernels = bob_db
+    //     .fetch_mmr_node_count(MmrTree::Kernel, network_tip_height)
+    //     .unwrap();
+    // assert_eq!(alice_num_kernels, bob_num_kernels);
+    // let alice_kernel_nodes = alice_db
+    //     .fetch_mmr_nodes(MmrTree::Kernel, 0, alice_num_kernels, Some(network_tip_height))
+    //     .unwrap();
+    // let bob_kernel_nodes = bob_db
+    //     .fetch_mmr_nodes(MmrTree::Kernel, 0, bob_num_kernels, Some(network_tip_height))
+    //     .unwrap();
+    // assert_eq!(alice_kernel_nodes, bob_kernel_nodes);
+    //
+    // // Check Kernels
+    // let alice_kernel_hashes = alice_kernel_nodes.iter().map(|n| n.0.clone()).collect::<Vec<_>>();
+    // let bob_kernels_hashes = bob_kernel_nodes.iter().map(|n| n.0.clone()).collect::<Vec<_>>();
+    // let alice_kernels = alice_db.fetch_kernels(alice_kernel_hashes).unwrap();
+    // let bob_kernels = bob_db.fetch_kernels(bob_kernels_hashes).unwrap();
+    // assert_eq!(alice_kernels, bob_kernels);
+    //
+    // // Check UTXO MMR nodes
+    // let alice_num_utxos = alice_db
+    //     .fetch_mmr_node_count(MmrTree::Utxo, network_tip_height)
+    //     .unwrap();
+    // let bob_num_utxos = bob_db.fetch_mmr_node_count(MmrTree::Utxo, network_tip_height).unwrap();
+    // assert_eq!(alice_num_utxos, bob_num_utxos);
+    // let alice_utxo_nodes = alice_db
+    //     .fetch_mmr_nodes(MmrTree::Utxo, 0, alice_num_utxos, Some(network_tip_height))
+    //     .unwrap();
+    // let bob_utxo_nodes = bob_db
+    //     .fetch_mmr_nodes(MmrTree::Utxo, 0, bob_num_utxos, Some(network_tip_height))
+    //     .unwrap();
+    // assert_eq!(alice_utxo_nodes, bob_utxo_nodes);
+    // // Check UTXOs
+    // let mut alice_utxos = Vec::new();
+    // for (hash, deleted) in alice_utxo_nodes {
+    //     if !deleted {
+    //         alice_utxos.push(alice_db.fetch_utxo(hash).unwrap());
+    //     }
+    // }
+    // let mut bob_utxos = Vec::new();
+    // for (hash, deleted) in bob_utxo_nodes {
+    //     if !deleted {
+    //         bob_utxos.push(bob_db.fetch_utxo(hash).unwrap());
+    //     }
+    // }
+    // assert_eq!(alice_utxos, bob_utxos);
+    //
+    // // Check RangeProof MMR nodes
+    // let alice_num_rps = alice_db
+    //     .fetch_mmr_node_count(MmrTree::RangeProof, network_tip_height)
+    //     .unwrap();
+    // let bob_num_rps = bob_db
+    //     .fetch_mmr_node_count(MmrTree::RangeProof, network_tip_height)
+    //     .unwrap();
+    // assert_eq!(alice_num_rps, bob_num_rps);
+    // let alice_rps_nodes = alice_db
+    //     .fetch_mmr_nodes(MmrTree::RangeProof, 0, alice_num_rps, Some(network_tip_height))
+    //     .unwrap();
+    // let bob_rps_nodes = bob_db
+    //     .fetch_mmr_nodes(MmrTree::RangeProof, 0, bob_num_rps, Some(network_tip_height))
+    //     .unwrap();
+    // assert_eq!(alice_rps_nodes, bob_rps_nodes);
+    //
+    // let block = alice_db.fetch_block(network_tip_height).unwrap();
+    // assert_eq!(block.block.header.height, network_tip_height);
+    // assert_eq!(block.block.header.hash(), network_tip.best_block.unwrap());
+    unimplemented!()
 }
 
 #[test]

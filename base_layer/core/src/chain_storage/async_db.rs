@@ -42,7 +42,7 @@ use crate::{
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{sync::Arc, time::Instant};
-use tari_mmr::{Hash, MerkleProof};
+use tari_mmr::Hash;
 
 const LOG_TARGET: &str = "c::bn::async_db";
 
@@ -97,32 +97,22 @@ make_async!(set_chain_metadata(metadata: ChainMetadata) -> (), "set_chain_metada
 make_async!(fetch_kernel(hash: HashOutput) -> TransactionKernel, "fetch_kernel");
 
 //---------------------------------- TXO --------------------------------------------//
-make_async!(fetch_stxo(hash: HashOutput) -> TransactionOutput, "fetch_stxo");
-make_async!(fetch_txo(hash: HashOutput) -> Option<TransactionOutput>, "fetch_txo");
-make_async!(fetch_utxo(hash: HashOutput) -> TransactionOutput, "fetch_utxo");
-make_async!(spend_utxo(hash: HashOutput) -> (), "spend_utxo");
-make_async!(insert_utxo(utxo: TransactionOutput) -> (), "insert_utxo");
-make_async!(is_stxo(hash: HashOutput) -> bool, "is_stxo");
-make_async!(is_utxo(hash: HashOutput) -> bool, "is_utxo");
+make_async!(fetch_utxo(hash: HashOutput) -> Option<TransactionOutput>, "fetch_utxo");
+make_async!(fetch_utxos(hashes: Vec<HashOutput>, is_spent_as_of: Option<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
 
 //---------------------------------- Headers --------------------------------------------//
 make_async!(fetch_header(block_num: u64) -> BlockHeader, "fetch_header");
 make_async!(fetch_headers(start: u64, end_inclusive: u64) -> Vec<BlockHeader>, "fetch_headers");
-make_async!(fetch_header_by_block_hash(hash: HashOutput) -> BlockHeader, "fetch_header_by_block_hash");
+make_async!(fetch_header_by_block_hash(hash: HashOutput) -> Option<BlockHeader>, "fetch_header_by_block_hash");
 make_async!(fetch_tip_header() -> BlockHeader, "fetch_header");
 make_async!(insert_valid_headers(headers: Vec<BlockHeader>) -> (), "insert_valid_headers");
 make_async!(fetch_target_difficulties(pow_algo: PowAlgorithm, height: u64, block_window: usize) -> Vec<(EpochTime, Difficulty)>, "fetch_target_difficulties");
 
 //---------------------------------- MMR --------------------------------------------//
-make_async!(calculate_mmr_root(tree: MmrTree,additions: Vec<HashOutput>,deletions: Vec<HashOutput>) -> HashOutput, "calculate_mmr_root");
 make_async!(calculate_mmr_roots(template: NewBlockTemplate) -> Block, "calculate_mmr_roots");
 make_async!(fetch_mmr_node_count(tree: MmrTree, height: u64) -> u32, "fetch_mmr_node_count");
 make_async!(fetch_mmr_nodes(tree: MmrTree, pos: u32, count: u32, hist_height:Option<u64>) -> Vec<(Vec<u8>, bool)>, "fetch_mmr_nodes");
-make_async!(fetch_mmr_only_root(tree: MmrTree) -> HashOutput, "fetch_mmr_only_root");
-make_async!(fetch_mmr_proof(tree: MmrTree, pos: usize) -> MerkleProof, "fetch_mmr_proof");
-make_async!(fetch_mmr_root(tree: MmrTree) -> HashOutput, "fetch_mmr_root");
 make_async!(insert_mmr_node(tree: MmrTree, hash: Hash, deleted: bool) -> (), "insert_mmr_node");
-make_async!(validate_merkle_root(tree: MmrTree, height: u64) -> bool, "validate_merkle_root");
 make_async!(rewind_to_height(height: u64) -> Vec<Arc<Block>>, "rewind_to_height");
 
 //---------------------------------- Block --------------------------------------------//
@@ -145,4 +135,3 @@ make_async!(horizon_sync_commit() -> (), "horizon_sync_commit");
 make_async!(horizon_sync_rollback() -> (), "horizon_sync_rollback");
 make_async!(horizon_sync_insert_kernels(kernels: Vec<TransactionKernel>) -> (), "horizon_sync_insert_kernels");
 make_async!(horizon_sync_spend_utxos(hash: Vec<HashOutput>) -> (), "horizon_sync_spend_utxos");
-make_async!(horizon_sync_create_mmr_checkpoint(tree: MmrTree) -> (), "horizon_sync_create_mmr_checkpoint");

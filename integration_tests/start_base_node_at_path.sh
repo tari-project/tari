@@ -1,7 +1,8 @@
 #!/bin/bash
+
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-rm -rf temp/data/integration-test-base-node2
-mkdir -p  temp/data/integration-test-base-node2
+PORT=$1
+GRPCPORT=$2
 export TARI_BASE_NODE__NETWORK=localnet
 export TARI_BASE_NODE__LOCALNET__DATA_DIR=localnet
 export TARI_BASE_NODE__LOCALNET__DB_TYPE=lmdb
@@ -10,16 +11,17 @@ export TARI_BASE_NODE__LOCALNET__PRUNING_HORIZON=0
 export TARI_BASE_NODE__LOCALNET__PRUNED_MODE_CLEANUP_INTERVAL=10000
 export TARI_BASE_NODE__LOCALNET__CORE_THREADS=10
 export TARI_BASE_NODE__LOCALNET__BLOCKING_THREADS=512
-export TARI_BASE_NODE__LOCALNET__IDENTITY_FILE=$DIR/node2_id.json
+export TARI_BASE_NODE__LOCALNET__IDENTITY_FILE=newnode_id.json
 export TARI_BASE_NODE__LOCALNET__TOR_IDENTITY_FILE=node_tor_id.json
 export TARI_BASE_NODE__LOCALNET__WALLET_IDENTITY_FILE=walletid.json
+export TARI_BASE_NODE__LOCALNET__ENABLE_WALLET=false
 export TARI_BASE_NODE__LOCALNET__WALLET_TOR_IDENTITY_FILE=wallet_tor_id.json
 export TARI_BASE_NODE__LOCALNET__TRANSPORT=tcp
-export TARI_BASE_NODE__LOCALNET__TCP_LISTENER_ADDRESS=/ip4/0.0.0.0/tcp/18289
+export TARI_BASE_NODE__LOCALNET__TCP_LISTENER_ADDRESS=/ip4/0.0.0.0/tcp/$PORT
 export TARI_BASE_NODE__LOCALNET__PEER_SEEDS=a4c1a77498aab15cc3ac0164fb1e254dfbe1f282aa05f8f792a89f4c8804660f::/ip4/10.0.0.102/tcp/18189
 export TARI_BASE_NODE__LOCALNET__ALLOW_TEST_ADDRESSES=true
 
-export TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS=/ip4/10.0.0.102/tcp/18289
+export TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS=/ip4/10.0.0.102/tcp/$PORT
 #export TARI_BASE_NODE__LOCALNET__TOR_CONTROL_ADDRESS=/ip4/127.0.0.1/tcp/9051
 #export TARI_BASE_NODE__LOCALNET__TOR_CONTROL_AUTH=none
 #export TARI_BASE_NODE__LOCALNET__TOR_FORWARD_ADDRESS=/ip4/127.0.0.1/tcp/0
@@ -42,7 +44,7 @@ export TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_PASSWORD=asdf
 export TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS=127.0.0.1:50271
 
 
-cd temp/data/integration-test-base-node2
-cargo run --release --bin tari_base_node -- --base-path . --create-id --init
+cd temp/base_nodes/Basenode$PORT
+#cargo run --release --bin tari_base_node -- --base-path . --create-id --init
 cargo run --release --bin tari_base_node -- --base-path .
 

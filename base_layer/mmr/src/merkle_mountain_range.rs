@@ -24,11 +24,13 @@ use crate::{
     backend::ArrayLike,
     common::{bintree_height, find_peaks, hash_together, is_leaf, leaf_index, n_leaves, node_index, peak_map_height},
     error::MerkleMountainRangeError,
+    pruned_hashset::PrunedHashSet,
     Hash,
 };
 use digest::Digest;
 use std::{
     cmp::{max, min},
+    convert::TryInto,
     iter::IntoIterator,
     marker::PhantomData,
 };
@@ -251,6 +253,10 @@ where
         self.hashes
             .clear()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))
+    }
+
+    pub fn get_pruned_hash_set(&self) -> Result<PrunedHashSet, MerkleMountainRangeError> {
+        self.try_into()
     }
 }
 

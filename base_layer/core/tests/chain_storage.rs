@@ -21,5 +21,4 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod chain_storage_tests;
-#[allow(dead_code)]
 mod helpers;

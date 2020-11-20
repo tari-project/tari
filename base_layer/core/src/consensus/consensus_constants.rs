@@ -313,17 +313,17 @@ impl ConsensusConstants {
     pub fn localnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
-            max_target_time: 720,
-            min_difficulty: 1.into(),
-            max_difficulty: 1.into(),
-            target_time: 120,
+        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
+            max_target_time: 1800,
+            min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 720,
-            min_difficulty: 1.into(),
-            max_difficulty: 1.into(),
-            target_time: 120,
+            max_target_time: 1200,
+            min_difficulty: 60_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 200,
         });
         vec![ConsensusConstants {
             effective_from_height: 0,

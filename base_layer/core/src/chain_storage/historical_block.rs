@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    blocks::Block,
-    transactions::{transaction::TransactionOutput, types::Commitment},
-};
+use crate::blocks::Block;
 use serde::{Deserialize, Serialize};
 
 /// The representation of a historical block in the blockchain. It is essentially identical to a protocol-defined
@@ -33,28 +30,17 @@ pub struct HistoricalBlock {
     /// The number of blocks that have been mined since this block, including this one. The current tip will have one
     /// confirmation.
     pub confirmations: u64,
-    /// An array of commitments of the outputs from this block that have subsequently been spent.
-    pub spent_commitments: Vec<Commitment>,
     /// The underlying block
     pub block: Block,
 }
 
 impl HistoricalBlock {
-    pub fn new(block: Block, confirmations: u64, spent_commitments: Vec<Commitment>) -> Self {
-        HistoricalBlock {
-            block,
-            confirmations,
-            spent_commitments,
-        }
+    pub fn new(block: Block, confirmations: u64) -> Self {
+        HistoricalBlock { block, confirmations }
     }
 
     pub fn confirmations(&self) -> u64 {
         self.confirmations
-    }
-
-    /// Determines whether the given output (presumably an output of this block) has subsequently been spent
-    pub fn is_spent(&self, output: &TransactionOutput) -> bool {
-        self.spent_commitments.contains(&output.commitment)
     }
 
     /// Returns a reference to the block of the HistoricalBlock

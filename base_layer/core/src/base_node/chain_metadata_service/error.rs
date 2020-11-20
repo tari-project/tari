@@ -38,4 +38,6 @@ pub enum ChainMetadataSyncError {
     CommsInterfaceError(#[from] CommsInterfaceError),
     #[error("Message error: {0}")]
     MessageError(#[from] MessageError),
+    #[error("Error converting chain metadata:{0}")]
+    ConversionError(String),
 }

@@ -22,13 +22,11 @@
 
 use crate::tari_rpc as grpc;
 use tari_core::chain_storage::HistoricalBlock;
-use tari_crypto::tari_utilities::ByteArray;
 
 impl From<HistoricalBlock> for grpc::HistoricalBlock {
     fn from(hb: HistoricalBlock) -> Self {
         Self {
             confirmations: hb.confirmations,
-            spent_commitments: hb.spent_commitments.iter().map(|c| Vec::from(c.as_bytes())).collect(),
             block: Some(hb.block.into()),
         }
     }

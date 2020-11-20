@@ -46,7 +46,7 @@ impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
     fn try_into(self) -> Result<ci::NodeCommsResponse, Self::Error> {
         use ProtoNodeCommsResponse::*;
         let response = match self {
-            ChainMetadata(chain_metadata) => ci::NodeCommsResponse::ChainMetadata(chain_metadata.into()),
+            ChainMetadata(chain_metadata) => ci::NodeCommsResponse::ChainMetadata(chain_metadata.try_into()?),
             TransactionKernels(kernels) => {
                 let kernels = try_convert_all(kernels.kernels)?;
                 ci::NodeCommsResponse::TransactionKernels(kernels)

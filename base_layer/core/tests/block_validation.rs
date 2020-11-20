@@ -21,18 +21,21 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_core::{
-    chain_storage::{BlockAddResult, BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
+    chain_storage::{BlockAddResult, BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{ConsensusManagerBuilder, Network},
-    transactions::types::{CryptoFactories, HashDigest},
+    test_helpers::blockchain::create_test_db,
+    transactions::types::CryptoFactories,
     validation::block_validators::{FullConsensusValidator, StatelessBlockValidator},
 };
+
+mod helpers;
 
 #[test]
 fn test_genesis_block() {
     let factories = CryptoFactories::default();
     let network = Network::Ridcully;
     let rules = ConsensusManagerBuilder::new(network).build();
-    let backend = MemoryDatabase::<HashDigest>::default();
+    let backend = create_test_db();
     let validators = Validators::new(
         FullConsensusValidator::new(rules.clone()),
         StatelessBlockValidator::new(rules.clone(), factories),

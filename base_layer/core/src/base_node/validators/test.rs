@@ -26,7 +26,7 @@ use crate::{
     chain_storage::DbTransaction,
     consensus::{consensus_constants::ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     proof_of_work::PowError,
-    test_helpers::create_mem_db,
+    test_helpers::blockchain::create_store_with_consensus,
     transactions::{
         fee::Fee,
         helpers::{create_random_signature_from_s_key, create_utxo, spend_utxos},
@@ -43,7 +43,7 @@ use tari_test_utils::unpack_enum;
 #[test]
 fn header_iter_empty_and_invalid_height() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
-    let db = create_mem_db(&consensus_manager);
+    let db = create_store_with_consensus(&consensus_manager);
 
     let iter = HeaderIter::new(&db, 0, 10);
     let headers = iter.map(Result::unwrap).collect::<Vec<_>>();
@@ -60,7 +60,7 @@ fn header_iter_empty_and_invalid_height() {
 #[test]
 fn header_iter_fetch_in_chunks() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
-    let db = create_mem_db(&consensus_manager);
+    let db = create_store_with_consensus(&consensus_manager);
     let headers = (1..=15)
         .map(|i| {
             let mut header = BlockHeader::new(0);
@@ -84,7 +84,7 @@ fn header_iter_fetch_in_chunks() {
 #[test]
 fn headers_validation() {
     let rules = ConsensusManagerBuilder::new(Network::LocalNet).build();
-    let db = create_mem_db(&rules);
+    let db = create_store_with_consensus(&rules);
     let validator = HeaderValidator::new(db.clone(), rules.clone());
 
     let genesis = rules.get_genesis_block();
@@ -153,7 +153,7 @@ fn chain_balance_validation() {
         .with_consensus_constants(constants)
         .build();
 
-    let db = create_mem_db(&consensus_manager);
+    let db = create_store_with_consensus(&consensus_manager);
 
     let validator = ChainBalanceValidator::new(db.clone(), consensus_manager.clone(), factories.clone());
     // Validate the genesis state

@@ -39,6 +39,7 @@ pub struct HeaderIter<'a, B> {
 }
 
 impl<'a, B> HeaderIter<'a, B> {
+    #[allow(dead_code)]
     pub fn new(db: &'a BlockchainDatabase<B>, height: u64, chunk_size: usize) -> Self {
         Self {
             db,

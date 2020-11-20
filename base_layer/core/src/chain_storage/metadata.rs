@@ -29,18 +29,18 @@ use tari_crypto::tari_utilities::hex::Hex;
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Hash)]
 pub struct ChainMetadata {
     /// The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
-    pub height_of_longest_chain: Option<u64>,
+    height_of_longest_chain: u64,
     /// The block hash of the current tip of the longest valid chain, or `None` for an empty chain
-    pub best_block: Option<BlockHash>,
+    best_block: BlockHash,
     /// The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
     /// tracked (i.e. the database is in full archival mode).
-    pub pruning_horizon: u64,
+    pruning_horizon: u64,
     /// The effective height of the pruning horizon. This indicates from what height a full block can be provided
     /// (exclusive). If `effective_pruned_height` is equal to the `height_of_longest_chain` no blocks can be
     /// provided. Archival nodes wil always have an `effective_pruned_height` of zero.
-    pub effective_pruned_height: u64,
+    effective_pruned_height: u64,
     /// The geometric mean of the proof of work of the longest chain, none if the chain is empty
-    pub accumulated_difficulty: Option<u128>,
+    accumulated_difficulty: u128,
 }
 
 impl ChainMetadata {
@@ -53,11 +53,11 @@ impl ChainMetadata {
     ) -> ChainMetadata
     {
         ChainMetadata {
-            height_of_longest_chain: Some(height),
-            best_block: Some(hash),
+            height_of_longest_chain: height,
+            best_block: hash,
             pruning_horizon,
             effective_pruned_height,
-            accumulated_difficulty: Some(accumulated_difficulty),
+            accumulated_difficulty,
         }
     }
 
@@ -84,6 +84,10 @@ impl ChainMetadata {
         self.pruning_horizon = pruning_horizon;
     }
 
+    pub fn pruning_horizon(&self) -> u64 {
+        self.pruning_horizon
+    }
+
     /// Check if the node is an archival node based on its pruning horizon.
     pub fn is_archival_node(&self) -> bool {
         self.pruning_horizon == 0
@@ -95,33 +99,28 @@ impl ChainMetadata {
     }
 
     /// Returns the height of longest chain.
-    #[inline]
     pub fn height_of_longest_chain(&self) -> u64 {
-        self.height_of_longest_chain.unwrap_or_default()
+        self.height_of_longest_chain
     }
-}
 
-impl Default for ChainMetadata {
-    fn default() -> Self {
-        ChainMetadata {
-            height_of_longest_chain: None,
-            best_block: None,
-            pruning_horizon: 0,
-            effective_pruned_height: 0,
-            accumulated_difficulty: None,
-        }
+    pub fn effective_pruned_height(&self) -> u64 {
+        self.effective_pruned_height
+    }
+
+    pub fn accumulated_difficulty(&self) -> u128 {
+        self.accumulated_difficulty
+    }
+
+    pub fn best_block(&self) -> &BlockHash {
+        &self.best_block
     }
 }
 
 impl Display for ChainMetadata {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        let height = self.height_of_longest_chain.unwrap_or(0);
-        let best_block = self
-            .best_block
-            .clone()
-            .map(|b| b.to_hex())
-            .unwrap_or_else(|| "None".into());
-        let accumulated_difficulty = self.accumulated_difficulty.unwrap_or_else(|| 0);
+        let height = self.height_of_longest_chain;
+        let best_block = self.best_block.to_hex();
+        let accumulated_difficulty = self.accumulated_difficulty;
         fmt.write_str(&format!("Height of longest chain : {}\n", height))?;
         fmt.write_str(&format!(
             "Geometric mean of longest chain : {}\n",

@@ -43,7 +43,6 @@ use crate::{
     transactions::tari_amount::MicroTari,
 };
 use std::sync::Arc;
-use tari_crypto::tari_utilities::hash::Hashable;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -73,7 +72,7 @@ impl ConsensusManager {
             Network::MainNet => get_mainnet_genesis_block(),
             Network::Rincewind => get_rincewind_genesis_block(),
             Network::Ridcully => get_ridcully_genesis_block(),
-            Network::LocalNet => self.inner.gen_block.clone().unwrap_or_else(get_rincewind_genesis_block),
+            Network::LocalNet => get_ridcully_genesis_block(),
         }
     }
 
@@ -83,12 +82,7 @@ impl ConsensusManager {
             Network::MainNet => get_mainnet_block_hash(),
             Network::Rincewind => get_rincewind_block_hash(),
             Network::Ridcully => get_ridcully_block_hash(),
-            Network::LocalNet => self
-                .inner
-                .gen_block
-                .clone()
-                .unwrap_or_else(get_rincewind_genesis_block)
-                .hash(),
+            Network::LocalNet => get_ridcully_block_hash(),
         }
     }
 

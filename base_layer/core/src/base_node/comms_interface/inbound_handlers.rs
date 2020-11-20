@@ -34,7 +34,7 @@ use crate::{
     consensus::ConsensusManager,
     mempool::{async_mempool, Mempool},
     proof_of_work::{get_target_difficulty, Difficulty, PowAlgorithm},
-    transactions::transaction::{TransactionKernel, TransactionOutput},
+    transactions::transaction::TransactionKernel,
 };
 use croaring::Bitmap;
 use log::*;
@@ -159,17 +159,20 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::FetchHeadersWithHashes(block_hashes) => {
                 let mut block_headers = Vec::<BlockHeader>::new();
                 for block_hash in block_hashes {
-                    match async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), block_hash.clone()).await {
-                        Ok(block_header) => {
+                    match async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), block_hash.clone()).await? {
+                        Some(block_header) => {
                             block_headers.push(block_header);
                         },
-                        Err(err) => {
+                        None => {
                             error!(
                                 target: LOG_TARGET,
                                 "Could not fetch headers with hashes:{}",
-                                err.to_string()
+                                block_hash.to_hex()
                             );
-                            return Err(err.into());
+                            return Err(CommsInterfaceError::InternalError(format!(
+                                "Could not fetch headers with hashes:{}",
+                                block_hash.to_hex()
+                            )));
                         },
                     }
                 }
@@ -180,19 +183,18 @@ where T: BlockchainBackend + 'static
                 let mut starting_block = async_db::fetch_header(self.blockchain_db.clone(), 0).await?;
                 // Find first header that matches
                 for header_hash in header_hashes {
-                    match async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), header_hash.clone()).await {
-                        Ok(from_block) => {
+                    match async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), header_hash.clone()).await? {
+                        Some(from_block) => {
                             starting_block = from_block;
                             break;
                         },
-                        Err(err) => {
+                        None => {
                             // Not an error. The header requested is simply not in our chain.
                             // Logging it as debug because it may not just be not found.
                             debug!(
                                 target: LOG_TARGET,
-                                "Skipping header {} when searching for matching headers in our chain. Err: {}",
+                                "Skipping header {} when searching for matching headers in our chain.",
                                 header_hash.to_hex(),
-                                err.to_string()
                             );
                         },
                     }
@@ -222,24 +224,23 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::FetchHeadersAfterResponse(headers))
             },
             NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
-                let mut utxos = Vec::<TransactionOutput>::new();
-                for hash in utxo_hashes {
-                    // Not finding a requested UTXO is not an error; UTXO validation depends on this
-                    if let Ok(utxo) = async_db::fetch_utxo(self.blockchain_db.clone(), hash.clone()).await {
-                        utxos.push(utxo);
+                let mut res = vec![];
+                for item in async_db::fetch_utxos(self.blockchain_db.clone(), utxo_hashes.clone(), None).await? {
+                    if let Some((output, spent)) = item {
+                        if !spent {
+                            res.push(output);
+                        }
                     }
                 }
-                Ok(NodeCommsResponse::TransactionOutputs(utxos))
+                Ok(NodeCommsResponse::TransactionOutputs(res))
             },
-            NodeCommsRequest::FetchMatchingTxos(txo_hashes) => {
-                let mut txos = Vec::<TransactionOutput>::new();
-                for hash in txo_hashes {
-                    // Not finding a requested TXO is not an error; TXO validation depends on this
-                    if let Ok(Some(txo)) = async_db::fetch_txo(self.blockchain_db.clone(), hash.clone()).await {
-                        txos.push(txo);
-                    }
-                }
-                Ok(NodeCommsResponse::TransactionOutputs(txos))
+            NodeCommsRequest::FetchMatchingTxos(hashes) => {
+                let res = async_db::fetch_utxos(self.blockchain_db.clone(), hashes.clone(), None)
+                    .await?
+                    .into_iter()
+                    .filter_map(|opt| opt.map(|(output, _)| output))
+                    .collect();
+                Ok(NodeCommsResponse::TransactionOutputs(res))
             },
             NodeCommsRequest::FetchMatchingBlocks(block_nums) => {
                 let mut blocks = Vec::<HistoricalBlock>::with_capacity(block_nums.len());
@@ -361,13 +362,7 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
             NodeCommsRequest::GetNewBlockTemplate(pow_algo) => {
-                let metadata = async_db::get_chain_metadata(self.blockchain_db.clone()).await?;
-
-                let best_block_hash = metadata
-                    .best_block
-                    .ok_or_else(|| CommsInterfaceError::UnexpectedApiResponse)?;
-                let best_block_header =
-                    async_db::fetch_header_by_block_hash(self.blockchain_db.clone(), best_block_hash).await?;
+                let best_block_header = async_db::fetch_tip_header(self.blockchain_db.clone()).await?;
 
                 let mut header = BlockHeader::from_previous(&best_block_header)?;
                 let constants = self.consensus_manager.consensus_constants(header.height);
@@ -393,17 +388,17 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
-                let metadata = async_db::get_chain_metadata(self.blockchain_db.clone()).await?;
-                if Some(&block_template.header.prev_hash) != metadata.best_block.as_ref() {
-                    return Ok(NodeCommsResponse::NewBlock {
-                        success: false,
-                        error: Some(
-                            "Cannot calculate MMR roots for this block as it is no longer at the tip of this node"
-                                .to_string(),
-                        ),
-                        block: None,
-                    });
-                }
+                // let metadata = async_db::get_chain_metadata(self.blockchain_db.clone()).await?;
+                // if Some(&block_template.header.prev_hash) != metadata.best_block.as_ref() {
+                //     return Ok(NodeCommsResponse::NewBlock {
+                //         success: false,
+                //         error: Some(
+                //             "Cannot calculate MMR roots for this block as it is no longer at the tip of this node"
+                //                 .to_string(),
+                //         ),
+                //         block: None,
+                //     });
+                // }
 
                 let block = async_db::calculate_mmr_roots(self.blockchain_db.clone(), block_template.clone()).await?;
                 Ok(NodeCommsResponse::NewBlock {
@@ -581,8 +576,7 @@ where T: BlockchainBackend + 'static
     {
         let height_of_longest_chain = async_db::get_chain_metadata(self.blockchain_db.clone())
             .await?
-            .height_of_longest_chain
-            .ok_or_else(|| CommsInterfaceError::UnexpectedApiResponse)?;
+            .height_of_longest_chain();
         trace!(
             target: LOG_TARGET,
             "Calculating target difficulty at height:{} for PoW:{}",

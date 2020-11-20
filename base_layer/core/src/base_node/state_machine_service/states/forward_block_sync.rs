@@ -23,7 +23,7 @@ use crate::{
     base_node::{
         comms_interface::{Broadcast, CommsInterfaceError},
         state_machine_service::{
-            states::{sync_peers::SyncPeer, StateEvent, StateInfo},
+            states::{StateEvent, StateInfo},
             BaseNodeStateMachine,
         },
     },
@@ -108,14 +108,15 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             from_headers.last().map(|h| h.height).unwrap(),
             from_headers.first().map(|h| h.height).unwrap(),
         );
-        if let StateInfo::BlockSync(ref mut info) = shared.info {
-            // TODO: We don't have the peer's chainmetadata in this strategy - decide on a single block sync strategy
-            info.sync_peers = vec![SyncPeer {
-                node_id: current_sync_node.clone(),
-                chain_metadata: Default::default(),
-            }];
-            info.tip_height = from_headers.last().map(|h| h.height).unwrap();
-            info.local_height = from_headers.first().map(|h| h.height).unwrap();
+        if let StateInfo::BlockSync(ref mut _info) = shared.info {
+            unimplemented!()
+            // // TODO: We don't have the peer's chainmetadata in this strategy - decide on a single block sync strategy
+            // info.sync_peers = vec![SyncPeer {
+            //     node_id: current_sync_node.clone(),
+            //     chain_metadata: Default::default(),
+            // }];
+            // info.tip_height = from_headers.last().map(|h| h.height).unwrap();
+            // info.local_height = from_headers.first().map(|h| h.height).unwrap();
         }
         shared.publish_event_info();
         match shared
@@ -137,7 +138,11 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
             },
             Ok(headers) => {
                 if let Some(first_header) = headers.first() {
-                    if let Ok(block) = shared.db.fetch_header_by_block_hash(first_header.prev_hash.clone()) {
+                    if let Some(block) = shared
+                        .db
+                        .fetch_header_by_block_hash(first_header.prev_hash.clone())
+                        .map_err(|e| e.to_string())?
+                    {
                         if shared.db.fetch_tip_header().map_err(|e| e.to_string())? != block {
                             // If peer returns genesis block, it means that there is a split, but it is further back
                             // than the headers we sent.

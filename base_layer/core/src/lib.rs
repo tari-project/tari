@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Needed to make futures::select! work
-#![recursion_limit = "1024"]
+#![recursion_limit = "512"]
 // Used to eliminate the need for boxing futures in many cases.
 // Tracking issue: https://github.com/rust-lang/rust/issues/63063
 #![feature(type_alias_impl_trait)]
@@ -53,7 +53,7 @@ pub mod proof_of_work;
 pub mod validation;
 
 #[cfg(all(test, feature = "base_node"))]
-mod test_helpers;
+pub mod test_helpers;
 
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod base_node;
