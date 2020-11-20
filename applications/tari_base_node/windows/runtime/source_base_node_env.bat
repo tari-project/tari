@@ -30,6 +30,16 @@ if ["%sqlite_runtime%"]==[""] (
     pause
     exit /b 10101
 )
+if ["%openssl_runtime_1%"]==[""] (
+    echo Problem with "sopenssl_runtime" environment variable: '%openssl_runtime_1%'
+    pause
+    exit /b 10101
+)
+if ["%openssl_runtime_2%"]==[""] (
+    echo Problem with "sopenssl_runtime" environment variable: '%openssl_runtime_2%'
+    pause
+    exit /b 10101
+)
 
 rem Verify SQLite's location and prepend the default location to the system path if it exist
 if exist "%TARI_SQLITE_DIR%\%sqlite_runtime%" (
@@ -60,11 +70,43 @@ if exist "%TARI_SQLITE_DIR%\%sqlite_runtime%" (
     )
 )
 
+rem Verify OpenSSL's location
+set FOUND_OPENSSL=
+if exist "%my_exe_path%\%openssl_runtime_1%" (
+    if exist "%my_exe_path%\%openssl_runtime_2%" (
+        echo.
+        echo Using OpenSSL dlls found in "%my_exe_path%"
+        echo.
+        set FOUND_OPENSSL=true
+    )
+)
+if not defined FOUND_OPENSSL (
+    set FOUND_1=
+    set FOUND_2=
+    for %%X in (%openssl_runtime_1%) do (set FOUND_1=%%~$PATH:X)
+    for %%X in (%openssl_runtime_2%) do (set FOUND_2=%%~$PATH:X)
+    if defined FOUND_1 (
+        if defined FOUND_2 (
+            set FOUND_OPENSSL=true
+            echo.
+            echo OpenSSL dlls found in system path:
+            where "%openssl_runtime_1%"
+            where "%openssl_runtime_2%"
+        )
+    )
+)
+if not defined FOUND_OPENSSL (
+    echo.
+    echo Note: OpenSSL dlls not found in "%my_exe_path%" or in the system path; this may be a problem
+    echo.
+    pause
+)
+
 rem Find the base node executable
 if exist "%my_exe_path%\%my_exe%" (
     set base_node=%my_exe_path%\%my_exe%
     echo.
-    echo Using "%my_exe%" found in my_exe_path
+    echo Using "%my_exe%" found in %my_exe_path%
     echo.
 ) else (
     if exist "%base_path%\%my_exe%" (
@@ -83,7 +125,7 @@ if exist "%my_exe_path%\%my_exe%" (
             echo.
         ) else (
             echo.
-            echo Runtime "%my_exe%" not found in my_exe_path, base_path or the system path
+            echo Runtime "%my_exe%" not found in %my_exe_path%, base_path or the system path
             echo.
             pause
             exit /b 10101
@@ -92,16 +134,16 @@ if exist "%my_exe_path%\%my_exe%" (
 )
 
 rem First time run
-if not exist "%config_path%\node_id.json" (
+if not exist "%config_path%\base_node_id.json" (
     "%base_node%" --create-id --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
     echo.
     echo.
-    echo Created "%config_path%\node_id.json". 
+    echo Created "%config_path%\base_node_id.json". 
     echo.
 ) else (
     echo.
     echo.
-    echo Using old "%config_path%\node_id.json"
+    echo Using old "%config_path%\base_node_id.json"
     echo.
 )
 

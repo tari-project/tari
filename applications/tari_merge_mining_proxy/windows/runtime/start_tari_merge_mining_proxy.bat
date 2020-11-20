@@ -5,6 +5,8 @@ echo Set up environment variables
 echo ----------------------------
 rem These is the merge mining proxy executable name
 set my_exe=tari_merge_mining_proxy.exe
+set openssl_runtime_1=libcrypto-1_1-x64.dll
+set openssl_runtime_2=libssl-1_1-x64.dll
 
 rem This is the location of the configuration and identity files
 set config_path=%~dp0..\config
@@ -22,7 +24,7 @@ echo base_path   = %base_path%
 echo.
 echo Run the merge mining proxy
 echo --------------------------
-call "%my_exe_path%\run_the_merge_mining_proxy.bat"
+call "%my_exe_path%\source_merge_mining_proxy_env.bat"
 
 goto END:
 

@@ -1,8 +1,8 @@
 @echo off
 
 rem Control variables
-rem - XMRig {Note: `powershell` cannot `expand-archive` to `C:\Program Files (x86)`}
-rem   - Download 'XMRig' at https://github.com/xmrig/xmrig/releases/`
+rem - XMRig latest {Note: `powershell` cannot `expand-archive` to `C:\Program Files (x86)`}
+rem   - Download `XMRig` at `https://github.com/xmrig/xmrig/releases/`
 
 set xmrig_zip=xmrig-win64.zip
 set xmrig_folder=%USERPROFILE%\.xmrig

@@ -92,14 +92,14 @@ Source: "..\applications\tari_base_node\windows\start_tor.lnk"; DestDir: "{app}"
 Source: "..\target\release\tari_base_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\target\release\tari_console_wallet.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\target\release\tari_merge_mining_proxy.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_base_node\windows\runtime\run_the_base_node.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_base_node\windows\runtime\source_base_node_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\runtime\start_tor.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\runtime\start_tari_base_node.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_console_wallet\windows\runtime\run_the_console_wallet.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_console_wallet\windows\runtime\source_console_wallet_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_console_wallet\windows\runtime\start_tari_console_wallet.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_merge_mining_proxy\windows\runtime\run_the_merge_mining_proxy.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_merge_mining_proxy\windows\runtime\source_merge_mining_proxy_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_merge_mining_proxy\windows\runtime\start_tari_merge_mining_proxy.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_merge_mining_proxy\windows\runtime\run_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_merge_mining_proxy\windows\runtime\source_xmrig_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_merge_mining_proxy\windows\runtime\start_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\common\config\presets\windows.toml"; DestDir: "{app}\config"; Flags: ignoreversion
 Source: "tari_logo_purple.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
@@ -108,6 +108,8 @@ Source: "xmr-logo.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignorev
 Source: "install_sqlite.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_tor_services.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_vs2019_redist.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "install_openssl.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "get-openssl-win.ps1"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "get-xmrig-win.ps1"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\common\xmrig_config\config_example.json"; DestDir: "{app}\config"; DestName: "config_xmrig.json"; Flags: ignoreversion
@@ -135,6 +137,7 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#BaseNodeName}"; 
 [Run]
 Filename: "{app}\runtime\install_sqlite.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install SQLite"
 Filename: "{app}\runtime\install_tor_services.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install Tor Services"
+Filename: "{app}\runtime\install_openssl.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install OpenSSL"
 Filename: "{app}\runtime\install_xmrig.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install XMRig"
 Filename: "{app}\runtime\install_vs2019_redist.bat"; Parameters: "NO_PAUSE"; Flags: runascurrentuser postinstall; Description: "Install Redistributable for Visual Studio 2019"
 
