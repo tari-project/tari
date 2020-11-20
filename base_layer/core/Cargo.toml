@@ -28,6 +28,7 @@ tari_p2p = { version = "^0.2", path = "../../base_layer/p2p" }
 tari_service_framework = { version = "^0.2", path = "../service_framework"}
 tari_shutdown = { version = "^0.2", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.2", path = "../../infrastructure/storage" }
+tari_test_utils = { version = "^0.2", path = "../../infrastructure/test_utils" }
 
 bincode = "1.1.4"
 bitflags = "1.0.4"

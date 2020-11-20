@@ -59,7 +59,7 @@ pub fn user_prompt(default_peer: Option<Peer>) -> Result<(Peer, StressProtocol),
         let mut buf = String::new();
         stdin().read_line(&mut buf).unwrap();
         let trimmed = buf.trim();
-        if trimmed.len() == 0 {
+        if trimmed.is_empty() {
             Some(default)
         } else {
             trimmed.parse().ok()
@@ -75,10 +75,7 @@ pub fn user_prompt(default_peer: Option<Peer>) -> Result<(Peer, StressProtocol),
         println!("2) Alternating Send (Server and client alternate send and receiving)");
         println!("3) Messaging Flood (Both sides send a flood using the messaging protocol)");
         println!();
-        println!(
-            "p) Set peer (current: {})",
-            peer_str.as_ref().map(|s| s.as_str()).unwrap_or("<None>")
-        );
+        println!("p) Set peer (current: {})", peer_str.as_deref().unwrap_or("<None>"));
         println!("q) Quit");
         prompt!();
         let opt = or_continue!(read_line::<char>(' '));
@@ -106,10 +103,7 @@ pub fn user_prompt(default_peer: Option<Peer>) -> Result<(Peer, StressProtocol),
                 StressProtocol::new(StressProtocolKind::MessagingFlood, n, msg_size)
             },
             'p' => {
-                prompt!(
-                    "Set peer (default: {})",
-                    peer_str.as_ref().map(|s| s.as_str()).unwrap_or("<None>")
-                );
+                prompt!("Set peer (default: {})", peer_str.as_deref().unwrap_or("<None>"));
                 let peer = or_continue!(read_line(peer_str.unwrap_or_else(String::new)));
                 if peer.is_empty() {
                     continue;
@@ -126,10 +120,7 @@ pub fn user_prompt(default_peer: Option<Peer>) -> Result<(Peer, StressProtocol),
         };
 
         if current_peer.is_none() {
-            prompt!(
-                "Set peer (default: {})",
-                peer_str.as_ref().map(|s| s.as_str()).unwrap_or("<None>")
-            );
+            prompt!("Set peer (default: {})", peer_str.as_deref().unwrap_or("<None>"));
             let peer = or_continue!(read_line(peer_str.unwrap_or_else(String::new)));
             if peer.is_empty() {
                 continue;
@@ -152,8 +143,8 @@ pub fn parse_from_short_str(s: &String) -> Option<Peer> {
     let address = split.next().and_then(|s| s.parse::<Multiaddr>().ok())?;
     Some(Peer::new(
         pk,
-        node_id.clone(),
-        vec![address.clone()].into(),
+        node_id,
+        vec![address].into(),
         Default::default(),
         Default::default(),
         &[],

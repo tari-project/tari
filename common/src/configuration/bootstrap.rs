@@ -338,7 +338,7 @@ mod test {
 
         // Command line test data for config init test
         let temp_dir = tempdir().unwrap();
-        let dir = &PathBuf::from(temp_dir.path().to_path_buf().display().to_string().to_owned() + "/01/02/");
+        let dir = &PathBuf::from(temp_dir.path().to_path_buf().display().to_string() + "/01/02/");
         let data_path = default_subdir("", Some(dir));
         let mut bootstrap =
             ConfigBootstrap::from_iter_safe(vec!["", "--base_dir", &data_path.as_str(), "--init", "--create-id"])
@@ -403,7 +403,7 @@ mod test {
         assert!(log_config_exists);
         assert_eq!(
             &bootstrap.log_config,
-            &PathBuf::from(data_path.to_owned() + &DEFAULT_BASE_NODE_LOG_CONFIG.to_string())
+            &PathBuf::from(data_path + &DEFAULT_BASE_NODE_LOG_CONFIG.to_string())
         );
 
         // Assert logging results

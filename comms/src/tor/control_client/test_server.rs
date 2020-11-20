@@ -93,7 +93,7 @@ impl TorControlPortTestServer {
 }
 
 fn all_to_owned<'a, T: AsRef<[&'a str]>>(strings: T) -> Vec<String> {
-    strings.as_ref().into_iter().map(|s| (*s).to_owned()).collect()
+    strings.as_ref().iter().map(|s| (*s).to_owned()).collect()
 }
 
 pub mod canned_responses {

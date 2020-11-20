@@ -136,9 +136,8 @@ impl Deref for TempDatabase {
 impl Drop for TempDatabase {
     fn drop(&mut self) {
         if std::path::Path::new(&self.path).exists() {
-            match std::fs::remove_dir_all(&self.path) {
-                Err(e) => println!("\n{:?}\n", e),
-                _ => (),
+            if let Err(e) = std::fs::remove_dir_all(&self.path) {
+                println!("\n{:?}\n", e);
             }
         }
     }

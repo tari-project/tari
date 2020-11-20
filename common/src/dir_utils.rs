@@ -77,7 +77,7 @@ mod test {
     fn test_multiple_levels_create_data_directory() {
         let temp_dir = tempdir().unwrap();
         let dir = &PathBuf::from(
-            temp_dir.path().to_path_buf().display().to_string().to_owned() +
+            temp_dir.path().to_path_buf().display().to_string() +
                 "/" +
                 &(0..12)
                     .collect::<Vec<usize>>()

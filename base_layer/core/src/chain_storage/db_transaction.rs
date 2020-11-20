@@ -158,6 +158,7 @@ impl DbTransaction {
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum WriteOperation {
     Insert(DbKeyValuePair),
     InsertInput {

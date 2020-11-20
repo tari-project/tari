@@ -24,13 +24,13 @@
 // use crate::helpers::database::create_store;
 use crate::helpers::{
     block_builders::{
+        _generate_new_block_with_coinbase,
         append_block,
         chain_block,
         create_genesis_block,
         find_header_with_achieved_difficulty,
         generate_new_block,
         generate_new_block_with_achieved_difficulty,
-        generate_new_block_with_coinbase,
     },
     database::create_orphan_block,
     sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb},
@@ -78,23 +78,17 @@ fn write_and_fetch_metadata() {
     // let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_store();
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain, Some(0));
-    assert!(metadata.best_block.is_some());
-    assert!(metadata.accumulated_difficulty.is_some());
+    assert_eq!(metadata.height_of_longest_chain(), 0);
 
     let height = 10;
     let accumulated_difficulty = 20;
-    let mut metadata = ChainMetadata::default();
-    metadata.height_of_longest_chain = Some(height);
-    metadata.best_block = None;
-    metadata.accumulated_difficulty = Some(accumulated_difficulty);
+    let mut metadata = ChainMetadata::new(height, Vec::new(), 0, 0, accumulated_difficulty);
     store.set_chain_metadata(metadata).unwrap();
 
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain, Some(height));
-    assert_eq!(metadata.best_block, None);
-    assert_eq!(metadata.accumulated_difficulty, Some(accumulated_difficulty));
-    assert_eq!(metadata.effective_pruned_height, 0);
+    assert_eq!(metadata.height_of_longest_chain(), height);
+    assert_eq!(metadata.accumulated_difficulty(), accumulated_difficulty);
+    assert_eq!(metadata.effective_pruned_height(), 0);
 
     let state = InProgressHorizonSyncState {
         metadata: metadata.clone(),
@@ -436,9 +430,9 @@ fn store_and_retrieve_block() {
     let hash = blocks[0].hash();
     // Check the metadata
     let metadata = db.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain, Some(0));
-    assert_eq!(metadata.best_block, Some(hash));
-    assert_eq!(metadata.horizon_block(metadata.height_of_longest_chain.unwrap()), 0);
+    assert_eq!(metadata.height_of_longest_chain(), 0);
+    assert_eq!(metadata.best_block(), &hash);
+    assert_eq!(metadata.horizon_block(metadata.height_of_longest_chain()), 0);
     // Fetch the block back
     let block0 = db.fetch_block(0).unwrap();
     assert_eq!(block0.confirmations(), 1);
@@ -454,15 +448,15 @@ fn add_multiple_blocks() {
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_store();
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain, Some(0));
+    assert_eq!(metadata.height_of_longest_chain(), 0);
     let block0 = store.fetch_block(0).unwrap().block().clone();
-    assert_eq!(metadata.best_block, Some(block0.hash()));
+    assert_eq!(metadata.best_block(), &block0.hash());
     // Add another block
     let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
     let metadata = store.get_chain_metadata().unwrap();
     let hash = block1.hash();
-    assert_eq!(metadata.height_of_longest_chain, Some(1));
-    assert_eq!(metadata.best_block.unwrap(), hash);
+    assert_eq!(metadata.height_of_longest_chain(), 1);
+    assert_eq!(metadata.best_block(), &hash);
     // Adding blocks is idempotent
     assert_eq!(
         store.add_block(block1.clone().into()).unwrap(),
@@ -470,8 +464,8 @@ fn add_multiple_blocks() {
     );
     // Check the metadata
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain, Some(1));
-    assert_eq!(metadata.best_block.unwrap(), hash);
+    assert_eq!(metadata.height_of_longest_chain(), 1);
+    assert_eq!(metadata.best_block(), &hash);
 }
 
 #[test]
@@ -573,10 +567,10 @@ fn rewind_past_horizon_height() {
     let _block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
 
     let metadata = store.get_chain_metadata().unwrap();
-    let horizon_height = metadata.horizon_block(metadata.height_of_longest_chain.unwrap_or(0));
+    let horizon_height = metadata.horizon_block(metadata.height_of_longest_chain());
     assert!(store.rewind_to_height(horizon_height - 1).is_err());
     assert!(store.rewind_to_height(horizon_height).is_ok());
-    assert_eq!(store.get_height().unwrap(), Some(horizon_height));
+    assert_eq!(store.get_height().unwrap(), horizon_height);
 }
 
 #[test]
@@ -1141,9 +1135,9 @@ fn restore_metadata_and_pruning_horizon_update() {
             db.add_block(block1.clone().into()).unwrap();
             block_hash = block1.hash();
             let metadata = db.get_chain_metadata().unwrap();
-            assert_eq!(metadata.height_of_longest_chain, Some(1));
-            assert_eq!(metadata.best_block, Some(block_hash.clone()));
-            assert_eq!(metadata.pruning_horizon, pruning_horizon1);
+            assert_eq!(metadata.height_of_longest_chain(), 1);
+            assert_eq!(metadata.best_block(), &block_hash);
+            assert_eq!(metadata.pruning_horizon(), pruning_horizon1);
         }
         // Restore blockchain db with larger pruning horizon
         {
@@ -1152,9 +1146,9 @@ fn restore_metadata_and_pruning_horizon_update() {
             let db = BlockchainDatabase::new(db, &rules, validators.clone(), config, false).unwrap();
 
             let metadata = db.get_chain_metadata().unwrap();
-            assert_eq!(metadata.height_of_longest_chain, Some(1));
-            assert_eq!(metadata.best_block, Some(block_hash.clone()));
-            assert_eq!(metadata.pruning_horizon, 2000);
+            assert_eq!(metadata.height_of_longest_chain(), 1);
+            assert_eq!(metadata.best_block(), &block_hash);
+            assert_eq!(metadata.pruning_horizon(), 2000);
         }
         // Restore blockchain db with smaller pruning horizon update
         {
@@ -1163,17 +1157,16 @@ fn restore_metadata_and_pruning_horizon_update() {
             let db = BlockchainDatabase::new(db, &rules, validators, config, false).unwrap();
 
             let metadata = db.get_chain_metadata().unwrap();
-            assert_eq!(metadata.height_of_longest_chain, Some(1));
-            assert_eq!(metadata.best_block, Some(block_hash));
-            assert_eq!(metadata.pruning_horizon, pruning_horizon2);
+            assert_eq!(metadata.height_of_longest_chain(), 1);
+            assert_eq!(metadata.best_block(), &block_hash);
+            assert_eq!(metadata.pruning_horizon(), pruning_horizon2);
         }
     }
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&path).exists() {
-        match std::fs::remove_dir_all(&path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
+        if let Err(e) = std::fs::remove_dir_all(&path) {
+            println!("\n{:?}\n", e);
         }
     }
 }
@@ -1674,7 +1667,7 @@ fn fails_validation() {
     unpack_enum!(ValidationError::CustomError(_s) = source);
 
     let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain.unwrap(), 0);
+    assert_eq!(metadata.height_of_longest_chain(), 0);
 }
 
 #[test]

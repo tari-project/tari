@@ -316,7 +316,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 "Could not get new block template: {}",
                 e.to_string()
             );
-            return Status::internal(e.to_string());
+            Status::internal(e.to_string())
         })?;
 
         let height = new_template.header.height;
@@ -519,6 +519,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    #[allow(clippy::useless_conversion)]
     async fn fetch_matching_utxos(
         &self,
         request: Request<tari_rpc::FetchMatchingUtxosRequest>,

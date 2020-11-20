@@ -246,7 +246,7 @@ impl ChainMetadataService {
         if let Some(chain_metadata_bytes) = metadata.get(MetadataKey::ChainMetadata) {
             let chain_metadata: ChainMetadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?
                 .try_into()
-                .map_err(|s| ConversionError(s))?;
+                .map_err(ConversionError)?;
             debug!(
                 target: LOG_TARGET,
                 "Received chain metadata from NodeId '{}' #{}",
@@ -280,7 +280,7 @@ impl ChainMetadataService {
 
         let chain_metadata: ChainMetadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?
             .try_into()
-            .map_err(|s| ConversionError(s))?;
+            .map_err(ConversionError)?;
         debug!(
             target: LOG_TARGET,
             "Received chain metadata from NodeId '{}' #{}",
@@ -421,8 +421,8 @@ mod test {
         let metadata = service.peer_chain_metadata.remove(0);
         assert_eq!(metadata.node_id, node_id);
         assert_eq!(
-            metadata.chain_metadata.height_of_longest_chain,
-            proto_chain_metadata.height_of_longest_chain
+            metadata.chain_metadata.height_of_longest_chain(),
+            proto_chain_metadata.height_of_longest_chain.unwrap()
         );
     }
 

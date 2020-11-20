@@ -103,11 +103,8 @@ mod sync_blocks {
     #[tokio_macros::test_basic]
     async fn it_streams_blocks_until_count() {
         let (service, mock, rpc_request_mock, _tmp) = setup();
-        mock.set_get_chain_metadata_response(ChainMetadata {
-            height_of_longest_chain: Some(20),
-            ..Default::default()
-        })
-        .await;
+        let metadata = ChainMetadata::new(20, Vec::new(), 0, 0, 0);
+        mock.set_get_chain_metadata_response(metadata).await;
         let blocks = create_chained_blocks(10);
         let first_hash = blocks[0].hash();
         mock.set_get_block_header_by_hash(Some(blocks[0].header.clone())).await;
@@ -147,11 +144,8 @@ mod sync_blocks {
     #[tokio_macros::test_basic]
     async fn it_streams_blocks_until_the_end() {
         let (service, mock, rpc_request_mock, _tmp) = setup();
-        mock.set_get_chain_metadata_response(ChainMetadata {
-            height_of_longest_chain: Some(20),
-            ..Default::default()
-        })
-        .await;
+        let metadata = ChainMetadata::new(20, Vec::new(), 0, 0, 0);
+        mock.set_get_chain_metadata_response(metadata).await;
         let blocks = create_chained_blocks(10);
         let first_hash = blocks[0].hash();
         mock.set_get_block_header_by_hash(Some(blocks[0].header.clone())).await;
@@ -202,11 +196,8 @@ mod sync_blocks {
         mock.set_get_block_header_by_hash(Some(blocks[0].header.clone())).await;
         // Remember: this response is sent back regardless of what is requested. So we have to test what bounds are sent
         mock.set_get_blocks_response(blocks).await;
-        mock.set_get_chain_metadata_response(ChainMetadata {
-            height_of_longest_chain: Some(20),
-            ..Default::default()
-        })
-        .await;
+        let metadata = ChainMetadata::new(20, Vec::new(), 0, 0, 0);
+        mock.set_get_chain_metadata_response(metadata).await;
 
         let msg = SyncBlocksRequest {
             start_hash: vec![],

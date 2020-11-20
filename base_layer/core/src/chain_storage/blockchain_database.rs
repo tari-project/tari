@@ -135,6 +135,7 @@ impl<B> Clone for Validators<B> {
 /// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. This strategy allows
 /// us to keep the reading and writing API extremely simple. Extending the types of data that the back ends can handle
 /// will entail adding to those enums, and the back ends, while this trait can remain unchanged.
+#[allow(clippy::ptr_arg)]
 pub trait BlockchainBackend: Send + Sync {
     /// Commit the transaction given to the backend. If there is an error, the transaction must be rolled back, and
     /// the error condition returned. On success, every operation in the transaction will have been committed, and
@@ -297,6 +298,7 @@ pub struct BlockchainDatabase<B> {
     consensus_manager: ConsensusManager,
 }
 
+#[allow(clippy::ptr_arg)]
 impl<B> BlockchainDatabase<B>
 where B: BlockchainBackend
 {
@@ -814,7 +816,7 @@ where B: BlockchainBackend
         );
 
         // Remove pending horizon sync state
-       // txn.delete_metadata(MetadataKey::HorizonSyncState);
+        // txn.delete_metadata(MetadataKey::HorizonSyncState);
 
         let _res = commit(&mut *db, txn);
         unimplemented!();
@@ -1219,7 +1221,7 @@ fn store_new_block<T: BlockchainBackend>(
     }
 
     txn.set_block_accumulated_data(
-        header_hash.clone(),
+        header_hash,
         BlockAccumulatedData::new(
             kernel_mmr.get_pruned_hash_set()?,
             output_mmr.mmr().get_pruned_hash_set()?,
@@ -1719,7 +1721,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         // Extend tip
         txn.remove_orphan_chain_tip(block.header.prev_hash.clone());
 
-        for new_tip in find_orphan_descendant_tips_of(&*db, hash.clone())? {
+        for new_tip in find_orphan_descendant_tips_of(&*db, hash)? {
             txn.insert_orphan_chain_tip(new_tip.clone());
             new_tips_found.push(new_tip);
         }
@@ -1731,7 +1733,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
                 target: LOG_TARGET,
                 "New orphan connects to existing chain at height: {}", connected.height
             );
-            for new_tip in find_orphan_descendant_tips_of(&*db, hash.clone())? {
+            for new_tip in find_orphan_descendant_tips_of(&*db, hash)? {
                 txn.insert_orphan_chain_tip(new_tip.clone());
                 new_tips_found.push(new_tip);
             }
@@ -1773,13 +1775,14 @@ fn remove_orphan<T: BlockchainBackend>(db: &mut T, hash: HashOutput) -> Result<(
 }
 
 /// Gets all blocks from the orphan to the point where it connects to the best chain
+#[allow(clippy::ptr_arg)]
 fn get_orphan_link_main_chain<T: BlockchainBackend>(
     db: &mut T,
     orphan_tip: &HashOutput,
 ) -> Result<VecDeque<Arc<Block>>, ChainStorageError>
 {
     let mut chain: VecDeque<Arc<Block>> = VecDeque::new();
-    let mut curr_hash = orphan_tip.clone();
+    let mut curr_hash = orphan_tip.to_owned();
     loop {
         let curr_block = fetch!(db, curr_hash, OrphanBlock)?;
         curr_hash = curr_block.header.prev_hash.clone();

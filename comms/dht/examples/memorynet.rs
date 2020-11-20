@@ -95,7 +95,7 @@ async fn main() {
         repeat_with(|| {
             make_node(
                 PeerFeatures::COMMUNICATION_NODE,
-                vec![seed_node[0].node_identity().clone()],
+                vec![seed_node[0].node_identity()],
                 node_message_tx.clone(),
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
@@ -111,7 +111,7 @@ async fn main() {
         repeat_with(|| {
             make_node(
                 PeerFeatures::COMMUNICATION_CLIENT,
-                vec![nodes[OsRng.gen_range(0, NUM_NODES - 1)].node_identity().clone()],
+                vec![nodes[OsRng.gen_range(0, NUM_NODES - 1)].node_identity()],
                 node_message_tx.clone(),
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
