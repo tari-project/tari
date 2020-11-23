@@ -38,6 +38,7 @@ use tari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
 };
+use tari_core::base_node::StateMachineHandle;
 use tari_crypto::tari_utilities::Hashable;
 use tokio::{runtime, sync::mpsc};
 use tonic::{Request, Response, Status};
@@ -65,14 +66,22 @@ pub struct BaseNodeGrpcServer {
     executor: runtime::Handle,
     node_service: LocalNodeCommsInterface,
     node_config: GlobalConfig,
+    state_machine_handle: StateMachineHandle,
 }
 
 impl BaseNodeGrpcServer {
-    pub fn new(executor: runtime::Handle, local_node: LocalNodeCommsInterface, node_config: GlobalConfig) -> Self {
+    pub fn new(
+        executor: runtime::Handle,
+        local_node: LocalNodeCommsInterface,
+        node_config: GlobalConfig,
+        state_machine_handle: StateMachineHandle,
+    ) -> Self
+    {
         Self {
             executor,
             node_service: local_node,
             node_config,
+            state_machine_handle,
         }
     }
 }
@@ -323,9 +332,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let cm = ConsensusManagerBuilder::new(self.node_config.network.into()).build();
 
+        let status_watch = self.state_machine_handle.get_status_info_watch();
         let response = tari_rpc::NewBlockTemplateResponse {
             new_block_template: Some(new_template.into()),
             block_reward: cm.emission_schedule().block_reward(height).0,
+            initial_sync_achieved: (*status_watch.borrow()).bootstrapped,
         };
 
         debug!(target: LOG_TARGET, "Sending GetNewBlockTemplate response to client");
@@ -381,6 +392,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let block: Block = request
             .try_into()
             .map_err(|_| Status::invalid_argument("Failed to convert arguments. Invalid block.".to_string()))?;
+        let block_height = block.clone().header.height;
+        debug!(
+            target: LOG_TARGET,
+            "Received SubmitBlock #{} request from client", &block_height
+        );
 
         let mut handler = self.node_service.clone();
         handler
@@ -389,7 +405,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .map_err(|e| Status::internal(e.to_string()))?;
         let response: tari_rpc::Empty = tari_rpc::Empty {};
 
-        debug!(target: LOG_TARGET, "Sending SubmitBlock response to client");
+        debug!(
+            target: LOG_TARGET,
+            "Sending SubmitBlock #{} response to client", block_height
+        );
         Ok(Response::new(response))
     }
 
@@ -465,8 +484,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
+        // Determine if we are bootstrapped
+        let status_watch = self.state_machine_handle.get_status_info_watch();
         let response = tari_rpc::TipInfoResponse {
             metadata: Some(meta.into()),
+            initial_sync_achieved: (*status_watch.borrow()).bootstrapped,
         };
 
         debug!(target: LOG_TARGET, "Sending MetaData response to client");

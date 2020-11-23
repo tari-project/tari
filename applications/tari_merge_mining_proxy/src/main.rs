@@ -49,7 +49,7 @@ async fn main() -> Result<(), MmProxyError> {
     let config = initialize()?;
 
     let addr = config.proxy_host_address;
-    println!("Listening on {}...", addr);
+    println!("\nListening on {}...\n", addr);
 
     let config = MergeMiningProxyConfig::from(config);
     let xmrig_service = MergeMiningProxyService::new(config, BlockTemplateRepository::new());
