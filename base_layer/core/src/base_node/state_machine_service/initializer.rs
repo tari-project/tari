@@ -84,7 +84,7 @@ where B: BlockchainBackend + 'static
 
     fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         trace!(target: LOG_TARGET, "init of base_node");
-        let (state_event_publisher, _) = broadcast::channel(10);
+        let (state_event_publisher, _) = broadcast::channel(500);
         let (status_event_sender, status_event_receiver) = watch::channel(StatusInfo::new());
 
         let handle = StateMachineHandle::new(
