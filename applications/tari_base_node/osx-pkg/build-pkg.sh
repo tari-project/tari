@@ -44,6 +44,7 @@ mkdir -p "$destDir/pkgRoot/usr/local/bin/"
 
 COPY_BIN_FILES=(
   "tari_base_node"
+  "tari_console_wallet"
   "tari_merge_mining_proxy"
 )
 for COPY_BIN_FILE in "${COPY_BIN_FILES[@]}"; do
