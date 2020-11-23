@@ -152,7 +152,7 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
         // If the backends are refactored and it becomes an issue to include the extra historical data along with
         // the block, this will make that refactor easier because nothing can rely on that data if it isn't exposed.
         // If however, the historical data is needed, then exposing it here is a much easier refactor.
-        Ok(blocks.into_iter().map(|b| b.block).collect())
+        Ok(blocks.into_iter().map(|b| b.block.to_block()).collect())
     }
 
     async fn fetch_headers(
@@ -186,7 +186,7 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
                         return Ok(Some((i, Vec::new())));
                     }
 
-                    let end_height = header.height.checked_add(count).ok_or_else(|| {
+                    let end_height = header.header().height.checked_add(count).ok_or_else(|| {
                         BlockchainStateServiceError::InvalidArguments {
                             func: "find_headers_after_hash",
                             arg: "count",

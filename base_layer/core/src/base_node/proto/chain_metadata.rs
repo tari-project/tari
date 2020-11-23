@@ -20,12 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::proto;
-use std::{convert::TryFrom, mem};
-use tari_common_types::chain_metadata::ChainMetadata;
+use super::base_node as proto;
+use crate::{chain_storage::ChainMetadata, proof_of_work::difficulty::Difficulty};
 
-impl TryFrom<proto::ChainMetadata> for ChainMetadata {
-    type Error = String;
+impl From<proto::ChainMetadata> for ChainMetadata {
+    fn from(metadata: proto::ChainMetadata) -> Self {
+        let accumulated_difficulty: Option<Difficulty> = if metadata.accumulated_difficulty.len() == 16 {
+            let mut accumulated_difficulty_array = [0; 16];
+            accumulated_difficulty_array.copy_from_slice(&metadata.accumulated_difficulty[0..16]);
+            Some((u128::from_be_bytes(accumulated_difficulty_array)).into())
+        } else {
+            None
+        };
 
     fn try_from(metadata: proto::ChainMetadata) -> Result<Self, Self::Error> {
         const ACC_DIFFICULTY_ARRAY_LEN: usize = mem::size_of::<u128>();
@@ -55,7 +61,10 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
 
 impl From<ChainMetadata> for proto::ChainMetadata {
     fn from(metadata: ChainMetadata) -> Self {
-        let accumulated_difficulty = metadata.accumulated_difficulty().to_be_bytes().to_vec();
+        let accumulated_difficulty = match metadata.accumulated_difficulty {
+            None => Vec::new(),
+            Some(v) => u128::from(v).to_be_bytes().to_vec(),
+        };
         Self {
             height_of_longest_chain: Some(metadata.height_of_longest_chain()),
             best_block: Some(metadata.best_block().clone()),

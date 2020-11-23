@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::blocks::Block;
+use crate::{
+    blocks::{chain_block::ChainBlock, Block},
+    transactions::{transaction::TransactionOutput, types::Commitment},
+};
 use serde::{Deserialize, Serialize};
 
 /// The representation of a historical block in the blockchain. It is essentially identical to a protocol-defined
@@ -31,30 +34,44 @@ pub struct HistoricalBlock {
     /// confirmation.
     pub confirmations: u64,
     /// The underlying block
-    pub block: Block,
+    pub block: ChainBlock,
 }
 
 impl HistoricalBlock {
-    pub fn new(block: Block, confirmations: u64) -> Self {
-        HistoricalBlock { block, confirmations }
+    pub fn new(block: ChainBlock, confirmations: u64, spent_commitments: Vec<Commitment>) -> Self {
+        HistoricalBlock {
+            block,
+            confirmations,
+            spent_commitments,
+        }
     }
 
-    pub fn confirmations(&self) -> u64 {
+    pub fn confirmations(&self) -> u64 { 
         self.confirmations
     }
 
     /// Returns a reference to the block of the HistoricalBlock
-    pub fn block(&self) -> &Block {
+    pub fn block(&self) -> &ChainBlock {
         &self.block
     }
 
     pub fn into_block(self) -> Block {
+        self.block.to_block()
+    }
+
+    pub fn into_chain_block(self) -> ChainBlock {
         self.block
+    }
+}
+
+impl From<HistoricalBlock> for ChainBlock {
+    fn from(block: HistoricalBlock) -> Self {
+        block.block
     }
 }
 
 impl From<HistoricalBlock> for Block {
     fn from(block: HistoricalBlock) -> Self {
-        block.block
+        block.block.to_block()
     }
 }

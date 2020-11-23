@@ -35,7 +35,16 @@ pub use error::ValidationError;
 pub mod helpers;
 
 mod traits;
-pub use traits::{StatefulValidation, StatefulValidator, Validation, ValidationExt, Validator};
+pub use traits::{
+    StatefulValidation,
+    StatefulValidator,
+    StatefulValidatorAndConvert,
+    Validation,
+    ValidationConvert,
+    ValidationExt,
+    Validator,
+    ValidatorConvert,
+};
 
 pub mod block_validators;
 pub mod mocks;

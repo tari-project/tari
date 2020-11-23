@@ -23,14 +23,14 @@
 use crate::{
     blocks::BlockHeader,
     chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError},
-};
+};use crate::blocks::chain_header::ChainHeader;
 use std::cmp;
 
 // TODO: This is probably generally useful and should be included in the BlockchainDatabase
 /// Iterator that emits BlockHeaders until a given height. This iterator loads headers in chunks of size `chunk_size`
 /// for a low memory footprint. The chunk buffer is allocated once and reused.
 pub struct HeaderIter<'a, B> {
-    chunk: Vec<BlockHeader>,
+    chunk: Vec<ChainHeader>,
     chunk_size: usize,
     cursor: usize,
     is_error: bool,
@@ -58,7 +58,7 @@ impl<'a, B> HeaderIter<'a, B> {
 }
 
 impl<B: BlockchainBackend> Iterator for HeaderIter<'_, B> {
-    type Item = Result<BlockHeader, ChainStorageError>;
+    type Item = Result<ChainHeader, ChainStorageError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.is_error {

@@ -127,7 +127,56 @@ pub fn check_pow_data(block_header: &BlockHeader, rules: &ConsensusManager) -> R
             Ok(())
         },
         Blake | Sha3 => Ok(()),
+/// Calculates the achieved and target difficulties at the specified height and compares them.
+pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
+    db: &B,
+    block_header: BlockHeader,
+    rules: ConsensusManager,
+) -> Result<ChainHeader, ValidationError>
+{
+    let pow_algo = block_header.pow.pow_algo;
+    // Monero has extra data to check.
+    if pow_algo == PowAlgorithm::Monero {
+        MoneroData::new(&block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
+        // TODO: We need some way of getting the seed height and or count.
+        // Current proposals are to either store the height of first seed use, or count the seed use.
+        let seed_height = 0;
+        if (seed_height != 0) &&
+            (block_header.height - seed_height >
+                rules.consensus_constants(block_header.height).max_randomx_seed_height())
+        {
+            return Err(ValidationError::BlockHeaderError(
+                BlockHeaderValidationError::OldSeedHash,
+            ));
+        }
     }
+    let target = if block_header.height == 0 && rules.get_genesis_block_hash() == block_header.hash() {
+        Difficulty::from(1)
+    } else {
+        let target_difficulties = db.fetch_target_difficulties(block_header,rules.consensus_constants(block_header.height).get_difficulty_block_window() as usize)?;
+
+        let constants = rules.consensus_constants(block_header.height);
+        get_target_difficulty(
+            target_difficulties,
+            constants.get_difficulty_block_window() as usize,
+            constants.get_diff_target_block_interval(pow_algo),
+            constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
+            constants.get_difficulty_max_block_interval(pow_algo),
+        )
+        .map_err(|err| {
+            error!(
+                target: LOG_TARGET,
+                "Validation could not get target difficulty: {}", err
+            );
+            ValidationError::BlockHeaderError(BlockHeaderValidationError::ProofOfWorkError(
+                PowError::InvalidProofOfWork,
+            ))
+        })?
+    };
+    let prev = db.fetch_last_header()?.ok_or_else(||ValidationError::CustomError("Asked for prev header and got none".to_string()))?;
+    let chain_header = ChainHeader::from_previous_with_header(&prev, block_header, target)?;
+    Ok (chain_header)
 }
 
 pub fn check_target_difficulty(block_header: &BlockHeader, target: Difficulty) -> Result<(), ValidationError> {

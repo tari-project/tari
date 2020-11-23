@@ -32,7 +32,7 @@ use crate::{
 };
 
 use futures::StreamExt;
-use log::*;
+use log::*;use crate::proof_of_work::difficulty::Difficulty;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Formatter},
@@ -199,9 +199,9 @@ fn select_sync_peers(
 /// Determine the best metadata from a set of metadata received from the network.
 fn best_metadata(metadata_list: &[PeerChainMetadata]) -> Option<ChainMetadata> {
     // TODO: Use heuristics to weed out outliers / dishonest nodes.
-    metadata_list.iter().fold(None, |best, current| {
-        if current.chain_metadata.accumulated_difficulty() >=
-            best.as_ref().map(|cm| cm.accumulated_difficulty()).unwrap_or_else(|| 0)
+    metadata_list.iter().fold(ChainMetadata::default(), |best, current| {
+        if current.chain_metadata.accumulated_difficulty.unwrap_or_else(|| Difficulty::default()) >=
+            best.accumulated_difficulty.unwrap_or_else(|| Difficulty::default())
         {
             Some(current.chain_metadata.clone())
         } else {

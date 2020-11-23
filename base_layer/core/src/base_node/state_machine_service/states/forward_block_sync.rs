@@ -87,7 +87,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
 {
     let tip = shared.db.fetch_tip_header().await.map_err(|e| e.to_string())?;
     if let StateInfo::BlockSync(ref mut info) = shared.info {
-        info.tip_height = tip.height;
+        info.tip_height = tip.header().height;
     }
 
     shared.publish_event_info();
@@ -148,7 +148,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                             // If peer returns genesis block, it means that there is a split, but it is further back
                             // than the headers we sent.
                             let oldest_header_sent = from_headers.last().unwrap();
-                            if block.height == 0 && oldest_header_sent.height != 1 {
+                            if block.header().height == 0 && oldest_header_sent.height != 1 {
                                 debug!(
                                     target: LOG_TARGET,
                                     "No headers from peer {} matched with the headers we sent. Retrying with older \
@@ -161,7 +161,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                                 debug!(
                                     target: LOG_TARGET,
                                     "Chain split at height:{} according to sync peer:{}",
-                                    block.height,
+                                    block.header().height,
                                     current_sync_node
                                 );
                             }
@@ -264,8 +264,8 @@ async fn download_blocks<B: BlockchainBackend + 'static>(
             info!(target: LOG_TARGET, "Received {} blocks from peer", blocks.len());
             if !blocks.is_empty() {
                 if let StateInfo::BlockSync(ref mut info) = shared.info {
-                    info.tip_height = blocks[blocks.len() - 1].block().header.height;
-                    info.local_height = blocks[0].block().header.height;
+                    info.tip_height = blocks[blocks.len() - 1].block().header.header().height;
+                    info.local_height = blocks[0].block().header.header().height;
                 }
                 shared.publish_event_info();
             }

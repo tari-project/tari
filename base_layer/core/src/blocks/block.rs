@@ -34,6 +34,8 @@ use crate::{
         types::CryptoFactories,
     },
 };
+use crate::blocks::chain_block::ChainBlock;
+use crate::blocks::chain_header::ChainHeader;
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -104,6 +106,14 @@ impl Block {
         Ok(())
     }
 
+    pub fn to_default_chain_block(self) -> ChainBlock{
+        let header = ChainHeader::new_blank_from_header(self.header);
+        ChainBlock{
+            header,
+            body: self.body,
+        }
+    }
+
     /// Destroys the block and returns the pieces of the block: header, inputs, outputs and kernels
     pub fn dissolve(
         self,
@@ -132,6 +142,7 @@ impl Display for Block {
 #[derive(Default)]
 pub struct BlockBuilder {
     header: BlockHeader,
+    chain_header : ChainHeader,
     inputs: Vec<TransactionInput>,
     outputs: Vec<TransactionOutput>,
     kernels: Vec<TransactionKernel>,
@@ -142,6 +153,7 @@ impl BlockBuilder {
     pub fn new(blockchain_version: u16) -> BlockBuilder {
         BlockBuilder {
             header: BlockHeader::new(blockchain_version),
+            chain_header: ChainHeader::new(blockchain_version),
             inputs: Vec::new(),
             outputs: Vec::new(),
             kernels: Vec::new(),
@@ -152,6 +164,12 @@ impl BlockBuilder {
     /// This function adds a header to the block
     pub fn with_header(mut self, header: BlockHeader) -> Self {
         self.header = header;
+        self
+    }
+
+    /// This function adds a header to the block
+    pub fn with_chain_header(mut self, header: ChainHeader) -> Self {
+        self.chain_header = header;
         self
     }
 
@@ -216,6 +234,17 @@ impl BlockBuilder {
     pub fn build(self) -> Block {
         let mut block = Block {
             header: self.header,
+            body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
+        };
+        block.body.do_cut_through();
+        block.body.sort();
+        block
+    }
+
+    /// This will finish construction of the block and create the block
+    pub fn chain_build(self) -> ChainBlock {
+        let mut block = ChainBlock {
+            header: self.chain_header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
         block.body.do_cut_through();

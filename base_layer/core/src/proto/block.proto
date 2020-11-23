@@ -12,10 +12,7 @@ message ProofOfWork {
     // 0 = Monero
     // 1 = Blake
     uint64 pow_algo = 1;
-    uint64 accumulated_monero_difficulty = 2;
-    uint64 accumulated_blake_difficulty = 3;
     bytes pow_data = 4;
-    uint64 target_difficulty = 5;
 }
 
 // The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
@@ -51,6 +48,25 @@ message Block {
     tari.types.AggregateBody body = 2;
 }
 
+// A Tari block. Blocks are linked together into a blockchain.
+message ChainBlock {
+    ChainHeader header = 1;
+    tari.types.AggregateBody body = 2;
+}
+
+// This is the chain header for a header containing a target and achieved difficulty 
+message ChainHeader {
+    BlockHeader header = 1;
+    bytes target_difficulty = 2;
+    repeated achieved_diff achieved_difficulty = 3;
+}
+
+// This total achieved difficulty and is used to map a hash map
+message achieved_diff{
+    uint64 pow_algo = 1;
+    bytes achieved = 2;
+}
+
 // A new block message. This is the message that is propagated around the network. It contains the
 // minimal information required to identify and optionally request the full block.
 message NewBlock {
@@ -66,7 +82,7 @@ message HistoricalBlock {
     // An array of commitments of the outputs from this block that have subsequently been spent.
     repeated tari.types.Commitment spent_commitments = 2;
     // The underlying block
-    Block block = 3;
+    ChainBlock block = 3;
 }
 
 
@@ -83,6 +99,8 @@ message NewBlockHeaderTemplate {
     bytes total_kernel_offset = 4;
     // Proof of work metadata
     ProofOfWork pow = 5;
+    // This is the target for the new block
+    bytes target_difficulty = 6;
 }
 
 // The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as a final step the Base node to add the MMR roots to the header.

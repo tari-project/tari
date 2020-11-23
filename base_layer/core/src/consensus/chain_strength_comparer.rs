@@ -1,15 +1,16 @@
-use crate::blocks::BlockHeader;
+use crate::{blocks::ChainHeader, proof_of_work::PowAlgorithm};
 use std::{cmp::Ordering, fmt::Debug};
+use crate::proof_of_work::Difficulty;
 
 pub trait ChainStrengthComparer: Debug {
-    fn compare(&self, a: &BlockHeader, b: &BlockHeader) -> Ordering;
+    fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering;
 }
 
 #[derive(Default, Debug)]
 pub struct AccumulatedDifficultySquaredComparer {}
 
 impl ChainStrengthComparer for AccumulatedDifficultySquaredComparer {
-    fn compare(&self, a: &BlockHeader, b: &BlockHeader) -> Ordering {
+    fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
         let a_val = a.total_accumulated_difficulty_inclusive_squared().unwrap_or_default();
         let b_val = b.total_accumulated_difficulty_inclusive_squared().unwrap_or_default();
         a_val.cmp(&b_val)
@@ -33,7 +34,7 @@ impl ThenComparer {
 }
 
 impl ChainStrengthComparer for ThenComparer {
-    fn compare(&self, a: &BlockHeader, b: &BlockHeader) -> Ordering {
+    fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
         match self.before.compare(a, b) {
             Ordering::Equal => self.after.compare(a, b),
             Ordering::Less => Ordering::Less,
@@ -46,10 +47,11 @@ impl ChainStrengthComparer for ThenComparer {
 pub struct MoneroDifficultyComparer {}
 
 impl ChainStrengthComparer for MoneroDifficultyComparer {
-    fn compare(&self, a: &BlockHeader, b: &BlockHeader) -> Ordering {
-        a.pow
-            .accumulated_monero_difficulty
-            .cmp(&b.pow.accumulated_monero_difficulty)
+    fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
+        a.achieved_difficulty
+            .get(&PowAlgorithm::Monero)
+            .unwrap_or_else(|| &Difficulty::default())
+            .cmp(&b.achieved_difficulty.get(&PowAlgorithm::Monero).unwrap_or_else(|| &Difficulty::default()))
     }
 }
 
@@ -57,10 +59,11 @@ impl ChainStrengthComparer for MoneroDifficultyComparer {
 pub struct BlakeDifficultyComparer {}
 
 impl ChainStrengthComparer for BlakeDifficultyComparer {
-    fn compare(&self, a: &BlockHeader, b: &BlockHeader) -> Ordering {
-        a.pow
-            .accumulated_blake_difficulty
-            .cmp(&b.pow.accumulated_blake_difficulty)
+    fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
+        a.achieved_difficulty
+            .get(&PowAlgorithm::Blake)
+            .unwrap_or_else(|| &Difficulty::default())
+            .cmp(&b.achieved_difficulty.get(&PowAlgorithm::Blake).unwrap_or_else(|| &Difficulty::default()))
     }
 }
 
@@ -68,8 +71,8 @@ impl ChainStrengthComparer for BlakeDifficultyComparer {
 pub struct HeightComparer {}
 
 impl ChainStrengthComparer for HeightComparer {
-    fn compare(&self, a: &BlockHeader, b: &BlockHeader) -> Ordering {
-        a.height.cmp(&b.height)
+    fn compare(&self, a: &ChainHeader, b: &ChainHeader) -> Ordering {
+        a.header().height.cmp(&b.header().height)
     }
 }
 

@@ -158,7 +158,9 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
         }
         debug!(
             target: LOG_TARGET,
-            "Syncing from height {} to sync height {}.", tip_header.height, self.sync_height
+            "Syncing from height {} to sync height {}.",
+            tip_header.header().height,
+            self.sync_height
         );
 
         trace!(target: LOG_TARGET, "Synchronizing headers");
@@ -273,7 +275,8 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
         if tip_header.height + 1 != first_header.height {
             return Err(HeaderSyncError::InvalidHeader(format!(
                 "Headers do not link to the current chain tip header (Tip height = {}, Received header height = {})",
-                tip_header.height, first_header.height
+                tip_header.header().height,
+                first_header.height
             )));
         }
         if first_header.prev_hash != tip_header.hash() {
@@ -290,7 +293,10 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
                 validator
                     .validate(&header)
                     .map_err(HeaderSyncError::HeaderValidationFailed)?;
-                db.inner().insert_valid_headers(vec![header])?;
+                let chain_header = validator
+                    .validate_and_convert(header)
+                    .map_err(HeaderSyncError::HeaderValidationFailed)?;
+                db.insert_valid_headers(vec![chain_header])?;
             }
             Ok(())
         })

@@ -102,14 +102,14 @@ impl Display for SyncStatus {
                 "Lagging behind {} peers (#{}, Difficulty: {})",
                 v.len(),
                 m.height_of_longest_chain(),
-                m.accumulated_difficulty(),
+                m.accumulated_difficulty.unwrap_or_else(|| Difficulty::default()),
             ),
             LaggingBehindHorizon(m, v) => write!(
                 f,
                 "Lagging behind pruning horizon ({} peer(s), Network height: #{}, Difficulty: {})",
                 v.len(),
                 m.height_of_longest_chain(),
-                m.accumulated_difficulty(),
+                m.accumulated_difficulty.unwrap_or_else(|| Difficulty::default()),
             ),
             UpToDate => f.write_str("UpToDate"),
         }

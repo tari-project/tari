@@ -22,20 +22,21 @@
 
 // This file is used to store the genesis block
 use crate::{
-    blocks::{block::Block, BlockHeader},
-    proof_of_work::{PowAlgorithm, ProofOfWork},
+    blocks::{block::Block, chain_block::ChainBlock, chain_header::ChainHeader, BlockHeader},
+    proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
+    transactions::{
+        aggregated_body::AggregateBody,
+        bullet_rangeproofs::BulletRangeProof,
+        tari_amount::MicroTari,
+        transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
+        types::{Commitment, PrivateKey, PublicKey, Signature},
+    },
 };
 
-use crate::transactions::{
-    aggregated_body::AggregateBody,
-    bullet_rangeproofs::BulletRangeProof,
-    tari_amount::MicroTari,
-    transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
-    types::{Commitment, PrivateKey, PublicKey, Signature},
-};
+use std::collections::HashMap;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::*};
 
-pub fn get_mainnet_genesis_block() -> Block {
+pub fn get_mainnet_genesis_block() -> ChainBlock {
     unimplemented!()
 }
 
@@ -43,12 +44,12 @@ pub fn get_mainnet_block_hash() -> Vec<u8> {
     get_mainnet_genesis_block().hash()
 }
 
-pub fn get_mainnet_gen_header() -> BlockHeader {
+pub fn get_mainnet_gen_header() -> ChainHeader {
     get_mainnet_genesis_block().header
 }
 
 /// This will get the rincewind gen block
-pub fn get_rincewind_genesis_block() -> Block {
+pub fn get_rincewind_genesis_block() -> ChainBlock {
     // lets get the block
     let mut block = get_rincewind_genesis_block_raw();
     // Lets load in the rincewind faucet tx's
@@ -63,7 +64,16 @@ pub fn get_rincewind_genesis_block() -> Block {
     block.header.range_proof_mr = from_hex("fbadbae2bf8c7289d77af52edc80490cb476a917abd0afeab8821913791b678f").unwrap();
     block.header.kernel_mr = from_hex("a40db2278709c3fb0e03044ca0f5090ffca616b708850d1437af4d584e17b97a").unwrap();
     block.body.add_outputs(&mut utxos);
-    block
+
+    let chain_header = ChainHeader {
+        header: block.header,
+        target_difficulty: Difficulty::default(),
+        achieved_difficulty: HashMap::new(),
+    };
+    ChainBlock {
+        header: chain_header,
+        body: block.body,
+    }
 }
 
 pub fn get_rincewind_genesis_block_raw() -> Block {
@@ -128,12 +138,12 @@ pub fn get_rincewind_block_hash() -> Vec<u8> {
     get_rincewind_genesis_block().hash()
 }
 
-pub fn get_rincewind_gen_header() -> BlockHeader {
+pub fn get_rincewind_gen_header() -> ChainHeader {
     get_rincewind_genesis_block().header
 }
 
 /// This will get the ridcully gen block
-pub fn get_ridcully_genesis_block() -> Block {
+pub fn get_ridcully_genesis_block() -> ChainBlock {
     // lets get the block
     let mut block = get_ridcully_genesis_block_raw();
     // Lets load in the ridcully faucet tx's
@@ -157,7 +167,16 @@ pub fn get_ridcully_genesis_block() -> Block {
     block.header.kernel_mr = from_hex("f5e08e66e9c0e5e3818d96a694f4f6eafd689f38cea2e52e771eab2cc7a3941a").unwrap();
     block.body.add_outputs(&mut utxos);
     block.body.add_kernels(&mut vec![kernel.unwrap()]);
-    block
+
+    let chain_header = ChainHeader {
+        header: block.header,
+        target_difficulty: Difficulty::default(),
+        achieved_difficulty: HashMap::new(),
+    };
+    ChainBlock {
+        header: chain_header,
+        body: block.body,
+    }
 }
 
 pub fn get_ridcully_genesis_block_raw() -> Block {
@@ -207,9 +226,6 @@ pub fn get_ridcully_genesis_block_raw() -> Block {
             .unwrap(),
             nonce: 0,
             pow: ProofOfWork {
-                accumulated_monero_difficulty: 1.into(),
-                accumulated_blake_difficulty: 1.into(),
-                target_difficulty: 1.into(),
                 pow_algo: PowAlgorithm::Sha3,
                 pow_data: vec![],
             },
@@ -223,8 +239,7 @@ pub fn get_ridcully_block_hash() -> Vec<u8> {
 }
 
 pub fn get_ridcully_gen_header() -> BlockHeader {
-    get_ridcully_genesis_block().header
-}
+    get_ridcully_genesis_block().header.header().clone()}
 
 #[cfg(test)]
 mod test {

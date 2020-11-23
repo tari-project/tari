@@ -29,11 +29,11 @@ use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// Minimum difficulty, enforced in diff retargetting
 /// avoids getting stuck when trying to increase difficulty subject to dampening
-pub const MIN_DIFFICULTY: u64 = 1;
+pub const MIN_DIFFICULTY: u128 = 1;
 
 /// The difficulty is defined as the maximum target divided by the block hash.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Deserialize, Serialize)]
-pub struct Difficulty(u64);
+pub struct Difficulty(u128);
 
 impl Difficulty {
     /// Difficulty of MIN_DIFFICULTY
@@ -41,8 +41,8 @@ impl Difficulty {
         Difficulty(MIN_DIFFICULTY)
     }
 
-    /// Return the difficulty as a u64
-    pub fn as_u64(self) -> u64 {
+    /// Return the difficulty as a u128
+    pub fn as_u128(self) -> u128 {
         self.0
     }
 
@@ -66,16 +66,17 @@ newtype_ops! { [Difficulty] {add sub} {:=} &Self &Self }
 newtype_ops! { [Difficulty] {add sub} {:=} Self &Self }
 
 // Multiplication and division of difficulty by scalar is Difficulty
-newtype_ops! { [Difficulty] {mul div rem} {:=} Self u64 }
+newtype_ops! { [Difficulty] {mul div rem} {:=} Self u128 }
+newtype_ops! { [Difficulty] {mul div rem} {:=} Self Self }
 
-// Division of difficulty by difficulty is a difficulty ratio (scalar) (newtype_ops doesn't handle this case)
-impl Div for Difficulty {
-    type Output = u64;
+// // Division of difficulty by difficulty is a difficulty ratio (scalar) (newtype_ops doesn't handle this case)
+// impl Div for Difficulty {
+//     type Output = u128;
 
-    fn div(self, rhs: Self) -> Self::Output {
-        self.0 / rhs.0
-    }
-}
+//     fn div(self, rhs: Self) -> Self::Output {
+//         self.0 / rhs.0
+//     }
+// }
 
 impl fmt::Display for Difficulty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -84,13 +85,25 @@ impl fmt::Display for Difficulty {
     }
 }
 
-impl From<u64> for Difficulty {
-    fn from(value: u64) -> Self {
+// impl From<u64> for Difficulty {
+//     fn from(value: u64) -> Self {
+//         Difficulty(value)
+//     }
+// }
+
+// impl From<Difficulty> for u64 {
+//     fn from(value: Difficulty) -> Self {
+//         value.0
+//     }
+// }
+
+impl From<u128> for Difficulty {
+    fn from(value: u128) -> Self {
         Difficulty(value)
     }
 }
 
-impl From<Difficulty> for u64 {
+impl From<Difficulty> for u128 {
     fn from(value: Difficulty) -> Self {
         value.0
     }
@@ -120,14 +133,16 @@ pub mod util {
     pub(crate) fn big_endian_difficulty(hash: &[u8]) -> Difficulty {
         let scalar = U256::from_big_endian(hash); // Big endian so the hash has leading zeroes
         let result = U256::MAX / scalar;
-        result.low_u64().into()
+        let num:u128 = result.low_u64().into();
+        num.into()
     }
 
     /// This will provide the difficulty of the hash assuming the hash is little_endian
     pub(crate) fn little_endian_difficulty(hash: &[u8]) -> Difficulty {
         let scalar = U256::from_little_endian(&hash); // Little endian so the hash has trailing zeroes
         let result = U256::MAX / scalar;
-        result.low_u64().into()
+        let num:u128 = result.low_u64().into();
+        num.into()
     }
 }
 #[cfg(test)]

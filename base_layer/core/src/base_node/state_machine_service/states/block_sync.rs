@@ -346,6 +346,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
         let block_nums_count = block_nums.len() as u64;
         request_and_add_blocks(shared, sync_peers, block_nums).await?;
         sync_height += block_nums_count;
+            check_actual_difficulty_matches_advertised(shared, &last_block.block.header, sync_peers).await?;
     }
     let metadata = shared.db.get_chain_metadata().await?;
     let last_block = shared.db.fetch_block(metadata.height_of_longest_chain()).await?;
@@ -360,11 +361,11 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
 
 async fn check_actual_difficulty_matches_advertised<B: BlockchainBackend + 'static>(
     shared: &mut BaseNodeStateMachine<B>,
-    tip_header: &BlockHeader,
+    tip_header: &ChainHeader,
     sync_peers: &mut SyncPeers,
 ) -> Result<(), BlockSyncError>
 {
-    let actual_acc_difficulty = tip_header.get_proof_of_work()?.total_accumulated_difficulty();
+    let actual_acc_difficulty = tip_header.total_accumulated_difficulty_inclusive_squared()?;
     // Clone peers that need to be banned, this is done because of the mutable reference to sync peers that
     // ban_sync_peer requires. TODO: Sync peer management should be correctly encapsulated
     let peers_to_ban = sync_peers
@@ -661,7 +662,7 @@ async fn request_blocks<B: BlockchainBackend + 'static>(
             Ok(hist_blocks) => {
                 debug!(target: LOG_TARGET, "Received {} blocks from peer", hist_blocks.len());
                 if block_nums.len() == hist_blocks.len() {
-                    if (0..block_nums.len()).all(|i| hist_blocks[i].block().header.height == block_nums[i]) {
+                    if (0..block_nums.len()).all(|i| hist_blocks[i].block().header.header().height == block_nums[i]) {
                         let blocks = hist_blocks
                             .into_iter()
                             .map(|hist_block| Arc::new(hist_block.into_block()))

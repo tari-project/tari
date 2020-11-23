@@ -22,6 +22,7 @@
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{error::ChainStorageError, InProgressHorizonSyncState},
+    proof_of_work::Difficulty,
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -285,7 +286,7 @@ impl fmt::Display for MetadataKey {
 pub enum MetadataValue {
     ChainHeight(u64),
     BestBlock(BlockHash),
-    AccumulatedWork(u128),
+    AccumulatedWork(Option<Difficulty>),
     PruningHorizon(u64),
     EffectivePrunedHeight(u64),
     HorizonSyncState(InProgressHorizonSyncState),
@@ -311,6 +312,7 @@ pub enum DbKey {
     BlockHash(BlockHash),
     TransactionKernel(HashOutput),
     OrphanBlock(HashOutput),
+    OrphanHeader(HashOutput),
 }
 
 impl DbKey {
@@ -321,6 +323,7 @@ impl DbKey {
             DbKey::BlockHash(v) => ("Block".to_string(), "Hash".to_string(), v.to_hex()),
             DbKey::TransactionKernel(v) => ("Kernel".to_string(), "Hash".to_string(), v.to_hex()),
             DbKey::OrphanBlock(v) => ("Orphan".to_string(), "Hash".to_string(), v.to_hex()),
+            DbKey::OrphanHeader(v) => ("OrphanHeader".to_string(), "Hash".to_string(), v.to_hex()),
         };
         ChainStorageError::ValueNotFound { entity, field, value }
     }
@@ -329,11 +332,12 @@ impl DbKey {
 #[derive(Debug)]
 pub enum DbValue {
     Metadata(MetadataValue),
-    BlockHeader(Box<BlockHeader>),
-    BlockHash(Box<BlockHeader>),
+    BlockHeader(Box<ChainHeader>),
+    BlockHash(Box<ChainHeader>),
     UnspentOutput(Box<TransactionOutput>),
     TransactionKernel(Box<TransactionKernel>),
     OrphanBlock(Box<Block>),
+    OrphanHeader(Box<ChainHeader>),
 }
 
 impl Display for DbValue {
@@ -357,6 +361,7 @@ impl Display for DbKey {
             DbKey::BlockHash(v) => f.write_str(&format!("Block hash (#{})", to_hex(v))),
             DbKey::TransactionKernel(v) => f.write_str(&format!("Transaction kernel ({})", to_hex(v))),
             DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", to_hex(v))),
+            DbKey::OrphanHeader(v) => f.write_str(&format!("Orphan header ({})", to_hex(v))),
         }
     }
 }

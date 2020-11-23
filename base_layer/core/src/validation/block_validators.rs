@@ -20,11 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    blocks::{block_header::BlockHeader, Block, BlockValidationError},
-    chain_storage,
-    chain_storage::{fetch_header, fetch_headers, BlockchainBackend, MmrTree},
-    consensus::ConsensusManager,
-    transactions::{aggregated_body::AggregateBody, types::CryptoFactories},
+    blocks::{
+        blockheader::{BlockHeader, BlockHeaderValidationError},
+        chain_header::ChainHeader,
+        Block,
+        BlockValidationError,
+        NewBlockTemplate,
+    },
+    chain_storage::{calculate_mmr_roots, BlockchainBackend, DbKey},
+    consensus::{ConsensusConstants, ConsensusManager},
+    transactions::types::CryptoFactories,
     validation::{
         helpers,
         helpers::{
@@ -39,6 +44,7 @@ use crate::{
         },
         StatefulValidation,
         Validation,
+        ValidationConvert,
         ValidationError,
     },
 };
@@ -211,6 +217,12 @@ impl<B: BlockchainBackend> StatefulValidation<Block, B> for FullConsensusValidat
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
     fn validate(&self, block: &Block, backend: &B) -> Result<(), ValidationError> {
         let block_id = format!("block #{} ({})", block.header.height, block.hash().to_hex());
+        let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
+        if block.header.height != tip_height + 1 {
+            return Err(ValidationError::BlockHeaderError(
+                BlockHeaderValidationError::InvalidChaining,
+            ));
+        }
         check_inputs_are_utxos(block, backend)?;
         check_not_duplicate_txos(block, backend)?;
         trace!(
@@ -228,6 +240,44 @@ impl<B: BlockchainBackend> StatefulValidation<Block, B> for FullConsensusValidat
         self.validate(&block.header, backend)?;
         debug!(target: LOG_TARGET, "Block validation: Block is VALID for {}", block_id);
         Ok(())
+    }
+
+    // /// This will validate the proof of work, and convert to a chainheader
+    // fn validate_and_convert(&self, header: BlockHeader, db: &B) -> Result<ChainHeader, ValidationError> {
+    //     let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
+    //     let chain_header = check_achieved_and_target_difficulty(db, header, self.rules.clone())?;
+    //     trace!(
+    //         target: LOG_TARGET,
+    //         "BlockHeader validation: Achieved difficulty is ok for {} ",
+    //         &header_id
+    //     );
+    //     debug!(
+    //         target: LOG_TARGET,
+    //         "Block header validation: BlockHeader is VALID for {}", &header_id
+    //     );
+    //     Ok(chain_header)
+    // }
+}
+
+impl<B: BlockchainBackend> ValidationConvert<BlockHeader, ChainHeader, B> for FullConsensusValidator {
+    fn validate_and_convert(&self, header: BlockHeader, db: &B) -> Result<ChainHeader, ValidationError> {
+        let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
+        trace!(
+            target: LOG_TARGET,
+            "Calculating and verifying target and achieved difficulty {} ",
+            &header_id
+        );
+        let chain_header = check_achieved_and_target_difficulty(db, header, self.rules.clone())?;
+        trace!(
+            target: LOG_TARGET,
+            "BlockHeader validation: Achieved difficulty is ok for {} ",
+            &header_id
+        );
+        debug!(
+            target: LOG_TARGET,
+            "Block header validation: BlockHeader is VALID for {}", &header_id
+        );
+        Ok(chain_header)
     }
 }
 

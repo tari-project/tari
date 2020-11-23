@@ -389,12 +389,13 @@ where T: BlockchainBackend + 'static
                 .map(|tx| (**tx).clone())
                 .collect();
 
-                let block_template =
+                let mut block_template =
                     NewBlockTemplate::from(header.into_builder().with_transactions(transactions).build());
                 debug!(
                     target: LOG_TARGET,
                     "New block template requested at height {}", block_template.header.height,
                 );
+                block_template.header.target_difficulty = target;
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
@@ -493,7 +494,7 @@ where T: BlockchainBackend + 'static
 
         match block.pop() {
             Some(block) => {
-                self.handle_block(Arc::new(block.block), true.into(), Some(source_peer))
+                self.handle_block(Arc::new(block.block.to_block()), true.into(), Some(source_peer))
                     .await
             },
             None => {

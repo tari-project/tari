@@ -20,6 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
+    blocks::{
+        blockheader::{BlockHash, BlockHeader},
+        chain_header::ChainHeader,
+        Block,
+    },
     blocks::{block_header::BlockHeader, Block},
     chain_storage::{
         accumulated_data::{BlockAccumulatedData, BlockHeaderAccumulatedData},
@@ -99,6 +104,7 @@ pub struct LMDBDatabase {
     header_accumulated_data_db: DatabaseRef,
     block_accumulated_data_db: DatabaseRef,
     block_hashes_db: DatabaseRef,
+    orphan_prev_hash_index: DatabaseRef,
     utxos_db: DatabaseRef,
     inputs_db: DatabaseRef,
     txos_hash_to_index_db: DatabaseRef,
@@ -121,6 +127,7 @@ impl LMDBDatabase {
             header_accumulated_data_db: get_database(&store, LMDB_DB_HEADER_ACCUMULATED_DATA)?,
             block_accumulated_data_db: get_database(&store, LMDB_DB_BLOCK_ACCUMULATED_DATA)?,
             block_hashes_db: get_database(&store, LMDB_DB_BLOCK_HASHES)?,
+            orphan_prev_hash_index: get_database(&store, LMDB_DB_ORPHAN_PREV_HASH_INDEX)?,
             utxos_db: get_database(&store, LMDB_DB_UTXOS)?,
             inputs_db: get_database(&store, LMDB_DB_INPUTS)?,
             txos_hash_to_index_db: get_database(&store, LMDB_DB_TXOS_HASH_TO_INDEX)?,
@@ -398,6 +405,9 @@ impl LMDBDatabase {
                     lmdb_delete(&txn, &self.orphans_db, k.as_slice())?;
                 }
             },
+            DbKey::OrphanHeader(k) => {
+                lmdb_delete(&txn, &self.orphan_headers_db, &k)?;
+            },
         }
 
         Ok(())
@@ -554,6 +564,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
         .add_database(LMDB_DB_HEADER_ACCUMULATED_DATA, flags)
         .add_database(LMDB_DB_BLOCK_ACCUMULATED_DATA, flags)
         .add_database(LMDB_DB_BLOCK_HASHES, flags)
+        .add_database(LMDB_DB_ORPHAN_PREV_HASH_INDEX, flags)
         .add_database(LMDB_DB_UTXOS, flags)
         .add_database(LMDB_DB_INPUTS, flags)
         .add_database(LMDB_DB_TXOS_HASH_TO_INDEX, flags)
@@ -900,6 +911,14 @@ impl BlockchainBackend for LMDBDatabase {
         lmdb_last(&txn, &self.headers_db)?.ok_or_else(|| {
             ChainStorageError::InvalidOperation("Cannot fetch last header because database is empty".to_string())
         })
+    }
+
+    /// Returns the result of the orphan has a block in it where the hash provided = header.prev_hash
+    fn find_next_orphan(&self, parent: &BlockHash) -> Result<Vec<BlockHash>, ChainStorageError> {
+        match lmdb_get(&self.env, &self.orphan_prev_hash_index, parent)?{
+            Some(v) => Ok(v),
+            None => Ok(Vec::new()),
+        }
     }
 
     /// Returns the metadata of the chain.

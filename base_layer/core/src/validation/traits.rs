@@ -22,14 +22,17 @@
 
 use crate::validation::{and_then::AndThenValidator, error::ValidationError};
 
-pub type StatefulValidator<T, B> = Box<dyn StatefulValidation<T, B>>;
+pub trait StatefulValidatorAndConvert<T, B, V, W>: StatefulValidation<T, B> + ValidationConvert<V, W, B> {}
+pub type StatefulValidator<T, B, V, W> = Box<dyn StatefulValidatorAndConvert<T, B, V, W>>;
 pub type Validator<T> = Box<dyn Validation<T>>;
+pub trait ValidatorAndConvert<T, U, B>: Validation<T> + ValidationConvert<T, U, B> {}
+pub type ValidatorConvert<T, U, B> = Box<dyn ValidatorAndConvert<T, U, B>>;
 
 /// The "stateful" version of the `Validation` trait. This trait allows extra context to be passed through to the
 /// validate function. Typically this will be an implementation of the `BlockchainBackend` trait.
 pub trait StatefulValidation<T, B>: Send + Sync {
-    /// General validation code that can run independent of external state
-    fn validate(&self, item: &T, backend: &B) -> Result<(), ValidationError>;
+    /// General validation code that can run dependent on external state
+    fn validate(&self, item: &T, db: &B) -> Result<(), ValidationError>;
 }
 
 /// The core validation trait.
@@ -37,6 +40,12 @@ pub trait StatefulValidation<T, B>: Send + Sync {
 pub trait Validation<T>: Send + Sync {
     /// General validation code that can run independent of external state
     fn validate(&self, item: &T) -> Result<(), ValidationError>;
+}
+
+/// This trait is used to validate and then convert a value into another. It includes the vaku
+pub trait ValidationConvert<T, U, B>: Send + Sync {
+    /// General validation code that can run and change the state of the item its validating
+    fn validate_and_convert(&self, item: T, db: &B) -> Result<U, ValidationError>;
 }
 
 pub trait ValidationExt<T>: Validation<T> {

@@ -32,25 +32,25 @@ mod chain_balance;
 pub use chain_balance::ChainBalanceValidator;
 
 use crate::{
-    blocks::BlockHeader,
+    blocks::{chain_header::ChainHeader, BlockHeader},
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
     transactions::types::CryptoFactories,
-    validation::{Validation, Validator},
+    validation::{Validation, ValidationConvert, Validator, ValidatorConvert},
 };
 use std::{fmt, sync::Arc};
 
 #[derive(Clone)]
 pub struct SyncValidators {
-    pub header: Arc<Validator<BlockHeader>>,
-    pub final_state: Arc<Validator<BlockHeader>>,
+    pub header: Arc<ValidatorConvert<BlockHeader, ChainHeader>>,
+    pub final_state: Arc<Validator<u64>>,
 }
 
 impl SyncValidators {
     pub fn new<THeader, TFinal>(header: THeader, final_state: TFinal) -> Self
     where
-        THeader: Validation<BlockHeader> + 'static,
-        TFinal: Validation<BlockHeader> + 'static,
+        THeader: 'static + ValidationConvert<BlockHeader, ChainHeader>,
+        TFinal: Validation<u64> + 'static,
     {
         Self {
             header: Arc::new(Box::new(header)),

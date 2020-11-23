@@ -36,6 +36,7 @@ pub const LMDB_DB_HEADERS: &str = "headers";
 pub const LMDB_DB_HEADER_ACCUMULATED_DATA: &str = "header_accumulated_data";
 pub const LMDB_DB_BLOCK_ACCUMULATED_DATA: &str = "mmr_peak_data";
 pub const LMDB_DB_BLOCK_HASHES: &str = "block_hashes";
+pub const LMDB_DB_ORPHAN_PREV_HASH_INDEX: &str = "orphan_prev_hash_to_index";
 pub const LMDB_DB_UTXOS: &str = "utxos";
 pub const LMDB_DB_INPUTS: &str = "inputs";
 pub const LMDB_DB_TXOS_HASH_TO_INDEX: &str = "txos_hash_to_index";

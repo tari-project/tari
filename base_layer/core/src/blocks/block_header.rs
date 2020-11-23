@@ -132,7 +132,6 @@ impl BlockHeader {
     pub fn from_previous(prev: &BlockHeader) -> Result<BlockHeader, BlockHeaderValidationError> {
         let prev_hash = prev.hash();
         let mut pow = ProofOfWork::default();
-        pow.add_difficulty(&prev.pow, prev.achieved_difficulty()?);
         Ok(BlockHeader {
             version: prev.version,
             height: prev.height + 1,
@@ -153,18 +152,18 @@ impl BlockHeader {
     }
 
     /// Calculates the total accumulated difficulty for the blockchain from the genesis block up until (and including)
-    /// this block.
-    pub fn total_accumulated_difficulty_inclusive_squared(&self) -> Result<u128, PowError> {
-        Ok(self.get_proof_of_work()?.total_accumulated_difficulty())
-    }
+    // /// this block.
+    // pub fn total_accumulated_difficulty_inclusive_squared(&self) -> Result<u128, PowError> {
+    //     Ok(self.get_proof_of_work()?.total_accumulated_difficulty())
+    // }
 
     /// Gets the accumulated `ProofOfWork` from the genesis block up until (and including) this block.
     ///
     /// This function is fallible because it calculates the achieved difficulty.
-    pub fn get_proof_of_work(&self) -> Result<ProofOfWork, PowError> {
-        let difficulty = ProofOfWork::achieved_difficulty(self)?;
-        Ok(ProofOfWork::new_from_difficulty(&self.pow, difficulty))
-    }
+    // pub fn get_proof_of_work(&self) -> Result<ProofOfWork, PowError> {
+    //     let difficulty = ProofOfWork::achieved_difficulty(self)?;
+    //     Ok(ProofOfWork::new_from_difficulty(&self.pow, difficulty))
+    // }
 
     pub fn into_builder(self) -> BlockBuilder {
         BlockBuilder::new(self.version).with_header(self)

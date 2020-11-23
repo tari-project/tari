@@ -23,7 +23,7 @@
 use crate::{blocks::BlockHeader, proof_of_work::ProofOfWork};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};use crate::blocks::chain_header::ChainHeader;
 use std::{
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -31,7 +31,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;use crate::proof_of_work::Difficulty;
 pub const LOG_TARGET: &str = "c::m::Cpu_miner";
 
 /// A simple CPU-based proof of work.
@@ -42,7 +42,7 @@ pub struct CpuPow;
 impl CpuPow {
     /// A simple miner. It starts with a random nonce and iterates until it finds a header hash that meets the desired
     /// target
-    pub fn mine(mut header: BlockHeader, stop_flag: Arc<AtomicBool>, hashrate: Arc<AtomicU64>) -> Option<BlockHeader> {
+    pub fn mine(mut header: BlockHeader, target: Difficulty, stop_flag: Arc<AtomicBool>, hashrate: Arc<AtomicU64>) -> Option<BlockHeader> {
         let mut start = Instant::now();
         let mut nonce: u64 = OsRng.next_u64();
         let mut last_measured_nonce = nonce;
@@ -51,9 +51,9 @@ impl CpuPow {
         info!(target: LOG_TARGET, "Mining started.");
         debug!(
             target: LOG_TARGET,
-            "Mining for difficulty: {:?}", header.pow.target_difficulty
+            "Mining for difficulty: {:?}", target
         );
-        while difficulty < header.pow.target_difficulty {
+        while difficulty < target{
             if start.elapsed() >= Duration::from_secs(60) {
                 // nonce might have wrapped around
                 let hashes = if nonce >= last_measured_nonce {

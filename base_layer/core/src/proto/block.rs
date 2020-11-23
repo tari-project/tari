@@ -74,6 +74,35 @@ impl From<Block> for proto::Block {
     }
 }
 
+//---------------------------------- ChainBlock --------------------------------------------//
+
+impl TryFrom<proto::ChainBlock> for ChainBlock {
+    type Error = String;
+
+    fn try_from(block: proto::ChainBlock) -> Result<Self, Self::Error> {
+        let header = block
+            .header
+            .map(TryInto::try_into)
+            .ok_or_else(|| "Chain header not provided".to_string())??;
+
+        let body = block
+            .body
+            .map(TryInto::try_into)
+            .ok_or_else(|| "Block body not provided".to_string())??;
+
+        Ok(Self { header, body })
+    }
+}
+
+impl From<ChainBlock> for proto::ChainBlock {
+    fn from(block: ChainBlock) -> Self {
+        Self {
+            header: Some(block.header.into()),
+            body: Some(block.body.into()),
+        }
+    }
+}
+
 //---------------------------------- BlockHeader --------------------------------------------//
 
 impl TryFrom<proto::BlockHeader> for BlockHeader {
@@ -109,6 +138,51 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
 
 impl From<BlockHeader> for proto::BlockHeader {
     fn from(header: BlockHeader) -> Self {
+        Self {
+            version: header.version as u32,
+            height: header.height,
+            prev_hash: header.prev_hash,
+            timestamp: Some(datetime_to_timestamp(header.timestamp)),
+            output_mr: header.output_mr,
+            range_proof_mr: header.range_proof_mr,
+            kernel_mr: header.kernel_mr,
+            total_kernel_offset: header.total_kernel_offset.to_vec(),
+            nonce: header.nonce,
+            pow: Some(proto::ProofOfWork::from(header.pow)),
+        }
+    }
+}
+
+//---------------------------------- ChainHeader --------------------------------------------//
+
+impl TryFrom<proto::ChainHeader> for ChainHeader {
+    type Error = String;
+
+    fn try_from(header: proto::ChainHeader) -> Result<Self, Self::Error> {
+        let header = header
+            .header
+            .map(TryInto::try_into)
+            .ok_or_else(|| "header not provided".to_string())??;
+
+        let target_difficulty: Difficulty = if header.target_difficulty.len() == 16 {
+            let mut target_difficulty_array = [0; 16];
+            target_difficulty_array.copy_from_slice(&header.target_difficulty[0..16]);
+            u128::from_be_bytes(target_difficulty_array).into()
+        } else {
+            0.into()
+        };
+        let achieved = HashMap::new();
+        let achieved_diff = header.achieved_difficulty;
+        Ok(Self {
+            header,
+            achieved_difficulty: achieved_diff,
+            target_difficulty,
+        })
+    }
+}
+
+impl From<ChainHeader> for proto::ChainHeader {
+    fn from(header: ChainHeader) -> Self {
         Self {
             version: header.version as u32,
             height: header.height,

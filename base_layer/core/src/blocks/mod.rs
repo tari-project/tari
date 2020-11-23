@@ -21,13 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod block;
+pub(crate) mod chain_block;
+pub(crate) mod chain_header;
 pub(crate) mod block_header;
-mod new_block_template;
+pub mod new_block_template;
 mod new_blockheader_template;
 
 pub mod genesis_block;
 
 pub use block::{Block, BlockBuilder, BlockValidationError, NewBlock};
-pub use block_header::{BlockHeader, BlockHeaderValidationError};
+pub use blockheader::{BlockHash, BlockHeader, BlockHeaderValidationError};
+pub use chain_block::ChainBlock;
+pub use chain_header::ChainHeader;
 pub use new_block_template::NewBlockTemplate;
 pub use new_blockheader_template::NewBlockHeaderTemplate;

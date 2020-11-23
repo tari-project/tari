@@ -49,12 +49,6 @@ pub enum Ordering {
 /// to make serialization more straightforward
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProofOfWork {
-    /// The total accumulated difficulty for each proof of work algorithms for all blocks since Genesis,
-    /// but not including this block, tracked separately.
-    pub accumulated_monero_difficulty: Difficulty,
-    pub accumulated_blake_difficulty: Difficulty,
-    /// The target difficulty for solving the current block using the specified proof of work algorithm.
-    pub target_difficulty: Difficulty,
     /// The algorithm used to mine this block
     pub pow_algo: PowAlgorithm,
     /// Supplemental proof of work data. For example for Sha3, this would be empty (only the block header is
@@ -80,9 +74,6 @@ impl ProofOfWork {
     pub fn new(pow_algo: PowAlgorithm) -> Self {
         Self {
             pow_algo,
-            accumulated_monero_difficulty: Difficulty::default(),
-            accumulated_blake_difficulty: Difficulty::default(),
-            target_difficulty: Difficulty::default(),
             pow_data: vec![],
         }
     }
@@ -111,17 +102,17 @@ impl ProofOfWork {
     /// Computes the square of the total accumulated difficulty. This can be
     /// more efficient than using `total_accumulated_difficulty`, which does a square root, and can
     /// be used in comparisons, since sqrt(a) > sqrt(b) implies a > b
-    pub fn total_accumulated_difficulty(&self) -> u128 {
-        self.accumulated_monero_difficulty.as_u64() as u128 * self.accumulated_blake_difficulty.as_u64() as u128
-    }
+    // pub fn total_accumulated_difficulty(&self) -> u128 {
+    //     self.accumulated_monero_difficulty.as_u64() as u128 * self.accumulated_blake_difficulty.as_u64() as u128
+    // }
 
     /// Replaces the `next` proof of work's difficulty with the sum of this proof of work's total cumulative
     /// difficulty and the provided `added_difficulty`.
-    pub fn add_difficulty(&mut self, prev: &ProofOfWork, added_difficulty: Difficulty) {
-        let pow = ProofOfWork::new_from_difficulty(prev, added_difficulty);
-        self.accumulated_blake_difficulty = pow.accumulated_blake_difficulty;
-        self.accumulated_monero_difficulty = pow.accumulated_monero_difficulty;
-    }
+    // pub fn add_difficulty(&mut self, prev: &ProofOfWork, added_difficulty: Difficulty) {
+    //     let pow = ProofOfWork::new_from_difficulty(prev, added_difficulty);
+    //     self.accumulated_blake_difficulty = pow.accumulated_blake_difficulty;
+    //     self.accumulated_monero_difficulty = pow.accumulated_monero_difficulty;
+    // }
 
     /// Creates a new proof of work from the provided proof of work difficulty with the sum of this proof of work's
     /// total cumulative difficulty and the provided `added_difficulty`.
@@ -146,31 +137,29 @@ impl ProofOfWork {
     }
 
     /// Compare the difficulties of this and another proof of work, without knowing anything about scaling factors.
-    /// Even without scaling factors, it is often possible to definitively order difficulties.
-    pub fn partial_cmp(&self, other: &ProofOfWork) -> Ordering {
-        if self.accumulated_blake_difficulty == other.accumulated_blake_difficulty &&
-            self.accumulated_monero_difficulty == other.accumulated_monero_difficulty
-        {
-            Ordering::Equal
-        } else if self.accumulated_blake_difficulty <= other.accumulated_blake_difficulty &&
-            self.accumulated_monero_difficulty <= other.accumulated_monero_difficulty
-        {
-            Ordering::LessThan
-        } else if self.accumulated_blake_difficulty >= other.accumulated_blake_difficulty &&
-            self.accumulated_monero_difficulty >= other.accumulated_monero_difficulty
-        {
-            Ordering::GreaterThan
-        } else {
-            Ordering::Indeterminate
-        }
-    }
+    // /// Even without scaling factors, it is often possible to definitively order difficulties.
+    // pub fn partial_cmp(&self, other: &ProofOfWork) -> Ordering {
+    //     if self.accumulated_blake_difficulty == other.accumulated_blake_difficulty &&
+    //         self.accumulated_monero_difficulty == other.accumulated_monero_difficulty
+    //     {
+    //         Ordering::Equal
+    //     } else if self.accumulated_blake_difficulty <= other.accumulated_blake_difficulty &&
+    //         self.accumulated_monero_difficulty <= other.accumulated_monero_difficulty
+    //     {
+    //         Ordering::LessThan
+    //     } else if self.accumulated_blake_difficulty >= other.accumulated_blake_difficulty &&
+    //         self.accumulated_monero_difficulty >= other.accumulated_monero_difficulty
+    //     {
+    //         Ordering::GreaterThan
+    //     } else {
+    //         Ordering::Indeterminate
+    //     }
+    // }
 
     /// Serialises the ProofOfWork instance into a byte string. Useful for feeding the PoW into a hash function.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(256);
         buf.put_u8(self.pow_algo as u8);
-        buf.put_u64_le(self.accumulated_monero_difficulty.as_u64());
-        buf.put_u64_le(self.accumulated_blake_difficulty.as_u64());
         buf.put_slice(&self.pow_data);
         buf
     }
@@ -191,8 +180,8 @@ impl Display for ProofOfWork {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         writeln!(
             fmt,
-            "Mining algorithm: {}, Target difficulty: {}",
-            self.pow_algo, self.target_difficulty
+            "Mining algorithm: {}",
+            self.pow_algo
         )?;
         writeln!(
             fmt,

@@ -5,14 +5,8 @@ pub struct ProofOfWork {
     /// 1 = Blake
     #[prost(uint64, tag = "1")]
     pub pow_algo: u64,
-    #[prost(uint64, tag = "2")]
-    pub accumulated_monero_difficulty: u64,
-    #[prost(uint64, tag = "3")]
-    pub accumulated_blake_difficulty: u64,
     #[prost(bytes, tag = "4")]
     pub pow_data: std::vec::Vec<u8>,
-    #[prost(uint64, tag = "5")]
-    pub target_difficulty: u64,
 }
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
@@ -59,6 +53,32 @@ pub struct Block {
     #[prost(message, optional, tag = "2")]
     pub body: ::std::option::Option<super::types::AggregateBody>,
 }
+/// A Tari block. Blocks are linked together into a blockchain.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ChainBlock {
+    #[prost(message, optional, tag = "1")]
+    pub header: ::std::option::Option<ChainHeader>,
+    #[prost(message, optional, tag = "2")]
+    pub body: ::std::option::Option<super::types::AggregateBody>,
+}
+/// This is the chain header for a header containing a target and achieved difficulty
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ChainHeader {
+    #[prost(message, optional, tag = "1")]
+    pub header: ::std::option::Option<BlockHeader>,
+    #[prost(bytes, tag = "2")]
+    pub target_difficulty: std::vec::Vec<u8>,
+    #[prost(message, repeated, tag = "3")]
+    pub achieved_difficulty: ::std::vec::Vec<AchievedDiff>,
+}
+/// This total achieved difficulty and is used to map a hash map
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AchievedDiff {
+    #[prost(uint64, tag = "1")]
+    pub pow_algo: u64,
+    #[prost(bytes, tag = "2")]
+    pub achieved: std::vec::Vec<u8>,
+}
 /// A new block message. This is the message that is propagated around the network. It contains the
 /// minimal information required to identify and optionally request the full block.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -79,7 +99,7 @@ pub struct HistoricalBlock {
     pub spent_commitments: ::std::vec::Vec<super::types::Commitment>,
     /// The underlying block
     #[prost(message, optional, tag = "3")]
-    pub block: ::std::option::Option<Block>,
+    pub block: ::std::option::Option<ChainBlock>,
 }
 /// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for
 /// the block that the Base Node is able to complete on behalf of a Miner.
@@ -101,6 +121,9 @@ pub struct NewBlockHeaderTemplate {
     /// Proof of work metadata
     #[prost(message, optional, tag = "5")]
     pub pow: ::std::option::Option<ProofOfWork>,
+    /// This is the target for the new block
+    #[prost(bytes, tag = "6")]
+    pub target_difficulty: std::vec::Vec<u8>,
 }
 /// The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as
 /// a final step the Base node to add the MMR roots to the header.

@@ -97,7 +97,7 @@ impl LinearWeightedMovingAverage {
             );
             panic!("Difficulty target has overflowed. Target is {}", target);
         }
-        let target = target.ceil() as u64; // difficulty difference of 1 should not matter much, but difficulty should never be below 1, ceil(0.9) = 1
+        let target = target.ceil() as u128; // difficulty difference of 1 should not matter much, but difficulty should never be below 1, ceil(0.9) = 1
         trace!(target: LOG_TARGET, "New target difficulty: {}", target);
         target.into()
     }

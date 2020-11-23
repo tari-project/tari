@@ -35,7 +35,8 @@ use crate::{
         types::{CryptoFactories, PrivateKey},
         CoinbaseBuilder,
     },
-};
+};use crate::blocks::chain_header::ChainHeader;
+use crate::blocks::chain_block::ChainBlock;
 use core::sync::atomic::{AtomicBool, AtomicU64};
 use futures::{
     channel::{
@@ -166,6 +167,7 @@ impl Miner {
             return Ok(self);
         };
         let mut block_template = block_template.unwrap();
+        let target = block_template.header.target_difficulty;
         let output = self.add_coinbase(&mut block_template);
         if output.is_err() {
             error!(
@@ -192,7 +194,7 @@ impl Miner {
             let mut tx_channel = tx.clone();
             trace!("spawning mining thread");
             spawn_blocking(move || {
-                let result = CpuPow::mine(header, stop_mining_flag, thread_hash_rate);
+                let result = CpuPow::mine(header,target, stop_mining_flag, thread_hash_rate);
                 // send back what the miner found, None will be sent if the miner did not find a nonce
                 if let Err(e) = tx_channel.try_send(result) {
                     warn!(target: LOG_TARGET, "Could not return mining result: {}", e);
