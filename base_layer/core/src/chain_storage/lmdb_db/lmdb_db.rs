@@ -130,7 +130,7 @@ impl LMDBDatabase {
             orphans_db: get_database(&store, LMDB_DB_ORPHANS)?,
             orphan_chain_tips_db: get_database(&store, LMDB_DB_ORPHAN_CHAIN_TIPS)?,
             orphan_parent_map_index: get_database(&store, LMDB_DB_ORPHAN_PARENT_MAP_INDEX)?,
-            env: env.clone(),
+            env,
             env_config: store.env_config(),
             is_mem_metadata_dirty: true,
             _file_lock: Arc::new(file_lock),
@@ -233,6 +233,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
+    #[allow(clippy::ptr_arg)]
     fn insert_output(
         &mut self,
         txn: &WriteTransaction<'_>,
@@ -262,7 +263,7 @@ impl LMDBDatabase {
             key.as_str(),
             &Some(TransactionOutputRowData {
                 output: output.clone(),
-                header_hash: header_hash.clone(),
+                header_hash: header_hash.to_owned(),
                 mmr_position,
                 hash: output_hash,
                 range_proof_hash: proof_hash,
@@ -361,7 +362,7 @@ impl LMDBDatabase {
             },
             DbKey::OrphanBlock(k) => {
                 if let Some(orphan) = lmdb_get::<_, Block>(&txn, &self.orphans_db, k)? {
-                    let parent_hash = orphan.header.prev_hash.clone();
+                    let parent_hash = orphan.header.prev_hash;
                     lmdb_delete_key_value(&txn, &self.orphan_parent_map_index, parent_hash.as_slice(), k)?;
                     let tip: Option<Vec<u8>> = lmdb_get(&txn, &self.orphan_chain_tips_db, k)?;
                     if tip.is_some() {
@@ -381,11 +382,11 @@ impl LMDBDatabase {
     fn op_update_block_accumulated_data(
         &mut self,
         txn: &WriteTransaction<'_>,
-        header_hash: &Vec<u8>,
+        header_hash: &[u8],
         data: &BlockAccumulatedData,
     ) -> Result<(), ChainStorageError>
     {
-        lmdb_replace(&txn, &self.block_accumulated_data_db, header_hash.as_slice(), data)
+        lmdb_replace(&txn, &self.block_accumulated_data_db, header_hash, data)
     }
 }
 
@@ -766,7 +767,7 @@ impl BlockchainBackend for LMDBDatabase {
     /// Returns the metadata of the chain.
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
         // This should only be None if the database is empty
-        self.mem_metadata.as_ref().map(|cm| cm.clone()).ok_or_else(|| {
+        self.mem_metadata.as_ref().cloned().ok_or_else(|| {
             ChainStorageError::AccessError("Cannot retrieve chain metadata because the database is empty".to_string())
         })
     }
@@ -832,7 +833,7 @@ impl BlockchainBackend for LMDBDatabase {
     {
         let orphan_count = self.get_orphan_count()?;
         let num_over_limit = orphan_count.saturating_sub(orphan_storage_capacity);
-        if num_over_limit <= 0 {
+        if num_over_limit == 0 {
             return Ok(());
         }
         debug!(

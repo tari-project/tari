@@ -44,7 +44,7 @@ pub fn create_blockchain_state_service_mock() -> (BlockchainStateServiceHandle, 
     (BlockchainStateServiceHandle::new(tx), state)
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct BlockchainStateMockState {
     get_blocks: Arc<Mutex<Vec<Block>>>,
     get_chain_metadata: Arc<Mutex<ChainMetadata>>,
@@ -113,10 +113,14 @@ struct BlockchainStateServiceMock {
 
 impl BlockchainStateServiceMock {
     pub fn new(receiver: mpsc::Receiver<BlockchainStateRequest>) -> Self {
-        Self {
-            receiver,
-            state: BlockchainStateMockState::default(),
-        }
+        let state = BlockchainStateMockState {
+            get_blocks: Default::default(),
+            get_chain_metadata: Arc::new(Mutex::new(ChainMetadata::new(0, Vec::new(), 0, 0, 0))),
+            get_header_by_hash: Default::default(),
+            calls: Default::default(),
+        };
+
+        Self { receiver, state }
     }
 
     pub fn get_shared_state(&self) -> BlockchainStateMockState {

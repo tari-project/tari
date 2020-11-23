@@ -330,11 +330,11 @@ fn insert_fetch_metadata<T: BlockchainBackend>(mut db: T) {
     let mut txn = DbTransaction::new();
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::ChainHeight,
-        MetadataValue::ChainHeight(Some(chain_height)),
+        MetadataValue::ChainHeight(chain_height),
     ));
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::AccumulatedWork,
-        MetadataValue::AccumulatedWork(Some(accumulated_work.into())),
+        MetadataValue::AccumulatedWork(accumulated_work.into()),
     ));
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::PruningHorizon,
@@ -342,11 +342,11 @@ fn insert_fetch_metadata<T: BlockchainBackend>(mut db: T) {
     ));
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::BestBlock,
-        MetadataValue::BestBlock(Some(hash.clone())),
+        MetadataValue::BestBlock(hash.clone()),
     ));
     assert!(db.write(txn).is_ok());
 
-    if let Some(DbValue::Metadata(MetadataValue::ChainHeight(Some(retrieved_chain_height)))) =
+    if let Some(DbValue::Metadata(MetadataValue::ChainHeight(retrieved_chain_height))) =
         db.fetch(&DbKey::Metadata(MetadataKey::ChainHeight)).unwrap()
     {
         assert_eq!(retrieved_chain_height, chain_height);
@@ -356,7 +356,7 @@ fn insert_fetch_metadata<T: BlockchainBackend>(mut db: T) {
     if let Some(DbValue::Metadata(MetadataValue::AccumulatedWork(retrieved_accumulated_work))) =
         db.fetch(&DbKey::Metadata(MetadataKey::AccumulatedWork)).unwrap()
     {
-        assert_eq!(retrieved_accumulated_work, Some(accumulated_work.into()));
+        assert_eq!(retrieved_accumulated_work, accumulated_work.into());
     } else {
         assert!(false);
     }
@@ -367,7 +367,7 @@ fn insert_fetch_metadata<T: BlockchainBackend>(mut db: T) {
     } else {
         assert!(false);
     }
-    if let Some(DbValue::Metadata(MetadataValue::BestBlock(Some(retrieved_hash)))) =
+    if let Some(DbValue::Metadata(MetadataValue::BestBlock(retrieved_hash))) =
         db.fetch(&DbKey::Metadata(MetadataKey::BestBlock)).unwrap()
     {
         assert_eq!(retrieved_hash, hash);
@@ -866,7 +866,7 @@ fn fetch_target_difficulties<T: BlockchainBackend>(mut db: T) {
     txn.insert_header(header5.clone());
     txn.insert(DbKeyValuePair::Metadata(
         MetadataKey::ChainHeight,
-        MetadataValue::ChainHeight(Some(header5.height)),
+        MetadataValue::ChainHeight(header5.height),
     ));
     assert!(db.write(txn).is_ok());
 

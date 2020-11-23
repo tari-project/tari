@@ -147,7 +147,7 @@ fn test_pruned_mode_sync_with_future_horizon_sync_height() {
         assert_eq!(network_tip.effective_pruned_height(), 6);
         let mut sync_peers = vec![SyncPeer {
             node_id: bob_node.node_identity.node_id().clone(),
-            chain_metadata: Some(network_tip.clone()),
+            chain_metadata: network_tip.clone(),
         }];
 
         // Synchronize headers
@@ -335,7 +335,7 @@ fn test_pruned_mode_sync_with_spent_utxos() {
         assert_eq!(network_tip.height_of_longest_chain(), 12);
         let mut sync_peers = vec![SyncPeer {
             node_id: bob_node.node_identity.node_id().clone(),
-            chain_metadata: Some(network_tip.clone()),
+            chain_metadata: network_tip.clone(),
         }];
         let state_event = HeaderSync::new(network_tip.clone(), sync_peers.clone())
             .next_event(&mut alice_state_machine)
@@ -498,7 +498,7 @@ fn test_pruned_mode_sync_with_spent_faucet_utxo_before_horizon() {
     });
 }
 
-fn check_final_state<B: BlockchainBackend>(alice_db: &BlockchainDatabase<B>, bob_db: &BlockchainDatabase<B>) {
+fn check_final_state<B: BlockchainBackend>(_alice_db: &BlockchainDatabase<B>, _bob_db: &BlockchainDatabase<B>) {
     // let network_tip = bob_db.get_chain_metadata().unwrap();
     //
     // let alice_metadata = alice_db.get_chain_metadata().unwrap();
@@ -666,7 +666,7 @@ fn test_pruned_mode_sync_fail_final_validation() {
         // Both nodes are running in pruned mode and can not use block sync to synchronize state. Sync horizon state
         // from genesis block to horizon_sync_height and then block sync to the tip.
         let network_tip = bob_db.get_chain_metadata().unwrap();
-        assert_eq!(network_tip.effective_pruned_height, 6);
+        assert_eq!(network_tip.effective_pruned_height(), 6);
         let mut sync_peers = vec![SyncPeer {
             node_id: bob_node.node_identity.node_id().clone(),
             chain_metadata: network_tip.clone(),
@@ -694,8 +694,6 @@ fn test_pruned_mode_sync_fail_final_validation() {
         assert_eq!(node_count, 1);
 
         assert!(alice_db.get_horizon_sync_state().unwrap().is_none());
-        let local_metadata = alice_db.get_chain_metadata().unwrap();
-        assert!(local_metadata.best_block.is_some());
         let (state_change_event_publisher, _) = broadcast::channel(10);
         let (status_event_sender, _) = watch::channel(StatusInfo::new());
         let mut alice_state_machine = BaseNodeStateMachine::new(
@@ -722,7 +720,7 @@ fn test_pruned_mode_sync_fail_final_validation() {
         let alice_metadata = alice_db.get_chain_metadata().unwrap();
         // Local height should now be at the horizon sync height
         assert_eq!(alice_metadata.height_of_longest_chain(), sync_height);
-        assert_eq!(alice_metadata.effective_pruned_height, sync_height);
+        assert_eq!(alice_metadata.effective_pruned_height(), sync_height);
 
         // Check Kernel MMR nodes after horizon sync
         let alice_num_kernels = alice_db.fetch_mmr_node_count(MmrTree::Kernel, sync_height).unwrap();
@@ -748,8 +746,8 @@ fn test_pruned_mode_sync_fail_final_validation() {
         let alice_metadata = alice_db.get_chain_metadata().unwrap();
         // Local height should now be at the horizon sync height
         assert_eq!(
-            alice_metadata.effective_pruned_height,
-            network_tip.height_of_longest_chain() - network_tip.pruning_horizon
+            alice_metadata.effective_pruned_height(),
+            network_tip.height_of_longest_chain() - network_tip.pruning_horizon()
         );
 
         check_final_state(&alice_db, &bob_db);

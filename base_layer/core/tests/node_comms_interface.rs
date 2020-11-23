@@ -101,7 +101,7 @@ async fn inbound_get_metadata() {
         inbound_nch.handle_request(&NodeCommsRequest::GetChainMetadata).await
     {
         assert_eq!(received_metadata.height_of_longest_chain(), 0);
-        assert_eq!(received_metadata.best_block(), block.hash());
+        assert_eq!(received_metadata.best_block(), &block.hash());
         assert_eq!(received_metadata.pruning_horizon(), 0);
     } else {
         assert!(false);

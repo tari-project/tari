@@ -215,11 +215,7 @@ where
         },
     };
     result.push(deserialize(row)?);
-    loop {
-        let row = match cursor.next_dup::<'_, K, [u8]>(&access) {
-            Ok(r) => r.1,
-            Err(_) => break,
-        };
+    while let Ok((_, row)) = cursor.next_dup::<K, [u8]>(&access) {
         result.push(deserialize(row)?);
     }
     Ok(result)
@@ -235,7 +231,7 @@ where V: DeserializeOwned {
             Err(ChainStorageError::AccessError(e.to_string()))
         },
         Ok(None) => Ok(None),
-        Ok(Some((_k, v))) => deserialize(v).map(|v| Some(v)).map_err(|e| {
+        Ok(Some((_k, v))) => deserialize(v).map(Some).map_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "Could not could not deserialize value from lmdb: {:?}", e
@@ -305,7 +301,7 @@ pub fn lmdb_list_keys(txn: &ConstTransaction<'_>, db: &Database) -> Result<Vec<V
         error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
         ChainStorageError::AccessError(e.to_string())
     })?;
-    let mut iter = CursorIter::new(
+    let iter = CursorIter::new(
         MaybeOwned::Borrowed(&mut cursor),
         &access,
         |c, a| c.first(a),
@@ -313,7 +309,7 @@ pub fn lmdb_list_keys(txn: &ConstTransaction<'_>, db: &Database) -> Result<Vec<V
     )?;
 
     let mut result = vec![];
-    while let Some(row) = iter.next() {
+    for row in iter {
         result.push(Vec::from(row?.0));
     }
     Ok(result)
@@ -333,7 +329,7 @@ where
         error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
         ChainStorageError::AccessError(e.to_string())
     })?;
-    let mut iter = CursorIter::new(
+    let iter = CursorIter::new(
         MaybeOwned::Borrowed(&mut cursor),
         &access,
         |c, a| c.first(a),
@@ -341,7 +337,7 @@ where
     )?;
 
     let mut result = vec![];
-    while let Some(row) = iter.next() {
+    for row in iter {
         // result.push(Vec::from(row?.0));
         let val = deserialize::<V>(row?.1)?;
         if let Some(r) = f(val)? {

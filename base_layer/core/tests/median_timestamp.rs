@@ -116,7 +116,7 @@ fn test_median_timestamp_odd_order() {
     assert_eq!(median_timestamp, (timestamps[0] + timestamps[1]) / 2);
 
     // lets add 1 that's further back then
-    let append_height = store.get_height().unwrap().unwrap();
+    let append_height = store.get_height().unwrap();
     let prev_block = store.fetch_block(append_height).unwrap().block().clone();
     let new_block = chain_block(&prev_block, Vec::new(), &consensus_manager);
     let mut new_block = store.calculate_mmr_roots(new_block).unwrap();

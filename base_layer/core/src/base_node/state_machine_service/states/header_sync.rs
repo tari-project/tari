@@ -353,10 +353,7 @@ mod test {
 
     #[test]
     fn calc_sync_height_zero_pruning_horizon() {
-        let metadata = ChainMetadata {
-            pruning_horizon: 0,
-            ..Default::default()
-        };
+        let metadata = ChainMetadata::genesis();
         assert_eq!(calc_sync_height(100, &metadata, 0), 100);
         assert_eq!(calc_sync_height(100, &metadata, 5), 95);
         assert_eq!(calc_sync_height(100, &metadata, 500), 0);
@@ -364,10 +361,7 @@ mod test {
 
     #[test]
     fn calc_sync_height_non_zero_pruning_horizon() {
-        let metadata = ChainMetadata {
-            pruning_horizon: 100,
-            ..Default::default()
-        };
+        let metadata = ChainMetadata::new(0, Vec::new(), 100, 0, 0);
         assert_eq!(calc_sync_height(0, &metadata, 0), 0);
         assert_eq!(calc_sync_height(100, &metadata, 0), 0);
         assert_eq!(calc_sync_height(101, &metadata, 0), 1);
@@ -376,11 +370,7 @@ mod test {
 
     #[test]
     fn calc_sync_height_behind_chain_tip() {
-        let metadata = ChainMetadata {
-            pruning_horizon: 100,
-            height_of_longest_chain: Some(50),
-            ..Default::default()
-        };
+        let metadata = ChainMetadata::new(50, Vec::new(), 100, 0, 0);
         assert_eq!(calc_sync_height(0, &metadata, 0), 50);
         assert_eq!(calc_sync_height(100, &metadata, 0), 50);
         assert_eq!(calc_sync_height(101, &metadata, 0), 50);
@@ -389,11 +379,7 @@ mod test {
 
     #[test]
     fn calc_sync_height_infront_chain_tip() {
-        let metadata = ChainMetadata {
-            pruning_horizon: 50,
-            height_of_longest_chain: Some(100),
-            ..Default::default()
-        };
+        let metadata = ChainMetadata::new(100, Vec::new(), 50, 50, 0);
         assert_eq!(calc_sync_height(0, &metadata, 0), 100);
         assert_eq!(calc_sync_height(200, &metadata, 0), 150);
         assert_eq!(calc_sync_height(200, &metadata, 1), 149);

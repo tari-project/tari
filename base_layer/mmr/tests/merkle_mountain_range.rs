@@ -90,7 +90,7 @@ fn build_mmr() {
     //  0   1  3   4  7  8
     let h8 = int_to_hash(8);
     let h_9 = combine_hashes(&[&h7, &h8]);
-    assert!(mmr.push(h8.clone()).is_ok());
+    assert!(mmr.push(h8).is_ok());
     let root = combine_hashes(&[&h_6, &h_9]);
     assert_eq!(mmr.get_merkle_root(), Ok(root));
     assert_eq!(mmr.len(), Ok(10));

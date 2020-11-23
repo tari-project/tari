@@ -169,15 +169,27 @@ impl Display for InProgressHorizonSyncState {
 mod test {
     use super::ChainMetadata;
 
+    impl ChainMetadata {
+        pub fn genesis() -> ChainMetadata {
+            ChainMetadata {
+                height_of_longest_chain: 0,
+                best_block: Vec::new(),
+                pruning_horizon: 0,
+                effective_pruned_height: 0,
+                accumulated_difficulty: 0,
+            }
+        }
+    }
+
     #[test]
     fn horizon_block_on_default() {
-        let metadata = ChainMetadata::default();
+        let metadata = ChainMetadata::genesis();
         assert_eq!(metadata.horizon_block(0), 0);
     }
 
     #[test]
     fn pruned_mode() {
-        let mut metadata = ChainMetadata::default();
+        let mut metadata = ChainMetadata::genesis();
         assert_eq!(metadata.is_pruned_node(), false);
         assert_eq!(metadata.is_archival_node(), true);
         metadata.set_pruning_horizon(2880);
@@ -191,7 +203,7 @@ mod test {
 
     #[test]
     fn archival_node() {
-        let mut metadata = ChainMetadata::default();
+        let mut metadata = ChainMetadata::genesis();
         metadata.archival_mode();
         // Chain is still empty
         assert_eq!(metadata.horizon_block(0), 0);

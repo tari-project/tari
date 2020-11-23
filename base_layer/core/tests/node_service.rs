@@ -742,8 +742,8 @@ fn local_get_metadata() {
 
     runtime.block_on(async {
         let metadata = node.local_nci.get_metadata().await.unwrap();
-        assert_eq!(metadata.height_of_longest_chain, Some(2));
-        assert_eq!(metadata.best_block, Some(block2.hash()));
+        assert_eq!(metadata.height_of_longest_chain(), 2);
+        assert_eq!(metadata.best_block(), &block2.hash());
 
         node.shutdown().await;
     });

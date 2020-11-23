@@ -354,7 +354,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     shared
         .local_node_interface
         .publish_block_event(BlockEvent::BlockSyncComplete(Arc::new(last_block.block)));
-    return Ok(());
+    Ok(())
 }
 
 async fn check_actual_difficulty_matches_advertised<B: BlockchainBackend + 'static>(

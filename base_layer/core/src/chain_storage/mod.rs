@@ -145,7 +145,7 @@ impl Serialize for BlockAccumulatedData {
 impl<'de> Deserialize<'de> for BlockAccumulatedData {
     fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
     where D: Deserializer<'de> {
-        const FIELDS: &'static [&'static str] = &[
+        const FIELDS: &[&str] = &[
             "kernels",
             "outputs",
             "deleted",

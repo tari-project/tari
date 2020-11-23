@@ -25,10 +25,9 @@ use crate::{
     chain_storage::BlockchainDatabase,
     tari_utilities::Hashable,
     test_helpers::{
-        blockchain::{create_new_blockchain, create_store, TempDatabase},
+        blockchain::{create_new_blockchain, TempDatabase},
         create_block,
     },
-    transactions::types::HashDigest,
 };
 use futures::channel::mpsc;
 use tokio::task;

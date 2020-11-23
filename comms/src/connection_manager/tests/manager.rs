@@ -72,7 +72,7 @@ async fn connect_to_nonexistent_peer() {
         ConstantBackoff::new(Duration::from_secs(1)),
         request_rx,
         node_identity,
-        peer_manager.into(),
+        peer_manager,
         event_tx,
         shutdown.to_signal(),
     );

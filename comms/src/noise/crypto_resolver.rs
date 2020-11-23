@@ -142,7 +142,7 @@ mod test {
         let (secret_key, public_key) = CommsPublicKey::random_keypair(&mut OsRng);
         let dh = CommsDiffieHellman {
             public_key: public_key.clone(),
-            secret_key: secret_key.clone(),
+            secret_key,
         };
 
         let (secret_key2, public_key2) = CommsPublicKey::random_keypair(&mut OsRng);

@@ -65,7 +65,7 @@ async fn listen() -> Result<(), Box<dyn Error>> {
         MemoryTransport,
         noise_config.clone(),
         event_tx.clone(),
-        peer_manager.into(),
+        peer_manager,
         node_identity,
         shutdown.to_signal(),
     );
@@ -106,7 +106,7 @@ async fn smoke() {
         MemoryTransport,
         noise_config1,
         event_tx.clone(),
-        peer_manager1.clone().into(),
+        peer_manager1.clone(),
         node_identity1.clone(),
         shutdown.to_signal(),
     );
@@ -121,7 +121,7 @@ async fn smoke() {
     let mut dialer = Dialer::new(
         ConnectionManagerConfig::default(),
         node_identity2.clone(),
-        peer_manager2.clone().into(),
+        peer_manager2.clone(),
         MemoryTransport,
         noise_config2,
         ConstantBackoff::new(Duration::from_millis(100)),
@@ -208,7 +208,7 @@ async fn banned() {
         MemoryTransport,
         noise_config1,
         event_tx.clone(),
-        peer_manager1.clone().into(),
+        peer_manager1.clone(),
         node_identity1.clone(),
         shutdown.to_signal(),
     );
@@ -228,7 +228,7 @@ async fn banned() {
     let mut dialer = Dialer::new(
         ConnectionManagerConfig::default(),
         node_identity2.clone(),
-        peer_manager2.clone().into(),
+        peer_manager2.clone(),
         MemoryTransport,
         noise_config2,
         ConstantBackoff::new(Duration::from_millis(100)),

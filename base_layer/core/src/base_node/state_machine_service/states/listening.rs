@@ -272,8 +272,8 @@ mod test {
 
         let mut peer_metadata_list = Vec::<PeerChainMetadata>::new();
         let best_network_metadata = best_metadata(peer_metadata_list.as_slice());
-        assert_eq!(best_network_metadata, ChainMetadata::default());
-        let sync_peers = select_sync_peers(local_tip_height, &best_network_metadata, &peer_metadata_list);
+        assert_eq!(best_network_metadata.clone().unwrap(), ChainMetadata::genesis());
+        let sync_peers = select_sync_peers(local_tip_height, &best_network_metadata.unwrap(), &peer_metadata_list);
         assert_eq!(sync_peers.len(), 0);
 
         let node_id1 = random_node_id();
@@ -331,13 +331,10 @@ mod test {
         peer_metadata_list.push(peer4);
         peer_metadata_list.push(peer5);
 
-        let best_network_metadata = best_metadata(peer_metadata_list.as_slice());
-        assert_eq!(best_network_metadata.height_of_longest_chain, Some(network_tip_height));
-        assert_eq!(best_network_metadata.best_block, Some(block_hash1));
-        assert_eq!(
-            best_network_metadata.accumulated_difficulty,
-            Some(accumulated_difficulty1)
-        );
+        let best_network_metadata = best_metadata(peer_metadata_list.as_slice()).unwrap();
+        assert_eq!(best_network_metadata.height_of_longest_chain(), network_tip_height);
+        assert_eq!(best_network_metadata.best_block(), &block_hash1);
+        assert_eq!(best_network_metadata.accumulated_difficulty(), accumulated_difficulty1);
         let sync_peers = select_sync_peers(local_tip_height, &best_network_metadata, &peer_metadata_list);
         assert_eq!(sync_peers.len(), 3);
         sync_peers.iter().find(|p| p.node_id == node_id1).unwrap();
@@ -347,52 +344,40 @@ mod test {
 
     #[test]
     fn sync_mode_selection() {
-        let mut local = ChainMetadata::default();
-        local.accumulated_difficulty = Some(500000);
+        let local = ChainMetadata::new(0, Vec::new(), 0, 0, 500_000);
         match determine_sync_mode(&local, local.clone(), vec![]) {
             SyncStatus::UpToDate => assert!(true),
             _ => assert!(false),
         }
 
-        let mut network = ChainMetadata::default();
-        network.accumulated_difficulty = Some(499999);
+        let network = ChainMetadata::new(0, Vec::new(), 0, 0, 499_000);
         match determine_sync_mode(&local, network, vec![]) {
             SyncStatus::UpToDate => assert!(true),
             _ => assert!(false),
         }
 
-        let mut network = ChainMetadata::default();
-        network.accumulated_difficulty = Some(500001);
+        let network = ChainMetadata::new(0, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(&local, network.clone(), vec![]) {
             SyncStatus::Lagging(n, _) => assert_eq!(n, network),
             _ => assert!(false),
         }
 
-        local.pruning_horizon = 50;
-        local.height_of_longest_chain = Some(100);
-        let mut network = ChainMetadata::default();
-        network.accumulated_difficulty = Some(500001);
-        network.height_of_longest_chain = Some(150);
+        let local = ChainMetadata::new(100, Vec::new(), 50, 50, 500_000);
+        let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(&local, network.clone(), vec![]) {
             SyncStatus::Lagging(n, _) => assert_eq!(n, network),
             _ => assert!(false),
         }
 
-        local.pruning_horizon = 50;
-        local.height_of_longest_chain = None;
-        let mut network = ChainMetadata::default();
-        network.accumulated_difficulty = Some(500001);
-        network.height_of_longest_chain = Some(100);
+        let local = ChainMetadata::new(0, Vec::new(), 50, 50, 500_000);
+        let network = ChainMetadata::new(100, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(&local, network.clone(), vec![]) {
             SyncStatus::LaggingBehindHorizon(n, _) => assert_eq!(n, network),
             _ => assert!(false),
         }
 
-        local.pruning_horizon = 50;
-        local.height_of_longest_chain = Some(99);
-        let mut network = ChainMetadata::default();
-        network.accumulated_difficulty = Some(500001);
-        network.height_of_longest_chain = Some(150);
+        let local = ChainMetadata::new(99, Vec::new(), 50, 50, 500_000);
+        let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(&local, network.clone(), vec![]) {
             SyncStatus::LaggingBehindHorizon(n, _) => assert_eq!(n, network),
             _ => assert!(false),
