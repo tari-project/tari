@@ -1223,7 +1223,7 @@ impl Parser {
 
             if must_ban {
                 match connectivity
-                    .ban_peer(node_id.clone(), duration, "UI manual ban".to_string())
+                    .ban_peer_until(node_id.clone(), duration, "UI manual ban".to_string())
                     .await
                 {
                     Ok(_) => println!("Peer was banned in base node."),
@@ -1235,7 +1235,7 @@ impl Parser {
 
                 if let Some(mut wallet_connectivity) = wallet_connectivity {
                     match wallet_connectivity
-                        .ban_peer(node_id, duration, "UI manual ban".to_string())
+                        .ban_peer_until(node_id, duration, "UI manual ban".to_string())
                         .await
                     {
                         Ok(_) => println!("Peer was banned in wallet."),

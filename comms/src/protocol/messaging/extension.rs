@@ -52,10 +52,10 @@ impl<TInPipe, TOutPipe, TOutReq> MessagingProtocolExtension<TInPipe, TOutPipe, T
 impl<TInPipe, TOutPipe, TOutReq> ProtocolExtension for MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq>
 where
     TOutPipe: Service<TOutReq, Response = ()> + Clone + Send + Sync + 'static,
-    TOutPipe::Error: fmt::Debug + Send + Sync,
+    TOutPipe::Error: fmt::Display + Send + Sync,
     TOutPipe::Future: Send + Sync + 'static,
     TInPipe: Service<InboundMessage> + Clone + Send + Sync + 'static,
-    TInPipe::Error: fmt::Debug + Send + Sync,
+    TInPipe::Error: fmt::Display + Send + Sync,
     TInPipe::Future: Send + Sync + 'static,
     TOutReq: Send + Sync + 'static,
 {
@@ -76,8 +76,9 @@ where
             context.shutdown_signal(),
         );
 
-        // Spawn messaging protocol
         context.register_complete_signal(messaging.complete_signal());
+
+        // Spawn messaging protocol
         task::spawn(messaging.run());
 
         // Spawn inbound pipeline

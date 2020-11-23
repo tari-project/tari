@@ -178,7 +178,7 @@ impl ConnectivityManagerMock {
                     .unwrap();
             },
             GetAllConnectionStates(_) => unimplemented!(),
-            BanPeer(_, _, _) => unimplemented!(),
+            BanPeer(_, _, _) => {},
             GetActiveConnections(reply) => {
                 reply
                     .send(self.state.active_conns.lock().await.values().cloned().collect())

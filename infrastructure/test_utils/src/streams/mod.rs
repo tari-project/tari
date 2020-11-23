@@ -121,18 +121,18 @@ macro_rules! collect_stream_count {
     }};
 }
 
-pub async fn assert_in_stream<S, P>(stream: &mut S, mut predicate: P, timeout: Duration)
+pub async fn assert_in_stream<S, P, R>(stream: &mut S, mut predicate: P, timeout: Duration) -> R
 where
     S: Stream + Unpin,
-    P: FnMut(S::Item) -> bool,
+    P: FnMut(S::Item) -> Option<R>,
 {
     loop {
         if let Some(item) = tokio::time::timeout(timeout, stream.next())
             .await
             .expect("Timeout before stream emitted")
         {
-            if (predicate)(item) {
-                break;
+            if let Some(r) = (predicate)(item) {
+                break r;
             }
         } else {
             panic!("Predicate did not return true before the stream ended");

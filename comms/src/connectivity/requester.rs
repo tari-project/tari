@@ -202,7 +202,7 @@ impl ConnectivityRequester {
         reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)
     }
 
-    pub async fn ban_peer(
+    pub async fn ban_peer_until(
         &mut self,
         node_id: NodeId,
         duration: Duration,
@@ -214,6 +214,11 @@ impl ConnectivityRequester {
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         Ok(())
+    }
+
+    pub async fn ban_peer(&mut self, node_id: NodeId, reason: String) -> Result<(), ConnectivityError> {
+        self.ban_peer_until(node_id, Duration::from_secs(u64::MAX), reason)
+            .await
     }
 
     pub async fn wait_started(&mut self) -> Result<(), ConnectivityError> {

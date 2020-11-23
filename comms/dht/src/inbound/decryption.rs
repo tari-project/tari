@@ -25,12 +25,14 @@ use crate::{
     envelope::{DhtMessageFlags, DhtMessageHeader},
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
     proto::envelope::OriginMac,
+    DhtConfig,
 };
 use futures::{task::Context, Future};
 use log::*;
 use prost::Message;
-use std::{sync::Arc, task::Poll};
+use std::{sync::Arc, task::Poll, time::Duration};
 use tari_comms::{
+    connectivity::ConnectivityRequester,
     message::EnvelopeBody,
     peer_manager::NodeIdentity,
     pipeline::PipelineError,
@@ -55,6 +57,12 @@ enum DecryptionError {
     OriginMacDecryptedFailed,
     #[error("Failed to decode clear-text origin MAC")]
     OriginMacClearTextDecodeFailed,
+    #[error("Ephemeral public key not provided for encrypted message")]
+    EphemeralKeyNotProvided,
+    #[error("Message rejected because this node could not decrypt a message that was addressed to it")]
+    MessageRejectDecryptionFailed,
+    #[error("Failed to decode envelope body")]
+    EnvelopeBodyDecodeFailed,
     #[error("Failed to decrypt message body")]
     MessageBodyDecryptionFailed,
 }
@@ -62,11 +70,17 @@ enum DecryptionError {
 /// This layer is responsible for attempting to decrypt inbound messages.
 pub struct DecryptionLayer {
     node_identity: Arc<NodeIdentity>,
+    connectivity: ConnectivityRequester,
+    config: DhtConfig,
 }
 
 impl DecryptionLayer {
-    pub fn new(node_identity: Arc<NodeIdentity>) -> Self {
-        Self { node_identity }
+    pub fn new(config: DhtConfig, node_identity: Arc<NodeIdentity>, connectivity: ConnectivityRequester) -> Self {
+        Self {
+            node_identity,
+            connectivity,
+            config,
+        }
     }
 }
 
@@ -74,22 +88,37 @@ impl<S> Layer<S> for DecryptionLayer {
     type Service = DecryptionService<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        DecryptionService::new(service, Arc::clone(&self.node_identity))
+        DecryptionService::new(
+            self.config.clone(),
+            self.node_identity.clone(),
+            self.connectivity.clone(),
+            service,
+        )
     }
 }
 
 /// Responsible for decrypting InboundMessages and passing a DecryptedInboundMessage to the given service
 #[derive(Clone)]
 pub struct DecryptionService<S> {
+    config: DhtConfig,
     node_identity: Arc<NodeIdentity>,
+    connectivity: ConnectivityRequester,
     inner: S,
 }
 
 impl<S> DecryptionService<S> {
-    pub fn new(service: S, node_identity: Arc<NodeIdentity>) -> Self {
+    pub fn new(
+        config: DhtConfig,
+        node_identity: Arc<NodeIdentity>,
+        connectivity: ConnectivityRequester,
+        service: S,
+    ) -> Self
+    {
         Self {
-            inner: service,
             node_identity,
+            connectivity,
+            config,
+            inner: service,
         }
     }
 }
@@ -107,7 +136,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Cl
     }
 
     fn call(&mut self, msg: DhtInboundMessage) -> Self::Future {
-        Self::handle_message(self.inner.clone(), Arc::clone(&self.node_identity), msg)
+        Self::handle_message(
+            self.inner.clone(),
+            Arc::clone(&self.node_identity),
+            self.connectivity.clone(),
+            self.config.short_ban_duration,
+            msg,
+        )
     }
 }
 
@@ -117,13 +152,51 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     async fn handle_message(
         next_service: S,
         node_identity: Arc<NodeIdentity>,
+        mut connectivity: ConnectivityRequester,
+        ban_duration: Duration,
         message: DhtInboundMessage,
     ) -> Result<(), PipelineError>
+    {
+        use DecryptionError::*;
+        let source = message.source_peer.clone();
+        let trace_id = message.dht_header.message_tag;
+        let tag = message.tag;
+        match Self::validate_and_decrypt_message(node_identity, message).await {
+            Ok(msg) => next_service.oneshot(msg).await,
+
+            Err(err @ OriginMacNotProvided) |
+            Err(err @ EphemeralKeyNotProvided) |
+            Err(err @ OriginMacInvalidSignature) => {
+                // This message should not have been propagated, or has been manipulated in some way. Ban the source of
+                // this message.
+                connectivity
+                    .ban_peer_until(source.node_id.clone(), ban_duration, err.to_string())
+                    .await?;
+                Err(err.into())
+            },
+            Err(EnvelopeBodyDecodeFailed) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Failed to decode message body ({}, peer={}, trace={}). Message discarded",
+                    tag,
+                    source.node_id,
+                    trace_id
+                );
+                Ok(())
+            },
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    async fn validate_and_decrypt_message(
+        node_identity: Arc<NodeIdentity>,
+        message: DhtInboundMessage,
+    ) -> Result<DecryptedDhtMessage, DecryptionError>
     {
         let dht_header = &message.dht_header;
 
         if !dht_header.flags.contains(DhtMessageFlags::ENCRYPTED) {
-            return Self::success_not_encrypted(next_service, message).await;
+            return Self::success_not_encrypted(message).await;
         }
         trace!(
             target: LOG_TARGET,
@@ -135,8 +208,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let e_pk = dht_header
             .ephemeral_public_key
             .as_ref()
-            // TODO: #banheuristic - encrypted message sent without ephemeral public key
-            .ok_or_else(|| anyhow::anyhow!("Ephemeral public key not provided for encrypted message"))?;
+            // No ephemeral key with ENCRYPTED flag set
+            .ok_or_else(|| DecryptionError::EphemeralKeyNotProvided)?;
 
         let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), e_pk);
 
@@ -156,7 +229,18 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     message.tag,
                     message.dht_header.message_tag
                 );
-                return Self::decryption_failed(next_service, &node_identity, message).await;
+                if message.dht_header.destination.equals_node_identity(&node_identity) {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Received message from peer '{}' that is destined for this node that could not be decrypted. \
+                         Discarding message {} (Trace: {})",
+                        message.source_peer.node_id,
+                        message.tag,
+                        message.dht_header.message_tag
+                    );
+                    return Err(DecryptionError::OriginMacDecryptedFailed);
+                }
+                return Ok(DecryptedDhtMessage::failed(message));
             },
         };
 
@@ -173,15 +257,31 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     target: LOG_TARGET,
                     "Message successfully decrypted, {} (Trace: {})", message.tag, message.dht_header.message_tag
                 );
-                let msg = DecryptedDhtMessage::succeeded(message_body, Some(authenticated_origin), message);
-                next_service.oneshot(msg).await
+                Ok(DecryptedDhtMessage::succeeded(
+                    message_body,
+                    Some(authenticated_origin),
+                    message,
+                ))
             },
             Err(err) => {
                 debug!(
                     target: LOG_TARGET,
                     "Unable to decrypt message: {}, {} (Trace: {})", err, message.tag, message.dht_header.message_tag
                 );
-                Self::decryption_failed(next_service, &node_identity, message).await
+
+                if message.dht_header.destination.equals_node_identity(&node_identity) {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Received message from peer '{}' that is destined for this node that could not be decrypted. \
+                         Discarding message {} (Trace: {})",
+                        message.source_peer.node_id,
+                        message.tag,
+                        message.dht_header.message_tag
+                    );
+                    return Err(DecryptionError::MessageRejectDecryptionFailed);
+                }
+
+                Ok(DecryptedDhtMessage::failed(message))
             },
         }
     }
@@ -193,8 +293,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     {
         let encrypted_origin_mac = Some(&dht_header.origin_mac)
             .filter(|b| !b.is_empty())
-            // TODO: #banheuristic - this should not have been sent/propagated
+            // This should not have been sent/propagated
             .ok_or_else(|| DecryptionError::OriginMacNotProvided)?;
+
         let decrypted_bytes = crypt::decrypt(shared_secret, encrypted_origin_mac)
             .map_err(|_| DecryptionError::OriginMacDecryptedFailed)?;
         let origin_mac =
@@ -254,7 +355,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .map_err(|_| DecryptionError::MessageBodyDecryptionFailed)
     }
 
-    async fn success_not_encrypted(next_service: S, message: DhtInboundMessage) -> Result<(), PipelineError> {
+    async fn success_not_encrypted(message: DhtInboundMessage) -> Result<DecryptedDhtMessage, DecryptionError> {
         let authenticated_pk = if message.dht_header.origin_mac.is_empty() {
             None
         } else {
@@ -274,8 +375,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     message.tag,
                     message.dht_header.message_tag
                 );
-                let msg = DecryptedDhtMessage::succeeded(deserialized, authenticated_pk, message);
-                next_service.oneshot(msg).await
+                Ok(DecryptedDhtMessage::succeeded(deserialized, authenticated_pk, message))
             },
             Err(err) => {
                 // Message was not encrypted but failed to deserialize - immediately discard
@@ -287,35 +387,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     err,
                     message.dht_header.message_tag
                 );
-                Ok(())
+                Err(DecryptionError::EnvelopeBodyDecodeFailed)
             },
         }
-    }
-
-    async fn decryption_failed(
-        next_service: S,
-        node_identity: &NodeIdentity,
-        message: DhtInboundMessage,
-    ) -> Result<(), PipelineError>
-    {
-        if message.dht_header.destination == node_identity.node_id() ||
-            message.dht_header.destination == node_identity.public_key()
-        {
-            // TODO: #banheuristic - the origin of this message sent this node a message we could not decrypt
-            warn!(
-                target: LOG_TARGET,
-                "Received message from peer '{}' that is destined for this node that could not be decrypted. \
-                 Discarding message {} (Trace: {})",
-                message.source_peer.node_id,
-                message.tag,
-                message.dht_header.message_tag
-            );
-            return Err(anyhow::anyhow!(
-                "Message rejected because this node could not decrypt a message that was addressed to it"
-            ));
-        }
-        let msg = DecryptedDhtMessage::failed(message);
-        next_service.oneshot(msg).await
     }
 }
 
@@ -328,15 +402,16 @@ mod test {
     };
     use futures::{executor::block_on, future};
     use std::sync::Mutex;
-    use tari_comms::{message::MessageExt, wrap_in_envelope_body};
-    use tari_test_utils::counter_context;
+    use tari_comms::{message::MessageExt, test_utils::mocks::create_connectivity_mock, wrap_in_envelope_body};
+    use tari_test_utils::{counter_context, unpack_enum};
     use tower::service_fn;
 
     #[test]
     fn poll_ready() {
-        let inner = service_fn(|_: DecryptedDhtMessage| future::ready(Result::<(), PipelineError>::Ok(())));
+        let service = service_fn(|_: DecryptedDhtMessage| future::ready(Result::<(), PipelineError>::Ok(())));
         let node_identity = make_node_identity();
-        let mut service = DecryptionService::new(inner, node_identity);
+        let (connectivity, _) = create_connectivity_mock();
+        let mut service = DecryptionService::new(Default::default(), node_identity, connectivity, service);
 
         counter_context!(cx, counter);
 
@@ -348,12 +423,13 @@ mod test {
     #[test]
     fn decrypt_inbound_success() {
         let result = Mutex::new(None);
-        let inner = service_fn(|msg: DecryptedDhtMessage| {
+        let service = service_fn(|msg: DecryptedDhtMessage| {
             *result.lock().unwrap() = Some(msg);
             future::ready(Result::<(), PipelineError>::Ok(()))
         });
         let node_identity = make_node_identity();
-        let mut service = DecryptionService::new(inner, Arc::clone(&node_identity));
+        let (connectivity, _) = create_connectivity_mock();
+        let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
 
         let plain_text_msg = wrap_in_envelope_body!(b"Secret plans".to_vec());
         let inbound_msg = make_dht_inbound_message(
@@ -372,12 +448,13 @@ mod test {
     #[test]
     fn decrypt_inbound_fail() {
         let result = Mutex::new(None);
-        let inner = service_fn(|msg: DecryptedDhtMessage| {
+        let service = service_fn(|msg: DecryptedDhtMessage| {
             *result.lock().unwrap() = Some(msg);
             future::ready(Result::<(), PipelineError>::Ok(()))
         });
         let node_identity = make_node_identity();
-        let mut service = DecryptionService::new(inner, Arc::clone(&node_identity));
+        let (connectivity, _) = create_connectivity_mock();
+        let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
 
         let some_secret = "Super secret message".as_bytes().to_vec();
         let some_other_node_identity = make_node_identity();
@@ -391,23 +468,26 @@ mod test {
         assert_eq!(decrypted.decryption_result.unwrap_err(), inbound_msg.body);
     }
 
-    #[test]
-    fn decrypt_inbound_fail_destination() {
+    #[tokio_macros::test_basic]
+    async fn decrypt_inbound_fail_destination() {
+        let (connectivity, mock) = create_connectivity_mock();
+        mock.spawn();
         let result = Mutex::new(None);
-        let inner = service_fn(|msg: DecryptedDhtMessage| {
+        let service = service_fn(|msg: DecryptedDhtMessage| {
             *result.lock().unwrap() = Some(msg);
             future::ready(Result::<(), PipelineError>::Ok(()))
         });
         let node_identity = make_node_identity();
-        let mut service = DecryptionService::new(inner, Arc::clone(&node_identity));
+        let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
 
         let nonsense = "Cannot Decrypt this".as_bytes().to_vec();
         let mut inbound_msg =
             make_dht_inbound_message(&node_identity, nonsense.clone(), DhtMessageFlags::ENCRYPTED, true);
         inbound_msg.dht_header.destination = node_identity.public_key().clone().into();
 
-        let err = block_on(service.call(inbound_msg)).unwrap_err();
-        assert!(err.to_string().starts_with("Message rejected"),);
+        let err = service.call(inbound_msg).await.unwrap_err();
+        let err = err.downcast::<DecryptionError>().unwrap();
+        unpack_enum!(DecryptionError::MessageRejectDecryptionFailed = err);
         assert!(result.lock().unwrap().is_none());
     }
 }
