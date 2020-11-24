@@ -387,7 +387,12 @@ mod test {
 
         // Cleanup test data
         if std::path::Path::new(&data_path.as_str()).exists() {
-            std::fs::remove_dir_all(&data_path.as_str()).unwrap();
+            // windows CI had an error when this result was unwrapped
+            // "The directory is not empty."
+            match std::fs::remove_dir_all(&data_path.as_str()) {
+                Ok(_) => {},
+                Err(e) => println!("couldn't delete data path {}, error {}", &data_path, e),
+            }
         }
 
         // Assert bootstrap results
