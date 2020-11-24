@@ -78,6 +78,16 @@ https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=Buil
     ```
     setx SQLITE3_LIB_DIR "%USERPROFILE%\.sqlite"
     ```
+- OpenSSL:
+  - Download full version of the 64bit Precompiled Binaries for Windows for
+    [OpenSSL](https://slproweb.com/products/Win32OpenSSL.html)
+  - Install using all the default prompts
+  
+    **Note**: It is important that the dlls are available in the path. To test:
+    ```
+    where libcrypto-1_1-x64.dll
+    where libssl-1_1-x64.dll
+    ``` 
 
 - Tor
   - Donwload [Tor Windows Expert Bundle](https://www.torproject.org/download/tor/)

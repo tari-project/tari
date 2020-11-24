@@ -6,6 +6,8 @@ echo ----------------------------
 rem These are the base node executable and SQLite dynamic link library names
 set my_exe=tari_base_node.exe
 set sqlite_runtime=sqlite3.dll
+set openssl_runtime_1=libcrypto-1_1-x64.dll
+set openssl_runtime_2=libssl-1_1-x64.dll
 
 rem This is the location of the configuration and identity files
 set config_path=%~dp0..\config
@@ -39,7 +41,7 @@ if [%errorlevel%]==[10101] (
 echo.
 echo Run the base node
 echo -----------------
-call "%my_exe_path%\run_the_base_node.bat"
+call "%my_exe_path%\source_base_node_env.bat"
 
 goto END:
 
