@@ -174,8 +174,6 @@ At a high level, Tari script works as follows:
 
 * The script commitment, which can be adequately represented by the hash of the canonical serialisation of the script in
 binary, is recorded in the transaction kernel. 
-* An additional merkle mountain range committing the script history (including the redeeming inputs) is necessary to 
-  prevent miners rewriting the script hash history during chain re-orgs.
 * An additional secret key is provided by UTXO owners that signs both the script and the input data (if any) when it is spent.
 
 Note that, at the outset, the signatures must be present in the _kernel_ in some form, otherwise miners will be able to 
@@ -254,6 +252,7 @@ Note that:
 * The UTXO has a positive value `v` like any normal UTXO. 
 * The script nor the output features can be changed by the miner or any other party. Once mined, the owner can no longer
   change the script or output features without invalidating the range proof.
+* Currently, the output features are actually malleable. TariScript fixes this by committing to the features in \\( \sigma \\).
 
 ### Transaction input changes
 
@@ -268,11 +267,8 @@ pub struct TransactionInput {
 }
 ```
 
-In standard Mimblewimble, an input is the same as an output _sans_ range proof. The range proof doesn't need to be checked
-again when spending inputs, so it is dropped. However, under this scheme, the range proof must be checked again to ensure
-that the output metadata (script, output features) have not been modified.
-
-_Note:_ Currently, the output features are actually malleable. TariScript fixes this.
+In standard Mimblewimble, an input is the same as an output _sans_ range proof. Under this scheme, the UTXO spender must
+supply the input data for the unlocking script, if any, and a signature signing the script and input data.
 
 ```rust,ignore
 pub struct TransactionInput {
@@ -281,8 +277,6 @@ pub struct TransactionInput {
     /// The homomorphic commitment representing the output amount
     commitment: Commitment,
     /// A proof that the commitment is in the right range
-    proof: RangeProof,
-    /// The serialised script
     script: Vec<u8>,
     /// The public script key, L
     script_pub_key: PublicKey
