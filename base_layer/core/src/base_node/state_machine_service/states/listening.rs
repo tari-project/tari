@@ -28,7 +28,7 @@ use crate::{
             BaseNodeStateMachine,
         },
     },
-    chain_storage::{async_db, BlockchainBackend, ChainMetadata},
+    chain_storage::{async_db, BlockchainBackend},
 };
 
 use futures::StreamExt;
@@ -38,6 +38,7 @@ use std::{
     fmt::{Display, Formatter},
     ops::Deref,
 };
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
 

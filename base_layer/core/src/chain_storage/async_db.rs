@@ -21,10 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{Block, BlockHash, BlockHeader, NewBlockTemplate},
+    blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
         blockchain_database::BlockAddResult,
-        metadata::ChainMetadata,
         BlockchainBackend,
         BlockchainDatabase,
         ChainStorageError,
@@ -42,6 +41,7 @@ use crate::{
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{sync::Arc, time::Instant};
+use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_mmr::Hash;
 
 const LOG_TARGET: &str = "c::bn::async_db";

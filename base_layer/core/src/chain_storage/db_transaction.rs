@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    blocks::{blockheader::BlockHash, Block, BlockHeader},
+    blocks::{Block, BlockHeader},
     chain_storage::{
         error::ChainStorageError,
         BlockAccumulatedData,
@@ -40,6 +40,7 @@ use std::{
     sync::Arc,
 };
 use strum_macros::Display;
+use tari_common_types::types::BlockHash;
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     Hashable,

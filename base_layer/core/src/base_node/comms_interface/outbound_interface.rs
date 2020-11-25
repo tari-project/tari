@@ -23,7 +23,7 @@
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
     blocks::{blockheader::BlockHeader, NewBlock},
-    chain_storage::{ChainMetadata, HistoricalBlock, MmrTree},
+    chain_storage::{HistoricalBlock, MmrTree},
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -31,6 +31,7 @@ use crate::{
 };
 use futures::channel::mpsc::UnboundedSender;
 use log::*;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::{reply_channel::SenderService, Service};
 

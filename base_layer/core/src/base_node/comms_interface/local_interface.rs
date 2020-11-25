@@ -29,7 +29,7 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::{ChainMetadata, HistoricalBlock, MmrTree},
+    chain_storage::{HistoricalBlock, MmrTree},
     proof_of_work::PowAlgorithm,
     transactions::{
         transaction::TransactionOutput,
@@ -37,6 +37,7 @@ use crate::{
     },
 };
 use std::sync::Arc;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
 

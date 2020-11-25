@@ -36,21 +36,19 @@ use futures::{pin_mut, Stream, StreamExt};
 use log::*;
 use rand::rngs::OsRng;
 use std::convert::TryInto;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::Peer;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
-use tari_core::{
-    base_node::{
-        generate_request_key,
-        proto::{
-            base_node as BaseNodeProto,
-            base_node::{
-                base_node_service_request::Request as BaseNodeRequestProto,
-                base_node_service_response::Response as BaseNodeResponseProto,
-            },
+use tari_core::base_node::{
+    generate_request_key,
+    proto::{
+        base_node as BaseNodeProto,
+        base_node::{
+            base_node_service_request::Request as BaseNodeRequestProto,
+            base_node_service_response::Response as BaseNodeResponseProto,
         },
-        RequestKey,
     },
-    chain_storage::ChainMetadata,
+    RequestKey,
 };
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel::Receiver;

@@ -20,17 +20,5 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_rpc as grpc;
-use tari_common_types::chain_metadata::ChainMetadata;
-
-impl From<ChainMetadata> for grpc::MetaData {
-    fn from(meta: ChainMetadata) -> Self {
-        let diff = meta.accumulated_difficulty();
-        Self {
-            height_of_longest_chain: meta.height_of_longest_chain(),
-            best_block: meta.best_block().clone(),
-            pruning_horizon: meta.pruning_horizon(),
-            accumulated_difficulty: diff.to_be_bytes().to_vec(),
-        }
-    }
-}
+pub mod chain_metadata;
+pub mod types;

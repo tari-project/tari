@@ -30,13 +30,14 @@ use crate::{
         comms_interface::{BlockEvent, LocalNodeCommsInterface},
         proto,
     },
-    chain_storage::{BlockAddResult, ChainMetadata},
+    chain_storage::BlockAddResult,
 };
 use futures::stream::StreamExt;
 use log::*;
 use prost::Message;
 use std::{convert::TryInto, sync::Arc, time::Instant};
 use tari_common::log_if_error;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     message::MessageExt,

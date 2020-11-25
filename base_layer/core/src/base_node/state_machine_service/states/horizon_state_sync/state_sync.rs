@@ -34,7 +34,7 @@ use crate::{
         },
         BaseNodeStateMachine,
     },
-    chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, ChainMetadata, MmrTree},
+    chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, MmrTree},
     iterators::NonOverlappingIntegerPairIter,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
@@ -43,6 +43,7 @@ use crate::{
 };
 use croaring::Bitmap;
 use log::*;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_crypto::tari_utilities::Hashable;
 // use tokio::task::spawn_blocking;
 

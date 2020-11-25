@@ -20,17 +20,38 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_rpc as grpc;
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Error, Formatter};
 use tari_common_types::chain_metadata::ChainMetadata;
 
-impl From<ChainMetadata> for grpc::MetaData {
-    fn from(meta: ChainMetadata) -> Self {
-        let diff = meta.accumulated_difficulty();
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InProgressHorizonSyncState {
+    pub metadata: ChainMetadata,
+    pub initial_kernel_checkpoint_count: u64,
+    pub initial_utxo_checkpoint_count: u64,
+    pub initial_rangeproof_checkpoint_count: u64,
+}
+
+impl InProgressHorizonSyncState {
+    pub fn new_with_metadata(metadata: ChainMetadata) -> Self {
         Self {
-            height_of_longest_chain: meta.height_of_longest_chain(),
-            best_block: meta.best_block().clone(),
-            pruning_horizon: meta.pruning_horizon(),
-            accumulated_difficulty: diff.to_be_bytes().to_vec(),
+            metadata,
+            initial_kernel_checkpoint_count: 0,
+            initial_utxo_checkpoint_count: 0,
+            initial_rangeproof_checkpoint_count: 0,
         }
+    }
+}
+
+impl Display for InProgressHorizonSyncState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        write!(
+            f,
+            "metadata = {}, #kernel checkpoints = ({}), #UTXO checkpoints = ({}), #range proof checkpoints = ({})",
+            self.metadata,
+            self.initial_kernel_checkpoint_count,
+            self.initial_utxo_checkpoint_count,
+            self.initial_rangeproof_checkpoint_count,
+        )
     }
 }
