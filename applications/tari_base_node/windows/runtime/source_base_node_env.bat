@@ -135,15 +135,41 @@ if exist "%my_exe_path%\%my_exe%" (
 
 rem First time run
 if not exist "%config_path%\base_node_id.json" (
-    "%base_node%" --create-id --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
+    "%base_node%" --create-id --init --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
     echo.
     echo.
     echo Created "%config_path%\base_node_id.json". 
+    echo Created "%config_path%\wallet_id.json".
     echo.
 ) else (
     echo.
     echo.
-    echo Using old "%config_path%\base_node_id.json"
+    echo Using existing "%config_path%\base_node_id.json"
+    echo.
+)
+if not exist "%config_path%\wallet_id.json" (
+    "%base_node%" --create-id --init --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
+    echo.
+    echo.
+    echo Created "%config_path%\base_node_id.json".
+    echo Created "%config_path%\wallet_id.json".
+    echo.
+) else (
+    echo.
+    echo.
+    echo Using existing "%config_path%\wallet_id.json"
+    echo.
+)
+if not exist "%config_path%\log4rs_base_node.yml" (
+    "%base_node%" --init --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
+    echo.
+    echo.
+    echo Created "%config_path%\log4rs_base_node.yml".
+    echo.
+) else (
+    echo.
+    echo.
+    echo Using existing "%config_path%\log4rs_base_node.yml"
     echo.
 )
 

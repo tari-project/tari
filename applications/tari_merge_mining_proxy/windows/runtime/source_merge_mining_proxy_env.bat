@@ -89,5 +89,19 @@ if exist "%my_exe_path%\%my_exe%" (
     )
 )
 
-rem Run
+rem First time run
+if not exist "%config_path%\log4rs_merge_mining_proxy.yml" (
+    "%merge_mining_proxy%" --init --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_merge_mining_proxy.yml" --base-path "%base_path%"
+    echo.
+    echo.
+    echo Created "%config_path%\log4rs_merge_mining_proxy.yml".
+    echo.
+) else (
+    echo.
+    echo.
+    echo Using existing "%config_path%\log4rs_merge_mining_proxy.yml"
+    echo.
+)
+
+rem Consecutive runs
 "%merge_mining_proxy%" --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_merge_mining_proxy.yml" --base-path "%base_path%"
