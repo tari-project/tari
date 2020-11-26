@@ -76,9 +76,7 @@ pub use lmdb_db::{
     LMDB_DB_UTXOS,
 };
 
-mod metadata;
 use croaring::Bitmap;
-pub use metadata::{ChainMetadata, InProgressHorizonSyncState};
 use serde::{
     de::{MapAccess, SeqAccess, Visitor},
     ser::SerializeStruct,
@@ -88,6 +86,9 @@ use serde::{
     Serializer,
 };
 use std::fmt;
+use tari_common_types::chain_metadata::ChainMetadata;
+pub mod horizon_sync_state;
+pub use horizon_sync_state::InProgressHorizonSyncState;
 use tari_mmr::pruned_hashset::PrunedHashSet;
 
 pub mod async_db;

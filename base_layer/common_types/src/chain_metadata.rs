@@ -20,10 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::blocks::blockheader::BlockHash;
+use crate::types::BlockHash;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
-
 use tari_crypto::tari_utilities::hex::Hex;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, Hash)]
@@ -130,38 +129,6 @@ impl Display for ChainMetadata {
         fmt.write_str(&format!("Pruning horizon : {}\n", self.pruning_horizon))?;
         fmt.write_str(&format!("Effective pruned height : {}\n", self.effective_pruned_height))?;
         Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InProgressHorizonSyncState {
-    pub metadata: ChainMetadata,
-    pub initial_kernel_checkpoint_count: u64,
-    pub initial_utxo_checkpoint_count: u64,
-    pub initial_rangeproof_checkpoint_count: u64,
-}
-
-impl InProgressHorizonSyncState {
-    pub fn new_with_metadata(metadata: ChainMetadata) -> Self {
-        Self {
-            metadata,
-            initial_kernel_checkpoint_count: 0,
-            initial_utxo_checkpoint_count: 0,
-            initial_rangeproof_checkpoint_count: 0,
-        }
-    }
-}
-
-impl Display for InProgressHorizonSyncState {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(
-            f,
-            "metadata = {}, #kernel checkpoints = ({}), #UTXO checkpoints = ({}), #range proof checkpoints = ({})",
-            self.metadata,
-            self.initial_kernel_checkpoint_count,
-            self.initial_utxo_checkpoint_count,
-            self.initial_rangeproof_checkpoint_count,
-        )
     }
 }
 

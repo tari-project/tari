@@ -36,7 +36,7 @@ use crate::{
         },
     },
     blocks::{blockheader::BlockHeader, Block},
-    chain_storage::{async_db, BlockAddResult, BlockchainBackend, ChainMetadata, ChainStorageError},
+    chain_storage::{async_db, BlockAddResult, BlockchainBackend, ChainStorageError},
     proof_of_work::PowError,
 };
 use core::cmp::min;
@@ -47,6 +47,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use thiserror::Error;

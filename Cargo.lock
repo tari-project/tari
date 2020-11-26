@@ -3701,6 +3701,7 @@ version = "0.6.1"
 dependencies = [
  "prost",
  "prost-types",
+ "tari_common_types",
  "tari_core",
  "tari_crypto",
  "tonic",
@@ -3796,6 +3797,14 @@ dependencies = [
  "tari_test_utils",
  "tempfile",
  "toml 0.5.6",
+]
+
+[[package]]
+name = "tari_common_types"
+version = "0.1.0"
+dependencies = [
+ "serde 1.0.116",
+ "tari_crypto",
 ]
 
 [[package]]
@@ -3970,6 +3979,7 @@ dependencies = [
  "strum",
  "strum_macros 0.17.1",
  "tari_common",
+ "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
  "tari_comms_rpc_macros",
@@ -4231,6 +4241,7 @@ dependencies = [
  "rand 0.7.3",
  "serde 1.0.116",
  "serde_json",
+ "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
  "tari_core",

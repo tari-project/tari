@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::{blockheader::BlockHeader, Block, NewBlockTemplate},
-    chain_storage::{ChainMetadata, HistoricalBlock},
+    chain_storage::HistoricalBlock,
     proof_of_work::Difficulty,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
@@ -31,6 +31,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
+use tari_common_types::chain_metadata::ChainMetadata;
 
 /// API Response enum
 #[derive(Debug, Serialize, Deserialize, Clone)]

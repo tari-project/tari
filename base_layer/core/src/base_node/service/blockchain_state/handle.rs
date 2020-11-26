@@ -23,7 +23,6 @@
 use super::error::BlockchainStateServiceError;
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::ChainMetadata,
     transactions::types::HashOutput,
 };
 use futures::{
@@ -31,6 +30,7 @@ use futures::{
     SinkExt,
 };
 use std::ops::{Bound, RangeBounds};
+use tari_common_types::chain_metadata::ChainMetadata;
 
 type ReplySender<T> = oneshot::Sender<Result<T, BlockchainStateServiceError>>;
 

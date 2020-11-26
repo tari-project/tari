@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    blocks::{blockheader::BlockHash, Block, BlockHeader, NewBlockTemplate},
+    blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
         consts::{
             BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
@@ -31,7 +31,6 @@ use crate::{
         error::ChainStorageError,
         BlockAccumulatedData,
         BlockHeaderAccumulatedData,
-        ChainMetadata,
         HistoricalBlock,
         InProgressHorizonSyncState,
     },
@@ -55,6 +54,7 @@ use std::{
     time::Instant,
 };
 use strum_macros::Display;
+use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_crypto::{
     hash::blake2::Blake256,
     tari_utilities::{epoch_time::EpochTime, hex::Hex, Hashable},

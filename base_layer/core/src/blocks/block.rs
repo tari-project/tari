@@ -23,7 +23,7 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 use crate::{
-    blocks::{BlockHash, BlockHeader},
+    blocks::BlockHeader,
     consensus::ConsensusConstants,
     proof_of_work::ProofOfWork,
     tari_utilities::hex::Hex,
@@ -37,6 +37,7 @@ use crate::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+use tari_common_types::types::BlockHash;
 use tari_crypto::tari_utilities::Hashable;
 use thiserror::Error;
 

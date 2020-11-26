@@ -39,8 +39,9 @@ use crate::helpers::{
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use std::thread;
+use tari_common_types::types::BlockHash;
 use tari_core::{
-    blocks::{genesis_block, Block, BlockHash, BlockHeader},
+    blocks::{genesis_block, Block, BlockHeader},
     chain_storage::{
         create_lmdb_database,
         BlockAddResult,

@@ -35,12 +35,13 @@ use crate::{
         BaseNodeStateMachine,
     },
     blocks::BlockHeader,
-    chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, ChainMetadata, ChainStorageError},
+    chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, ChainStorageError},
     iterators::VecChunkIter,
     validation::ValidationError,
 };
 use log::*;
 use std::cmp;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_crypto::tari_utilities::Hashable;
 use thiserror::Error;
 use tokio::{task, task::spawn_blocking};

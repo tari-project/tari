@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
-    blocks::{
-        blockheader::{BlockHash, BlockHeader},
-        Block,
-    },
+    blocks::{blockheader::BlockHeader, Block},
     chain_storage::{
         blockchain_database::BlockchainBackend,
         db_transaction::{DbKey, DbKeyValuePair, DbTransaction, DbValue, MetadataValue, MmrTree, WriteOperation},
@@ -83,6 +80,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
+use tari_common_types::types::BlockHash;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 use tari_mmr::Hash;
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};

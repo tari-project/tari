@@ -22,13 +22,14 @@
 
 use super::core as proto;
 use crate::{
-    blocks::{blockheader::BLOCK_HASH_LENGTH, Block, BlockHeader, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
+    blocks::{Block, BlockHeader, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
     chain_storage::HistoricalBlock,
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     transactions::types::BlindingFactor,
 };
 use prost_types::Timestamp;
 use std::convert::{TryFrom, TryInto};
+use tari_common_types::types::BLOCK_HASH_LENGTH;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray};
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime`

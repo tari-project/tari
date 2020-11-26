@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::base_node as proto;
-use crate::chain_storage::ChainMetadata;
 use std::convert::TryFrom;
+use tari_common_types::chain_metadata::ChainMetadata;
 
 impl TryFrom<proto::ChainMetadata> for ChainMetadata {
     type Error = String;

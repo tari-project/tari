@@ -56,11 +56,9 @@ use std::{
     fmt,
     fmt::{Display, Error, Formatter},
 };
+use tari_common_types::types::{BlockHash, BLOCK_HASH_LENGTH};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 use thiserror::Error;
-
-pub const BLOCK_HASH_LENGTH: usize = 32;
-pub type BlockHash = Vec<u8>;
 
 #[derive(Debug, Error)]
 pub enum BlockHeaderValidationError {

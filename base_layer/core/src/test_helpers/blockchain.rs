@@ -29,7 +29,6 @@ use crate::{
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
-        ChainMetadata,
         ChainStorageError,
         DbKey,
         DbTransaction,
@@ -56,6 +55,7 @@ use crate::{
     },
 };
 use std::{ops::Deref, path::PathBuf};
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;

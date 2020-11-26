@@ -23,7 +23,7 @@
 #[cfg(feature = "base_node_proto")]
 pub use crate::proto::generated::base_node;
 
-#[cfg(feature = "base_node")]
+#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod chain_metadata;
 #[cfg(feature = "base_node")]
 pub mod mmr_tree;
