@@ -22,11 +22,9 @@
 
 use blake2::Digest;
 use std::sync::Arc;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;
-use tari_core::{
-    base_node::chain_metadata_service::{ChainMetadataEvent, ChainMetadataHandle, PeerChainMetadata},
-    chain_storage::ChainMetadata,
-};
+use tari_core::base_node::chain_metadata_service::{ChainMetadataEvent, ChainMetadataHandle, PeerChainMetadata};
 use tari_crypto::{common::Blake256, tari_utilities::ByteArray};
 use tokio::sync::broadcast;
 

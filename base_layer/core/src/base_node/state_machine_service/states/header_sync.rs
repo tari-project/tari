@@ -347,14 +347,12 @@ fn calc_sync_height(network_tip: u64, local_metadata: &ChainMetadata, horizon_of
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        base_node::state_machine_service::states::header_sync::calc_sync_height,
-        chain_storage::ChainMetadata,
-    };
+    use crate::base_node::state_machine_service::states::header_sync::calc_sync_height;
+    use tari_common_types::chain_metadata::ChainMetadata;
 
     #[test]
     fn calc_sync_height_zero_pruning_horizon() {
-        let metadata = ChainMetadata::genesis();
+        let metadata = ChainMetadata::new(0, Vec::new(), 0, 0, 0);
         assert_eq!(calc_sync_height(100, &metadata, 0), 100);
         assert_eq!(calc_sync_height(100, &metadata, 5), 95);
         assert_eq!(calc_sync_height(100, &metadata, 500), 0);

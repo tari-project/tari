@@ -39,7 +39,7 @@ use crate::helpers::{
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use std::thread;
-use tari_common_types::types::BlockHash;
+use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_core::{
     blocks::{genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -48,7 +48,6 @@ use tari_core::{
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
-        ChainMetadata,
         ChainStorageError,
         DbTransaction,
         InProgressHorizonSyncState,
