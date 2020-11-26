@@ -80,16 +80,23 @@ class BaseNodeClient {
             );
     }
 
-    submitBlock(template, beforeSubmit) {
+    submitTemplate(template, beforeSubmit) {
         return this.client.getNewBlock().sendMessage(template)
             .then(b => {
                     console.log("Sha3 diff", this.getSha3Difficulty(b.block.header));
                     if (beforeSubmit) {
                         b = beforeSubmit(b);
+                        if (!b) {
+                            return Promise.resolve();
+                        }
                     }
                     return this.client.submitBlock().sendMessage(b.block);
                 }
             );
+    }
+
+    submitBlock(b) {
+        return this.client.submitBlock().sendMessage(b.block);
     }
 
     getTipHeight() {
@@ -162,7 +169,7 @@ class BaseNodeClient {
 
     async mineBlockWithoutWallet(beforeSubmit, onError) {
         let template = await this.getMinedCandidateBlock();
-        return this.submitBlock(template, beforeSubmit).then(async () => {
+        return this.submitTemplate(template, beforeSubmit).then(async () => {
             let tip = await this.getTipHeight();
          //   console.log("Tip:", tip);
             //expect(tip).to.equal(parseInt(template.header.height));

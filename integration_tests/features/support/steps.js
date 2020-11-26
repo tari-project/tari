@@ -102,6 +102,17 @@ When(/I mine (\d+) blocks on (.*)/, {timeout: 600*1000}, async function (numBloc
     }
 });
 
+When(/I mine but don't submit a block (.*) on (.*)/, async function (blockName, nodeName) {
+    await this.mineBlock(nodeName, block => {
+        this.saveBlock(blockName, block);
+        return false;
+    });
+});
+
+When(/I submit block (.*) to (.*)/, function (blockName, nodeName) {
+    this.submitBlock(blockName, nodeName);
+});
+
 
 When(/I mine a block on (.*) based on height (\d+)/, async function (node, atHeight) {
     let client = this.getClient(node);
@@ -141,4 +152,10 @@ Then(/I find that the UTXO (.*) exists according to (.*)/, async function (outpu
     let lastResult = await client.fetchMatchingUtxos([hash]);
     expect(lastResult[0].output.commitment.toString('hex')).to.equal(this.outputs[outputName].commitment.toString('hex'));
 });
+
+
+Then('I receive an error containing {string}', function (string) {
+    // TODO
+});
+
 

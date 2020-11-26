@@ -14,6 +14,7 @@ class CustomWorld {
         this.outputs = {};
         this.testrun = `run${Date.now()}`;
         this.lastResult = null;
+        this.blocks =  {};
     }
 
     async createSeedNode(name) {
@@ -43,6 +44,17 @@ class CustomWorld {
 
     async mineBlock(name, beforeSubmit, onError) {
         await this.clients[name].mineBlockWithoutWallet(beforeSubmit, onError);
+    }
+
+    saveBlock(name, block) {
+        this.blocks[name] = block;
+    }
+
+    async submitBlock(blockName, nodeName) {
+        let result  = await this.clients[nodeName].submitBlock(this.blocks[blockName]).catch(err =>  {
+            console.log("erro", err);
+        });
+        console.log(result);
     }
 
     getClient(name) {

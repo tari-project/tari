@@ -175,7 +175,7 @@ impl LMDBDatabase {
                     lmdb_delete(&write_txn, &self.orphan_chain_tips_db, hash)?;
                 },
                 WriteOperation::InsertOrphanChainTip(hash) => {
-                    lmdb_insert(&write_txn, &self.orphan_chain_tips_db, hash, hash)?;
+                    lmdb_replace(&write_txn, &self.orphan_chain_tips_db, hash, hash)?;
                 },
                 WriteOperation::DeleteBlock(hash) => {
                     for utxo in lmdb_delete_keys_starting_with::<Option<TransactionOutputRowData>>(

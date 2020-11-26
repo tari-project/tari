@@ -71,12 +71,13 @@ where
     txn.access().put(&db, key, &val_buf, put::NOOVERWRITE).map_err(|e| {
         error!(
             target: LOG_TARGET,
-            "Could not add insert value into lmdb transaction: {:?}", e
+            "Could not insert value into lmdb transaction: {:?}", e
         );
         ChainStorageError::AccessError(e.to_string())
     })
 }
 
+/// Note that calling this on a table that does not allow duplicates will replace it
 pub fn lmdb_insert_dup<K, V>(
     txn: &WriteTransaction<'_>,
     db: &Database,
@@ -91,7 +92,7 @@ where
     txn.access().put(&db, key, &val_buf, put::Flags::empty()).map_err(|e| {
         error!(
             target: LOG_TARGET,
-            "Could not add insert value into lmdb transaction: {:?}", e
+            "Could not insert value into lmdb transaction: {:?}", e
         );
         ChainStorageError::AccessError(e.to_string())
     })
@@ -106,7 +107,7 @@ where
     txn.access().put(&db, key, &val_buf, put::Flags::empty()).map_err(|e| {
         error!(
             target: LOG_TARGET,
-            "Could not add replace value into lmdb transaction: {:?}", e
+            "Could not replace value in lmdb transaction: {:?}", e
         );
         ChainStorageError::AccessError(e.to_string())
     })
