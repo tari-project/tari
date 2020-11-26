@@ -2936,7 +2936,10 @@ pub unsafe extern "C" fn wallet_create(
                         direct_send_timeout: (*config).dht.discovery_request_timeout,
                         ..Default::default()
                     }),
+                    None,
                     Network::Rincewind,
+                    None,
+                    None,
                     None,
                 ),
                 wallet_backend,

@@ -32,7 +32,7 @@ pub struct OutputManagerServiceConfig {
 impl Default for OutputManagerServiceConfig {
     fn default() -> Self {
         Self {
-            base_node_query_timeout: Duration::from_secs(30),
+            base_node_query_timeout: Duration::from_secs(60),
             max_utxo_query_size: 5000,
             prevent_fee_gt_amount: true,
         }
