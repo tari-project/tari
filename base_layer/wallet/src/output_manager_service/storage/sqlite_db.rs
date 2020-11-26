@@ -885,7 +885,9 @@ impl OutputSql {
         conn: &SqliteConnection,
     ) -> Result<OutputSql, OutputManagerStorageError>
     {
+        let cancelled = OutputStatus::CancelledInbound as i32;
         Ok(outputs::table
+            .filter(outputs::status.ne(cancelled))
             .filter(outputs::commitment.eq(commitment))
             .first::<OutputSql>(conn)?)
     }

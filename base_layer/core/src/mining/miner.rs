@@ -411,7 +411,7 @@ impl Miner {
         info!(target: LOG_TARGET, "Mined a block: {}", block);
         match self.node_interface.submit_block(block, Broadcast::from(true)).await {
             Ok(_) => {
-                trace!("Miner successfully submitted block");
+                trace!(target: LOG_TARGET, "Miner successfully submitted block");
                 Ok(())
             },
             Err(CommsInterfaceError::ChainStorageError(e)) => {
