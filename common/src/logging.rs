@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::{fs, path::Path};
+use std::{fs, fs::File, io::Write, path::Path};
 
 /// Set up application-level logging using the Log4rs configuration file specified in
 pub fn initialize_logging(config_file: &Path) -> bool {
@@ -36,22 +36,37 @@ pub fn initialize_logging(config_file: &Path) -> bool {
     true
 }
 
-/// Installs a new default logfile configuration, copied from `log4rs-sample-base-node.yml` to the given path.
+/// Installs a new default logfile configuration, copied from `log4rs_sample_base_node.yml` to the given path.
 pub fn install_default_base_node_logfile_config(path: &Path) -> Result<(), std::io::Error> {
-    let source = include_str!("../logging/log4rs-sample-base-node.yml");
-    fs::write(path, source)
+    let source = include_str!("../logging/log4rs_sample_base_node.yml");
+    if let Some(d) = path.parent() {
+        fs::create_dir_all(d)?
+    };
+    // Note: `fs::write(path, source)` did not work as expected, as the file name was not changed
+    let mut file = File::create(path)?;
+    file.write_all(source.as_ref())
 }
 
-/// Installs a new default logfile configuration, copied from `log4rs-sample-wallet.yml` to the given path.
+/// Installs a new default logfile configuration, copied from `log4rs_sample_wallet.yml` to the given path.
 pub fn install_default_wallet_logfile_config(path: &Path) -> Result<(), std::io::Error> {
-    let source = include_str!("../logging/log4rs-sample-wallet.yml");
-    fs::write(path, source)
+    let source = include_str!("../logging/log4rs_sample_wallet.yml");
+    if let Some(d) = path.parent() {
+        fs::create_dir_all(d)?
+    };
+    // Note: `fs::write(path, source)` did not work as expected, as the file name was not changed
+    let mut file = File::create(path)?;
+    file.write_all(source.as_ref())
 }
 
-/// Installs a new default logfile configuration, copied from `log4rs-sample-proxy.yml` to the given path.
+/// Installs a new default logfile configuration, copied from `log4rs_sample_proxy.yml` to the given path.
 pub fn install_default_merge_mining_proxy_logfile_config(path: &Path) -> Result<(), std::io::Error> {
-    let source = include_str!("../logging/log4rs-sample-proxy.yml");
-    fs::write(path, source)
+    let source = include_str!("../logging/log4rs_sample_proxy.yml");
+    if let Some(d) = path.parent() {
+        fs::create_dir_all(d)?
+    };
+    // Note: `fs::write(path, source)` did not work as expected, as the file name was not changed
+    let mut file = File::create(path)?;
+    file.write_all(source.as_ref())
 }
 
 /// Log an error if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,

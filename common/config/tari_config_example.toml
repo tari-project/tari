@@ -210,13 +210,13 @@ grpc_base_node_address = "127.0.0.1:18142"
 grpc_console_wallet_address = "127.0.0.1:18143"
 
 # A path to the file that stores your node identity and secret key
-base_node_identity_file = "./base_node_id.json" # or ".\\config\\base_node_id.json"
+base_node_identity_file = "./config/base_node_id.json" # or ".\\config\\base_node_id.json"
 
 # A path to the file that stores your wallet's node identity and secret key
-wallet_identity_file = "./wallet_id.json" # or ".\\config\\wallet_id.json"
+wallet_identity_file = "./config/wallet_id.json" # or ".\\config\\wallet_id.json"
 
 # A path to the file that stores your console wallet's node identity and secret key
-console_wallet_identity_file = "./console_wallet_id.json" # or ".\\config\\console_wallet_id.json"
+console_wallet_identity_file = "./config/console_wallet_id.json" # or ".\\config\\console_wallet_id.json"
 
 # -------------- Transport configuration --------------
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with

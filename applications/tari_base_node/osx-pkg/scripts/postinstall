@@ -65,9 +65,9 @@ if [ "${COMMAND_LINE_INSTALL}" = "" ]; then
   /bin/launchctl asuser "${loggedInUserID}" /usr/bin/open "$3"/usr/local/share/doc/tari_base_node/
   #/bin/launchctl asuser "${loggedInUserID}" /usr/bin/open "$3"/usr/local/share/tari_base_node/
   #osascript -e 'tell app "Terminal" to do script "echo hello"'
-  echo "Lauching post-install.sh script in another terminal, "
+  echo "Lauching post_install.sh script in another terminal, "
   echo " this will help setup and config tor and default tari_base_node ..."
-  /bin/launchctl asuser "${loggedInUserID}" /usr/bin/open -a Terminal.app -g "$3"/usr/local/share/tari_base_node/post-install.sh
+  /bin/launchctl asuser "${loggedInUserID}" /usr/bin/open -a Terminal.app -g "$3"/usr/local/share/tari_base_node/post_install.sh
 fi
 
 echo "Done postinstall - $(date +'%Y-%m-%d %Hh%M:%S')"

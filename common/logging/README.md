@@ -22,7 +22,7 @@ This setup is usually used for applications.
 `log-4rs` is a really handy crate that allows you to specify _exactly_ how and where log messages are put. The sample
 configuration files in this directory provide a good start for setting up a useful logging solution.
 
-The `log4rs-sample-base-node.yml` file defines a configuration where only error messages are written to the console, typically low
+The `log4rs_sample_base_node.yml` file defines a configuration where only error messages are written to the console, typically low
 signal-to-noise comms messages are stored in one file, and general log messages are stored in another.
 
 The `log4rs-debug-sample.rs` file has a similar setup, but logs more information useful for debugging, such as the

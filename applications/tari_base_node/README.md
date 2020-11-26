@@ -11,7 +11,7 @@ relatively simple.
 2. Give the `tari_base_node` executable permission to run on your machine. Right-click on the `tari_base_node`
    executable in Finder, select `Open`, and then click `Open`. The node will exit with an error, but this is fine; all
    we wanted to do is tell your Mac that it's ok to run this program.
-3. Run `install-osx.sh` by double clicking on it, or entering `./install-osx.sh` in a terminal.
+3. Run `install.sh` by double clicking on it, or entering `./install.sh` in a terminal.
 4. When you see the node prompt, you're good to go!
 
 ```
