@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 source build.config
-TARI_REPO_PATH=${TARI_REPO_PATH:-`git rev-parse --show-toplevel`}
+TARI_REPO_PATH=${TARI_REPO_PATH:-$(git rev-parse --show-toplevel)}
 CURRENT_DIR=${TARI_REPO_PATH}/base_layer/wallet_ffi
 cd ${CURRENT_DIR} || exit
 mkdir -p logs
@@ -23,6 +23,7 @@ cd ../..
 IOS_LOG_PATH=${CURRENT_DIR}/logs/ios
 ANDROID_LOG_PATH=${CURRENT_DIR}/logs/android
 SQLITE_FOLDER=sqlite
+SSL_FOLDER=ssl
 cd ../../..
 
 unameOut="$(uname -s)"
@@ -40,6 +41,7 @@ if [ "${MACHINE}" == "Mac" ]; then
   MAC_VERSION=$(sw_vers -productVersion)
   MAC_MAIN_VERSION=$(cut -d '.' -f1 <<<"$(sw_vers -productVersion)")
   MAC_SUB_VERSION=$(cut -d '.' -f2 <<<"$(sw_vers -productVersion)")
+  echo "${PURPLE}Mac version as reported by OS: ${MAC_VERSION}"
   if [ "${MAC_MAIN_VERSION}" -le 10 ]; then
     if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
       unset CPATH
@@ -112,8 +114,15 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
   DEPENDENCIES=${DEPENDENCIES}/jniLibs
 
   SQLITE_BUILD_FOUND=0
-  if [ -f ${DEPENDENCIES}/x86/libsqlite3.a ] && [ -f ${DEPENDENCIES}/x86_64/libsqlite3.a ] && [ -f ${DEPENDENCIES}/armeabi-v7a/libsqlite3.a ] && [ -f ${DEPENDENCIES}/arm64-v8a/libsqlite3.a ]; then
+  if [ -f ${DEPENDENCIES}/x86_64/libsqlite3.a ] && [ -f ${DEPENDENCIES}/armeabi-v7a/libsqlite3.a ] && [ -f ${DEPENDENCIES}/arm64-v8a/libsqlite3.a ]; then
     SQLITE_BUILD_FOUND=1
+  fi
+
+  SSL_BUILD_FOUND=0
+  if [ -f ${DEPENDENCIES}/x86_64/libssl.a ] && [ -f ${DEPENDENCIES}/x86_64/libcrypto.a ] && \
+     [ -f ${DEPENDENCIES}/armeabi-v7a/libssl.a ] && [ -f ${DEPENDENCIES}/armeabi-v7a/libcrypto.a ] && \
+     [ -f ${DEPENDENCIES}/arm64-v8a/libssl.a ] && [ -f ${DEPENDENCIES}/arm64-v8a/libcrypto.a ]; then
+    SSL_BUILD_FOUND=1
   fi
 
   cd ${DEPENDENCIES} || exit
@@ -132,7 +141,6 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
       else
         cd ${NDK_HOME}/sources/cxx-stl/llvm-libc++/include || exit
         mkdir -p sys
-        #Fix for missing header, c code should reference limits.h instead of syslimits.h, happens with code that has been around for a long time.
         cp "${NDK_HOME}/sources/cxx-stl/llvm-libc++/include/limits.h" "${NDK_HOME}/sources/cxx-stl/llvm-libc++/include/sys/syslimits.h"
         cd ${BUILD_ROOT} || exit
     fi
@@ -146,9 +154,14 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
     for LEVEL in 24
     #21 22 23 26 26 27 28 29 not included at present
     do
+      if [ ${SSL_BUILD_FOUND} -eq 0 ]; then
+        touch ${ANDROID_LOG_PATH}/ssl_${PLATFORMABI}_${LEVEL}.txt
+      fi
+
       if [ ${SQLITE_BUILD_FOUND} -eq 0 ]; then
         touch ${ANDROID_LOG_PATH}/sqlite_${PLATFORMABI}_${LEVEL}.txt
       fi
+
       touch ${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt
 
       PLATFORM=$(cut -d'-' -f1 <<<"${PLATFORMABI}")
@@ -173,6 +186,10 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
         mkdir -p ${BUILD_ROOT}/${PLATFORM_OUTDIR}/lib
       fi
 
+      if [ ${SSL_BUILD_FOUND} -eq 1 ]; then
+        mkdir -p ${BUILD_ROOT}/${PLATFORM_OUTDIR}/usr/local/lib
+      fi
+
       cd ${DEPENDENCIES} || exit
 
       PLATFORMABI_TOOLCHAIN=${PLATFORMABI}
@@ -182,7 +199,59 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
         PLATFORMABI_COMPILER="armv7a-linux-androideabi"
       fi
       # set toolchain path
-      export TOOLCHAIN=${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/${PLATFORMABI_TOOLCHAIN}
+      TOOLCHAIN_PATH=${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/
+      export TOOLCHAIN=${TOOLCHAIN_PATH}${PLATFORMABI_TOOLCHAIN}
+
+      # undo compiler configuration (if set) of previous iteration for ssl scripts
+      unset AR;
+      unset AS;
+      unset CC;
+      unset CXX;
+      unset CXXFLAGS;
+      unset LD;
+      unset LDFLAGS;
+      unset RANLIB;
+      unset STRIP;
+      unset CFLAGS;
+      unset CXXFLAGS;
+
+      mkdir -p ${SSL_FOLDER}
+      cd ${SSL_FOLDER} || exit
+      if [ ${SSL_BUILD_FOUND} -eq 0 ]; then
+        echo "\t${CYAN}Fetching SSL source${NC}"
+        OPENSSL_SOURCE="https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz"
+        curl -s ${OPENSSL_SOURCE} | tar -xvf - -C ${PWD} >> ${ANDROID_LOG_PATH}/ssl_${PLATFORMABI}_${LEVEL}.txt 2>&1 || exit
+        echo "\t${CYAN}Source fetched${NC}"
+        cd openssl-${OPENSSL_VERSION} || exit
+        echo "\t${CYAN}Building SSL${NC}"
+        # Required by openssl-build-script
+        ANDROID_NDK=${NDK_PATH}
+        export ANDROID_NDK
+        case ${PLATFORM} in
+        armv7)
+          SSL_TARGET="android-arm"
+          SSL_OPTIONS="--target=${PLATFORMABI_COMPILER} -Wl,--fix-cortex-a8 -fPIC -no-zlib -no-hw -no-engine -no-shared -D__ANDROID_API__=${LEVEL}"
+          ;;
+        x86_64)
+          SSL_TARGET="android-x86_64"
+          SSL_OPTIONS="-fPIC -no-zlib -no-hw -no-engine -no-shared -D__ANDROID_API__=${LEVEL}"
+          ;;
+        aarch64)
+          SSL_TARGET="android-arm64"
+          SSL_OPTIONS="-fPIC -no-zlib -no-hw -no-engine -no-shared -D__ANDROID_API__=${LEVEL}"
+          ;;
+        esac
+        # Required by openssl-build-script
+        export PATH=${TOOLCHAIN}/bin:${TOOLCHAIN_PATH}/bin:"${PATH}"
+        make clean >> ${ANDROID_LOG_PATH}/ssl_${PLATFORMABI}_${LEVEL}.txt 2>&1
+        ./Configure ${SSL_TARGET} ${SSL_OPTIONS} >> ${ANDROID_LOG_PATH}/ssl_${PLATFORMABI}_${LEVEL}.txt 2>&1
+        make >> ${ANDROID_LOG_PATH}/ssl_${PLATFORMABI}_${LEVEL}.txt 2>&1
+        make install DESTDIR=${OUTPUT_DIR} >> ${ANDROID_LOG_PATH}/ssl_${PLATFORMABI}_${LEVEL}.txt 2>&1
+        echo "\t${CYAN}SSL built${NC}"
+      else
+        echo "\t${CYAN}SSL located${NC}"
+      fi
+      cd ../..
 
       # set the archiver
       export AR=${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/bin/${PLATFORMABI_TOOLCHAIN}$'-'ar
@@ -221,7 +290,7 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
         echo "\t${CYAN}Fetching Sqlite3 source${NC}"
         curl -s ${SQLITE_SOURCE} | tar -xvf - -C ${PWD} >> ${ANDROID_LOG_PATH}/sqlite_${PLATFORMABI}_${LEVEL}.txt 2>&1
         echo "\t${CYAN}Source fetched${NC}"
-        cd * || exit
+        cd "$(find . -type d -maxdepth 1 -print | grep -m1 'sqlite')" || exit
         echo "\t${CYAN}Building Sqlite3${NC}"
         make clean >> ${ANDROID_LOG_PATH}/sqlite_${PLATFORMABI}_${LEVEL}.txt 2>&1
         ./configure --host=${PLATFORMABI} --prefix=${OUTPUT_DIR} >> ${ANDROID_LOG_PATH}/sqlite_${PLATFORMABI}_${LEVEL}.txt 2>&1
@@ -242,11 +311,16 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
             export CFLAGS="${CFLAGS} -I${NDK_HOME}/sources/cxx-stl/llvm-libc++/include -I${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include -I${NDK_HOME}/sysroot/usr/include/${PLATFORMABI}"
         fi
       fi
-      export LDFLAGS="-L${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/${PLATFORMABI_TOOLCHAIN}/${LEVEL} -L${OUTPUT_DIR}/lib -lc++ -lsqlite3"
+      export LDFLAGS="-L${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/${PLATFORMABI_TOOLCHAIN}/${LEVEL} -L${OUTPUT_DIR}/lib -L${OUTPUT_DIR}/usr/local/lib -lc++ -lsqlite3 -lcrypto -lssl"
       cd ${OUTPUT_DIR}/lib || exit
 
       if [ ${SQLITE_BUILD_FOUND} -eq 1 ]; then
        cp ${DEPENDENCIES}/${PLATFORM_OUTDIR}/libsqlite3.a ${OUTPUT_DIR}/lib/libsqlite3.a
+      fi
+
+      if [ ${SSL_BUILD_FOUND} -eq 1 ]; then
+       cp ${DEPENDENCIES}/${PLATFORM_OUTDIR}/libcrypto.a ${OUTPUT_DIR}/usr/local/lib/libcrypto.a
+       cp ${DEPENDENCIES}/${PLATFORM_OUTDIR}/libssl.a ${OUTPUT_DIR}/usr/local/lib/libssl.a
       fi
 
       echo "\t${CYAN}Configuring Cargo${NC}"
@@ -259,23 +333,23 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
       if [ "${MACHINE}" == "Mac" ]; then
         if [ "${MAC_MAIN_VERSION}" -le 10 ]; then
           if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
-            cat > config <<EOF
+cat > config <<EOF
 [build]
 target = "${PLATFORMABI}"
 
 [target.${PLATFORMABI}]
 ar = "${AR}"
 linker = "${CC}"
-rustflags = "-L${OUTPUT_DIR}/lib"
+rustflags = "-L${OUTPUT_DIR}/lib -L${OUTPUT_DIR}/usr/local/lib"
 
 EOF
 
         else
-          cat > config <<EOF
+cat > config <<EOF
 [target.${PLATFORMABI}]
 ar = "${AR}"
 linker = "${CC}"
-rustflags = "-L${OUTPUT_DIR}/lib"
+rustflags = "-L${OUTPUT_DIR}/lib -L${OUTPUT_DIR}/usr/local/lib"
 
 EOF
 
@@ -288,7 +362,7 @@ target = "${PLATFORMABI}"
 [target.${PLATFORMABI}]
 ar = "${AR}"
 linker = "${CC}"
-rustflags = "-L${OUTPUT_DIR}/lib"
+rustflags = "-L${OUTPUT_DIR}/lib -L${OUTPUT_DIR}/usr/local/lib"
 
 EOF
 
@@ -306,7 +380,23 @@ EOF
             cargo ndk --target ${PLATFORMABI} --android-platform ${LEVEL} -- build --release >> ${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt 2>&1
           fi
         else
+          # Fix for lmdb-sys compilation for armv7 on Big Sur
+          if [ "${PLATFORMABI}" == "armv7-linux-androideabi" ]; then
+            # shellcheck disable=SC2028
+            echo "\t${CYAN}Extracting supplementary header pack ${NC}"
+            tar -xvf "${TARI_REPO_PATH}/base_layer/wallet_ffi/asm.tar.gz" -C "${NDK_PATH}/sources/cxx-stl/llvm-libc++/include"
+            # shellcheck disable=SC2028
+            echo "\t${CYAN}Extraction complete, continuing build ${NC}"
+          fi
           cargo build --lib --release >> ${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt 2>&1
+          if [ "${PLATFORMABI}" == "armv7-linux-androideabi" ]; then
+            BACKTRACK=${PWD}
+            # shellcheck disable=SC2028
+            echo "\t${CYAN}Removing supplementary header pack ${NC}"
+            cd "${NDK_PATH}/sources/cxx-stl/llvm-libc++/include" || exit
+            rm -rf asm
+            cd "${BACKTRACK}" || exit
+          fi
         fi
       else
         cargo ndk --target ${PLATFORMABI} --android-platform ${LEVEL} -- build --release >> ${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt 2>&1
@@ -326,6 +416,10 @@ EOF
       if [ ${SQLITE_BUILD_FOUND} -eq 0 ]; then
         cp ${OUTPUT_DIR}/lib/libsqlite3.a ${PWD}
       fi
+      if [ ${SSL_BUILD_FOUND} -eq 0 ]; then
+        cp ${OUTPUT_DIR}/usr/local/lib/libcrypto.a ${PWD}
+        cp ${OUTPUT_DIR}/usr/local/lib/libssl.a ${PWD}
+      fi
       cp ${OUTPUT_DIR}/libtari_wallet_ffi.a ${PWD}
       echo "\t${GREEN}Wallet library built for android architecture ${PLATFORM_OUTDIR} with minimum platform level support of ${LEVEL}${NC}"
     done
@@ -333,8 +427,9 @@ EOF
   cd ${DEPENDENCIES} || exit
   rm -rf build
   rm -rf ${SQLITE_FOLDER}
+  rm -rf ${SSL_FOLDER}
   echo "${GREEN}Android build completed${NC}"
-elif [ "${BUILD_ANDROID}" -eq 1 ]; then
+elif [ ${BUILD_ANDROID} -eq 1 ]; then
   echo "${RED}Cannot configure Android Wallet Library build${NC}"
 else
   echo "${GREEN}Android Wallet is configured not to build${NC}"
