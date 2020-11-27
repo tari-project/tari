@@ -25,6 +25,7 @@ mod helpers;
 // use crate::helpers::database::create_store;
 use futures::{channel::mpsc::unbounded as futures_mpsc_channel_unbounded, StreamExt};
 use helpers::block_builders::append_block;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::{
@@ -32,7 +33,7 @@ use tari_core::{
         OutboundNodeCommsInterface,
     },
     blocks::{genesis_block, BlockBuilder, BlockHeader},
-    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainMetadata, HistoricalBlock, Validators},
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, HistoricalBlock, Validators},
     consensus::{ConsensusManagerBuilder, Network},
     mempool::{Mempool, MempoolConfig, MempoolValidators},
     test_helpers::blockchain::{create_store, create_test_db},

@@ -23,7 +23,6 @@
 use crate::{
     base_node::service::blockchain_state::{BlockchainStateRequest, BlockchainStateServiceHandle},
     blocks::{Block, BlockHeader},
-    chain_storage::ChainMetadata,
 };
 use futures::{channel::mpsc, StreamExt};
 use std::{
@@ -31,6 +30,7 @@ use std::{
     collections::{hash_map::Entry, HashMap, VecDeque},
     sync::Arc,
 };
+use tari_common_types::chain_metadata::ChainMetadata;
 use tokio::{
     sync::{Mutex, RwLock},
     task,

@@ -217,7 +217,7 @@ fn test_event_channel() {
 
 #[test]
 fn test_block_sync() {
-    use tari_core::chain_storage::ChainMetadata;
+    use tari_common_types::chain_metadata::ChainMetadata;
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();

@@ -63,12 +63,12 @@ mod sync_blocks {
     use crate::{
         base_node::BaseNodeSyncService,
         blocks::BlockBuilder,
-        chain_storage::ChainMetadata,
         proto::generated::base_node::SyncBlocksRequest,
         tari_utilities::Hashable,
     };
     use futures::StreamExt;
     use std::ops::Bound;
+    use tari_common_types::chain_metadata::ChainMetadata;
     use tari_comms::protocol::rpc::RpcStatusCode;
     use tari_test_utils::unpack_enum;
 
