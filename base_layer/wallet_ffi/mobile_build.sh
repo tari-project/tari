@@ -38,12 +38,18 @@ export PKG_CONFIG_ALLOW_CROSS=1
 # Fix for macOS Catalina failing to include correct headers for cross compilation
 if [ "${MACHINE}" == "Mac" ]; then
   MAC_VERSION=$(sw_vers -productVersion)
-  MAC_SUB_VERSION=$(cut -d '.' -f2 <<<"${MAC_VERSION}")
-  if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
-    unset CPATH
-    echo "${PURPLE}macOS 15+ Detected${NC}"
+  MAC_MAIN_VERSION=$(cut -d '.' -f1 <<<"$(sw_vers -productVersion)")
+  MAC_SUB_VERSION=$(cut -d '.' -f2 <<<"$(sw_vers -productVersion)")
+  if [ "${MAC_MAIN_VERSION}" -le 10 ]; then
+    if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
+      unset CPATH
+      echo "${PURPLE}macOS 10.15 Detected${NC}"
+    else
+      echo "${PURPLE}macOS 10.14- Detected${NC}"
+    fi
   else
-     echo "${PURPLE}macOS 14 Detected${NC}"
+    unset CPATH
+    echo "${PURPLE}macOS 11+ Detected${NC}"
   fi
 fi
 
@@ -94,8 +100,10 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
   echo "${YELLOW}Build logs can be found at ${ANDROID_LOG_PATH}${NC}"
   echo "\t${CYAN}Configuring Rust${NC}"
   rustup target add x86_64-linux-android aarch64-linux-android armv7-linux-androideabi i686-linux-android arm-linux-androideabi > ${ANDROID_LOG_PATH}/rust.txt 2>&1
-  if [ "${MAC_SUB_VERSION}" -lt 15 ]; then
-    cargo install cargo-ndk >> ${ANDROID_LOG_PATH}/rust.txt 2>&1
+  if [ "${MAC_MAIN_VERSION}" -le 10 ]; then
+    if [ "${MAC_SUB_VERSION}" -lt 15 ]; then
+      cargo install cargo-ndk >> ${ANDROID_LOG_PATH}/rust.txt 2>&1
+    fi
   fi
   echo "\t${CYAN}Configuring complete${NC}"
   export NDK_HOME=${NDK_PATH}
@@ -113,20 +121,23 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
   cd build || exit
   BUILD_ROOT=${PWD}
   if [ "${MACHINE}" == "Mac" ]; then
-    if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
-      cd ${NDK_HOME}/sources/cxx-stl/llvm-libc++/include || exit
-      mkdir -p sys
-      #Fix for missing header, c code should reference limits.h instead of syslimits.h, happens with code that has been around for a long time.
-      cp "${NDK_HOME}/sources/cxx-stl/llvm-libc++/include/limits.h" "${NDK_HOME}/sources/cxx-stl/llvm-libc++/include/sys/syslimits.h"
-      cd ${BUILD_ROOT} || exit
+    if [ "${MAC_MAIN_VERSION}" -le 10 ]; then
+      if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
+        cd ${NDK_HOME}/sources/cxx-stl/llvm-libc++/include || exit
+        mkdir -p sys
+        #Fix for missing header, c code should reference limits.h instead of syslimits.h, happens with code that has been around for a long time.
+        cp "${NDK_HOME}/sources/cxx-stl/llvm-libc++/include/limits.h" "${NDK_HOME}/sources/cxx-stl/llvm-libc++/include/sys/syslimits.h"
+        cd ${BUILD_ROOT} || exit
+      fi
+      else
+        cd ${NDK_HOME}/sources/cxx-stl/llvm-libc++/include || exit
+        mkdir -p sys
+        #Fix for missing header, c code should reference limits.h instead of syslimits.h, happens with code that has been around for a long time.
+        cp "${NDK_HOME}/sources/cxx-stl/llvm-libc++/include/limits.h" "${NDK_HOME}/sources/cxx-stl/llvm-libc++/include/sys/syslimits.h"
+        cd ${BUILD_ROOT} || exit
     fi
   fi
   cd ..
-
-  if [ ${SQLITE_BUILD_FOUND} -eq 0 ]; then
-    touch ${ANDROID_LOG_PATH}/sqlite.txt
-  fi
-  touch ${ANDROID_LOG_PATH}/cargo.txt
 
   for PLATFORMABI in "x86_64-linux-android" "aarch64-linux-android" "armv7-linux-androideabi"
   do
@@ -135,6 +146,11 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
     for LEVEL in 24
     #21 22 23 26 26 27 28 29 not included at present
     do
+      if [ ${SQLITE_BUILD_FOUND} -eq 0 ]; then
+        touch ${ANDROID_LOG_PATH}/sqlite_${PLATFORMABI}_${LEVEL}.txt
+      fi
+      touch ${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt
+
       PLATFORM=$(cut -d'-' -f1 <<<"${PLATFORMABI}")
 
       PLATFORM_OUTDIR=""
@@ -203,13 +219,13 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
       cd ${SQLITE_FOLDER} || exit
       if [ ${SQLITE_BUILD_FOUND} -eq 0 ]; then
         echo "\t${CYAN}Fetching Sqlite3 source${NC}"
-        curl -s ${SQLITE_SOURCE} | tar -xvf - -C ${PWD} >> ${ANDROID_LOG_PATH}/sqlite.txt 2>&1
+        curl -s ${SQLITE_SOURCE} | tar -xvf - -C ${PWD} >> ${ANDROID_LOG_PATH}/sqlite_${PLATFORMABI}_${LEVEL}.txt 2>&1
         echo "\t${CYAN}Source fetched${NC}"
         cd * || exit
         echo "\t${CYAN}Building Sqlite3${NC}"
-        make clean >> ${ANDROID_LOG_PATH}/sqlite.txt 2>&1
-        ./configure --host=${PLATFORMABI} --prefix=${OUTPUT_DIR} >> ${ANDROID_LOG_PATH}/sqlite.txt 2>&1
-        make install >> ${ANDROID_LOG_PATH}/sqlite.txt 2>&1
+        make clean >> ${ANDROID_LOG_PATH}/sqlite_${PLATFORMABI}_${LEVEL}.txt 2>&1
+        ./configure --host=${PLATFORMABI} --prefix=${OUTPUT_DIR} >> ${ANDROID_LOG_PATH}/sqlite_${PLATFORMABI}_${LEVEL}.txt 2>&1
+        make install >> ${ANDROID_LOG_PATH}/sqlite_${PLATFORMABI}_${LEVEL}.txt 2>&1
         echo "\t${CYAN}Sqlite3 built${NC}"
       else
         echo "\t${CYAN}Sqlite3 located${NC}"
@@ -217,9 +233,13 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
       cd ../..
 
       if [ "${MACHINE}" == "Mac" ]; then
-        if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
-          # Not ideal, however necesary for cargo to pass additional flags
-          export CFLAGS="${CFLAGS} -I${NDK_HOME}/sources/cxx-stl/llvm-libc++/include -I${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include -I${NDK_HOME}/sysroot/usr/include/${PLATFORMABI}"
+        if [ "${MAC_MAIN_VERSION}" -le 10 ]; then
+          if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
+            # Not ideal, however necesary for cargo to pass additional flags
+            export CFLAGS="${CFLAGS} -I${NDK_HOME}/sources/cxx-stl/llvm-libc++/include -I${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include -I${NDK_HOME}/sysroot/usr/include/${PLATFORMABI}"
+          fi
+        else
+            export CFLAGS="${CFLAGS} -I${NDK_HOME}/sources/cxx-stl/llvm-libc++/include -I${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include -I${NDK_HOME}/sysroot/usr/include/${PLATFORMABI}"
         fi
       fi
       export LDFLAGS="-L${NDK_HOME}/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/${PLATFORMABI_TOOLCHAIN}/${LEVEL} -L${OUTPUT_DIR}/lib -lc++ -lsqlite3"
@@ -232,13 +252,14 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${NDK_PATH}" ] && [ "${BUILD_ANDROID}" -eq 
       echo "\t${CYAN}Configuring Cargo${NC}"
       cd ${CURRENT_DIR} || exit
       if [ "${CARGO_CLEAN}" -eq "1" ]; then
-        cargo clean >> ${ANDROID_LOG_PATH}/cargo.txt 2>&1
+        cargo clean >> ${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt 2>&1
       fi
       mkdir -p .cargo
       cd .cargo || exit
       if [ "${MACHINE}" == "Mac" ]; then
-        if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
-          cat > config <<EOF
+        if [ "${MAC_MAIN_VERSION}" -le 10 ]; then
+          if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
+            cat > config <<EOF
 [build]
 target = "${PLATFORMABI}"
 
@@ -259,19 +280,36 @@ rustflags = "-L${OUTPUT_DIR}/lib"
 EOF
 
         fi
+        else
+cat > config <<EOF
+[build]
+target = "${PLATFORMABI}"
+
+[target.${PLATFORMABI}]
+ar = "${AR}"
+linker = "${CC}"
+rustflags = "-L${OUTPUT_DIR}/lib"
+
+EOF
+
+          fi
       fi
       echo "\t${CYAN}Configuring complete${NC}"
       cd .. || exit
       echo "\t${CYAN}Building Wallet FFI${NC}"
       #note: add -vv to below to see verbose and build script output
       if [ "${MACHINE}" == "Mac" ]; then
-        if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
-          cargo build --lib --release >> ${ANDROID_LOG_PATH}/cargo.txt 2>&1
+        if [ "${MAC_MAIN_VERSION}" -le 10 ]; then
+          if [ "${MAC_SUB_VERSION}" -ge 15 ]; then
+            cargo build --lib --release >> ${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt 2>&1
+          else
+            cargo ndk --target ${PLATFORMABI} --android-platform ${LEVEL} -- build --release >> ${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt 2>&1
+          fi
         else
-          cargo ndk --target ${PLATFORMABI} --android-platform ${LEVEL} -- build --release >> ${ANDROID_LOG_PATH}/cargo.txt 2>&1
+          cargo build --lib --release >> ${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt 2>&1
         fi
       else
-        cargo ndk --target ${PLATFORMABI} --android-platform ${LEVEL} -- build --release >> ${ANDROID_LOG_PATH}/cargo.txt 2>&1
+        cargo ndk --target ${PLATFORMABI} --android-platform ${LEVEL} -- build --release >> ${ANDROID_LOG_PATH}/cargo_${PLATFORMABI}_${LEVEL}.txt 2>&1
       fi
       cp wallet.h ${DEPENDENCIES}/
       rm -rf .cargo
