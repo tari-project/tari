@@ -85,6 +85,7 @@ pub struct WalletConfig {
     pub comms_config: CommsConfig,
     pub factories: CryptoFactories,
     pub transaction_service_config: Option<TransactionServiceConfig>,
+    pub output_manager_service_config: Option<OutputManagerServiceConfig>,
     pub buffer_size: usize,
     pub rate_limit: usize,
     pub network: Network,
@@ -92,22 +93,25 @@ pub struct WalletConfig {
 }
 
 impl WalletConfig {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         comms_config: CommsConfig,
         factories: CryptoFactories,
         transaction_service_config: Option<TransactionServiceConfig>,
+        output_manager_service_config: Option<OutputManagerServiceConfig>,
         network: Network,
         base_node_service_config: Option<BaseNodeServiceConfig>,
+        buffer_size: Option<usize>,
+        rate_limit: Option<usize>,
     ) -> Self
     {
         Self {
             comms_config,
             factories,
             transaction_service_config,
-            // This is the default buffer size for the pubsub_connector for the mobile wallet
-            buffer_size: 100,
-            // This is the default rate limit fot the pubsub_connector for the mobile wallet
-            rate_limit: 5,
+            output_manager_service_config,
+            buffer_size: buffer_size.unwrap_or_else(|| 1500),
+            rate_limit: rate_limit.unwrap_or_else(|| 50),
             network,
             base_node_service_config,
         }
@@ -176,7 +180,7 @@ where
         let mut stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(config.comms_config, publisher))
             .add_initializer(OutputManagerServiceInitializer::new(
-                OutputManagerServiceConfig::default(),
+                config.output_manager_service_config.unwrap_or_default(),
                 peer_message_subscription_factory.clone(),
                 output_manager_backend,
                 factories.clone(),

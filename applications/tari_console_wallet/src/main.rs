@@ -26,6 +26,7 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
     error::WalletError,
+    output_manager_service::config::OutputManagerServiceConfig,
     storage::sqlite_utilities::initialize_sqlite_database_backends,
     transaction_service::config::TransactionServiceConfig,
     wallet::WalletConfig,
@@ -253,11 +254,21 @@ async fn setup_wallet(
         comms_config.clone(),
         factories,
         Some(TransactionServiceConfig {
-            direct_send_timeout: comms_config.dht.discovery_request_timeout,
+            broadcast_monitoring_timeout: config.transaction_broadcast_monitoring_timeout,
+            chain_monitoring_timeout: config.transaction_chain_monitoring_timeout,
+            direct_send_timeout: config.transaction_direct_send_timeout,
+            broadcast_send_timeout: config.transaction_broadcast_send_timeout,
+            ..Default::default()
+        }),
+        Some(OutputManagerServiceConfig {
+            base_node_query_timeout: config.base_node_query_timeout,
+            prevent_fee_gt_amount: config.prevent_fee_gt_amount,
             ..Default::default()
         }),
         network,
         Some(base_node_service_config),
+        Some(config.buffer_size_base_node_wallet),
+        Some(config.buffer_rate_limit_base_node_wallet),
     );
     wallet_config.buffer_size = std::cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
 

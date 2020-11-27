@@ -84,13 +84,13 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         default_subdir("wallet/console-wallet.dat", Some(&bootstrap.base_path)),
     )
     .unwrap();
-    cfg.set_default("wallet.base_node_query_timeout", 900).unwrap();
-    cfg.set_default("wallet.transaction_broadcast_monitoring_timeout", 600)
+    cfg.set_default("wallet.base_node_query_timeout", 60).unwrap();
+    cfg.set_default("wallet.transaction_broadcast_monitoring_timeout", 60)
         .unwrap();
-    cfg.set_default("wallet.transaction_chain_monitoring_timeout", 15)
+    cfg.set_default("wallet.transaction_chain_monitoring_timeout", 60)
         .unwrap();
-    cfg.set_default("wallet.transaction_direct_send_timeout", 600).unwrap();
-    cfg.set_default("wallet.transaction_broadcast_send_timeout", 600)
+    cfg.set_default("wallet.transaction_direct_send_timeout", 20).unwrap();
+    cfg.set_default("wallet.transaction_broadcast_send_timeout", 60)
         .unwrap();
     cfg.set_default("wallet.prevent_fee_gt_amount", true).unwrap();
     cfg.set_default("wallet.base_node_service_peer", "").unwrap();

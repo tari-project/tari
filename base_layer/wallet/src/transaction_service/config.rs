@@ -40,10 +40,10 @@ pub struct TransactionServiceConfig {
 impl Default for TransactionServiceConfig {
     fn default() -> Self {
         Self {
-            broadcast_monitoring_timeout: Duration::from_secs(30),
-            chain_monitoring_timeout: Duration::from_secs(30),
+            broadcast_monitoring_timeout: Duration::from_secs(60),
+            chain_monitoring_timeout: Duration::from_secs(60),
             direct_send_timeout: Duration::from_secs(20),
-            broadcast_send_timeout: Duration::from_secs(30),
+            broadcast_send_timeout: Duration::from_secs(60),
             low_power_polling_timeout: Duration::from_secs(300),
             transaction_resend_period: Duration::from_secs(3600),
             resend_response_cooldown: Duration::from_secs(300),
