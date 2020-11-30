@@ -4,8 +4,16 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+#    branches:
+#      - leet-*
   schedule:
     - cron: '05 00 * * *'
+  workflow_dispatch:
+    inputs:
+      customTag:
+        description: 'Development Tag'
+        required: true
+        default: 'development-tag'
 
 env:
   TBN_FILENAME: 'tari_base_node'
@@ -16,16 +24,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-18.04, ubuntu-20.04, macos-10.15, macos-11.0, windows-2019]
 #        os: [ubuntu-latest, macos-latest, windows-latest, seelf-hosted]
-        os: [ubuntu-18.04, ubuntu-20.04, macos-10.15, macos-11.0, windows-2016, windows-2019]
-        features: ["avx2", "safe"]
-        target_cpu: ["x86-64", "ivybridge", "skylake"]
+#        os: [ubuntu-18.04, ubuntu-20.04, macos-10.15, macos-11.0, windows-2016, windows-2019]
+        features: ["safe", "avx2"]
+#        features: ["safe"]
+        target_cpu: ["x86-64", "broadwell", "skylake"]
+#        target_cpu: ["x86-64"]
 #        target_release: ["release", "debug"]
         exclude:
           - target_cpu: "x86-64"
             features: "avx2"
-#          - target_cpu: "ivybridge"
-#            features: "avx2"
 
     runs-on: ${{ matrix.os }}
 
@@ -37,20 +46,17 @@ jobs:
       id: vars
       shell: bash
       run: |
-        echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
-        echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        echo "VBRANCH=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_ENV
+        echo "VSHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
     - name: Default Destination Folder
-      uses: allenevans/set-env@v1.0.0
-      with:
-        overwrite: true
-        S3DESTOVERRIDE: ''
+      run: |
+        echo "S3DESTOVERRIDE=" >> $GITHUB_ENV
+
     - name: Scheduled Destination Folder Override
       if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 * * *' }}
-      uses: allenevans/set-env@v1.0.0
-      with:
-        overwrite: true
-        S3DESTOVERRIDE: 'daily/'
+      run: |
+        echo "S3DESTOVERRIDE=daily/" >> $GITHUB_ENV
 
     - name: Setup Rust toolchain
       uses: actions-rs/toolchain@v1
@@ -64,7 +70,7 @@ jobs:
     - name: Install Ubuntu dependencies
       if: startsWith(matrix.os,'ubuntu')
       run: |
-        sudo apt-get update && \
+        sudo apt-get update
         sudo apt-get -y install \
           openssl \
           libssl-dev \
@@ -77,48 +83,65 @@ jobs:
           libc++abi-dev \
           libprotobuf-dev \
           protobuf-compiler
+#        sudo apt-get -y upgrade
+
     - name: Install macOS dependencies
       if: startsWith(matrix.os,'macos')
       run: brew install cmake zip
+
     - name: Install Windows dependencies
       if: startsWith(matrix.os,'windows')
       run: |
         vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
-        choco upgrade llvm zip psutils -y
+        choco upgrade llvm zip psutils openssl -y
 
     - name: Set environment variables - Nix
       if: "!startsWith(matrix.os,'Windows')"
-      uses: allenevans/set-env@v1.0.0
-      with:
-        overwrite: true
-        CC: gcc
-        TBN_EXT: ''
-        TBN_DIST: '/dist'
-        S3DESTDIR: 'linux'
-        SHARUN: 'shasum --algorithm 256'
-#        SHARUN: 'shasum --portable --algorithm 256'
+      run: |
+        echo "SHARUN=shasum --algorithm 256" >> $GITHUB_ENV
+        echo "CC=gcc" >> $GITHUB_ENV
+        echo "TBN_EXT=" >> $GITHUB_ENV
+        echo "S3DESTDIR=linux" >> $GITHUB_ENV
+        echo "TBN_DIST=/dist" >> $GITHUB_ENV
+
     - name: Set environment variables - macOS
       if: startsWith(matrix.os,'macos')
-      uses: allenevans/set-env@v1.0.0
-      with:
-        overwrite: true
-        S3DESTDIR: 'osx'
+      run: |
+        echo "S3DESTDIR=osx" >> $GITHUB_ENV
+
     - name: Set environment variables - Windows
       if: startsWith(matrix.os,'Windows')
-      uses: allenevans/set-env@v1.0.0
+      shell: bash
+      run: |
+        echo "SHARUN=pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
+        echo "TBN_EXT=.exe" >> $GITHUB_ENV
+        echo "TBN_DIST=\dist" >> $GITHUB_ENV
+        echo "S3DESTDIR=windows" >> $GITHUB_ENV
+        echo "SQLITE3_LIB_DIR=C:\vcpkg\installed\x64-windows\lib" >> $GITHUB_ENV
+        echo "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" >> $GITHUB_ENV
+        echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
+
+    # this is a hack to fix an issue with building libclang in MSVC
+    # it should be fixed in release 16.9 of MSVC
+    # issue https://github.com/microsoft/STL/issues/1300
+    # temp fix https://github.com/mono/CppSharp/pull/1514/files
+    - name: fix intrin.h file - Windows
+      if: startsWith(matrix.os,'Windows')
+      shell: powershell
+      run: .github/hacks/intrin.ps1
+
+    - name: Caching
+      uses: actions/cache@v2
       with:
-        overwrite: true
-        SQLITE3_LIB_DIR: 'C:\vcpkg\installed\x64-windows\lib'
-        TBN_EXT: '.exe'
-        TBN_DIST: '\dist'
-        S3DESTDIR: 'windows'
-        SHARUN: 'pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --algorithm 256'
-#        SHARUN: 'pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --portable --algorithm 256'
-#        RUSTFLAGS: '-Ctarget-feature=+crt-static'
-#        CC: gcc
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+# ToDo: Look at making caching less strict
+#        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Build binaries
-#      continue-on-error: true  # WARNING: only for this example, remove it!
       env:
         RUSTFLAGS: '-C target_cpu=${{ matrix.target_cpu }}'
         ROARING_ARCH: '${{ matrix.target_cpu }}'
@@ -127,34 +150,41 @@ jobs:
         cd applications/tari_base_node
         cargo build --release --bin tari_base_node --features ${{ matrix.features}}
 
-    - name: Prep binaries for dist
+    - name: Prepare binaries
       shell: bash
       run: |
-        mkdir -p "$GITHUB_WORKSPACE${{ env.TBN_DIST }}/"
-        cd "$GITHUB_WORKSPACE${{ env.TBN_DIST }}/"
+        mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}"
+        cd "$GITHUB_WORKSPACE${TBN_DIST}"
         VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/[\"]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/tari_base_node/Cargo.toml")
-        echo ::set-env name=VERSION::${VERSION}
-        BINFILE="${TBN_FILENAME}-${VERSION}-${{ steps.vars.outputs.sha_short }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}${TBN_EXT}"
-        echo ::set-env name=BINFILE::${BINFILE}
+        echo "Branch: ${VBRANCH}"
+        echo "Sha: ${VSHA_SHORT}"
+        echo "VERSION=${VERSION}" >> $GITHUB_ENV
+        BINFILE="${TBN_FILENAME}-${VERSION}-${VSHA_SHORT}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}${TBN_EXT}"
+        echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
         echo "Copying file ${BINFILE} too $(pwd)"
         cp -v "$GITHUB_WORKSPACE/target/release/${TBN_FILENAME}${TBN_EXT}" "./${BINFILE}"
-        echo "Archive ${BINFILE} too ${BINFILE}.zip"
-        zip -j "${BINFILE}.zip" "${BINFILE}"
+
+    - name: Archive and Sign Binaries
+      shell: bash
+      run: |
+        echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
+        cd "$GITHUB_WORKSPACE${{ env.TBN_DIST }}"
+        zip -j "${{ env.BINFILE }}.zip" "${{ env.BINFILE }}"
         echo "Compute shasum"
-        ${SHARUN} "${BINFILE}.zip" >> "${BINFILE}.zip.sha256"
-        cat "${BINFILE}.zip.sha256"
+        ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
+        cat "${{ env.BINFILE }}.zip.sha256"
         echo "Verifications is "
-        ${SHARUN} --check "${BINFILE}.zip.sha256"
+        ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
         rm -f "${BINFILE}"
 
-    - name: Upload binary
+    - name: Upload binaries
       uses: actions/upload-artifact@v2
       with:
-        name: ${{ env.TBN_FILENAME }}-${{ env.VERSION  }}-${{ steps.vars.outputs.sha_short }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}
+        name: ${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}
         path: '${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*'
 
     - name: Sync dist to S3 - Bash
-      continue-on-error: true  # WARNING: only for this example, remove it!
+      continue-on-error: true  # Don't break if s3 upload fails
       shell: bash
       run: |
         echo "Starting upload ... ${{ env.SOURCE }}"
@@ -163,6 +193,7 @@ jobs:
           s3://${{ secrets.AWS_S3_BUCKET }}/${{ env.DEST_DIR }} \
           ${{ env.S3OPTIONS }}
         echo "Done - $?"
+        exit 0
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
