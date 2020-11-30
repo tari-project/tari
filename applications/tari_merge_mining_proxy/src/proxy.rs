@@ -72,6 +72,7 @@ pub struct MergeMiningProxyConfig {
     pub grpc_base_node_address: SocketAddr,
     pub grpc_console_wallet_address: SocketAddr,
     pub proxy_host_address: SocketAddr,
+    pub wait_for_initial_sync_at_startup: bool,
 }
 
 impl From<GlobalConfig> for MergeMiningProxyConfig {
@@ -85,6 +86,7 @@ impl From<GlobalConfig> for MergeMiningProxyConfig {
             grpc_base_node_address: config.grpc_base_node_address,
             grpc_console_wallet_address: config.grpc_console_wallet_address,
             proxy_host_address: config.proxy_host_address,
+            wait_for_initial_sync_at_startup: config.wait_for_initial_sync_at_startup,
         }
     }
 }
@@ -333,17 +335,25 @@ impl InnerService {
         if !self.initial_sync_achieved.load(Ordering::Relaxed) {
             if !new_block_template_response.initial_sync_achieved {
                 let msg = format!(
-                    "Initial base node sync not achieved, current height at #{}, waiting...",
+                    "Initial base node sync not achieved, current height at #{} ... (waiting = {})",
+                    new_block_template.header.as_ref().map(|h| h.height).unwrap_or_default(),
+                    self.config.wait_for_initial_sync_at_startup,
+                );
+                debug!(target: LOG_TARGET, "{}", msg);
+                println!("{}", msg);
+                if self.config.wait_for_initial_sync_at_startup {
+                    return Err(MmProxyError::MissingDataError(" ".to_string() + &msg));
+                }
+            } else {
+                self.initial_sync_achieved.store(true, Ordering::Relaxed);
+                let msg = format!(
+                    "Initial base node sync achieved at height #{}",
                     new_block_template.header.as_ref().map(|h| h.height).unwrap_or_default()
                 );
                 debug!(target: LOG_TARGET, "{}", msg);
                 println!("{}", msg);
-                return Err(MmProxyError::MissingDataError(" ".to_string() + &msg));
+                println!("Listening on {}...", self.config.proxy_host_address);
             }
-            self.initial_sync_achieved.store(true, Ordering::Relaxed);
-            debug!(target: LOG_TARGET, "Initial base node sync achieved, continuing");
-            println!("Initial base node sync achieved, continuing\n");
-            println!("Listening on {}...", self.config.proxy_host_address);
         }
 
         info!(

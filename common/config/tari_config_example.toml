@@ -238,7 +238,7 @@ tor_control_address = "/ip4/127.0.0.1/tcp/9051"
 # Authentication to use for the tor control server
 tor_control_auth = "none" # or "password=xxxxxx"
 # The onion port to use.
-tor_onion_port = 18141
+#tor_onion_port = 18141
 # The address to which traffic on the node's onion address will be forwarded
 # tor_forward_address = "/ip4/127.0.0.1/tcp/0"
 # Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
@@ -355,3 +355,8 @@ monerod_username=""
 
 # Password for curl
 monerod_password=""
+
+# The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables mining,
+# or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
+# accepted. (Default value = true; will wait for base node initial sync).
+#wait_for_initial_sync_at_startup = true

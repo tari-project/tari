@@ -255,6 +255,8 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
         .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.monerod_password", "")
         .unwrap();
+    cfg.set_default("merge_mining_proxy.mainnet.wait_for_initial_sync_at_startup", true)
+        .unwrap();
 
     cfg.set_default("merge_mining_proxy.ridcully.monerod_url", "http://18.133.55.120:38081")
         .unwrap();
@@ -265,6 +267,8 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
     cfg.set_default("merge_mining_proxy.ridcully.monerod_username", "")
         .unwrap();
     cfg.set_default("merge_mining_proxy.ridcully.monerod_password", "")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.ridcully.wait_for_initial_sync_at_startup", true)
         .unwrap();
 }
 

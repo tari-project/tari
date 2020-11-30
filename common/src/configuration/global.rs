@@ -107,6 +107,7 @@ pub struct GlobalConfig {
     pub monerod_password: String,
     pub monerod_use_auth: bool,
     pub proxy_host_address: SocketAddr,
+    pub wait_for_initial_sync_at_startup: bool,
 }
 
 impl GlobalConfig {
@@ -539,6 +540,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
 
+    let key = config_string("merge_mining_proxy", &net_str, "wait_for_initial_sync_at_startup");
+    let wait_for_initial_sync_at_startup = cfg
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
     Ok(GlobalConfig {
         network,
         comms_transport,
@@ -599,6 +605,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         monerod_username,
         monerod_password,
         monerod_use_auth,
+        wait_for_initial_sync_at_startup,
     })
 }
 
