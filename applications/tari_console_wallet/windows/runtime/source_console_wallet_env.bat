@@ -135,7 +135,7 @@ if exist "%my_exe_path%\%my_exe%" (
 
 rem First time run
 if not exist "%config_path%\console_wallet_id.json" (
-    "%console_wallet%" --create-id --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
+    "%console_wallet%" --create-id --init --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
     echo.
     echo.
     echo Created "%config_path%\console_wallet_id.json".
@@ -143,7 +143,19 @@ if not exist "%config_path%\console_wallet_id.json" (
 ) else (
     echo.
     echo.
-    echo Using old "%config_path%\console_wallet_id.json"
+    echo Using existing "%config_path%\console_wallet_id.json"
+    echo.
+)
+if not exist "%config_path%\log4rs_console_wallet.yml" (
+    "%console_wallet%" --init --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
+    echo.
+    echo.
+    echo Created "%config_path%\log4rs_console_wallet.yml".
+    echo.
+) else (
+    echo.
+    echo.
+    echo Using existing "%config_path%\log4rs_console_wallet.yml"
     echo.
 )
 
