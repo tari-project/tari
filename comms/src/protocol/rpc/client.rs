@@ -303,8 +303,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
     }
 
     async fn run(mut self) {
-        debug!(target: LOG_TARGET, "RPC Client worker started");
-
+        debug!(target: LOG_TARGET, "Performing client handshake");
         let start = Instant::now();
         let mut handshake = Handshake::new(&mut self.framed);
         match handshake.perform_client_handshake().await {
@@ -370,7 +369,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
         let start = Instant::now();
         self.framed.send(req.to_encoded_bytes().into()).await?;
 
-        let (mut response_tx, response_rx) = mpsc::channel(10);
+        let (mut response_tx, response_rx) = mpsc::channel(1);
         if reply.send(response_rx).is_err() {
             debug!(target: LOG_TARGET, "Client request was cancelled.");
             response_tx.close_channel();

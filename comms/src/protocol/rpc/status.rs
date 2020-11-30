@@ -182,6 +182,10 @@ impl RpcStatusCode {
     pub fn is_ok(self) -> bool {
         self == Self::Ok
     }
+
+    pub fn is_not_found(self) -> bool {
+        self == Self::NotFound
+    }
 }
 
 impl From<u32> for RpcStatusCode {

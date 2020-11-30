@@ -172,6 +172,14 @@ impl BodyBytes {
         self.0.map(|v| v.into_iter().collect()).unwrap_or_else(BytesMut::new)
     }
 
+    pub fn len(&self) -> usize {
+        self.0.as_ref().map(|b| b.len()).unwrap_or(0)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn into_vec(self) -> Vec<u8> {
         self.0.map(|bytes| bytes.to_vec()).unwrap_or_else(Vec::new)
     }
