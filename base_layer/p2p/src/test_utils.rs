@@ -84,7 +84,7 @@ pub fn make_dht_inbound_message(node_identity: &NodeIdentity, message: Vec<u8>) 
             Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
-            &[],
+            Default::default(),
             Default::default(),
         )),
         message,

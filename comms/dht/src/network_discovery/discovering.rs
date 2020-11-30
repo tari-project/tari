@@ -203,7 +203,7 @@ impl Discovering {
         let peer_dist = peer.node_id.distance(self.context.node_identity.node_id());
         let is_neighbour = peer_dist <= self.neighbourhood_threshold;
 
-        let addresses = peer.addresses.address_iter();
+        let addresses = peer.addresses.iter();
         match validate_peer_addresses(addresses, self.config().network.is_localtest()) {
             Ok(_) => {
                 if is_neighbour {

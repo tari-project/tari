@@ -96,7 +96,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
     mut peer_identity: PeerIdentityMsg,
     dialed_addr: Option<&Multiaddr>,
     allow_test_addrs: bool,
-) -> Result<NodeId, ConnectionManagerError>
+) -> Result<(NodeId, Vec<ProtocolId>), ConnectionManagerError>
 {
     // let peer_manager = peer_manager.inner();
     // Validate the given node id for base nodes
@@ -143,7 +143,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
                 peer.addresses.mark_successful_connection_attempt(addr);
             }
             peer.features = PeerFeatures::from_bits_truncate(peer_identity.features);
-            peer.supported_protocols = supported_protocols;
+            peer.supported_protocols = supported_protocols.clone();
             peer.user_agent = peer_identity.user_agent;
             peer
         },
@@ -159,7 +159,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
                 addresses.into(),
                 PeerFlags::empty(),
                 PeerFeatures::from_bits_truncate(peer_identity.features),
-                &supported_protocols,
+                supported_protocols.clone(),
                 peer_identity.user_agent,
             );
             new_peer.connection_stats.set_connection_success();
@@ -172,7 +172,7 @@ pub async fn validate_and_add_peer_from_peer_identity(
 
     peer_manager.add_peer(peer).await?;
 
-    Ok(peer_node_id)
+    Ok((peer_node_id, supported_protocols))
 }
 
 pub async fn find_unbanned_peer(

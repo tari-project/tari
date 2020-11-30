@@ -134,7 +134,7 @@ impl PeerManager {
                     addresses.into(),
                     PeerFlags::default(),
                     peer_features,
-                    &[],
+                    Default::default(),
                     Default::default(),
                 ))
                 .await?;
@@ -336,7 +336,7 @@ mod test {
             net_addresses,
             PeerFlags::default(),
             features,
-            &[],
+            Default::default(),
             Default::default(),
         );
         if ban_flag {

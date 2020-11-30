@@ -69,7 +69,7 @@ impl From<SeedPeer> for Peer {
             seed.addresses.into(),
             Default::default(),
             PeerFeatures::COMMUNICATION_NODE,
-            &[],
+            Default::default(),
             Default::default(),
         )
     }

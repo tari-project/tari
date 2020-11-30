@@ -420,7 +420,7 @@ mod test {
             Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
-            &[],
+            Default::default(),
             Default::default(),
         );
         DomainMessage {

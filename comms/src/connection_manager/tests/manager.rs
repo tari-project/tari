@@ -144,7 +144,7 @@ async fn dial_success() {
             vec![public_address2].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
-            &[],
+            Default::default(),
             Default::default(),
         ))
         .await
@@ -231,7 +231,7 @@ async fn simultaneous_dial_events() {
             vec![public_address2].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
-            &[],
+            Default::default(),
             Default::default(),
         ))
         .await
@@ -244,7 +244,7 @@ async fn simultaneous_dial_events() {
             vec![public_address1].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
-            &[],
+            Default::default(),
             Default::default(),
         ))
         .await

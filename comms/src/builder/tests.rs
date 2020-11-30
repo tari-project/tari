@@ -145,7 +145,7 @@ async fn peer_to_peer_custom_protocols() {
             node_identity2.public_address().clone().into(),
             Default::default(),
             Default::default(),
-            &[TEST_PROTOCOL, ANOTHER_TEST_PROTOCOL],
+            vec![TEST_PROTOCOL, ANOTHER_TEST_PROTOCOL],
             Default::default(),
         ))
         .await
@@ -220,7 +220,7 @@ async fn peer_to_peer_messaging() {
             node_identity2.public_address().clone().into(),
             Default::default(),
             Default::default(),
-            &[],
+            Default::default(),
             Default::default(),
         ))
         .await
@@ -308,7 +308,7 @@ async fn peer_to_peer_messaging_simultaneous() {
             node_identity2.public_address().clone().into(),
             Default::default(),
             Default::default(),
-            &[],
+            Default::default(),
             Default::default(),
         ))
         .await
@@ -321,7 +321,7 @@ async fn peer_to_peer_messaging_simultaneous() {
             node_identity1.public_address().clone().into(),
             Default::default(),
             Default::default(),
-            &[],
+            Default::default(),
             Default::default(),
         ))
         .await

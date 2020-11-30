@@ -243,7 +243,7 @@ async fn get_custom_base_node_peer_from_db(wallet: &mut WalletSqlite) -> Option<
                 address.into(),
                 PeerFlags::default(),
                 PeerFeatures::COMMUNICATION_NODE,
-                &[],
+                Default::default(),
                 Default::default(),
             ))
         },

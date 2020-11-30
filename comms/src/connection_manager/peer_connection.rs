@@ -57,6 +57,7 @@ const PEER_REQUEST_BUFFER_SIZE: usize = 64;
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+#[allow(clippy::too_many_arguments)]
 pub fn create(
     connection: Yamux,
     peer_addr: Multiaddr,
@@ -65,6 +66,7 @@ pub fn create(
     direction: ConnectionDirection,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
     our_supported_protocols: Vec<ProtocolId>,
+    their_supported_protocols: Vec<ProtocolId>,
 ) -> Result<PeerConnection, ConnectionManagerError>
 {
     trace!(
@@ -92,6 +94,7 @@ pub fn create(
         peer_rx,
         event_notifier,
         our_supported_protocols,
+        their_supported_protocols,
     );
     runtime::current().spawn(peer_actor.run());
 
@@ -206,15 +209,20 @@ impl PeerConnection {
     #[cfg(feature = "rpc")]
     pub async fn connect_rpc<T>(&mut self) -> Result<T, RpcError>
     where T: From<RpcClient> + NamedProtocolService {
-        self.connect_rpc_builder(Default::default()).await
+        self.connect_rpc_using_builder(Default::default()).await
     }
 
     #[cfg(feature = "rpc")]
-    pub async fn connect_rpc_builder<T>(&mut self, builder: RpcClientBuilder<T>) -> Result<T, RpcError>
+    pub async fn connect_rpc_using_builder<T>(&mut self, builder: RpcClientBuilder<T>) -> Result<T, RpcError>
     where T: From<RpcClient> + NamedProtocolService {
-        let framed = self
-            .open_framed_substream(&T::PROTOCOL_NAME.into(), RPC_MAX_FRAME_SIZE)
-            .await?;
+        let protocol = T::PROTOCOL_NAME;
+        debug!(
+            target: LOG_TARGET,
+            "Attempting to establish RPC protocol `{}` to peer `{}`",
+            String::from_utf8_lossy(protocol),
+            self.peer_node_id
+        );
+        let framed = self.open_framed_substream(&protocol.into(), RPC_MAX_FRAME_SIZE).await?;
         builder.connect(framed).await
     }
 
@@ -245,18 +253,24 @@ impl fmt::Display for PeerConnection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "Id = {}, Node ID = {}, Direction = {}, Peer Address = {}, Features = {:?}",
+            "Id = {}, Node ID = {}, Direction = {}, Peer Address = {}, Age = {:.0?}",
             self.id,
             self.peer_node_id.short_str(),
             self.direction,
             self.address,
-            self.peer_features,
+            self.age(),
         )
     }
 }
 
+impl PartialEq for PeerConnection {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
 /// Actor for an active connection to a peer.
-pub struct PeerConnectionActor {
+struct PeerConnectionActor {
     id: ConnectionId,
     peer_node_id: NodeId,
     request_rx: Fuse<mpsc::Receiver<PeerConnectionRequest>>,
@@ -265,11 +279,13 @@ pub struct PeerConnectionActor {
     substream_shutdown: Option<Shutdown>,
     control: Control,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
-    supported_protocols: Vec<ProtocolId>,
+    our_supported_protocols: Vec<ProtocolId>,
+    their_supported_protocols: Vec<ProtocolId>,
     shutdown: bool,
 }
 
 impl PeerConnectionActor {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         id: ConnectionId,
         peer_node_id: NodeId,
@@ -277,7 +293,8 @@ impl PeerConnectionActor {
         connection: Yamux,
         request_rx: mpsc::Receiver<PeerConnectionRequest>,
         event_notifier: mpsc::Sender<ConnectionManagerEvent>,
-        supported_protocols: Vec<ProtocolId>,
+        our_supported_protocols: Vec<ProtocolId>,
+        their_supported_protocols: Vec<ProtocolId>,
     ) -> Self
     {
         Self {
@@ -290,7 +307,8 @@ impl PeerConnectionActor {
             request_rx: request_rx.fuse(),
             event_notifier,
             shutdown: false,
-            supported_protocols,
+            our_supported_protocols,
+            their_supported_protocols,
         }
     }
 
@@ -353,7 +371,7 @@ impl PeerConnectionActor {
 
     async fn handle_incoming_substream(&mut self, mut stream: Substream) -> Result<(), PeerConnectionError> {
         let selected_protocol = ProtocolNegotiation::new(&mut stream)
-            .negotiate_protocol_inbound(&self.supported_protocols)
+            .negotiate_protocol_inbound(&self.our_supported_protocols)
             .await?;
 
         self.notify_event(ConnectionManagerEvent::NewInboundSubstream(
@@ -382,7 +400,7 @@ impl PeerConnectionActor {
 
         let mut negotiation = ProtocolNegotiation::new(&mut stream);
 
-        let selected_protocol = if self.supported_protocols.contains(&protocol) {
+        let selected_protocol = if self.their_supported_protocols.contains(&protocol) {
             negotiation.negotiate_protocol_outbound_optimistic(&protocol).await?
         } else {
             negotiation.negotiate_protocol_outbound(&[protocol]).await?

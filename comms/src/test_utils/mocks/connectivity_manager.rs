@@ -145,7 +145,8 @@ impl ConnectivityManagerMock {
                             .await
                             .get(&node_id)
                             .cloned()
-                            .ok_or_else(|| ConnectionManagerError::DialConnectFailedAllAddresses),
+                            .ok_or_else(|| ConnectionManagerError::DialConnectFailedAllAddresses)
+                            .map_err(Into::into),
                     )
                     .unwrap();
             },

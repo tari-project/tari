@@ -99,7 +99,7 @@ async fn run() -> Result<(), Error> {
             vec![node_identity2.public_address()].into(),
             Default::default(),
             PeerFeatures::COMMUNICATION_CLIENT,
-            &[],
+            Default::default(),
             Default::default(),
         ))
         .await?;

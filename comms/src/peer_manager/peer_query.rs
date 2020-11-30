@@ -232,7 +232,7 @@ mod test {
             net_addresses,
             PeerFlags::default(),
             PeerFeatures::MESSAGE_PROPAGATION,
-            &[],
+            Default::default(),
             Default::default(),
         );
         if ban_flag {

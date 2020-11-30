@@ -350,7 +350,7 @@ where
         );
         trace!(target: LOG_TARGET, "{:?}", peer_identity);
 
-        let peer_node_id = common::validate_and_add_peer_from_peer_identity(
+        let (peer_node_id, their_supported_protocols) = common::validate_and_add_peer_from_peer_identity(
             &peer_manager,
             known_peer,
             authenticated_public_key,
@@ -375,6 +375,7 @@ where
             CONNECTION_DIRECTION,
             conn_man_notifier,
             our_supported_protocols,
+            their_supported_protocols,
         )
     }
 
