@@ -129,7 +129,7 @@ else
   gitclean="gitclean"
 fi
 
-if [ "$1" == "latest-tag" ]; then
+#if [ "$1" == "latest-tag" ]; then
 if [[ "$1" =~ ^latest* ]]; then
   if [ "$gitclean" == "uncommitted" ]; then
     echo "Can't use latest options with uncommitted changes"
