@@ -23,7 +23,7 @@
 use super::{handle::BlockchainStateRequest, BlockchainStateServiceError};
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{async_db, BlockchainBackend, BlockchainDatabase},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     transactions::types::HashOutput,
 };
 use futures::{
@@ -32,7 +32,6 @@ use futures::{
     future::{BoxFuture, Either},
     stream::{Fuse, FuturesUnordered},
     StreamExt,
-    TryFutureExt,
 };
 use log::*;
 use std::{future::Future, ops::Bound};
@@ -41,12 +40,12 @@ use tokio::future::poll_fn;
 const LOG_TARGET: &str = "c::base_node::blockchain_state_service";
 
 pub struct BlockchainStateService<B> {
-    db: BlockchainDatabase<B>,
+    db: AsyncBlockchainDb<B>,
     requests: Fuse<mpsc::Receiver<BlockchainStateRequest>>,
 }
 
 impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
-    pub fn new(db: BlockchainDatabase<B>, requests: mpsc::Receiver<BlockchainStateRequest>) -> Self {
+    pub fn new(db: AsyncBlockchainDb<B>, requests: mpsc::Receiver<BlockchainStateRequest>) -> Self {
         Self {
             db,
             requests: requests.fuse(),
@@ -54,7 +53,7 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
     }
 
     #[inline]
-    fn db(&self) -> BlockchainDatabase<B> {
+    fn db(&self) -> AsyncBlockchainDb<B> {
         self.db.clone()
     }
 
@@ -95,10 +94,10 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
             GetHeaderByHeight(height, reply) => {
                 Box::pin(reply_or_cancel(reply, Self::fetch_header_by_height(self.db(), height)))
             },
-            GetChainMetadata(reply) => Box::pin(reply_or_cancel(
-                reply,
-                async_db::get_chain_metadata(self.db()).map_err(Into::into),
-            )),
+            GetChainMetadata(reply) => Box::pin(reply_or_cancel(reply, {
+                let db = self.db();
+                async move { db.get_chain_metadata().await.map_err(Into::into) }
+            })),
             FindHeadersAfterHash((hashes, count), reply) => Box::pin(reply_or_cancel(
                 reply,
                 Self::find_headers_after_hash(self.db(), hashes, count),
@@ -106,34 +105,24 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
         }
     }
 
-    fn fetch_header_by_height(
-        db: BlockchainDatabase<B>,
+    async fn fetch_header_by_height(
+        db: AsyncBlockchainDb<B>,
         height: u64,
-    ) -> impl Future<Output = Result<Option<BlockHeader>, BlockchainStateServiceError>>
+    ) -> Result<Option<BlockHeader>, BlockchainStateServiceError>
     {
-        async_db::fetch_header(db, height)
-            .and_then(|h| future::ready(Ok(Some(h))))
-            .or_else(|err| {
-                future::ready({
-                    if err.is_value_not_found() {
-                        Ok(None)
-                    } else {
-                        Err(err.into())
-                    }
-                })
-            })
+        db.fetch_header(height).await.map_err(Into::into)
     }
 
     async fn fetch_header_by_hash(
-        db: BlockchainDatabase<B>,
+        db: AsyncBlockchainDb<B>,
         hash: HashOutput,
     ) -> Result<Option<BlockHeader>, BlockchainStateServiceError>
     {
-        Ok(async_db::fetch_header_by_block_hash(db, hash).await?)
+        db.fetch_header_by_block_hash(hash).await.map_err(Into::into)
     }
 
     async fn fetch_blocks(
-        db: BlockchainDatabase<B>,
+        db: AsyncBlockchainDb<B>,
         start: Bound<u64>,
         end: Bound<u64>,
     ) -> Result<Vec<Block>, BlockchainStateServiceError>
@@ -142,7 +131,7 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
 
         let mut metadata = None;
         if start.is_none() || end.is_none() {
-            metadata = Some(async_db::get_chain_metadata(db.clone()).await?);
+            metadata = Some(db.get_chain_metadata().await?);
         }
 
         if start.is_none() {
@@ -156,7 +145,7 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
 
         let (start, end) = (start.unwrap(), end.unwrap());
 
-        let blocks = async_db::fetch_blocks(db, start, end).await?;
+        let blocks = db.fetch_blocks(start..=end).await?;
         debug!(target: LOG_TARGET, "Fetched {} block(s)", blocks.len());
 
         // `HistoricalBlock`s are converted to `Block`s here because we're exposing a minimal required interface.
@@ -167,7 +156,7 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
     }
 
     async fn fetch_headers(
-        db: BlockchainDatabase<B>,
+        db: AsyncBlockchainDb<B>,
         start: Bound<u64>,
         end: Bound<u64>,
     ) -> Result<Vec<BlockHeader>, BlockchainStateServiceError>
@@ -175,27 +164,23 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
         let (start, mut end) = convert_height_bounds(start, end);
         if end.is_none() {
             // `(n..)` means fetch block headers until this node's tip
-            end = Some(
-                async_db::get_chain_metadata(db.clone())
-                    .await?
-                    .height_of_longest_chain(),
-            );
+            end = Some(db.get_chain_metadata().await?.height_of_longest_chain());
         }
         let (start, end) = (start.unwrap_or(0), end.unwrap());
 
-        let headers = async_db::fetch_headers(db, start, end).await?;
+        let headers = db.fetch_headers(start..=end).await?;
         debug!(target: LOG_TARGET, "Fetched {} headers(s)", headers.len());
         Ok(headers)
     }
 
     async fn find_headers_after_hash(
-        db: BlockchainDatabase<B>,
+        db: AsyncBlockchainDb<B>,
         ordered_hashes: Vec<HashOutput>,
         count: u64,
     ) -> Result<Option<(usize, Vec<BlockHeader>)>, BlockchainStateServiceError>
     {
         for (i, hash) in ordered_hashes.into_iter().enumerate() {
-            match async_db::fetch_header_by_block_hash(db.clone(), hash).await? {
+            match db.fetch_header_by_block_hash(hash).await? {
                 Some(header) => {
                     if count == 0 {
                         return Ok(Some((i, Vec::new())));
@@ -208,7 +193,7 @@ impl<B: BlockchainBackend + 'static> BlockchainStateService<B> {
                             message: "count + block height will overflow u64".into(),
                         }
                     })?;
-                    let headers = async_db::fetch_headers(db.clone(), header.height + 1, end_height).await?;
+                    let headers = db.fetch_headers(header.height + 1..=end_height).await?;
                     return Ok(Some((i, headers)));
                 },
                 None => continue,

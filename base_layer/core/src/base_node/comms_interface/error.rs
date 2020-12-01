@@ -60,4 +60,6 @@ pub enum CommsInterfaceError {
     InternalError(String),
     #[error("API responded with an error: {0}")]
     ApiError(String),
+    #[error("Header not found at {0}")]
+    BlockHeaderNotFound(u64),
 }

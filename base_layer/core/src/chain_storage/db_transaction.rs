@@ -21,12 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{
-        error::ChainStorageError,
-        BlockAccumulatedData,
-        BlockHeaderAccumulatedData,
-        InProgressHorizonSyncState,
-    },
+    chain_storage::{error::ChainStorageError, InProgressHorizonSyncState},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -39,7 +34,6 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use strum_macros::Display;
 use tari_common_types::types::BlockHash;
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
@@ -48,7 +42,7 @@ use tari_crypto::tari_utilities::{
 
 #[derive(Debug)]
 pub struct DbTransaction {
-    pub operations: Vec<WriteOperation>,
+    operations: Vec<WriteOperation>,
 }
 
 impl Display for DbTransaction {
@@ -76,92 +70,114 @@ impl DbTransaction {
         DbTransaction::default()
     }
 
-    /// A general insert request. There are convenience functions for specific insert queries.
-    pub fn insert(&mut self, insert: DbKeyValuePair) {
-        self.operations.push(WriteOperation::Insert(insert));
-    }
-
     /// Set a metadata entry
-    pub fn set_metadata(&mut self, key: MetadataKey, value: MetadataValue) {
-        self.insert(DbKeyValuePair::Metadata(key, value));
+    pub fn set_metadata(&mut self, key: MetadataKey, value: MetadataValue) -> &mut Self {
+        self.operations.push(WriteOperation::SetMetadata(key, value));
+        self
     }
 
     /// A general insert request. There are convenience functions for specific delete queries.
-    pub fn delete(&mut self, delete: DbKey) {
+    pub fn delete(&mut self, delete: DbKey) -> &mut Self {
         self.operations.push(WriteOperation::Delete(delete));
+        self
+    }
+
+    /// Delete a block header at the given height
+    pub fn delete_header(&mut self, height: u64) -> &mut Self {
+        self.operations.push(WriteOperation::Delete(DbKey::BlockHeader(height)));
+        self
     }
 
     /// Delete a block
-    pub fn delete_block(&mut self, block_hash: HashOutput) {
+    pub fn delete_block(&mut self, block_hash: HashOutput) -> &mut Self {
         self.operations.push(WriteOperation::DeleteBlock(block_hash));
+        self
     }
 
     /// Inserts a transaction kernel into the current transaction.
-    pub fn insert_kernel(&mut self, kernel: TransactionKernel, header_hash: HashOutput, mmr_position: u32) {
+    pub fn insert_kernel(
+        &mut self,
+        kernel: TransactionKernel,
+        header_hash: HashOutput,
+        mmr_position: u32,
+    ) -> &mut Self
+    {
         self.operations.push(WriteOperation::InsertKernel {
             header_hash,
             kernel: Box::new(kernel),
             mmr_position,
         });
+        self
     }
 
     /// Inserts a block header into the current transaction.
-    pub fn insert_header(&mut self, header: BlockHeader) {
-        let height = header.height;
-        self.insert(DbKeyValuePair::BlockHeader(height, Box::new(header)));
-    }
-
-    /// Insert header accumulated data
-    pub fn insert_header_accumulated_data(&mut self, accumulated_data: BlockHeaderAccumulatedData) {
-        self.operations
-            .push(WriteOperation::InsertHeaderAccumulatedData(Box::new(accumulated_data)))
+    pub fn insert_header(&mut self, header: BlockHeader) -> &mut Self {
+        self.operations.push(WriteOperation::InsertHeader(Box::new(header)));
+        self
     }
 
     /// Adds a UTXO into the current transaction and update the TXO MMR.
-    pub fn insert_utxo(&mut self, utxo: TransactionOutput, header_hash: HashOutput, mmr_leaf_index: u32) {
+    pub fn insert_utxo(&mut self, utxo: TransactionOutput, header_hash: HashOutput, mmr_leaf_index: u32) -> &mut Self {
         self.operations.push(WriteOperation::InsertOutput {
             header_hash,
             output: Box::new(utxo),
             mmr_position: mmr_leaf_index,
         });
+        self
     }
 
-    pub fn insert_input(&mut self, input: TransactionInput, header_hash: HashOutput, mmr_leaf_index: u32) {
+    pub fn insert_input(&mut self, input: TransactionInput, header_hash: HashOutput, mmr_leaf_index: u32) -> &mut Self {
         self.operations.push(WriteOperation::InsertInput {
             header_hash,
             input: Box::new(input),
             mmr_position: mmr_leaf_index,
         });
+        self
+    }
+
+    /// Add the BlockHeader and contents of a `Block` (i.e. inputs, outputs and kernels) to the database.
+    /// If the `BlockHeader` already exists, then just the contents are updated along with the relevant accumulated
+    /// data.
+    pub fn insert_block(&mut self, block: Arc<Block>) -> &mut Self {
+        self.operations.push(WriteOperation::InsertBlock(block));
+        self
     }
 
     /// Stores an orphan block. No checks are made as to whether this is actually an orphan. That responsibility lies
     /// with the calling function.
-    pub fn insert_orphan(&mut self, orphan: Arc<Block>) {
-        let hash = orphan.hash();
-        self.insert(DbKeyValuePair::OrphanBlock(hash, orphan));
+    pub fn insert_orphan(&mut self, orphan: Arc<Block>) -> &mut Self {
+        self.operations.push(WriteOperation::InsertOrphanBlock(orphan));
+        self
     }
 
     /// Remove an orphan from the orphan tip set
-    pub fn remove_orphan_chain_tip(&mut self, hash: HashOutput) {
-        self.operations.push(WriteOperation::DeleteOrphanChainTip(hash))
+    pub fn remove_orphan_chain_tip(&mut self, hash: HashOutput) -> &mut Self {
+        self.operations.push(WriteOperation::DeleteOrphanChainTip(hash));
+        self
     }
 
     /// Add an orphan to the orphan tip set
-    pub fn insert_orphan_chain_tip(&mut self, hash: HashOutput) {
-        self.operations.push(WriteOperation::InsertOrphanChainTip(hash))
+    pub fn insert_orphan_chain_tip(&mut self, hash: HashOutput) -> &mut Self {
+        self.operations.push(WriteOperation::InsertOrphanChainTip(hash));
+        self
     }
 
-    /// Set block accumulated data
-    pub fn set_block_accumulated_data(&mut self, header_hash: HashOutput, data: BlockAccumulatedData) {
+    pub(crate) fn operations(&self) -> &[WriteOperation] {
+        &self.operations
+    }
+
+    pub(crate) fn into_operations(self) -> Vec<WriteOperation> {
         self.operations
-            .push(WriteOperation::UpdateBlockAccumulatedData(header_hash, data));
     }
 }
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum WriteOperation {
-    Insert(DbKeyValuePair),
+    SetMetadata(MetadataKey, MetadataValue),
+    InsertOrphanBlock(Arc<Block>),
+    InsertHeader(Box<BlockHeader>),
+    InsertBlock(Arc<Block>),
     InsertInput {
         header_hash: HashOutput,
         input: Box<TransactionInput>,
@@ -177,10 +193,8 @@ pub enum WriteOperation {
         output: Box<TransactionOutput>,
         mmr_position: u32,
     },
-    InsertHeaderAccumulatedData(Box<BlockHeaderAccumulatedData>),
     Delete(DbKey),
     DeleteBlock(HashOutput),
-    UpdateBlockAccumulatedData(HashOutput, BlockAccumulatedData),
     DeleteOrphanChainTip(HashOutput),
     InsertOrphanChainTip(HashOutput),
 }
@@ -189,7 +203,20 @@ impl fmt::Display for WriteOperation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use WriteOperation::*;
         match self {
-            Insert(pair) => write!(f, "Insert({})", pair),
+            SetMetadata(k, v) => write!(f, "SetMetadata({}, {})", k, v),
+            InsertOrphanBlock(block) => write!(
+                f,
+                "InsertBlock({}, {})",
+                block.hash().to_hex(),
+                block.body.to_counts_string()
+            ),
+            InsertHeader(header) => write!(f, "InsertBlock(#{} {})", header.height, header.hash().to_hex()),
+            InsertBlock(block) => write!(
+                f,
+                "InsertBlock({}, {})",
+                block.hash().to_hex(),
+                block.body.to_counts_string()
+            ),
             InsertKernel {
                 header_hash,
                 kernel,
@@ -224,30 +251,11 @@ impl fmt::Display for WriteOperation {
                 mmr_position
             ),
             Delete(key) => write!(f, "Delete({})", key),
-            UpdateBlockAccumulatedData(header_hash, _) => {
-                write!(f, "UpdateBlockAccumulatedData({})", header_hash.to_hex())
-            },
             DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash.to_hex()),
             InsertOrphanChainTip(hash) => write!(f, "InsertOrphanChainTip({})", hash.to_hex()),
             DeleteBlock(hash) => write!(f, "DeleteBlock({})", hash.to_hex()),
-            InsertHeaderAccumulatedData(data) => write!(f, "InsertHeaderAccumulatedData({})", data.hash.to_hex()),
         }
     }
-}
-
-/// A list of key-value pairs that are required for each insert operation
-#[derive(Debug, Display)]
-pub enum DbKeyValuePair {
-    Metadata(MetadataKey, MetadataValue),
-    BlockHeader(u64, Box<BlockHeader>),
-    OrphanBlock(HashOutput, Arc<Block>),
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy)]
-pub enum MmrTree {
-    Utxo,
-    Kernel,
-    RangeProof,
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -351,6 +359,13 @@ impl Display for DbKey {
             DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", to_hex(v))),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy)]
+pub enum MmrTree {
+    Utxo,
+    Kernel,
+    RangeProof,
 }
 
 impl Display for MmrTree {

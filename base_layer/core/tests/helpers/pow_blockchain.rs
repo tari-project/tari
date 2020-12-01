@@ -31,7 +31,6 @@ use tari_core::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{
-        get_target_difficulty,
         lwma_diff::LinearWeightedMovingAverage,
         monero_rx::{append_merge_mining_tag, tree_hash, MoneroData},
         Difficulty,
@@ -60,11 +59,10 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
     consensus_manager: &ConsensusManager,
 )
 {
-    let constants = consensus_manager.consensus_constants(0);
     let mut prev_block = chain_tip;
     for pow_algo in pow_algos {
         let new_block = chain_block(&prev_block, Vec::new(), consensus_manager);
-        let mut new_block = db.calculate_mmr_roots(new_block).unwrap();
+        let mut new_block = db.prepare_block_merkle_roots(new_block).unwrap();
         new_block.header.timestamp = prev_block.header.timestamp.increase(120);
         new_block.header.pow.pow_algo = pow_algo;
 
@@ -98,18 +96,8 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
         }
 
         let height = db.get_chain_metadata().unwrap().height_of_longest_chain();
-        let target_difficulties = db
-            .fetch_target_difficulties(pow_algo, height, constants.get_difficulty_block_window() as usize)
-            .unwrap();
-        new_block.header.pow.target_difficulty = get_target_difficulty(
-            target_difficulties,
-            constants.get_difficulty_block_window() as usize,
-            constants.get_diff_target_block_interval(pow_algo),
-            constants.min_pow_difficulty(pow_algo),
-            constants.max_pow_difficulty(pow_algo),
-            constants.get_difficulty_max_block_interval(pow_algo),
-        )
-        .unwrap();
+        let target_difficulties = db.fetch_target_difficulty(pow_algo, height).unwrap();
+        new_block.header.pow.target_difficulty = target_difficulties.calculate();
         db.add_block(new_block.clone().into()).unwrap();
         prev_block = new_block;
     }
@@ -130,7 +118,7 @@ pub fn calculate_accumulated_difficulty(
         consensus_constants.get_difficulty_max_block_interval(pow_algo),
     );
     for height in heights {
-        let header = db.fetch_header(height).unwrap();
+        let header = db.fetch_header(height).unwrap().unwrap();
         lwma.add(header.timestamp, header.pow.target_difficulty).unwrap();
     }
     lwma.get_difficulty()

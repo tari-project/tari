@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::RequestKey,
+    common::waiting_requests::RequestKey,
     transactions::{transaction::Transaction, types::Signature},
 };
 use core::fmt::{Display, Error, Formatter};

@@ -85,7 +85,7 @@ fn header_iter_fetch_in_chunks() {
 fn headers_validation() {
     let rules = ConsensusManagerBuilder::new(Network::LocalNet).build();
     let db = create_store_with_consensus(&rules);
-    let validator = HeaderValidator::new(db.clone(), rules.clone());
+    let validator = HeaderValidator::new(db.clone());
 
     let genesis = rules.get_genesis_block();
     validator.validate(&genesis.header).unwrap();
@@ -112,7 +112,7 @@ fn headers_validation() {
     let err = validator.validate(&header).unwrap_err();
     unpack_enum!(ValidationError::BlockHeaderError(err) = err);
     unpack_enum!(BlockHeaderValidationError::ProofOfWorkError(err) = err);
-    unpack_enum!(PowError::InvalidTargetDifficulty = err);
+    unpack_enum!(PowError::InvalidTargetDifficulty{..} = err);
     db.insert_valid_headers(vec![header.clone()]).unwrap();
 
     let mut header = BlockHeader::from_previous(&header).unwrap();

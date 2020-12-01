@@ -22,32 +22,34 @@
 
 //! Impls for transaction proto
 
-use super::types as proto;
-use crate::transactions::{
-    aggregated_body::AggregateBody,
-    bullet_rangeproofs::BulletRangeProof,
-    proto::utils::try_convert_all,
-    tari_amount::MicroTari,
-    transaction::{
-        KernelFeatures,
-        OutputFeatures,
-        OutputFlags,
-        Transaction,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
+use crate::{
+    proto,
+    tari_utilities::convert::try_convert_all,
+    transactions::{
+        aggregated_body::AggregateBody,
+        bullet_rangeproofs::BulletRangeProof,
+        tari_amount::MicroTari,
+        transaction::{
+            KernelFeatures,
+            OutputFeatures,
+            OutputFlags,
+            Transaction,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
+        types::{BlindingFactor, Commitment},
     },
-    types::{BlindingFactor, Commitment},
 };
 use std::convert::{TryFrom, TryInto};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 
 //---------------------------------- TransactionKernel --------------------------------------------//
 
-impl TryFrom<proto::TransactionKernel> for TransactionKernel {
+impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
     type Error = String;
 
-    fn try_from(kernel: proto::TransactionKernel) -> Result<Self, Self::Error> {
+    fn try_from(kernel: proto::types::TransactionKernel) -> Result<Self, Self::Error> {
         let excess = Commitment::from_bytes(
             &kernel
                 .excess
@@ -73,7 +75,7 @@ impl TryFrom<proto::TransactionKernel> for TransactionKernel {
     }
 }
 
-impl From<TransactionKernel> for proto::TransactionKernel {
+impl From<TransactionKernel> for proto::types::TransactionKernel {
     fn from(kernel: TransactionKernel) -> Self {
         Self {
             features: kernel.features.bits() as u32,
@@ -87,10 +89,10 @@ impl From<TransactionKernel> for proto::TransactionKernel {
 
 //---------------------------------- TransactionInput --------------------------------------------//
 
-impl TryFrom<proto::TransactionInput> for TransactionInput {
+impl TryFrom<proto::types::TransactionInput> for TransactionInput {
     type Error = String;
 
-    fn try_from(input: proto::TransactionInput) -> Result<Self, Self::Error> {
+    fn try_from(input: proto::types::TransactionInput) -> Result<Self, Self::Error> {
         let features = input
             .features
             .map(TryInto::try_into)
@@ -106,7 +108,7 @@ impl TryFrom<proto::TransactionInput> for TransactionInput {
     }
 }
 
-impl From<TransactionInput> for proto::TransactionInput {
+impl From<TransactionInput> for proto::types::TransactionInput {
     fn from(output: TransactionInput) -> Self {
         Self {
             features: Some(output.features.into()),
@@ -117,10 +119,10 @@ impl From<TransactionInput> for proto::TransactionInput {
 
 //---------------------------------- TransactionOutput --------------------------------------------//
 
-impl TryFrom<proto::TransactionOutput> for TransactionOutput {
+impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
     type Error = String;
 
-    fn try_from(output: proto::TransactionOutput) -> Result<Self, Self::Error> {
+    fn try_from(output: proto::types::TransactionOutput) -> Result<Self, Self::Error> {
         let features = output
             .features
             .map(TryInto::try_into)
@@ -140,7 +142,7 @@ impl TryFrom<proto::TransactionOutput> for TransactionOutput {
     }
 }
 
-impl From<TransactionOutput> for proto::TransactionOutput {
+impl From<TransactionOutput> for proto::types::TransactionOutput {
     fn from(output: TransactionOutput) -> Self {
         Self {
             features: Some(output.features.into()),
@@ -152,10 +154,10 @@ impl From<TransactionOutput> for proto::TransactionOutput {
 
 //---------------------------------- OutputFeatures --------------------------------------------//
 
-impl TryFrom<proto::OutputFeatures> for OutputFeatures {
+impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
     type Error = String;
 
-    fn try_from(features: proto::OutputFeatures) -> Result<Self, Self::Error> {
+    fn try_from(features: proto::types::OutputFeatures) -> Result<Self, Self::Error> {
         Ok(Self {
             flags: OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
@@ -164,7 +166,7 @@ impl TryFrom<proto::OutputFeatures> for OutputFeatures {
     }
 }
 
-impl From<OutputFeatures> for proto::OutputFeatures {
+impl From<OutputFeatures> for proto::types::OutputFeatures {
     fn from(features: OutputFeatures) -> Self {
         Self {
             flags: features.flags.bits() as u32,
@@ -175,10 +177,10 @@ impl From<OutputFeatures> for proto::OutputFeatures {
 
 //---------------------------------- AggregateBody --------------------------------------------//
 
-impl TryFrom<proto::AggregateBody> for AggregateBody {
+impl TryFrom<proto::types::AggregateBody> for AggregateBody {
     type Error = String;
 
-    fn try_from(body: proto::AggregateBody) -> Result<Self, Self::Error> {
+    fn try_from(body: proto::types::AggregateBody) -> Result<Self, Self::Error> {
         let inputs = try_convert_all(body.inputs)?;
         let outputs = try_convert_all(body.outputs)?;
         let kernels = try_convert_all(body.kernels)?;
@@ -188,7 +190,7 @@ impl TryFrom<proto::AggregateBody> for AggregateBody {
     }
 }
 
-impl From<AggregateBody> for proto::AggregateBody {
+impl From<AggregateBody> for proto::types::AggregateBody {
     fn from(body: AggregateBody) -> Self {
         let (i, o, k) = body.dissolve();
         Self {
@@ -201,10 +203,10 @@ impl From<AggregateBody> for proto::AggregateBody {
 
 //----------------------------------- Transaction ---------------------------------------------//
 
-impl TryFrom<proto::Transaction> for Transaction {
+impl TryFrom<proto::types::Transaction> for Transaction {
     type Error = String;
 
-    fn try_from(tx: proto::Transaction) -> Result<Self, Self::Error> {
+    fn try_from(tx: proto::types::Transaction) -> Result<Self, Self::Error> {
         let offset = tx
             .offset
             .map(|offset| BlindingFactor::from_bytes(&offset.data))
@@ -219,7 +221,7 @@ impl TryFrom<proto::Transaction> for Transaction {
     }
 }
 
-impl From<Transaction> for proto::Transaction {
+impl From<Transaction> for proto::types::Transaction {
     fn from(tx: Transaction) -> Self {
         Self {
             offset: Some(tx.offset.into()),

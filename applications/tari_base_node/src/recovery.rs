@@ -24,19 +24,18 @@
 use anyhow::anyhow;
 use log::*;
 use std::{
+    fs,
     io::{self, Write},
     path::Path,
     sync::Arc,
 };
-
 use tari_app_utilities::utilities::ExitCodes;
 use tari_common::{DatabaseType, GlobalConfig};
 use tari_core::{
     chain_storage::{
-        async_db,
+        async_db::AsyncBlockchainDb,
         create_lmdb_database,
         create_recovery_lmdb_database,
-        remove_lmdb_database,
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
@@ -49,6 +48,7 @@ use tari_core::{
         mocks::MockValidator,
     },
 };
+
 pub const LOG_TARGET: &str = "base_node::app";
 
 pub fn initiate_recover_db(node_config: &GlobalConfig) -> Result<(), ExitCodes> {
@@ -101,7 +101,7 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
         pruning_interval: node_config.pruned_mode_cleanup_interval,
     };
     let db = BlockchainDatabase::new(main_db, &rules, validators, db_config, true)?;
-    do_recovery(db, temp_db).await?;
+    do_recovery(db.into(), temp_db).await?;
 
     info!(
         target: LOG_TARGET,
@@ -110,7 +110,7 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
     match &node_config.db_type {
         DatabaseType::LMDB(p) => {
             let new_path = Path::new(p).join("temp_recovery");
-            remove_lmdb_database(&new_path).map_err(|e| {
+            fs::remove_dir_all(&new_path).map_err(|e| {
                 error!(target: LOG_TARGET, "Error opening recovery db: {}", e);
                 anyhow!("Could not open recovery DB: {}", e)
             })
@@ -124,7 +124,7 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
 
 // Function to handle the recovery attempt of the db
 async fn do_recovery<D: BlockchainBackend + 'static>(
-    db: BlockchainDatabase<D>,
+    db: AsyncBlockchainDb<D>,
     temp_db: D,
 ) -> Result<(), anyhow::Error>
 {
@@ -149,7 +149,7 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
             .map_err(|e| anyhow!("Could not get block from recovery db: {}", e))?
             .block;
         trace!(target: LOG_TARGET, "Adding block: {}", block);
-        async_db::add_block(db.clone(), Arc::new(block))
+        db.add_block(Arc::new(block))
             .await
             .map_err(|e| anyhow!("Stopped recovery at height {}, reason: {}", counter, e))?;
         counter += 1;

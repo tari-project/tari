@@ -35,8 +35,8 @@ use crate::{
             BaseNodeStateMachine,
         },
     },
-    blocks::{blockheader::BlockHeader, Block},
-    chain_storage::{async_db, BlockAddResult, BlockchainBackend, ChainStorageError},
+    blocks::{block_header::BlockHeader, Block},
+    chain_storage::{BlockAddResult, BlockchainBackend, ChainStorageError},
     proof_of_work::PowError,
 };
 use core::cmp::min;
@@ -262,7 +262,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     sync_peers: &mut SyncPeers,
 ) -> Result<(), BlockSyncError>
 {
-    let local_metadata = shared.db.get_chain_metadata()?;
+    let local_metadata = shared.db.get_chain_metadata().await?;
     // Filter the peers we can sync from: any peer which has an effective pruning horizon less than this nodes
     // current height
     sync_peers.retain(|p| p.chain_metadata.effective_pruned_height() <= local_metadata.height_of_longest_chain());
@@ -315,7 +315,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
         network_tip_height as i64 - sync_height as i64 >
             shared.config.block_sync_config.orphan_db_clean_out_threshold as i64
     {
-        match async_db::cleanup_all_orphans(shared.db.clone()).await {
+        match shared.db.cleanup_all_orphans().await {
             Ok(_) => info!(
                 target: LOG_TARGET,
                 "Orphan database cleaned out in preparation for multiple blocks sync ({} blocks)",
@@ -347,8 +347,8 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
         request_and_add_blocks(shared, sync_peers, block_nums).await?;
         sync_height += block_nums_count;
     }
-    let metadata = async_db::get_chain_metadata(shared.db()).await?;
-    let last_block = async_db::fetch_block(shared.db(), metadata.height_of_longest_chain()).await?;
+    let metadata = shared.db.get_chain_metadata().await?;
+    let last_block = shared.db.fetch_block(metadata.height_of_longest_chain()).await?;
 
     check_actual_difficulty_matches_advertised(shared, &last_block.block.header, sync_peers).await?;
 
@@ -452,9 +452,7 @@ async fn find_chain_split_height<B: BlockchainBackend + 'static>(
         .await?;
         for header in headers {
             // Check if header is linked to local chain
-            if let Some(prev_header) =
-                async_db::fetch_header_by_block_hash(shared.db.clone(), header.prev_hash.clone()).await?
-            {
+            if let Some(prev_header) = shared.db.fetch_header_by_block_hash(header.prev_hash.clone()).await? {
                 return if prev_header.height + 1 == header.height {
                     Ok(header.height)
                 } else {
@@ -523,7 +521,7 @@ async fn request_and_add_blocks<B: BlockchainBackend + 'static>(
                 "Adding block #{} ({}) to DB.", block_height, block_hash_hex
             );
             trace!(target: LOG_TARGET, "{}", block);
-            match async_db::add_block(shared.db.clone(), block.clone()).await {
+            match shared.db.add_block(block).await {
                 Ok(BlockAddResult::Ok) => {
                     info!(
                         target: LOG_TARGET,

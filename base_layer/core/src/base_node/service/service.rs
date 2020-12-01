@@ -29,17 +29,15 @@ use crate::{
             NodeCommsRequest,
             NodeCommsResponse,
         },
-        generate_request_key,
         proto,
-        proto::base_node::base_node_service_request::Request,
+        proto::base_node_service_request::Request,
         service::error::BaseNodeServiceError,
         state_machine_service::states::StateInfo,
-        RequestKey,
         StateMachineHandle,
-        WaitingRequests,
     },
     blocks::{Block, NewBlock},
     chain_storage::BlockchainBackend,
+    common::waiting_requests::{generate_request_key, RequestKey, WaitingRequests},
     proto as shared_protos,
 };
 use futures::{
@@ -275,7 +273,7 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_request(&self, domain_msg: DomainMessage<proto::base_node::BaseNodeServiceRequest>) {
+    fn spawn_handle_incoming_request(&self, domain_msg: DomainMessage<proto::BaseNodeServiceRequest>) {
         let inbound_nch = self.inbound_nch.clone();
         let outbound_message_service = self.outbound_message_service.clone();
         let state_machine_handle = self.state_machine_handle.clone();
@@ -288,7 +286,7 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_response(&self, domain_msg: DomainMessage<proto::base_node::BaseNodeServiceResponse>) {
+    fn spawn_handle_incoming_response(&self, domain_msg: DomainMessage<proto::BaseNodeServiceResponse>) {
         let waiting_requests = self.waiting_requests.clone();
         task::spawn(async move {
             let result = handle_incoming_response(waiting_requests, domain_msg.into_inner()).await;
@@ -344,7 +342,7 @@ where B: BlockchainBackend + 'static
         let inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
             let (request, reply_tx) = request_context.split();
-            let res = inbound_nch.handle_request(&request).await;
+            let res = inbound_nch.handle_request(request).await;
             if let Err(ref e) = res {
                 error!(
                     target: LOG_TARGET,
@@ -396,7 +394,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         .ok_or_else(|| BaseNodeServiceError::InvalidRequest("Received invalid base node request".to_string()))?;
 
     let response = inbound_nch
-        .handle_request(&request.try_into().map_err(BaseNodeServiceError::InvalidRequest)?)
+        .handle_request(request.try_into().map_err(BaseNodeServiceError::InvalidRequest)?)
         .await?;
 
     // Determine if we are synced

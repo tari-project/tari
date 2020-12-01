@@ -123,17 +123,17 @@ where B: BlockchainBackend + 'static
 
             let sync_validators = SyncValidators::full_consensus(db.clone(), rules.clone(), factories.clone());
             let node = BaseNodeStateMachine::new(
-                &db,
-                &node_local_interface,
-                &outbound_interface,
+                db.into(),
+                node_local_interface,
+                outbound_interface,
                 connectivity_requester,
                 peer_manager,
                 chain_metadata_service.get_event_stream(),
                 state_machine_config,
                 sync_validators,
-                handles.get_shutdown_signal(),
                 status_event_sender,
                 state_event_publisher,
+                handles.get_shutdown_signal(),
             );
 
             node.run().await;

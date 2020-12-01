@@ -72,7 +72,7 @@ impl<B: BlockchainBackend> Iterator for HeaderIter<'_, B> {
                 return None;
             }
 
-            match self.db.fetch_headers(start, end) {
+            match self.db.fetch_headers(start..=end) {
                 Ok(headers) => {
                     if headers.is_empty() {
                         return None;

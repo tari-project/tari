@@ -28,7 +28,7 @@ use crate::{
             BaseNodeStateMachine,
         },
     },
-    chain_storage::{async_db, BlockchainBackend},
+    chain_storage::BlockchainBackend,
 };
 
 use futures::StreamExt;
@@ -105,7 +105,7 @@ impl Listening {
                 Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata_list)) => {
                     if !peer_metadata_list.is_empty() {
                         debug!(target: LOG_TARGET, "Loading local blockchain metadata.");
-                        let local = match async_db::get_chain_metadata(shared.db.clone()).await {
+                        let local = match shared.db.get_chain_metadata().await {
                             Ok(m) => m,
                             Err(e) => {
                                 let msg = format!("Could not get local blockchain metadata. {}", e.to_string());

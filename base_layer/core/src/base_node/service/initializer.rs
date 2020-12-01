@@ -168,7 +168,7 @@ where T: BlockchainBackend + 'static
         );
         let inbound_nch = InboundNodeCommsHandlers::new(
             block_event_sender,
-            self.blockchain_db.clone(),
+            self.blockchain_db.clone().into(),
             self.mempool.clone(),
             self.consensus_manager.clone(),
             outbound_nci.clone(),
@@ -205,6 +205,6 @@ where T: BlockchainBackend + 'static
         //       keep it isolated from existing code that needs to be cleaned up. Since this can be considered a "child"
         //       service of the base node, the base node service initializer could bring other smaller services together
         //       and wrap that in a handle.
-        BlockchainStateServiceInitializer::new(self.blockchain_db.clone()).initialize(context)
+        BlockchainStateServiceInitializer::new(self.blockchain_db.clone().into()).initialize(context)
     }
 }

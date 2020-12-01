@@ -20,16 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(feature = "base_node_proto")]
-pub use crate::proto::generated::base_node;
+pub use crate::proto::generated::base_node::*;
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod chain_metadata;
-#[cfg(feature = "base_node")]
 pub mod mmr_tree;
-#[cfg(feature = "base_node")]
 pub mod request;
-#[cfg(feature = "base_node")]
 pub mod response;
-#[cfg(feature = "base_node")]
-pub use base_node::{BaseNodeServiceRequest, BaseNodeServiceResponse, ChainMetadata};

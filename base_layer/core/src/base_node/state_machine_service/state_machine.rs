@@ -36,9 +36,9 @@ use crate::{
                 SyncStatus,
             },
         },
-        validators::SyncValidators,
+        SyncValidators,
     },
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
 };
 use futures::{future, future::Either};
 use log::*;
@@ -75,7 +75,7 @@ impl Default for BaseNodeStateMachineConfig {
 /// This struct holds fields that will be used by all the various FSM state instances, including the local blockchain
 /// database and hooks to the p2p network
 pub struct BaseNodeStateMachine<B> {
-    pub(super) db: BlockchainDatabase<B>,
+    pub(super) db: AsyncBlockchainDb<B>,
     pub(super) local_node_interface: LocalNodeCommsInterface,
     pub(super) outbound_nci: OutboundNodeCommsInterface,
     pub(super) connectivity: ConnectivityRequester,
@@ -94,23 +94,23 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// Instantiate a new Base Node.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        db: &BlockchainDatabase<B>,
-        local_node_interface: &LocalNodeCommsInterface,
-        outbound_nci: &OutboundNodeCommsInterface,
+        db: AsyncBlockchainDb<B>,
+        local_node_interface: LocalNodeCommsInterface,
+        outbound_nci: OutboundNodeCommsInterface,
         connectivity: ConnectivityRequester,
         peer_manager: Arc<PeerManager>,
         metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
         config: BaseNodeStateMachineConfig,
         sync_validators: SyncValidators,
-        interrupt_signal: ShutdownSignal,
         status_event_sender: watch::Sender<StatusInfo>,
         event_publisher: broadcast::Sender<Arc<StateEvent>>,
+        interrupt_signal: ShutdownSignal,
     ) -> Self
     {
         Self {
-            db: db.clone(),
-            local_node_interface: local_node_interface.clone(),
-            outbound_nci: outbound_nci.clone(),
+            db,
+            local_node_interface,
+            outbound_nci,
             connectivity,
             peer_manager,
             metadata_event_stream,
@@ -229,10 +229,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// the node will enter a `Shutdown` state.
     pub fn get_interrupt_signal(&self) -> ShutdownSignal {
         self.interrupt_signal.clone()
-    }
-
-    pub fn db(&self) -> BlockchainDatabase<B> {
-        self.db.clone()
     }
 }
 

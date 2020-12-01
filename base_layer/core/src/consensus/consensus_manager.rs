@@ -39,10 +39,10 @@ use crate::{
         network::Network,
         ConsensusConstants,
     },
-    proof_of_work::DifficultyAdjustmentError,
+    proof_of_work::{DifficultyAdjustmentError, PowAlgorithm, TargetDifficultyWindow},
     transactions::tari_amount::MicroTari,
 };
-use std::sync::Arc;
+use std::{convert::TryFrom, sync::Arc};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -66,6 +66,10 @@ pub struct ConsensusManager {
 }
 
 impl ConsensusManager {
+    pub fn builder(network: Network) -> ConsensusManagerBuilder {
+        ConsensusManagerBuilder::new(network)
+    }
+
     /// Returns the genesis block for the selected network.
     pub fn get_genesis_block(&self) -> Block {
         match self.inner.network {
@@ -100,7 +104,7 @@ impl ConsensusManager {
         self.inner.emission.supply_at_block(height)
     }
 
-    /// Get a pointer to the consensus constants
+    /// Get a reference to consensus constants that are effective from the given height
     pub fn consensus_constants(&self, height: u64) -> &ConsensusConstants {
         let mut constants = &self.inner.consensus_constants[0];
         for c in self.inner.consensus_constants.iter() {
@@ -110,6 +114,24 @@ impl ConsensusManager {
             constants = &c
         }
         constants
+    }
+
+    /// Create a new TargetDifficulty for the given proof of work using constants that are effective from the given
+    /// height
+    pub(crate) fn new_target_difficulty(&self, pow_algo: PowAlgorithm, height: u64) -> TargetDifficultyWindow {
+        let constants = self.consensus_constants(height);
+        let block_window = constants.get_difficulty_block_window();
+
+        // TODO: 🐛🚨 Due to a previous off-by-one error the actual block window used is one less. Remove this line on
+        //       the next testnet reset. #testnetreset
+        let block_window = block_window - 1;
+        TargetDifficultyWindow::new(
+            usize::try_from(block_window).expect("difficulty block window exceeds usize::MAX"),
+            constants.get_diff_target_block_interval(pow_algo),
+            constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
+            constants.get_difficulty_max_block_interval(pow_algo),
+        )
     }
 
     /// Creates a total_coinbase offset containing all fees for the validation from block

@@ -65,7 +65,7 @@ impl SyncValidators {
     ) -> Self
     {
         Self::new(
-            HeaderValidator::new(db.clone(), rules.clone()),
+            HeaderValidator::new(db.clone()),
             ChainBalanceValidator::new(db, rules, factories),
         )
     }

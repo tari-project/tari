@@ -21,9 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod handle;
-pub mod initializer;
-mod state_machine;
-pub mod states;
-
 pub use handle::StateMachineHandle;
+
+pub mod initializer;
+
+mod state_machine;
 pub use state_machine::{BaseNodeStateMachine, BaseNodeStateMachineConfig};
+
+pub mod states;

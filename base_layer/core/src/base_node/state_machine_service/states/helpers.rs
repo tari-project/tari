@@ -28,7 +28,7 @@ use crate::{
             BaseNodeStateMachine,
         },
     },
-    blocks::blockheader::BlockHeader,
+    blocks::block_header::BlockHeader,
     chain_storage::{BlockchainBackend, MmrTree},
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},

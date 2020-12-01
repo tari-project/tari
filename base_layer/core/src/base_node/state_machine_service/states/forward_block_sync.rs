@@ -28,7 +28,7 @@ use crate::{
         },
     },
     blocks::BlockHeader,
-    chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     transactions::types::HashOutput,
 };
 use log::*;
@@ -85,13 +85,13 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
     mut sync_nodes: Vec<NodeId>,
 ) -> Result<StateEvent, String>
 {
-    let tip = shared.db.fetch_tip_header().map_err(|e| e.to_string())?;
+    let tip = shared.db.fetch_tip_header().await.map_err(|e| e.to_string())?;
     if let StateInfo::BlockSync(ref mut info) = shared.info {
         info.tip_height = tip.height;
     }
 
     shared.publish_event_info();
-    let mut from_headers = fetch_headers_to_send::<B>(&tip, &shared.db);
+    let mut from_headers = fetch_headers_to_send(&tip, &shared.db).await;
     let mut sync_node = next_sync_node(&mut sync_nodes);
 
     loop {
@@ -141,9 +141,10 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                     if let Some(block) = shared
                         .db
                         .fetch_header_by_block_hash(first_header.prev_hash.clone())
+                        .await
                         .map_err(|e| e.to_string())?
                     {
-                        if shared.db.fetch_tip_header().map_err(|e| e.to_string())? != block {
+                        if shared.db.fetch_tip_header().await.map_err(|e| e.to_string())? != block {
                             // If peer returns genesis block, it means that there is a split, but it is further back
                             // than the headers we sent.
                             let oldest_header_sent = from_headers.last().unwrap();
@@ -154,7 +155,7 @@ async fn synchronize_blocks<B: BlockchainBackend + 'static>(
                                      headers",
                                     current_sync_node
                                 );
-                                from_headers = fetch_headers_to_send::<B>(oldest_header_sent, &shared.db);
+                                from_headers = fetch_headers_to_send(oldest_header_sent, &shared.db).await;
                                 continue;
                             } else {
                                 debug!(
@@ -236,15 +237,15 @@ fn next_sync_node(sync_nodes: &mut Vec<NodeId>) -> Option<NodeId> {
     Some(sync_nodes.remove(index))
 }
 
-fn fetch_headers_to_send<B: BlockchainBackend + 'static>(
+async fn fetch_headers_to_send<B: BlockchainBackend + 'static>(
     most_recent_header: &BlockHeader,
-    db: &BlockchainDatabase<B>,
+    db: &AsyncBlockchainDb<B>,
 ) -> Vec<BlockHeader>
 {
     let mut from_headers = vec![];
     from_headers.push(most_recent_header.clone());
     for i in 1..cmp::min(most_recent_header.height, MAX_HEADER_HASHES_TO_SEND) {
-        if let Ok(header) = db.fetch_header(most_recent_header.height - i) {
+        if let Ok(Some(header)) = db.fetch_header(most_recent_header.height - i).await {
             from_headers.push(header)
         }
     }

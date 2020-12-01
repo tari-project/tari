@@ -21,7 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{BlockAccumulatedData, BlockchainBackend, BlockchainDatabase, MmrTree},
+    chain_storage::{BlockchainBackend, BlockchainDatabase, MmrTree},
+    tari_utilities::hex::Hex,
     transactions::{transaction::Transaction, types::CryptoFactories},
     validation::{Validation, ValidationError},
 };
@@ -90,14 +91,21 @@ fn verify_timelocks(tx: &Transaction, current_height: u64) -> Result<(), Validat
 
 // This function checks that the inputs and outputs do not exist in the STxO set.
 fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<(), ValidationError> {
-    // TODO: Implement tip header.
-    // let tip = db.fetch_tip_header()?;
-    let tip = db.fetch_last_header()?;
-
-    let BlockAccumulatedData { deleted, .. } = db.fetch_block_accumulated_data(&tip.hash())?;
+    // `ChainMetadata::best_block` must always have the hash of the tip block.
+    // NOTE: the backend makes no guarantee that the tip header has a corresponding full body (interrupted header sync,
+    // pruned node) however the chain metadata MUST always be correct
+    let metadata = db.fetch_chain_metadata()?;
+    let data = db
+        .fetch_block_accumulated_data(metadata.best_block())?
+        .unwrap_or_else(|| {
+            panic!(
+                "Expected best block `{}` to have corresponding accumulated block data, but none was found",
+                metadata.best_block().to_hex()
+            )
+        });
     for input in tx.body.inputs() {
         if let Some(index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &input.hash())? {
-            if deleted.contains(index) {
+            if data.deleted().contains(index) {
                 warn!(
                     target: LOG_TARGET,
                     "Transaction validation failed due to already spent input: {}", input

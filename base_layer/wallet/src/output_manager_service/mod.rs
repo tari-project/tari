@@ -34,7 +34,7 @@ use log::*;
 use std::sync::Arc;
 use tari_comms_dht::Dht;
 use tari_core::{
-    base_node::proto::base_node as BaseNodeProto,
+    base_node::proto,
     consensus::{ConsensusConstantsBuilder, Network},
     transactions::types::CryptoFactories,
 };
@@ -95,7 +95,7 @@ where T: OutputManagerBackend + 'static
         }
     }
 
-    fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>> {
+    fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>> {
         trace!(
             target: LOG_TARGET,
             "Subscription '{}' for topic '{:?}' created.",
@@ -104,7 +104,7 @@ where T: OutputManagerBackend + 'static
         );
         self.subscription_factory
             .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<BaseNodeProto::BaseNodeServiceResponse>)
+            .map(map_decode::<proto::BaseNodeServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
 }

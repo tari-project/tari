@@ -29,8 +29,8 @@ pub enum PowError {
     InvalidProofOfWork,
     #[error("Target difficulty {target} not achieved. Achieved difficulty: {achieved}")]
     AchievedDifficultyTooLow { target: Difficulty, achieved: Difficulty },
-    #[error("Invalid target difficulty")]
-    InvalidTargetDifficulty,
+    #[error("Invalid target difficulty (expected: {expected}, got: {got})")]
+    InvalidTargetDifficulty { expected: Difficulty, got: Difficulty },
     #[cfg(feature = "base_node")]
     #[error("Invalid merge mining data or operation: {0}")]
     MergeMineError(#[from] super::monero_rx::MergeMineError),

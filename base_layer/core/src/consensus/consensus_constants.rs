@@ -379,7 +379,7 @@ impl ConsensusConstants {
         // Note these values are all placeholders for final values
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
+        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
             max_difficulty: u64::MAX.into(),

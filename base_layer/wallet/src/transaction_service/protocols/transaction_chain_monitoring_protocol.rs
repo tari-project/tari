@@ -35,15 +35,15 @@ use std::{convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
-    base_node::proto::{
-        base_node as BaseNodeProto,
-        base_node::{
+    base_node::{
+        proto,
+        proto::{
             base_node_service_request::Request as BaseNodeRequestProto,
             base_node_service_response::Response as BaseNodeResponseProto,
         },
     },
     mempool::{
-        proto::mempool as MempoolProto,
+        proto as mempool_proto,
         service::{MempoolResponse, MempoolServiceResponse},
         TxStorageResponse,
     },
@@ -67,7 +67,7 @@ where TBackend: TransactionBackend + 'static
     timeout: Duration,
     base_node_public_key: CommsPublicKey,
     mempool_response_receiver: Option<Receiver<MempoolServiceResponse>>,
-    base_node_response_receiver: Option<Receiver<BaseNodeProto::BaseNodeServiceResponse>>,
+    base_node_response_receiver: Option<Receiver<proto::BaseNodeServiceResponse>>,
     timeout_update_receiver: Option<broadcast::Receiver<Duration>>,
 }
 
@@ -82,7 +82,7 @@ where TBackend: TransactionBackend + 'static
         timeout: Duration,
         base_node_public_key: CommsPublicKey,
         mempool_response_receiver: Receiver<MempoolServiceResponse>,
-        base_node_response_receiver: Receiver<BaseNodeProto::BaseNodeServiceResponse>,
+        base_node_response_receiver: Receiver<proto::BaseNodeServiceResponse>,
         timeout_update_receiver: broadcast::Receiver<Duration>,
     ) -> Self
     {
@@ -177,9 +177,9 @@ where TBackend: TransactionBackend + 'static
 
             // Send Mempool query
             let tx_excess_sig = completed_tx.transaction.body.kernels()[0].excess_sig.clone();
-            let mempool_request = MempoolProto::MempoolServiceRequest {
+            let mempool_request = mempool_proto::MempoolServiceRequest {
                 request_key: self.id,
-                request: Some(MempoolProto::mempool_service_request::Request::GetTxStateByExcessSig(
+                request: Some(mempool_proto::mempool_service_request::Request::GetTxStateByExcessSig(
                     tx_excess_sig.into(),
                 )),
             };
@@ -194,8 +194,8 @@ where TBackend: TransactionBackend + 'static
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             // Send Base Node query
-            let request = BaseNodeRequestProto::FetchMatchingUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
-            let service_request = BaseNodeProto::BaseNodeServiceRequest {
+            let request = BaseNodeRequestProto::FetchMatchingUtxos(proto::HashOutputs { outputs: hashes });
+            let service_request = proto::BaseNodeServiceRequest {
                 request_key: self.id,
                 request: Some(request),
             };
@@ -427,10 +427,10 @@ where TBackend: TransactionBackend + 'static
     async fn handle_base_node_response(
         &mut self,
         tx_id: TxId,
-        response: BaseNodeProto::BaseNodeServiceResponse,
+        response: proto::BaseNodeServiceResponse,
     ) -> Result<bool, TransactionServiceProtocolError>
     {
-        let response: Vec<tari_core::transactions::proto::types::TransactionOutput> = match response.response {
+        let response: Vec<tari_core::proto::types::TransactionOutput> = match response.response {
             Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => outputs.outputs,
             _ => {
                 return Ok(false);

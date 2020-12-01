@@ -364,11 +364,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let cm = ConsensusManagerBuilder::new(self.node_config.network.into()).build();
         let block_hash = new_block.hash();
         let mining_hash = new_block.header.merged_mining_hash();
-        let pow = match new_block.header.pow.pow_algo {
-            PowAlgorithm::Monero => 0,
-            PowAlgorithm::Blake => 1,
-            PowAlgorithm::Sha3 => 2,
-        };
+        let pow = new_block.header.pow_algo() as i32;
         let target_difficulty = new_block.header.pow.target_difficulty;
         let reward = cm.calculate_coinbase_and_fees(&new_block);
         let block: Option<tari_rpc::Block> = Some(new_block.into());

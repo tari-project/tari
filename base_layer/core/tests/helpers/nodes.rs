@@ -457,7 +457,7 @@ fn setup_base_node_services(
         ))
         .add_initializer(BaseNodeServiceInitializer::new(
             subscription_factory.clone(),
-            blockchain_db.clone(),
+            blockchain_db.clone().into(),
             mempool.clone(),
             consensus_manager.clone(),
             base_node_service_config,

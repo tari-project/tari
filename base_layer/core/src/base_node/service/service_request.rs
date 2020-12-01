@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::{comms_interface::NodeCommsRequest, RequestKey};
+use crate::{base_node::comms_interface::NodeCommsRequest, common::waiting_requests::RequestKey};
 use serde::{Deserialize, Serialize};
 
 /// Request type for a received BaseNodeService request.

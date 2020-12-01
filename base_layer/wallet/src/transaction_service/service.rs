@@ -66,9 +66,9 @@ use tari_comms_dht::outbound::OutboundMessageRequester;
 #[cfg(feature = "test_harness")]
 use tari_core::transactions::{tari_amount::uT, types::BlindingFactor};
 use tari_core::{
-    base_node::proto::base_node as BaseNodeProto,
+    base_node::proto as base_node_proto,
     consensus::ConsensusConstants,
-    mempool::{proto::mempool as MempoolProto, service::MempoolServiceResponse},
+    mempool::{proto as mempool_proto, service::MempoolServiceResponse},
     transactions::{
         tari_amount::MicroTari,
         transaction::Transaction,
@@ -136,7 +136,7 @@ pub struct TransactionService<
     resources: TransactionServiceResources<TBackend>,
     pending_transaction_reply_senders: HashMap<TxId, Sender<(CommsPublicKey, RecipientSignedMessage)>>,
     mempool_response_senders: HashMap<u64, Sender<MempoolServiceResponse>>,
-    base_node_response_senders: HashMap<u64, Sender<BaseNodeProto::BaseNodeServiceResponse>>,
+    base_node_response_senders: HashMap<u64, Sender<base_node_proto::BaseNodeServiceResponse>>,
     send_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
     finalized_transaction_senders: HashMap<u64, Sender<(CommsPublicKey, TxId, Transaction)>>,
     receiver_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
@@ -159,8 +159,8 @@ where
     TTxStream: Stream<Item = DomainMessage<proto::TransactionSenderMessage>>,
     TTxReplyStream: Stream<Item = DomainMessage<proto::RecipientSignedMessage>>,
     TTxFinalizedStream: Stream<Item = DomainMessage<proto::TransactionFinalizedMessage>>,
-    MReplyStream: Stream<Item = DomainMessage<MempoolProto::MempoolServiceResponse>>,
-    BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
+    MReplyStream: Stream<Item = DomainMessage<mempool_proto::MempoolServiceResponse>>,
+    BNResponseStream: Stream<Item = DomainMessage<base_node_proto::BaseNodeServiceResponse>>,
     TTxCancelledStream: Stream<Item = DomainMessage<proto::TransactionCancelledMessage>>,
     TBackend: TransactionBackend + 'static,
 {
@@ -1330,7 +1330,7 @@ where
     /// Handle an incoming mempool response message
     pub async fn handle_mempool_response(
         &mut self,
-        response: MempoolProto::MempoolServiceResponse,
+        response: mempool_proto::MempoolServiceResponse,
     ) -> Result<(), TransactionServiceError>
     {
         let response = MempoolServiceResponse::try_from(response).unwrap();
@@ -1497,7 +1497,7 @@ where
     /// Handle an incoming basenode response message
     pub async fn handle_base_node_response(
         &mut self,
-        response: BaseNodeProto::BaseNodeServiceResponse,
+        response: base_node_proto::BaseNodeServiceResponse,
     ) -> Result<(), TransactionServiceError>
     {
         let sender = match self.base_node_response_senders.get_mut(&response.request_key) {

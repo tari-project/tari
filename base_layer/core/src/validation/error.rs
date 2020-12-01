@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{blockheader::BlockHeaderValidationError, BlockValidationError},
+    blocks::{block_header::BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
     proof_of_work::PowError,
     transactions::transaction::TransactionError,
@@ -65,6 +65,14 @@ pub enum ValidationError {
     ChainBalanceValidationFailed(u64),
     #[error("Proof of work error: {0}")]
     ProofOfWorkError(#[from] PowError),
+    #[error("Attempted to validate genesis block")]
+    ValidatingGenesis,
+    #[error("Previous block hash not found")]
+    PreviousHashNotFound,
+    #[error("Duplicate or unsorted input found in block body")]
+    UnsortedOrDuplicateInput,
+    #[error("Duplicate or unsorted output found in block body")]
+    UnsortedOrDuplicateOutput,
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

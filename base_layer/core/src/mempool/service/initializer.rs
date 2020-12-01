@@ -24,7 +24,7 @@ use crate::{
     base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
     mempool::{
         mempool::Mempool,
-        proto,
+        proto as mempool_proto,
         service::{
             inbound_handlers::MempoolInboundHandlers,
             local_service::LocalMempoolService,
@@ -34,7 +34,8 @@ use crate::{
         },
         MempoolServiceConfig,
     },
-    transactions::{proto::types::Transaction as ProtoTransaction, transaction::Transaction},
+    proto,
+    transactions::transaction::Transaction,
 };
 use futures::{channel::mpsc, future, Future, Stream, StreamExt};
 use log::*;
@@ -80,18 +81,18 @@ impl MempoolServiceInitializer {
     }
 
     /// Get a stream for inbound Mempool service request messages
-    fn inbound_request_stream(&self) -> impl Stream<Item = DomainMessage<proto::MempoolServiceRequest>> {
+    fn inbound_request_stream(&self) -> impl Stream<Item = DomainMessage<mempool_proto::MempoolServiceRequest>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::MempoolRequest, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::MempoolServiceRequest>)
+            .map(map_decode::<mempool_proto::MempoolServiceRequest>)
             .filter_map(ok_or_skip_result)
     }
 
     /// Get a stream for inbound Mempool service response messages
-    fn inbound_response_stream(&self) -> impl Stream<Item = DomainMessage<proto::MempoolServiceResponse>> {
+    fn inbound_response_stream(&self) -> impl Stream<Item = DomainMessage<mempool_proto::MempoolServiceResponse>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::MempoolResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::MempoolServiceResponse>)
+            .map(map_decode::<mempool_proto::MempoolServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
 
@@ -104,7 +105,7 @@ impl MempoolServiceInitializer {
 }
 
 async fn extract_transaction(msg: Arc<PeerMessage>) -> Option<DomainMessage<Transaction>> {
-    match msg.decode_message::<ProtoTransaction>() {
+    match msg.decode_message::<proto::types::Transaction>() {
         Err(e) => {
             warn!(
                 target: LOG_TARGET,

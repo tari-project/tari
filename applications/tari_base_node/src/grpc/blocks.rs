@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::cmp;
 use tari_core::{base_node::LocalNodeCommsInterface, blocks::BlockHeader, chain_storage::HistoricalBlock};
 use tonic::Status;
 
@@ -38,7 +39,7 @@ pub const BLOCK_OUTPUT_SIZE: u64 = 13;
 
 /// Returns the block heights based on the start and end heights or from_tip
 pub async fn block_heights(
-    handler: LocalNodeCommsInterface,
+    mut handler: LocalNodeCommsInterface,
     start_height: u64,
     end_height: u64,
     from_tip: u64,
@@ -47,9 +48,15 @@ pub async fn block_heights(
     if end_height > 0 {
         Ok(BlockHeader::get_height_range(start_height, end_height))
     } else if from_tip > 0 {
-        BlockHeader::get_heights_from_tip(handler, from_tip)
+        let metadata = handler
+            .get_metadata()
             .await
-            .map_err(|e| Status::internal(e.to_string()))
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let tip = metadata.height_of_longest_chain();
+        // Avoid overflow
+        let height_from_tip = cmp::min(tip, from_tip);
+        let start = cmp::max(tip - height_from_tip, 0);
+        Ok(BlockHeader::get_height_range(start, tip))
     } else {
         Err(Status::invalid_argument("Invalid arguments provided"))
     }

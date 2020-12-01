@@ -43,7 +43,8 @@ use tari_core::{
     consensus::{ConsensusManagerBuilder, Network},
     mempool::{MempoolServiceConfig, TxStorageResponse},
     mining::Miner,
-    transactions::{helpers::schema_to_transaction, proto, tari_amount::T, types::CryptoFactories},
+    proto,
+    transactions::{helpers::schema_to_transaction, tari_amount::T, types::CryptoFactories},
     txn_schema,
 };
 use tari_mmr::MmrCacheConfig;
