@@ -271,7 +271,7 @@ macro_rules! try_fetch {
 ///
 /// ```
 /// use tari_core::{
-///     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
+///     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
 ///     consensus::{ConsensusManagerBuilder, Network},
 ///     transactions::types::HashDigest,
 ///     validation::{mocks::MockValidator, StatefulValidation},

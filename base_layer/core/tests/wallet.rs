@@ -177,7 +177,10 @@ fn wallet_base_node_integration_test() {
             low_power_polling_timeout: Duration::from_secs(10),
             ..Default::default()
         }),
+        None,
         Network::Rincewind,
+        None,
+        None,
         None,
     );
     let mut runtime = create_runtime();
@@ -227,7 +230,16 @@ fn wallet_base_node_integration_test() {
         dns_seeds: Default::default(),
         dns_seeds_use_dnssec: false,
     };
-    let bob_wallet_config = WalletConfig::new(bob_comms_config, factories.clone(), None, Network::Rincewind, None);
+    let bob_wallet_config = WalletConfig::new(
+        bob_comms_config,
+        factories.clone(),
+        None,
+        None,
+        Network::Rincewind,
+        None,
+        None,
+        None,
+    );
 
     let bob_wallet = runtime
         .block_on(Wallet::new(

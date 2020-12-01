@@ -138,7 +138,10 @@ async fn create_wallet(
         comms_config,
         factories,
         Some(transaction_service_config),
+        None,
         Network::Rincewind,
+        None,
+        None,
         None,
     );
 
@@ -587,7 +590,16 @@ async fn test_import_utxo() {
         dns_seeds: Default::default(),
         dns_seeds_use_dnssec: false,
     };
-    let config = WalletConfig::new(comms_config, factories.clone(), None, Network::Rincewind, None);
+    let config = WalletConfig::new(
+        comms_config,
+        factories.clone(),
+        None,
+        None,
+        Network::Rincewind,
+        None,
+        None,
+        None,
+    );
     let mut alice_wallet = Wallet::new(
         config,
         WalletMemoryDatabase::new(),
@@ -658,7 +670,16 @@ async fn test_data_generation() {
         dns_seeds_use_dnssec: false,
     };
 
-    let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind, None);
+    let config = WalletConfig::new(
+        comms_config,
+        factories,
+        None,
+        None,
+        Network::Rincewind,
+        None,
+        None,
+        None,
+    );
 
     let transaction_backend = TransactionMemoryDatabase::new();
 
