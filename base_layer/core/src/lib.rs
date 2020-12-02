@@ -66,6 +66,8 @@ pub mod mempool;
 #[cfg(feature = "transactions")]
 pub mod transactions;
 
+mod common;
+
 // Re-export the crypto crate to make exposing traits etc easier for clients of this crate
 pub use crypto::tari_utilities;
 pub use tari_crypto as crypto;

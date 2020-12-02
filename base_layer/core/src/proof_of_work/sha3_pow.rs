@@ -20,13 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::BlockHeader, proof_of_work::Difficulty, U256};
-use log::*;
+use crate::{
+    blocks::BlockHeader,
+    proof_of_work::{difficulty::util::big_endian_difficulty, Difficulty},
+};
 use sha3::{Digest, Sha3_256};
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
-
-const LOG_TARGET: &str = "c::bn::pow::sha3";
-const MAX_TARGET: U256 = U256::MAX;
+use tari_crypto::tari_utilities::ByteArray;
 
 /// A simple sha3 proof of work. This is currently intended to be used for testing and perhaps Testnet until
 /// Monero merge-mining is active.
@@ -53,13 +52,10 @@ pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
         .to_vec()
 }
 
-pub fn sha3_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
+fn sha3_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
     let hash = sha3_hash(header);
     let hash = Sha3_256::digest(&hash);
-    trace!(target: LOG_TARGET, "Sha3 hash result: {}", hash.to_vec().to_hex());
-    let scalar = U256::from_big_endian(&hash); // Big endian so the hash has leading zeroes
-    let result = MAX_TARGET / scalar;
-    let difficulty = result.low_u64().into();
+    let difficulty = big_endian_difficulty(&hash);
     (difficulty, hash.to_vec())
 }
 

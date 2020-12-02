@@ -774,11 +774,7 @@ fn local_get_new_block_template_and_get_new_block() {
     assert!(node.mempool.insert(txs[1].clone()).is_ok());
 
     runtime.block_on(async {
-        let block_template = node
-            .local_nci
-            .get_new_block_template(PowAlgorithm::Blake)
-            .await
-            .unwrap();
+        let block_template = node.local_nci.get_new_block_template(PowAlgorithm::Sha3).await.unwrap();
         assert_eq!(block_template.header.height, 1);
         assert_eq!(block_template.body.kernels().len(), 2);
 
@@ -805,7 +801,7 @@ fn local_submit_block() {
     let mut event_stream = node.local_nci.get_block_event_stream();
     let block0 = db.fetch_block(0).unwrap().block().clone();
     let block1 = db
-        .calculate_mmr_roots(chain_block(&block0, vec![], &consensus_manager))
+        .prepare_block_merkle_roots(chain_block(&block0, vec![], &consensus_manager))
         .unwrap();
     runtime.block_on(async {
         assert!(node

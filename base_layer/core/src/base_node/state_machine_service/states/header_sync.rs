@@ -35,7 +35,7 @@ use crate::{
         BaseNodeStateMachine,
     },
     blocks::BlockHeader,
-    chain_storage::{async_db, BlockchainBackend, BlockchainDatabase, ChainStorageError},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     iterators::VecChunkIter,
     validation::ValidationError,
 };
@@ -67,7 +67,7 @@ impl HeaderSync {
         shared: &mut BaseNodeStateMachine<B>,
     ) -> StateEvent
     {
-        match async_db::get_chain_metadata(shared.db.clone()).await {
+        match shared.db.get_chain_metadata().await {
             Ok(local_metadata) => {
                 shared
                     .set_state_info(StateInfo::HeaderSync(BlockSyncInfo::new(
@@ -145,7 +145,7 @@ struct HeaderSynchronisation<'a, 'b, B> {
 
 impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
     pub async fn synchronize(&mut self) -> Result<(), HeaderSyncError> {
-        let tip_header = async_db::fetch_tip_header(self.db()).await?;
+        let tip_header = self.db().fetch_tip_header().await?;
         let tip_header_height = tip_header.height;
         if tip_header_height >= self.sync_height {
             debug!(
@@ -269,7 +269,7 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
         );
         let first_header = &headers[0];
         let db = &self.shared.db;
-        let tip_header = async_db::fetch_tip_header(db.clone()).await?;
+        let tip_header = db.fetch_tip_header().await?;
         if tip_header.height + 1 != first_header.height {
             return Err(HeaderSyncError::InvalidHeader(format!(
                 "Headers do not link to the current chain tip header (Tip height = {}, Received header height = {})",
@@ -290,7 +290,7 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
                 validator
                     .validate(&header)
                     .map_err(HeaderSyncError::HeaderValidationFailed)?;
-                db.insert_valid_headers(vec![header])?;
+                db.inner().insert_valid_headers(vec![header])?;
             }
             Ok(())
         })
@@ -313,7 +313,7 @@ impl<B: BlockchainBackend + 'static> HeaderSynchronisation<'_, '_, B> {
     }
 
     #[inline]
-    fn db(&self) -> BlockchainDatabase<B> {
+    fn db(&self) -> AsyncBlockchainDb<B> {
         self.shared.db.clone()
     }
 }

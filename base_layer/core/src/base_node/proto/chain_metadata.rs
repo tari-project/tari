@@ -20,19 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::base_node as proto;
-use std::convert::TryFrom;
+use crate::base_node::proto;
+use std::{convert::TryFrom, mem};
 use tari_common_types::chain_metadata::ChainMetadata;
 
 impl TryFrom<proto::ChainMetadata> for ChainMetadata {
     type Error = String;
 
     fn try_from(metadata: proto::ChainMetadata) -> Result<Self, Self::Error> {
-        let accumulated_difficulty = {
-            let mut accumulated_difficulty_array = [0; 16];
-            accumulated_difficulty_array.copy_from_slice(&metadata.accumulated_difficulty[0..16]);
-            u128::from_be_bytes(accumulated_difficulty_array)
-        };
+        const ACC_DIFFICULTY_ARRAY_LEN: usize = mem::size_of::<u128>();
+        if metadata.accumulated_difficulty.len() != ACC_DIFFICULTY_ARRAY_LEN {
+            return Err(format!(
+                "Invalid accumulated difficulty byte length. {} was expected but the actual length was {}",
+                ACC_DIFFICULTY_ARRAY_LEN,
+                metadata.accumulated_difficulty.len()
+            ));
+        }
+
+        let mut acc_diff = [0; ACC_DIFFICULTY_ARRAY_LEN];
+        acc_diff.copy_from_slice(&metadata.accumulated_difficulty[0..ACC_DIFFICULTY_ARRAY_LEN]);
+        let accumulated_difficulty = u128::from_be_bytes(acc_diff);
 
         Ok(ChainMetadata::new(
             metadata
@@ -56,5 +63,11 @@ impl From<ChainMetadata> for proto::ChainMetadata {
             effective_pruned_height: metadata.effective_pruned_height(),
             accumulated_difficulty,
         }
+    }
+}
+
+impl proto::ChainMetadata {
+    pub fn height_of_longest_chain(&self) -> u64 {
+        self.height_of_longest_chain.unwrap_or(0)
     }
 }

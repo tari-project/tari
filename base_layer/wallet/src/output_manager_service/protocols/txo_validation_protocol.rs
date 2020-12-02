@@ -33,9 +33,9 @@ use std::{cmp, collections::HashMap, convert::TryFrom, fmt, sync::Arc, time::Dur
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
-    base_node::proto::{
-        base_node as BaseNodeProto,
-        base_node::{
+    base_node::{
+        proto,
+        proto::{
             base_node_service_request::Request as BaseNodeRequestProto,
             base_node_service_response::Response as BaseNodeResponseProto,
         },
@@ -57,7 +57,7 @@ where TBackend: OutputManagerBackend + 'static
     resources: OutputManagerResources<TBackend>,
     base_node_public_key: CommsPublicKey,
     timeout: Duration,
-    base_node_response_receiver: Option<broadcast::Receiver<Arc<BaseNodeProto::BaseNodeServiceResponse>>>,
+    base_node_response_receiver: Option<broadcast::Receiver<Arc<proto::BaseNodeServiceResponse>>>,
     pending_queries: HashMap<u64, Vec<Vec<u8>>>,
 }
 
@@ -72,7 +72,7 @@ where TBackend: OutputManagerBackend + 'static
         resources: OutputManagerResources<TBackend>,
         base_node_public_key: CommsPublicKey,
         timeout: Duration,
-        base_node_response_receiver: broadcast::Receiver<Arc<BaseNodeProto::BaseNodeServiceResponse>>,
+        base_node_response_receiver: broadcast::Receiver<Arc<proto::BaseNodeServiceResponse>>,
     ) -> Self
     {
         Self {
@@ -264,11 +264,11 @@ where TBackend: OutputManagerBackend + 'static
 
             let request_key = if r == 0 { self.id } else { OsRng.next_u64() };
 
-            let request = BaseNodeRequestProto::FetchMatchingUtxos(BaseNodeProto::HashOutputs {
+            let request = BaseNodeRequestProto::FetchMatchingUtxos(proto::HashOutputs {
                 outputs: output_hashes.clone(),
             });
 
-            let service_request = BaseNodeProto::BaseNodeServiceRequest {
+            let service_request = proto::BaseNodeServiceRequest {
                 request_key,
                 request: Some(request),
             };
@@ -337,7 +337,7 @@ where TBackend: OutputManagerBackend + 'static
 
     async fn handle_base_node_response(
         &mut self,
-        response: Arc<BaseNodeProto::BaseNodeServiceResponse>,
+        response: Arc<proto::BaseNodeServiceResponse>,
     ) -> Result<bool, OutputManagerProtocolError>
     {
         let request_key = response.request_key;
@@ -383,8 +383,7 @@ where TBackend: OutputManagerBackend + 'static
             self.id
         );
 
-        let response: Vec<tari_core::transactions::proto::types::TransactionOutput> = match (*response).clone().response
-        {
+        let response: Vec<tari_core::proto::types::TransactionOutput> = match (*response).clone().response {
             Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => outputs.outputs,
             _ => {
                 return Err(OutputManagerProtocolError::new(

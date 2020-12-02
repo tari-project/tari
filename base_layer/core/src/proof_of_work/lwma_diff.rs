@@ -11,13 +11,14 @@ use crate::proof_of_work::{
     error::DifficultyAdjustmentError,
 };
 use log::*;
-use std::{cmp, collections::VecDeque};
+use std::cmp;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
+
 pub const LOG_TARGET: &str = "c::pow::lwma_diff";
 
+#[derive(Debug, Clone)]
 pub struct LinearWeightedMovingAverage {
-    timestamps: VecDeque<EpochTime>,
-    target_difficulties: VecDeque<Difficulty>,
+    target_difficulties: Vec<(EpochTime, Difficulty)>,
     block_window: usize,
     target_time: u64,
     initial_difficulty: Difficulty,
@@ -25,16 +26,9 @@ pub struct LinearWeightedMovingAverage {
 }
 
 impl LinearWeightedMovingAverage {
-    pub fn new(
-        block_window: usize,
-        target_time: u64,
-        initial_difficulty: Difficulty,
-        max_block_time: u64,
-    ) -> LinearWeightedMovingAverage
-    {
-        LinearWeightedMovingAverage {
-            timestamps: VecDeque::with_capacity(block_window + 1),
-            target_difficulties: VecDeque::with_capacity(block_window + 1),
+    pub fn new(block_window: usize, target_time: u64, initial_difficulty: Difficulty, max_block_time: u64) -> Self {
+        Self {
+            target_difficulties: Vec::with_capacity(block_window + 1),
             block_window,
             target_time,
             initial_difficulty,
@@ -42,32 +36,31 @@ impl LinearWeightedMovingAverage {
         }
     }
 
-    #[allow(clippy::needless_range_loop)]
     fn calculate(&self) -> Difficulty {
-        let timestamps = &self.timestamps;
-        if timestamps.len() <= 1 {
-            // return INITIAL_DIFFICULTY;
+        if self.target_difficulties.len() <= 1 {
             return self.initial_difficulty;
         }
 
         // Use the array length rather than block_window to include early cases where the no. of pts < block_window
-        let n = (timestamps.len() - 1) as u64;
+        let n = (self.target_difficulties.len() - 1) as u64;
 
         let mut weighted_times: u64 = 0;
-        let mut difficulty: u64 = 0;
-        for diff in self.target_difficulties.iter().skip(1) {
-            difficulty += diff.as_u64();
-        }
+        let difficulty = self
+            .target_difficulties
+            .iter()
+            .skip(1)
+            .fold(0u64, |difficulty, (_, d)| difficulty + d.as_u64());
+
         let ave_difficulty = difficulty as f64 / n as f64;
 
-        let mut previous_timestamp = timestamps[0];
+        let (mut previous_timestamp, _) = self.target_difficulties[0];
         let mut this_timestamp;
         // Loop through N most recent blocks.
-        for i in 1..=n as usize {
+        for (i, (timestamp, _)) in self.target_difficulties.iter().skip(1).enumerate() {
             // We cannot have if solve_time < 1 then solve_time = 1, this will greatly increase the next timestamp
             // difficulty which will lower the difficulty
-            if timestamps[i] > previous_timestamp {
-                this_timestamp = timestamps[i];
+            if *timestamp > previous_timestamp {
+                this_timestamp = *timestamp;
             } else {
                 this_timestamp = previous_timestamp.increase(1);
             }
@@ -76,7 +69,7 @@ impl LinearWeightedMovingAverage {
 
             // Give linearly higher weight to more recent solve times.
             // Note: This will not overflow for practical values of block_window and solve time.
-            weighted_times += solve_time * i as u64;
+            weighted_times += solve_time * (i + 1) as u64;
         }
         // k is the sum of weights (1+2+..+n) * target_time
         let k = n * (n + 1) * self.target_time / 2;
@@ -88,12 +81,12 @@ impl LinearWeightedMovingAverage {
             self.target_time,
             self.block_window,
             n,
-            timestamps[0],
-            timestamps[n as usize],
+            self.target_difficulties[0].0,
+            self.target_difficulties[n as usize].0,
             weighted_times,
             k,
-            self.target_difficulties[0],
-            self.target_difficulties[n as usize],
+            self.target_difficulties[0].1,
+            self.target_difficulties[n as usize].1,
             ave_difficulty,
             target
         );
@@ -102,29 +95,59 @@ impl LinearWeightedMovingAverage {
                 target: LOG_TARGET,
                 "Difficulty has overflowed, current is: {:?}", target
             );
-            panic!("Difficulty target has overflowed");
+            panic!("Difficulty target has overflowed. Target is {}", target);
         }
         let target = target.ceil() as u64; // difficulty difference of 1 should not matter much, but difficulty should never be below 1, ceil(0.9) = 1
         trace!(target: LOG_TARGET, "New target difficulty: {}", target);
         target.into()
     }
+
+    #[inline]
+    fn capacity(&self) -> usize {
+        self.target_difficulties.capacity()
+    }
+
+    #[inline]
+    pub fn is_at_capacity(&self) -> bool {
+        self.num_samples() == self.capacity()
+    }
+
+    #[inline]
+    pub fn num_samples(&self) -> usize {
+        self.target_difficulties.len()
+    }
+
+    #[inline]
+    pub(super) fn block_window(&self) -> usize {
+        self.block_window
+    }
+
+    pub fn add_front(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) {
+        debug_assert!(
+            self.num_samples() <= self.block_window() + 1,
+            "LinearWeightedMovingAverage: len exceeded block_window"
+        );
+        if self.is_at_capacity() {
+            self.target_difficulties.pop();
+        }
+        self.target_difficulties.insert(0, (timestamp, target_difficulty));
+    }
+
+    pub fn add_back(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) {
+        debug_assert!(
+            self.num_samples() <= self.block_window() + 1,
+            "LinearWeightedMovingAverage: len exceeded block_window"
+        );
+        if self.is_at_capacity() {
+            self.target_difficulties.remove(0);
+        }
+        self.target_difficulties.push((timestamp, target_difficulty));
+    }
 }
 
 impl DifficultyAdjustment for LinearWeightedMovingAverage {
     fn add(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) -> Result<(), DifficultyAdjustmentError> {
-        trace!(
-            target: LOG_TARGET,
-            "Adding new timestamp and difficulty requested: {:?}, {:?}",
-            timestamp,
-            target_difficulty
-        );
-
-        self.timestamps.push_back(timestamp);
-        self.target_difficulties.push_back(target_difficulty);
-        while self.timestamps.len() > self.block_window + 1 {
-            self.timestamps.pop_front();
-            self.target_difficulties.pop_front();
-        }
+        self.add_back(timestamp, target_difficulty);
         Ok(())
     }
 
@@ -141,6 +164,26 @@ mod test {
     fn lwma_zero_len() {
         let dif = LinearWeightedMovingAverage::new(90, 120, 1.into(), 120 * 6);
         assert_eq!(dif.get_difficulty(), Difficulty::min());
+    }
+
+    #[test]
+    fn lwma_is_at_capacity() {
+        // This is important to check because using a VecDeque can cause bugs unless the following is accounted for
+        // let v = VecDeq::with_capacity(10);
+        // assert_eq!(v.capacity(), 11);
+        // A Vec was chosen because it ended up being simpler to use
+        let dif = LinearWeightedMovingAverage::new(0, 120, 1.into(), 120 * 6);
+        assert_eq!(dif.capacity(), 1);
+        let mut dif = LinearWeightedMovingAverage::new(1, 120, 1.into(), 120 * 6);
+        dif.add_front(60.into(), 100.into());
+        assert_eq!(dif.capacity(), 2);
+        assert_eq!(dif.num_samples(), 1);
+        dif.add_front(60.into(), 100.into());
+        assert_eq!(dif.num_samples(), 2);
+        assert_eq!(dif.capacity(), 2);
+        dif.add_front(60.into(), 100.into());
+        assert_eq!(dif.num_samples(), 2);
+        assert_eq!(dif.capacity(), 2);
     }
 
     #[test]
@@ -178,13 +221,13 @@ mod test {
         assert_eq!(dif.get_difficulty(), 10.into());
     }
 
-    #[test]
     // Data for 5-period moving average
     // Timestamp: 60, 120, 180, 240, 300, 350, 380, 445, 515, 615, 975, 976, 977, 978, 979
     // Intervals: 60,  60,  60,  60,  60,  50,  30,  65,  70, 100, 360,   1,   1,   1,   1
     // Diff:     100, 100, 100, 100, 100, 105, 128, 123, 116,  94,  39,  46,  55,  75, 148
     // Acum dif: 100, 200, 300, 400, 500, 605, 733, 856, 972,1066,1105,1151,1206,1281,1429
     // Target:     1, 100, 100, 100, 100, 107, 136, 130, 120,  94,  36,  39,  47,  67, 175
+    #[test]
     fn lwma_calculate() {
         let mut dif = LinearWeightedMovingAverage::new(5, 60, 1.into(), 60 * 6);
         let _ = dif.add(60.into(), 100.into());

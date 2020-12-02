@@ -55,10 +55,10 @@ use tari_core::{
         TxStorageResponse,
     },
     proof_of_work::Difficulty,
-    test_helpers::blockchain::create_store,
+    proto,
+    test_helpers::blockchain::create_test_blockchain_db,
     transactions::{
         helpers::{schema_to_transaction, spend_utxos},
-        proto,
         tari_amount::{uT, T},
         transaction::{OutputFeatures, Transaction},
         types::CryptoFactories,
@@ -369,7 +369,7 @@ fn test_reorg() {
     db.rewind_to_height(2).unwrap();
 
     let template = chain_block(&blocks[2], vec![], &consensus_manager);
-    let reorg_block3 = db.calculate_mmr_roots(template).unwrap();
+    let reorg_block3 = db.prepare_block_merkle_roots(template).unwrap();
 
     mempool
         .process_reorg(vec![blocks[3].clone().into()], vec![reorg_block3.into()])
@@ -381,7 +381,7 @@ fn test_reorg() {
 
     // "Mine" block 4
     let template = chain_block(&blocks[3], vec![], &consensus_manager);
-    let reorg_block4 = db.calculate_mmr_roots(template).unwrap();
+    let reorg_block4 = db.prepare_block_merkle_roots(template).unwrap();
 
     // test that process_reorg can handle the case when removed_blocks is empty
     // see https://github.com/tari-project/tari/issues/2101#issuecomment-680726940
@@ -393,7 +393,7 @@ fn test_orphaned_mempool_transactions() {
     let network = Network::LocalNet;
     let (store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
     // A parallel store that will "mine" the orphan chain
-    let mut miner = create_store();
+    let mut miner = create_test_blockchain_db();
     let schemas = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
         to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T]
@@ -775,19 +775,19 @@ fn block_event_and_reorg_event_handling() {
     // These blocks are manually constructed to allow the block event system to be used.
     let mut block1 = bob
         .blockchain_db
-        .calculate_mmr_roots(chain_block(&block0, vec![tx1], &consensus_manager))
+        .prepare_block_merkle_roots(chain_block(&block0, vec![tx1], &consensus_manager))
         .unwrap();
     find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from(1));
 
     let mut block2a = bob
         .blockchain_db
-        .calculate_mmr_roots(chain_block(&block1, vec![tx2, tx3], &consensus_manager))
+        .prepare_block_merkle_roots(chain_block(&block1, vec![tx2, tx3], &consensus_manager))
         .unwrap();
     find_header_with_achieved_difficulty(&mut block2a.header, Difficulty::from(1));
     // Block2b also builds on Block1 but has a stronger PoW
     let mut block2b = bob
         .blockchain_db
-        .calculate_mmr_roots(chain_block(&block1, vec![tx4, tx5], &consensus_manager))
+        .prepare_block_merkle_roots(chain_block(&block1, vec![tx4, tx5], &consensus_manager))
         .unwrap();
     find_header_with_achieved_difficulty(&mut block2b.header, Difficulty::from(10));
 

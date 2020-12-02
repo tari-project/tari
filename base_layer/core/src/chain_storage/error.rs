@@ -52,6 +52,12 @@ pub enum ChainStorageError {
     BeyondPruningHorizon,
     #[error("An invalid query was attempted: {0}")]
     InvalidQuery(String),
+    #[error("Invalid argument `{arg}` in `{func}`: {message}")]
+    InvalidArguments {
+        func: &'static str,
+        arg: &'static str,
+        message: String,
+    },
     #[error("The requested {entity} was not found via {field}:{value} in the database")]
     ValueNotFound {
         entity: String,

@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::{
-        proto::base_node::{FindChainSplitRequest, FindChainSplitResponse, SyncBlocksRequest, SyncHeadersRequest},
+        proto::{FindChainSplitRequest, FindChainSplitResponse, SyncBlocksRequest, SyncHeadersRequest},
         service::blockchain_state::BlockchainStateServiceHandle,
         sync_rpc::BaseNodeSyncService,
     },

@@ -32,7 +32,7 @@ use helpers::{
 use std::ops::Deref;
 use tari_core::{
     blocks::Block,
-    chain_storage::{async_db, BlockAddResult},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult},
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     transactions::{
         helpers::schema_to_transaction,
@@ -60,13 +60,14 @@ fn find_utxo(output: &UnblindedOutput, block: &Block, factory: &CommitmentFactor
 fn fetch_async_kernel() {
     let (db, blocks, _, _) = create_blockchain_db_no_cut_through();
     test_async(|rt| {
+        let db = AsyncBlockchainDb::new(db);
         for block in blocks.into_iter() {
             block.body.kernels().into_iter().for_each(|k| {
-                let db = db.clone();
                 let k = k.clone();
                 let hash = k.hash();
+                let db = db.clone();
                 rt.spawn(async move {
-                    let kern_db = async_db::fetch_kernel(db, hash).await;
+                    let kern_db = db.fetch_kernel(hash).await;
                     assert_eq!(k, kern_db.unwrap());
                 });
             });
@@ -78,16 +79,14 @@ fn fetch_async_kernel() {
 fn fetch_async_headers() {
     let (db, blocks, _, _) = create_blockchain_db_no_cut_through();
     test_async(move |rt| {
+        let db = AsyncBlockchainDb::new(db);
         for block in blocks.into_iter() {
             let height = block.header.height;
             let hash = block.hash();
             let db = db.clone();
             rt.spawn(async move {
-                let header_height = async_db::fetch_header(db.clone(), height).await.unwrap();
-                let header_hash = async_db::fetch_header_by_block_hash(db.clone(), hash)
-                    .await
-                    .unwrap()
-                    .unwrap();
+                let header_height = db.fetch_header(height).await.unwrap().unwrap();
+                let header_hash = db.fetch_header_by_block_hash(hash).await.unwrap().unwrap();
                 assert_eq!(block.header, header_height);
                 assert_eq!(block.header, header_hash);
             });
@@ -99,12 +98,12 @@ fn fetch_async_headers() {
 fn async_rewind_to_height() {
     let (db, blocks, _, _) = create_blockchain_db_no_cut_through();
     test_async(move |rt| {
-        let dbc = db.clone();
+        let db = AsyncBlockchainDb::new(db);
         rt.spawn(async move {
-            async_db::rewind_to_height(dbc.clone(), 2).await.unwrap();
-            let result = async_db::fetch_block(dbc.clone(), 3).await;
+            db.rewind_to_height(2).await.unwrap();
+            let result = db.fetch_block(3).await;
             assert!(result.is_err());
-            let block = async_db::fetch_block(dbc.clone(), 2).await.unwrap();
+            let block = db.fetch_block(2).await.unwrap();
             assert_eq!(block.confirmations(), 1);
             assert_eq!(blocks[2], Block::from(block));
         });
@@ -138,14 +137,14 @@ fn fetch_async_utxo() {
 fn fetch_async_block() {
     let (db, blocks, _, _) = create_blockchain_db_no_cut_through();
     test_async(move |rt| {
-        for block in blocks.into_iter() {
-            let height = block.header.height;
-            let db = db.clone();
-            rt.spawn(async move {
-                let block_check = async_db::fetch_block(db.clone(), height).await.unwrap();
+        let db = AsyncBlockchainDb::new(db);
+        rt.spawn(async move {
+            for block in blocks.into_iter() {
+                let height = block.header.height;
+                let block_check = db.fetch_block(height).await.unwrap();
                 assert_eq!(&block, block_check.block());
-            });
-        }
+            }
+        });
     });
 }
 
@@ -160,14 +159,12 @@ fn async_add_new_block() {
         .map(|t| t.deref().clone())
         .collect();
     let new_block = chain_block(&blocks.last().unwrap(), txns, &consensus_manager);
-    let new_block = db.calculate_mmr_roots(new_block).unwrap();
+    let new_block = db.prepare_block_merkle_roots(new_block).unwrap();
     test_async(|rt| {
-        let dbc = db.clone();
+        let db = AsyncBlockchainDb::new(db);
         rt.spawn(async move {
-            let result = async_db::add_block(dbc.clone(), new_block.clone().into())
-                .await
-                .unwrap();
-            let block = async_db::fetch_block(dbc.clone(), 1).await.unwrap();
+            let result = db.add_block(new_block.clone().into()).await.unwrap();
+            let block = db.fetch_block(1).await.unwrap();
             match result {
                 BlockAddResult::Ok => assert_eq!(Block::from(block).hash(), new_block.hash()),
                 _ => panic!("Unexpected result"),
@@ -184,10 +181,10 @@ fn async_add_block_fetch_orphan() {
     let orphan = create_orphan_block(7, vec![], &consensus);
     let block_hash = orphan.hash();
     test_async(move |rt| {
-        let dbc = db.clone();
+        let db = AsyncBlockchainDb::new(db);
         rt.spawn(async move {
-            async_db::add_block(dbc.clone(), orphan.clone().into()).await.unwrap();
-            let block = async_db::fetch_orphan(dbc.clone(), block_hash).await.unwrap();
+            db.add_block(orphan.clone().into()).await.unwrap();
+            let block = db.fetch_orphan(block_hash).await.unwrap();
             assert_eq!(orphan, block);
         });
     });

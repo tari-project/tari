@@ -42,7 +42,7 @@ use std::{cmp::Ordering, collections::HashMap, fmt, sync::Arc, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
-    base_node::proto::base_node as BaseNodeProto,
+    base_node::proto,
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
@@ -87,14 +87,14 @@ where TBackend: OutputManagerBackend + 'static
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_response_stream: Option<BNResponseStream>,
-    base_node_response_publisher: broadcast::Sender<Arc<BaseNodeProto::BaseNodeServiceResponse>>,
+    base_node_response_publisher: broadcast::Sender<Arc<proto::BaseNodeServiceResponse>>,
     shutdown_signal: Option<ShutdownSignal>,
 }
 
 impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream>
 where
     TBackend: OutputManagerBackend + 'static,
-    BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
+    BNResponseStream: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
 {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
@@ -345,7 +345,7 @@ where
     /// Handle an incoming basenode response message
     async fn handle_base_node_response(
         &mut self,
-        response: BaseNodeProto::BaseNodeServiceResponse,
+        response: proto::BaseNodeServiceResponse,
     ) -> Result<(), OutputManagerError>
     {
         // Publish this response to any protocols that are subscribed

@@ -27,11 +27,16 @@ use crate::{
         BlockchainBackend,
         BlockchainDatabase,
         ChainStorageError,
+        DbTransaction,
         HistoricalBlock,
         InProgressHorizonSyncState,
+        MetadataKey,
+        MetadataValue,
         MmrTree,
+        TargetDifficulties,
     },
-    proof_of_work::{Difficulty, PowAlgorithm},
+    common::rolling_vec::RollingVec,
+    proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
@@ -40,7 +45,7 @@ use crate::{
 };
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{sync::Arc, time::Instant};
+use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
 use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_mmr::Hash;
 
@@ -67,10 +72,13 @@ where F: FnOnce() -> R {
     ret
 }
 
-macro_rules! make_async {
-    ($fn:ident() -> $rtype:ty, $name:expr) => {
-        pub async fn $fn<T>(db: BlockchainDatabase<T>) -> Result<$rtype, ChainStorageError>
-        where T: BlockchainBackend + 'static {
+macro_rules! make_async_fn {
+    (
+     $(#[$outer:meta])*
+     $fn:ident() -> $rtype:ty, $name:expr) => {
+        $(#[$outer])*
+        pub async fn $fn(&self) -> Result<$rtype, ChainStorageError> {
+            let db = self.db.clone();
             tokio::task::spawn_blocking(move || {
                 trace_log($name, move || db.$fn())
             })
@@ -78,60 +86,180 @@ macro_rules! make_async {
         }
     };
 
-    ($fn:ident($($param:ident:$ptype:ty),+) -> $rtype:ty, $name:expr) => {
-        pub async fn $fn<T>(db: BlockchainDatabase<T>, $($param: $ptype),+) -> Result<$rtype, ChainStorageError>
-        where T: BlockchainBackend + 'static {
+
+    (
+     $(#[$outer:meta])*
+     $fn:ident$(< $( $lt:tt $( : $clt:path )? ),+ >)?($($param:ident:$ptype:ty),+) -> $rtype:ty, $name:expr) => {
+        $(#[$outer])*
+        pub async fn $fn$(< $( $lt $( : $clt )? ),+ +Sync+Send + 'static >)?(&self, $($param: $ptype),+) -> Result<$rtype, ChainStorageError> {
+            let db = self.db.clone();
             tokio::task::spawn_blocking(move || {
                 trace_log($name, move || db.$fn($($param),+))
             })
-                .await?
+            .await?
         }
     };
 }
 
-//---------------------------------- Metadata --------------------------------------------//
-make_async!(get_chain_metadata() -> ChainMetadata, "get_chain_metadata");
-make_async!(set_chain_metadata(metadata: ChainMetadata) -> (), "set_chain_metadata");
+/// Asynchronous version of the BlockchainDatabase.
+/// This component proxies all functions within BlockchainDatabase, executing each on tokio's blocking thread pool.
+pub struct AsyncBlockchainDb<B> {
+    db: BlockchainDatabase<B>,
+}
 
-//---------------------------------- Kernels --------------------------------------------//
-make_async!(fetch_kernel(hash: HashOutput) -> TransactionKernel, "fetch_kernel");
+impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
+    pub fn new(db: BlockchainDatabase<B>) -> Self {
+        Self { db }
+    }
 
-//---------------------------------- TXO --------------------------------------------//
-make_async!(fetch_utxo(hash: HashOutput) -> Option<TransactionOutput>, "fetch_utxo");
-make_async!(fetch_utxos(hashes: Vec<HashOutput>, is_spent_as_of: Option<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
+    pub fn write_transaction(&self) -> AsyncDbTransaction<'_, B> {
+        AsyncDbTransaction::new(self)
+    }
 
-//---------------------------------- Headers --------------------------------------------//
-make_async!(fetch_header(block_num: u64) -> BlockHeader, "fetch_header");
-make_async!(fetch_headers(start: u64, end_inclusive: u64) -> Vec<BlockHeader>, "fetch_headers");
-make_async!(fetch_header_by_block_hash(hash: HashOutput) -> Option<BlockHeader>, "fetch_header_by_block_hash");
-make_async!(fetch_tip_header() -> BlockHeader, "fetch_header");
-make_async!(insert_valid_headers(headers: Vec<BlockHeader>) -> (), "insert_valid_headers");
-make_async!(fetch_target_difficulties(pow_algo: PowAlgorithm, height: u64, block_window: usize) -> Vec<(EpochTime, Difficulty)>, "fetch_target_difficulties");
+    pub fn into_inner(self) -> BlockchainDatabase<B> {
+        self.db
+    }
 
-//---------------------------------- MMR --------------------------------------------//
-make_async!(calculate_mmr_roots(template: NewBlockTemplate) -> Block, "calculate_mmr_roots");
-make_async!(fetch_mmr_node_count(tree: MmrTree, height: u64) -> u32, "fetch_mmr_node_count");
-make_async!(fetch_mmr_nodes(tree: MmrTree, pos: u32, count: u32, hist_height:Option<u64>) -> Vec<(Vec<u8>, bool)>, "fetch_mmr_nodes");
-make_async!(insert_mmr_node(tree: MmrTree, hash: Hash, deleted: bool) -> (), "insert_mmr_node");
-make_async!(rewind_to_height(height: u64) -> Vec<Arc<Block>>, "rewind_to_height");
+    pub fn inner(&self) -> &BlockchainDatabase<B> {
+        &self.db
+    }
+}
 
-//---------------------------------- Block --------------------------------------------//
-make_async!(add_block(block: Arc<Block>) -> BlockAddResult, "add_block");
-make_async!(cleanup_all_orphans() -> (), "cleanup_all_orphans");
-make_async!(block_exists(block_hash: BlockHash) -> bool, "block_exists");
-make_async!(fetch_block(height: u64) -> HistoricalBlock, "fetch_block");
-make_async!(fetch_blocks(start: u64, end_inclusive: u64) -> Vec<HistoricalBlock>, "fetch_blocks");
-make_async!(fetch_orphan(hash: HashOutput) -> Block, "fetch_orphan");
-make_async!(fetch_block_with_hash(hash: HashOutput) -> Option<HistoricalBlock>, "fetch_block_with_hash");
-make_async!(fetch_block_with_kernel(excess_sig: Signature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
-make_async!(fetch_block_with_stxo(commitment: Commitment) -> Option<HistoricalBlock>, "fetch_block_with_stxo");
-make_async!(fetch_block_with_utxo(commitment: Commitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
+impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
+    make_async_fn!(write(transaction: DbTransaction) -> (), "write");
 
-//---------------------------------- Horizon Sync --------------------------------------------//
-make_async!(get_horizon_sync_state() -> Option<InProgressHorizonSyncState>, "get_horizon_sync_state");
-make_async!(set_horizon_sync_state(state: InProgressHorizonSyncState) -> (), "set_horizon_sync_state");
-make_async!(horizon_sync_begin() -> InProgressHorizonSyncState, "horizon_sync_begin");
-make_async!(horizon_sync_commit() -> (), "horizon_sync_commit");
-make_async!(horizon_sync_rollback() -> (), "horizon_sync_rollback");
-make_async!(horizon_sync_insert_kernels(kernels: Vec<TransactionKernel>) -> (), "horizon_sync_insert_kernels");
-make_async!(horizon_sync_spend_utxos(hash: Vec<HashOutput>) -> (), "horizon_sync_spend_utxos");
+    //---------------------------------- Metadata --------------------------------------------//
+    make_async_fn!(get_chain_metadata() -> ChainMetadata, "get_chain_metadata");
+
+    make_async_fn!(set_chain_metadata(metadata: ChainMetadata) -> (), "set_chain_metadata");
+
+    //---------------------------------- Kernels --------------------------------------------//
+    make_async_fn!(fetch_kernel(hash: HashOutput) -> TransactionKernel, "fetch_kernel");
+
+    //---------------------------------- TXO --------------------------------------------//
+    make_async_fn!(fetch_utxo(hash: HashOutput) -> Option<TransactionOutput>, "fetch_utxo");
+
+    make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>, is_spent_as_of: Option<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
+
+    //---------------------------------- MMR --------------------------------------------//
+    make_async_fn!(prepare_block_merkle_roots(template: NewBlockTemplate) -> Block, "create_block");
+
+    make_async_fn!(fetch_mmr_node_count(tree: MmrTree, height: u64) -> u32, "fetch_mmr_node_count");
+
+    make_async_fn!(fetch_mmr_nodes(tree: MmrTree, pos: u32, count: u32, hist_height:Option<u64>) -> Vec<(Vec<u8>, bool)>, "fetch_mmr_nodes");
+
+    make_async_fn!(insert_mmr_node(tree: MmrTree, hash: Hash, deleted: bool) -> (), "insert_mmr_node");
+
+    make_async_fn!(rewind_to_height(height: u64) -> Vec<Arc<Block>>, "rewind_to_height");
+
+    //---------------------------------- Headers --------------------------------------------//
+    make_async_fn!(fetch_header(height: u64) -> Option<BlockHeader>, "fetch_header");
+
+    make_async_fn!(fetch_headers<T: RangeBounds<u64>>(bounds: T) -> Vec<BlockHeader>, "fetch_headers");
+
+    make_async_fn!(fetch_header_by_block_hash(hash: HashOutput) -> Option<BlockHeader>, "fetch_header_by_block_hash");
+
+    make_async_fn!(
+         /// Find the first matching header in a list of block hashes, returning the index of the match and the BlockHeader. Or None if not found.
+        find_headers_after_hash<I: IntoIterator<Item = HashOutput>>(ordered_hashes: I, count: u64) -> Option<(usize, Vec<BlockHeader>)>,
+        "find_headers_after_hash"
+    );
+
+    make_async_fn!(fetch_tip_header() -> BlockHeader, "fetch_header");
+
+    make_async_fn!(insert_valid_headers(headers: Vec<BlockHeader>) -> (), "insert_valid_headers");
+
+    make_async_fn!(fetch_target_difficulty(pow_algo: PowAlgorithm, height: u64) -> TargetDifficultyWindow, "fetch_target_difficulty");
+
+    //---------------------------------- Block --------------------------------------------//
+    make_async_fn!(add_block(block: Arc<Block>) -> BlockAddResult, "add_block");
+
+    make_async_fn!(cleanup_all_orphans() -> (), "cleanup_all_orphans");
+
+    make_async_fn!(block_exists(block_hash: BlockHash) -> bool, "block_exists");
+
+    make_async_fn!(fetch_block(height: u64) -> HistoricalBlock, "fetch_block");
+
+    make_async_fn!(fetch_blocks<T: RangeBounds<u64>>(bounds: T) -> Vec<HistoricalBlock>, "fetch_blocks");
+
+    make_async_fn!(fetch_orphan(hash: HashOutput) -> Block, "fetch_orphan");
+
+    make_async_fn!(fetch_block_by_hash(hash: HashOutput) -> Option<HistoricalBlock>, "fetch_block_by_hash");
+
+    make_async_fn!(fetch_block_with_kernel(excess_sig: Signature) -> Option<HistoricalBlock>, "fetch_block_with_kernel");
+
+    make_async_fn!(fetch_block_with_stxo(commitment: Commitment) -> Option<HistoricalBlock>, "fetch_block_with_stxo");
+
+    make_async_fn!(fetch_block_with_utxo(commitment: Commitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
+
+    //---------------------------------- Horizon Sync --------------------------------------------//
+    make_async_fn!(get_horizon_sync_state() -> Option<InProgressHorizonSyncState>, "get_horizon_sync_state");
+
+    make_async_fn!(set_horizon_sync_state(state: InProgressHorizonSyncState) -> (), "set_horizon_sync_state");
+
+    make_async_fn!(horizon_sync_begin() -> InProgressHorizonSyncState, "horizon_sync_begin");
+
+    make_async_fn!(horizon_sync_commit() -> (), "horizon_sync_commit");
+
+    make_async_fn!(horizon_sync_rollback() -> (), "horizon_sync_rollback");
+
+    make_async_fn!(horizon_sync_insert_kernels(kernels: Vec<TransactionKernel>) -> (), "horizon_sync_insert_kernels");
+
+    make_async_fn!(horizon_sync_spend_utxos(hash: Vec<HashOutput>) -> (), "horizon_sync_spend_utxos");
+
+    //---------------------------------- Misc. --------------------------------------------//
+    make_async_fn!(fetch_block_timestamps(start_hash: HashOutput) -> RollingVec<EpochTime>, "fetch_block_timestamps");
+
+    make_async_fn!(fetch_target_difficulties(start_hash: HashOutput) -> TargetDifficulties, "fetch_target_difficulties");
+
+    make_async_fn!(fetch_block_hashes_from_header_tip(n: usize, offset: usize) -> Vec<HashOutput>, "fetch_block_hashes_from_header_tip");
+}
+
+impl<B: BlockchainBackend + 'static> From<BlockchainDatabase<B>> for AsyncBlockchainDb<B> {
+    fn from(db: BlockchainDatabase<B>) -> Self {
+        Self::new(db)
+    }
+}
+
+impl<B> Clone for AsyncBlockchainDb<B> {
+    fn clone(&self) -> Self {
+        Self { db: self.db.clone() }
+    }
+}
+
+pub struct AsyncDbTransaction<'a, B> {
+    db: &'a AsyncBlockchainDb<B>,
+    transaction: DbTransaction,
+}
+
+impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
+    pub fn new(db: &'a AsyncBlockchainDb<B>) -> Self {
+        Self {
+            db,
+            transaction: DbTransaction::new(),
+        }
+    }
+
+    pub fn insert_header(&mut self, header: BlockHeader) -> &mut Self {
+        self.transaction.insert_header(header);
+        self
+    }
+
+    /// Add the BlockHeader and contents of a `Block` (i.e. inputs, outputs and kernels) to the database.
+    /// If the `BlockHeader` already exists, then just the contents are updated along with the relevant accumulated
+    /// data.
+    pub fn insert_block(&mut self, block: Arc<Block>) -> &mut Self {
+        self.transaction.insert_block(block);
+        self
+    }
+
+    pub fn set_metadata(&mut self, key: MetadataKey, value: MetadataValue) -> &mut Self {
+        self.transaction.set_metadata(key, value);
+        self
+    }
+
+    pub async fn commit(&mut self) -> Result<(), ChainStorageError> {
+        let transaction = mem::take(&mut self.transaction);
+        self.db.write(transaction).await
+    }
+}

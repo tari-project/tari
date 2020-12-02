@@ -24,7 +24,6 @@
 // use crate::helpers::database::create_store;
 use crate::helpers::{
     block_builders::{
-        _generate_new_block_with_coinbase,
         append_block,
         chain_block,
         create_genesis_block,
@@ -36,9 +35,7 @@ use crate::helpers::{
     sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb},
     test_blockchain::TestBlockchain,
 };
-use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
-use std::thread;
 use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_core::{
     blocks::{genesis_block, Block, BlockHeader},
@@ -51,24 +48,22 @@ use tari_core::{
         ChainStorageError,
         DbTransaction,
         InProgressHorizonSyncState,
-        MmrTree,
         Validators,
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     proof_of_work::Difficulty,
-    test_helpers::blockchain::{create_store, create_test_db},
+    test_helpers::blockchain::{create_test_blockchain_db, create_test_db},
     transactions::{
-        helpers::{create_test_kernel, create_utxo, spend_utxos},
+        helpers::{create_test_kernel, spend_utxos},
         tari_amount::{uT, MicroTari, T},
-        transaction::TransactionOutput,
-        types::{CryptoFactories, HashDigest},
+        types::CryptoFactories,
     },
     tx,
     txn_schema,
-    validation::{block_validators::MockStatelessBlockValidator, mocks::MockValidator, ValidationError},
+    validation::{mocks::MockValidator, ValidationError},
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
-use tari_mmr::{MmrCacheConfig, MutableMmr};
+use tari_mmr::MmrCacheConfig;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
@@ -76,7 +71,7 @@ use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 fn write_and_fetch_metadata() {
     // let network = Network::LocalNet;
     // let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_store();
+    let store = create_test_blockchain_db();
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 0);
 
@@ -105,7 +100,7 @@ fn write_and_fetch_metadata() {
 fn fetch_nonexistent_kernel() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_store();
+    let store = create_test_blockchain_db();
     let h = vec![0u8; 32];
     unpack_enum!(
         ChainStorageError::ValueNotFound { entity, field, value } = store.fetch_kernel(h.clone()).unwrap_err()
@@ -119,7 +114,7 @@ fn fetch_nonexistent_kernel() {
 fn insert_and_fetch_kernel() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_store();
+    let store = create_test_blockchain_db();
     let kernel1 = create_test_kernel(5.into(), 0);
     let kernel2 = create_test_kernel(10.into(), 0);
     let hash1 = kernel1.hash();
@@ -136,7 +131,7 @@ fn insert_and_fetch_kernel() {
 fn fetch_nonexistent_header() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_store();
+    let store = create_test_blockchain_db();
     unpack_enum!(ChainStorageError::ValueNotFound { entity, field, value } = store.fetch_header(1).unwrap_err());
     assert_eq!(entity, "BlockHeader");
     assert_eq!(field, "Height");
@@ -147,7 +142,7 @@ fn fetch_nonexistent_header() {
 fn insert_and_fetch_header() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_store();
+    let store = create_test_blockchain_db();
     let mut header1 = BlockHeader::new(0);
     header1.height = 42;
     let header2 = BlockHeader::from_previous(&header1).unwrap();
@@ -161,8 +156,8 @@ fn insert_and_fetch_header() {
     assert_eq!(entity, "BlockHeader");
     assert_eq!(field, "Height");
     assert_eq!(value, "1");
-    assert_eq!(store.fetch_header(42).unwrap(), header1);
-    assert_eq!(store.fetch_header(43).unwrap(), header2);
+    assert_eq!(store.fetch_header(42).unwrap().unwrap(), header1);
+    assert_eq!(store.fetch_header(43).unwrap().unwrap(), header2);
 }
 
 #[test]
@@ -184,7 +179,7 @@ fn insert_and_fetch_utxo() {
 fn insert_and_fetch_orphan() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_store();
+    let store = create_test_blockchain_db();
     let txs = vec![
         (tx!(1000.into(), fee: 20.into(), inputs: 2, outputs: 1)).0,
         (tx!(2000.into(), fee: 30.into(), inputs: 1, outputs: 1)).0,
@@ -446,7 +441,7 @@ fn add_multiple_blocks() {
     // Create new database with genesis block
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_store();
+    let store = create_test_blockchain_db();
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 0);
     let block0 = store.fetch_block(0).unwrap().block().clone();
@@ -557,7 +552,7 @@ fn rewind_past_horizon_height() {
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
         pruning_horizon: 2,
-        pruning_interval: 50,
+        pruning_interval: 2,
     };
     let store = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
 
@@ -567,7 +562,9 @@ fn rewind_past_horizon_height() {
     let _block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
 
     let metadata = store.get_chain_metadata().unwrap();
-    let horizon_height = metadata.horizon_block(metadata.height_of_longest_chain());
+    assert_eq!(metadata.height_of_longest_chain(), 4);
+    let horizon_height = metadata.effective_pruned_height();
+    assert_eq!(horizon_height, 2);
     assert!(store.rewind_to_height(horizon_height - 1).is_err());
     assert!(store.rewind_to_height(horizon_height).is_ok());
     assert_eq!(store.get_height().unwrap(), horizon_height);
@@ -613,7 +610,7 @@ fn handle_tip_reorg() {
     let consensus_manager_fork = ConsensusManagerBuilder::new(network)
         .with_block(blocks[0].clone())
         .build();
-    let mut orphan_store = create_store();
+    let mut orphan_store = create_test_blockchain_db();
     orphan_store.add_block(blocks[1].clone().into()).unwrap();
     let mut orphan_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan_outputs = vec![outputs[0].clone(), outputs[1].clone()];
@@ -732,7 +729,7 @@ fn handle_reorg() {
     let consensus_manager_fork = ConsensusManagerBuilder::new(network)
         .with_block(blocks[0].clone())
         .build();
-    let mut orphan1_store = create_store();
+    let mut orphan1_store = create_test_blockchain_db();
     orphan1_store.add_block(blocks[1].clone().into()).unwrap(); // A1
     let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
@@ -777,7 +774,7 @@ fn handle_reorg() {
     let consensus_manager_fork2 = ConsensusManagerBuilder::new(network)
         .with_block(blocks[0].clone())
         .build();
-    let mut orphan2_store = create_store();
+    let mut orphan2_store = create_test_blockchain_db();
     orphan2_store.add_block(blocks[1].clone().into()).unwrap(); // A1
     orphan2_store.add_block(orphan1_blocks[2].clone().into()).unwrap(); // B2
     orphan2_store.add_block(orphan1_blocks[3].clone().into()).unwrap(); // B3
@@ -853,7 +850,7 @@ fn handle_reorg_with_no_removed_blocks() {
     let consensus_manager_fork = ConsensusManagerBuilder::new(network)
         .with_block(blocks[0].clone())
         .build();
-    let mut orphan1_store = create_store();
+    let mut orphan1_store = create_test_blockchain_db();
     orphan1_store.add_block(blocks[1].clone().into()).unwrap(); // A1
     let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
@@ -968,7 +965,7 @@ fn handle_reorg_failure_recovery() {
         let consensus_manager_fork = ConsensusManagerBuilder::new(network)
             .with_block(blocks[0].clone())
             .build();
-        let mut orphan1_store = create_store();
+        let mut orphan1_store = create_test_blockchain_db();
         orphan1_store.add_block(blocks[1].clone().into()).unwrap(); // A1
         let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
         let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
@@ -1000,7 +997,7 @@ fn handle_reorg_failure_recovery() {
             orphan1_outputs.push(block_utxos);
 
             let template = chain_block(&orphan1_blocks.last().unwrap(), txns, &consensus_manager);
-            let mut block = orphan1_store.calculate_mmr_roots(template).unwrap();
+            let mut block = orphan1_store.prepare_block_merkle_roots(template).unwrap();
             block.header.nonce = OsRng.next_u64();
             block.header.height = block.header.height + 1;
             find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(2));
@@ -1073,9 +1070,9 @@ fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
     let hash0 = block0.hash();
     let hash1 = block1.hash();
     let hash2 = orphan.hash();
-    assert_eq!(*store.fetch_block_with_hash(hash0).unwrap().unwrap().block(), block0);
-    assert_eq!(*store.fetch_block_with_hash(hash1).unwrap().unwrap().block(), block1);
-    assert_eq!(*store.fetch_block_with_hash(hash2).unwrap().unwrap().block(), orphan);
+    assert_eq!(*store.fetch_block_by_hash(hash0).unwrap().unwrap().block(), block0);
+    assert_eq!(*store.fetch_block_by_hash(hash1).unwrap().unwrap().block(), block1);
+    assert_eq!(*store.fetch_block_by_hash(hash2).unwrap().unwrap().block(), orphan);
 }
 
 #[test]
@@ -1185,11 +1182,10 @@ fn invalid_block() {
     //         .with_consensus_constants(consensus_constants.clone())
     //         .with_block(block0.clone())
     //         .build();
-    //     let validators = Validators::new(
-    //         MockValidator::new(true),
-    //         MockStatelessBlockValidator::new(consensus_manager.clone(), factories.clone()),
-    //     );
-    //     let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
+    //     let validator = MockValidator::new(true);
+    //     let is_valid = validator.shared_flag();
+    //     let validators = Validators::new(MockValidator::new(true), validator);
+    //     let db = create_lmdb_database(&temp_path, LMDBConfig::default(), MmrCacheConfig::default()).unwrap();
     //     let mut store = BlockchainDatabase::new(
     //         db,
     //         &consensus_manager,
@@ -1244,10 +1240,11 @@ fn invalid_block() {
     //     assert_ne!(rp_root0, rp_root1);
     //
     //     // Invalid Block 2 - Double spends genesis block output
+    //     is_valid.set(false);
     //     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![20 * T, 20 * T])];
     //     let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
     //     unpack_enum!(
-    //         ChainStorageError::UnspendableInput = generate_new_block_with_coinbase(
+    //         ChainStorageError::ValidationError {..} = generate_new_block_with_coinbase(
     //             &mut store,
     //             &factories,
     //             &mut blocks,
@@ -1272,6 +1269,7 @@ fn invalid_block() {
     //     assert_eq!(rp_root1, rp_root2);
     //
     //     // Valid Block 2
+    //     is_valid.set(true);
     //     let txs = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![4 * T, 4 * T])];
     //     let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
     //     assert_eq!(
@@ -1481,7 +1479,7 @@ fn orphan_cleanup_on_reorg() {
     let consensus_manager_fork = ConsensusManagerBuilder::new(network)
         .with_block(blocks[0].clone())
         .build();
-    let mut orphan_store = create_store();
+    let mut orphan_store = create_test_blockchain_db();
     let mut orphan_blocks = vec![blocks[0].clone()];
     let mut orphan_outputs = vec![outputs[0].clone()];
     // Block B1

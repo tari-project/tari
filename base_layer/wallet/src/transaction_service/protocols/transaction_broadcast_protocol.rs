@@ -32,15 +32,15 @@ use std::{convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
-    base_node::proto::{
-        base_node as BaseNodeProto,
-        base_node::{
+    base_node::{
+        proto,
+        proto::{
             base_node_service_request::Request as BaseNodeRequestProto,
             base_node_service_response::Response as BaseNodeResponseProto,
         },
     },
     mempool::{
-        proto::mempool as MempoolProto,
+        proto as mempool_proto,
         service::{MempoolResponse, MempoolServiceResponse},
         TxStorageResponse,
     },
@@ -63,7 +63,7 @@ where TBackend: TransactionBackend + 'static
     timeout: Duration,
     base_node_public_key: CommsPublicKey,
     mempool_response_receiver: Option<Receiver<MempoolServiceResponse>>,
-    base_node_response_receiver: Option<Receiver<BaseNodeProto::BaseNodeServiceResponse>>,
+    base_node_response_receiver: Option<Receiver<proto::BaseNodeServiceResponse>>,
     timeout_update_receiver: Option<broadcast::Receiver<Duration>>,
 }
 
@@ -76,7 +76,7 @@ where TBackend: TransactionBackend + 'static
         timeout: Duration,
         base_node_public_key: CommsPublicKey,
         mempool_response_receiver: Receiver<MempoolServiceResponse>,
-        base_node_response_receiver: Receiver<BaseNodeProto::BaseNodeServiceResponse>,
+        base_node_response_receiver: Receiver<proto::BaseNodeServiceResponse>,
         timeout_update_receiver: broadcast::Receiver<Duration>,
     ) -> Self
     {
@@ -153,9 +153,9 @@ where TBackend: TransactionBackend + 'static
             trace!(target: LOG_TARGET, "{}", completed_tx.transaction);
 
             // Send Mempool Request
-            let mempool_request = MempoolProto::MempoolServiceRequest {
+            let mempool_request = mempool_proto::MempoolServiceRequest {
                 request_key: completed_tx.tx_id,
-                request: Some(MempoolProto::mempool_service_request::Request::SubmitTransaction(
+                request: Some(mempool_proto::mempool_service_request::Request::SubmitTransaction(
                     completed_tx.transaction.clone().into(),
                 )),
             };
@@ -175,8 +175,8 @@ where TBackend: TransactionBackend + 'static
                 hashes.push(o.hash());
             }
 
-            let request = BaseNodeRequestProto::FetchMatchingUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
-            let service_request = BaseNodeProto::BaseNodeServiceRequest {
+            let request = BaseNodeRequestProto::FetchMatchingUtxos(proto::HashOutputs { outputs: hashes });
+            let service_request = proto::BaseNodeServiceRequest {
                 request_key: self.id,
                 request: Some(request),
             };
@@ -406,7 +406,7 @@ where TBackend: TransactionBackend + 'static
 
     async fn handle_base_node_response(
         &mut self,
-        response: BaseNodeProto::BaseNodeServiceResponse,
+        response: proto::BaseNodeServiceResponse,
     ) -> Result<bool, TransactionServiceProtocolError>
     {
         if response.request_key != self.id {
@@ -417,7 +417,7 @@ where TBackend: TransactionBackend + 'static
             return Ok(false);
         }
 
-        let response: Vec<tari_core::transactions::proto::types::TransactionOutput> = match response.response {
+        let response: Vec<tari_core::proto::types::TransactionOutput> = match response.response {
             Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => outputs.outputs,
             _ => {
                 return Ok(false);

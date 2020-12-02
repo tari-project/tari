@@ -181,11 +181,11 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
 }
 
 impl MoneroData {
-    pub fn new(tari_header: &BlockHeader) -> Result<MoneroData, MergeMineError> {
+    pub fn from_header(tari_header: &BlockHeader) -> Result<MoneroData, MergeMineError> {
         bincode::deserialize(&tari_header.pow.pow_data).map_err(|e| MergeMineError::DeserializeError(e.to_string()))
     }
 
-    pub fn new_from_pow(pow_data: &[u8]) -> Result<MoneroData, MergeMineError> {
+    pub fn from_pow_data(pow_data: &[u8]) -> Result<MoneroData, MergeMineError> {
         bincode::deserialize(pow_data).map_err(|e| MergeMineError::DeserializeError(e.to_string()))
     }
 }
@@ -193,7 +193,7 @@ impl MoneroData {
 /// Internal function to calculate the difficulty attained for the given block Deserialized the Monero header from the
 /// provided header
 pub fn monero_difficulty(header: &BlockHeader) -> Result<Difficulty, MergeMineError> {
-    let monero = MoneroData::new(header)?;
+    let monero = MoneroData::from_header(header)?;
     verify_header(&header, &monero)?;
 
     debug!(target: LOG_TARGET, "Deserialized Monero data: {:?}", monero);
@@ -203,13 +203,12 @@ pub fn monero_difficulty(header: &BlockHeader) -> Result<Difficulty, MergeMineEr
         ..
     } = monero;
 
-    let tx_hashes = transaction_hashes.iter().map(Into::into).collect::<Vec<_>>();
-    let input = &create_input_blob_from_parts(&monero.header, &tx_hashes)?;
+    let tx_hashes = transaction_hashes.into_iter().map(Into::into).collect::<Vec<_>>();
+    let input = create_input_blob_from_parts(&monero.header, &tx_hashes)?;
     debug!(target: LOG_TARGET, "RandomX input: {}", input);
-    let input = from_hex(input)?;
-    // Todo remove this eventually when we reset and we dont have quotes in the key anymore.
-    let key_bytes = from_hex(&key.replace("\"", ""))?;
-    get_random_x_difficulty(&input, &key_bytes).map(|r| r.0)
+    let input = from_hex(&input)?;
+    let key_bytes = from_hex(&key)?;
+    get_random_x_difficulty(&input, &key_bytes).map(|(diff, _)| diff)
 }
 
 fn get_random_x_difficulty(input: &[u8], key: &[u8]) -> Result<(Difficulty, Vec<u8>), MergeMineError> {
@@ -258,15 +257,12 @@ pub fn create_ordered_transaction_hashes_from_block(block: &MoneroBlock) -> Vec<
 
 /// Creates a hex encoded Monero blockhashing_blob
 fn create_input_blob_from_parts(header: &MoneroBlockHeader, tx_hashes: &[Hash]) -> Result<String, MergeMineError> {
-    let header = serialize::<MoneroBlockHeader>(&header);
-    let mut encode = header;
-
     let root = tree_hash(tx_hashes)?;
-    encode.extend_from_slice(root.as_bytes());
-
+    let mut header = serialize(header);
+    header.extend_from_slice(root.as_bytes());
     let mut count = serialize(&VarInt(tx_hashes.len() as u64));
-    encode.append(&mut count);
-    Ok(hex::encode(encode))
+    header.append(&mut count);
+    Ok(hex::encode(header))
 }
 
 /// Utility function to transform array of hash to fixed array of [u8; 32]
@@ -476,7 +472,7 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        MoneroData::new(&block_header).unwrap();
+        MoneroData::from_header(&block_header).unwrap();
     }
 
     #[test]
@@ -578,7 +574,7 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        let monero_data = MoneroData::new(&block_header).unwrap();
+        let monero_data = MoneroData::from_header(&block_header).unwrap();
         verify_header(&block_header, &monero_data).unwrap();
     }
 
@@ -627,7 +623,7 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        let monero_data = MoneroData::new(&block_header).unwrap();
+        let monero_data = MoneroData::from_header(&block_header).unwrap();
         let err = verify_header(&block_header, &monero_data).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
         assert!(details.contains("Expected merge mining tag was not found in Monero coinbase transaction"));
@@ -680,7 +676,7 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        let monero_data = MoneroData::new(&block_header).unwrap();
+        let monero_data = MoneroData::from_header(&block_header).unwrap();
         let err = verify_header(&block_header, &monero_data).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
         assert!(details.contains("Expected merge mining tag was not found in Monero coinbase transaction"));
@@ -733,7 +729,7 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        let monero_data = MoneroData::new(&block_header).unwrap();
+        let monero_data = MoneroData::from_header(&block_header).unwrap();
         let err = verify_header(&block_header, &monero_data).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
         assert!(details.contains("Expected merge mining tag was not found in Monero coinbase transaction"));
@@ -763,7 +759,7 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        let monero_data = MoneroData::new(&block_header).unwrap();
+        let monero_data = MoneroData::from_header(&block_header).unwrap();
         let err = verify_header(&block_header, &monero_data).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
         assert!(details.contains("Expected merge mining tag was not found in Monero coinbase transaction"));
@@ -815,7 +811,7 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        let monero_data = MoneroData::new(&block_header).unwrap();
+        let monero_data = MoneroData::from_header(&block_header).unwrap();
         let err = verify_header(&block_header, &monero_data).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
         assert!(details.contains("Transaction root did not match"));

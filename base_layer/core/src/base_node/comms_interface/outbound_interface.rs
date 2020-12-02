@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
-    blocks::{blockheader::BlockHeader, NewBlock},
+    blocks::{block_header::BlockHeader, NewBlock},
     chain_storage::{HistoricalBlock, MmrTree},
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
@@ -31,7 +31,7 @@ use crate::{
 };
 use futures::channel::mpsc::UnboundedSender;
 use log::*;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::{reply_channel::SenderService, Service};
 
@@ -275,7 +275,7 @@ impl OutboundNodeCommsInterface {
     /// could be chain blocks or orphan blocks.
     pub async fn request_blocks_with_hashes_from_peer(
         &mut self,
-        block_hashes: Vec<HashOutput>,
+        block_hashes: Vec<BlockHash>,
         node_id: Option<NodeId>,
     ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>
     {

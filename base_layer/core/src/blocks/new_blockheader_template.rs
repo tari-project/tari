@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::blockheader::{hash_serializer, BlockHeader},
+    blocks::block_header::{hash_serializer, BlockHeader},
     proof_of_work::ProofOfWork,
     transactions::types::BlindingFactor,
 };

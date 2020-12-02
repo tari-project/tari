@@ -35,7 +35,7 @@ use tokio::task;
 fn setup() -> (BlockchainStateServiceHandle, BlockchainDatabase<TempDatabase>) {
     let db = create_new_blockchain();
     let (request_tx, request_rx) = mpsc::channel(1);
-    let service = BlockchainStateService::new(db.clone(), request_rx);
+    let service = BlockchainStateService::new(db.clone().into(), request_rx);
     task::spawn(service.run());
     (BlockchainStateServiceHandle::new(request_tx), db)
 }

@@ -72,7 +72,7 @@ impl TestBlockchain {
         let prev_block = prev_block.map(|b| &b.block).unwrap();
         let template = chain_block(prev_block, vec![], &self.consensus_manager);
 
-        let mut new_block = self.store.calculate_mmr_roots(template).unwrap();
+        let mut new_block = self.store.prepare_block_merkle_roots(template).unwrap();
         new_block.header.nonce = OsRng.next_u64();
         find_header_with_achieved_difficulty(&mut new_block.header, block.difficulty.unwrap_or(1).into());
 

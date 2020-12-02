@@ -31,6 +31,7 @@ use super::{
     handle::{BaseNodeEvent, BaseNodeEventSender, BaseNodeServiceRequest, BaseNodeServiceResponse},
 };
 
+use crate::util::waiting_requests::{generate_request_key, RequestKey};
 use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, Stream, StreamExt};
 use log::*;
@@ -39,17 +40,7 @@ use std::convert::TryInto;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::Peer;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
-use tari_core::base_node::{
-    generate_request_key,
-    proto::{
-        base_node as BaseNodeProto,
-        base_node::{
-            base_node_service_request::Request as BaseNodeRequestProto,
-            base_node_service_response::Response as BaseNodeResponseProto,
-        },
-    },
-    RequestKey,
-};
+use tari_core::base_node::{proto, proto::base_node_service_request::Request as BaseNodeRequestProto};
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
@@ -96,7 +87,7 @@ pub struct BaseNodeService<BNResponseStream> {
 }
 
 impl<BNResponseStream> BaseNodeService<BNResponseStream>
-where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>
+where BNResponseStream: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>
 {
     pub fn new(
         config: BaseNodeServiceConfig,
@@ -221,7 +212,7 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
         self.requests = current_requests;
 
         let request = BaseNodeRequestProto::GetChainMetadata(true);
-        let service_request = BaseNodeProto::BaseNodeServiceRequest {
+        let service_request = proto::BaseNodeServiceRequest {
             request_key,
             request: Some(request),
         };
@@ -243,7 +234,7 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
     /// Handles the response from the connected base node.
     async fn handle_base_node_response(
         &mut self,
-        response: DomainMessage<BaseNodeProto::BaseNodeServiceResponse>,
+        response: DomainMessage<proto::BaseNodeServiceResponse>,
     ) -> Result<(), BaseNodeServiceError>
     {
         let DomainMessage::<_> { inner: message, .. } = response;
@@ -256,7 +247,7 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
         if !found.is_empty() {
             debug!(target: LOG_TARGET, "Handle base node response message: {:?}", message);
             match message.response {
-                Some(BaseNodeResponseProto::ChainMetadata(chain_metadata)) => {
+                Some(proto::base_node_service_response::Response::ChainMetadata(chain_metadata)) => {
                     trace!(target: LOG_TARGET, "Chain Metadata response {:?}", chain_metadata);
                     let now = Utc::now().naive_utc();
                     let state = BaseNodeState {
@@ -264,7 +255,7 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
                         chain_metadata: Some(
                             chain_metadata
                                 .try_into()
-                                .map_err(|_| BaseNodeServiceError::UnexpectedApiResponse)?,
+                                .map_err(BaseNodeServiceError::InvalidBaseNodeResponse)?,
                         ),
                         updated: Some(now),
                     };

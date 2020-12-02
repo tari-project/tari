@@ -356,6 +356,7 @@ impl TransactionOutput {
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.
     /// This will ignore the output rangeproof
+    #[inline]
     pub fn is_equal_to(&self, output: &TransactionInput) -> bool {
         self.commitment == output.commitment && self.features == output.features
     }
@@ -937,19 +938,19 @@ mod test {
         assert_eq!(tx3.body.outputs().len(), 5);
         assert_eq!(tx3.body.kernels().len(), 2);
         // check that cut-though has not been applied
-        assert!(!tx3.body.cut_through_check());
+        assert!(!tx3.body.check_cut_through());
 
         // apply cut-through
         tx3.body.do_cut_through();
 
         // check that cut-through has been applied.
-        assert!(tx.body.cut_through_check());
+        assert!(tx.body.check_cut_through());
         assert!(tx.validate_internal_consistency(&factories, None).is_ok());
         assert_eq!(tx.body.inputs().len(), 2);
         assert_eq!(tx.body.outputs().len(), 4);
         assert_eq!(tx.body.kernels().len(), 2);
 
-        assert!(tx3.body.cut_through_check());
+        assert!(tx3.body.check_cut_through());
         assert!(tx3.validate_internal_consistency(&factories, None).is_ok());
         assert_eq!(tx3.body.inputs().len(), 2);
         assert_eq!(tx3.body.outputs().len(), 4);

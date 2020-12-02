@@ -23,12 +23,7 @@
 use crate::{
     blocks::BlockHeader,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
-    consensus::ConsensusManager,
-    validation::{
-        helpers::{check_achieved_and_target_difficulty, check_median_timestamp},
-        Validation,
-        ValidationError,
-    },
+    validation::{helpers, helpers::check_header_timestamp_greater_than_median, Validation, ValidationError},
 };
 use log::*;
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
@@ -36,13 +31,12 @@ use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 const LOG_TARGET: &str = "c::bn::states::horizon_state_sync::headers";
 
 pub struct HeaderValidator<B> {
-    rules: ConsensusManager,
     db: BlockchainDatabase<B>,
 }
 
 impl<B: BlockchainBackend> HeaderValidator<B> {
-    pub fn new(db: BlockchainDatabase<B>, rules: ConsensusManager) -> Self {
-        Self { db, rules }
+    pub fn new(db: BlockchainDatabase<B>) -> Self {
+        Self { db }
     }
 }
 
@@ -70,25 +64,17 @@ impl<B: BlockchainBackend> Validation<BlockHeader> for HeaderValidator<B> {
 }
 
 impl<B: BlockchainBackend> HeaderValidator<B> {
-    pub fn is_genesis(&self, block_header: &BlockHeader) -> bool {
-        block_header.height == 0 && self.rules.get_genesis_block_hash() == block_header.hash()
-    }
-
     /// Calculates the achieved and target difficulties at the specified height and compares them.
     pub fn check_achieved_and_target_difficulty(&self, block_header: &BlockHeader) -> Result<(), ValidationError> {
-        // We cant use the actual tip, as this is used by the header sync, the tip has not yet been downloaded, but we
-        // can assume that the previous header was added, so we use that as the tip.
-        let tip_height = block_header.height.saturating_sub(1);
-        let db = self.db.db_read_access()?;
-        check_achieved_and_target_difficulty(&*db, block_header, tip_height, self.rules.clone())
+        let difficulty_window = self
+            .db
+            .fetch_target_difficulty(block_header.pow_algo(), block_header.height)?;
+        helpers::check_target_difficulty(block_header, difficulty_window.calculate())
     }
 
     /// This function tests that the block timestamp is greater than the median timestamp at the specified height.
     pub fn check_median_timestamp(&self, block_header: &BlockHeader) -> Result<(), ValidationError> {
-        // We cant use the actual tip, as this is used by the header sync, the tip has not yet been downloaded, but we
-        // can assume that the previous header was added, so we use that as the tip.
-        let tip_height = block_header.height.saturating_sub(1);
-        let db = self.db.db_read_access()?;
-        check_median_timestamp(&*db, block_header, tip_height, self.rules.clone())
+        let timestamps = self.db.fetch_block_timestamps(block_header.hash())?;
+        check_header_timestamp_greater_than_median(block_header, &timestamps)
     }
 }

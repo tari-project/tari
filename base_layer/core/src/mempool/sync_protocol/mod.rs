@@ -74,6 +74,7 @@ pub use initializer::MempoolSyncInitializer;
 
 use crate::{
     mempool::{async_mempool, proto, Mempool, MempoolServiceConfig},
+    proto as shared_proto,
     transactions::transaction::Transaction,
 };
 use futures::{stream, stream::Fuse, AsyncRead, AsyncWrite, SinkExt, Stream, StreamExt};
@@ -486,7 +487,11 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         Ok(())
     }
 
-    async fn validate_and_insert_transaction(&mut self, txn: proto::Transaction) -> Result<(), MempoolProtocolError> {
+    async fn validate_and_insert_transaction(
+        &mut self,
+        txn: shared_proto::types::Transaction,
+    ) -> Result<(), MempoolProtocolError>
+    {
         let txn = Transaction::try_from(txn).map_err(|err| MempoolProtocolError::MessageConversionFailed {
             peer: self.peer_node_id.clone(),
             message: err,

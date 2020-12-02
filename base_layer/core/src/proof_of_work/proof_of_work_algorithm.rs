@@ -30,13 +30,32 @@ pub enum PowAlgorithm {
     Sha3 = 2,
 }
 
+impl PowAlgorithm {
+    pub fn is_monero(&self) -> bool {
+        match self {
+            Self::Monero => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_sha3(&self) -> bool {
+        match self {
+            Self::Sha3 => true,
+            _ => false,
+        }
+    }
+
+    pub fn as_u64(&self) -> u64 {
+        *self as u64
+    }
+}
+
 impl TryFrom<u64> for PowAlgorithm {
     type Error = String;
 
     fn try_from(v: u64) -> Result<Self, Self::Error> {
         match v {
             0 => Ok(PowAlgorithm::Monero),
-            1 => Ok(PowAlgorithm::Blake),
             2 => Ok(PowAlgorithm::Sha3),
             _ => Err("Invalid PoWAlgorithm".into()),
         }

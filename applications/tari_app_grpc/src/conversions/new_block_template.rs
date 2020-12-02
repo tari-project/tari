@@ -24,7 +24,7 @@ use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
 use tari_core::{
     blocks::{NewBlockHeaderTemplate, NewBlockTemplate},
-    proof_of_work::{PowAlgorithm, ProofOfWork},
+    proof_of_work::ProofOfWork,
     transactions::types::BlindingFactor,
 };
 use tari_crypto::tari_utilities::ByteArray;
@@ -36,11 +36,7 @@ impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
             prev_hash: block.header.prev_hash.clone(),
             total_kernel_offset: Vec::from(block.header.total_kernel_offset.as_bytes()),
             pow: Some(grpc::ProofOfWork {
-                pow_algo: match block.header.pow.pow_algo {
-                    PowAlgorithm::Monero => 0,
-                    PowAlgorithm::Blake => 1,
-                    PowAlgorithm::Sha3 => 2,
-                },
+                pow_algo: block.header.pow.pow_algo.as_u64(),
                 accumulated_monero_difficulty: block.header.pow.accumulated_monero_difficulty.into(),
                 accumulated_blake_difficulty: block.header.pow.accumulated_blake_difficulty.into(),
                 pow_data: block.header.pow.pow_data,

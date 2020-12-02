@@ -29,7 +29,7 @@ use tari_crypto::tari_utilities::hex::Hex;
 pub struct ChainMetadata {
     /// The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
     height_of_longest_chain: u64,
-    /// The block hash of the current tip of the longest valid chain, or `None` for an empty chain
+    /// The block hash of the current tip of the longest valid chain
     best_block: BlockHash,
     /// The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
     /// tracked (i.e. the database is in full archival mode).
@@ -57,6 +57,16 @@ impl ChainMetadata {
             pruning_horizon,
             effective_pruned_height,
             accumulated_difficulty,
+        }
+    }
+
+    pub fn empty() -> ChainMetadata {
+        ChainMetadata {
+            height_of_longest_chain: 0,
+            best_block: Vec::new(),
+            pruning_horizon: 0,
+            effective_pruned_height: 0,
+            accumulated_difficulty: 0,
         }
     }
 
@@ -136,27 +146,15 @@ impl Display for ChainMetadata {
 mod test {
     use super::ChainMetadata;
 
-    impl ChainMetadata {
-        pub fn genesis() -> ChainMetadata {
-            ChainMetadata {
-                height_of_longest_chain: 0,
-                best_block: Vec::new(),
-                pruning_horizon: 0,
-                effective_pruned_height: 0,
-                accumulated_difficulty: 0,
-            }
-        }
-    }
-
     #[test]
     fn horizon_block_on_default() {
-        let metadata = ChainMetadata::genesis();
+        let metadata = ChainMetadata::empty();
         assert_eq!(metadata.horizon_block(0), 0);
     }
 
     #[test]
     fn pruned_mode() {
-        let mut metadata = ChainMetadata::genesis();
+        let mut metadata = ChainMetadata::empty();
         assert_eq!(metadata.is_pruned_node(), false);
         assert_eq!(metadata.is_archival_node(), true);
         metadata.set_pruning_horizon(2880);
@@ -170,7 +168,7 @@ mod test {
 
     #[test]
     fn archival_node() {
-        let mut metadata = ChainMetadata::genesis();
+        let mut metadata = ChainMetadata::empty();
         metadata.archival_mode();
         // Chain is still empty
         assert_eq!(metadata.horizon_block(0), 0);

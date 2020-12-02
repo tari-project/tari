@@ -158,7 +158,7 @@ impl AggregateBody {
 
     /// This will perform a check that cut-through was performed on the aggregate body. It will return true if there are
     /// no outputs that are being spent as inputs.
-    pub fn cut_through_check(&self) -> bool {
+    pub fn check_cut_through(&self) -> bool {
         !self
             .inputs
             .iter()
@@ -368,6 +368,19 @@ impl AggregateBody {
     pub fn calculate_weight(&self) -> u64 {
         Fee::calculate_weight(self.kernels().len(), self.inputs().len(), self.outputs().len())
     }
+
+    pub fn is_sorted(&self) -> bool {
+        self.sorted
+    }
+
+    pub fn to_counts_string(&self) -> String {
+        format!(
+            "{} input(s), {} output(s), {} kernel(s)",
+            self.inputs.len(),
+            self.outputs.len(),
+            self.kernels.len()
+        )
+    }
 }
 
 /// This will strip away the offset of the transaction returning a pure aggregate body
@@ -379,7 +392,7 @@ impl From<Transaction> for AggregateBody {
 
 impl Display for AggregateBody {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        if !self.sorted {
+        if !self.is_sorted() {
             fmt.write_str("WARNING: Block body is not sorted.\n")?;
         }
         fmt.write_str("--- Transaction Kernels ---\n")?;

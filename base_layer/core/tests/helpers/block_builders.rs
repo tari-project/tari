@@ -227,7 +227,7 @@ pub fn append_block<B: BlockchainBackend>(
 ) -> Result<Block, ChainStorageError>
 {
     let template = chain_block(prev_block, txns, consensus);
-    let mut block = db.calculate_mmr_roots(template)?;
+    let mut block = db.prepare_block_merkle_roots(template)?;
     block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
     db.add_block(Arc::new(block.clone()))?;
@@ -253,7 +253,7 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
         height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
     );
     let template = chain_block_with_coinbase(prev_block, txns, coinbase_utxo, coinbase_kernel, consensus_manager);
-    let mut block = db.calculate_mmr_roots(template)?;
+    let mut block = db.prepare_block_merkle_roots(template)?;
     block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
     db.add_block(Arc::new(block.clone()))?;
@@ -356,7 +356,7 @@ pub fn generate_block<B: BlockchainBackend>(
 {
     let prev_block = blocks.last().unwrap();
     let template = chain_block(prev_block, transactions, consensus);
-    let new_block = db.calculate_mmr_roots(template)?;
+    let new_block = db.prepare_block_merkle_roots(template)?;
     let result = db.add_block(new_block.clone().into());
     if let Ok(BlockAddResult::Ok) = result {
         blocks.push(new_block);
@@ -373,7 +373,7 @@ pub fn _generate_block_with_achieved_difficulty<B: BlockchainBackend>(
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let template = chain_block(&blocks.last().unwrap(), transactions, consensus);
-    let mut new_block = db.calculate_mmr_roots(template)?;
+    let mut new_block = db.prepare_block_merkle_roots(template)?;
     new_block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut new_block.header, achieved_difficulty);
     let result = db.add_block(new_block.clone().into());
@@ -401,7 +401,7 @@ pub fn _generate_block_with_coinbase<B: BlockchainBackend>(
         coinbase_kernel,
         consensus,
     );
-    let new_block = db.calculate_mmr_roots(template)?;
+    let new_block = db.prepare_block_merkle_roots(template)?;
     let result = db.add_block(new_block.clone().into());
     if let Ok(BlockAddResult::Ok) = result {
         blocks.push(new_block);

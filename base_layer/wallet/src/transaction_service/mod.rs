@@ -43,9 +43,9 @@ use std::sync::Arc;
 use tari_comms::peer_manager::NodeIdentity;
 use tari_comms_dht::Dht;
 use tari_core::{
-    base_node::proto::base_node as BaseNodeProto,
+    base_node::proto as base_node_proto,
     consensus::{ConsensusConstantsBuilder, Network},
-    mempool::proto::mempool as MempoolProto,
+    mempool::proto as mempool_proto,
     transactions::{transaction_protocol::proto, types::CryptoFactories},
 };
 use tari_p2p::{
@@ -138,7 +138,7 @@ where T: TransactionBackend
             .filter_map(ok_or_skip_result)
     }
 
-    fn mempool_response_stream(&self) -> impl Stream<Item = DomainMessage<MempoolProto::MempoolServiceResponse>> {
+    fn mempool_response_stream(&self) -> impl Stream<Item = DomainMessage<mempool_proto::MempoolServiceResponse>> {
         trace!(
             target: LOG_TARGET,
             "Subscription '{}' for topic '{:?}' created.",
@@ -147,11 +147,11 @@ where T: TransactionBackend
         );
         self.subscription_factory
             .get_subscription(TariMessageType::MempoolResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<MempoolProto::MempoolServiceResponse>)
+            .map(map_decode::<mempool_proto::MempoolServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
 
-    fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>> {
+    fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<base_node_proto::BaseNodeServiceResponse>> {
         trace!(
             target: LOG_TARGET,
             "Subscription '{}' for topic '{:?}' created.",
@@ -160,7 +160,7 @@ where T: TransactionBackend
         );
         self.subscription_factory
             .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<BaseNodeProto::BaseNodeServiceResponse>)
+            .map(map_decode::<base_node_proto::BaseNodeServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
 

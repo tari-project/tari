@@ -44,7 +44,6 @@ use crate::{
         ConsensusManagerBuilder,
         Network,
     },
-    proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{CryptoFactories, HashOutput},
@@ -54,9 +53,12 @@ use crate::{
         mocks::MockValidator,
     },
 };
-use std::{ops::Deref, path::PathBuf};
+use std::{
+    fs,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 
@@ -99,7 +101,7 @@ pub fn create_store_with_consensus(rules: &ConsensusManager) -> BlockchainDataba
     );
     create_store_with_consensus_and_validators(rules, validators)
 }
-pub fn create_store() -> BlockchainDatabase<TempDatabase> {
+pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
     let network = Network::Ridcully;
     let rules = ConsensusManagerBuilder::new(network).build();
     create_store_with_consensus(&rules)
@@ -135,8 +137,8 @@ impl Deref for TempDatabase {
 
 impl Drop for TempDatabase {
     fn drop(&mut self) {
-        if std::path::Path::new(&self.path).exists() {
-            if let Err(e) = std::fs::remove_dir_all(&self.path) {
+        if Path::new(&self.path).exists() {
+            if let Err(e) = fs::remove_dir_all(&self.path) {
                 println!("\n{:?}\n", e);
             }
         }
@@ -171,7 +173,7 @@ impl BlockchainBackend for TempDatabase {
     fn fetch_block_accumulated_data(
         &self,
         header_hash: &HashOutput,
-    ) -> Result<BlockAccumulatedData, ChainStorageError>
+    ) -> Result<Option<BlockAccumulatedData>, ChainStorageError>
     {
         self.db.fetch_block_accumulated_data(header_hash)
     }
@@ -239,16 +241,6 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
         self.db.fetch_chain_metadata()
-    }
-
-    fn fetch_target_difficulties(
-        &self,
-        pow_algo: PowAlgorithm,
-        height: u64,
-        block_window: usize,
-    ) -> Result<Vec<(EpochTime, Difficulty)>, ChainStorageError>
-    {
-        self.db.fetch_target_difficulties(pow_algo, height, block_window)
     }
 
     fn count_utxos(&self) -> Result<usize, ChainStorageError> {

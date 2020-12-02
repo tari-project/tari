@@ -272,7 +272,7 @@ where
                 .await?;
         }
 
-        self.publish_event(LivenessEvent::BroadcastedNeighbourPings(len_peers));
+        self.publish_event(LivenessEvent::PingRoundBroadcast(len_peers));
 
         Ok(())
     }

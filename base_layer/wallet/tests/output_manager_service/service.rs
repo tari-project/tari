@@ -39,12 +39,9 @@ use tari_comms::{
 };
 use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
 use tari_core::{
-    base_node::proto::{
-        base_node as BaseNodeProto,
-        base_node::{
-            base_node_service_request::Request,
-            base_node_service_response::Response as BaseNodeResponseProto,
-        },
+    base_node::{
+        proto as base_node_proto,
+        proto::{base_node_service_request::Request, base_node_service_response::Response as BaseNodeResponseProto},
     },
     consensus::{ConsensusConstantsBuilder, Network},
     transactions::{
@@ -96,7 +93,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     OutputManagerHandle,
     OutboundServiceMockState,
     Shutdown,
-    Sender<DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
+    Sender<DomainMessage<base_node_proto::BaseNodeServiceResponse>>,
     TransactionServiceHandle,
 )
 {
@@ -742,8 +739,8 @@ fn test_utxo_validation() {
 
     let (_, body) = outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
-    let bn_request1: BaseNodeProto::BaseNodeServiceRequest = envelope_body
-        .decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1)
+    let bn_request1: base_node_proto::BaseNodeServiceRequest = envelope_body
+        .decode_part::<base_node_proto::BaseNodeServiceRequest>(1)
         .unwrap()
         .unwrap();
     let mut hashes_found = 0;
@@ -763,8 +760,8 @@ fn test_utxo_validation() {
 
     let (_, body) = outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
-    let bn_request2: BaseNodeProto::BaseNodeServiceRequest = envelope_body
-        .decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1)
+    let bn_request2: base_node_proto::BaseNodeServiceRequest = envelope_body
+        .decode_part::<base_node_proto::BaseNodeServiceRequest>(1)
         .unwrap()
         .unwrap();
 
@@ -784,8 +781,8 @@ fn test_utxo_validation() {
 
     let (_, body) = outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
-    let bn_request3: BaseNodeProto::BaseNodeServiceRequest = envelope_body
-        .decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1)
+    let bn_request3: base_node_proto::BaseNodeServiceRequest = envelope_body
+        .decode_part::<base_node_proto::BaseNodeServiceRequest>(1)
         .unwrap()
         .unwrap();
 
@@ -840,8 +837,8 @@ fn test_utxo_validation() {
     for _ in 0..3 {
         let (_, body) = outbound_service.pop_call().unwrap();
         let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
-        let bn_request: BaseNodeProto::BaseNodeServiceRequest = envelope_body
-            .decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1)
+        let bn_request: base_node_proto::BaseNodeServiceRequest = envelope_body
+            .decode_part::<base_node_proto::BaseNodeServiceRequest>(1)
             .unwrap()
             .unwrap();
 
@@ -872,10 +869,10 @@ fn test_utxo_validation() {
 
     let invalid_txs = runtime.block_on(oms.get_invalid_outputs()).unwrap();
     assert_eq!(invalid_txs.len(), 1);
-    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response = base_node_proto::BaseNodeServiceResponse {
         request_key: invalid_request_key,
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs {
+            base_node_proto::TransactionOutputs {
                 outputs: vec![invalid_output.clone().as_transaction_output(&factories).unwrap().into()].into(),
             },
         )),
@@ -921,10 +918,10 @@ fn test_utxo_validation() {
     let invalid_txs = runtime.block_on(oms.get_invalid_outputs()).unwrap();
     assert_eq!(invalid_txs.len(), 0);
 
-    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response = base_node_proto::BaseNodeServiceResponse {
         request_key: 1,
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs {
+            base_node_proto::TransactionOutputs {
                 outputs: vec![output1.clone().as_transaction_output(&factories).unwrap().into()].into(),
             },
         )),
@@ -941,10 +938,10 @@ fn test_utxo_validation() {
     let invalid_txs = runtime.block_on(oms.get_invalid_outputs()).unwrap();
     assert_eq!(invalid_txs.len(), 0);
 
-    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response = base_node_proto::BaseNodeServiceResponse {
         request_key: unspent_request_key_with_output1,
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs {
+            base_node_proto::TransactionOutputs {
                 outputs: vec![output1.clone().as_transaction_output(&factories).unwrap().into()].into(),
             },
         )),
@@ -958,10 +955,10 @@ fn test_utxo_validation() {
         )))
         .unwrap();
 
-    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response = base_node_proto::BaseNodeServiceResponse {
         request_key: unspent_request_key2,
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs { outputs: vec![].into() },
+            base_node_proto::TransactionOutputs { outputs: vec![].into() },
         )),
         is_synced: true,
     };
@@ -1013,15 +1010,15 @@ fn test_utxo_validation() {
 
     let (_, body) = outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
-    let bn_request: BaseNodeProto::BaseNodeServiceRequest = envelope_body
-        .decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1)
+    let bn_request: base_node_proto::BaseNodeServiceRequest = envelope_body
+        .decode_part::<base_node_proto::BaseNodeServiceRequest>(1)
         .unwrap()
         .unwrap();
 
-    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response = base_node_proto::BaseNodeServiceResponse {
         request_key: bn_request.request_key.clone(),
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs { outputs: vec![].into() },
+            base_node_proto::TransactionOutputs { outputs: vec![].into() },
         )),
         is_synced: false,
     };
@@ -1066,25 +1063,25 @@ fn test_utxo_validation() {
 
     let (_, body) = outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
-    let bn_request: BaseNodeProto::BaseNodeServiceRequest = envelope_body
-        .decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1)
+    let bn_request: base_node_proto::BaseNodeServiceRequest = envelope_body
+        .decode_part::<base_node_proto::BaseNodeServiceRequest>(1)
         .unwrap()
         .unwrap();
 
     let (_, body) = outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
-    let bn_request2: BaseNodeProto::BaseNodeServiceRequest = envelope_body
-        .decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1)
+    let bn_request2: base_node_proto::BaseNodeServiceRequest = envelope_body
+        .decode_part::<base_node_proto::BaseNodeServiceRequest>(1)
         .unwrap()
         .unwrap();
 
     let invalid_txs = runtime.block_on(oms.get_invalid_outputs()).unwrap();
     assert_eq!(invalid_txs.len(), 3);
 
-    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response = base_node_proto::BaseNodeServiceResponse {
         request_key: bn_request.request_key.clone(),
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs { outputs: vec![].into() },
+            base_node_proto::TransactionOutputs { outputs: vec![].into() },
         )),
         is_synced: true,
     };
@@ -1096,10 +1093,10 @@ fn test_utxo_validation() {
         )))
         .unwrap();
 
-    let base_node_response2 = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response2 = base_node_proto::BaseNodeServiceResponse {
         request_key: bn_request2.request_key.clone(),
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs { outputs: vec![].into() },
+            base_node_proto::TransactionOutputs { outputs: vec![].into() },
         )),
         is_synced: true,
     };
@@ -1200,8 +1197,8 @@ fn test_spent_txo_validation() {
 
     let (_, body) = outbound_service.pop_call().unwrap();
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
-    let bn_request1: BaseNodeProto::BaseNodeServiceRequest = envelope_body
-        .decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1)
+    let bn_request1: base_node_proto::BaseNodeServiceRequest = envelope_body
+        .decode_part::<base_node_proto::BaseNodeServiceRequest>(1)
         .unwrap()
         .unwrap();
     let mut hashes_found = 0;
@@ -1222,10 +1219,10 @@ fn test_spent_txo_validation() {
     }
     assert_eq!(hashes_found, 2, "Should find both hashes");
 
-    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response = base_node_proto::BaseNodeServiceResponse {
         request_key: bn_request1.request_key,
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs {
+            base_node_proto::TransactionOutputs {
                 outputs: vec![tx_output1.into()].into(),
             },
         )),

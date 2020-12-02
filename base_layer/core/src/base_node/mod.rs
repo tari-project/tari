@@ -34,31 +34,34 @@
 
 #[cfg(feature = "base_node")]
 pub mod chain_metadata_service;
+
 #[cfg(feature = "base_node")]
 pub mod comms_interface;
 #[cfg(feature = "base_node")]
+pub use comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface};
+
+#[cfg(feature = "base_node")]
 pub mod service;
+
 #[cfg(feature = "base_node")]
 pub mod state_machine_service;
 #[cfg(feature = "base_node")]
+pub use state_machine_service::{BaseNodeStateMachine, BaseNodeStateMachineConfig, StateMachineHandle};
+
+#[cfg(feature = "base_node")]
 mod sync_rpc;
 #[cfg(feature = "base_node")]
-pub use sync_rpc::{create_base_node_sync_rpc_service, BaseNodeSyncService};
+pub use sync_rpc::{
+    create_base_node_sync_rpc_service,
+    BaseNodeSyncRpcClient,
+    BaseNodeSyncRpcService,
+    BaseNodeSyncService,
+};
+
 #[cfg(feature = "base_node")]
 mod validators;
 #[cfg(feature = "base_node")]
-pub use validators::{ChainBalanceValidator, HeaderValidator, SyncValidators};
-
-// Public re-exports
-#[cfg(feature = "base_node")]
-pub use comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface};
-#[cfg(feature = "base_node")]
-pub use state_machine_service::{BaseNodeStateMachine, BaseNodeStateMachineConfig, StateMachineHandle};
+pub use validators::SyncValidators;
 
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod proto;
-
-#[cfg(any(feature = "base_node", feature = "base_node_proto", feature = "mempool_proto"))]
-mod waiting_requests;
-#[cfg(any(feature = "base_node", feature = "base_node_proto", feature = "mempool_proto"))]
-pub use waiting_requests::{generate_request_key, RequestKey, WaitingRequests};

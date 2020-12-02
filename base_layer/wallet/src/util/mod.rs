@@ -23,3 +23,4 @@
 pub mod emoji;
 pub mod encryption;
 pub mod luhn;
+pub mod waiting_requests;

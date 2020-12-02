@@ -34,4 +34,6 @@ pub enum BaseNodeServiceError {
     TransportChannelError(#[from] TransportChannelError),
     #[error("Outbound Error: `{0}`")]
     OutboundError(#[from] DhtOutboundError),
+    #[error("Received invalid base node response: {0}")]
+    InvalidBaseNodeResponse(String),
 }

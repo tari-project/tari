@@ -28,7 +28,7 @@ mod tests;
 
 use crate::{
     base_node::{
-        proto::base_node::{FindChainSplitRequest, FindChainSplitResponse, SyncBlocksRequest, SyncHeadersRequest},
+        proto::{FindChainSplitRequest, FindChainSplitResponse, SyncBlocksRequest, SyncHeadersRequest},
         service::blockchain_state::BlockchainStateServiceHandle,
     },
     proto,

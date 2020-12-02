@@ -22,7 +22,6 @@
 use crate::{
     blocks::BlockHeader,
     proof_of_work::{
-        blake_pow::blake_difficulty,
         monero_rx::{monero_difficulty, MoneroData},
         sha3_pow::sha3_difficulty,
         Difficulty,
@@ -58,7 +57,7 @@ pub struct ProofOfWork {
     pub target_difficulty: Difficulty,
     /// The algorithm used to mine this block
     pub pow_algo: PowAlgorithm,
-    /// Supplemental proof of work data. For example for Blake, this would be empty (only the block header is
+    /// Supplemental proof of work data. For example for Sha3, this would be empty (only the block header is
     /// required), but for Monero merge mining we need the Monero block header and RandomX seed hash.
     pub pow_data: Vec<u8>,
 }
@@ -69,7 +68,7 @@ impl Default for ProofOfWork {
             accumulated_monero_difficulty: Difficulty::default(),
             accumulated_blake_difficulty: Difficulty::default(),
             target_difficulty: Difficulty::default(),
-            pow_algo: PowAlgorithm::Blake,
+            pow_algo: PowAlgorithm::Sha3,
             pow_data: vec![],
         }
     }
@@ -103,7 +102,8 @@ impl ProofOfWork {
     pub fn achieved_difficulty(header: &BlockHeader) -> Result<Difficulty, PowError> {
         match header.pow.pow_algo {
             PowAlgorithm::Monero => Ok(monero_difficulty(header)?),
-            PowAlgorithm::Blake => Ok(blake_difficulty(header)),
+            // TODO: Remove
+            PowAlgorithm::Blake => unimplemented!(),
             PowAlgorithm::Sha3 => Ok(sha3_difficulty(header)),
         }
     }
@@ -131,11 +131,7 @@ impl ProofOfWork {
                 pow.accumulated_monero_difficulty + added_difficulty,
                 pow.accumulated_blake_difficulty,
             ),
-            PowAlgorithm::Blake => (
-                pow.accumulated_monero_difficulty,
-                pow.accumulated_blake_difficulty + added_difficulty,
-            ),
-            PowAlgorithm::Sha3 => (
+            PowAlgorithm::Sha3 | PowAlgorithm::Blake => (
                 pow.accumulated_monero_difficulty,
                 pow.accumulated_blake_difficulty + added_difficulty,
             ),
@@ -171,7 +167,7 @@ impl ProofOfWork {
 
     /// Serialises the ProofOfWork instance into a byte string. Useful for feeding the PoW into a hash function.
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut buf: Vec<u8> = Vec::with_capacity(256);
+        let mut buf = Vec::with_capacity(256);
         buf.put_u8(self.pow_algo as u8);
         buf.put_u64_le(self.accumulated_monero_difficulty.as_u64());
         buf.put_u64_le(self.accumulated_blake_difficulty.as_u64());
@@ -203,8 +199,9 @@ impl Display for ProofOfWork {
             "Total accumulated difficulty:\nMonero={}, Sha3={}",
             self.accumulated_monero_difficulty, self.accumulated_blake_difficulty
         )?;
+
         match self.pow_algo {
-            PowAlgorithm::Monero => match MoneroData::new_from_pow(&self.pow_data) {
+            PowAlgorithm::Monero => match MoneroData::from_pow_data(&self.pow_data) {
                 Ok(v) => writeln!(fmt, "Pow data: {}", v),
                 Err(_) => writeln!(fmt, "Pow data: MALFORMED DATA"),
             },
@@ -225,8 +222,8 @@ mod test {
         let pow = ProofOfWork::default();
         assert_eq!(
             &format!("{}", pow),
-            "Mining algorithm: Blake, Target difficulty: 1\nTotal accumulated difficulty:\nMonero=1, Sha3=1\nPow \
-             data: \n"
+            "Mining algorithm: Sha3, Target difficulty: 1\nTotal accumulated difficulty:\nMonero=1, Sha3=1\nPow data: \
+             \n"
         );
     }
 
@@ -235,8 +232,8 @@ mod test {
         let mut pow = ProofOfWork::default();
         pow.accumulated_monero_difficulty = Difficulty::from(65);
         pow.accumulated_blake_difficulty = Difficulty::from(257);
-        pow.pow_algo = PowAlgorithm::Blake;
-        assert_eq!(pow.to_bytes(), vec![1, 65, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0]);
+        pow.pow_algo = PowAlgorithm::Sha3;
+        assert_eq!(pow.to_bytes(), vec![2, 65, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0]);
     }
 
     #[test]

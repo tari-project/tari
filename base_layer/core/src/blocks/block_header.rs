@@ -38,9 +38,8 @@
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
 use crate::{
-    base_node::{comms_interface::CommsInterfaceError, LocalNodeCommsInterface},
     blocks::{BlockBuilder, NewBlockHeaderTemplate},
-    proof_of_work::{Difficulty, PowError, ProofOfWork},
+    proof_of_work::{Difficulty, PowAlgorithm, PowError, ProofOfWork},
     transactions::types::{BlindingFactor, HashDigest},
 };
 use chrono::{DateTime, Utc};
@@ -171,19 +170,6 @@ impl BlockHeader {
         BlockBuilder::new(self.version).with_header(self)
     }
 
-    pub async fn get_heights_from_tip(
-        mut handler: LocalNodeCommsInterface,
-        height_from_tip: u64,
-    ) -> Result<Vec<u64>, CommsInterfaceError>
-    {
-        let metadata = handler.get_metadata().await?;
-        let tip = metadata.height_of_longest_chain();
-        // Avoid overflow
-        let height_from_tip = std::cmp::min(tip, height_from_tip);
-        let start = std::cmp::max(tip - height_from_tip, 0);
-        Ok(BlockHeader::get_height_range(start, tip))
-    }
-
     /// Returns a height range in descending order
     pub fn get_height_range(start: u64, end_inclusive: u64) -> Vec<u64> {
         let mut heights: Vec<u64> =
@@ -228,6 +214,21 @@ impl BlockHeader {
             .result()
             .to_vec()
     }
+
+    #[inline]
+    pub fn timestamp(&self) -> EpochTime {
+        self.timestamp
+    }
+
+    #[inline]
+    pub fn target_difficulty(&self) -> Difficulty {
+        self.pow.target_difficulty
+    }
+
+    #[inline]
+    pub fn pow_algo(&self) -> PowAlgorithm {
+        self.pow.pow_algo
+    }
 }
 
 impl From<NewBlockHeaderTemplate> for BlockHeader {
@@ -237,9 +238,9 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             height: header_template.height,
             prev_hash: header_template.prev_hash,
             timestamp: EpochTime::now(),
-            output_mr: vec![0; 32],
-            range_proof_mr: vec![0; 32],
-            kernel_mr: vec![0; 32],
+            output_mr: vec![],
+            range_proof_mr: vec![],
+            kernel_mr: vec![],
             total_kernel_offset: header_template.total_kernel_offset,
             nonce: 0,
             pow: header_template.pow,
@@ -346,12 +347,12 @@ mod test {
     use tari_crypto::tari_utilities::Hashable;
     #[test]
     fn from_previous() {
-        let mut h1 = crate::proof_of_work::blake_test::get_header();
-        h1.nonce = 7600; // Achieved difficulty is 18,138;
+        let mut h1 = crate::proof_of_work::sha3_test::get_header();
+        h1.nonce = 7600;
         assert_eq!(h1.height, 0, "Default block height");
         let hash1 = h1.hash();
         let diff1 = h1.achieved_difficulty().unwrap();
-        assert_eq!(diff1, 18138.into());
+        assert_eq!(diff1, 1.into());
         let h2 = BlockHeader::from_previous(&h1).unwrap();
         assert_eq!(h2.height, h1.height + 1, "Incrementing block height");
         assert!(h2.timestamp > h1.timestamp, "Timestamp");

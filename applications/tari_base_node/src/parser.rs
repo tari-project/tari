@@ -29,7 +29,6 @@ use crate::{
 };
 use chrono::{DateTime, Utc};
 use chrono_english::{parse_date_string, Dialect};
-use futures::future::Either;
 use itertools::Itertools;
 use log::*;
 use qrcode::{render::unicode, QrCode};
@@ -57,7 +56,11 @@ use std::{
 };
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_app_utilities::utilities::{parse_emoji_id_or_public_key, parse_emoji_id_or_public_key_or_node_id};
+use tari_app_utilities::utilities::{
+    either_to_node_id,
+    parse_emoji_id_or_public_key,
+    parse_emoji_id_or_public_key_or_node_id,
+};
 use tari_common::GlobalConfig;
 use tari_comms::{
     connectivity::ConnectivityRequester,
@@ -72,6 +75,7 @@ use tari_core::{
         LocalNodeCommsInterface,
     },
     blocks::BlockHeader,
+    chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
     mempool::service::LocalMempoolService,
     mining::MinerInstruction,
     tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable},
@@ -140,6 +144,7 @@ pub enum BaseNodeCommand {
 #[derive(Helper, Validator, Highlighter)]
 pub struct Parser {
     executor: runtime::Handle,
+    blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,
     base_node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
@@ -202,6 +207,7 @@ impl Parser {
     pub fn new(executor: runtime::Handle, ctx: &BaseNodeContext, config: &GlobalConfig) -> Self {
         Parser {
             executor,
+            blockchain_db: ctx.blockchain_db().into(),
             discovery_service: ctx.base_node_dht().discovery_service_requester(),
             base_node_identity: ctx.base_node_identity(),
             peer_manager: ctx.base_node_comms().peer_manager(),
@@ -834,25 +840,19 @@ impl Parser {
                 return;
             },
         };
-        let mut handler = self.node_service.clone();
+        let blockchain = self.blockchain_db.clone();
         self.executor.spawn(async move {
-            match handler.get_blocks(vec![height]).await {
+            match blockchain.fetch_blocks(height..=height).await {
                 Err(err) => {
-                    println!("Failed to retrieve blocks: {:?}", err);
-                    warn!(
-                        target: LOG_TARGET,
-                        "Error communicating with local base node: {:?}", err,
-                    );
+                    println!("Failed to retrieve blocks: {}", err);
+                    warn!(target: LOG_TARGET, "{}", err);
                     return;
                 },
-                Ok(mut data) => match (data.pop(), format) {
-                    (Some(historical_block), Format::Text) => println!("{}", historical_block.block),
-                    (Some(historical_block), Format::Json) => println!(
+                Ok(mut data) => match (data.pop().map(|hb| hb.block), format) {
+                    (Some(block), Format::Text) => println!("{}", block),
+                    (Some(block), Format::Json) => println!(
                         "{}",
-                        historical_block
-                            .block
-                            .to_json()
-                            .unwrap_or_else(|_| "Error deserializing block".into())
+                        block.to_json().unwrap_or_else(|_| "Error deserializing block".into())
                     ),
                     (None, _) => println!("Block not found at height {}", height),
                 },
@@ -1154,7 +1154,11 @@ impl Parser {
 
     /// Function to process the ban-peer command
     fn process_ban_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I, must_ban: bool) {
-        let node_key = match args.next().and_then(parse_emoji_id_or_public_key_or_node_id) {
+        let node_id = match args
+            .next()
+            .and_then(parse_emoji_id_or_public_key_or_node_id)
+            .map(either_to_node_id)
+        {
             Some(v) => v,
             None => {
                 println!("Please enter a valid destination public key or emoji id");
@@ -1165,32 +1169,15 @@ impl Parser {
             },
         };
 
-        match &node_key {
-            Either::Left(public_key) => {
-                if let Some(wni) = self.wallet_node_identity.clone() {
-                    if wni.public_key() == public_key {
-                        println!("Cannot ban our own wallet");
-                        return;
-                    }
-                }
-
-                if self.base_node_identity.public_key() == public_key {
-                    println!("Cannot ban our own node");
-                    return;
-                }
-            },
-            Either::Right(node_id) => {
-                if let Some(wni) = self.wallet_node_identity.clone() {
-                    if wni.node_id() == node_id {
-                        println!("Cannot ban our own wallet");
-                        return;
-                    }
-                }
-                if self.base_node_identity.node_id() == node_id {
-                    println!("Cannot ban our own node");
-                    return;
-                }
-            },
+        if let Some(wni) = self.wallet_node_identity.clone() {
+            if wni.node_id() == &node_id {
+                println!("Cannot ban our own wallet");
+                return;
+            }
+        }
+        if self.base_node_identity.node_id() == &node_id {
+            println!("Cannot ban our own node");
+            return;
         }
 
         let mut connectivity = self.connectivity.clone();
@@ -1205,22 +1192,6 @@ impl Parser {
             .unwrap_or_else(|| Duration::from_secs(std::u64::MAX));
 
         self.executor.spawn(async move {
-            let node_id = match node_key {
-                Either::Left(public_key) => match peer_manager.find_by_public_key(&public_key).await {
-                    Ok(peer) => peer.node_id,
-                    Err(err) if err.is_peer_not_found() => {
-                        println!("Peer not found in base node");
-                        return;
-                    },
-                    Err(err) => {
-                        println!("Failed to ban peer: {:?}", err);
-                        error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
-                        return;
-                    },
-                },
-                Either::Right(node_id) => node_id,
-            };
-
             if must_ban {
                 match connectivity
                     .ban_peer_until(node_id.clone(), duration, "UI manual ban".to_string())
@@ -1534,17 +1505,31 @@ impl Parser {
     }
 
     /// Function to process the list-headers command
-    fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
-        let command_arg = args.map(|arg| arg.to_string()).take(4).collect::<Vec<String>>();
-        if (command_arg.is_empty()) || (command_arg.len() > 2) {
+    fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        let start = args.next().map(u64::from_str).map(Result::ok).flatten();
+        let end = args.next().map(u64::from_str).map(Result::ok).flatten();
+        if start.is_none() {
             println!("Command entered incorrectly, please use the following formats: ");
             println!("list-headers [first header height] [last header height]");
             println!("list-headers [amount of headers from chain tip]");
             return;
         }
-        let handler = self.node_service.clone();
+        let start = start.unwrap();
+        let blockchain_db = self.blockchain_db.clone();
         self.executor.spawn(async move {
-            let headers = Parser::get_headers(handler, command_arg).await;
+            let headers = match Self::get_headers(&blockchain_db, start, end).await {
+                Ok(h) if h.is_empty() => {
+                    println!("No headers found");
+                    return;
+                },
+                Ok(h) => h,
+                Err(err) => {
+                    println!("Failed to retrieve headers: {:?}", err);
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    return;
+                },
+            };
+
             for header in headers {
                 println!("\n\nHeader hash: {}", header.hash().to_hex());
                 println!("{}", header);
@@ -1552,63 +1537,61 @@ impl Parser {
         });
     }
 
-    /// Helper function to convert an array from command_arg to a Vec<u64> of header heights
-    async fn cmd_arg_to_header_heights(handler: LocalNodeCommsInterface, command_arg: Vec<String>) -> Vec<u64> {
-        let height_ranges: Result<Vec<u64>, _> = command_arg.iter().map(|v| u64::from_str(v)).collect();
-        match height_ranges {
-            Ok(height_ranges) => {
-                if height_ranges.len() == 2 {
-                    let start = height_ranges[0];
-                    let end = height_ranges[1];
-                    BlockHeader::get_height_range(start, end)
-                } else {
-                    match BlockHeader::get_heights_from_tip(handler, height_ranges[0]).await {
-                        Ok(heights) => heights,
-                        Err(_) => {
-                            println!("Error communicating with comm interface");
-                            Vec::new()
-                        },
-                    }
-                }
-            },
-            Err(_e) => {
-                println!("Invalid number provided");
-                Vec::new()
-            },
-        }
-    }
-
-    /// Function to process the get-headers command
-    async fn get_headers(mut handler: LocalNodeCommsInterface, command_arg: Vec<String>) -> Vec<BlockHeader> {
-        let heights = Self::cmd_arg_to_header_heights(handler.clone(), command_arg).await;
-        match handler.get_headers(heights).await {
-            Err(err) => {
-                println!("Failed to retrieve headers: {:?}", err);
-                warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
-                Vec::new()
-            },
-            Ok(data) => data,
-        }
-    }
-
     /// Function to process the calc-timing command
-    fn process_calc_timing<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
-        let command_arg = args.map(|arg| arg.to_string()).take(4).collect::<Vec<String>>();
-        if (command_arg.is_empty()) || (command_arg.len() > 2) {
+    fn process_calc_timing<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
+        let start = args.next().map(u64::from_str).map(Result::ok).flatten();
+        let end = args.next().map(u64::from_str).map(Result::ok).flatten();
+        if start.is_none() {
             println!("Command entered incorrectly, please use the following formats: ");
             println!("calc-timing [first header height] [last header height]");
             println!("calc-timing [number of headers from chain tip]");
             return;
         }
-        let handler = self.node_service.clone();
-
+        let start = start.unwrap();
+        let mut blockchain_db = self.blockchain_db.clone();
         self.executor.spawn(async move {
-            let headers = Parser::get_headers(handler, command_arg).await;
+            let headers = match Self::get_headers(&mut blockchain_db, start, end).await {
+                Ok(h) if h.is_empty() => {
+                    println!("No headers found");
+                    return;
+                },
+                Ok(h) => h.into_iter().rev().collect::<Vec<_>>(),
+                Err(err) => {
+                    println!("Failed to retrieve headers: {:?}", err);
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    return;
+                },
+            };
+
             let (max, min, avg) = BlockHeader::timing_stats(&headers);
+            println!(
+                "Timing for blocks #{} - #{}",
+                headers.first().unwrap().height,
+                headers.last().unwrap().height
+            );
             println!("Max block time: {}", max);
             println!("Min block time: {}", min);
             println!("Avg block time: {}", avg);
         });
+    }
+
+    /// Function to process the get-headers command
+    async fn get_headers(
+        blockchain_db: &AsyncBlockchainDb<LMDBDatabase>,
+        start: u64,
+        end: Option<u64>,
+    ) -> Result<Vec<BlockHeader>, anyhow::Error>
+    {
+        match end {
+            Some(end) => blockchain_db.fetch_headers(start..=end).await.map_err(Into::into),
+            None => {
+                let tip = blockchain_db.fetch_tip_header().await?.height;
+                blockchain_db
+                    .fetch_headers((tip.saturating_sub(start) + 1)..)
+                    .await
+                    .map_err(Into::into)
+            },
+        }
     }
 
     /// Function to process the check-db command

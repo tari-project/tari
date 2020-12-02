@@ -87,7 +87,7 @@ pub fn create_blockchain_db_no_cut_through() -> (
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
     // Block 1
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![60*T], fee: 100*uT)];
-    assert!(generate_new_block(&mut db, &mut blocks, &mut outputs, txs, &consensus_manager).is_ok());
+    generate_new_block(&mut db, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
     // Block 2
     let txs = vec![
         txn_schema!(from: vec![outputs[1][0].clone()], to: vec![20*T, 5*T, 1*T], fee: 120*uT),

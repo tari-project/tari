@@ -20,20 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use super::{handle::BlockchainStateServiceHandle, service::BlockchainStateService};
-use crate::chain_storage::{BlockchainBackend, BlockchainDatabase};
+use crate::chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend};
 use futures::{channel::mpsc, future};
 use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 
 /// Initializer for the blockchain state service. This service provides a service interface to to the blockchain state
 /// database.
 pub struct BlockchainStateServiceInitializer<T> {
-    blockchain_db: BlockchainDatabase<T>,
+    blockchain_db: AsyncBlockchainDb<T>,
 }
 
 impl<T> BlockchainStateServiceInitializer<T>
 where T: BlockchainBackend
 {
-    pub fn new(blockchain_db: BlockchainDatabase<T>) -> Self {
+    pub fn new(blockchain_db: AsyncBlockchainDb<T>) -> Self {
         Self { blockchain_db }
     }
 }

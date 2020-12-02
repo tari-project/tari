@@ -53,22 +53,22 @@ use tari_comms_dht::outbound::mock::{
     ResponseType,
 };
 use tari_core::{
-    base_node::proto::{
-        base_node as BaseNodeProto,
-        base_node::{
+    base_node::{
+        proto as base_node_proto,
+        proto::{
             base_node_service_request::Request as BaseNodeRequestProto,
             base_node_service_response::Response as BaseNodeResponseProto,
         },
     },
     consensus::{ConsensusConstantsBuilder, Network},
     mempool::{
-        proto::mempool as MempoolProto,
+        proto as mempool_proto,
         service::{MempoolRequest, MempoolResponse, MempoolServiceRequest},
         TxStorageResponse,
     },
+    proto::types::TransactionOutput as TransactionOutputProto,
     transactions::{
         fee::Fee,
-        proto::types::TransactionOutput as TransactionOutputProto,
         tari_amount::*,
         transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
@@ -203,8 +203,8 @@ pub fn setup_transaction_service_no_comms<T: TransactionBackend + 'static>(
     Sender<DomainMessage<proto::TransactionSenderMessage>>,
     Sender<DomainMessage<proto::RecipientSignedMessage>>,
     Sender<DomainMessage<proto::TransactionFinalizedMessage>>,
-    Sender<DomainMessage<MempoolProto::MempoolServiceResponse>>,
-    Sender<DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
+    Sender<DomainMessage<mempool_proto::MempoolServiceResponse>>,
+    Sender<DomainMessage<base_node_proto::BaseNodeServiceResponse>>,
     Sender<DomainMessage<proto::TransactionCancelledMessage>>,
     Shutdown,
 )
@@ -234,8 +234,8 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
     Sender<DomainMessage<proto::TransactionSenderMessage>>,
     Sender<DomainMessage<proto::RecipientSignedMessage>>,
     Sender<DomainMessage<proto::TransactionFinalizedMessage>>,
-    Sender<DomainMessage<MempoolProto::MempoolServiceResponse>>,
-    Sender<DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
+    Sender<DomainMessage<mempool_proto::MempoolServiceResponse>>,
+    Sender<DomainMessage<base_node_proto::BaseNodeServiceResponse>>,
     Sender<DomainMessage<proto::TransactionCancelledMessage>>,
     Shutdown,
 )
@@ -378,7 +378,7 @@ fn try_decode_transaction_cancelled_message(bytes: Vec<u8>) -> Option<proto::Tra
 
 fn try_decode_mempool_request(bytes: Vec<u8>) -> Option<MempoolServiceRequest> {
     let envelope_body = EnvelopeBody::decode(&mut bytes.as_slice()).unwrap();
-    let msr = match envelope_body.decode_part::<MempoolProto::MempoolServiceRequest>(1) {
+    let msr = match envelope_body.decode_part::<mempool_proto::MempoolServiceRequest>(1) {
         Err(_) => return None,
         Ok(d) => match d {
             None => return None,
@@ -392,9 +392,9 @@ fn try_decode_mempool_request(bytes: Vec<u8>) -> Option<MempoolServiceRequest> {
     }
 }
 
-fn try_decode_base_node_request(bytes: Vec<u8>) -> Option<BaseNodeProto::BaseNodeServiceRequest> {
+fn try_decode_base_node_request(bytes: Vec<u8>) -> Option<base_node_proto::BaseNodeServiceRequest> {
     let envelope_body = EnvelopeBody::decode(&mut bytes.as_slice()).unwrap();
-    match envelope_body.decode_part::<BaseNodeProto::BaseNodeServiceRequest>(1) {
+    match envelope_body.decode_part::<base_node_proto::BaseNodeServiceRequest>(1) {
         Err(_) => return None,
         Ok(d) => match d {
             None => return None,
@@ -1644,7 +1644,7 @@ fn transaction_mempool_broadcast() {
         assert!(broadcast_timeout_count >= 2);
     });
 
-    let mempool_response = MempoolProto::MempoolServiceResponse {
+    let mempool_response = mempool_proto::MempoolServiceResponse {
         request_key: tx_id1,
         response: Some(MempoolResponse::TxStorage(TxStorageResponse::UnconfirmedPool).into()),
     };
@@ -1662,10 +1662,10 @@ fn transaction_mempool_broadcast() {
         .map(|o| TransactionOutputProto::from(o.clone()))
         .collect();
 
-    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response = base_node_proto::BaseNodeServiceResponse {
         request_key: tx_id2.clone(),
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs {
+            base_node_proto::TransactionOutputs {
                 outputs: completed_tx_outputs.into(),
             },
         )),
@@ -2162,7 +2162,7 @@ fn transaction_base_node_monitoring() {
         .map(|o| TransactionOutputProto::from(o.clone()))
         .collect();
 
-    let mempool_response = MempoolProto::MempoolServiceResponse {
+    let mempool_response = mempool_proto::MempoolServiceResponse {
         request_key: broadcast_tx_id,
         response: Some(MempoolResponse::TxStorage(TxStorageResponse::UnconfirmedPool).into()),
     };
@@ -2199,10 +2199,10 @@ fn transaction_base_node_monitoring() {
     // Test that receiving a base node response with the wrong outputs does not result in a TX being mined
     let wrong_outputs = vec![completed_tx_outputs[0].clone(), TransactionOutput::default().into()];
 
-    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response = base_node_proto::BaseNodeServiceResponse {
         request_key: completed_tx_id,
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs {
+            base_node_proto::TransactionOutputs {
                 outputs: wrong_outputs.into(),
             },
         )),
@@ -2261,7 +2261,7 @@ fn transaction_base_node_monitoring() {
         let envelope_body = EnvelopeBody::decode(&mut call.1.to_vec().as_slice()).unwrap();
         let msr = envelope_body
             .clone()
-            .decode_part::<MempoolProto::MempoolServiceRequest>(1)
+            .decode_part::<mempool_proto::MempoolServiceRequest>(1)
             .unwrap()
             .unwrap();
 
@@ -2271,10 +2271,10 @@ fn transaction_base_node_monitoring() {
         }
     }
 
-    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response = base_node_proto::BaseNodeServiceResponse {
         request_key: chain_monitoring_id,
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs {
+            base_node_proto::TransactionOutputs {
                 outputs: broadcast_tx_outputs.into(),
             },
         )),
@@ -2288,10 +2288,10 @@ fn transaction_base_node_monitoring() {
         )))
         .unwrap();
 
-    let base_node_response2 = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response2 = base_node_proto::BaseNodeServiceResponse {
         request_key: completed_tx_id,
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs {
+            base_node_proto::TransactionOutputs {
                 outputs: completed_tx_outputs.into(),
             },
         )),
@@ -2586,7 +2586,7 @@ fn transaction_cancellation_when_not_in_mempool() {
 
     assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
 
-    let mempool_response = MempoolProto::MempoolServiceResponse {
+    let mempool_response = mempool_proto::MempoolServiceResponse {
         request_key: tx_id,
         response: Some(MempoolResponse::TxStorage(TxStorageResponse::UnconfirmedPool).into()),
     };
@@ -2632,20 +2632,20 @@ fn transaction_cancellation_when_not_in_mempool() {
 
     let envelope_body = EnvelopeBody::decode(&mut call.1.to_vec().as_slice()).unwrap();
     let msr = envelope_body
-        .decode_part::<MempoolProto::MempoolServiceRequest>(1)
+        .decode_part::<mempool_proto::MempoolServiceRequest>(1)
         .unwrap()
         .unwrap();
     let chain_monitoring_id = msr.request_key;
 
-    let mempool_response = MempoolProto::MempoolServiceResponse {
+    let mempool_response = mempool_proto::MempoolServiceResponse {
         request_key: chain_monitoring_id,
         response: Some(MempoolResponse::TxStorage(TxStorageResponse::NotStored).into()),
     };
 
-    let base_node_response = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response = base_node_proto::BaseNodeServiceResponse {
         request_key: chain_monitoring_id,
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs { outputs: vec![] },
+            base_node_proto::TransactionOutputs { outputs: vec![] },
         )),
         is_synced: false,
     };
@@ -3748,16 +3748,16 @@ fn test_handling_coinbase_transactions() {
     // it should
     let _ = chain_metadata_request.remove(&request_key1);
 
-    let base_node_response_outputs = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response_outputs = base_node_proto::BaseNodeServiceResponse {
         request_key: request_key1,
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs { outputs: vec![].into() },
+            base_node_proto::TransactionOutputs { outputs: vec![].into() },
         )),
         is_synced: false,
     };
-    let metadata_response1 = BaseNodeProto::BaseNodeServiceResponse {
+    let metadata_response1 = base_node_proto::BaseNodeServiceResponse {
         request_key: request_key1,
-        response: Some(BaseNodeResponseProto::ChainMetadata(BaseNodeProto::ChainMetadata {
+        response: Some(BaseNodeResponseProto::ChainMetadata(base_node_proto::ChainMetadata {
             height_of_longest_chain: Some(20),
             best_block: None,
             pruning_horizon: 0,
@@ -3834,18 +3834,18 @@ fn test_handling_coinbase_transactions() {
         .map(|o| TransactionOutputProto::from(o.clone()))
         .collect();
 
-    let base_node_response_outputs = BaseNodeProto::BaseNodeServiceResponse {
+    let base_node_response_outputs = base_node_proto::BaseNodeServiceResponse {
         request_key: request_key2,
         response: Some(BaseNodeResponseProto::TransactionOutputs(
-            BaseNodeProto::TransactionOutputs {
+            base_node_proto::TransactionOutputs {
                 outputs: target_tx_outputs.into(),
             },
         )),
         is_synced: false,
     };
-    let metadata_response1 = BaseNodeProto::BaseNodeServiceResponse {
+    let metadata_response1 = base_node_proto::BaseNodeServiceResponse {
         request_key: request_key2,
-        response: Some(BaseNodeResponseProto::ChainMetadata(BaseNodeProto::ChainMetadata {
+        response: Some(BaseNodeResponseProto::ChainMetadata(base_node_proto::ChainMetadata {
             height_of_longest_chain: Some(blockheight2),
             best_block: None,
             pruning_horizon: 0,

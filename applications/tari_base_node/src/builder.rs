@@ -39,13 +39,7 @@ use tari_comms::{peer_manager::NodeIdentity, CommsNode};
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
-    chain_storage::{
-        create_lmdb_database,
-        BlockchainBackend,
-        BlockchainDatabase,
-        BlockchainDatabaseConfig,
-        Validators,
-    },
+    chain_storage::{create_lmdb_database, BlockchainDatabase, BlockchainDatabaseConfig, LMDBDatabase, Validators},
     consensus::ConsensusManagerBuilder,
     mempool::{service::LocalMempoolService, Mempool, MempoolConfig, MempoolValidators},
     mining::{Miner, MinerInstruction},
@@ -77,6 +71,7 @@ const LOG_TARGET: &str = "c::bn::initialization";
 /// communications stack, the node state machine, the miner and handles to the various services that are registered
 /// on the comms stack.
 pub struct BaseNodeContext {
+    blockchain_db: BlockchainDatabase<LMDBDatabase>,
     base_node_comms: CommsNode,
     base_node_dht: Dht,
     wallet_comms: Option<CommsNode>,
@@ -191,6 +186,11 @@ impl BaseNodeContext {
         &self.base_node_dht
     }
 
+    /// Returns a BlockchainDatabase handle
+    pub fn blockchain_db(&self) -> BlockchainDatabase<LMDBDatabase> {
+        self.blockchain_db.clone()
+    }
+
     /// Returns this node's wallet identity.
     pub fn wallet_node_identity(&self) -> Option<Arc<NodeIdentity>> {
         self.wallet_comms.as_ref().map(|wc| wc.node_identity())
@@ -288,16 +288,14 @@ pub async fn configure_and_initialize_node(
 /// `interrupt_signal` - The signal used to stop the application
 /// ## Returns
 /// Result containing the BaseNodeContext, String will contain the reason on error
-async fn build_node_context<B>(
-    backend: B,
+async fn build_node_context(
+    backend: LMDBDatabase,
     base_node_identity: Arc<NodeIdentity>,
     wallet_node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
     interrupt_signal: ShutdownSignal,
     cleanup_orphans_at_startup: bool,
 ) -> Result<BaseNodeContext, anyhow::Error>
-where
-    B: BlockchainBackend + 'static,
 {
     //---------------------------------- Blockchain --------------------------------------------//
 
@@ -312,10 +310,11 @@ where
         pruning_horizon: config.pruning_horizon,
         pruning_interval: config.pruned_mode_cleanup_interval,
     };
-    let db = BlockchainDatabase::new(backend, &rules, validators, db_config, cleanup_orphans_at_startup)?;
+    let blockchain_db = BlockchainDatabase::new(backend, &rules, validators, db_config, cleanup_orphans_at_startup)?;
     let mempool_validator = MempoolValidators::new(
-        TxInternalConsistencyValidator::new(factories.clone()).and_then(TxInputAndMaturityValidator::new(db.clone())),
-        TxInputAndMaturityValidator::new(db.clone()),
+        TxInternalConsistencyValidator::new(factories.clone())
+            .and_then(TxInputAndMaturityValidator::new(blockchain_db.clone())),
+        TxInputAndMaturityValidator::new(blockchain_db.clone()),
     );
     let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
 
@@ -325,7 +324,7 @@ where
     let base_node_handles = BaseNodeBootstrapper {
         config,
         node_identity: base_node_identity,
-        db,
+        db: blockchain_db.clone(),
         mempool,
         rules: rules.clone(),
         factories: factories.clone(),
@@ -409,6 +408,7 @@ where
     let miner_hashrate = miner.get_hashrate_u64();
     let miner_instruction_events = miner.get_miner_instruction_events_sender_channel();
     Ok(BaseNodeContext {
+        blockchain_db,
         base_node_comms,
         base_node_dht,
         wallet_comms: wallet_handles.clone().map(|h| h.expect_handle::<CommsNode>()),

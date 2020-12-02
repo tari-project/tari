@@ -63,6 +63,10 @@ pub struct Block {
 }
 
 impl Block {
+    pub fn new(header: BlockHeader, body: AggregateBody) -> Self {
+        Self { header, body }
+    }
+
     /// This function will calculate the total fees contained in a block
     pub fn calculate_fees(&self) -> MicroTari {
         self.body.kernels().iter().fold(0.into(), |sum, x| sum + x.fee)
@@ -94,7 +98,7 @@ impl Block {
         Ok(())
     }
 
-    /// This function will check all stxo to ensure that feature flags where followed
+    /// Checks that all STXO rules (maturity etc) are followed
     pub fn check_stxo_rules(&self) -> Result<(), BlockValidationError> {
         self.body.check_stxo_rules(self.header.height)?;
         Ok(())

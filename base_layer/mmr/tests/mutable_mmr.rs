@@ -63,15 +63,15 @@ fn delete() {
         "7b7ddec2af4f3d0b9b165750cf2ff15813e965d29ecd5318e0c8fea901ceaef4"
     );
     // Can't delete past bounds
-    assert_eq!(mmr.delete_and_compress(5, true), false);
+    assert_eq!(mmr.delete(5), false);
     assert_eq!(mmr.len(), 5);
     assert_eq!(mmr.is_empty(), Ok(false));
     assert_eq!(mmr.get_merkle_root(), Ok(root));
     // Delete some nodes
     assert!(mmr.push(int_to_hash(5)).is_ok());
-    assert!(mmr.delete_and_compress(0, false));
-    assert!(mmr.delete_and_compress(2, false));
-    assert!(mmr.delete_and_compress(4, true));
+    assert!(mmr.delete(0));
+    assert!(mmr.delete(2));
+    assert!(mmr.delete(4));
     let root = mmr.get_merkle_root().unwrap();
     assert_eq!(
         &root.to_hex(),
@@ -80,20 +80,21 @@ fn delete() {
     assert_eq!(mmr.len(), 3);
     assert_eq!(mmr.is_empty(), Ok(false));
     // Can't delete that which has already been deleted
-    assert!(!mmr.delete_and_compress(0, false));
-    assert!(!mmr.delete_and_compress(2, false));
-    assert!(!mmr.delete_and_compress(0, true));
+    assert!(!mmr.delete(0,));
+    assert!(!mmr.delete(2,));
+    assert!(!mmr.delete(0,));
     // .. or beyond bounds of MMR
-    assert!(!mmr.delete_and_compress(99, true));
+    assert!(!mmr.delete(9));
     assert_eq!(mmr.len(), 3);
     assert_eq!(mmr.is_empty(), Ok(false));
     // Merkle root should not have changed:
     assert_eq!(mmr.get_merkle_root(), Ok(root));
-    assert!(mmr.delete_and_compress(1, false));
-    assert!(mmr.delete_and_compress(5, false));
+    assert!(mmr.delete(1));
+    assert!(mmr.delete(5));
     assert!(mmr.delete(3));
     assert_eq!(mmr.len(), 0);
     assert_eq!(mmr.is_empty(), Ok(true));
+    mmr.compress();
     let root = mmr.get_merkle_root().unwrap();
     assert_eq!(
         &root.to_hex(),
@@ -119,7 +120,7 @@ fn build_mmr() {
     let root_check = hash_with_bitmap(&mmr_root, &mut bitmap);
     assert_eq!(mmr.get_merkle_root(), Ok(root_check));
     // Delete a node
-    assert!(mmr.delete_and_compress(3, true));
+    assert!(mmr.delete(3));
     bitmap.add(3);
     let root_check = hash_with_bitmap(&mmr_root, &mut bitmap);
     assert_eq!(mmr.get_merkle_root(), Ok(root_check));
@@ -153,9 +154,9 @@ fn restore_from_leaf_nodes() {
     for i in 0..12 {
         assert!(mmr.push(int_to_hash(i)).is_ok());
     }
-    assert!(mmr.delete_and_compress(2, true));
-    assert!(mmr.delete_and_compress(4, true));
-    assert!(mmr.delete_and_compress(5, true));
+    assert!(mmr.delete(2));
+    assert!(mmr.delete(4));
+    assert!(mmr.delete(5));
 
     // Request state of MMR with single call
     let leaf_count = mmr.get_leaf_count();
@@ -171,7 +172,7 @@ fn restore_from_leaf_nodes() {
     let mmr_root = mmr.get_merkle_root();
     assert!(mmr.push(int_to_hash(7)).is_ok());
     assert!(mmr.push(int_to_hash(8)).is_ok());
-    assert!(mmr.delete_and_compress(3, true));
+    assert!(mmr.delete(3));
 
     // Restore from compact state
     assert!(mmr.assign(mmr_state1).is_ok());
