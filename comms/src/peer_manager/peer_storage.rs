@@ -573,7 +573,7 @@ mod test {
             net_addresses,
             PeerFlags::default(),
             PeerFeatures::empty(),
-            &[],
+            Default::default(),
             Default::default(),
         );
 
@@ -587,7 +587,7 @@ mod test {
             net_addresses,
             PeerFlags::default(),
             PeerFeatures::empty(),
-            &[],
+            Default::default(),
             Default::default(),
         );
 
@@ -603,7 +603,7 @@ mod test {
             net_addresses,
             PeerFlags::default(),
             PeerFeatures::empty(),
-            &[],
+            Default::default(),
             Default::default(),
         );
 
@@ -652,7 +652,7 @@ mod test {
             net_addresses,
             PeerFlags::default(),
             PeerFeatures::empty(),
-            &[],
+            Default::default(),
             Default::default(),
         );
 
@@ -666,7 +666,7 @@ mod test {
             net_addresses,
             PeerFlags::default(),
             PeerFeatures::empty(),
-            &[],
+            Default::default(),
             Default::default(),
         );
 
@@ -682,7 +682,7 @@ mod test {
             net_addresses,
             PeerFlags::default(),
             PeerFeatures::empty(),
-            &[],
+            Default::default(),
             Default::default(),
         );
         // Test adding and searching for peers
@@ -794,7 +794,7 @@ mod test {
             net_addresses,
             PeerFlags::default(),
             features,
-            &[],
+            Default::default(),
             Default::default(),
         );
         if ban {

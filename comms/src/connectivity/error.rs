@@ -37,8 +37,8 @@ pub enum ConnectivityError {
     ConnectionFailed(ConnectionManagerError),
     #[error("Connectivity event stream closed unexpectedly")]
     ConnectivityEventStreamClosed,
-    #[error("Timeout while waiting for ONLINE connectivity")]
-    OnlineWaitTimeout,
+    #[error("Timeout while waiting for node to come online ({0} peer(s) connected)")]
+    OnlineWaitTimeout(usize),
     #[error("Pending dial was cancelled")]
     DialCancelled,
 }

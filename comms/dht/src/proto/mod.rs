@@ -132,7 +132,7 @@ impl TryInto<Peer> for rpc::Peer {
             addresses.into(),
             PeerFlags::NONE,
             PeerFeatures::from_bits_truncate(self.peer_features),
-            &[],
+            Default::default(),
             "".to_string(),
         ))
     }

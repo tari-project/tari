@@ -91,13 +91,13 @@ pub struct Peer {
 
 impl Peer {
     /// Constructs a new peer.
-    pub fn new<'p, P: IntoIterator<Item = &'p ProtocolId>>(
+    pub fn new(
         public_key: CommsPublicKey,
         node_id: NodeId,
         addresses: MultiaddressesWithStats,
         flags: PeerFlags,
         features: PeerFeatures,
-        supported_protocols: P,
+        supported_protocols: Vec<ProtocolId>,
         user_agent: String,
     ) -> Peer
     {
@@ -113,7 +113,7 @@ impl Peer {
             offline_at: None,
             connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
-            supported_protocols: supported_protocols.into_iter().cloned().collect(),
+            supported_protocols,
             user_agent,
             metadata: HashMap::new(),
         }
@@ -349,7 +349,7 @@ mod test {
             addresses,
             PeerFlags::default(),
             PeerFeatures::empty(),
-            &[],
+            Default::default(),
             Default::default(),
         );
         assert_eq!(peer.is_banned(), false);
@@ -372,7 +372,7 @@ mod test {
             MultiaddressesWithStats::from(net_address1.clone()),
             PeerFlags::default(),
             PeerFeatures::empty(),
-            &[],
+            Default::default(),
             Default::default(),
         );
 
@@ -423,7 +423,7 @@ mod test {
             "/ip4/127.0.0.1/tcp/9000".parse::<Multiaddr>().unwrap().into(),
             PeerFlags::empty(),
             PeerFeatures::empty(),
-            &[],
+            Default::default(),
             Default::default(),
         );
 

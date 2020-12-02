@@ -292,7 +292,10 @@ impl DhtDiscoveryService {
     ) -> Result<(), DhtDiscoveryError>
     {
         let nonce = OsRng.next_u64();
-        self.send_discover(nonce, destination, dest_pubkey.clone()).await?;
+        if let Err(err) = self.send_discover(nonce, destination, dest_pubkey.clone()).await {
+            let _ = reply_tx.send(Err(err));
+            return Ok(());
+        }
 
         let inflight_count = self.inflight_discoveries.len();
 

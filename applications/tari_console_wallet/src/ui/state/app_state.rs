@@ -268,7 +268,7 @@ impl AppState {
             addr.into(),
             PeerFlags::default(),
             PeerFeatures::COMMUNICATION_NODE,
-            &[],
+            Default::default(),
             Default::default(),
         );
 

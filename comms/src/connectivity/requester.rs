@@ -125,15 +125,28 @@ impl ConnectivityRequester {
     }
 
     pub async fn dial_peer(&mut self, peer: NodeId) -> Result<PeerConnection, ConnectivityError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(ConnectivityRequest::DialPeer(peer, reply_tx))
-            .await
-            .map_err(|_| ConnectivityError::ActorDisconnected)?;
-        reply_rx
-            .await
-            .map_err(|_| ConnectivityError::ActorResponseCancelled)?
-            .map_err(Into::into)
+        let mut num_cancels = 0;
+        loop {
+            let (reply_tx, reply_rx) = oneshot::channel();
+            self.sender
+                .send(ConnectivityRequest::DialPeer(peer.clone(), reply_tx))
+                .await
+                .map_err(|_| ConnectivityError::ActorDisconnected)?;
+
+            match reply_rx.await.map_err(|_| ConnectivityError::ActorResponseCancelled)? {
+                Ok(c) => return Ok(c),
+                Err(err @ ConnectionManagerError::DialCancelled) => {
+                    num_cancels += 1;
+                    // Due to simultaneous dialing, it's possible for the dial to be cancelled. However, typically if
+                    // dial is called right after, the resolved connection will be returned.
+                    if num_cancels == 1 {
+                        continue;
+                    }
+                    return Err(err.into());
+                },
+                Err(err) => return Err(err.into()),
+            }
+        }
     }
 
     pub async fn add_managed_peers(&mut self, peers: Vec<NodeId>) -> Result<(), ConnectivityError> {
@@ -241,16 +254,17 @@ impl ConnectivityRequester {
         let start = Instant::now();
         let mut remaining = timeout;
 
+        let mut last_known_peer_count = status.num_connected_nodes();
         loop {
             debug!(target: LOG_TARGET, "Waiting for connectivity event");
             let recv_result = time::timeout(remaining, connectivity_events.next())
                 .await
-                .map_err(|_| ConnectivityError::OnlineWaitTimeout)?
+                .map_err(|_| ConnectivityError::OnlineWaitTimeout(last_known_peer_count))?
                 .ok_or_else(|| ConnectivityError::ConnectivityEventStreamClosed)?;
 
             remaining = timeout
                 .checked_sub(start.elapsed())
-                .ok_or_else(|| ConnectivityError::OnlineWaitTimeout)?;
+                .ok_or_else(|| ConnectivityError::OnlineWaitTimeout(last_known_peer_count))?;
 
             match recv_result {
                 Ok(event) => match &*event {
@@ -258,14 +272,16 @@ impl ConnectivityRequester {
                         info!(target: LOG_TARGET, "Connectivity is ONLINE.");
                         break Ok(());
                     },
-                    ConnectivityEvent::ConnectivityStateDegraded(_) => {
-                        warn!(target: LOG_TARGET, "Connectivity is DEGRADED.");
+                    ConnectivityEvent::ConnectivityStateDegraded(n) => {
+                        warn!(target: LOG_TARGET, "Connectivity is DEGRADED ({} peer(s))", n);
+                        last_known_peer_count = *n;
                     },
                     ConnectivityEvent::ConnectivityStateOffline => {
                         warn!(
                             target: LOG_TARGET,
                             "Connectivity is OFFLINE. Waiting for connections..."
                         );
+                        last_known_peer_count = 0;
                     },
                     event => {
                         debug!(

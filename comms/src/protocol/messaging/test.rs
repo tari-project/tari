@@ -124,7 +124,7 @@ async fn new_inbound_substream_handling() {
             MultiaddressesWithStats::default(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_CLIENT,
-            &[],
+            Default::default(),
             Default::default(),
         ))
         .await

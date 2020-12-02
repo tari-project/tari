@@ -169,7 +169,7 @@ impl OnConnect {
             return Ok(false);
         }
 
-        let addresses = peer.addresses.address_iter();
+        let addresses = peer.addresses.iter();
         match validate_peer_addresses(addresses, self.config().network.is_localtest()) {
             Ok(_) => {
                 debug!(

@@ -272,7 +272,7 @@ where
             vec![address].into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
-            &[],
+            Default::default(),
             String::new(),
         );
 

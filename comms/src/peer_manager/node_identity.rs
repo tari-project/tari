@@ -156,7 +156,7 @@ impl NodeIdentity {
             self.public_address().into(),
             PeerFlags::empty(),
             self.features(),
-            &[],
+            Default::default(),
             Default::default(),
         )
     }

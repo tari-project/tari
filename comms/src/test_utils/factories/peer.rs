@@ -93,7 +93,7 @@ impl TestFactory for PeerFactory {
             addresses.into(),
             flags,
             self.peer_features,
-            &[],
+            Default::default(),
             Default::default(),
         ))
     }
