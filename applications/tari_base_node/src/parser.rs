@@ -29,7 +29,6 @@ use crate::{
 };
 use chrono::{DateTime, Utc};
 use chrono_english::{parse_date_string, Dialect};
-use futures::future::Either;
 use itertools::Itertools;
 use log::*;
 use qrcode::{render::unicode, QrCode};
@@ -57,7 +56,11 @@ use std::{
 };
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_app_utilities::utilities::{parse_emoji_id_or_public_key, parse_emoji_id_or_public_key_or_node_id};
+use tari_app_utilities::utilities::{
+    either_to_node_id,
+    parse_emoji_id_or_public_key,
+    parse_emoji_id_or_public_key_or_node_id,
+};
 use tari_common::GlobalConfig;
 use tari_comms::{
     connectivity::ConnectivityRequester,
@@ -107,7 +110,9 @@ pub enum BaseNodeCommand {
     CancelTransaction,
     SendTari,
     GetChainMetadata,
+    GetPeer,
     ListPeers,
+    DialPeer,
     ResetOfflinePeers,
     BanPeer,
     UnbanPeer,
@@ -288,8 +293,14 @@ impl Parser {
             GetChainMetadata => {
                 self.process_get_chain_meta();
             },
+            DialPeer => {
+                self.process_dial_peer(args);
+            },
             DiscoverPeer => {
                 self.process_discover_peer(args);
+            },
+            GetPeer => {
+                self.process_get_peer(args);
             },
             ListPeers => {
                 self.process_list_peers(args);
@@ -411,8 +422,14 @@ impl Parser {
             GetChainMetadata => {
                 println!("Gets your base node chain meta data");
             },
+            DialPeer => {
+                println!("Attempt to connect to a known peer");
+            },
             DiscoverPeer => {
                 println!("Attempt to discover a peer on the Tari network");
+            },
+            GetPeer => {
+                println!("Get all available info about peer");
             },
             ListPeers => {
                 println!("Lists the peers that this node knows about");
@@ -1052,6 +1069,53 @@ impl Parser {
         });
     }
 
+    fn process_get_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+        let node_id = match args
+            .next()
+            .map(parse_emoji_id_or_public_key_or_node_id)
+            .flatten()
+            .map(either_to_node_id)
+        {
+            Some(n) => n,
+            None => {
+                println!("Usage: get-peer [NodeId|PublicKey|EmojiId]");
+                return;
+            },
+        };
+
+        let peer_manager = self.peer_manager.clone();
+
+        self.executor.spawn(async move {
+            match peer_manager.find_by_node_id(&node_id).await {
+                Ok(peer) => {
+                    let eid = EmojiId::from_pubkey(&peer.public_key);
+                    println!("Emoji ID: {}", eid);
+                    println!("Public Key: {}", peer.public_key);
+                    println!("NodeId: {}", peer.node_id);
+                    println!("Addresses:");
+                    peer.addresses.iter().for_each(|a| {
+                        println!("- {}", a);
+                    });
+                    println!("User agent: {}", peer.user_agent);
+                    println!("Features: {:?}", peer.features);
+                    println!("Supported protocols:");
+                    peer.supported_protocols.iter().for_each(|p| {
+                        println!("- {}", String::from_utf8_lossy(p));
+                    });
+                    if let Some(dt) = peer.banned_until() {
+                        println!("Banned until {}, reason: {}", dt, peer.banned_reason);
+                    }
+                    if let Some(dt) = peer.last_seen() {
+                        println!("Last seen: {}", dt);
+                    }
+                },
+                Err(err) => {
+                    println!("{}", err);
+                },
+            }
+        });
+    }
+
     /// Function to process the list-peers command
     fn process_list_peers<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
         let peer_manager = self.peer_manager.clone();
@@ -1152,9 +1216,46 @@ impl Parser {
         });
     }
 
+    /// Function to process the dial-peer command
+    fn process_dial_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+        let mut connectivity = self.connectivity.clone();
+
+        let dest_node_id = match args
+            .next()
+            .and_then(parse_emoji_id_or_public_key_or_node_id)
+            .map(either_to_node_id)
+        {
+            Some(n) => n,
+            None => {
+                println!("Please enter a valid destination public key or emoji id");
+                println!("discover-peer [hex public key or emoji id]");
+                return;
+            },
+        };
+
+        self.executor.spawn(async move {
+            let start = Instant::now();
+            println!("☎️  Dialing peer...");
+
+            match connectivity.dial_peer(dest_node_id).await {
+                Ok(p) => {
+                    println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
+                    println!("Connection: {}", p);
+                },
+                Err(err) => {
+                    println!("📞  Dial failed: {}", err);
+                },
+            }
+        });
+    }
+
     /// Function to process the ban-peer command
     fn process_ban_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I, must_ban: bool) {
-        let node_key = match args.next().and_then(parse_emoji_id_or_public_key_or_node_id) {
+        let node_id = match args
+            .next()
+            .and_then(parse_emoji_id_or_public_key_or_node_id)
+            .map(either_to_node_id)
+        {
             Some(v) => v,
             None => {
                 println!("Please enter a valid destination public key or emoji id");
@@ -1165,32 +1266,15 @@ impl Parser {
             },
         };
 
-        match &node_key {
-            Either::Left(public_key) => {
-                if let Some(wni) = self.wallet_node_identity.clone() {
-                    if wni.public_key() == public_key {
-                        println!("Cannot ban our own wallet");
-                        return;
-                    }
-                }
-
-                if self.base_node_identity.public_key() == public_key {
-                    println!("Cannot ban our own node");
-                    return;
-                }
-            },
-            Either::Right(node_id) => {
-                if let Some(wni) = self.wallet_node_identity.clone() {
-                    if wni.node_id() == node_id {
-                        println!("Cannot ban our own wallet");
-                        return;
-                    }
-                }
-                if self.base_node_identity.node_id() == node_id {
-                    println!("Cannot ban our own node");
-                    return;
-                }
-            },
+        if let Some(wni) = self.wallet_node_identity.clone() {
+            if wni.node_id() == &node_id {
+                println!("Cannot ban our own wallet");
+                return;
+            }
+        }
+        if self.base_node_identity.node_id() == &node_id {
+            println!("Cannot ban our own node");
+            return;
         }
 
         let mut connectivity = self.connectivity.clone();
@@ -1205,22 +1289,6 @@ impl Parser {
             .unwrap_or_else(|| Duration::from_secs(std::u64::MAX));
 
         self.executor.spawn(async move {
-            let node_id = match node_key {
-                Either::Left(public_key) => match peer_manager.find_by_public_key(&public_key).await {
-                    Ok(peer) => peer.node_id,
-                    Err(err) if err.is_peer_not_found() => {
-                        println!("Peer not found in base node");
-                        return;
-                    },
-                    Err(err) => {
-                        println!("Failed to ban peer: {:?}", err);
-                        error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
-                        return;
-                    },
-                },
-                Either::Right(node_id) => node_id,
-            };
-
             if must_ban {
                 match connectivity
                     .ban_peer_until(node_id.clone(), duration, "UI manual ban".to_string())

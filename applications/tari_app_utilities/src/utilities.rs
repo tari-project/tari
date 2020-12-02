@@ -237,3 +237,10 @@ pub fn parse_emoji_id_or_public_key_or_node_id(key: &str) -> Option<Either<Comms
         .map(Either::Left)
         .or_else(|| NodeId::from_hex(key).ok().map(Either::Right))
 }
+
+pub fn either_to_node_id(either: Either<CommsPublicKey, NodeId>) -> NodeId {
+    match either {
+        Either::Left(pk) => NodeId::from_public_key(&pk),
+        Either::Right(n) => n,
+    }
+}
