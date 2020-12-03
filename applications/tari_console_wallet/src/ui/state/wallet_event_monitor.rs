@@ -24,7 +24,7 @@ use crate::ui::state::AppStateInner;
 use futures::stream::StreamExt;
 use log::*;
 use std::sync::Arc;
-use tari_comms::connectivity::ConnectivityEvent;
+use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
     output_manager_service::TxId,
@@ -109,6 +109,9 @@ impl WalletEventMonitor {
                                     BaseNodeEvent::BaseNodeState(state) => {
                                         self.trigger_base_node_state_refresh(state).await;
                                     }
+                                    BaseNodeEvent::BaseNodePeerSet(peer) => {
+                                        self.trigger_base_node_peer_refresh(*peer).await;
+                                    }
                                 }
                             },
                             Err(_) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel"),
@@ -146,6 +149,14 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.refresh_base_node_state(state).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+        }
+    }
+
+    async fn trigger_base_node_peer_refresh(&mut self, peer: Peer) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_base_node_peer(peer).await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
     }

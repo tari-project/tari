@@ -109,6 +109,10 @@ impl WindowedListState {
         self.selected = None;
     }
 
+    pub fn select(&mut self, idx: Option<usize>) {
+        self.selected = idx;
+    }
+
     pub fn select_first(&mut self) {
         if !self.num_items == 0 {
             self.selected = None;

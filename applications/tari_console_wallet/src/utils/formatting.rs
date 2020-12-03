@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_comms::peer_manager::Peer;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Utility function to only display the first and last N characters of a long string. This function is aware of unicode
@@ -39,6 +40,14 @@ pub fn display_compressed_string(string: String, len_first: usize, len_last: usi
         result.push_str(i);
     }
     result
+}
+
+/// Utility function to display the first net address of a &Peer as a String
+pub fn display_address(peer: &Peer) -> String {
+    match peer.addresses.first() {
+        Some(address) => address.to_string(),
+        None => "".to_string(),
+    }
 }
 
 #[cfg(test)]

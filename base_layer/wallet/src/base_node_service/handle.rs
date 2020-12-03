@@ -47,6 +47,7 @@ pub enum BaseNodeServiceResponse {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BaseNodeEvent {
     BaseNodeState(BaseNodeState),
+    BaseNodePeerSet(Box<Peer>),
 }
 
 /// The Base Node Service Handle is a struct that contains the interfaces used to communicate with a running
@@ -73,7 +74,7 @@ impl BaseNodeServiceHandle {
         self.event_stream_sender.subscribe().fuse()
     }
 
-    pub async fn set_service_peer(&mut self, peer: Peer) -> Result<(), BaseNodeServiceError> {
+    pub async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), BaseNodeServiceError> {
         match self
             .handle
             .call(BaseNodeServiceRequest::SetBaseNodePeer(Box::new(peer)))
