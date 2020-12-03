@@ -492,6 +492,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
+    #[allow(clippy::ptr_arg)]
     fn update_block_accumulated_data(
         &mut self,
         txn: &WriteTransaction<'_>,
@@ -502,6 +503,7 @@ impl LMDBDatabase {
         lmdb_replace(&txn, &self.block_accumulated_data_db, header_hash.as_slice(), data)
     }
 
+    #[allow(clippy::ptr_arg)]
     fn fetch_mmr_leaf_index(
         &self,
         txn: &ConstTransaction<'_>,
@@ -526,6 +528,7 @@ impl LMDBDatabase {
         lmdb_get(txn, &self.header_accumulated_data_db, hash)
     }
 
+    #[allow(clippy::ptr_arg)]
     fn fetch_block_accumulated_data(
         &self,
         txn: &ConstTransaction<'_>,

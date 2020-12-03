@@ -1548,9 +1548,9 @@ impl Parser {
             return;
         }
         let start = start.unwrap();
-        let mut blockchain_db = self.blockchain_db.clone();
+        let blockchain_db = self.blockchain_db.clone();
         self.executor.spawn(async move {
-            let headers = match Self::get_headers(&mut blockchain_db, start, end).await {
+            let headers = match Self::get_headers(&blockchain_db, start, end).await {
                 Ok(h) if h.is_empty() => {
                     println!("No headers found");
                     return;
