@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.2.12"
+version = "0.2.13"
 edition = "2018"
 
 [features]
@@ -19,7 +19,7 @@ avx2 = ["tari_crypto/avx2"]
 
 [dependencies]
 tari_common = { version = "^0.2", path = "../../common"}
-tari_common_types = { version = "^0.1", path = "../../base_layer/common_types"}
+tari_common_types = { version = "^0.2", path = "../../base_layer/common_types"}
 tari_comms = { version = "^0.2", path = "../../comms"}
 tari_comms_dht = { version = "^0.2.1", path = "../../comms/dht"}
 tari_comms_rpc_macros = { version = "^0.1", path = "../../comms/rpc_macros"}
