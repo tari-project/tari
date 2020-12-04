@@ -291,7 +291,7 @@ where
             .await?;
 
         if let Some(mut base_node_service) = self.base_node_service.clone() {
-            base_node_service.set_service_peer(peer).await?;
+            base_node_service.set_base_node_peer(peer).await?;
         }
 
         Ok(())

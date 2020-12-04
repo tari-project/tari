@@ -88,6 +88,7 @@ impl SendReceiveTab {
             Span::styled("A", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to edit "),
             Span::styled("Amount", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(", "),
             Span::styled("F", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to edit "),
             Span::styled("Fee-Per-Gram", Style::default().add_modifier(Modifier::BOLD)),
@@ -368,7 +369,7 @@ impl SendReceiveTab {
 
 impl<B: Backend> Component<B> for SendReceiveTab {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
-        let balance_main_area = Layout::default()
+        let areas = Layout::default()
             .constraints(
                 [
                     Constraint::Length(3),
@@ -380,16 +381,16 @@ impl<B: Backend> Component<B> for SendReceiveTab {
             )
             .split(area);
 
-        self.balance.draw(f, balance_main_area[0], app_state);
-        self.draw_send_form(f, balance_main_area[1], app_state);
+        self.balance.draw(f, areas[0], app_state);
+        self.draw_send_form(f, areas[1], app_state);
 
         if self.show_contacts {
-            self.draw_contacts(f, balance_main_area[2], app_state);
+            self.draw_contacts(f, areas[2], app_state);
             if self.show_edit_contact {
                 self.draw_edit_contact(f, area, app_state);
             }
         } else {
-            self.draw_whoami(f, balance_main_area[2], app_state);
+            self.draw_whoami(f, areas[2], app_state);
         }
 
         let rx_option = self.send_result_watch.take();

@@ -28,7 +28,7 @@ use std::{
     time::Duration,
 };
 
-#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PeerConnectionStats {
     /// The last time a connection was successfully made or, None if a successful
     /// connection has never been made.
@@ -108,7 +108,7 @@ impl fmt::Display for PeerConnectionStats {
 }
 
 /// Peer connection statistics
-#[derive(Debug, Clone, Deserialize, Serialize, PartialOrd, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialOrd, PartialEq, Eq)]
 pub enum LastConnectionAttempt {
     /// This node has never attempted to connect to this peer
     Never,

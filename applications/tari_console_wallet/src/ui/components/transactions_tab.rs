@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::ui::{
     components::{balance::Balance, Component},
     state::AppState,
@@ -34,7 +36,7 @@ impl TransactionsTab {
     pub fn new() -> Self {
         Self {
             balance: Balance::new(),
-            selected_tx_list: SelectedTransactionList::CompletedTxs,
+            selected_tx_list: SelectedTransactionList::None,
             pending_list_state: WindowedListState::new(),
             completed_list_state: WindowedListState::new(),
             detailed_transaction: None,
@@ -76,29 +78,48 @@ impl TransactionsTab {
         let window = self.pending_list_state.get_start_end();
         let windowed_view = app_state.get_pending_txs_slice(window.0, window.1);
 
+        let text_colors: HashMap<bool, Color> = [(true, Color::DarkGray), (false, Color::Reset)]
+            .iter()
+            .cloned()
+            .collect();
+
         let mut column0_items = Vec::new();
         let mut column1_items = Vec::new();
         let mut column2_items = Vec::new();
         let mut column3_items = Vec::new();
         for t in windowed_view.iter() {
+            let text_color = text_colors.get(&t.cancelled).unwrap_or(&Color::Reset).to_owned();
             if t.direction == TransactionDirection::Outbound {
-                column0_items.push(ListItem::new(Span::raw(format!("{}", t.destination_public_key))));
-                column1_items.push(ListItem::new(Span::styled(
-                    format!("{}", t.amount),
-                    Style::default().fg(Color::Red),
+                column0_items.push(ListItem::new(Span::styled(
+                    format!("{}", t.destination_public_key),
+                    Style::default().fg(text_color),
                 )));
+                let amount_style = if t.cancelled {
+                    Style::default().fg(Color::Red).add_modifier(Modifier::DIM)
+                } else {
+                    Style::default().fg(Color::Red)
+                };
+                column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             } else {
-                column0_items.push(ListItem::new(Span::raw(format!("{}", t.source_public_key))));
-                column1_items.push(ListItem::new(Span::styled(
-                    format!("{}", t.amount),
-                    Style::default().fg(Color::Green),
+                column0_items.push(ListItem::new(Span::styled(
+                    format!("{}", t.source_public_key),
+                    Style::default().fg(text_color),
                 )));
+                let amount_style = if t.cancelled {
+                    Style::default().fg(Color::Green).add_modifier(Modifier::DIM)
+                } else {
+                    Style::default().fg(Color::Green)
+                };
+                column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             }
-            column2_items.push(ListItem::new(Span::raw(format!(
-                "{}",
-                t.timestamp.format("%Y-%m-%d %H:%M:%S")
-            ))));
-            column3_items.push(ListItem::new(Span::raw(t.message.as_str())));
+            column2_items.push(ListItem::new(Span::styled(
+                format!("{}", t.timestamp.format("%Y-%m-%d %H:%M:%S")),
+                Style::default().fg(text_color),
+            )));
+            column3_items.push(ListItem::new(Span::styled(
+                t.message.as_str(),
+                Style::default().fg(text_color),
+            )));
         }
 
         let column_list = MultiColumnList::new()
@@ -134,30 +155,42 @@ impl TransactionsTab {
         let mut column1_items = Vec::new();
         let mut column2_items = Vec::new();
         let mut column3_items = Vec::new();
+
         for t in windowed_view.iter() {
+            let text_color = text_colors.get(&t.cancelled).unwrap_or(&Color::Reset).to_owned();
             if t.direction == TransactionDirection::Outbound {
-                column0_items.push(ListItem::new(Span::raw(format!("{}", t.destination_public_key))));
-                column1_items.push(ListItem::new(Span::styled(
-                    format!("{}", t.amount),
-                    Style::default().fg(Color::Red),
+                column0_items.push(ListItem::new(Span::styled(
+                    format!("{}", t.destination_public_key),
+                    Style::default().fg(text_color),
                 )));
+                let amount_style = if t.cancelled {
+                    Style::default().fg(Color::Red).add_modifier(Modifier::DIM)
+                } else {
+                    Style::default().fg(Color::Red)
+                };
+                column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             } else {
-                column0_items.push(ListItem::new(Span::raw(format!("{}", t.source_public_key))));
-                column1_items.push(ListItem::new(Span::styled(
-                    format!("{}", t.amount),
-                    Style::default().fg(Color::Green),
+                column0_items.push(ListItem::new(Span::styled(
+                    format!("{}", t.source_public_key),
+                    Style::default().fg(text_color),
                 )));
+                let amount_style = if t.cancelled {
+                    Style::default().fg(Color::Green).add_modifier(Modifier::DIM)
+                } else {
+                    Style::default().fg(Color::Green)
+                };
+                column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
             }
-            column2_items.push(ListItem::new(Span::raw(format!(
-                "{}",
-                t.timestamp.format("%Y-%m-%d %H:%M:%S")
-            ))));
+            column2_items.push(ListItem::new(Span::styled(
+                format!("{}", t.timestamp.format("%Y-%m-%d %H:%M:%S")),
+                Style::default().fg(text_color),
+            )));
             let status = if t.cancelled {
                 "Cancelled".to_string()
             } else {
                 t.status.to_string()
             };
-            column3_items.push(ListItem::new(Span::raw(status)));
+            column3_items.push(ListItem::new(Span::styled(status, Style::default().fg(text_color))));
         }
 
         let column_list = MultiColumnList::new()
@@ -320,7 +353,7 @@ impl TransactionsTab {
 
 impl<B: Backend> Component<B> for TransactionsTab {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
-        let balance_main_area = Layout::default()
+        let areas = Layout::default()
             .constraints(
                 [
                     Constraint::Length(3),
@@ -332,7 +365,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
             )
             .split(area);
 
-        self.balance.draw(f, balance_main_area[0], app_state);
+        self.balance.draw(f, areas[0], app_state);
 
         let mut span_vec = if app_state.get_pending_txs().is_empty() {
             vec![]
@@ -353,10 +386,10 @@ impl<B: Backend> Component<B> for TransactionsTab {
         span_vec.push(Span::raw(" to cancel a selected Pending Tx."));
 
         let instructions = Paragraph::new(Spans::from(span_vec)).wrap(Wrap { trim: true });
-        f.render_widget(instructions, balance_main_area[1]);
+        f.render_widget(instructions, areas[1]);
 
-        self.draw_transaction_lists(f, balance_main_area[2], app_state);
-        self.draw_detailed_transaction(f, balance_main_area[3], app_state);
+        self.draw_transaction_lists(f, areas[2], app_state);
+        self.draw_detailed_transaction(f, areas[3], app_state);
 
         if let Some(msg) = self.error_message.clone() {
             draw_dialog(f, area, "Error!".to_string(), msg, Color::Red, 120, 9);
@@ -405,19 +438,31 @@ impl<B: Backend> Component<B> for TransactionsTab {
 
         match c {
             'p' => {
+                self.completed_list_state.select(None);
                 self.selected_tx_list = SelectedTransactionList::PendingTxs;
                 self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
-                if self.pending_list_state.selected().is_none() {
-                    self.pending_list_state.select_first();
-                }
+                let idx = match self.pending_list_state.selected() {
+                    None => {
+                        self.pending_list_state.select_first();
+                        0
+                    },
+                    Some(i) => i,
+                };
+                self.detailed_transaction = app_state.get_pending_tx(idx).cloned()
             },
             't' => {
+                self.pending_list_state.select(None);
                 self.selected_tx_list = SelectedTransactionList::CompletedTxs;
                 self.completed_list_state
                     .set_num_items(app_state.get_completed_txs().len());
-                if self.completed_list_state.selected().is_none() {
-                    self.completed_list_state.select_first();
-                }
+                let idx = match self.completed_list_state.selected() {
+                    None => {
+                        self.completed_list_state.select_first();
+                        0
+                    },
+                    Some(i) => i,
+                };
+                self.detailed_transaction = app_state.get_completed_tx(idx).cloned();
             },
             'c' => {
                 if self.selected_tx_list == SelectedTransactionList::PendingTxs {
@@ -426,6 +471,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                 }
             },
             '\n' => match self.selected_tx_list {
+                SelectedTransactionList::None => {},
                 SelectedTransactionList::PendingTxs => {
                     self.detailed_transaction = match self.pending_list_state.selected() {
                         None => None,
@@ -445,6 +491,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
 
     fn on_up(&mut self, app_state: &mut AppState) {
         match self.selected_tx_list {
+            SelectedTransactionList::None => {},
             SelectedTransactionList::PendingTxs => {
                 self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
                 self.pending_list_state.previous();
@@ -467,6 +514,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
 
     fn on_down(&mut self, app_state: &mut AppState) {
         match self.selected_tx_list {
+            SelectedTransactionList::None => {},
             SelectedTransactionList::PendingTxs => {
                 self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
                 self.pending_list_state.next();
@@ -486,10 +534,18 @@ impl<B: Backend> Component<B> for TransactionsTab {
             },
         }
     }
+
+    fn on_esc(&mut self, _app_state: &mut AppState) {
+        self.selected_tx_list = SelectedTransactionList::None;
+        self.pending_list_state.select(None);
+        self.completed_list_state.select(None);
+        self.detailed_transaction = None;
+    }
 }
 
 #[derive(PartialEq)]
 pub enum SelectedTransactionList {
+    None,
     PendingTxs,
     CompletedTxs,
 }
