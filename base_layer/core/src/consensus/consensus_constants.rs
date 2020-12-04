@@ -439,6 +439,11 @@ impl ConsensusConstantsBuilder {
         self
     }
 
+    pub fn with_max_randomx_seed_height(mut self, height: u64) -> Self {
+        self.consensus.max_randomx_seed_height = height;
+        self
+    }
+
     pub fn with_faucet_value(mut self, value: MicroTari) -> Self {
         self.consensus.faucet_value = value;
         self

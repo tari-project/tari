@@ -155,14 +155,6 @@ impl FullConsensusValidator {
                 }
             }
 
-            // This is assertion cannot fail because fetch_header returns an error if a header is not found and the loop
-            // always runs at least once (even if height == 0)
-            debug_assert_eq!(
-                target_difficulties.is_empty(),
-                false,
-                "fetch_target_difficulties returned an empty vec. "
-            );
-
             target_difficulties.calculate()
         };
 
@@ -250,7 +242,7 @@ impl<B: BlockchainBackend> StatefulValidation<BlockHeader, B> for FullConsensusV
             "BlockHeader validation: Median timestamp is ok for {} ",
             header_id
         );
-        check_pow_data(header, &self.rules)?;
+        check_pow_data(header, &self.rules, backend)?;
         self.check_achieved_and_target_difficulty(backend, header)?;
         trace!(
             target: LOG_TARGET,

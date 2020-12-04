@@ -36,13 +36,13 @@ use crate::{
     },
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusManager},
-    proof_of_work::{PowAlgorithm, ProofOfWork, TargetDifficultyWindow},
+    proof_of_work::{monero_rx::MoneroData, Difficulty, PowAlgorithm, ProofOfWork, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{Commitment, HashDigest, HashOutput, Signature},
     },
-    validation::{StatefulValidation, StatefulValidator, Validation, Validator},
+    validation::{StatefulValidation, StatefulValidator, Validation, ValidationError, Validator},
 };
 use croaring::Bitmap;
 use digest::Input;
@@ -225,6 +225,9 @@ pub trait BlockchainBackend: Send + Sync {
         horizon_height: u64,
         orphan_storage_capacity: usize,
     ) -> Result<(), ChainStorageError>;
+
+    /// This gets the monero seed_height. This will return 0, if the seed is unkown
+    fn fetch_monero_seed_first_seen_height(&self, seed: &str) -> Result<u64, ChainStorageError>;
 }
 
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
@@ -352,6 +355,17 @@ where B: BlockchainBackend
                 "An attempt to get a read lock on the blockchain backend failed. {:?}", e
             );
             ChainStorageError::AccessError("Read lock on blockchain backend failed".into())
+        })
+    }
+
+    #[cfg(test)]
+    pub fn test_db_write_access(&self) -> Result<RwLockWriteGuard<B>, ChainStorageError> {
+        self.db.write().map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "An attempt to get a write lock on the blockchain backend failed. {:?}", e
+            );
+            ChainStorageError::AccessError("Write lock on blockchain backend failed".into())
         })
     }
 
@@ -1310,6 +1324,13 @@ fn insert_block(txn: &mut DbTransaction, block: Arc<Block>) -> Result<(), ChainS
         block.header.height,
         block_hash.to_hex()
     );
+    if block.header.pow.pow_algo == PowAlgorithm::Monero {
+        let monero_seed = MoneroData::from_header(&block.header)
+            .map_err(|e| ValidationError::CustomError(e.to_string()))?
+            .key
+            .to_string();
+        txn.insert_monero_seed_height(&monero_seed, block.header.height);
+    }
 
     // Update metadata
     let accumulated_difficulty = block.header.get_proof_of_work()?.total_accumulated_difficulty();
@@ -2021,4 +2042,43 @@ fn convert_to_option_bounds<T: RangeBounds<u64>>(bounds: T) -> (Option<u64>, Opt
     };
 
     (start, end)
+}
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::test_helpers::blockchain::create_test_blockchain_db;
+    use tari_test_utils::paths::create_temporary_data_path;
+    #[test]
+    fn lmdb_fetch_monero_seeds() {
+        // Perform test
+        {
+            let mut db = create_test_blockchain_db();
+            let seed = "test1".to_string();
+            {
+                let db_read = db.db_read_access().unwrap();
+                assert_eq!(db_read.fetch_monero_seed_first_seen_height(&seed).unwrap(), 0);
+            }
+            {
+                let mut txn = DbTransaction::new();
+                txn.insert_monero_seed_height(&seed, 5);
+                let mut db_write = db.test_db_write_access().unwrap();
+                assert!(db_write.write(txn).is_ok());
+            }
+            {
+                let db_read = db.db_read_access().unwrap();
+                assert_eq!(db_read.fetch_monero_seed_first_seen_height(&seed).unwrap(), 5);
+            }
+
+            {
+                let mut txn = DbTransaction::new();
+                txn.insert_monero_seed_height(&seed, 2);
+                let mut db_write = db.db_write_access().unwrap();
+                assert!(db_write.write(txn).is_ok());
+            }
+            {
+                let db_read = db.db_read_access().unwrap();
+                assert_eq!(db_read.fetch_monero_seed_first_seen_height(&seed).unwrap(), 2);
+            }
+        }
+    }
 }

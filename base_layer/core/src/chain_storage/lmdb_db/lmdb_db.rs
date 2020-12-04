@@ -53,6 +53,7 @@ use crate::{
             LMDB_DB_INPUTS,
             LMDB_DB_KERNELS,
             LMDB_DB_METADATA,
+            LMDB_DB_MONERO_SEED_HEIGHT,
             LMDB_DB_ORPHANS,
             LMDB_DB_ORPHAN_CHAIN_TIPS,
             LMDB_DB_ORPHAN_PARENT_MAP_INDEX,
@@ -104,6 +105,7 @@ pub struct LMDBDatabase {
     txos_hash_to_index_db: DatabaseRef,
     kernels_db: DatabaseRef,
     orphans_db: DatabaseRef,
+    monero_seed_height_db: DatabaseRef,
     orphan_chain_tips_db: DatabaseRef,
     orphan_parent_map_index: DatabaseRef,
     is_mem_metadata_dirty: bool,
@@ -126,6 +128,7 @@ impl LMDBDatabase {
             txos_hash_to_index_db: get_database(&store, LMDB_DB_TXOS_HASH_TO_INDEX)?,
             kernels_db: get_database(&store, LMDB_DB_KERNELS)?,
             orphans_db: get_database(&store, LMDB_DB_ORPHANS)?,
+            monero_seed_height_db: get_database(&store, LMDB_DB_MONERO_SEED_HEIGHT)?,
             orphan_chain_tips_db: get_database(&store, LMDB_DB_ORPHAN_CHAIN_TIPS)?,
             orphan_parent_map_index: get_database(&store, LMDB_DB_ORPHAN_PARENT_MAP_INDEX)?,
             env,
@@ -211,12 +214,18 @@ impl LMDBDatabase {
                     )?;
                     lmdb_delete_keys_starting_with::<TransactionInputRowData>(&write_txn, &self.inputs_db, &hash_hex)?;
                 },
+                WriteOperation::InsertMoneroSeedHeight(data, height) => {
+                    let current_height =
+                        lmdb_get(&write_txn, &self.monero_seed_height_db, &*data.as_str())?.unwrap_or(std::u64::MAX);
+                    if height < current_height {
+                        lmdb_replace(&write_txn, &self.monero_seed_height_db, &*data.as_str(), &height)?;
+                    };
+                },
             }
         }
         write_txn
             .commit()
             .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-
         if self.is_mem_metadata_dirty {
             self.refresh_chain_metadata()?;
         }
@@ -559,6 +568,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
         .add_database(LMDB_DB_TXOS_HASH_TO_INDEX, flags)
         .add_database(LMDB_DB_KERNELS, flags)
         .add_database(LMDB_DB_ORPHANS, flags)
+        .add_database(LMDB_DB_MONERO_SEED_HEIGHT, flags)
         .add_database(LMDB_DB_ORPHAN_CHAIN_TIPS, flags)
         .add_database(LMDB_DB_ORPHAN_PARENT_MAP_INDEX, flags | db::DUPSORT)
         .build()
@@ -604,7 +614,6 @@ impl BlockchainBackend for LMDBDatabase {
         if txn.operations().is_empty() {
             return Ok(());
         }
-
         LMDBStore::resize_if_required(&self.env, &self.env_config)?;
 
         let mark = Instant::now();
@@ -982,6 +991,11 @@ impl BlockchainBackend for LMDBDatabase {
         self.write(txn)?;
 
         Ok(())
+    }
+
+    fn fetch_monero_seed_first_seen_height(&self, seed: &str) -> Result<u64, ChainStorageError> {
+        let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+        Ok(lmdb_get(&txn, &self.monero_seed_height_db, seed)?.unwrap_or(0))
     }
 }
 
