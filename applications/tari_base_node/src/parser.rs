@@ -111,7 +111,9 @@ pub enum BaseNodeCommand {
     CancelTransaction,
     SendTari,
     GetChainMetadata,
+    GetPeer,
     ListPeers,
+    DialPeer,
     ResetOfflinePeers,
     BanPeer,
     UnbanPeer,
@@ -294,8 +296,14 @@ impl Parser {
             GetChainMetadata => {
                 self.process_get_chain_meta();
             },
+            DialPeer => {
+                self.process_dial_peer(args);
+            },
             DiscoverPeer => {
                 self.process_discover_peer(args);
+            },
+            GetPeer => {
+                self.process_get_peer(args);
             },
             ListPeers => {
                 self.process_list_peers(args);
@@ -417,8 +425,14 @@ impl Parser {
             GetChainMetadata => {
                 println!("Gets your base node chain meta data");
             },
+            DialPeer => {
+                println!("Attempt to connect to a known peer");
+            },
             DiscoverPeer => {
                 println!("Attempt to discover a peer on the Tari network");
+            },
+            GetPeer => {
+                println!("Get all available info about peer");
             },
             ListPeers => {
                 println!("Lists the peers that this node knows about");
@@ -1052,6 +1066,53 @@ impl Parser {
         });
     }
 
+    fn process_get_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+        let node_id = match args
+            .next()
+            .map(parse_emoji_id_or_public_key_or_node_id)
+            .flatten()
+            .map(either_to_node_id)
+        {
+            Some(n) => n,
+            None => {
+                println!("Usage: get-peer [NodeId|PublicKey|EmojiId]");
+                return;
+            },
+        };
+
+        let peer_manager = self.peer_manager.clone();
+
+        self.executor.spawn(async move {
+            match peer_manager.find_by_node_id(&node_id).await {
+                Ok(peer) => {
+                    let eid = EmojiId::from_pubkey(&peer.public_key);
+                    println!("Emoji ID: {}", eid);
+                    println!("Public Key: {}", peer.public_key);
+                    println!("NodeId: {}", peer.node_id);
+                    println!("Addresses:");
+                    peer.addresses.iter().for_each(|a| {
+                        println!("- {}", a);
+                    });
+                    println!("User agent: {}", peer.user_agent);
+                    println!("Features: {:?}", peer.features);
+                    println!("Supported protocols:");
+                    peer.supported_protocols.iter().for_each(|p| {
+                        println!("- {}", String::from_utf8_lossy(p));
+                    });
+                    if let Some(dt) = peer.banned_until() {
+                        println!("Banned until {}, reason: {}", dt, peer.banned_reason);
+                    }
+                    if let Some(dt) = peer.last_seen() {
+                        println!("Last seen: {}", dt);
+                    }
+                },
+                Err(err) => {
+                    println!("{}", err);
+                },
+            }
+        });
+    }
+
     /// Function to process the list-peers command
     fn process_list_peers<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
         let peer_manager = self.peer_manager.clone();
@@ -1147,6 +1208,39 @@ impl Parser {
                     println!("Failed to list peers: {:?}", err);
                     error!(target: LOG_TARGET, "Could not list peers: {:?}", err);
                     return;
+                },
+            }
+        });
+    }
+
+    /// Function to process the dial-peer command
+    fn process_dial_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
+        let mut connectivity = self.connectivity.clone();
+
+        let dest_node_id = match args
+            .next()
+            .and_then(parse_emoji_id_or_public_key_or_node_id)
+            .map(either_to_node_id)
+        {
+            Some(n) => n,
+            None => {
+                println!("Please enter a valid destination public key or emoji id");
+                println!("discover-peer [hex public key or emoji id]");
+                return;
+            },
+        };
+
+        self.executor.spawn(async move {
+            let start = Instant::now();
+            println!("☎️  Dialing peer...");
+
+            match connectivity.dial_peer(dest_node_id).await {
+                Ok(p) => {
+                    println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
+                    println!("Connection: {}", p);
+                },
+                Err(err) => {
+                    println!("📞  Dial failed: {}", err);
                 },
             }
         });
