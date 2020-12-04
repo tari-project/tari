@@ -1622,18 +1622,9 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     new_block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
-    let db_height = db.fetch_chain_metadata()?.height_of_longest_chain();
-
-    let new_tips = insert_orphan_and_find_new_tips(db, new_block.clone())?;
-    debug!(
-        target: LOG_TARGET,
-        "Added candidate block #{} ({}) to the orphan database. Best height is {}. New tips found:{} ",
-        new_block.header.height,
-        new_block.hash().to_hex(),
-        db_height,
-        new_tips.len()
-    );
-
+    // We can assume that the new block is part of the reorg chain if it exists, otherwise the reorg would have
+    // happened on the previous call to this function.
+    // Try and construct a path from `new_block` to the main chain or an existing tip:
     let new_block_hash = new_block.hash();
     let mut reorg_chain = try_link_block(db, new_block_hash, new_block.clone())?;
     if reorg_chain.is_empty() {
@@ -1658,14 +1649,15 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     //
     reorg_chain.push_back(new_chain_header);
 
-    let orphan_chain_tips = db.fetch_orphan_chain_tips()?;
     // Check the accumulated difficulty of the best fork chain compared to the main chain.
     let fork_header = find_strongest_orphan_tip(db, new_tips, chain_strength_comparer)?;
 
     let fork_header = fork_header.unwrap();
     let fork_tip_hash = fork_header.hash();
 
-    let tip_header = db.fetch_last_header()?;
+    let tip_header = db
+        .fetch_last_header()?
+        .ok_or_else(|| ChainStorageError::InvalidQuery("Cannot retrieve header. Blockchain DB is empty".into()))?;
     if fork_tip_hash == new_block_hash {
         debug!(
             target: LOG_TARGET,
@@ -1829,31 +1821,60 @@ fn reorganize_chain<T: BlockchainBackend>(
     Ok((removed_blocks, added_blocks))
 }
 
-fn restore_reorged_chain<T: BlockchainBackend>(
-    db: &mut T,
+// Reorganize the main chain with the provided fork chain, starting at the specified height.
+fn reorganize_chain<T: BlockchainBackend>(
+    backend: &mut T,
+    block_validator: &StatefulValidator<Block, T>,
     height: u64,
-    previous_chain: Vec<Arc<ChainBlock>>,
-) -> Result<(), ChainStorageError>
+    chain: VecDeque<Arc<Block>>,
+) -> Result<Vec<Arc<Block>>, ChainStorageError>
 {
-    let invalid_chain = rewind_to_height(db, height)?;
+    let removed_blocks = rewind_to_height(backend, height)?;
     debug!(
         target: LOG_TARGET,
-        "Removed {} blocks during chain restore: {:?}.",
-        invalid_chain.len(),
-        invalid_chain
+        "Validate and add {} chain block(s) from height {}. Rewound blocks: [{}]",
+        chain.len(),
+        height,
+        removed_blocks
             .iter()
-            .map(|block| block.hash().to_hex())
-            .collect::<Vec<_>>(),
+            .map(|b| b.header.height.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
     );
-    let mut txn = DbTransaction::new();
-    // Add removed blocks in the reverse order that they were removed
-    // See: https://github.com/tari-project/tari/issues/2182
-    for block in previous_chain.into_iter().rev() {
-        txn.delete(DbKey::OrphanBlock(block.hash()));
+
+    for block in chain {
+        let mut txn = DbTransaction::new();
+        let block_hash = block.hash();
+        let block_hash_hex = block_hash.to_hex();
+        txn.delete(DbKey::OrphanBlock(block_hash));
+        if let Err(e) = block_validator.validate(&block, backend) {
+            warn!(
+                target: LOG_TARGET,
+                "Orphan block {} ({}) failed validation during chain reorg: {}", block.header.height, block_hash_hex, e
+            );
+            remove_orphan(backend, block.hash())?;
+
+            info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.");
+            restore_reorged_chain(backend, height, removed_blocks)?;
+            return Err(e.into());
+        }
+
         insert_block(&mut txn, block)?;
+        // Failed to store the block - this should typically never happen unless there is a bug in the validator
+        // (e.g. does not catch a double spend). In any case, we still need to restore the chain to a
+        // good state before returning.
+        if let Err(e) = backend.write(txn) {
+            warn!(
+                target: LOG_TARGET,
+                "Failed to commit reorg chain: {}. Restoring last chain.", e
+            );
+
+            restore_reorged_chain(backend, height, removed_blocks)?;
+            return Err(e);
+        }
     }
-    db.write(txn)?;
-    Ok(())
+
+    Ok(removed_blocks)
 }
 
 // Insert the provided block into the orphan pool.
@@ -1868,6 +1889,7 @@ fn insert_orphan_header<T: BlockchainBackend>(db: &mut T, header: ChainHeader) -
     txn.insert_orphan_header(header);
     commit(db, txn)
 }
+
 // Insert the provided block into the orphan pool and returns any new tips that were created
 fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     db: &mut T,
@@ -1907,6 +1929,13 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
                 "Orphan {} was not connected to any previous headers. Inserting as true orphan",
                 hash.to_hex()
             );
+        }
+    }
+
+    db.write(txn)?;
+    Ok(new_tips_found)
+}
+
 /// We try and build a chain from this block to the main chain. If we can't do that we can stop.
 /// We start with the current, newly received block, and look for a blockchain sequence (via `prev_hash`).
 /// Each successful link is pushed to the front of the queue.
@@ -1934,11 +1963,6 @@ fn try_link_block<T: BlockchainBackend>(
             fork_chain.push_front(header);
             return Ok(fork_chain);
         }
-    }
-
-    db.write(txn)?;
-    Ok(new_tips_found)
-}
         if let Ok(header) = fetch_tip_by_block_hash(db, searching_hash) {
             trace!(
                 target: LOG_TARGET,
@@ -1962,20 +1986,7 @@ fn try_link_block<T: BlockchainBackend>(
             );
             return Ok(fork_chain);
         }
-fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
-    db: &T,
-    hash: HashOutput,
-) -> Result<Vec<HashOutput>, ChainStorageError>
-{
-    let children = db.fetch_orphan_children_of(hash.clone())?;
-    if children.is_empty() {
-        return Ok(vec![hash]);
     }
-    let mut res = vec![];
-    for child in children {
-        res.extend(find_orphan_descendant_tips_of(db, child)?);
-    }
-    Ok(res)
 }
 
 /// Validate and convert the header to a chainheader
@@ -2006,19 +2017,25 @@ fn validate_convert_header<T: BlockchainBackend>(
         },
     };
     Ok(chain_header)
-// Discard the the orphan block from the orphan pool that corresponds to the provided block hash.
-fn remove_orphan<T: BlockchainBackend>(db: &mut T, hash: HashOutput) -> Result<(), ChainStorageError> {
-    let mut txn = DbTransaction::new();
-    txn.delete(DbKey::OrphanBlock(hash));
-    db.write(txn)
 }
 
-/// Gets all blocks from the orphan to the point where it connects to the best chain
-#[allow(clippy::ptr_arg)]
-fn get_orphan_link_main_chain<T: BlockchainBackend>(
-    db: &mut T,
-    orphan_tip: &HashOutput,
-) -> Result<VecDeque<Arc<Block>>, ChainStorageError>
+// Find the tip set of any orphans that have hash as an ancestor
+fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
+    db: &T,
+    hash: HashOutput,
+) -> Result<Vec<HashOutput>, ChainStorageError>
+{
+    let children = db.fetch_orphan_children_of(hash.clone())?;
+    if children.is_empty() {
+        return Ok(vec![hash]);
+    }
+    let mut res = vec![];
+    for child in children {
+        res.extend(find_orphan_descendant_tips_of(db, child)?);
+    }
+    Ok(res)
+}
+
 /// Try to find all orphan chain tips that originate from the current orphan parent block.
 fn find_orphan_chain_tips<T: BlockchainBackend>(
     db: &mut T,
@@ -2026,18 +2043,6 @@ fn find_orphan_chain_tips<T: BlockchainBackend>(
     block_validator: &StatefulValidatorAndConvert<Block, T, BlockHeader, ChainHeader>,
 ) -> Vec<ChainHeader>
 {
-    let mut chain: VecDeque<Arc<Block>> = VecDeque::new();
-    let mut curr_hash = orphan_tip.to_owned();
-    loop {
-        let curr_block = fetch!(db, curr_hash, OrphanBlock)?;
-        curr_hash = curr_block.header.prev_hash.clone();
-        chain.push_front(Arc::new(curr_block));
-
-        if db.contains(&DbKey::BlockHash(curr_hash.clone()))? {
-            break;
-        }
-    }
-    Ok(chain)
     let mut chain_headers = Vec::new();
     let headers = db.find_next_orphan(&parent_hash).unwrap_or_default();
     // on error of the last block, we remove and stop that chain search.
@@ -2060,6 +2065,55 @@ fn find_orphan_chain_tips<T: BlockchainBackend>(
         }
     }
     chain_headers
+}
+
+// Discard the the orphan block from the orphan pool that corresponds to the provided block hash.
+fn remove_orphan<T: BlockchainBackend>(db: &mut T, hash: HashOutput) -> Result<(), ChainStorageError> {
+    let mut txn = DbTransaction::new();
+    txn.delete(DbKey::OrphanBlock(hash));
+    db.write(txn)
+}
+
+/// Gets all blocks from the orphan to the point where it connects to the best chain
+#[allow(clippy::ptr_arg)]
+fn get_orphan_link_main_chain<T: BlockchainBackend>(
+    db: &mut T,
+    orphan_tip: &HashOutput,
+) -> Result<VecDeque<Arc<Block>>, ChainStorageError>
+{
+    let mut chain: VecDeque<Arc<Block>> = VecDeque::new();
+    let mut curr_hash = orphan_tip.to_owned();
+    loop {
+        let curr_block = fetch!(db, curr_hash, OrphanBlock)?;
+        curr_hash = curr_block.header.prev_hash.clone();
+        chain.push_front(Arc::new(curr_block));
+
+        if db.contains(&DbKey::BlockHash(curr_hash.clone()))? {
+            break;
+        }
+    }
+    Ok(chain)
+}
+/// Find and return the orphan chain tip with the highest accumulated difficulty.
+fn find_strongest_orphan_tip<T: BlockchainBackend>(
+    db: &T,
+    orphan_chain_tips: Vec<BlockHash>,
+    chain_strength_comparer: &dyn ChainStrengthComparer,
+) -> Result<Option<BlockHeader>, ChainStorageError>
+{
+    let mut best_block_header: Option<BlockHeader> = None;
+    for tip_hash in orphan_chain_tips {
+        let header = fetch_orphan(db, tip_hash.clone())?.header;
+        best_block_header = match best_block_header {
+            Some(current_best) => match chain_strength_comparer.compare(&current_best, &header) {
+                Ordering::Less => Some(header),
+                Ordering::Greater | Ordering::Equal => Some(current_best),
+            },
+            None => Some(header),
+        };
+    }
+
+    Ok(best_block_header)
 }
 
 /// Find and return the orphan chain tip with the highest accumulated difficulty.
