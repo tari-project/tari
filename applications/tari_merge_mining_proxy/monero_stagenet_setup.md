@@ -17,7 +17,7 @@ sudo apt update && sudo apt install build-essential cmake pkg-config libboost-al
 git clone https://github.com/monero-project/monero.git
 cd monero
 git checkout release-v0.17
-git git submodule init && git submodule update --force
+git submodule init && git submodule update --force
 make release
 ```
 2. Copy release-v0.17 folder and rename the copy to master (`cp -R release-0.17 master`). The onion-monero-block-explorer looks for a master build path and will not configure correctly without it.
@@ -61,6 +61,17 @@ set_daemon put.your.ip.here
 sudo apt-get install liblmdb-dev libevent-dev libjson-c-dev uuid-dev
 export MONERO_ROOT=/path/to/cloned/monero/repository/root
 make release
+```
+
+Note:
+If you encounter build errors for the pool that complains about `CONF_Modules_Unload`, then either SSL is missing or you
+need to upgrade your existing SSL with the below:
+```
+wget https://www.openssl.org/source/openssl-1.1.1h.tar.gz
+tar -zxf openssl-1.1.1h.tar.gz && cd openssl-1.1.1h
+./config
+sudo make install
+sudo ln -s /usr/local/bin/openssl /usr/bin/openssl
 ```
 
 2 Update the `pool.conf` configuration
