@@ -774,7 +774,31 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         for c in coinbase_txs.iter() {
             c.cancel(&conn)?;
         }
+
         Ok(())
+    }
+
+    fn find_coinbase_transaction_at_block_height(
+        &self,
+        block_height: u64,
+        amount: MicroTari,
+    ) -> Result<Option<CompletedTransaction>, TransactionStorageError>
+    {
+        let conn = self.database_connection.acquire_lock();
+
+        let mut coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(block_height as i64, &conn)?;
+        for c in coinbase_txs.iter_mut() {
+            self.decrypt_if_necessary(c)?;
+            let completed_tx = CompletedTransaction::try_from(c.clone()).map_err(|_| {
+                TransactionStorageError::ConversionError("Error converting to CompletedTransaction".to_string())
+            })?;
+
+            if completed_tx.amount == amount {
+                return Ok(Some(completed_tx));
+            }
+        }
+
+        Ok(None)
     }
 
     fn increment_send_count(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
