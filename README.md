@@ -96,7 +96,7 @@ https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=Buil
     ```
     where libcrypto-1_1-x64.dll
     where libssl-1_1-x64.dll
-    ``` 
+    ```
 
 - Tor
   - Donwload [Tor Windows Expert Bundle](https://www.torproject.org/download/tor/)
@@ -365,20 +365,22 @@ they are not enabled already:
   monerod_password = ""
   ```
 
-None of the IP address + port combinations listed above should be in use otherwise. 
+**Note:** The ports `7878`, `18142` and `18143` shown in the example above should not be in use by other processes. If 
+they are, choose different ports. You will need to update the ports in the steps below as well. 
 
-The `monerod_url` has to be set to a valid address (`host:port`) for `monerod` that is running Monero stagenet, which can 
-be a [public node hosted by XMR.to](https://community.xmr.to/nodes.html), or to a local instance. To test if the address 
-is working properly, try to paste `host:port/get_height` in an internet browser, example:
+The `monerod_url` must be set to a valid address (`host:port`) for `monerod` that is running Monero mainnet (e.g. 
+`http://18.132.124.81:18081`) or stagenet (e.g. `http://18.133.55.120:38081`), which can be a 
+[public node hosted by XMR.to](https://community.xmr.to/nodes.html), or to a local instance. To test if the 
+`monerod_url` address is working properly, try to paste `host:port/get_height` in an internet browser, for example:
 
 ```
-http://18.133.55.120:38081/get_height
+http://18.132.124.81:18081/get_height
 ```
 A typical response would be:
 ```
 {
-  "hash": "faa4385c93c2d1c5c0af35140d25fcc37c2c2e13f50c7c415c78952e67ab15e7",
-  "height": 701536,
+  "hash": "ce32dd0a6e3220d57c368f2cd01e5980a9b4d70f02b27274d67142d5b26cb4d6",
+  "height": 2277206,
   "status": "OK",
   "untrusted": false
 }
@@ -387,28 +389,41 @@ A typical response would be:
 _**Note:** A guide to setting up a local Monero stagenet on Linux can be found 
 [here](https://github.com/tari-project/tari/blob/development/applications/tari_merge_mining_proxy/monero_stagenet_setup.md)._
 
-#### Monero components
+#### XMRig configuration
 
-The XMRig configuration wizard at https://xmrig.com/wizard can be used to create the configuration file in JSON format:
+The XMRig configuration must be prepared for either solo or pool merged mining with Monero. It is advisable to use a 
+configuration file for XMRig as this offers more flexibility, otherwise, the configuration parameters can be passed 
+in via the command line upon runtime.
+
+**Note:** Monero mainnet and stagenet wallet addresses can only be used with the corresponding network. The `monerod_url` 
+configuration setting (see [Tari components](#tari-components)) must also correspond to the chosen network.
+
+##### Solo mining
+
+The [XMRig configuration wizard](https://xmrig.com/wizard) can be used to create a solo mining configuration file 
+in JSON format:
 
 - Start -> `+ New configuration`
 
 - Pools -> `+ Add daemon`
+  - With `Add new daemon for Solo mining`, complete the required information, then `+ Add daemon`:
+     - `Host`, `Port`: This must correspond to the `proxy_host_address` in the Tari configuration file.
+     - `Secure connection (TLS)`: Uncheck.
+     - `Coin`: Monero.
+     - `Wallet address`: This must be your own stagenet or mainnet wallet address, or you can use these donation 
+       addresses:
+       - Public stagenet address at https://coin.fyi/news/monero/stagenet-wallet-8jyt89#!
+         `55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt`
+       - Public mainnet address at https://www.getmonero.org/get-started/contributing/
+         `888tNkZrPN6JsEgekjMnABU4TBzc2Dt29EPAvkRxbANsAnjyPbb3iQ1YBRk1UXcdRsiKc9dhwMVgN5S9cQUiyoogDavup3H`
 
-  With `Add new daemon for Solo mining`, complete the required information, then `+ Add daemon`:
+- Backends -> Select `CPU` (`OpenCL` or `CUDA` also possible depending on your computer hardware).
 
-    - `Host, Port`: This must correspond to the `proxy_host_address` in the Tari configuration file.
-​    - `Secure connection (TLS)`: `Uncheck`, Coin: `Monero`
-​    - `Wallet address`: This can be any publicly available stagenet wallet address 
-​      [as shown here](https://coin.fyi/news/monero/stagenet-wallet-8jyt89#!), or you can use your own.
-
-- Backends -> Select `CPU` (`OpenCL` or `CUDA` also possible depending on your computer hardware)
-
-- Misc -> With `Donate`, type in your preference
+- Misc -> With `Donate`, type in your preference.
 
 - Result -> With `Config file`, copy or download, than save as `config.json`.
 
-Using the public stagenet wallet address, the resulting configuration will look like this:
+Using the public stagenet wallet address above the resulting configuration file should look like this:
 
 ```
 {
@@ -427,16 +442,67 @@ Using the public stagenet wallet address, the resulting configuration will look 
     ]
 }
 ```
+##### Pool mining with self select
 
-Alternatively, these parameters can be passed in via the command line:
+For pool mining, the configuration file obtained from the [XMRig configuration wizard](https://xmrig.com/wizard) must 
+be augmented with Tari specific settings. Using the wizard, create the following:
+
+- Start -> `+ New configuration`
+
+- Pools -> `+ Add pool` -> `Custom pool`
+
+  - With `Add new custom pool`, complete the required information, then `+ Add pool`:
+    - `Host`, `Port`: This must be for a Monero mainnet mining pool that supports the `self-select`.
+    - `Secure connection (TLS)`: Check/Uncheck (based on the pool requirements).
+    - `keepalive`: Check.
+    - `nicehash`: Uncheck.
+    - `User`: This must be your own mainnet wallet address, or you can use this address to donate to Monero:
+       - Public mainnet address at https://www.getmonero.org/get-started/contributing/
+         `888tNkZrPN6JsEgekjMnABU4TBzc2Dt29EPAvkRxbANsAnjyPbb3iQ1YBRk1UXcdRsiKc9dhwMVgN5S9cQUiyoogDavup3H`
+    - `Password`: A custom field that could be your wallet name or some other pool settings.
+    - `Coin`: Monero.
+    - `Algorithm`: rx/0.
+
+- Backends -> Select `CPU` (`OpenCL` or `CUDA` also possible depending on your computer hardware).
+
+- Misc -> With `Donate`, type in your preference.
+
+- Result -> With `Config file`, copy or download, than save as `config.json`.
+
+- Add custom entries for `"self-select": "127.0.0.1:7878"` and `"submit-to-origin": true` in the `"pools"` section.
+
+Mining pool `cryptonote.social` requires you to add a personalized handle to the wallet address so that you can 
+query your own pool statistics, separated by a full stop, i.e. `<YOUR WALLET ADDRESS>.<pool specific user name>`. For
+demonstration purposes, `donatemonero` has been associated with the public mainnet wallet address above. If you go to
+<https://cryptonote.social/xmr> and enter `donatemonero` in the `Username:` text box you will see some merge mining 
+activity for that address. The configuration file used for this exercise is shown below:
 
 ```
--o 127.0.0.1:7878 -u 55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt --coin monero --daemon
+{
+    "autosave": true,
+    "cpu": true,
+    "opencl": false,
+    "cuda": false,
+    "pools": [
+        {
+            "coin": "monero",
+            "algo": "rx/0",
+            "url": "cryptonote.social:5555",
+            "user": "888tNkZrPN6JsEgekjMnABU4TBzc2Dt29EPAvkRxbANsAnjyPbb3iQ1YBRk1UXcdRsiKc9dhwMVgN5S9cQUiyoogDavup3H.donatemonero",
+            "pass": "start_diff=220000;payment_scheme=pprop;donate=0.5",
+            "tls": false,
+            "keepalive": true,
+            "nicehash": false,
+            "self-select": "127.0.0.1:7878",
+            "submit-to-origin": true
+        }
+    ]
+}
 ```
 
 ### Perform merge mining
 
-The following components needed for merge mining must be started and preferably in this order:
+Tor and the required Tari components must be started and preferably in this order:
 
 - Tor:
   - Linux/OSX: Execute `start_tor.sh`.
@@ -457,18 +523,110 @@ The following components needed for merge mining must be started and preferably 
   - Windows: As per [Running the Tari components](#running-the-tari-components) or `Start Merge Mining Proxy` menu item 
     or `start_tari_merge_mining_proxy` shortcut in the Tari installation folder.
 
-- XMRig
-  - Configuration:
-    - Ensure the `config.json` configuration file discussed in [Monero components](#monero-components) are copied to the 
-      XMRig build or install folder, or, optionally pass in the command line parameters.
-  - Runtime:
-    - Linux/OSX: Execute `./xmrig` in the XMRig build or install folder.
-    - Windows: Execute `xmrig` in the XMRig build or install folder, or `Start XMRig` menu item or `start_xmrig` 
-      shortcut in the Tari installation folder.
-      **Note**: On modern Windows versions, coin mining software is blocked by default, for example by Windows Defender. Ensure that these processes are allowed to run when challenged:
-      - `PUA:Win32/CoinMiner`
-      - `PUA:Win64/CoinMiner`
-      - `App:XMRigMiner`
+In addition, select one of the merge mining options as outlined in solo or pool mining in the next paragraphs.
+
+#### Solo merged mining with Monero
+
+This paragraph is applicable to solo mining Monero on mainnet or stagenet and solo mining Tari on testnet. 
+
+Solo merged mining with Monero is supported using the `daemon` option.
+
+##### Merge Mining Proxy configuration
+
+As mentioned previously, the `monerod_url` field in the `config.toml` should be enabled for the corresponding mainnet or stagenet network 
+Monero wallet address:
+
+```
+# URL to monerod
+#monerod_url = "http://18.132.124.81:18081" # mainnet
+monerod_url = "http://18.133.55.120:38081" # stagenet
+```
+
+##### Runtime
+
+Ensure the `config.json` configuration file discussed in [Solo mining](#solo-mining) is copied to the XMRig build or 
+install folder, then start XMRig:
+- Linux/OSX: Execute `./xmrig` in the XMRig build or install folder.
+- Windows: Execute `xmrig` in the XMRig build or install folder, or `Start XMRig` menu item or `start_xmrig` 
+  shortcut in the Tari installation folder.
+      
+  **Note**: On modern Windows versions, coin mining software is blocked by default, for example by Windows Defender. 
+  Ensure that these processes are allowed to run when challenged:
+  - `PUA:Win32/CoinMiner`
+  - `PUA:Win64/CoinMiner`
+  - `App:XMRigMiner`
+
+Look out for the following outputs in the XMRig console to confirm that it is connected to the Merge Mining Proxy 
+and accepting jobs:
+
+```
+* POOL #1      127.0.0.1:7878 coin monero
+```
+```
+[2021-01-21 12:10:18.960]  net      use daemon 127.0.0.1:7878  127.0.0.1
+[2021-01-21 12:10:18.960]  net      new job from 127.0.0.1:7878 diff 286811 algo rx/0 height 756669
+[2021-01-21 12:10:56.730]  cpu      rejected (0/1) diff 286811 "Block not accepted" (656 ms)
+[2021-01-21 12:10:57.398]  net      new job from 127.0.0.1:7878 diff 293330 algo rx/0 height 756670
+[2021-01-21 12:12:23.695]  miner    speed 10s/60s/15m 4089.0 4140.2 n/a H/s max 4390.9 H/s
+[2021-01-21 12:12:57.983]  cpu      accepted (1/1) diff 293330 (594 ms)
+```
+
+The `cpu: rejected` and `cpu: accepted` messages originates from stagenet or mainnet `monerod`, and shows the Monero 
+statistics. At this point, the mined and rejected Tari coinbases should be visible in the Tari Console Wallet.
+
+#### Pool merged mining with Monero (self select)
+
+This paragraph is applicable to pool mining Monero on mainnet and solo mining Tari on testnet. 
+
+Pool merged mining with Monero is supported using the 
+[Stratum mode self-select](https://github.com/jtgrassie/monero-pool/blob/master/sss.md) option via XMRig. Two mining 
+pools we have tried out that support this feature are [monero-pool](https://github.com/jtgrassie/monero-pool), with 
+its reference pool implementation running [here](http://monerop.com/),  and 
+[cryptonote.social](https://cryptonote.social/xmr). With normal self select mode, XMRig requests a Monero block  
+template from a third party and submits the solution to the mining pool. Tari added a `submit-to-origin` option to the 
+self select mode whereby, if a solution has been found that only matches the pool difficulty, XMRig will submit the 
+solution to the pool only, but if the achieved difficulty meets both that of the pool and Tari, it will be submitted to 
+the Merge Mining Proxy as well as to the mining pool. The specially adapted XMRig code is available 
+[here](https://github.com/tari-project/xmrig/tree/feature-self-select); the latest version or commit must be built for 
+your target operating system in release mode without debug symbols.
+
+##### Merge Mining Proxy configuration
+
+The `monerod_url` field in the `config.toml` should be enabled for the mainnet value:
+
+```
+# URL to monerod
+monerod_url = "http://18.132.124.81:18081" # mainnet
+#monerod_url = "http://18.133.55.120:38081" # stagenet
+```
+
+##### Runtime
+
+Ensure the `config.json` configuration file discussed in [Pool mining with self select](#pool-mining-with-self-select) 
+is copied to the XMRig build or install folder, then start XMRig as before for solo mining.
+
+Look out for the following outputs in the XMRig console to confirm that it is connected to the pool and the Merge 
+Mining Proxy and accepting jobs:
+
+```
+* POOL #1      cryptonote.social:5555 coin monero self-select 127.0.0.1:7878 submit-to-origin
+```
+```
+[2021-01-18 11:40:48.392]  net      new job from cryptonote.social:5555 diff 220006 algo rx/0 height 2277084
+[2021-01-18 11:41:22.378]  origin   submitted to origin daemon (1/0)  diff 284557 vs. 371742
+[2021-01-18 11:41:22.812]  cpu      accepted (1/0) diff 220006 (433 ms)
+[2021-01-18 11:41:39.201]  miner    speed 10s/60s/15m 1562.2 1630.4 n/a H/s max 1710.0 H/s
+[2021-01-18 11:42:05.837]  origin   not submitted to origin daemon, difficulty too low (1/1)  diff 284557 vs. 230465
+[2021-01-18 11:42:06.320]  cpu      accepted (2/0) diff 220006 (482 ms)
+```
+
+Status essages `origin: submitted to origin daemon (1/0)` and 
+`origin: not submitted to origin daemon, difficulty too low (1/1)` pertains to submissions to the Tari network,
+and `cpu: accepted (1/0)` to the pool. 
+
+Mined and rejected Tari coinbases should be visible in the Tari Console Wallet, and pool shares in the pool interface.
+If you are using `cryptonote.social:5555` as in the example above, go to <https://cryptonote.social/xmr> and type in 
+your wallet identity under `Username:` to see your shares, or try `taritest` if you used this configuration example.
 
 # Project documentation
 

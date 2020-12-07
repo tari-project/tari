@@ -1,0 +1,20 @@
+{
+    "autosave": true,
+    "cpu": true,
+    "opencl": false,
+    "cuda": false,
+    "pools": [
+        {
+            "coin": "monero",
+            "algo": "rx/0",
+            "url": "cryptonote.social:5555",
+            "user": "888tNkZrPN6JsEgekjMnABU4TBzc2Dt29EPAvkRxbANsAnjyPbb3iQ1YBRk1UXcdRsiKc9dhwMVgN5S9cQUiyoogDavup3H.donatemonero",
+            "pass": "start_diff=220000;payment_scheme=pprop;donate=0.5",
+            "tls": false,
+            "keepalive": true,
+            "nicehash": false,
+            "self-select": "127.0.0.1:7878",
+            "submit-to-origin": true
+        }
+    ]
+}

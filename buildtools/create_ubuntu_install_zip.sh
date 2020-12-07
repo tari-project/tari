@@ -73,7 +73,9 @@ cp -f "${local_dir}/install_powershell_ubuntu.sh" "${tarball_folder}/runtime/ins
 
 # Config
 cp -f "${project_dir}/common/config/presets/tari_sample.toml" "${tarball_folder}/config/config.toml"
-cp -f "${project_dir}/common/xmrig_config/config_example.json" "${tarball_folder}/config/config_xmrig.json"
+cp -f "${project_dir}/common/xmrig_config/config_example_stagenet.json" "${tarball_folder}/config/xmrig_config_example_stagenet.json"
+cp -f "${project_dir}/common/xmrig_config/config_example_mainnet.json" "${tarball_folder}/config/xxmrig_config_example_mainnet.json"
+cp -f "${project_dir}/common/xmrig_config/config_example_mainnet_self_select.json" "${tarball_folder}/config/xmrig_config_example_mainnet_self_select.json"
 
 echo Files copied to "${tarball_folder}"
 echo Creating archive...

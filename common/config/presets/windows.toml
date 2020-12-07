@@ -364,11 +364,11 @@ console_wallet_tor_identity_file = ".\\config\\cosole_wallet_tor.json"
 #                                                                                                                      #
 ########################################################################################################################
 
-
 [merge_mining_proxy.stibbons]
 
-# URL to monerod, currently set to a seed node
-monerod_url = "http://18.133.55.120:38081"
+# URL to monerod
+monerod_url = "http://18.133.55.120:38081" # stagenet
+#monerod_url = "http://18.132.124.81:18081" # mainnet
 
 # Address of the tari_merge_mining_proxy application
 proxy_host_address = "127.0.0.1:7878"
@@ -380,19 +380,18 @@ proxy_host_address = "127.0.0.1:7878"
 proxy_submit_to_origin = true
 
 # If authentication is being used for curl
-monerod_use_auth=false
+monerod_use_auth = false
 
 # Username for curl
-monerod_username=""
+monerod_username = ""
 
 # Password for curl
-monerod_password=""
+monerod_password = ""
 
 # The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables mining,
 # or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
 # accepted. (Default value = true; will wait for base node initial sync).
 #wait_for_initial_sync_at_startup = true
-
 
 [mining_node]
 # Number of mining threads
