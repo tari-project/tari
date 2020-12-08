@@ -26,13 +26,22 @@ First you'll need to make sure you have a full development environment set up:
 #### (macOS)
 
 ```
-brew install cmake openssl tor ncurses
+brew update
+brew install cmake openssl tor ncurses coreutils
+brew install --cask powershell
 ```
 
 #### (Ubuntu 18.04, including WSL-2 on Windows)
 
 ```
+sudo apt-get update
 sudo apt-get -y install openssl libssl-dev pkg-config libsqlite3-dev clang git cmake libc++-dev libc++abi-dev libprotobuf-dev protobuf-compiler libncurses5-dev libncursesw5-dev
+sudo apt-get install -y wget apt-transport-https
+sudo wget -q "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
+sudo dpkg -i packages-microsoft-prod.deb
+sudo apt-get update
+sudo add-apt-repository universe
+sudo apt-get install -y powershell
 ```
 
 #### (Windows)
@@ -332,7 +341,7 @@ XMRig can also be build from sources. If that is your preference, follow these i
 The configuration prerequisites are the same for all three Tari components. After performing a 
 [default installation](#installing-the-base-node-software), locate the main configuration file (`config.toml`), which 
 will be created in the `~/.tari` (on Linux) or `%USERPROFILE%\.tari` (on Windows) directory. If the Windows installer 
-was run, the main configuration file will be located in the installation directory as `config\windows.toml`.
+was run, the main configuration file will be located in the installation directory as `config\config.toml`.
 
 With the main configuration file, in addition to the settings already present, the following must also be enabled if 
 they are not enabled already:

@@ -1,7 +1,5 @@
 @echo off
 
-set mining_flag=%~1
-
 echo.
 echo Set up environment variables
 echo ----------------------------

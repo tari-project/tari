@@ -1,4 +1,6 @@
 @echo off
+title Tari Console Wallet
+
 rem Verify arguments
 if ["%config_path%"]==[""] (
     echo Problem with "config_path" environment variable: '%config_path%'
@@ -135,7 +137,8 @@ if exist "%my_exe_path%\%my_exe%" (
 
 rem First time run
 if not exist "%config_path%\console_wallet_id.json" (
-    "%console_wallet%" --create-id --init --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
+    cd "%base_path%"
+    "%console_wallet%" --create-id --init --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
     echo.
     echo.
     echo Created "%config_path%\console_wallet_id.json".
@@ -147,7 +150,8 @@ if not exist "%config_path%\console_wallet_id.json" (
     echo.
 )
 if not exist "%config_path%\log4rs_console_wallet.yml" (
-    "%console_wallet%" --init --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
+    cd "%base_path%"
+    "%console_wallet%" --init --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
     echo.
     echo.
     echo Created "%config_path%\log4rs_console_wallet.yml".
@@ -160,4 +164,5 @@ if not exist "%config_path%\log4rs_console_wallet.yml" (
 )
 
 rem Consecutive runs
-"%console_wallet%" --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
+cd "%base_path%"
+"%console_wallet%" --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"

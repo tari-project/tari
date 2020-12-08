@@ -39,10 +39,10 @@ Notes:
   |   unins000.dat
   |   unins000.exe
   |---config
-  |       windows.toml
+  |       config.toml
   |---runtime
-          get-openssl-win.ps1
-          get-xmrig-win.ps1
+          get_openssl_win.ps1
+          get_xmrig_win.ps1
           install_openssl.bat
           install_sqlite.bat
           install_tor_services.bat
@@ -86,7 +86,7 @@ Notes:
   - All log files will be created in the `.\log\base_node`, `.\log\wallet` and 
     `.\log\proxy` folders.
   - The following configuration files will be created in the `.\config` folder if 
-    the default runtime configuration `..\..\common\config\presets\windows.toml` 
+    the default runtime configuration `..\..\common\config\presets\config.toml` 
     was used:
     - `node_id.json`
     - `wallet_id.json`
@@ -185,7 +185,7 @@ Notes:
     `tari_base_node.exe` is in the path.
 
 - Tari Base Node Runtime Configuration File
-  - Copy  `..\..\common\config\presets\windows.toml` to `.\config`
+  - Copy  `..\..\common\config\presets\config.toml` to `.\config`
 
 ### Build the Tari Console Wallet
 
@@ -202,7 +202,7 @@ Notes:
     `tari_console_wallet.exe` is in the path.
 
 - Tari console Wallet Runtime Configuration File
-  - Copy  `..\..\common\config\presets\windows.toml` to `.\config`
+  - Copy  `..\..\common\config\presets\config.toml` to `.\config`
 
 ### Build the Tari Merge Mining Proxy
 
@@ -219,5 +219,5 @@ Notes:
     `tari_merge_mining_proxy.exe` is in the path.
 
 - Tari Base Node Runtime Configuration File
-  - Copy  `..\..\common\config\presets\windows.toml` to `.\config`
+  - Copy  `..\..\common\config\presets\config.toml` to `.\config`
  
