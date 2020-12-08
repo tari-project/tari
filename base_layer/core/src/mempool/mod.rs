@@ -62,13 +62,14 @@ pub use self::config::{MempoolConfig, MempoolServiceConfig};
 pub use error::MempoolError;
 #[cfg(feature = "base_node")]
 pub use mempool::{Mempool, MempoolValidators};
-#[cfg(feature = "base_node")]
-pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoolServiceInterface};
 
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod proto;
+
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod service;
+#[cfg(feature = "base_node")]
+pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoolServiceInterface};
 
 #[cfg(feature = "base_node")]
 mod sync_protocol;
