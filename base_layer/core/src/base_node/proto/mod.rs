@@ -22,7 +22,10 @@
 
 pub use crate::proto::generated::base_node::*;
 
-pub mod chain_metadata;
-pub mod mmr_tree;
-pub mod request;
-pub mod response;
+mod chain_metadata;
+#[cfg(feature = "base_node")]
+mod mmr_tree;
+#[cfg(feature = "base_node")]
+mod request;
+#[cfg(feature = "base_node")]
+mod response;
