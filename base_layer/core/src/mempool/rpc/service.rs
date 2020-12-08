@@ -22,7 +22,7 @@
 
 use crate::{
     mempool::{rpc::MempoolService, service::MempoolHandle},
-    proto::generated as proto,
+    proto,
     transactions::transaction::Transaction,
 };
 use log::*;

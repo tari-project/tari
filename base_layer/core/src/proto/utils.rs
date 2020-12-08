@@ -20,18 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryInto;
+use crate::tari_utilities::epoch_time::EpochTime;
+use prost_types::Timestamp;
 
-/// Tries to convert a series of `T`s to `U`s, returning an error at the first failure
-pub fn try_convert_all<T, U, I>(into_iter: I) -> Result<Vec<U>, T::Error>
-where
-    I: IntoIterator<Item = T>,
-    T: TryInto<U>,
-{
-    let iter = into_iter.into_iter();
-    let mut result = Vec::with_capacity(iter.size_hint().0);
-    for item in iter {
-        result.push(item.try_into()?);
+/// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime`
+pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> EpochTime {
+    (timestamp.seconds as u64).into()
+}
+
+/// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`
+pub(crate) fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {
+    Timestamp {
+        seconds: datetime.as_u64() as i64,
+        nanos: 0,
     }
-    Ok(result)
 }

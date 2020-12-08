@@ -20,13 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod transaction;
+pub mod transaction;
 mod types_impls;
 
-pub mod generated;
-pub use generated::{base_node, core, types};
+mod generated;
+pub use generated::{core, types};
 
-#[cfg(feature = "base_node")]
-mod block;
-#[cfg(feature = "base_node")]
+pub mod base_node;
+pub mod mempool;
+
+pub mod block;
 pub mod utils;

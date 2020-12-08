@@ -32,7 +32,6 @@ use crate::{
         InProgressHorizonSyncState,
         MetadataKey,
         MetadataValue,
-        MmrTree,
         TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
@@ -42,6 +41,7 @@ use crate::{
         transaction::{TransactionKernel, TransactionOutput},
         types::{Commitment, HashOutput, Signature},
     },
+    types::MmrTree,
 };
 use log::*;
 use rand::{rngs::OsRng, RngCore};

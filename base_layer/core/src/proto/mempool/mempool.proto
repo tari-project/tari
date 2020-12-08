@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+import "types.proto";
+
+package tari.mempool;
+
+// Request type for a received MempoolService request.
+message MempoolServiceRequest {
+  uint64 request_key = 1;
+  oneof request {
+    // Indicates a GetStats request. The value of the bool should be ignored.
+    bool get_stats = 2;
+    // Indicates a GetState request. The value of the bool should be ignored.
+    bool get_state = 3;
+    // Indicates a GetTxStateByExcessSig request.
+    tari.types.Signature get_tx_state_by_excess_sig = 4;
+    // Indicates a SubmitTransaction request.
+    tari.types.Transaction submit_transaction = 5;
+  }
+}
+
+// Response type for a received MempoolService requests
+message MempoolServiceResponse {
+  uint64 request_key = 1;
+  oneof response {
+    StatsResponse stats = 2;
+    StateResponse state = 3;
+    TxStorageResponse tx_storage = 4;
+  }
+}
+
+message StatsResponse {
+  uint64 total_txs = 1;
+  uint64 unconfirmed_txs = 2;
+  uint64 orphan_txs = 3;
+  uint64 timelocked_txs = 4;
+  uint64 published_txs = 5;
+  uint64 total_weight = 6;
+}
+
+
+
+message StateResponse {
+  // List of transactions in unconfirmed pool.
+  repeated tari.types.Signature unconfirmed_pool = 1;
+  // List of transactions in orphan pool.
+  repeated tari.types.Signature orphan_pool = 2;
+  // List of transactions in pending pool.
+  repeated tari.types.Signature pending_pool = 3;
+  // List of transactions in reorg pool.
+  repeated tari.types.Signature reorg_pool = 4;
+}
+
+message TransactionInventory {
+  // A list of kernel excess sigs used to identify transactions
+  repeated bytes items = 1;
+}
+
+message TransactionItem {
+  tari.types.Transaction transaction = 1;
+}
+
+message InventoryIndexes {
+  repeated uint32 indexes = 1;
+}
+
+enum TxStorageResponse {
+  TxStorageResponseNone = 0;
+  TxStorageResponseUnconfirmedPool = 1;
+  TxStorageResponseOrphanPool = 2;
+  TxStorageResponsePendingPool = 3;
+  TxStorageResponseReorgPool = 4;
+  TxStorageResponseNotStored = 5;
+}
+
+message TxStorage {
+  TxStorageResponse response = 1;
+}

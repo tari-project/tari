@@ -21,12 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
+    base_node::comms_interface::error::CommsInterfaceError,
     blocks::{block_header::BlockHeader, NewBlock},
-    chain_storage::{HistoricalBlock, MmrTree},
+    chain_storage::HistoricalBlock,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::HashOutput,
+    },
+    types::{
+        base_node::{NodeCommsRequest, NodeCommsResponse},
+        MmrTree,
     },
 };
 use futures::channel::mpsc::UnboundedSender;

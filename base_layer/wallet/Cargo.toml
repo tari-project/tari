@@ -44,7 +44,7 @@ thiserror = "1.0.20"
 path = "../../base_layer/core"
 version = "^0.2"
 default-features = false
-features = ["transactions", "mempool_proto", "base_node_proto"]
+features = ["transactions"]
 
 [dev-dependencies]
 tari_p2p = { version = "^0.2", path = "../p2p", features=["test-mocks"]}

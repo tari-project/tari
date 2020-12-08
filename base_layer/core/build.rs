@@ -24,7 +24,7 @@ fn main() {
     tari_common::protobuf_build::ProtoCompiler::new()
         .out_dir("src/proto/generated")
         .include_paths(&["src/proto"])
-        .proto_paths(&["src/mempool/proto", "src/base_node/proto"])
+        .proto_paths(&["src/proto/mempool", "src/proto/base_node", "src/proto/transaction"])
         .emit_rerun_if_changed_directives()
         .compile()
         .unwrap();

@@ -46,11 +46,14 @@ use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, SendMessageResponse},
 };
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::KernelFeatures,
-    transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::SingleRoundSenderData},
-    SenderTransactionProtocol,
+use tari_core::{
+    proto::transaction as proto,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::KernelFeatures,
+        transaction_protocol::{recipient::RecipientSignedMessage, sender::SingleRoundSenderData},
+        SenderTransactionProtocol,
+    },
 };
 use tari_p2p::tari_message::TariMessageType;
 use tokio::time::delay_for;

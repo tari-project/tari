@@ -35,23 +35,24 @@ use std::{convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
-    base_node::{
-        proto,
-        proto::{
+    mempool::{
+        service::{MempoolResponse, MempoolServiceResponse},
+        TxStorageResponse,
+    },
+    proto::{
+        base_node as proto,
+        base_node::{
             base_node_service_request::Request as BaseNodeRequestProto,
             base_node_service_response::Response as BaseNodeResponseProto,
         },
-    },
-    mempool::{
-        proto as mempool_proto,
-        service::{MempoolResponse, MempoolServiceResponse},
-        TxStorageResponse,
+        mempool as mempool_proto,
     },
     transactions::transaction::TransactionOutput,
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_p2p::tari_message::TariMessageType;
 use tokio::{sync::broadcast, time::delay_for};
+
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::chain_monitoring_protocol";
 const LOG_TARGET_STRESS: &str = "stress_test::chain_monitoring_protocol";
 

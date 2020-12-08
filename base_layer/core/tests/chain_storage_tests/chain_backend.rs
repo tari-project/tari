@@ -21,11 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::helpers::database::create_orphan_block;
-use monero::{
-    blockdata::Block as MoneroBlock,
-    consensus::deserialize,
-    cryptonote::hash::{Hash as MoneroHash, Hashable as MoneroHashable},
-};
+use monero::cryptonote::hash::Hashable as MoneroHashable;
 use tari_core::{
     blocks::BlockHeader,
     chain_storage::{

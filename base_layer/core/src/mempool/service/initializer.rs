@@ -24,7 +24,6 @@ use crate::{
     base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
     mempool::{
         mempool::Mempool,
-        proto as mempool_proto,
         service::{
             inbound_handlers::MempoolInboundHandlers,
             local_service::LocalMempoolService,
@@ -81,18 +80,18 @@ impl MempoolServiceInitializer {
     }
 
     /// Get a stream for inbound Mempool service request messages
-    fn inbound_request_stream(&self) -> impl Stream<Item = DomainMessage<mempool_proto::MempoolServiceRequest>> {
+    fn inbound_request_stream(&self) -> impl Stream<Item = DomainMessage<proto::mempool::MempoolServiceRequest>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::MempoolRequest, SUBSCRIPTION_LABEL)
-            .map(map_decode::<mempool_proto::MempoolServiceRequest>)
+            .map(map_decode::<proto::mempool::MempoolServiceRequest>)
             .filter_map(ok_or_skip_result)
     }
 
     /// Get a stream for inbound Mempool service response messages
-    fn inbound_response_stream(&self) -> impl Stream<Item = DomainMessage<mempool_proto::MempoolServiceResponse>> {
+    fn inbound_response_stream(&self) -> impl Stream<Item = DomainMessage<proto::mempool::MempoolServiceResponse>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::MempoolResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<mempool_proto::MempoolServiceResponse>)
+            .map(map_decode::<proto::mempool::MempoolServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
 

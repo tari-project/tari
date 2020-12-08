@@ -29,11 +29,12 @@ use crate::{
         },
     },
     blocks::block_header::BlockHeader,
-    chain_storage::{BlockchainBackend, MmrTree},
+    chain_storage::BlockchainBackend,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::HashOutput,
     },
+    types::MmrTree,
 };
 use croaring::Bitmap;
 use log::*;

@@ -34,12 +34,13 @@ use crate::{
         },
         BaseNodeStateMachine,
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, MmrTree},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     iterators::NonOverlappingIntegerPairIter,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::HashOutput,
     },
+    types::MmrTree,
 };
 use croaring::Bitmap;
 use log::*;

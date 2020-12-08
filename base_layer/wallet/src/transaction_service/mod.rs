@@ -43,10 +43,9 @@ use std::sync::Arc;
 use tari_comms::peer_manager::NodeIdentity;
 use tari_comms_dht::Dht;
 use tari_core::{
-    base_node::proto as base_node_proto,
     consensus::{ConsensusConstantsBuilder, Network},
-    mempool::proto as mempool_proto,
-    transactions::{transaction_protocol::proto, types::CryptoFactories},
+    proto::{base_node as base_node_proto, mempool as mempool_proto, transaction as proto},
+    transactions::types::CryptoFactories,
 };
 use tari_p2p::{
     comms_connector::SubscriptionFactory,

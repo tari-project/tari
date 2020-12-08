@@ -27,11 +27,9 @@ pub use service::BaseNodeSyncRpcService;
 mod tests;
 
 use crate::{
-    base_node::{
-        proto::{FindChainSplitRequest, FindChainSplitResponse, SyncBlocksRequest, SyncHeadersRequest},
-        service::blockchain_state::BlockchainStateServiceHandle,
-    },
+    base_node::service::blockchain_state::BlockchainStateServiceHandle,
     proto,
+    proto::base_node::{FindChainSplitRequest, FindChainSplitResponse, SyncBlocksRequest, SyncHeadersRequest},
 };
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;

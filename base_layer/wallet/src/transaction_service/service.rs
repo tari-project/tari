@@ -66,13 +66,13 @@ use tari_comms_dht::outbound::OutboundMessageRequester;
 #[cfg(feature = "test_harness")]
 use tari_core::transactions::{tari_amount::uT, types::BlindingFactor};
 use tari_core::{
-    base_node::proto as base_node_proto,
     consensus::ConsensusConstants,
-    mempool::{proto as mempool_proto, service::MempoolServiceResponse},
+    mempool::service::MempoolServiceResponse,
+    proto::{base_node as base_node_proto, mempool as mempool_proto, transaction as proto},
     transactions::{
         tari_amount::MicroTari,
         transaction::Transaction,
-        transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
+        transaction_protocol::{recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
         types::{CryptoFactories, PrivateKey},
         CoinbaseBuilder,
     },

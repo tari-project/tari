@@ -21,9 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    chain_storage::{BlockchainBackend, BlockchainDatabase, MmrTree},
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
     tari_utilities::hex::Hex,
     transactions::{transaction::Transaction, types::CryptoFactories},
+    types::MmrTree,
     validation::{Validation, ValidationError},
 };
 use log::*;

@@ -25,9 +25,9 @@ use crate::{
     base_node::{
         chain_metadata_service::handle::{ChainMetadataEvent, PeerChainMetadata},
         comms_interface::{BlockEvent, LocalNodeCommsInterface},
-        proto,
     },
     chain_storage::BlockAddResult,
+    proto::base_node as proto,
 };
 use futures::stream::StreamExt;
 use log::*;
@@ -303,7 +303,10 @@ impl ChainMetadataService {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::base_node::comms_interface::{CommsInterfaceError, NodeCommsRequest, NodeCommsResponse};
+    use crate::{
+        base_node::comms_interface::CommsInterfaceError,
+        types::base_node::{NodeCommsRequest, NodeCommsResponse},
+    };
     use std::convert::TryInto;
     use tari_comms::test_utils::{
         mocks::{create_connectivity_mock, ConnectivityManagerMockState},

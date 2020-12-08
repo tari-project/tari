@@ -24,19 +24,16 @@ pub mod config;
 pub mod error;
 pub mod handle;
 pub mod service;
-
 use crate::base_node_service::{
     config::BaseNodeServiceConfig,
     handle::BaseNodeServiceHandle,
     service::BaseNodeService,
 };
-
+use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
 use tari_comms_dht::Dht;
-
-use futures::{future, Future, Stream, StreamExt};
-use tari_core::base_node::proto;
+use tari_core::proto::base_node as proto;
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
     domain_message::DomainMessage,

@@ -62,6 +62,3 @@ pub use sync_rpc::{
 mod validators;
 #[cfg(feature = "base_node")]
 pub use validators::SyncValidators;
-
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod proto;

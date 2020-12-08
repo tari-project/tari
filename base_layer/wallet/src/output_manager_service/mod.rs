@@ -34,8 +34,8 @@ use log::*;
 use std::sync::Arc;
 use tari_comms_dht::Dht;
 use tari_core::{
-    base_node::proto,
     consensus::{ConsensusConstantsBuilder, Network},
+    proto::base_node as proto,
     transactions::types::CryptoFactories,
 };
 use tari_p2p::{

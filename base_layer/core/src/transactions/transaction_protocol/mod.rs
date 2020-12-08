@@ -80,7 +80,6 @@
 //!   end
 //! </div>
 
-pub mod proto;
 pub mod recipient;
 pub mod sender;
 pub mod single_receiver;

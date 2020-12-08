@@ -51,7 +51,7 @@ pub use blockchain_database::{
 mod consts;
 
 mod db_transaction;
-pub use db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree, WriteOperation};
+pub use db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, WriteOperation};
 
 mod error;
 pub use error::ChainStorageError;

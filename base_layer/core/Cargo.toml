@@ -10,11 +10,9 @@ version = "0.2.13"
 edition = "2018"
 
 [features]
-default = ["croaring", "tari_mmr", "transactions", "base_node", "mempool_proto", "base_node_proto", "monero", "randomx-rs"]
+default = ["croaring", "tari_mmr", "transactions", "base_node", "monero", "randomx-rs"]
 transactions = []
-mempool_proto = []
 base_node = []
-base_node_proto = []
 avx2 = ["tari_crypto/avx2"]
 
 [dependencies]

@@ -28,7 +28,7 @@ use crate::{
             BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
         },
-        db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
+        db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue},
         error::ChainStorageError,
         HistoricalBlock,
         InProgressHorizonSyncState,
@@ -42,6 +42,7 @@ use crate::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{Commitment, HashDigest, HashOutput, Signature},
     },
+    types::MmrTree,
     validation::{StatefulValidation, StatefulValidator, Validation, Validator},
 };
 use croaring::Bitmap;

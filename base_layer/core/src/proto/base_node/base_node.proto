@@ -1,0 +1,187 @@
+syntax = "proto3";
+
+import "google/protobuf/wrappers.proto";
+import "types.proto";
+import "core.proto";
+
+package tari.base_node;
+
+message ChainMetadata {
+    // The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
+    google.protobuf.UInt64Value height_of_longest_chain = 1;
+    // The block hash of the current tip of the longest valid chain, or `None` for an empty chain
+    google.protobuf.BytesValue best_block = 2;
+    // The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
+    // tracked (i.e. the database is in full archival mode).
+    uint64 pruning_horizon = 4;
+    // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
+    bytes accumulated_difficulty = 5;
+    // The effective height of the pruning horizon. This indicates from what height
+    // a full block can be provided (exclusive).
+    // If `effective_pruned_height` is equal to the `height_of_longest_chain` no blocks can be provided.
+    // Archival nodes wil always have an `effective_pruned_height` of zero.
+    uint64 effective_pruned_height = 6;
+}
+
+enum MmrTree {
+    MmrTreeNone = 0;
+    MmrTreeUtxo = 1;
+    MmrTreeKernel = 2;
+    MmrTreeRangeProof = 3;
+}
+
+// Request type for a received BaseNodeService request.
+message BaseNodeServiceRequest {
+    uint64 request_key = 1;
+    oneof request {
+        // Indicates a GetChainMetadata request. The value of the bool should be ignored.
+        bool get_chain_metadata = 2;
+        // Indicates a FetchKernels request.
+        HashOutputs fetch_kernels = 3;
+        // Indicates a FetchHeaders request.
+        BlockHeights fetch_headers = 4;
+        // Indicates a FetchHeadersWithHashes request.
+        HashOutputs fetch_headers_with_hashes = 5;
+        // Indicates a FetchMatchingUtxos request.
+        HashOutputs fetch_matching_utxos = 6;
+        // Indicates a FetchMatchingBlocks request.
+        BlockHeights fetch_matching_blocks = 7;
+        // Indicates a FetchBlocksWithHashes request.
+        HashOutputs fetch_blocks_with_hashes = 8;
+        // Indicates a GetNewBlockTemplate request.
+        uint64 get_new_block_template = 9;
+        // Indicates a GetNewBlock request.
+        tari.core.NewBlockTemplate get_new_block = 10;
+        // Get headers in best chain following any headers in this list
+        FetchHeadersAfter fetch_headers_after = 12;
+        // Indicates a FetchMmrNodeCount request.
+        FetchMmrNodeCount fetch_mmr_node_count = 13;
+        // Indicates a FetchMatchingMmrNodes request.
+        FetchMatchingMmrNodes fetch_matching_mmr_nodes = 14;
+        // Indicates a FetchMatchingTxos request.
+        HashOutputs fetch_matching_txos = 15;
+        // Indicates a Fetch block with kernels request
+        Signatures fetch_blocks_with_kernels = 16;
+        // Indicates a Fetch block with kernels request
+        Commitments fetch_blocks_with_stxos = 17;
+        // Indicates a Fetch block with kernels request
+        Commitments fetch_blocks_with_utxos = 18;
+    }
+}
+
+message BlockHeights {
+    repeated uint64 heights = 1;
+}
+
+message HashOutputs {
+    repeated bytes outputs = 1;
+}
+
+message Signatures {
+    repeated tari.types.Signature sigs = 1;
+}
+
+message Commitments{
+    repeated tari.types.Commitment commitments = 1;
+}
+
+message FetchHeadersAfter {
+    repeated bytes hashes = 1;
+    bytes stopping_hash = 2;
+}
+
+message FetchMmrNodeCount {
+    MmrTree tree = 1;
+    uint64 height = 2;
+}
+
+message FetchMatchingMmrNodes{
+    MmrTree tree = 1;
+    uint32 pos = 2;
+    uint32 count = 3;
+    uint64 hist_height = 4;
+}
+// Response type for a received BaseNodeService requests
+message BaseNodeServiceResponse {
+    uint64 request_key = 1;
+    oneof response {
+        // Indicates a ChainMetadata response.
+        ChainMetadata chain_metadata = 2;
+        // Indicates a TransactionKernels response.
+        TransactionKernels transaction_kernels = 3;
+        // Indicates a BlockHeaders response.
+        BlockHeaders block_headers = 4;
+        // Indicates a TransactionOutputs response.
+        TransactionOutputs transaction_outputs = 5;
+        // Indicates a HistoricalBlocks response.
+        HistoricalBlocks historical_blocks = 6;
+        // Indicates a NewBlockTemplate response.
+        tari.core.NewBlockTemplate new_block_template = 7;
+        // Indicates a NewBlock response.
+        NewBlockResponse new_block = 8;
+        // Indicates a TargetDifficulty response.
+        uint64 target_difficulty = 9;
+        // Block headers in range response
+        BlockHeaders fetch_headers_after_response = 10;
+        // Indicates a MmrNodeCount response
+        uint32 MmrNodeCount = 11;
+        // Indicates a MmrNodes response
+        MmrNodes MmrNodes = 12;
+    }
+    bool is_synced = 13;
+}
+
+message BlockHeaders {
+    repeated tari.core.BlockHeader headers = 1;
+}
+
+message TransactionKernels {
+    repeated tari.types.TransactionKernel kernels = 1;
+}
+
+message TransactionOutputs {
+    repeated tari.types.TransactionOutput outputs = 1;
+}
+
+message HistoricalBlocks {
+    repeated tari.core.HistoricalBlock blocks = 1;
+}
+
+message NewBlockResponse {
+    bool success = 1;
+    string error = 2;
+    tari.core.Block block = 3;
+}
+
+message MmrNodes {
+    repeated bytes added = 1;
+    bytes deleted = 2;
+}
+
+// Request message used to initiate a sync
+message SyncBlocksRequest {
+    // Start sending from this hash (exclusive)
+    bytes start_hash = 1;
+    // Number of blocks to send. If this is zero (empty) the peer SHOULD send to their tip height
+    uint64 count = 2;
+}
+
+// Request message used to initiate a sync
+message SyncHeadersRequest {
+    // Start sending from this hash (exclusive)
+    bytes start_hash = 1;
+    // Number of blocks to send. If this is zero (empty) the peer SHOULD send to their tip height
+    uint64 count = 2;
+}
+
+message FindChainSplitRequest {
+    repeated bytes block_hashes = 1;
+    uint64 count = 2;
+}
+
+message FindChainSplitResponse {
+    // An ordered list of headers starting from next header after the matching hash, up until `FindChainSplitRequest::count`
+    repeated tari.core.BlockHeader headers = 1;
+    // The index of the hash that matched from `FindChainSplitRequest::block_hashes`. This value could also be used to know how far back a split occurs.
+    uint32 found_hash_index = 2;
+}

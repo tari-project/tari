@@ -33,7 +33,7 @@ use crate::transaction_service::{
 use std::time::Duration;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::outbound::{OutboundEncryption, OutboundMessageRequester};
-use tari_core::transactions::transaction_protocol::proto;
+use tari_core::proto::transaction as proto;
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_transaction_reply";
 

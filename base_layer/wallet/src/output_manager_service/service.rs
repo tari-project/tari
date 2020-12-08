@@ -42,7 +42,7 @@ use std::{cmp::Ordering, collections::HashMap, fmt, sync::Arc, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
-    base_node::proto,
+    proto::base_node as proto,
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,

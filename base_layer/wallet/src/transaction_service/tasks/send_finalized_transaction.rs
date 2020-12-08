@@ -30,7 +30,7 @@ use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
 };
-use tari_core::transactions::{transaction::Transaction, transaction_protocol::proto};
+use tari_core::{proto::transaction as proto, transactions::transaction::Transaction};
 use tari_p2p::tari_message::TariMessageType;
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_finalized_transaction";

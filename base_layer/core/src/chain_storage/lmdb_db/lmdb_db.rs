@@ -24,7 +24,7 @@ use crate::{
     chain_storage::{
         accumulated_data::{BlockAccumulatedData, BlockHeaderAccumulatedData},
         blockchain_database::BlockchainBackend,
-        db_transaction::{DbKey, DbTransaction, DbValue, MetadataValue, MmrTree, WriteOperation},
+        db_transaction::{DbKey, DbTransaction, DbValue, MetadataValue, WriteOperation},
         error::ChainStorageError,
         lmdb_db::{
             lmdb::{
@@ -66,6 +66,7 @@ use crate::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{HashDigest, HashOutput},
     },
+    types::MmrTree,
 };
 use fs2::FileExt;
 use lmdb_zero::{ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};

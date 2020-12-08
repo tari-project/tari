@@ -27,7 +27,6 @@ use crate::{
     },
     common::waiting_requests::{generate_request_key, RequestKey, WaitingRequests},
     mempool::{
-        proto as mempool_proto,
         service::{
             error::MempoolServiceError,
             inbound_handlers::MempoolInboundHandlers,
@@ -112,8 +111,8 @@ impl MempoolService {
     ) -> Result<(), MempoolServiceError>
     where
         SOutReq: Stream<Item = RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>>,
-        SInReq: Stream<Item = DomainMessage<mempool_proto::MempoolServiceRequest>>,
-        SInRes: Stream<Item = DomainMessage<mempool_proto::MempoolServiceResponse>>,
+        SInReq: Stream<Item = DomainMessage<proto::mempool::MempoolServiceRequest>>,
+        SInRes: Stream<Item = DomainMessage<proto::mempool::MempoolServiceResponse>>,
         STxIn: Stream<Item = DomainMessage<Transaction>>,
         SLocalReq: Stream<Item = RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>>,
     {
@@ -237,7 +236,7 @@ impl MempoolService {
         });
     }
 
-    fn spawn_handle_incoming_request(&self, domain_msg: DomainMessage<mempool_proto::MempoolServiceRequest>) {
+    fn spawn_handle_incoming_request(&self, domain_msg: DomainMessage<proto::mempool::MempoolServiceRequest>) {
         let inbound_handlers = self.inbound_handlers.clone();
         let outbound_message_service = self.outbound_message_service.clone();
         task::spawn(async move {
@@ -249,7 +248,7 @@ impl MempoolService {
         });
     }
 
-    fn spawn_handle_incoming_response(&self, domain_msg: DomainMessage<mempool_proto::MempoolServiceResponse>) {
+    fn spawn_handle_incoming_response(&self, domain_msg: DomainMessage<proto::mempool::MempoolServiceResponse>) {
         let waiting_requests = self.waiting_requests.clone();
         task::spawn(async move {
             let result = handle_incoming_response(waiting_requests, domain_msg.into_inner()).await;
@@ -332,12 +331,12 @@ impl MempoolService {
 async fn handle_incoming_request(
     mut inbound_handlers: MempoolInboundHandlers,
     mut outbound_message_service: OutboundMessageRequester,
-    domain_request_msg: DomainMessage<mempool_proto::MempoolServiceRequest>,
+    domain_request_msg: DomainMessage<proto::mempool::MempoolServiceRequest>,
 ) -> Result<(), MempoolServiceError>
 {
     let (origin_public_key, inner_msg) = domain_request_msg.into_origin_and_inner();
 
-    // Convert mempool_proto::MempoolServiceRequest to a MempoolServiceRequest
+    // Convert proto::mempool::MempoolServiceRequest to a MempoolServiceRequest
     let request = inner_msg
         .request
         .ok_or_else(|| MempoolServiceError::InvalidRequest("Received invalid mempool service request".to_string()))?;
@@ -346,7 +345,7 @@ async fn handle_incoming_request(
         .handle_request(request.try_into().map_err(MempoolServiceError::InvalidRequest)?)
         .await?;
 
-    let message = mempool_proto::MempoolServiceResponse {
+    let message = proto::mempool::MempoolServiceResponse {
         request_key: inner_msg.request_key,
         response: Some(response.into()),
     };
@@ -363,10 +362,10 @@ async fn handle_incoming_request(
 
 async fn handle_incoming_response(
     waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>>,
-    incoming_response: mempool_proto::MempoolServiceResponse,
+    incoming_response: proto::mempool::MempoolServiceResponse,
 ) -> Result<(), MempoolServiceError>
 {
-    let mempool_proto::MempoolServiceResponse { request_key, response } = incoming_response;
+    let proto::mempool::MempoolServiceResponse { request_key, response } = incoming_response;
     let response: MempoolResponse = response
         .and_then(|r| r.try_into().ok())
         .ok_or_else(|| MempoolServiceError::InvalidResponse("Received an invalid mempool response".to_string()))?;
@@ -401,7 +400,7 @@ async fn handle_outbound_request(
 ) -> Result<(), MempoolServiceError>
 {
     let request_key = generate_request_key(&mut OsRng);
-    let service_request = mempool_proto::MempoolServiceRequest {
+    let service_request = proto::mempool::MempoolServiceRequest {
         request_key,
         request: Some(request.into()),
     };

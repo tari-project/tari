@@ -41,6 +41,7 @@ extern crate bitflags;
 pub mod blocks;
 #[cfg(feature = "base_node")]
 pub mod chain_storage;
+mod common;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 pub mod consensus;
 #[cfg(feature = "base_node")]
@@ -55,18 +56,18 @@ pub mod validation;
 #[cfg(any(test, feature = "base_node"))]
 pub mod test_helpers;
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
+#[cfg(any(feature = "base_node"))]
 pub mod base_node;
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
+
 pub mod proto;
 
-#[cfg(any(feature = "base_node", feature = "mempool_proto"))]
+#[cfg(feature = "base_node")]
 pub mod mempool;
 
 #[cfg(feature = "transactions")]
 pub mod transactions;
 
-mod common;
+pub mod types;
 
 // Re-export the crypto crate to make exposing traits etc easier for clients of this crate
 pub use crypto::tari_utilities;

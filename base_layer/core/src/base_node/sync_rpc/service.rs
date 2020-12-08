@@ -21,14 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::{
-        proto::{FindChainSplitRequest, FindChainSplitResponse, SyncBlocksRequest, SyncHeadersRequest},
-        service::blockchain_state::BlockchainStateServiceHandle,
-        sync_rpc::BaseNodeSyncService,
-    },
+    base_node::{service::blockchain_state::BlockchainStateServiceHandle, sync_rpc::BaseNodeSyncService},
     blocks::BlockHeader,
     iterators::NonOverlappingIntegerPairIter,
-    proto::{generated as proto, generated::core::Block},
+    proto,
+    proto::base_node::{FindChainSplitRequest, FindChainSplitResponse, SyncBlocksRequest, SyncHeadersRequest},
 };
 use futures::{channel::mpsc, stream, SinkExt};
 use log::*;
@@ -125,7 +122,7 @@ impl BaseNodeSyncService for BaseNodeSyncRpcService {
                         break;
                     },
                     Ok(blocks) => {
-                        let mut blocks = stream::iter(blocks.into_iter().map(Block::from).map(Ok).map(Ok));
+                        let mut blocks = stream::iter(blocks.into_iter().map(proto::core::Block::from).map(Ok).map(Ok));
                         // Ensure task stops if the peer prematurely stops their RPC session
                         if tx.send_all(&mut blocks).await.is_err() {
                             break;

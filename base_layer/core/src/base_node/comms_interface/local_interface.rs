@@ -21,19 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::comms_interface::{
-        error::CommsInterfaceError,
-        BlockEvent,
-        Broadcast,
-        NodeCommsRequest,
-        NodeCommsResponse,
-    },
+    base_node::comms_interface::{error::CommsInterfaceError, BlockEvent, Broadcast},
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::{HistoricalBlock, MmrTree},
+    chain_storage::HistoricalBlock,
     proof_of_work::PowAlgorithm,
     transactions::{
         transaction::TransactionOutput,
         types::{Commitment, HashOutput, Signature},
+    },
+    types::{
+        base_node::{NodeCommsRequest, NodeCommsResponse},
+        MmrTree,
     },
 };
 use std::sync::Arc;

@@ -23,7 +23,6 @@
 use crate::{
     base_node::{
         comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
-        proto,
         service::{
             blockchain_state::BlockchainStateServiceInitializer,
             service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
@@ -34,7 +33,7 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
     mempool::Mempool,
-    proto as shared_protos,
+    proto,
 };
 use futures::{channel::mpsc, future, Future, Stream, StreamExt};
 use log::*;
@@ -88,18 +87,18 @@ where T: BlockchainBackend
     }
 
     /// Get a stream for inbound Base Node request messages
-    fn inbound_request_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>> {
+    fn inbound_request_stream(&self) -> impl Stream<Item = DomainMessage<proto::base_node::BaseNodeServiceRequest>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::BaseNodeRequest, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::BaseNodeServiceRequest>)
+            .map(map_decode::<proto::base_node::BaseNodeServiceRequest>)
             .filter_map(ok_or_skip_result)
     }
 
     /// Get a stream for inbound Base Node response messages
-    fn inbound_response_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>> {
+    fn inbound_response_stream(&self) -> impl Stream<Item = DomainMessage<proto::base_node::BaseNodeServiceResponse>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::BaseNodeServiceResponse>)
+            .map(map_decode::<proto::base_node::BaseNodeServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
 
@@ -112,7 +111,7 @@ where T: BlockchainBackend
 }
 
 async fn extract_block(msg: Arc<PeerMessage>) -> Option<DomainMessage<NewBlock>> {
-    match msg.decode_message::<shared_protos::core::NewBlock>() {
+    match msg.decode_message::<proto::core::NewBlock>() {
         Err(e) => {
             warn!(
                 target: LOG_TARGET,

@@ -21,12 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     base_node::{
-        comms_interface::{
-            error::CommsInterfaceError,
-            local_interface::BlockEventSender,
-            NodeCommsRequest,
-            NodeCommsResponse,
-        },
+        comms_interface::{error::CommsInterfaceError, local_interface::BlockEventSender},
         OutboundNodeCommsInterface,
     },
     blocks::{block_header::BlockHeader, Block, NewBlock, NewBlockTemplate},
@@ -35,6 +30,7 @@ use crate::{
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::transaction::TransactionKernel,
+    types::base_node::{NodeCommsRequest, NodeCommsResponse},
 };
 use croaring::Bitmap;
 use log::*;

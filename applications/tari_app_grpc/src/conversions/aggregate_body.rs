@@ -21,9 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::convert::TryFrom;
-use tari_core::{proto::utils::try_convert_all, transactions::aggregated_body::AggregateBody};
+use tari_core::transactions::aggregated_body::AggregateBody;
 
 use crate::generated::tari_rpc as grpc;
+use tari_crypto::tari_utilities::convert::try_convert_all;
 
 impl From<AggregateBody> for grpc::AggregateBody {
     fn from(source: AggregateBody) -> Self {

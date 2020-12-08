@@ -29,7 +29,7 @@ use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::{
-        comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
+        comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers},
         OutboundNodeCommsInterface,
     },
     blocks::{genesis_block, BlockBuilder, BlockHeader},
@@ -42,6 +42,7 @@ use tari_core::{
         tari_amount::MicroTari,
         types::CryptoFactories,
     },
+    types::base_node::{NodeCommsRequest, NodeCommsResponse},
     validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
 };
 use tari_crypto::tari_utilities::hash::Hashable;

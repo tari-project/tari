@@ -20,6 +20,115 @@ pub struct ChainMetadata {
     #[prost(uint64, tag = "6")]
     pub effective_pruned_height: u64,
 }
+/// Request type for a received BaseNodeService request.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BaseNodeServiceRequest {
+    #[prost(uint64, tag = "1")]
+    pub request_key: u64,
+    #[prost(
+        oneof = "base_node_service_request::Request",
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18"
+    )]
+    pub request: ::std::option::Option<base_node_service_request::Request>,
+}
+pub mod base_node_service_request {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Request {
+        /// Indicates a GetChainMetadata request. The value of the bool should be ignored.
+        #[prost(bool, tag = "2")]
+        GetChainMetadata(bool),
+        /// Indicates a FetchKernels request.
+        #[prost(message, tag = "3")]
+        FetchKernels(super::HashOutputs),
+        /// Indicates a FetchHeaders request.
+        #[prost(message, tag = "4")]
+        FetchHeaders(super::BlockHeights),
+        /// Indicates a FetchHeadersWithHashes request.
+        #[prost(message, tag = "5")]
+        FetchHeadersWithHashes(super::HashOutputs),
+        /// Indicates a FetchMatchingUtxos request.
+        #[prost(message, tag = "6")]
+        FetchMatchingUtxos(super::HashOutputs),
+        /// Indicates a FetchMatchingBlocks request.
+        #[prost(message, tag = "7")]
+        FetchMatchingBlocks(super::BlockHeights),
+        /// Indicates a FetchBlocksWithHashes request.
+        #[prost(message, tag = "8")]
+        FetchBlocksWithHashes(super::HashOutputs),
+        /// Indicates a GetNewBlockTemplate request.
+        #[prost(uint64, tag = "9")]
+        GetNewBlockTemplate(u64),
+        /// Indicates a GetNewBlock request.
+        #[prost(message, tag = "10")]
+        GetNewBlock(super::super::core::NewBlockTemplate),
+        /// Get headers in best chain following any headers in this list
+        #[prost(message, tag = "12")]
+        FetchHeadersAfter(super::FetchHeadersAfter),
+        /// Indicates a FetchMmrNodeCount request.
+        #[prost(message, tag = "13")]
+        FetchMmrNodeCount(super::FetchMmrNodeCount),
+        /// Indicates a FetchMatchingMmrNodes request.
+        #[prost(message, tag = "14")]
+        FetchMatchingMmrNodes(super::FetchMatchingMmrNodes),
+        /// Indicates a FetchMatchingTxos request.
+        #[prost(message, tag = "15")]
+        FetchMatchingTxos(super::HashOutputs),
+        /// Indicates a Fetch block with kernels request
+        #[prost(message, tag = "16")]
+        FetchBlocksWithKernels(super::Signatures),
+        /// Indicates a Fetch block with kernels request
+        #[prost(message, tag = "17")]
+        FetchBlocksWithStxos(super::Commitments),
+        /// Indicates a Fetch block with kernels request
+        #[prost(message, tag = "18")]
+        FetchBlocksWithUtxos(super::Commitments),
+    }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockHeights {
+    #[prost(uint64, repeated, tag = "1")]
+    pub heights: ::std::vec::Vec<u64>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HashOutputs {
+    #[prost(bytes, repeated, tag = "1")]
+    pub outputs: ::std::vec::Vec<std::vec::Vec<u8>>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Signatures {
+    #[prost(message, repeated, tag = "1")]
+    pub sigs: ::std::vec::Vec<super::types::Signature>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Commitments {
+    #[prost(message, repeated, tag = "1")]
+    pub commitments: ::std::vec::Vec<super::types::Commitment>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FetchHeadersAfter {
+    #[prost(bytes, repeated, tag = "1")]
+    pub hashes: ::std::vec::Vec<std::vec::Vec<u8>>,
+    #[prost(bytes, tag = "2")]
+    pub stopping_hash: std::vec::Vec<u8>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FetchMmrNodeCount {
+    #[prost(enumeration = "MmrTree", tag = "1")]
+    pub tree: i32,
+    #[prost(uint64, tag = "2")]
+    pub height: u64,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FetchMatchingMmrNodes {
+    #[prost(enumeration = "MmrTree", tag = "1")]
+    pub tree: i32,
+    #[prost(uint32, tag = "2")]
+    pub pos: u32,
+    #[prost(uint32, tag = "3")]
+    pub count: u32,
+    #[prost(uint64, tag = "4")]
+    pub hist_height: u64,
+}
 /// Response type for a received BaseNodeService requests
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BaseNodeServiceResponse {
@@ -152,113 +261,4 @@ pub enum MmrTree {
     Utxo = 1,
     Kernel = 2,
     RangeProof = 3,
-}
-/// Request type for a received BaseNodeService request.
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BaseNodeServiceRequest {
-    #[prost(uint64, tag = "1")]
-    pub request_key: u64,
-    #[prost(
-        oneof = "base_node_service_request::Request",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18"
-    )]
-    pub request: ::std::option::Option<base_node_service_request::Request>,
-}
-pub mod base_node_service_request {
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Request {
-        /// Indicates a GetChainMetadata request. The value of the bool should be ignored.
-        #[prost(bool, tag = "2")]
-        GetChainMetadata(bool),
-        /// Indicates a FetchKernels request.
-        #[prost(message, tag = "3")]
-        FetchKernels(super::HashOutputs),
-        /// Indicates a FetchHeaders request.
-        #[prost(message, tag = "4")]
-        FetchHeaders(super::BlockHeights),
-        /// Indicates a FetchHeadersWithHashes request.
-        #[prost(message, tag = "5")]
-        FetchHeadersWithHashes(super::HashOutputs),
-        /// Indicates a FetchMatchingUtxos request.
-        #[prost(message, tag = "6")]
-        FetchMatchingUtxos(super::HashOutputs),
-        /// Indicates a FetchMatchingBlocks request.
-        #[prost(message, tag = "7")]
-        FetchMatchingBlocks(super::BlockHeights),
-        /// Indicates a FetchBlocksWithHashes request.
-        #[prost(message, tag = "8")]
-        FetchBlocksWithHashes(super::HashOutputs),
-        /// Indicates a GetNewBlockTemplate request.
-        #[prost(uint64, tag = "9")]
-        GetNewBlockTemplate(u64),
-        /// Indicates a GetNewBlock request.
-        #[prost(message, tag = "10")]
-        GetNewBlock(super::super::core::NewBlockTemplate),
-        /// Get headers in best chain following any headers in this list
-        #[prost(message, tag = "12")]
-        FetchHeadersAfter(super::FetchHeadersAfter),
-        /// Indicates a FetchMmrNodeCount request.
-        #[prost(message, tag = "13")]
-        FetchMmrNodeCount(super::FetchMmrNodeCount),
-        /// Indicates a FetchMatchingMmrNodes request.
-        #[prost(message, tag = "14")]
-        FetchMatchingMmrNodes(super::FetchMatchingMmrNodes),
-        /// Indicates a FetchMatchingTxos request.
-        #[prost(message, tag = "15")]
-        FetchMatchingTxos(super::HashOutputs),
-        /// Indicates a Fetch block with kernels request
-        #[prost(message, tag = "16")]
-        FetchBlocksWithKernels(super::Signatures),
-        /// Indicates a Fetch block with kernels request
-        #[prost(message, tag = "17")]
-        FetchBlocksWithStxos(super::Commitments),
-        /// Indicates a Fetch block with kernels request
-        #[prost(message, tag = "18")]
-        FetchBlocksWithUtxos(super::Commitments),
-    }
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BlockHeights {
-    #[prost(uint64, repeated, tag = "1")]
-    pub heights: ::std::vec::Vec<u64>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct HashOutputs {
-    #[prost(bytes, repeated, tag = "1")]
-    pub outputs: ::std::vec::Vec<std::vec::Vec<u8>>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Signatures {
-    #[prost(message, repeated, tag = "1")]
-    pub sigs: ::std::vec::Vec<super::types::Signature>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Commitments {
-    #[prost(message, repeated, tag = "1")]
-    pub commitments: ::std::vec::Vec<super::types::Commitment>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct FetchHeadersAfter {
-    #[prost(bytes, repeated, tag = "1")]
-    pub hashes: ::std::vec::Vec<std::vec::Vec<u8>>,
-    #[prost(bytes, tag = "2")]
-    pub stopping_hash: std::vec::Vec<u8>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct FetchMmrNodeCount {
-    #[prost(enumeration = "MmrTree", tag = "1")]
-    pub tree: i32,
-    #[prost(uint64, tag = "2")]
-    pub height: u64,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct FetchMatchingMmrNodes {
-    #[prost(enumeration = "MmrTree", tag = "1")]
-    pub tree: i32,
-    #[prost(uint32, tag = "2")]
-    pub pos: u32,
-    #[prost(uint32, tag = "3")]
-    pub count: u32,
-    #[prost(uint64, tag = "4")]
-    pub hist_height: u64,
 }

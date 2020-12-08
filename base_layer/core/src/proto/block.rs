@@ -25,25 +25,12 @@ use crate::{
     blocks::{Block, BlockHeader, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
     chain_storage::HistoricalBlock,
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
+    proto::utils::{datetime_to_timestamp, timestamp_to_datetime},
     transactions::types::BlindingFactor,
 };
-use prost_types::Timestamp;
 use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::BLOCK_HASH_LENGTH;
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray};
-
-/// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime`
-pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> EpochTime {
-    (timestamp.seconds as u64).into()
-}
-
-/// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`
-pub(crate) fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {
-    Timestamp {
-        seconds: datetime.as_u64() as i64,
-        nanos: 0,
-    }
-}
+use tari_crypto::tari_utilities::ByteArray;
 
 //---------------------------------- Block --------------------------------------------//
 

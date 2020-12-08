@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+import "types.proto";
+
+package tari.transaction_protocol;
+
+// This is the message containing the public data that the Receiver will send back to the Sender
+message RecipientSignedMessage {
+    uint64 tx_id = 1;
+    tari.types.TransactionOutput output = 2;
+    bytes public_spend_key = 3;
+    tari.types.Signature partial_signature = 4;
+}
+
+message TransactionCancelledMessage {
+    // The transaction id for the cancelled transaction
+    uint64 tx_id = 1;
+}
+
+
+message TransactionFinalizedMessage {
+    // The transaction id for the recipient
+    uint64 tx_id = 1;
+    // The actual transaction;
+    tari.types.Transaction transaction = 2;
+}
+
+message TransactionMetadata {
+    // The absolute fee for the transaction
+    uint64 fee = 1;
+    // The earliest block this transaction can be mined
+    uint64 lock_height = 2;
+}
+
+message SingleRoundSenderData {
+    // The transaction id for the recipient
+    uint64 tx_id = 1;
+    // The amount, in µT, being sent to the recipient
+    uint64 amount = 2;
+    // The offset public excess for this transaction
+    bytes public_excess = 3;
+    // The sender's public nonce
+    bytes public_nonce = 4;
+    // The transaction metadata
+    TransactionMetadata metadata = 5;
+    // Plain text message to receiver
+    string message = 6;
+}
+
+message TransactionSenderMessage {
+    oneof message {
+        bool None = 1;
+        SingleRoundSenderData single = 2;
+
+        // TODO: Three round types
+
+        bool Multiple = 3;
+    }
+}

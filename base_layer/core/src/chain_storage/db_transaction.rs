@@ -29,7 +29,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    convert::TryFrom,
     fmt,
     fmt::{Display, Error, Formatter},
     sync::Arc,
@@ -357,36 +356,6 @@ impl Display for DbKey {
             DbKey::BlockHash(v) => f.write_str(&format!("Block hash (#{})", to_hex(v))),
             DbKey::TransactionKernel(v) => f.write_str(&format!("Transaction kernel ({})", to_hex(v))),
             DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", to_hex(v))),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy)]
-pub enum MmrTree {
-    Utxo,
-    Kernel,
-    RangeProof,
-}
-
-impl Display for MmrTree {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        match self {
-            MmrTree::RangeProof => f.write_str("Range Proof"),
-            MmrTree::Utxo => f.write_str("UTXO"),
-            MmrTree::Kernel => f.write_str("Kernel"),
-        }
-    }
-}
-
-impl TryFrom<i32> for MmrTree {
-    type Error = String;
-
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
-        match v {
-            0 => Ok(MmrTree::Utxo),
-            1 => Ok(MmrTree::Kernel),
-            2 => Ok(MmrTree::RangeProof),
-            _ => Err("Invalid MmrTree".into()),
         }
     }
 }

@@ -22,15 +22,7 @@
 
 use crate::{
     base_node::{
-        comms_interface::{
-            Broadcast,
-            CommsInterfaceError,
-            InboundNodeCommsHandlers,
-            NodeCommsRequest,
-            NodeCommsResponse,
-        },
-        proto,
-        proto::base_node_service_request::Request,
+        comms_interface::{Broadcast, CommsInterfaceError, InboundNodeCommsHandlers},
         service::error::BaseNodeServiceError,
         state_machine_service::states::StateInfo,
         StateMachineHandle,
@@ -38,7 +30,8 @@ use crate::{
     blocks::{Block, NewBlock},
     chain_storage::BlockchainBackend,
     common::waiting_requests::{generate_request_key, RequestKey, WaitingRequests},
-    proto as shared_protos,
+    proto,
+    types::base_node::{NodeCommsRequest, NodeCommsResponse},
 };
 use futures::{
     channel::{
@@ -153,8 +146,8 @@ where B: BlockchainBackend + 'static
         SOutReq: Stream<
             Item = RequestContext<(NodeCommsRequest, Option<NodeId>), Result<NodeCommsResponse, CommsInterfaceError>>,
         >,
-        SInReq: Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>>,
-        SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
+        SInReq: Stream<Item = DomainMessage<proto::base_node::BaseNodeServiceRequest>>,
+        SInRes: Stream<Item = DomainMessage<proto::base_node::BaseNodeServiceResponse>>,
         SBlockIn: Stream<Item = DomainMessage<NewBlock>>,
         SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
         SLocalBlock: Stream<Item = RequestContext<(Block, Broadcast), Result<(), CommsInterfaceError>>>,
@@ -273,7 +266,7 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_request(&self, domain_msg: DomainMessage<proto::BaseNodeServiceRequest>) {
+    fn spawn_handle_incoming_request(&self, domain_msg: DomainMessage<proto::base_node::BaseNodeServiceRequest>) {
         let inbound_nch = self.inbound_nch.clone();
         let outbound_message_service = self.outbound_message_service.clone();
         let state_machine_handle = self.state_machine_handle.clone();
@@ -286,7 +279,7 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_incoming_response(&self, domain_msg: DomainMessage<proto::BaseNodeServiceResponse>) {
+    fn spawn_handle_incoming_response(&self, domain_msg: DomainMessage<proto::base_node::BaseNodeServiceResponse>) {
         let waiting_requests = self.waiting_requests.clone();
         task::spawn(async move {
             let result = handle_incoming_response(waiting_requests, domain_msg.into_inner()).await;
@@ -383,12 +376,12 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     inbound_nch: InboundNodeCommsHandlers<B>,
     mut outbound_message_service: OutboundMessageRequester,
     state_machine_handle: StateMachineHandle,
-    domain_request_msg: DomainMessage<proto::BaseNodeServiceRequest>,
+    domain_request_msg: DomainMessage<proto::base_node::BaseNodeServiceRequest>,
 ) -> Result<(), BaseNodeServiceError>
 {
     let (origin_public_key, inner_msg) = domain_request_msg.into_origin_and_inner();
 
-    // Convert proto::BaseNodeServiceRequest to a BaseNodeServiceRequest
+    // Convert proto::base_node::BaseNodeServiceRequest to a BaseNodeServiceRequest
     let request = inner_msg
         .request
         .ok_or_else(|| BaseNodeServiceError::InvalidRequest("Received invalid base node request".to_string()))?;
@@ -404,7 +397,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
         _ => false,
     };
 
-    let message = proto::BaseNodeServiceResponse {
+    let message = proto::base_node::BaseNodeServiceResponse {
         request_key: inner_msg.request_key,
         response: Some(response.into()),
         is_synced,
@@ -463,10 +456,10 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
 
 async fn handle_incoming_response(
     waiting_requests: WaitingRequests<Result<NodeCommsResponse, CommsInterfaceError>>,
-    incoming_response: proto::BaseNodeServiceResponse,
+    incoming_response: proto::base_node::BaseNodeServiceResponse,
 ) -> Result<(), BaseNodeServiceError>
 {
-    let proto::BaseNodeServiceResponse {
+    let proto::base_node::BaseNodeServiceResponse {
         request_key,
         response,
         is_synced,
@@ -507,7 +500,7 @@ async fn handle_outbound_request(
 ) -> Result<(), CommsInterfaceError>
 {
     let request_key = generate_request_key(&mut OsRng);
-    let service_request = proto::BaseNodeServiceRequest {
+    let service_request = proto::base_node::BaseNodeServiceRequest {
         request_key,
         request: Some(request.into()),
     };
@@ -542,6 +535,7 @@ async fn handle_outbound_request(
             waiting_requests.insert(request_key, reply_tx).await;
             // Spawn timeout for waiting_request
             if let Some(r) = service_request.request.clone() {
+                use proto::base_node::base_node_service_request::Request;
                 match r {
                     Request::FetchMatchingBlocks(_) |
                     Request::FetchBlocksWithHashes(_) |
@@ -621,10 +615,7 @@ async fn handle_outbound_block(
             NodeDestination::Unknown,
             OutboundEncryption::ClearText,
             exclude_peers,
-            OutboundDomainMessage::new(
-                TariMessageType::NewBlock,
-                shared_protos::core::NewBlock::from(new_block),
-            ),
+            OutboundDomainMessage::new(TariMessageType::NewBlock, proto::core::NewBlock::from(new_block)),
         )
         .await?;
     Ok(())

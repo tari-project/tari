@@ -23,11 +23,11 @@
 use crate::{
     mempool::{
         async_mempool,
-        proto,
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
         MempoolValidators,
     },
+    proto::mempool as proto,
     transactions::{helpers::create_tx, tari_amount::uT, transaction::Transaction},
     validation::mocks::MockValidator,
 };

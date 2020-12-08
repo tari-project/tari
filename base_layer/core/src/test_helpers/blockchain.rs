@@ -34,7 +34,6 @@ use crate::{
         DbTransaction,
         DbValue,
         LMDBDatabase,
-        MmrTree,
         Validators,
     },
     consensus::{
@@ -48,6 +47,7 @@ use crate::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::{CryptoFactories, HashOutput},
     },
+    types::MmrTree,
     validation::{
         block_validators::{FullConsensusValidator, StatelessBlockValidator},
         mocks::MockValidator,

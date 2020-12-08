@@ -22,9 +22,10 @@
 use crate::{
     blocks::{block_header::BlockHeader, Block, BlockValidationError},
     chain_storage,
-    chain_storage::{fetch_header, fetch_headers, BlockchainBackend, MmrTree},
+    chain_storage::{fetch_header, fetch_headers, BlockchainBackend},
     consensus::ConsensusManager,
     transactions::{aggregated_body::AggregateBody, types::CryptoFactories},
+    types::MmrTree,
     validation::{
         helpers,
         helpers::{
