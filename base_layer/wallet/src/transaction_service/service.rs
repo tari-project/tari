@@ -1631,33 +1631,51 @@ where
         >,
     ) -> Result<Transaction, TransactionServiceError>
     {
-        let tx_id = OsRng.next_u64();
-        let total_reward = reward + fees;
-        let spending_key = self
-            .output_manager_service
-            .get_coinbase_spending_key(tx_id, total_reward, block_height)
-            .await?;
-        let nonce = PrivateKey::random(&mut OsRng);
-        let (tx, _) = CoinbaseBuilder::new(self.resources.factories.clone())
-            .with_block_height(block_height)
-            .with_fees(fees)
-            .with_spend_key(spending_key)
-            .with_nonce(nonce)
-            .build_with_reward(&self.resources.consensus_constants, reward)?;
+        let amount = reward + fees;
 
-        // Cancel existing unmined coinbase transactions for this blockheight
-        self.db
-            .cancel_coinbase_transaction_at_block_height(block_height)
+        // first check if we already have a coinbase tx for this height and amount
+        let find_result = self
+            .db
+            .find_coinbase_transaction_at_block_height(block_height, amount)
             .await?;
 
-        self.db
-            .insert_completed_transaction(
-                tx_id,
-                CompletedTransaction::new(
+        let completed_transaction = match find_result {
+            Some(completed_tx) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Coinbase transaction (TxId: {}) for Block Height: {} found, with Amount {}.",
+                    completed_tx.tx_id,
+                    block_height,
+                    amount
+                );
+
+                completed_tx
+            },
+            None => {
+                // otherwise create a new coinbase tx
+                let tx_id = OsRng.next_u64();
+                let spending_key = self
+                    .output_manager_service
+                    .get_coinbase_spending_key(tx_id, amount, block_height)
+                    .await?;
+                let nonce = PrivateKey::random(&mut OsRng);
+                let (tx, _) = CoinbaseBuilder::new(self.resources.factories.clone())
+                    .with_block_height(block_height)
+                    .with_fees(fees)
+                    .with_spend_key(spending_key)
+                    .with_nonce(nonce)
+                    .build_with_reward(&self.resources.consensus_constants, reward)?;
+
+                // Cancel existing unmined coinbase transactions for this blockheight
+                self.db
+                    .cancel_coinbase_transaction_at_block_height(block_height)
+                    .await?;
+
+                let completed_tx = CompletedTransaction::new(
                     tx_id,
                     self.node_identity.public_key().clone(),
                     self.node_identity.public_key().clone(),
-                    total_reward,
+                    amount,
                     MicroTari::from(0),
                     tx.clone(),
                     TransactionStatus::Coinbase,
@@ -1665,15 +1683,25 @@ where
                     Utc::now().naive_utc(),
                     TransactionDirection::Inbound,
                     Some(block_height),
-                ),
-            )
-            .await?;
+                );
 
-        debug!(
-            target: LOG_TARGET,
-            "Coinbase transaction (TxId: {}) for Block Height: {} added", tx_id, block_height
-        );
+                self.db
+                    .insert_completed_transaction(tx_id, completed_tx.clone())
+                    .await?;
 
+                debug!(
+                    target: LOG_TARGET,
+                    "Coinbase transaction (TxId: {}) for Block Height: {} added. Amount {}.",
+                    tx_id,
+                    block_height,
+                    amount
+                );
+
+                completed_tx
+            },
+        };
+
+        let tx_id = completed_transaction.tx_id;
         if let Err(e) = self
             .start_coinbase_transaction_monitoring_protocol(tx_id, coinbase_monitoring_protocol_join_handles)
             .await
@@ -1684,7 +1712,7 @@ where
             );
         }
 
-        Ok(tx)
+        Ok(completed_transaction.transaction)
     }
 
     /// Send a request to the Base Node to see if the specified coinbase transaction has been mined yet. This function

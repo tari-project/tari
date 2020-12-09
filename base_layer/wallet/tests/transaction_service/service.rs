@@ -3942,6 +3942,85 @@ fn test_handling_coinbase_transactions() {
 }
 
 #[test]
+fn test_coinbase_transaction_reused_for_same_height() {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    let (mut tx_service, mut output_service, _, _, _, _, _, _, _, _shutdown) =
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
+
+    let blockheight1 = 10;
+    let fees1 = 2000 * uT;
+    let reward1 = 1_000_000 * uT;
+
+    let blockheight2 = 11;
+    let fees2 = 3000 * uT;
+    let reward2 = 2_000_000 * uT;
+
+    // a requested coinbase transaction for the same height and amount should be the same
+    let tx1 = runtime
+        .block_on(tx_service.generate_coinbase_transaction(reward1, fees1, blockheight1))
+        .unwrap();
+
+    let tx2 = runtime
+        .block_on(tx_service.generate_coinbase_transaction(reward1, fees1, blockheight1))
+        .unwrap();
+
+    assert_eq!(tx1, tx2);
+    let transactions = runtime.block_on(tx_service.get_completed_transactions()).unwrap();
+
+    assert_eq!(transactions.len(), 1);
+    for tx in transactions.values() {
+        assert_eq!(tx.amount, fees1 + reward1);
+    }
+    assert_eq!(
+        runtime
+            .block_on(output_service.get_balance())
+            .unwrap()
+            .pending_incoming_balance,
+        fees1 + reward1
+    );
+
+    // a requested coinbase transaction for the same height but new amount should be different
+    let tx3 = runtime
+        .block_on(tx_service.generate_coinbase_transaction(reward2, fees2, blockheight1))
+        .unwrap();
+
+    assert_ne!(tx3, tx1);
+    let transactions = runtime.block_on(tx_service.get_completed_transactions()).unwrap();
+    assert_eq!(transactions.len(), 1); // tx1 and tx2 should be cancelled
+    for tx in transactions.values() {
+        assert_eq!(tx.amount, fees2 + reward2);
+    }
+    assert_eq!(
+        runtime
+            .block_on(output_service.get_balance())
+            .unwrap()
+            .pending_incoming_balance,
+        fees2 + reward2
+    );
+
+    // a requested coinbase transaction for a new height should be different
+    let tx_height2 = runtime
+        .block_on(tx_service.generate_coinbase_transaction(reward2, fees2, blockheight2))
+        .unwrap();
+
+    assert_ne!(tx1, tx_height2);
+    let transactions = runtime.block_on(tx_service.get_completed_transactions()).unwrap();
+    assert_eq!(transactions.len(), 2);
+    for tx in transactions.values() {
+        assert_eq!(tx.amount, fees2 + reward2);
+    }
+    assert_eq!(
+        runtime
+            .block_on(output_service.get_balance())
+            .unwrap()
+            .pending_incoming_balance,
+        2 * (fees2 + reward2)
+    );
+}
+
+#[test]
 fn test_transaction_resending() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();

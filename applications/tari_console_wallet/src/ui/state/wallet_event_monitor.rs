@@ -65,7 +65,8 @@ impl WalletEventMonitor {
                                     TransactionEvent::ReceivedFinalizedTransaction(tx_id) |
                                     TransactionEvent::TransactionCancelled(tx_id) |
                                     TransactionEvent::TransactionBroadcast(tx_id) |
-                                    TransactionEvent::TransactionMined(tx_id) => {
+                                    TransactionEvent::TransactionMined(tx_id) |
+                                    TransactionEvent::TransactionMinedRequestTimedOut(tx_id) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                     },
                                     TransactionEvent::TransactionDirectSendResult(tx_id, success) |
