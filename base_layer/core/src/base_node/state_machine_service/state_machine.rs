@@ -25,20 +25,12 @@ use crate::{
         comms_interface::{LocalNodeCommsInterface, OutboundNodeCommsInterface},
         state_machine_service::{
             states,
-            states::{
-                BaseNodeState,
-                BlockSyncConfig,
-                HorizonSyncConfig,
-                StateEvent,
-                StateInfo,
-                StatusInfo,
-                SyncPeerConfig,
-                SyncStatus,
-            },
+            states::{BaseNodeState, HorizonSyncConfig, StateEvent, StateInfo, StatusInfo, SyncPeerConfig, SyncStatus},
         },
-        SyncValidators,
+        sync::{BlockSyncConfig, SyncValidators},
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    consensus::ConsensusManager,
 };
 use futures::{future, future::Either};
 use log::*;
@@ -50,21 +42,12 @@ use tokio::sync::{broadcast, watch};
 const LOG_TARGET: &str = "c::bn::base_node";
 
 /// Configuration for the BaseNodeStateMachine.
-#[derive(Clone, Copy)]
+#[derive(Clone, Default)]
 pub struct BaseNodeStateMachineConfig {
     pub block_sync_config: BlockSyncConfig,
     pub horizon_sync_config: HorizonSyncConfig,
     pub sync_peer_config: SyncPeerConfig,
-}
-
-impl Default for BaseNodeStateMachineConfig {
-    fn default() -> Self {
-        Self {
-            block_sync_config: BlockSyncConfig::default(),
-            horizon_sync_config: HorizonSyncConfig::default(),
-            sync_peer_config: SyncPeerConfig::default(),
-        }
-    }
+    pub orphan_db_clean_out_threshold: usize,
 }
 
 /// A Tari full node, aka Base Node.
@@ -85,7 +68,8 @@ pub struct BaseNodeStateMachine<B> {
     pub(super) info: StateInfo,
     pub(super) sync_validators: SyncValidators,
     pub(super) bootstrapped_sync: bool,
-    status_event_sender: watch::Sender<StatusInfo>,
+    pub(super) consensus_rules: ConsensusManager,
+    pub(super) status_event_sender: Arc<watch::Sender<StatusInfo>>,
     event_publisher: broadcast::Sender<Arc<StateEvent>>,
     interrupt_signal: ShutdownSignal,
 }
@@ -104,6 +88,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         sync_validators: SyncValidators,
         status_event_sender: watch::Sender<StatusInfo>,
         event_publisher: broadcast::Sender<Arc<StateEvent>>,
+        consensus_rules: ConsensusManager,
         interrupt_signal: ShutdownSignal,
     ) -> Self
     {
@@ -114,13 +99,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             connectivity,
             peer_manager,
             metadata_event_stream,
-            interrupt_signal,
             config,
             info: StateInfo::StartUp,
             event_publisher,
-            status_event_sender,
+            status_event_sender: Arc::new(status_event_sender),
             sync_validators,
             bootstrapped_sync: false,
+            consensus_rules,
+            interrupt_signal,
         }
     }
 
@@ -130,25 +116,16 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         use self::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
-            (HeaderSync(s), HeadersSynchronized(local, sync_height)) => HorizonStateSync(
-                states::HorizonStateSync::new(local, s.network_metadata, s.sync_peers, sync_height),
-            ),
-            (HeaderSync(s), HeaderSyncFailure) => Waiting(s.into()),
-            // TODO: Simplify block sync and implement From<HorizonStateSync>
-            (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(
-                self.config.block_sync_config.sync_strategy,
-                s.network_metadata,
-                s.sync_peers,
-            ),
+            (Listening(s), InitialSync) => HeaderSync(s.into()),
+            (HeaderSync(_), HeadersSynchronized(conn)) => BlockSync(states::BlockSync::with_peer(conn)),
+            (HeaderSync(s), HeaderSyncFailed) => Waiting(s.into()),
+            (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(s.into()),
             (HorizonStateSync(s), HorizonStateSyncFailure) => Waiting(s.into()),
-            (BlockSync(s, _, _), BlocksSynchronized) => Listening(s.into()),
-            (BlockSync(s, _, _), BlockSyncFailure) => Waiting(s.into()),
-            (Listening(_), FallenBehind(Lagging(network_tip, sync_peers))) => {
-                BlockSync(self.config.block_sync_config.sync_strategy, network_tip, sync_peers)
-            },
-            (Listening(_), FallenBehind(LaggingBehindHorizon(network_tip, sync_peers))) => {
-                HeaderSync(states::HeaderSync::new(network_tip, sync_peers))
-            },
+            (BlockSync(s), BlocksSynchronized) => Listening(s.into()),
+            (BlockSync(s), BlockSyncFailed) => Waiting(s.into()),
+            (Listening(_), FallenBehind(Lagging(_, sync_peers))) => HeaderSync(sync_peers.into()),
+            // TODO: The transition to horizon sync should be determined by header sync
+            (Listening(_), FallenBehind(LaggingBehindHorizon(_, sync_peers))) => HeaderSync(sync_peers.into()),
             (Waiting(s), Continue) => Listening(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
             (_, UserQuit) => Shutdown(states::Shutdown::with_reason("Shutdown initiated by user".to_string())),
@@ -175,14 +152,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     }
 
     /// Sets the StatusInfo.
-    pub async fn set_state_info(&mut self, info: StateInfo) {
+    pub fn set_state_info(&mut self, info: StateInfo) {
         self.info = info;
         self.publish_event_info();
     }
 
     /// Start the base node runtime.
     pub async fn run(mut self) {
-        use crate::base_node::state_machine_service::states::BaseNodeState::*;
+        use BaseNodeState::*;
         let mut state = Starting(states::Starting);
         loop {
             if let Shutdown(reason) = &state {
@@ -218,7 +195,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             Starting(s) => s.next_event(shared_state).await,
             HeaderSync(s) => s.next_event(shared_state).await,
             HorizonStateSync(s) => s.next_event(shared_state).await,
-            BlockSync(s, network_tip, sync_peers) => s.next_event(shared_state, network_tip, sync_peers).await,
+            BlockSync(s) => s.next_event(shared_state).await,
             Listening(s) => s.next_event(shared_state).await,
             Waiting(s) => s.next_event().await,
             Shutdown(_) => unreachable!("called get_next_state_event while in Shutdown state"),

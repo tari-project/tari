@@ -44,7 +44,7 @@ impl Starting {
 
 /// State management for Starting -> Listening. This state change occurs every time a node is restarted.
 impl From<Starting> for Listening {
-    fn from(_old_state: Starting) -> Self {
-        Listening { is_synced: false }
+    fn from(_: Starting) -> Self {
+        Default::default()
     }
 }

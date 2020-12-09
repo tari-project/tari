@@ -238,7 +238,7 @@ impl AggregateBody {
                 target: LOG_TARGET,
                 "{} coinbases found in body. Only a single coinbase is permitted.", coinbase_counter,
             );
-            return Err(TransactionError::InvalidCoinbaseCount);
+            return Err(TransactionError::MoreThanOneCoinbase);
         }
 
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase kernel as well
@@ -253,7 +253,7 @@ impl AggregateBody {
                 target: LOG_TARGET,
                 "{} coinbase kernels found in body. Only a single coinbase kernel is permitted.", coinbase_counter,
             );
-            return Err(TransactionError::InvalidCoinbaseCount);
+            return Err(TransactionError::MoreThanOneCoinbase);
         }
         // Unwrap used here are fine as they should have an amount in them by here. If the coinbase's are missing the
         // counters should be 0 and the fn should have returned an error by now.

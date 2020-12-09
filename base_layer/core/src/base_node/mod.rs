@@ -49,19 +49,13 @@ pub mod state_machine_service;
 pub use state_machine_service::{BaseNodeStateMachine, BaseNodeStateMachineConfig, StateMachineHandle};
 
 #[cfg(feature = "base_node")]
-mod sync_rpc;
+mod sync;
 #[cfg(feature = "base_node")]
-pub use sync_rpc::{
-    create_base_node_sync_rpc_service,
-    BaseNodeSyncRpcClient,
-    BaseNodeSyncRpcService,
-    BaseNodeSyncService,
+pub use sync::{
+    rpc::{create_base_node_sync_rpc_service, BaseNodeSyncService},
+    BlockSyncConfig,
+    SyncValidators,
 };
-
-#[cfg(feature = "base_node")]
-mod validators;
-#[cfg(feature = "base_node")]
-pub use validators::SyncValidators;
 
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod proto;

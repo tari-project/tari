@@ -101,15 +101,12 @@ fn test_listening_lagging() {
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         status_event_sender,
         state_change_event_publisher,
+        consensus_manager.clone(),
         shutdown.to_signal(),
     );
     wait_until_online(&mut runtime, &[&alice_node, &bob_node]);
 
-    let await_event_task = runtime.spawn(async move {
-        Listening { is_synced: false }
-            .next_event(&mut alice_state_machine)
-            .await
-    });
+    let await_event_task = runtime.spawn(async move { Listening::new().next_event(&mut alice_state_machine).await });
 
     runtime.block_on(async move {
         let bob_db = bob_node.blockchain_db;
@@ -162,6 +159,7 @@ fn test_event_channel() {
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         status_event_sender,
         state_change_event_publisher,
+        consensus_manager.clone(),
         shutdown.to_signal(),
     );
 

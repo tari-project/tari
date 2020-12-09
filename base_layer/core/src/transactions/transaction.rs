@@ -168,8 +168,10 @@ pub enum TransactionError {
     InvalidCoinbase,
     #[error("Invalid coinbase maturity in body")]
     InvalidCoinbaseMaturity,
-    #[error("Error more than one coinbase in body")]
-    InvalidCoinbaseCount,
+    #[error("More than one coinbase in body")]
+    MoreThanOneCoinbase,
+    #[error("No coinbase in body")]
+    NoCoinbase,
     #[error("Input maturity not reached")]
     InputMaturity,
 }

@@ -24,7 +24,6 @@ use crate::proto::liveness::MetadataKey;
 use chrono::{NaiveDateTime, Utc};
 use std::{
     collections::{hash_map::RandomState, HashMap},
-    sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
 };
 use tari_comms::peer_manager::NodeId;
@@ -70,11 +69,11 @@ pub struct LivenessState {
     inflight_pings: HashMap<u64, (NodeId, NaiveDateTime)>,
     peer_latency: HashMap<NodeId, AverageLatency>,
 
-    pings_received: AtomicUsize,
-    pongs_received: AtomicUsize,
-    pings_sent: AtomicUsize,
-    pongs_sent: AtomicUsize,
-    num_active_peers: AtomicUsize,
+    pings_received: usize,
+    pongs_received: usize,
+    pings_sent: usize,
+    pongs_sent: usize,
+    num_active_peers: usize,
 
     local_metadata: Metadata,
 }
@@ -84,38 +83,38 @@ impl LivenessState {
         Default::default()
     }
 
-    pub fn inc_pings_sent(&self) -> usize {
-        self.pings_sent.fetch_add(1, Ordering::Relaxed)
+    pub fn inc_pings_sent(&mut self) {
+        self.pings_sent += 1;
     }
 
-    pub fn inc_pongs_sent(&self) -> usize {
-        self.pongs_sent.fetch_add(1, Ordering::Relaxed)
+    pub fn inc_pongs_sent(&mut self) {
+        self.pongs_sent += 1;
     }
 
-    pub fn inc_pings_received(&self) -> usize {
-        self.pings_received.fetch_add(1, Ordering::Relaxed)
+    pub fn inc_pings_received(&mut self) {
+        self.pings_received += 1;
     }
 
-    pub fn inc_pongs_received(&self) -> usize {
-        self.pongs_received.fetch_add(1, Ordering::Relaxed)
+    pub fn inc_pongs_received(&mut self) {
+        self.pongs_received += 1;
     }
 
     pub fn pings_received(&self) -> usize {
-        self.pings_received.load(Ordering::Relaxed)
+        self.pings_received
     }
 
     pub fn pongs_received(&self) -> usize {
-        self.pongs_received.load(Ordering::Relaxed)
+        self.pongs_received
     }
 
     #[cfg(test)]
     pub fn pings_sent(&self) -> usize {
-        self.pings_sent.load(Ordering::Relaxed)
+        self.pings_sent
     }
 
     #[cfg(test)]
     pub fn pongs_sent(&self) -> usize {
-        self.pongs_sent.load(Ordering::Relaxed)
+        self.pongs_sent
     }
 
     /// Returns a reference to local metadata
@@ -129,9 +128,9 @@ impl LivenessState {
     }
 
     /// Adds a ping to the inflight ping list, while noting the current time that a ping was sent.
-    pub fn add_inflight_ping(&mut self, nonce: u64, node_id: &NodeId) {
+    pub fn add_inflight_ping(&mut self, nonce: u64, node_id: NodeId) {
         let now = Utc::now().naive_utc();
-        self.inflight_pings.insert(nonce, ((*node_id).clone(), now));
+        self.inflight_pings.insert(nonce, (node_id, now));
         self.clear_stale_inflight_pings();
     }
 
@@ -228,16 +227,16 @@ mod test {
     #[test]
     fn new() {
         let state = LivenessState::new();
-        assert_eq!(state.pings_received.load(Ordering::SeqCst), 0);
-        assert_eq!(state.pongs_received.load(Ordering::SeqCst), 0);
-        assert_eq!(state.pings_sent.load(Ordering::SeqCst), 0);
-        assert_eq!(state.pongs_sent.load(Ordering::SeqCst), 0);
+        assert_eq!(state.pings_received(), 0);
+        assert_eq!(state.pongs_received(), 0);
+        assert_eq!(state.pings_sent(), 0);
+        assert_eq!(state.pongs_sent(), 0);
     }
 
     #[test]
     fn getters() {
-        let state = LivenessState::new();
-        state.pings_received.store(5, Ordering::SeqCst);
+        let mut state = LivenessState::new();
+        state.pings_received = 5;
         assert_eq!(state.pings_received(), 5);
         assert_eq!(state.pongs_received(), 0);
         assert_eq!(state.pings_sent(), 0);
@@ -246,34 +245,34 @@ mod test {
 
     #[test]
     fn inc_pings_sent() {
-        let state = LivenessState::new();
-        assert_eq!(state.pings_sent.load(Ordering::SeqCst), 0);
-        assert_eq!(state.inc_pings_sent(), 0);
-        assert_eq!(state.pings_sent.load(Ordering::SeqCst), 1);
+        let mut state = LivenessState::new();
+        assert_eq!(state.pings_sent(), 0);
+        state.inc_pings_sent();
+        assert_eq!(state.pings_sent(), 1);
     }
 
     #[test]
     fn inc_pongs_sent() {
-        let state = LivenessState::new();
-        assert_eq!(state.pongs_sent.load(Ordering::SeqCst), 0);
-        assert_eq!(state.inc_pongs_sent(), 0);
-        assert_eq!(state.pongs_sent.load(Ordering::SeqCst), 1);
+        let mut state = LivenessState::new();
+        assert_eq!(state.pongs_sent(), 0);
+        state.inc_pongs_sent();
+        assert_eq!(state.pongs_sent(), 1);
     }
 
     #[test]
     fn inc_pings_received() {
-        let state = LivenessState::new();
-        assert_eq!(state.pings_received.load(Ordering::SeqCst), 0);
-        assert_eq!(state.inc_pings_received(), 0);
-        assert_eq!(state.pings_received.load(Ordering::SeqCst), 1);
+        let mut state = LivenessState::new();
+        assert_eq!(state.pings_received(), 0);
+        state.inc_pings_received();
+        assert_eq!(state.pings_received(), 1);
     }
 
     #[test]
     fn inc_pongs_received() {
-        let state = LivenessState::new();
-        assert_eq!(state.pongs_received.load(Ordering::SeqCst), 0);
-        assert_eq!(state.inc_pongs_received(), 0);
-        assert_eq!(state.pongs_received.load(Ordering::SeqCst), 1);
+        let mut state = LivenessState::new();
+        assert_eq!(state.pongs_received(), 0);
+        state.inc_pongs_received();
+        assert_eq!(state.pongs_received(), 1);
     }
 
     #[test]
@@ -281,7 +280,7 @@ mod test {
         let mut state = LivenessState::new();
 
         let node_id = NodeId::default();
-        state.add_inflight_ping(123, &node_id);
+        state.add_inflight_ping(123, node_id);
 
         let latency = state.record_pong(123).unwrap();
         assert!(latency < 50);

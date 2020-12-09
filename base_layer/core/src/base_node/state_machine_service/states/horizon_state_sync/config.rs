@@ -33,6 +33,10 @@ pub struct HorizonSyncConfig {
     pub max_kernel_mmr_node_request_size: usize,
     /// The maximum number of UTXO MMR nodes, range proof MMR nodes and UTXOs that can be requested in a single query.
     pub max_utxo_mmr_node_request_size: usize,
+    /// Number of headers to request at once
+    pub header_request_size: usize,
+    /// Maximum number of header retry attempts
+    pub max_header_request_retry_attempts: usize,
 }
 
 impl Default for HorizonSyncConfig {
@@ -42,6 +46,8 @@ impl Default for HorizonSyncConfig {
             max_sync_request_retry_attempts: 5,
             max_kernel_mmr_node_request_size: 1000,
             max_utxo_mmr_node_request_size: 1000,
+            header_request_size: 100,
+            max_header_request_retry_attempts: 5,
         }
     }
 }

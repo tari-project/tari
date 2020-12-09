@@ -21,11 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::helpers::database::create_orphan_block;
-use monero::{
-    blockdata::Block as MoneroBlock,
-    consensus::deserialize,
-    cryptonote::hash::{Hash as MoneroHash, Hashable as MoneroHashable},
-};
+use monero::cryptonote::hash::Hashable as MoneroHashable;
 use tari_core::{
     blocks::BlockHeader,
     chain_storage::{
@@ -40,11 +36,6 @@ use tari_core::{
         MetadataValue,
     },
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
-    proof_of_work::{
-        monero_rx::{append_merge_mining_tag, tree_hash, MoneroData},
-        Difficulty,
-        PowAlgorithm,
-    },
     test_helpers::blockchain::create_test_db,
     tx,
 };

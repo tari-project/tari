@@ -88,7 +88,7 @@ impl OrphanPoolStorage {
         let mut removed_timelocked_tx_keys: Vec<Signature> = Vec::new();
 
         // We dont care about tx's that appeared in valid blocks. Those tx's will time out in orphan pool and remove
-        // them selves.
+        // themselves.
         for (tx_key, tx) in self.txs_by_signature.iter() {
             match self.validator.validate(&tx) {
                 Ok(()) => {

@@ -186,7 +186,7 @@ impl ConsensusConstants {
     pub fn rincewind() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos1 = HashMap::new();
-        algos1.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
+        algos1.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 7200,
             min_difficulty: 60_000_000.into(),
             max_difficulty: u64::MAX.into(),
@@ -201,7 +201,7 @@ impl ConsensusConstants {
         });
 
         let mut algos2 = HashMap::new();
-        algos2.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
+        algos2.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 7200,
             min_difficulty: 1.into(),
             max_difficulty: u64::MAX.into(),
@@ -215,7 +215,7 @@ impl ConsensusConstants {
         });
 
         let mut algos3 = HashMap::new();
-        algos3.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
+        algos3.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 7200,
             min_difficulty: 60_000_000.into(),
             max_difficulty: u64::MAX.into(),
@@ -229,7 +229,7 @@ impl ConsensusConstants {
         });
 
         let mut algos4 = HashMap::new();
-        algos4.insert(PowAlgorithm::Blake, PowAlgorithmConstants {
+        algos4.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 720,
             min_difficulty: 60_000_000.into(),
             max_difficulty: u64::MAX.into(),

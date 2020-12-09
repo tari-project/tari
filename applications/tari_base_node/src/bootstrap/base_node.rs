@@ -22,10 +22,11 @@
 
 use anyhow::anyhow;
 use log::*;
-use std::{cmp, fs, sync::Arc, time::Duration};
+use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
 use tari_app_utilities::{identity_management, utilities};
 use tari_common::{CommsTransport, GlobalConfig, TorControlAuthentication};
 use tari_comms::{
+    peer_manager::Peer,
     protocol::rpc::RpcServer,
     socks,
     tor,
@@ -40,10 +41,12 @@ use tari_core::{
     base_node,
     base_node::{
         chain_metadata_service::ChainMetadataServiceInitializer,
-        service::{blockchain_state::BlockchainStateServiceHandle, BaseNodeServiceConfig, BaseNodeServiceInitializer},
-        state_machine_service::initializer::BaseNodeStateMachineInitializer,
+        service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
+        state_machine_service::{initializer::BaseNodeStateMachineInitializer, states::HorizonSyncConfig},
+        BaseNodeStateMachineConfig,
+        BlockSyncConfig,
     },
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
     mempool,
     mempool::{
@@ -59,6 +62,7 @@ use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization,
     initialization::{CommsConfig, P2pInitializer},
+    seed_peer::SeedPeer,
     services::liveness::{LivenessConfig, LivenessInitializer},
     transport::{TorConfig, TransportType},
 };
@@ -69,7 +73,6 @@ use tokio::runtime;
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
 const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
-const SERVICE_REQUEST_MINIMUM_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct BaseNodeBootstrapper<'a, B> {
     pub config: &'a GlobalConfig,
@@ -94,18 +97,22 @@ where B: BlockchainBackend + 'static
             pubsub_connector(runtime::Handle::current(), buf_size, config.buffer_rate_limit_base_node);
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
 
-        let node_config = BaseNodeServiceConfig {
-            fetch_blocks_timeout: cmp::max(SERVICE_REQUEST_MINIMUM_TIMEOUT, config.fetch_blocks_timeout),
-            service_request_timeout: cmp::max(SERVICE_REQUEST_MINIMUM_TIMEOUT, config.service_request_timeout),
-            fetch_utxos_timeout: cmp::max(SERVICE_REQUEST_MINIMUM_TIMEOUT, config.fetch_utxos_timeout),
-            ..Default::default()
-        };
+        let node_config = BaseNodeServiceConfig::default(); // TODO - make this configurable
         let mempool_config = MempoolServiceConfig::default(); // TODO - make this configurable
 
         let comms_config = self.create_comms_config();
         let transport_type = comms_config.transport_type.clone();
 
-        let sync_strategy = config.block_sync_strategy.parse().unwrap();
+        let sync_peers = config
+            .force_sync_peers
+            .iter()
+            .map(|s| SeedPeer::from_str(s))
+            .map(|r| r.map(Peer::from).map(|p| p.node_id))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
+
+        let rules = self.rules.clone();
 
         let mempool_sync = MempoolSyncInitializer::new(mempool_config, self.mempool.clone());
         let mempool_protocol = mempool_sync.get_protocol_extension();
@@ -114,7 +121,7 @@ where B: BlockchainBackend + 'static
             .add_initializer(P2pInitializer::new(comms_config, publisher))
             .add_initializer(BaseNodeServiceInitializer::new(
                 peer_message_subscriptions.clone(),
-                self.db.clone(),
+                self.db.clone().into(),
                 self.mempool.clone(),
                 self.rules.clone(),
                 node_config,
@@ -129,18 +136,28 @@ where B: BlockchainBackend + 'static
                 LivenessConfig {
                     auto_ping_interval: Some(Duration::from_secs(30)),
                     refresh_neighbours_interval: Duration::from_secs(3 * 60),
+                    monitored_peers: sync_peers.clone(),
                     ..Default::default()
                 },
                 peer_message_subscriptions,
             ))
             .add_initializer(ChainMetadataServiceInitializer)
             .add_initializer(BaseNodeStateMachineInitializer::new(
-                self.db,
+                self.db.clone().into(),
+                BaseNodeStateMachineConfig {
+                    block_sync_config: BlockSyncConfig {
+                        sync_peers,
+                        ..Default::default()
+                    },
+                    horizon_sync_config: HorizonSyncConfig {
+                        horizon_sync_height_offset: rules.consensus_constants(0).coinbase_lock_height() + 50,
+                        ..Default::default()
+                    },
+                    orphan_db_clean_out_threshold: config.orphan_db_clean_out_threshold,
+                    ..Default::default()
+                },
                 self.rules,
                 self.factories,
-                sync_strategy,
-                config.orphan_db_clean_out_threshold,
-                cmp::max(SERVICE_REQUEST_MINIMUM_TIMEOUT, config.fetch_blocks_timeout),
             ))
             .build()
             .await?;
@@ -150,7 +167,7 @@ where B: BlockchainBackend + 'static
             .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
 
         let comms = comms.add_protocol_extension(mempool_protocol);
-        let comms = Self::setup_rpc_services(comms, &handles);
+        let comms = Self::setup_rpc_services(comms, &handles, self.db.into());
         let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
@@ -166,15 +183,18 @@ where B: BlockchainBackend + 'static
         Ok(handles)
     }
 
-    fn setup_rpc_services(comms: UnspawnedCommsNode, handles: &ServiceHandles) -> UnspawnedCommsNode {
+    fn setup_rpc_services(
+        comms: UnspawnedCommsNode,
+        handles: &ServiceHandles,
+        db: AsyncBlockchainDb<B>,
+    ) -> UnspawnedCommsNode
+    {
         let dht = handles.expect_handle::<Dht>();
 
         // Add your RPC services here ‍🏴‍☠️️☮️🌊
         let rpc_server = RpcServer::new()
             .add_service(dht.rpc_service())
-            .add_service(base_node::create_base_node_sync_rpc_service(
-                handles.expect_handle::<BlockchainStateServiceHandle>(),
-            ))
+            .add_service(base_node::create_base_node_sync_rpc_service(db))
             .add_service(mempool::create_mempool_rpc_service(
                 handles.expect_handle::<MempoolHandle>(),
             ));
@@ -199,7 +219,14 @@ where B: BlockchainBackend + 'static
             listener_liveness_allowlist_cidrs: self.config.listener_liveness_allowlist_cidrs.clone(),
             listener_liveness_max_sessions: self.config.listnener_liveness_max_sessions,
             user_agent: format!("tari/basenode/{}", env!("CARGO_PKG_VERSION")),
-            peer_seeds: self.config.peer_seeds.clone(),
+            // Also add sync peers to the peer seed list. Duplicates are acceptable.
+            peer_seeds: self
+                .config
+                .peer_seeds
+                .iter()
+                .cloned()
+                .chain(self.config.force_sync_peers.clone())
+                .collect(),
             dns_seeds: self.config.dns_seeds.clone(),
             dns_seeds_name_server: self.config.dns_seeds_name_server,
             dns_seeds_use_dnssec: self.config.dns_seeds_use_dnssec,

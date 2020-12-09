@@ -29,3 +29,5 @@ mod mmr_tree;
 mod request;
 #[cfg(feature = "base_node")]
 mod response;
+#[cfg(feature = "base_node")]
+mod rpc;

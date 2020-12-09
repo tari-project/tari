@@ -32,7 +32,7 @@ mod and_then;
 mod error;
 pub use error::ValidationError;
 
-pub mod helpers;
+pub(crate) mod helpers;
 
 mod traits;
 pub use traits::{StatefulValidation, StatefulValidator, Validation, ValidationExt, Validator};
@@ -40,3 +40,11 @@ pub use traits::{StatefulValidation, StatefulValidator, Validation, ValidationEx
 pub mod block_validators;
 pub mod mocks;
 pub mod transaction_validators;
+
+mod chain_balance;
+pub use chain_balance::ChainBalanceValidator;
+
+mod header_iter;
+
+#[cfg(test)]
+mod test;

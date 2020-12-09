@@ -22,13 +22,17 @@
 use crate::{
     blocks::{block_header::BlockHeader, Block, BlockValidationError},
     chain_storage,
-    chain_storage::{fetch_header, fetch_headers, BlockchainBackend, MmrTree},
+    chain_storage::{fetch_header, fetch_headers, BlockchainBackend, BlockchainDatabase, MmrTree},
     consensus::ConsensusManager,
-    transactions::{aggregated_body::AggregateBody, types::CryptoFactories},
+    transactions::{
+        aggregated_body::AggregateBody,
+        transaction::{KernelFeatures, OutputFlags, TransactionError},
+        types::CryptoFactories,
+    },
     validation::{
-        helpers,
         helpers::{
             check_accounting_balance,
+            check_block_weight,
             check_coinbase_output,
             check_cut_through,
             check_header_timestamp_greater_than_median,
@@ -43,7 +47,10 @@ use crate::{
     },
 };
 use log::*;
-use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    tari_utilities::{hash::Hashable, hex::Hex},
+};
 
 pub const LOG_TARGET: &str = "c::val::block_validators";
 
@@ -81,7 +88,7 @@ impl Validation<Block> for StatelessBlockValidator {
         };
         trace!(target: LOG_TARGET, "Validating {}", block_id);
 
-        helpers::check_block_weight(&block, &self.rules.consensus_constants(block.header.height))?;
+        check_block_weight(&block, &self.rules.consensus_constants(block.header.height))?;
         trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
 
         trace!(
@@ -342,4 +349,182 @@ fn check_mmr_roots<B: BlockchainBackend>(block: &Block, db: &B) -> Result<(), Va
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
     };
     Ok(())
+}
+
+/// This validator checks whether a block satisfies consensus rules.
+/// It implements two validators: one for the `BlockHeader` and one for `Block`. The `Block` validator ONLY validates
+/// the block body using the header. It is assumed that the `BlockHeader` has already been validated.
+pub struct BlockValidator<B> {
+    db: BlockchainDatabase<B>,
+    rules: ConsensusManager,
+    factories: CryptoFactories,
+}
+
+impl<B: BlockchainBackend> BlockValidator<B> {
+    pub fn new(db: BlockchainDatabase<B>, rules: ConsensusManager, factories: CryptoFactories) -> Self {
+        Self { db, rules, factories }
+    }
+
+    /// This function checks that all inputs in the blocks are valid UTXO's to be spend
+    fn check_inputs(&self, block: &Block) -> Result<(), ValidationError> {
+        let inputs = block.body.inputs();
+        let outputs = block.body.outputs();
+        for (i, input) in inputs.iter().enumerate() {
+            // Check for duplicates and/or incorrect sorting
+            if i > 0 && input <= &inputs[i - 1] {
+                return Err(ValidationError::UnsortedOrDuplicateInput);
+            }
+
+            // Check maturity
+            if input.features.maturity > block.header.height {
+                warn!(
+                    target: LOG_TARGET,
+                    "Input found that has not yet matured to spending height: {}", input
+                );
+                return Err(TransactionError::InputMaturity.into());
+            }
+
+            // Check that the block body has cut-through applied
+            if outputs.iter().any(|o| o.is_equal_to(input)) {
+                warn!(
+                    target: LOG_TARGET,
+                    "Block #{} failed to validate: block no cut through", block.header.height
+                );
+                return Err(BlockValidationError::NoCutThrough.into());
+            }
+        }
+        Ok(())
+    }
+
+    fn check_outputs(&self, block: &Block) -> Result<(), ValidationError> {
+        let outputs = block.body.outputs();
+        let mut coinbase_output = None;
+        for (j, output) in outputs.iter().enumerate() {
+            if output.features.flags.contains(OutputFlags::COINBASE_OUTPUT) {
+                if coinbase_output.is_some() {
+                    return Err(ValidationError::TransactionError(TransactionError::MoreThanOneCoinbase));
+                }
+                coinbase_output = Some(output);
+            }
+
+            if j > 0 && output <= &outputs[j - 1] {
+                return Err(ValidationError::UnsortedOrDuplicateOutput);
+            }
+        }
+
+        let coinbase_output = match coinbase_output {
+            Some(output) => output,
+            // No coinbase found
+            None => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Block #{} failed to validate: no coinbase UTXO", block.header.height
+                );
+                return Err(ValidationError::TransactionError(TransactionError::NoCoinbase));
+            },
+        };
+
+        let mut coinbase_kernel = None;
+        for kernel in block.body.kernels() {
+            if kernel.features.contains(KernelFeatures::COINBASE_KERNEL) {
+                if coinbase_kernel.is_some() {
+                    return Err(ValidationError::TransactionError(TransactionError::MoreThanOneCoinbase));
+                }
+                coinbase_kernel = Some(kernel);
+            }
+        }
+
+        let coinbase_kernel = match coinbase_kernel {
+            Some(kernel) => kernel,
+            // No coinbase found
+            None => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Block #{} failed to validate: no coinbase kernel", block.header.height
+                );
+                return Err(ValidationError::TransactionError(TransactionError::NoCoinbase));
+            },
+        };
+
+        let reward = self.rules.calculate_coinbase_and_fees(block);
+        let rhs = &coinbase_kernel.excess +
+            &self
+                .factories
+                .commitment
+                .commit_value(&Default::default(), reward.into());
+        if rhs != coinbase_output.commitment {
+            warn!(
+                target: LOG_TARGET,
+                "Coinbase {} amount validation failed", coinbase_output
+            );
+            return Err(ValidationError::TransactionError(TransactionError::InvalidCoinbase));
+        }
+
+        Ok(())
+    }
+
+    fn check_mmr_roots(&self, db: &B, block: &Block) -> Result<(), ValidationError> {
+        let mmr_roots = chain_storage::calculate_mmr_roots(db, block)?;
+        let header = &block.header;
+        if header.kernel_mr != mmr_roots.kernel_mr {
+            warn!(
+                target: LOG_TARGET,
+                "Block header kernel MMR roots in {} do not match calculated roots",
+                block.hash().to_hex()
+            );
+            return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
+        }
+        if header.output_mr != mmr_roots.output_mr {
+            warn!(
+                target: LOG_TARGET,
+                "Block header output MMR roots in {} do not match calculated roots",
+                block.hash().to_hex()
+            );
+            return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
+        }
+        if header.range_proof_mr != mmr_roots.range_proof_mr {
+            warn!(
+                target: LOG_TARGET,
+                "Block header range_proof MMR roots in {} do not match calculated roots",
+                block.hash().to_hex()
+            );
+            return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
+        }
+        Ok(())
+    }
+}
+
+impl<B: BlockchainBackend> Validation<Block> for BlockValidator<B> {
+    /// The following consensus checks are done:
+    /// 1. Does the block satisfy the stateless checks?
+    /// 1. Are the block header MMR roots valid?
+    fn validate(&self, block: &Block) -> Result<(), ValidationError> {
+        let block_id = format!("block #{}", block.header.height);
+        trace!(target: LOG_TARGET, "Validating {}", block_id);
+
+        let constants = self.rules.consensus_constants(block.header.height);
+        check_block_weight(&block, &constants)?;
+        trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
+
+        self.check_inputs(&block)?;
+        self.check_outputs(&block)?;
+
+        check_accounting_balance(block, &self.rules, &self.factories)?;
+        trace!(target: LOG_TARGET, "SV - accounting balance correct for {}", &block_id);
+        debug!(
+            target: LOG_TARGET,
+            "{} has PASSED stateless VALIDATION check.", &block_id
+        );
+
+        let db = self.db.db_read_access()?;
+        self.check_mmr_roots(&*db, &block)?;
+        trace!(
+            target: LOG_TARGET,
+            "Block validation: MMR roots are valid for {}",
+            block_id
+        );
+
+        debug!(target: LOG_TARGET, "Block validation: Block is VALID for {}", block_id);
+        Ok(())
+    }
 }

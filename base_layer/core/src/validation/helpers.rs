@@ -165,6 +165,7 @@ pub fn check_target_difficulty(block_header: &BlockHeader, target: Difficulty) -
             BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow { achieved, target }),
         ));
     }
+
     Ok(())
 }
 
@@ -295,6 +296,42 @@ mod test {
         fn it_returns_false_when_duplicate_and_unsorted() {
             let v = [4, 2, 3, 0, 4];
             assert_eq!(is_all_unique_and_sorted(&v), false);
+        }
+    }
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+
+        mod check_median_timestamp {
+            use super::*;
+
+            #[test]
+            #[should_panic]
+            fn it_panics_if_empty() {
+                calc_median_timestamp(&[]);
+            }
+
+            #[test]
+            fn it_calculates_the_correct_median_timestamp() {
+                let median_timestamp = calc_median_timestamp(&[0.into()]);
+                assert_eq!(median_timestamp, 0.into());
+
+                let median_timestamp = calc_median_timestamp(&[123.into()]);
+                assert_eq!(median_timestamp, 123.into());
+
+                let median_timestamp = calc_median_timestamp(&[2.into(), 4.into()]);
+                assert_eq!(median_timestamp, 3.into());
+
+                let median_timestamp = calc_median_timestamp(&[0.into(), 100.into(), 0.into()]);
+                assert_eq!(median_timestamp, 100.into());
+
+                let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into()]);
+                assert_eq!(median_timestamp, 2.into());
+
+                let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into(), 5.into()]);
+                assert_eq!(median_timestamp, 3.into());
+            }
         }
     }
 }

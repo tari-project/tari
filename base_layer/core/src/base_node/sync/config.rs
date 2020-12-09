@@ -20,34 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::chain_storage::ChainStorageError;
-use futures::channel::{mpsc, oneshot};
+use std::time::Duration;
+use tari_comms::peer_manager::NodeId;
 
-#[derive(Debug, thiserror::Error)]
-pub enum BlockchainStateServiceError {
-    #[error("Request channel unexpectedly disconnected")]
-    RequestChannelDisconnected,
-    #[error("Sender canceled reply")]
-    SenderReplyCanceled,
-    #[error("Chain storage error: {0}")]
-    ChainStorageError(#[from] ChainStorageError),
-    #[error("Invalid argument `{arg}` in function `{func}`: {message}")]
-    InvalidArguments {
-        func: &'static str,
-        arg: &'static str,
-        message: String,
-    },
+#[derive(Debug, Clone)]
+pub struct BlockSyncConfig {
+    pub max_sync_peers: usize,
+    pub num_tip_hashes: usize,
+    pub num_proof_headers: usize,
+    pub ban_period: Duration,
+    pub sync_peers: Vec<NodeId>,
 }
 
-impl From<mpsc::SendError> for BlockchainStateServiceError {
-    fn from(_: mpsc::SendError) -> Self {
-        Self::RequestChannelDisconnected
-    }
-}
-
-// Assume here that a oneshot::Canceled error can only come from the handle
-impl From<oneshot::Canceled> for BlockchainStateServiceError {
-    fn from(_: oneshot::Canceled) -> Self {
-        Self::SenderReplyCanceled
+impl Default for BlockSyncConfig {
+    fn default() -> Self {
+        Self {
+            max_sync_peers: 10,
+            num_tip_hashes: 500,
+            num_proof_headers: 100,
+            ban_period: Duration::from_secs(30 * 60),
+            sync_peers: Default::default(),
+        }
     }
 }

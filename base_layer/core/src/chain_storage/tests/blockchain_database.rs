@@ -279,6 +279,14 @@ mod fetch_block_hashes_from_header_tip {
     }
 
     #[test]
+    fn it_returns_empty_set_for_big_offset() {
+        let db = setup();
+        add_many_chained_blocks(5, &db);
+        let hashes = db.fetch_block_hashes_from_header_tip(3, 6).unwrap();
+        assert!(hashes.is_empty());
+    }
+
+    #[test]
     fn it_returns_n_hashes_from_tip() {
         let db = setup();
         let blocks = add_many_chained_blocks(5, &db);
@@ -287,6 +295,17 @@ mod fetch_block_hashes_from_header_tip {
         assert_eq!(hashes[0], blocks[3].hash());
         assert_eq!(hashes[1], blocks[2].hash());
         assert_eq!(hashes[2], blocks[1].hash());
+    }
+
+    #[test]
+    fn it_returns_hashes_without_overlapping() {
+        let db = setup();
+        let blocks = add_many_chained_blocks(3, &db);
+        let hashes = db.fetch_block_hashes_from_header_tip(2, 0).unwrap();
+        assert_eq!(hashes[0], blocks[2].hash());
+        assert_eq!(hashes[1], blocks[1].hash());
+        let hashes = db.fetch_block_hashes_from_header_tip(1, 2).unwrap();
+        assert_eq!(hashes[0], blocks[0].hash());
     }
 
     #[test]

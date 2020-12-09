@@ -21,45 +21,50 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::helpers::BaseNodeRequestError},
-    chain_storage::ChainStorageError,
-    transactions::transaction::TransactionError,
+    blocks::{Block, BlockHeader},
+    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    consensus::ConsensusManager,
+    transactions::types::CryptoFactories,
+    validation::{block_validators::BlockValidator, ChainBalanceValidator, Validation, Validator},
 };
-use thiserror::Error;
-use tokio::task;
+use std::{fmt, sync::Arc};
 
-#[derive(Debug, Error)]
-pub enum HorizonSyncError {
-    #[error("Peer sent an empty response")]
-    EmptyResponse,
-    #[error("Peer sent an invalid response")]
-    IncorrectResponse,
-    #[error("Exceeded maximum sync attempts")]
-    MaxSyncAttemptsReached,
-    #[error("Chain storage error: {0}")]
-    ChainStorageError(#[from] ChainStorageError),
-    #[error("Comms interface error: {0}")]
-    CommsInterfaceError(#[from] CommsInterfaceError),
-    // #[error("Final state validation failed: {0}")]
-    // FinalStateValidationFailed(ValidationError),
-    #[error("Join error: {0}")]
-    JoinError(#[from] task::JoinError),
-    #[error("Invalid kernel signature: {0}")]
-    InvalidKernelSignature(TransactionError),
-    // #[error("Validation failed for {0} MMR")]
-    // InvalidMmrRoot(MmrTree),
-    #[error("Base node request error: {0}")]
-    BaseNodeRequestError(#[from] BaseNodeRequestError),
+#[derive(Clone)]
+pub struct SyncValidators {
+    pub block_body: Arc<dyn Validation<Block>>,
+    pub final_state: Arc<Validator<BlockHeader>>,
 }
 
-impl HorizonSyncError {
-    pub fn is_recoverable(&self) -> bool {
-        // use HorizonSyncError::*;
-        unimplemented!()
-        // match self {
-        // FinalStateValidationFailed(_) | InvalidMmrRoot(_) => false,
-        //  InvalidMmrRoot(_) => false,
-        // _ => true,
-        // }
+impl SyncValidators {
+    pub fn new<TBody, TFinal>(block_body: TBody, final_state: TFinal) -> Self
+    where
+        TBody: Validation<Block> + 'static,
+        TFinal: Validation<BlockHeader> + 'static,
+    {
+        Self {
+            block_body: Arc::new(block_body),
+            final_state: Arc::new(Box::new(final_state)),
+        }
+    }
+
+    pub fn full_consensus<B: BlockchainBackend + 'static>(
+        db: BlockchainDatabase<B>,
+        rules: ConsensusManager,
+        factories: CryptoFactories,
+    ) -> Self
+    {
+        Self::new(
+            BlockValidator::new(db.clone(), rules.clone(), factories.clone()),
+            ChainBalanceValidator::new(db, rules, factories),
+        )
+    }
+}
+
+impl fmt::Debug for SyncValidators {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HorizonHeaderValidators")
+            .field("header", &"...")
+            .field("final_state", &"...")
+            .finish()
     }
 }

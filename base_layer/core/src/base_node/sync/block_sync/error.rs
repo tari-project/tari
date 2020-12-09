@@ -20,50 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod service;
-pub use service::BaseNodeSyncRpcService;
-
-#[cfg(test)]
-mod tests;
-
-use crate::{
-    base_node::{
-        proto::{FindChainSplitRequest, FindChainSplitResponse, SyncBlocksRequest, SyncHeadersRequest},
-        service::blockchain_state::BlockchainStateServiceHandle,
-    },
-    proto,
+use crate::{chain_storage::ChainStorageError, proof_of_work::PowError, validation::ValidationError};
+use tari_comms::{
+    connectivity::ConnectivityError,
+    protocol::rpc::{RpcError, RpcStatus},
 };
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
 
-#[tari_rpc(protocol_name = b"t/bnsync/1", server_struct = BaseNodeSyncRpcServer, client_struct = BaseNodeSyncRpcClient)]
-pub trait BaseNodeSyncService: Send + Sync + 'static {
-    #[rpc(method = 1)]
-    async fn sync_blocks(
-        &self,
-        request: Request<SyncBlocksRequest>,
-    ) -> Result<Streaming<proto::core::Block>, RpcStatus>;
-    #[rpc(method = 2)]
-    async fn sync_headers(
-        &self,
-        request: Request<SyncHeadersRequest>,
-    ) -> Result<Streaming<proto::core::BlockHeader>, RpcStatus>;
-
-    #[rpc(method = 3)]
-    async fn get_header_by_height(
-        &self,
-        request: Request<u64>,
-    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
-
-    #[rpc(method = 4)]
-    async fn find_chain_split(
-        &self,
-        request: Request<FindChainSplitRequest>,
-    ) -> Result<Response<FindChainSplitResponse>, RpcStatus>;
-}
-
-pub fn create_base_node_sync_rpc_service(
-    base_node: BlockchainStateServiceHandle,
-) -> BaseNodeSyncRpcServer<BaseNodeSyncRpcService> {
-    BaseNodeSyncRpcServer::new(BaseNodeSyncRpcService::new(base_node))
+#[derive(Debug, thiserror::Error)]
+pub enum BlockSyncError {
+    #[error("RPC error: {0}")]
+    RpcError(#[from] RpcError),
+    #[error("RPC request failed: {0}")]
+    RpcRequestError(#[from] RpcStatus),
+    #[error("Chain storage error: {0}")]
+    ChainStorageError(#[from] ChainStorageError),
+    #[error("Peer sent invalid block body: {0}")]
+    ReceivedInvalidBlockBody(String),
+    #[error("Peer sent a block that did not form a chain. Expected hash = {expected}, got = {got}")]
+    PeerSentBlockThatDidNotFormAChain { expected: String, got: String },
+    #[error("Connectivity Error: {0}")]
+    ConnectivityError(#[from] ConnectivityError),
+    #[error("No sync peers available")]
+    NoSyncPeers,
+    #[error("Error fetching PoW: {0}")]
+    PowError(#[from] PowError),
+    #[error("Expected to find header at height {0} however the header did not exist")]
+    ExpectedHeaderNotFound(u64),
+    #[error("Block validation failed: {0}")]
+    ValidationError(#[from] ValidationError),
 }

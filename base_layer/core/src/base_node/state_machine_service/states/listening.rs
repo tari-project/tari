@@ -24,13 +24,13 @@ use crate::{
     base_node::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
         state_machine_service::{
-            states::{StateEvent, StateEvent::FatalError, StateInfo, SyncPeers, SyncStatus, Waiting},
+            states::{BlockSync, StateEvent, StateEvent::FatalError, StateInfo, SyncStatus, Waiting},
             BaseNodeStateMachine,
         },
+        sync::SyncPeers,
     },
     chain_storage::BlockchainBackend,
 };
-
 use futures::StreamExt;
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -85,72 +85,115 @@ impl ListeningInfo {
 /// This state listens for chain metadata events received from the liveness and chain metadata service. Based on the
 /// received metadata, if it detects that the current node is lagging behind the network it will switch to block sync
 /// state.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct Listening {
-    pub is_synced: bool,
+    is_synced: bool,
 }
 
 impl Listening {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
     ) -> StateEvent
     {
+        let local = match shared.db.get_chain_metadata().await {
+            Ok(m) => m,
+            Err(e) => {
+                let msg = format!("Could not get local blockchain metadata. {}", e.to_string());
+                return FatalError(msg);
+            },
+        };
+        // If we do not have any blocks go straight to initial sync
+        if local.height_of_longest_chain() == 0 {
+            return StateEvent::InitialSync;
+        }
+
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
-        shared
-            .set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)))
-            .await;
+        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)));
         while let Some(metadata_event) = shared.metadata_event_stream.next().await {
             match metadata_event.as_ref().map(|v| v.deref()) {
                 Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata_list)) => {
-                    if !peer_metadata_list.is_empty() {
-                        debug!(target: LOG_TARGET, "Loading local blockchain metadata.");
-                        let local = match shared.db.get_chain_metadata().await {
-                            Ok(m) => m,
-                            Err(e) => {
-                                let msg = format!("Could not get local blockchain metadata. {}", e.to_string());
-                                return FatalError(msg);
-                            },
+                    if peer_metadata_list.is_empty() {
+                        debug!(target: LOG_TARGET, "No peers in chain metadata round");
+                        continue;
+                    }
+                    let mut peer_metadata_list = peer_metadata_list.clone();
+
+                    // lets update the peer data from the chain meta data
+                    for peer in &peer_metadata_list {
+                        let peer_data = PeerMetadata {
+                            metadata: peer.chain_metadata.clone(),
+                            last_updated: EpochTime::now(),
                         };
-                        // lets update the peer data from the chain meta data
-                        for peer in peer_metadata_list {
-                            let peer_data = PeerMetadata {
-                                metadata: peer.chain_metadata.clone(),
-                                last_updated: EpochTime::now(),
-                            };
+                        // If this fails, its not the end of the world, we just want to keep record of the stats of
+                        // the peer
+                        let _ = shared
+                            .peer_manager
+                            .set_peer_metadata(&peer.node_id, 1, peer_data.to_bytes())
+                            .await;
+                    }
 
-                            // If this fails, its not the end of the world, we just want to keep record of the stats of
-                            // the peer
-                            let _ = shared
-                                .peer_manager
-                                .set_peer_metadata(&peer.node_id, 1, peer_data.to_bytes())
-                                .await;
-                        }
-                        // Find the best network metadata and set of sync peers with the best tip.
-                        if let Some(best_metadata) = best_metadata(peer_metadata_list.as_slice()) {
-                            let local_tip_height = local.height_of_longest_chain();
-                            let sync_peers = select_sync_peers(local_tip_height, &best_metadata, &peer_metadata_list);
+                    let configured_sync_peers = &shared.config.block_sync_config.sync_peers;
+                    if !configured_sync_peers.is_empty() {
+                        // If a _forced_ set of sync peers have been specified, ignore other peers when determining if
+                        // we're out of sync
+                        peer_metadata_list.retain(|p| configured_sync_peers.contains(&p.node_id));
+                    };
 
-                            let sync_mode = determine_sync_mode(&local, best_metadata, sync_peers);
-                            if sync_mode.is_lagging() {
-                                debug!(target: LOG_TARGET, "{}", sync_mode);
-                                return StateEvent::FallenBehind(sync_mode);
-                            } else {
-                                if !shared.bootstrapped_sync && sync_mode == SyncStatus::UpToDate {
-                                    shared.bootstrapped_sync = true;
-                                    debug!(
-                                        target: LOG_TARGET,
-                                        "Initial sync achieved, bootstrap done: {}", sync_mode
-                                    );
-                                }
-                                self.is_synced = true;
-                                shared
-                                    .set_state_info(StateInfo::Listening(ListeningInfo::new(true)))
-                                    .await;
-                            }
-                        } else {
-                            debug!(target: LOG_TARGET, "No sync peers had metadata")
+                    // If ther peer metadata list is empty, there is nothing to do except stay in listening
+                    if peer_metadata_list.is_empty() {
+                        debug!(
+                            target: LOG_TARGET,
+                            "No peer metadata to check. Continuing in listening state.",
+                        );
+                        continue;
+                    }
+
+                    // Find the best network metadata and set of sync peers with the best tip.
+                    let best_metadata = match best_metadata(&peer_metadata_list) {
+                        Some(m) => m.clone(),
+                        None => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "No best metadata for {} peer(s)",
+                                peer_metadata_list.len()
+                            );
+                            continue;
+                        },
+                    };
+
+                    let local = match shared.db.get_chain_metadata().await {
+                        Ok(m) => m,
+                        Err(e) => {
+                            return FatalError(format!("Could not get local blockchain metadata. {}", e));
+                        },
+                    };
+
+                    let local_tip_height = local.height_of_longest_chain();
+                    // If we have configured sync peers, they are already filtered at this point
+                    let sync_peers = if configured_sync_peers.is_empty() {
+                        select_sync_peers(local_tip_height, &best_metadata, &peer_metadata_list)
+                    } else {
+                        peer_metadata_list
+                    };
+                    let sync_mode = determine_sync_mode(&local, best_metadata, sync_peers);
+
+                    if sync_mode.is_lagging() {
+                        return StateEvent::FallenBehind(sync_mode);
+                    } else {
+                        if !shared.bootstrapped_sync && sync_mode == SyncStatus::UpToDate {
+                            shared.bootstrapped_sync = true;
+                            debug!(
+                                target: LOG_TARGET,
+                                "Initial sync achieved, bootstrap done: {}", sync_mode
+                            );
                         }
+                        self.is_synced = true;
+                        shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
                     }
                 },
                 Err(broadcast::RecvError::Lagged(n)) => {
@@ -173,7 +216,13 @@ impl Listening {
 
 impl From<Waiting> for Listening {
     fn from(_: Waiting) -> Self {
-        Listening { is_synced: false }
+        Default::default()
+    }
+}
+
+impl From<BlockSync> for Listening {
+    fn from(_: BlockSync) -> Self {
+        Default::default()
     }
 }
 
@@ -197,13 +246,13 @@ fn select_sync_peers(
 }
 
 /// Determine the best metadata from a set of metadata received from the network.
-fn best_metadata(metadata_list: &[PeerChainMetadata]) -> Option<ChainMetadata> {
+fn best_metadata(metadata_list: &[PeerChainMetadata]) -> Option<&ChainMetadata> {
     // TODO: Use heuristics to weed out outliers / dishonest nodes.
     metadata_list.iter().fold(None, |best, current| {
         if current.chain_metadata.accumulated_difficulty() >=
-            best.as_ref().map(|cm| cm.accumulated_difficulty()).unwrap_or_else(|| 0)
+            best.as_ref().map(|cm| cm.accumulated_difficulty()).unwrap_or(0)
         {
-            Some(current.chain_metadata.clone())
+            Some(&current.chain_metadata)
         } else {
             best
         }
@@ -231,8 +280,14 @@ fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers
 
         let network_horizon_block = local.horizon_block(network_tip_height);
         if local_tip_height < network_horizon_block {
+            debug!(
+                target: LOG_TARGET,
+                "Lagging behind horizon ({} sync peer(s))",
+                sync_peers.len()
+            );
             LaggingBehindHorizon(network, sync_peers)
         } else {
+            debug!(target: LOG_TARGET, "Lagging ({} sync peer(s))", sync_peers.len());
             Lagging(network, sync_peers)
         }
     } else {
@@ -253,7 +308,6 @@ fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers
 mod test {
     use super::*;
     use rand::rngs::OsRng;
-    use tari_common_types::types::BlockHash;
     use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
     use tari_crypto::keys::PublicKey;
 
@@ -266,18 +320,20 @@ mod test {
     fn sync_peer_selection() {
         let local_tip_height: u64 = 4000;
         let network_tip_height = 5000;
-        let block_hash1: BlockHash = vec![0, 1, 2, 3];
-        let block_hash2: BlockHash = vec![4, 5, 6, 7];
+        let block_hash1 = vec![0, 1, 2, 3];
+        let block_hash2 = vec![4, 5, 6, 7];
         let accumulated_difficulty1 = 200000;
         let accumulated_difficulty2 = 100000;
 
         let mut peer_metadata_list = Vec::<PeerChainMetadata>::new();
         let best_network_metadata = best_metadata(peer_metadata_list.as_slice());
+        assert!(best_network_metadata.is_none());
+        let best_network_metadata = ChainMetadata::empty();
         assert_eq!(
-            best_network_metadata.clone().unwrap(),
+            best_network_metadata.clone(),
             ChainMetadata::new(0, Vec::new(), 0, 0, 0)
         );
-        let sync_peers = select_sync_peers(local_tip_height, &best_network_metadata.unwrap(), &peer_metadata_list);
+        let sync_peers = select_sync_peers(local_tip_height, &best_network_metadata, &peer_metadata_list);
         assert_eq!(sync_peers.len(), 0);
 
         let node_id1 = random_node_id();

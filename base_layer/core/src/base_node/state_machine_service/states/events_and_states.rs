@@ -20,27 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::state_machine_service::states::{
-    BlockSyncInfo,
-    BlockSyncStrategy,
-    HeaderSync,
-    HorizonStateSync,
-    Listening,
-    ListeningInfo,
-    Shutdown,
-    Starting,
-    SyncPeers,
-    Waiting,
+use crate::base_node::{
+    state_machine_service::states::{
+        BlockSync,
+        HeaderSync,
+        HorizonStateSync,
+        Listening,
+        ListeningInfo,
+        Shutdown,
+        Starting,
+        Waiting,
+    },
+    sync::SyncPeers,
 };
 use std::fmt::{Display, Error, Formatter};
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::{peer_manager::NodeId, PeerConnection};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 pub enum BaseNodeState {
     Starting(Starting),
     HeaderSync(HeaderSync),
     HorizonStateSync(HorizonStateSync),
-    BlockSync(BlockSyncStrategy, ChainMetadata, SyncPeers),
+    BlockSync(BlockSync),
     // The best network chain metadata
     Listening(Listening),
     // We're in a paused state, and will return to Listening after a timeout
@@ -51,13 +53,13 @@ pub enum BaseNodeState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateEvent {
     Initialized,
-    MetadataSynced(SyncStatus),
-    HeadersSynchronized(ChainMetadata, u64),
-    HeaderSyncFailure,
+    InitialSync,
+    HeadersSynchronized(PeerConnection),
+    HeaderSyncFailed,
     HorizonStateSynchronized,
     HorizonStateSyncFailure,
     BlocksSynchronized,
-    BlockSyncFailure,
+    BlockSyncFailed,
     FallenBehind(SyncStatus),
     NetworkSilence,
     FatalError(String),
@@ -121,13 +123,13 @@ impl Display for StateEvent {
         use StateEvent::*;
         match self {
             Initialized => f.write_str("Initialized"),
-            MetadataSynced(s) => write!(f, "Synchronized metadata - {}", s),
+            InitialSync => f.write_str("InitialSync"),
             BlocksSynchronized => f.write_str("Synchronised Blocks"),
-            HeadersSynchronized(_, h) => write!(f, "Headers Synchronized to height {}", h),
-            HeaderSyncFailure => f.write_str("Header Synchronization Failure"),
+            HeadersSynchronized(conn) => write!(f, "Headers Synchronized from peer `{}`", conn.peer_node_id()),
+            HeaderSyncFailed => f.write_str("Header Synchronization Failed"),
             HorizonStateSynchronized => f.write_str("Horizon State Synchronized"),
-            HorizonStateSyncFailure => f.write_str("Horizon State Synchronization Failure"),
-            BlockSyncFailure => f.write_str("Block Synchronization Failure"),
+            HorizonStateSyncFailure => f.write_str("Horizon State Synchronization Failed"),
+            BlockSyncFailed => f.write_str("Block Synchronization Failed"),
             FallenBehind(s) => write!(f, "Fallen behind main chain - {}", s),
             NetworkSilence => f.write_str("Network Silence"),
             Continue => f.write_str("Continuing"),
@@ -144,7 +146,7 @@ impl Display for BaseNodeState {
             Starting(_) => "Initializing",
             HeaderSync(_) => "Synchronizing block headers",
             HorizonStateSync(_) => "Synchronizing horizon state",
-            BlockSync(_, _, _) => "Synchronizing blocks",
+            BlockSync(_) => "Synchronizing blocks",
             Listening(_) => "Listening",
             Shutdown(_) => "Shutting down",
             Waiting(_) => "Waiting",
@@ -153,8 +155,8 @@ impl Display for BaseNodeState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
 /// This enum will display all info inside of the state engine
+#[derive(Debug, Clone, PartialEq)]
 pub enum StateInfo {
     StartUp,
     HeaderSync(BlockSyncInfo),
@@ -200,5 +202,34 @@ impl Default for StatusInfo {
 impl Display for StatusInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "Bootstrapped: {}, {}", self.bootstrapped, self.state_info)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+/// This struct contains info that is use full for external viewing of state info
+pub struct BlockSyncInfo {
+    pub tip_height: u64,
+    pub local_height: u64,
+    pub sync_peers: Vec<NodeId>,
+}
+
+impl BlockSyncInfo {
+    /// Creates a new blockSyncInfo
+    pub fn new(tip_height: u64, local_height: u64, sync_peers: Vec<NodeId>) -> BlockSyncInfo {
+        BlockSyncInfo {
+            tip_height,
+            local_height,
+            sync_peers,
+        }
+    }
+}
+
+impl Display for BlockSyncInfo {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        fmt.write_str("Syncing from the following peers: \n")?;
+        for peer in &self.sync_peers {
+            fmt.write_str(&format!("{}\n", peer))?;
+        }
+        fmt.write_str(&format!("Syncing {}/{}\n", self.local_height, self.tip_height))
     }
 }
