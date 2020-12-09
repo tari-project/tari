@@ -185,11 +185,11 @@ peer_seeds = [
 # DNS seeds
 # The DNS records in these hostnames should provide TXT records as per https://github.com/tari-project/tari/pull/2319
 # Enter a domain name for the TXT records: seeds.tari.com
-dns_seeds = []
+dns_seeds =["seeds.ridcully.tari.com"]
 # The name server used to resolve DNS seeds
 # dns_seeds_name_server = "1.1.1.1:53"
 # Set to true to only accept DNS records that pass DNSSEC validation (Default: true)
-# dns_seeds_use_dnssec = true
+dns_seeds_use_dnssec = false
 
 # Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then
 # it is recommended to leave this setting as it. Available values are ViaBestChainMetadata and ViaRandomPeer.
