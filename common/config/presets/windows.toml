@@ -363,3 +363,8 @@ monerod_username=""
 
 # Password for curl
 monerod_password=""
+
+# The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables mining,
+# or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
+# accepted. (Default value = true; will wait for base node initial sync).
+#wait_for_initial_sync_at_startup = true
