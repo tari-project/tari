@@ -3803,8 +3803,11 @@ dependencies = [
 name = "tari_common_types"
 version = "0.2.13"
 dependencies = [
+ "futures 0.3.6",
+ "rand 0.7.3",
  "serde 1.0.116",
  "tari_crypto",
+ "tokio",
 ]
 
 [[package]]

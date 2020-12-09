@@ -7,6 +7,8 @@ version = "0.2.13"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "^0.8" }
-
+futures = {version = "^0.3.1", features = ["async-await"] }
+rand = "0.7.2"
 serde = { version = "1.0.106", features = ["derive"] }
+tari_crypto = { version = "^0.8" }
+tokio = { version="^0.2", features = ["blocking", "time", "sync"] }

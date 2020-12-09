@@ -22,3 +22,4 @@
 
 pub mod chain_metadata;
 pub mod types;
+pub mod waiting_requests;

@@ -25,7 +25,6 @@ use crate::{
         comms_interface::{BlockEvent, BlockEventReceiver},
         StateMachineHandle,
     },
-    common::waiting_requests::{generate_request_key, RequestKey, WaitingRequests},
     mempool::{
         proto as mempool_proto,
         service::{
@@ -49,6 +48,7 @@ use futures::{
 use log::*;
 use rand::rngs::OsRng;
 use std::{convert::TryInto, sync::Arc, time::Duration};
+use tari_common_types::waiting_requests::{generate_request_key, RequestKey, WaitingRequests};
 use tari_comms::peer_manager::NodeId;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,

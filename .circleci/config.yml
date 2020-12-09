@@ -53,6 +53,9 @@ commands:
       - run:
           name: Build
           command: cargo build --all --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+      - run:
+          name: Build Wallet
+          command: cargo build -p tari_wallet <<#parameters.release>>--release<</parameters.release>>
       - save_cache:
           paths:
             - /usr/local/cargo/registry
