@@ -267,4 +267,8 @@ impl BlockchainBackend for TempDatabase {
     {
         self.db.delete_oldest_orphans(horizon_height, orphan_storage_capacity)
     }
+
+    fn fetch_monero_seed_first_seen_height(&self, seed: &str) -> Result<u64, ChainStorageError> {
+        self.db.fetch_monero_seed_first_seen_height(seed)
+    }
 }

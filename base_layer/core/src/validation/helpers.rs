@@ -26,6 +26,7 @@ use crate::{
         Block,
         BlockValidationError,
     },
+    chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroData, Difficulty, PowAlgorithm, PowError},
     transactions::types::CryptoFactories,
@@ -107,14 +108,18 @@ pub fn check_header_timestamp_greater_than_median(
 }
 
 /// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
-pub fn check_pow_data(block_header: &BlockHeader, rules: &ConsensusManager) -> Result<(), ValidationError> {
+pub fn check_pow_data<B: BlockchainBackend>(
+    block_header: &BlockHeader,
+    rules: &ConsensusManager,
+    db: &B,
+) -> Result<(), ValidationError>
+{
     use PowAlgorithm::*;
     match block_header.pow.pow_algo {
         Monero => {
-            MoneroData::from_header(block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
-            // TODO: We need some way of getting the seed height and or count.
-            // Current proposals are to either store the height of first seed use, or count the seed use.
-            let seed_height = 0;
+            let monero_data =
+                MoneroData::from_header(block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
+            let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.key)?;
             if (seed_height != 0) &&
                 (block_header.height - seed_height >
                     rules.consensus_constants(block_header.height).max_randomx_seed_height())

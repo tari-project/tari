@@ -216,6 +216,35 @@ pub fn chain_block_with_coinbase(
     )
 }
 
+/// Create a new block using the provided coinbase and transactions that adds to the blockchain given in `prev_block`.
+pub fn chain_block_with_new_coinbase(
+    prev_block: &Block,
+    transactions: Vec<Transaction>,
+    consensus_manager: &ConsensusManager,
+    factories: &CryptoFactories,
+) -> (NewBlockTemplate, UnblindedOutput)
+{
+    let height = prev_block.header.height + 1;
+    let coinbase_value = consensus_manager.emission_schedule().block_reward(height);
+    let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
+        &factories,
+        coinbase_value,
+        height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
+    );
+    let mut header = BlockHeader::from_previous(&prev_block.header).unwrap();
+    header.version = consensus_manager
+        .consensus_constants(header.height)
+        .blockchain_version();
+    let template = NewBlockTemplate::from(
+        header
+            .into_builder()
+            .with_transactions(transactions)
+            .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
+            .build(),
+    );
+    (template, coinbase_output)
+}
+
 /// Create a new block with the provided transactions. The new MMR roots are calculated, and then the new block is
 /// added to the database. The newly created block is returned as the result.
 pub fn append_block<B: BlockchainBackend>(

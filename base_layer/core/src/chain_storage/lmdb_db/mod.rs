@@ -41,6 +41,7 @@ pub const LMDB_DB_INPUTS: &str = "inputs";
 pub const LMDB_DB_TXOS_HASH_TO_INDEX: &str = "txos_hash_to_index";
 pub const LMDB_DB_KERNELS: &str = "kernels";
 pub const LMDB_DB_ORPHANS: &str = "orphans";
+pub const LMDB_DB_MONERO_SEED_HEIGHT: &str = "monero_seed_height";
 pub const LMDB_DB_ORPHAN_CHAIN_TIPS: &str = "orphan_chain_tips";
 pub const LMDB_DB_ORPHAN_PARENT_MAP_INDEX: &str = "orphan_parent_map_index";
 

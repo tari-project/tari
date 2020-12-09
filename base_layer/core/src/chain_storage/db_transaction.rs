@@ -169,6 +169,14 @@ impl DbTransaction {
     pub(crate) fn into_operations(self) -> Vec<WriteOperation> {
         self.operations
     }
+
+    /// This will store the seed key with the height. This is called when a block is accepted into the main chain.
+    /// This will only update the hieght of the seed, if its lower then currently stored.
+    pub fn insert_monero_seed_height(&mut self, monero_seed: &str, height: u64) {
+        let monero_seed_boxed = Box::new(monero_seed.to_string());
+        self.operations
+            .push(WriteOperation::InsertMoneroSeedHeight(monero_seed_boxed, height));
+    }
 }
 
 #[derive(Debug)]
@@ -197,6 +205,7 @@ pub enum WriteOperation {
     DeleteBlock(HashOutput),
     DeleteOrphanChainTip(HashOutput),
     InsertOrphanChainTip(HashOutput),
+    InsertMoneroSeedHeight(Box<String>, u64),
 }
 
 impl fmt::Display for WriteOperation {
@@ -254,6 +263,9 @@ impl fmt::Display for WriteOperation {
             DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash.to_hex()),
             InsertOrphanChainTip(hash) => write!(f, "InsertOrphanChainTip({})", hash.to_hex()),
             DeleteBlock(hash) => write!(f, "DeleteBlock({})", hash.to_hex()),
+            InsertMoneroSeedHeight(data, height) => {
+                write!(f, "Insert Monero seed string {} for height: {}", data, height)
+            },
         }
     }
 }
