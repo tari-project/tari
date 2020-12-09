@@ -61,9 +61,9 @@ impl<B: Backend> Component<B> for BaseNode {
 
                     let synced = base_node_state.is_synced.unwrap_or_default();
                     let (tip_color, sync_text) = if synced {
-                        (Color::Green, "Synced ✅")
+                        (Color::Green, "Synced.")
                     } else {
-                        (Color::Yellow, "Syncing ⏱")
+                        (Color::Yellow, "Syncing...")
                     };
 
                     let latency = base_node_state.latency.unwrap_or_default().as_millis();

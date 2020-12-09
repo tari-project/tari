@@ -51,6 +51,7 @@ pub enum ExitCodes {
     GrpcError(String),
     InputError(String),
     CommandError(String),
+    IOError(String),
 }
 
 impl ExitCodes {
@@ -63,6 +64,7 @@ impl ExitCodes {
             Self::GrpcError(_) => 105,
             Self::InputError(_) => 106,
             Self::CommandError(_) => 107,
+            Self::IOError(_) => 108,
         }
     }
 }
@@ -82,13 +84,14 @@ impl fmt::Display for ExitCodes {
             ExitCodes::GrpcError(e) => write!(f, "GRPC Error ({}): {}", self.as_i32(), e),
             ExitCodes::InputError(e) => write!(f, "Input Error ({}): {}", self.as_i32(), e),
             ExitCodes::CommandError(e) => write!(f, "Command Error ({}): {}", self.as_i32(), e),
+            ExitCodes::IOError(e) => write!(f, "IO Error ({}): {}", self.as_i32(), e),
             _ => write!(f, "{}", self.as_i32()),
         }
     }
 }
 
 /// Creates a transport type for the console wallet using the provided configuration
-/// ## Paramters
+/// ## Parameters
 /// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
 ///
 /// ##Returns

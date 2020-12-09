@@ -116,7 +116,7 @@ impl WalletSqliteDatabase {
                                 target: LOG_TARGET,
                                 "Cipher was not provided but Comms Private Key is encrypted"
                             );
-                            return Err(WalletStorageError::InvalidEncryptionCipher);
+                            return Err(WalletStorageError::NoPasswordError);
                         }
                     },
                 };
@@ -128,8 +128,8 @@ impl WalletSqliteDatabase {
                         if cipher.is_some() {
                             error!(
                                 target: LOG_TARGET,
-                                "Cipher is provided does not decrypt stored Comms Private Key that produces stored \
-                                 Comms Public Key"
+                                "Cipher is provided but does not decrypt the stored Comms Private Key that produces \
+                                 the stored Comms Public Key."
                             );
                             return Err(WalletStorageError::InvalidEncryptionCipher);
                         } else {

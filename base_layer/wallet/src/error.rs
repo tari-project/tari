@@ -117,4 +117,6 @@ pub enum WalletStorageError {
     DatabasePathIsRootPath,
     #[error("IO Error: `{0}`")]
     IoError(#[from] std::io::Error),
+    #[error("No password provided for encrypted wallet")]
+    NoPasswordError,
 }
