@@ -20,12 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    common::waiting_requests::RequestKey,
-    mempool::{StateResponse, StatsResponse, TxStorageResponse},
-};
+use crate::mempool::{StateResponse, StatsResponse, TxStorageResponse};
 use serde::{Deserialize, Serialize};
 use std::{fmt, fmt::Formatter};
+use tari_common_types::waiting_requests::RequestKey;
 
 /// API Response enum for Mempool responses.
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -31,13 +31,15 @@ use super::{
     handle::{BaseNodeEvent, BaseNodeEventSender, BaseNodeServiceRequest, BaseNodeServiceResponse},
 };
 
-use crate::util::waiting_requests::{generate_request_key, RequestKey};
 use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, Stream, StreamExt};
 use log::*;
 use rand::rngs::OsRng;
 use std::convert::TryInto;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    waiting_requests::{generate_request_key, RequestKey},
+};
 use tari_comms::peer_manager::Peer;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
 use tari_core::base_node::{proto, proto::base_node_service_request::Request as BaseNodeRequestProto};
