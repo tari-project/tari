@@ -174,7 +174,8 @@ At a high level, Tari script works as follows:
 
 * The script commitment, which can be adequately represented by the hash of the canonical serialisation of the script in
 binary, is recorded in the transaction kernel. 
-* An additional two secret keys are provided by UTXO owners that signs, the script and the input data.
+* An additional secret key is provided by UTXO owner.
+* The script resolves to a public key that provides ownership and that signs the script input data to stop malleability and prove ownership of the corresponding private key.
 * These two keys are also used to created aggregate body owner offsets providing security against spending.
 
 In addition, the script must be attached to the UTXO. As will be demonstrated later, if this is not the case, the UTXO 
@@ -182,12 +183,12 @@ owner can ignore the script conditions completely.
 
 ### UTXO data commitments
 
-One approach to commit to the script hashes and extra data into the rangeproof and bundle all of these together with the utxo. 
+One approach is to commit to the script hashes and extra data into the rangeproof and bundle all of these together with the utxo. This provides security against malleability of the UTXO and or script. 
  
 There are several changes to the protocol data structures that must be made to allow this scheme to work. 
 
 The first is a relatively minor adjustment to the transaction output definition.
-The second is the inclusion of script input data and additional public keys in the transaction input field.
+The second is the inclusion of script input data and additional public key in the transaction input field.
 
 ### Transaction output changes
 
@@ -217,9 +218,7 @@ pub struct TransactionOutput {
     proof: RangeProof,
     /// The serialised script
     script_hash: Vec<u8>,
-    /// The sender pubkey, K_a
-    sender_pub_key: PublicKey
-    /// The receiver pubkey, K_b
+    /// The receiver pubkey, K_a
     receiver_pub_key: PublicKey
 }
 ```
@@ -227,16 +226,17 @@ pub struct TransactionOutput {
 
 We now introduce some [Notation](#notation).
 
-
-We define \\( \sigma_i \\) to be the hash of the serialised script and output features,
+We define the commitment \\( C_i \\) as
 
 $$
-  \sigma_i = \mathrm{H}(s_i \Vert \mathrm{features_i}\Vert SenderPubKey\Vert ReceiverPubKey)
+C_i = v_i \cdot{H} + k_i \cdot{G}
 $$
 
+We define \\( \sigma_i \\) to be the hash of the serialised script, output features and receiver public key
 
-We refer to the term \\( \sigma_i k_{i'} \\) as the _script product_ and \\( \sigma_i L_i \\) as the _public script 
-product_.  
+$$
+  \sigma_i = \mathrm{H}(s_i \Vert \mathrm{features_i}\Vert ReceiverPubKey)
+$$
 
 Wallets now generate the range proof with
 
@@ -278,15 +278,19 @@ pub struct TransactionInput {
     script: Vec<u8>,
     /// The script input data, if any
     input_data: Vec<u8>
-    /// A signature with K_b, signing the script and input data
+    /// A signature with K_s, signing the script and input data
     script_signature: Signature,
-    /// The sender pubkey, K_a
-    sender_pub_key: PublicKey
-    /// The receiver pubkey, K_b
-    receiver_pub_key: PublicKey
+    /// The receiver pubkey, K_a
+    receiver_pubkey: PublicKey
 }
 ```
-The input data to the script is sign with the receiver pub key of the Input, as the person spending the input should have control of it. 
+The input data to the script is signed with resolving script public key \\(K_s \\). This is to ensure that resulting public key has a known private key.
+
+The script_signature is a Schnorr signature and is defined as follows:
+$$
+signature = r + (H(Script)||InputData))*k_s
+$$ 
+
 
 
 ### Consensus changes
@@ -297,15 +301,17 @@ $$ C_i = v_i\cdot{H} + k_i\cdot{G} $$
 
 We use the rangeproof to lock all the values inside of the transactional output. Before we can calculate and verify the rangeproof we need to calculate the new "rangeproof" commitment \\ ( \hat{C_i} ) \\. 
 
-$$ C_i = v_i\cdot{H} + k_i\cdot{G} + \sigma_i\cdot{G} $$
+$$ \hat{C_i} = v_i\cdot{H} + k_i\cdot{G} + \sigma_i\cdot{G} $$
 
 We can then verify the rangeproof. If the rangeproof is valid, we know that the value v, is positive and that none of the values have been changed.
 
-And we use the new receiver/sender pubkeys to create a owner_offset.
+And we use the new receiver pubkey ( \\(K_a \\) )  and the script public key ( \\(K_s \\) ) to create a owner_offset.
 The owner_offset must match for every block. This can be calculated as follows:
 $$
-owneroffset\cdot{G} = \sum\mathrm{Outputs.senderPubKey} - \sum(\mathrm{Inputs.receiverPubKey * Hash(script||OutputFeatures)}) 
+owneroffset\cdot{G} = \sum\mathrm{K_s} - \sum(\mathrm{K_a * Hash(UTXO)}) 
 $$
+The \\(Hash(UTXO)\\) is the serialized hash of the entire output.
+
 
 For every block and/or transactions, an accompanying \\( \mathrm owneroffset \\) needs to be provided. 
 
@@ -318,82 +324,12 @@ For every valid block or transaction,
 1. Validate range proofs against \\( \hat{C_i} \\) rather 
     than \\( C_i \\).
 2. Check that the script signature is valid for every input.
-3. The Coinbase output MUST use a default script (`PUSH_ZERO`) and not be counted for the \\( \mathrm owneroffset \\). 
+3. The Coinbase output MUST use a default script (`PUSH_EMPTY`) and not be counted for the \\( \mathrm owneroffset \\). 
 4. The ownersig is valid for every block and transaction. 
 
 ## Use cases
-Lets investigate a few use cases to see how and who selects which public key. As per specification, there are three public keys per UTXO. We need to see who selects what to see if it remains secure and how it will work. 
+TODO
 
-Note on the notation:
-$$
- x \cdot{k}
-$$
-This means the value x over curve K. 
-$$
- x.k
-$$
-This means the value k from the value x
-### One sided payment. 
-
-For this use case we have Alice, who pays Bob. But Bob's wallet is not online. In this scenario, the transaction will be:
-
-$$
-C_a > C_b
-$$
-
-Alice owns  \\( C_a \\), her wallet knowns the blinding factor  \\( C_a .k \\) and she knows the receiver private key \\( C_a .k_b \\). She does not know what the sender private key \\( C_a .k_a\\) is. But this is not required in the current transaction. This belongs to the person who send Alice the coins. 
-
-To create the transaction, we need to construct \\( C_b \\). This UTXO has 3 public keys as well. Alice needs to choose the sender private key \\( C_b .k_a\\). The receiver private key is chosen by Bob and Alice does not need to know it. She only needs to know the public key \\(C_b .K_b\\). This Bob can give to her. The one problem key to transfer is the blinding factor \\(C_b .k\\). This needs to be known by both Alice and Bob. Some out of band transfer of keys like diffie_hellman needs to be done. 
-
-Now Alice has all the required information to create and sign for this transaction. She can sign the kernel as well as the OwnerOffset. But crucially, once mined, only Bob can claim the coins since to claim \\(C_b\\), Alice would need to know the receiver private key \\(C_b .k_b\\), which only Bob knows. 
-
-### HTLC like script
-In this use case we have a script that controls to whom it is spend. We also have Alice and Bob, but on creation we dont yet know whom can claim the coins. This is controlled via the script. 
-
-$$
-C_a > C_b
-$$
-
-Alice owns  \\( C_a \\), her wallet knowns the blinding factor  \\( C_a .k \\) and she knows the receiver private key \\( C_a . k_b \\). She does not know what the sender private key \\( C_a .k_a\\) is. But this is not required in the current transaction. This belongs to the person who send Alice the coins. 
-
-To create the transaction, we need to construct \\( C_b \\). This UTXO has 3 public keys as well. Alice needs to choose the sender private key \\( C_b .k_a\\). Here both Alice and Bob needs to know the receiver private key \\( C_b .k_b\\) and the blinding factor \\(C_b .k\\). Again we require some sort of out of band transfer of keys like diffie_hellman.
-
-Now Alice has all the required information to create and sign for this transaction. She can sign the kernel as well as the OwnerOffset. But crucially, once mined, neither Alice or Bob can claim the coins since to claim \\(C_b\\), they would need to provide the correct information to the script. If one of them can provide the correct information to the script they can claim as they both know the blinding factor \\(C_b .k)\\ and the receiver private key \\(C_b .k_b\\). 
-
-TODO malleability here. 
-
-If we where to create a HTLC type utxo between Alice and Bob, and this is mined. The problem becomes who can spend this. In a one sided payment of Alice to Bob: Alice gives permission to Bob to spend it, and only he can spend it. 
-With the "OwnerOffset" the owner needs to provide a key to spend this. With an HTLC, the owner becomes Alice and Bob. Lets assume that they both cooperate to create a new UTXO. If Bob was malicious, he could modify the transaction and create a new UTXO, replacing the one he and Alice created. Now one should be detect this happened apart form Alice. 
-
-The only way to stop this, is to create an aggregate blinding factor. But then we are implementing a HTLC the way normal MW does with scriptless scripts. 
-
-## Checking the requirements
-
-Let us evaluate this scheme against the [Additional requirements](#additional-requirements) listed earlier.
-
-### Malleability
-
-Malleability can be divided into three parts. These are handled below in the following cases:
-
-#### Miner Malleability
-
-This case is for when the miner changes certain parameters or values of a transaction. In its current form, Tari does allow a miner to change OutputFeatures of an UTXO. This is not detectable. 
-
-With tari_script, the OutputFeatures are locked by the rangeproof. If a miner wanted to change the OutputFeatures, it requires it to generate a new rangeproof. This is not possible since generating a new rangeproof requires knowledge of the blinding factor k. Something it does not know or can. 
-
-#### Receiver Malleability
-
-This is the case where the receiver can change some part of the output. In normal Tari this is not an issue, as the output is fully owned by the receiver. So the receiver can change what he wants. 
-
-With tari_script we need to stop this to a certain amount as the receiver might not be able to spend the utxo yet, pending some script, or it needs to be paid back to the sender, for example a HTLC contract. This is stopped via the OwnerOffset. This value will confirm the script and OuputFeatures of a utxo. 
-
-#### Sender Malleability
-
-While the sender can change much of the transaction. He is allowed to do so as he is the owner. Any change with the sender will cause a normal double spend transaction. And there is nothing much that can be done to stop this. 
-
-But if a transaction is mined. The values are locked and no one can change any value. 
-
-TODO: Investigate sender malleability with multiple multi party scripts like HTLCs. 
 
 
 ### Cut-through
@@ -406,8 +342,8 @@ This will ensure that the original owner is happy with the spending the transact
 ### Script lock key generation
 
 At face value, it looks like the burden for wallets has doubled, since each UTXO owner has to remember three private keys,
-the spend key, \\( k_i \\) and the sender key \\( k_{b} \\) and the original receiver key \\( k_{a} \\) . In practice, the other keys can be
-deterministically derived from the spend key. For example, the \\( k_{b} \\) can be equal to the hash of the \\( k_i \\).
+the spend key, \\( k_i \\) and the receiver key \\( k_{a} \\) and the script key \\( k_{s} \\) . In practice, the other keys can be
+deterministically derived from the spend key. For example, the \\( k_{a} \\) can be equal to the hash of the \\( k_i \\).
 
 ### Replay attacks
 TODO
@@ -418,7 +354,7 @@ The most obvious drawback to TariScript is the effect it will have on blockchain
 script signature, it also adds two public keys to every UTXO. This can eventually be pruned, but will increase
 storage and bandwidth requirements.
 
-Input size in a block will now be much bigger as each input was previously just a commitment and an OuputFeatures. Each input now includes a script,input_data, script_signature and two public keys. This could be improved by not sending the input again, but just sending the hash of the input, input_data and script_signature. But this will still be larger than inputs are currently. 
+Input size in a block will now be much bigger as each input was previously just a commitment and an OuputFeatures. Each input now includes a script,input_data, script_signature and extra public key. This could be improved by not sending the input again, but just sending the hash of the input, input_data and script_signature. But this will still be larger than inputs are currently. 
 
 The additional range proof validations and signature checks significantly hurt performance. Range proof checks are 
 particularly expensive. To improve overall block validation, batch range proof validations should be employed to mitigate 
@@ -441,6 +377,15 @@ outputs into vanilla, default UTXOs in a mixing transaction to disassociate Tari
 | \\( \hat{C_a} \\) | A script-modified Pedersen commitment, i.e. \\( (k_a + k_{a'}).G + v.H \\) |
 | \\( \delta \\)    | The transaction offset                                                     |
 
+Note on the notation used in this document:
+$$
+ x \cdot{k}
+$$
+This means the value x over curve K. 
+$$
+ x.k
+$$
+This means the value k from the value x
 
 ### Credits
 
