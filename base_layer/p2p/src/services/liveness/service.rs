@@ -245,10 +245,7 @@ where
     async fn start_ping_round(&mut self) -> Result<(), LivenessError> {
         let selected_peers = self
             .connectivity
-            .select_connections(ConnectivitySelection::random_nodes(
-                self.config.num_peers_per_round,
-                Default::default(),
-            ))
+            .select_connections(ConnectivitySelection::all_nodes(vec![]))
             .await?;
 
         if selected_peers.is_empty() {
