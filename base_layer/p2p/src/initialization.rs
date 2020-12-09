@@ -486,8 +486,16 @@ impl P2pInitializer {
         let start = Instant::now();
 
         let resolver = if use_dnssec {
+            debug!(
+                target: LOG_TARGET,
+                "Using {} to resove DNS seeds. DNSSEC is enabled", resolver_addr
+            );
             DnsSeedResolver::connect_secure(resolver_addr).await?
         } else {
+            debug!(
+                target: LOG_TARGET,
+                "Using {} to resove DNS seeds. DNSSEC is disabled", resolver_addr
+            );
             DnsSeedResolver::connect(resolver_addr).await?
         };
         let resolving = dns_seeds.iter().map(|addr| {
