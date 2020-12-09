@@ -1,4 +1,7 @@
 @echo off
+
+set mining_flag=%~1
+
 rem Verify arguments
 if ["%config_path%"]==[""] (
     echo Problem with "config_path" environment variable: '%config_path%'
@@ -138,7 +141,7 @@ if not exist "%config_path%\base_node_id.json" (
     "%base_node%" --create-id --init --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
     echo.
     echo.
-    echo Created "%config_path%\base_node_id.json". 
+    echo Created "%config_path%\base_node_id.json".
     echo Created "%config_path%\wallet_id.json".
     echo.
 ) else (
@@ -174,4 +177,4 @@ if not exist "%config_path%\log4rs_base_node.yml" (
 )
 
 rem Consecutive runs
-"%base_node%" --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
+"%base_node%" --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%" %mining_flag%s

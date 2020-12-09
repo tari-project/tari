@@ -1,5 +1,7 @@
 @echo off
 
+set mining_flag=%~1
+
 echo.
 echo Set up environment variables
 echo ----------------------------
@@ -41,7 +43,7 @@ if [%errorlevel%]==[10101] (
 echo.
 echo Run the base node
 echo -----------------
-call "%my_exe_path%\source_base_node_env.bat"
+call "%my_exe_path%\source_base_node_env.bat" %mining_flag%
 
 goto END:
 
