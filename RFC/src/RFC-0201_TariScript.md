@@ -385,7 +385,24 @@ In this method it is crucial that the Alice's script key \\( k_s\\) keeps hidden
 
 Any BaseNode can now validate the \\( ScriptOffset\\) and the normal MW transaction. They can also check and prove that Alice did sign the script and provided the correct key. 
 
+### One sided payment
 
+For this use case we have Alice, who pays Bob. But Bob's wallet is not online. In this scenario, the transaction will be:
+
+$$
+C_a > C_b
+$$
+
+Alice owns \\( C_a \\) and in this case the attached script it not important and has zero effect on the transactions. Because Bob is offline at the time of the transaction, Alice has to create the entire transaction herself. But a one sided transaction needs some out of bound communication. Alice requires a Public key from Bob and needs to supply the blinding factor \\( C_b.k\\) from the Commitment \\( C_b\\) to Bob. 
+
+Alice knowns all the blinding factor  \\( C_a.k\\) and known the script redeeming private key \\( k_s\\). Alice and Bob needs to know the blinding factor \\( C_b.k\\) but Bob does not need to know the receiver pubkey \\( C_b.k_a\\). 
+
+Alice will create the entire transaction including the \\( ScriptOffset\\). Bob is not required for any part of this transaction. But Alice will include a script on \\( C_b\\) of (`CheckSigVerify`) with the public key Bob provided out of band for her. 
+
+Any baseNode can now verify that the transaction is complete, verify the signature on the script, and verify the \\( ScriptOffset\\).
+
+For Bob to claim his commitment, \\( C_b\\) he requires the blinding factor \\( C_b.k\\) and he requires his own public key for the script.
+Although Alice knowns the blinding factor \\( C_b.k\\), once mined she cannot claim this as she does not know the private key part fo the of script (`CheckSigVerify`) to unlock the script. 
 
 ### Cut-through
 
