@@ -314,11 +314,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
     let change = stx_protocol.get_change_amount().unwrap();
-    let change_output = UnblindedOutput {
-        value: change,
-        spending_key: test_params.change_key.clone(),
-        features: schema.features,
-    };
+    let change_output = UnblindedOutput::new(change, test_params.change_key.clone(), Some(schema.features));
     outputs.push(change_output);
     match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
         Ok(_) => (),

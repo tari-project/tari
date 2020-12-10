@@ -26,6 +26,7 @@ use crate::transactions::{
         build_challenge,
         recipient::RecipientSignedMessage as RD,
         sender::SingleRoundSenderData as SD,
+        RewindData,
         TransactionProtocolError as TPE,
     },
     types::{CryptoFactories, PrivateKey as SK, PublicKey, RangeProof, Signature},
@@ -52,10 +53,17 @@ impl SingleReceiverTransactionProtocol {
         spending_key: SK,
         features: OutputFeatures,
         factories: &CryptoFactories,
+        rewind_data: Option<&RewindData>,
     ) -> Result<RD, TPE>
     {
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info)?;
-        let output = SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, features, factories)?;
+        let output = SingleReceiverTransactionProtocol::build_output(
+            sender_info,
+            &spending_key,
+            features,
+            factories,
+            rewind_data,
+        )?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let public_spending_key = PublicKey::from_secret_key(&spending_key);
         let e = build_challenge(&(&sender_info.public_nonce + &public_nonce), &sender_info.metadata);
@@ -82,14 +90,26 @@ impl SingleReceiverTransactionProtocol {
         spending_key: &SK,
         features: OutputFeatures,
         factories: &CryptoFactories,
+        rewind_data: Option<&RewindData>,
     ) -> Result<TransactionOutput, TPE>
     {
         let commitment = factories
             .commitment
             .commit_value(&spending_key, sender_info.amount.into());
-        let proof = factories
-            .range_proof
-            .construct_proof(&spending_key, sender_info.amount.into())?;
+
+        let proof = if let Some(rewind_data) = rewind_data {
+            factories.range_proof.construct_proof_with_rewind_key(
+                &spending_key,
+                sender_info.amount.into(),
+                &rewind_data.rewind_key,
+                &rewind_data.rewind_blinding_key,
+                &rewind_data.proof_message,
+            )?
+        } else {
+            factories
+                .range_proof
+                .construct_proof(&spending_key, sender_info.amount.into())?
+        };
         Ok(TransactionOutput::new(
             features,
             commitment,
@@ -131,7 +151,7 @@ mod test {
         let factories = CryptoFactories::default();
         let info = SingleRoundSenderData::default();
         let (r, k, of) = generate_output_parms();
-        match SingleReceiverTransactionProtocol::create(&info, r, k, of, &factories) {
+        match SingleReceiverTransactionProtocol::create(&info, r, k, of, &factories, None) {
             Ok(_) => panic!("Zero amounts should fail"),
             Err(TransactionProtocolError::ValidationError(s)) => assert_eq!(s, "Cannot send zero microTari"),
             Err(_) => panic!("Protocol fails for the wrong reason"),
@@ -158,7 +178,7 @@ mod test {
             metadata: m.clone(),
             message: "".to_string(),
         };
-        let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories).unwrap();
+        let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories, None).unwrap();
         assert_eq!(prot.tx_id, 500, "tx_id is incorrect");
         // Check the signature
         assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");

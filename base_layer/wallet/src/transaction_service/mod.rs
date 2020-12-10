@@ -44,7 +44,6 @@ use tari_comms::peer_manager::NodeIdentity;
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node::proto as base_node_proto,
-    consensus::{ConsensusConstantsBuilder, Network},
     mempool::proto as mempool_proto,
     transactions::{transaction_protocol::proto, types::CryptoFactories},
 };
@@ -73,7 +72,6 @@ where T: TransactionBackend
     backend: Option<T>,
     node_identity: Arc<NodeIdentity>,
     factories: CryptoFactories,
-    network: Network,
 }
 
 impl<T> TransactionServiceInitializer<T>
@@ -85,7 +83,6 @@ where T: TransactionBackend
         backend: T,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
-        network: Network,
     ) -> Self
     {
         Self {
@@ -94,7 +91,6 @@ where T: TransactionBackend
             backend: Some(backend),
             node_identity,
             factories,
-            network,
         }
     }
 
@@ -207,7 +203,7 @@ where T: TransactionBackend + 'static
         let node_identity = self.node_identity.clone();
         let factories = self.factories.clone();
         let config = self.config.clone();
-        let constants = ConsensusConstantsBuilder::new(self.network).build();
+
         context.spawn_when_ready(move |handles| async move {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
@@ -227,7 +223,6 @@ where T: TransactionBackend + 'static
                 publisher,
                 node_identity,
                 factories,
-                constants,
                 handles.get_shutdown_signal(),
             )
             .start();

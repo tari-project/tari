@@ -192,7 +192,6 @@ where
                 transaction_backend,
                 node_identity.clone(),
                 factories.clone(),
-                config.network,
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend));
 

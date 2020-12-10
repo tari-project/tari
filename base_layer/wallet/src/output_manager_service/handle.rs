@@ -25,6 +25,7 @@ use crate::output_manager_service::{
     protocols::txo_validation_protocol::{TxoValidationRetry, TxoValidationType},
     service::Balance,
     storage::database::PendingTransactionOutputs,
+    TxId,
 };
 use aes_gcm::Aes256Gcm;
 use futures::{stream::Fuse, StreamExt};
@@ -33,7 +34,9 @@ use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{Transaction, TransactionInput, TransactionOutput, UnblindedOutput},
-    types::PrivateKey,
+    transaction_protocol::sender::TransactionSenderMessage,
+    types::PublicKey,
+    ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
 use tari_service_framework::reply_channel::SenderService;
@@ -44,8 +47,8 @@ use tower::Service;
 pub enum OutputManagerRequest {
     GetBalance,
     AddOutput(UnblindedOutput),
-    GetRecipientKey((u64, MicroTari)),
-    GetCoinbaseKey((u64, MicroTari, u64)),
+    GetRecipientTransaction(TransactionSenderMessage),
+    GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(u64),
     ConfirmTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
     PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String)),
@@ -61,6 +64,7 @@ pub enum OutputManagerRequest {
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
+    GetPublicRewindKeys,
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -68,7 +72,7 @@ impl fmt::Display for OutputManagerRequest {
         match self {
             Self::GetBalance => f.write_str("GetBalance"),
             Self::AddOutput(v) => f.write_str(&format!("AddOutput ({})", v.value)),
-            Self::GetRecipientKey(v) => f.write_str(&format!("GetRecipientKey ({})", v.0)),
+            Self::GetRecipientTransaction(_) => f.write_str("GetRecipientTransaction"),
             Self::ConfirmTransaction(v) => f.write_str(&format!("ConfirmTransaction ({})", v.0)),
             Self::ConfirmPendingTransaction(v) => f.write_str(&format!("ConfirmPendingTransaction ({})", v)),
             Self::PrepareToSendTransaction((_, _, _, msg)) => {
@@ -86,7 +90,8 @@ impl fmt::Display for OutputManagerRequest {
             Self::CreateCoinSplit(v) => f.write_str(&format!("CreateCoinSplit ({})", v.0)),
             OutputManagerRequest::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
             OutputManagerRequest::RemoveEncryption => f.write_str("RemoveEncryption"),
-            OutputManagerRequest::GetCoinbaseKey(v) => f.write_str(&format!("GetCoinbaseKey ({})", v.0)),
+            OutputManagerRequest::GetCoinbaseTransaction(_) => f.write_str("GetCoinbaseTransaction"),
+            OutputManagerRequest::GetPublicRewindKeys => f.write_str("GetPublicRewindKeys"),
         }
     }
 }
@@ -95,8 +100,8 @@ impl fmt::Display for OutputManagerRequest {
 pub enum OutputManagerResponse {
     Balance(Balance),
     OutputAdded,
-    RecipientKeyGenerated(PrivateKey),
-    CoinbaseKeyGenerated(PrivateKey),
+    RecipientTransactionGenerated(ReceiverTransactionProtocol),
+    CoinbaseTransaction(Transaction),
     OutputConfirmed,
     PendingTransactionConfirmed,
     TransactionConfirmed,
@@ -113,6 +118,7 @@ pub enum OutputManagerResponse {
     Transaction((u64, Transaction, MicroTari, MicroTari)),
     EncryptionApplied,
     EncryptionRemoved,
+    PublicRewindKeys(Box<PublicRewindKeys>),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<OutputManagerEvent>;
@@ -126,6 +132,11 @@ pub enum OutputManagerEvent {
     TxoValidationFailure(u64),
     TxoValidationAborted(u64),
     Error(String),
+}
+
+pub struct PublicRewindKeys {
+    pub rewind_public_key: PublicKey,
+    pub rewind_blinding_public_key: PublicKey,
 }
 
 #[derive(Clone)]
@@ -164,35 +175,40 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_recipient_spending_key(
+    pub async fn get_recipient_transaction(
         &mut self,
-        tx_id: u64,
-        amount: MicroTari,
-    ) -> Result<PrivateKey, OutputManagerError>
+        sender_message: TransactionSenderMessage,
+    ) -> Result<ReceiverTransactionProtocol, OutputManagerError>
     {
         match self
             .handle
-            .call(OutputManagerRequest::GetRecipientKey((tx_id, amount)))
+            .call(OutputManagerRequest::GetRecipientTransaction(sender_message))
             .await??
         {
-            OutputManagerResponse::RecipientKeyGenerated(k) => Ok(k),
+            OutputManagerResponse::RecipientTransactionGenerated(rtp) => Ok(rtp),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
 
-    pub async fn get_coinbase_spending_key(
+    pub async fn get_coinbase_transaction(
         &mut self,
-        tx_id: u64,
-        amount: MicroTari,
+        tx_id: TxId,
+        reward: MicroTari,
+        fees: MicroTari,
         block_height: u64,
-    ) -> Result<PrivateKey, OutputManagerError>
+    ) -> Result<Transaction, OutputManagerError>
     {
         match self
             .handle
-            .call(OutputManagerRequest::GetCoinbaseKey((tx_id, amount, block_height)))
+            .call(OutputManagerRequest::GetCoinbaseTransaction((
+                tx_id,
+                reward,
+                fees,
+                block_height,
+            )))
             .await??
         {
-            OutputManagerResponse::CoinbaseKeyGenerated(k) => Ok(k),
+            OutputManagerResponse::CoinbaseTransaction(tx) => Ok(tx),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -307,6 +323,13 @@ impl OutputManagerHandle {
     pub async fn get_seed_words(&mut self) -> Result<Vec<String>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetSeedWords).await?? {
             OutputManagerResponse::SeedWords(s) => Ok(s),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_rewind_public_keys(&mut self) -> Result<PublicRewindKeys, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::GetPublicRewindKeys).await?? {
+            OutputManagerResponse::PublicRewindKeys(rk) => Ok(*rk),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

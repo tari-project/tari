@@ -34,6 +34,7 @@ use crate::transactions::{
     transaction_protocol::{
         recipient::RecipientInfo,
         sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},
+        RewindData,
         TransactionMetadata,
     },
     types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey},
@@ -67,6 +68,7 @@ pub struct SenderTransactionInitializer {
     unblinded_inputs: Vec<UnblindedOutput>,
     outputs: Vec<UnblindedOutput>,
     change_secret: Option<BlindingFactor>,
+    rewind_data: Option<RewindData>,
     offset: Option<BlindingFactor>,
     excess_blinding_factor: BlindingFactor,
     private_nonce: Option<PrivateKey>,
@@ -96,6 +98,7 @@ impl SenderTransactionInitializer {
             unblinded_inputs: Vec::new(),
             outputs: Vec::new(),
             change_secret: None,
+            rewind_data: None,
             offset: None,
             private_nonce: None,
             excess_blinding_factor: BlindingFactor::default(),
@@ -152,6 +155,19 @@ impl SenderTransactionInitializer {
         self
     }
 
+    /// Provide a blinding factor and rewind keys and proof message for the change output. The amount of change will
+    /// automatically be calculated when the transaction is built.
+    pub fn with_rewindable_change_secret(
+        &mut self,
+        blinding_factor: BlindingFactor,
+        rewind_data: RewindData,
+    ) -> &mut Self
+    {
+        self.change_secret = Some(blinding_factor);
+        self.rewind_data = Some(rewind_data);
+        self
+    }
+
     /// Provide the private nonce that will be used for the sender's partial signature for the transaction.
     pub fn with_private_nonce(&mut self, nonce: PrivateKey) -> &mut Self {
         self.private_nonce = Some(nonce);
@@ -173,7 +189,7 @@ impl SenderTransactionInitializer {
     /// Tries to make a change output with the given transaction parameters and add it to the set of outputs. The total
     /// fee, including the additional change output (if any) is returned along with the amount of change.
     /// The change output **always has default output features**.
-    fn add_change_if_required(&mut self) -> Result<(MicroTari, MicroTari), String> {
+    fn add_change_if_required(&mut self) -> Result<(MicroTari, MicroTari, Option<UnblindedOutput>), String> {
         // The number of outputs excluding a possible residual change output
         let num_outputs = self.outputs.len() + self.num_recipients;
         let num_inputs = self.inputs.len();
@@ -188,22 +204,21 @@ impl SenderTransactionInitializer {
         let change_amount = total_being_spent.checked_sub(total_to_self + total_amount + fee_without_change);
         match change_amount {
             None => Err("You are spending more than you're providing".into()),
-            Some(MicroTari(0)) => Ok((fee_without_change, MicroTari(0))),
+            Some(MicroTari(0)) => Ok((fee_without_change, MicroTari(0), None)),
             Some(v) => {
                 let change_amount = v.checked_sub(extra_fee);
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
-                    None => Ok((fee_without_change + v, MicroTari(0))),
-                    Some(MicroTari(0)) => Ok((fee_without_change + v, MicroTari(0))),
+                    None => Ok((fee_without_change + v, MicroTari(0), None)),
+                    Some(MicroTari(0)) => Ok((fee_without_change + v, MicroTari(0), None)),
                     Some(v) => {
                         let change_key = self
                             .change_secret
                             .as_ref()
                             .ok_or_else(|| "Change spending key was not provided")?;
-                        let change_key = change_key.clone();
-                        self.with_output(UnblindedOutput::new(v, change_key, None));
-                        Ok((fee_with_change, v))
+                        let change_unblinded_output = UnblindedOutput::new(v, change_key.clone(), None);
+                        Ok((fee_with_change, v, Some(change_unblinded_output)))
                     },
                 }
             },
@@ -255,8 +270,8 @@ impl SenderTransactionInitializer {
             return self.build_err("Too many inputs in transaction");
         }
         // Calculate the fee based on whether we need to add a residual change output or not
-        let (total_fee, change) = match self.add_change_if_required() {
-            Ok((fee, change)) => (fee, change),
+        let (total_fee, change, change_output) = match self.add_change_if_required() {
+            Ok((fee, change, output)) => (fee, change, output),
             Err(e) => return self.build_err(&e),
         };
         // Some checks on the fee
@@ -264,7 +279,7 @@ impl SenderTransactionInitializer {
             return self.build_err("Fee is less than the minimum");
         }
         // Create transaction outputs
-        let outputs = match self
+        let mut outputs = match self
             .outputs
             .iter()
             .map(|o| o.as_transaction_output(factories))
@@ -275,6 +290,29 @@ impl SenderTransactionInitializer {
                 return self.build_err(&e.to_string());
             },
         };
+        if let Some(change_unblinded_output) = change_output {
+            self.excess_blinding_factor = self.excess_blinding_factor + change_unblinded_output.spending_key.clone();
+
+            // If rewind data is present we produce a rewindable output, else a standard output
+            let change_output = if let Some(rewind_data) = self.rewind_data.as_ref() {
+                match change_unblinded_output.as_rewindable_transaction_output(factories, rewind_data) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        return self.build_err(e.to_string().as_str());
+                    },
+                }
+            } else {
+                match change_unblinded_output.as_transaction_output(factories) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        return self.build_err(e.to_string().as_str());
+                    },
+                }
+            };
+            self.outputs.push(change_unblinded_output);
+            outputs.push(change_output);
+        }
+
         // Prevent overflow attacks by imposing sane limits on outputs
         if outputs.len() > MAX_TRANSACTION_OUTPUTS {
             return self.build_err("Too many outputs in transaction");

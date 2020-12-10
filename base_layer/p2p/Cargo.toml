@@ -13,7 +13,7 @@ edition = "2018"
 tari_comms = { version = "^0.2", path = "../../comms"}
 tari_comms_dht = { version = "^0.2.2", path = "../../comms/dht"}
 tari_common = { version= "^0.2", path = "../../common" }
-tari_crypto = { version = "^0.8" }
+tari_crypto = { version = "^0.8", git = "https://github.com/tari-project/tari-crypto", branch="main"}
 tari_service_framework = { version = "^0.2", path = "../service_framework"}
 tari_shutdown = { version = "^0.2", path="../../infrastructure/shutdown" }
 tari_storage = { version = "^0.2", path = "../../infrastructure/storage"}

@@ -424,19 +424,18 @@ dependencies = [
 [[package]]
 name = "bulletproofs"
 version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69e6731420b125f0300427b4f7d146a7c161b02801c126bed8b66c8e1340f574"
+source = "git+https://github.com/tari-project/bulletproofs?branch=develop#7d6f48f432902c06a5efe5150f40feae32f21bf6"
 dependencies = [
  "byteorder",
  "clear_on_drop",
- "curve25519-dalek",
- "digest 0.8.1",
+ "curve25519-dalek 3.0.0",
+ "digest 0.9.0",
  "merlin",
  "rand 0.7.3",
  "rand_core 0.5.1",
  "serde 1.0.116",
  "serde_derive",
- "sha3 0.8.2",
+ "sha3 0.9.1",
  "subtle 2.3.0",
  "thiserror",
 ]
@@ -931,6 +930,20 @@ checksum = "5d85653f070353a16313d0046f173f70d1aadd5b42600a14de626f0dfb3473a5"
 dependencies = [
  "byteorder",
  "digest 0.8.1",
+ "rand_core 0.5.1",
+ "serde 1.0.116",
+ "subtle 2.3.0",
+ "zeroize",
+]
+
+[[package]]
+name = "curve25519-dalek"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8492de420e9e60bc9a1d66e2dbb91825390b738a388606600663fc529b4b307"
+dependencies = [
+ "byteorder",
+ "digest 0.9.0",
  "packed_simd",
  "rand_core 0.5.1",
  "serde 1.0.116",
@@ -2223,7 +2236,7 @@ checksum = "d53d4207d0bd4d1eb3323e33a64f9ea99e5e3d257d5cd7a659fad5be48c8b9af"
 dependencies = [
  "base58-monero",
  "byteorder",
- "curve25519-dalek",
+ "curve25519-dalek 2.1.0",
  "fixed-hash 0.3.2",
  "hex",
  "keccak-hash 0.3.0",
@@ -4006,15 +4019,14 @@ dependencies = [
 [[package]]
 name = "tari_crypto"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea703e58cc4880c4d572124a8567c1285ac330257777ca17262e89bd045a821c"
+source = "git+https://github.com/tari-project/tari-crypto?branch=main#b9ffb9bc64f837b66a008ef656a9d7ec5de7035f"
 dependencies = [
  "base64 0.10.1",
  "blake2",
  "blake3",
  "bulletproofs",
  "clear_on_drop",
- "curve25519-dalek",
+ "curve25519-dalek 3.0.0",
  "digest 0.8.1",
  "k12",
  "lazy_static 1.4.0",
@@ -5283,7 +5295,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "637ff90c9540fa3073bb577e65033069e4bae7c79d49d74aa3ffdf5342a53217"
 dependencies = [
- "curve25519-dalek",
+ "curve25519-dalek 2.1.0",
  "rand_core 0.5.1",
  "zeroize",
 ]

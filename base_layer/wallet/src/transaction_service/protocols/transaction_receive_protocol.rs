@@ -40,17 +40,13 @@ use futures::{
     StreamExt,
 };
 use log::*;
-use rand::rngs::OsRng;
 use std::sync::Arc;
 use tari_comms::types::CommsPublicKey;
 
 use tari_core::transactions::{
-    transaction::{OutputFeatures, Transaction},
+    transaction::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
-    types::PrivateKey,
-    ReceiverTransactionProtocol,
 };
-use tari_crypto::keys::SecretKey;
 use tokio::time::delay_for;
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::receive_protocol";
@@ -141,21 +137,13 @@ where TBackend: TransactionBackend + 'static
             }
 
             let amount = data.amount;
-            let spending_key = self
+
+            let rtp = self
                 .resources
                 .output_manager_service
-                .get_recipient_spending_key(data.tx_id, data.amount)
+                .get_recipient_transaction(self.sender_message.clone())
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-            let nonce = PrivateKey::random(&mut OsRng);
-
-            let rtp = ReceiverTransactionProtocol::new(
-                self.sender_message.clone(),
-                nonce,
-                spending_key,
-                OutputFeatures::default(),
-                &self.resources.factories,
-            );
 
             let inbound_transaction = InboundTransaction::new(
                 data.tx_id,

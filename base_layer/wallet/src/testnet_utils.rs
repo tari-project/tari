@@ -151,16 +151,7 @@ pub async fn create_wallet(
         peer_seeds: Default::default(),
     };
 
-    let config = WalletConfig::new(
-        comms_config,
-        factories,
-        None,
-        None,
-        Network::Rincewind,
-        None,
-        None,
-        None,
-    );
+    let config = WalletConfig::new(comms_config, factories, None, None, Network::Ridcully, None, None, None);
 
     Wallet::new(
         config,
