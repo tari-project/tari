@@ -204,9 +204,10 @@ impl WalletBootstrapper {
             dht: DhtConfig {
                 database_url: DbConnectionUrl::File(self.config.data_dir.join("dht-wallet.db")),
                 auto_join: true,
+                allow_test_addresses: self.config.allow_test_addresses,
                 ..Default::default()
             },
-            allow_test_addresses: false,
+            allow_test_addresses: self.config.allow_test_addresses,
             listener_liveness_allowlist_cidrs: Vec::new(),
             listener_liveness_max_sessions: 0,
             dns_seeds_name_server: self.config.dns_seeds_name_server,

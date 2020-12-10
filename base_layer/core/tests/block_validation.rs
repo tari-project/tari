@@ -21,11 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::helpers::block_builders::chain_block_with_new_coinbase;
-use monero::{
-    blockdata::block::Block as MoneroBlock,
-    consensus::{deserialize, serialize},
-};
-use serde::{Deserialize, Serialize};
+use monero::{blockdata::block::Block as MoneroBlock, consensus::deserialize};
 use std::{collections::HashMap, sync::Arc};
 use tari_core::{
     blocks::{Block, BlockHeaderValidationError},
@@ -36,11 +32,7 @@ use tari_core::{
         ConsensusManagerBuilder,
         Network,
     },
-    proof_of_work::{
-        monero_rx,
-        monero_rx::{tree_hash, MoneroData},
-        PowAlgorithm,
-    },
+    proof_of_work::{monero_rx, monero_rx::MoneroData, PowAlgorithm},
     test_helpers::blockchain::{create_store_with_consensus, create_test_db},
     transactions::types::CryptoFactories,
     validation::{
@@ -48,7 +40,6 @@ use tari_core::{
         ValidationError,
     },
 };
-use tari_test_utils::paths::create_temporary_data_path;
 mod helpers;
 
 #[test]
@@ -88,14 +79,14 @@ fn test_monero_blocks() {
         max_difficulty: 1.into(),
         target_time: 200,
     });
-    let mut cc = ConsensusConstantsBuilder::new(network)
+    let cc = ConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
         .with_proof_of_work(algos)
         .build();
     let cm = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(cc)
         .build();
-    let mut db = create_store_with_consensus(&cm);
+    let db = create_store_with_consensus(&cm);
     let block_0 = db.fetch_block(0).unwrap().into_block();
     dbg!("hi");
     let (block_1_t, _) = chain_block_with_new_coinbase(&block_0, vec![], &cm, &factories);

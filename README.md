@@ -341,6 +341,7 @@ they are not enabled already:
   ```
   [base_node.ridcully]
   transport = "tor"
+  allow_test_addresses = false
   grpc_enabled = true
   grpc_base_node_address = "127.0.0.1:18142"
   grpc_console_wallet_address = "127.0.0.1:18143"
@@ -504,4 +505,3 @@ and other Tari-related discussions.
 the first to know about important updates and announcements about the project.
 
 Most of the technical conversation about Tari development happens on [#FreeNode IRC](https://freenode.net/) in the #tari-dev room.
-

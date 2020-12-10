@@ -22,3 +22,11 @@ Feature: Block Sync
     Given I have 2 base nodes connected to all seed nodes
     # All nodes should sync to tip
     Then all nodes are at height 20
+
+  Scenario: When a new node joins the network, it should receive all peers. 
+  Given I have 10 seed nodes
+  And I have a base node NODE1 connected to all seed nodes
+  Then NODE1 should have 10 peers
+  Given I have a base node NODE2 connected to node NODE1
+  Then NODE1 should have 11 peers
+  Then NODE2 should have 11 peers

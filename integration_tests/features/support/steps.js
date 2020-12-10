@@ -4,6 +4,9 @@ const BaseNodeProcess = require('../../helpers/baseNodeProcess');
 const expect = require('chai').expect;
 const {waitFor, getTransactionOutputHash} = require('../../helpers/util');
 
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
 Given(/I have a seed node (.*)/, {timeout: 20*1000}, async function (name) {
     return await this.createSeedNode(name);
@@ -23,13 +26,22 @@ Given(/I have a base node (.*) connected to all seed nodes/, {timeout: 20*1000},
     miner.setPeerSeeds([this.seedAddresses()]);
     await miner.startNew();
     this.addNode(name, miner);
-});
+    });
 
 Given(/I have a base node (.*) connected to seed (.*)/, {timeout: 20*1000}, async function (name, seedNode) {
     const miner =  new BaseNodeProcess(name);
+    console.log(this.seeds[seedNode].peerAddress());
     miner.setPeerSeeds([this.seeds[seedNode].peerAddress()]);
     await miner.startNew();
     this.addNode(name, miner);
+});
+
+Given(/I have a base node (.*) connected to node (.*)/, {timeout: 20*1000}, async function (name, node) {
+    const miner =  new BaseNodeProcess(name);
+    miner.setPeerSeeds([this.nodes[node].peerAddress()]);
+    await miner.startNew();
+    this.addNode(name, miner);
+    await sleep(1000);
 });
 
 Given(/I have a base node (.*) unconnected/, {timeout: 20*1000}, async function (name) {
@@ -158,4 +170,11 @@ Then('I receive an error containing {string}', function (string) {
     // TODO
 });
 
-
+Then(/(.*) should have (\d+) peers/, async function (nodeName, peerCount){
+    await sleep(500);
+    console.log(nodeName);
+    let client = this.getClient(nodeName);
+    let peers = await client.getPeers();
+    // we add a non existing node when the node starts before adding any actual peers. So the count should always be 1 higher
+    expect(peers.length).to.equal(peerCount+1)
+})

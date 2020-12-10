@@ -43,6 +43,13 @@ class BaseNodeClient {
         })
     }
 
+    getPeers() {
+        return this.client.getPeers().sendMessage({}).then(peers=> {
+            console.log("Got ", peers.length," peers:");
+            return peers;
+        })
+    }
+
     getTipHeader() {
         return this.client.listHeaders().sendMessage({from_height: 0, num_headers: 1}).then(header=> {
           //  console.log("Header:", header);

@@ -213,9 +213,10 @@ where B: BlockchainBackend + 'static
             dht: DhtConfig {
                 database_url: DbConnectionUrl::File(self.config.data_dir.join("dht.db")),
                 auto_join: true,
+                allow_test_addresses: self.config.allow_test_addresses,
                 ..Default::default()
             },
-            allow_test_addresses: false,
+            allow_test_addresses: self.config.allow_test_addresses,
             listener_liveness_allowlist_cidrs: self.config.listener_liveness_allowlist_cidrs.clone(),
             listener_liveness_max_sessions: self.config.listnener_liveness_max_sessions,
             user_agent: format!("tari/basenode/{}", env!("CARGO_PKG_VERSION")),

@@ -77,7 +77,7 @@ class BaseNodeProcess {
             TARI_BASE_NODE__LOCALNET__TRANSPORT: "tcp",
             TARI_BASE_NODE__LOCALNET__TCP_LISTENER_ADDRESS: "/ip4/0.0.0.0/tcp/" + this.port,
             TARI_BASE_NODE__LOCALNET__ALLOW_TEST_ADDRESSES: true,
-            TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS: "/ip4/10.0.0.103/tcp/" + this.port,
+            TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS: "/ip4/127.0.0.1/tcp/" + this.port,
             TARI_BASE_NODE__LOCALNET__GRPC_ENABLED: "true",
             TARI_BASE_NODE__LOCALNET__ENABLE_WALLET: false,
             TARI_BASE_NODE__LOCALNET__GRPC_BASE_NODE_ADDRESS: "127.0.0.1:" + this.grpcPort,
@@ -103,9 +103,9 @@ class BaseNodeProcess {
         };
         if (this.peerSeeds) {
             envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = this.peerSeeds;
-        } else {
+        }else {
             //  Nowheresville
-            envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = ["a4c1a77498aab15cc3ac0164fb1e254dfbe1f282aa05f8f792a89f4c8804660f::/ip4/10.0.0.102/tcp/1"]
+            envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = ["5cfcf17f41b01980eb4fa03cec5ea12edbd3783496a2b5dabf99e4bf6410f460::/ip4/10.0.0.50/tcp/1"]
 
         }
         return envs;

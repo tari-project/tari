@@ -23,9 +23,10 @@ use crate::grpc::{
     blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
     helpers::{mean, median},
 };
+use tari_comms::PeerManager;
 
 use log::*;
-use std::{cmp, convert::TryInto};
+use std::{cmp, convert::TryInto, sync::Arc};
 use tari_common::GlobalConfig;
 use tari_core::{
     base_node::{comms_interface::Broadcast, LocalNodeCommsInterface},
@@ -67,6 +68,7 @@ pub struct BaseNodeGrpcServer {
     node_service: LocalNodeCommsInterface,
     node_config: GlobalConfig,
     state_machine_handle: StateMachineHandle,
+    peer_manager: Arc<PeerManager>,
 }
 
 impl BaseNodeGrpcServer {
@@ -75,6 +77,7 @@ impl BaseNodeGrpcServer {
         local_node: LocalNodeCommsInterface,
         node_config: GlobalConfig,
         state_machine_handle: StateMachineHandle,
+        peer_manager: Arc<PeerManager>,
     ) -> Self
     {
         Self {
@@ -82,6 +85,7 @@ impl BaseNodeGrpcServer {
             node_service: local_node,
             node_config,
             state_machine_handle,
+            peer_manager,
         }
     }
 }
@@ -99,6 +103,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type FetchMatchingUtxosStream = mpsc::Receiver<Result<tari_rpc::FetchMatchingUtxosResponse, Status>>;
     type GetBlocksStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
+    type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeader, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
@@ -406,6 +411,43 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             "Sending SubmitBlock #{} response to client", block_height
         );
         Ok(Response::new(response))
+    }
+
+    async fn get_peers(
+        &self,
+        _request: Request<tari_rpc::GetPeersRequest>,
+    ) -> Result<Response<Self::GetPeersStream>, Status>
+    {
+        debug!(target: LOG_TARGET, "Incoming GRPC request for get all peers");
+
+        let peers = self
+            .peer_manager
+            .all()
+            .await
+            .map_err(|e| Status::unknown(e.to_string()))?;
+        let peers: Vec<tari_rpc::Peer> = peers.into_iter().map(|p| p.into()).collect();
+        let (mut tx, rx) = mpsc::channel(peers.len());
+        self.executor.spawn(async move {
+            for peer in peers {
+                let response = tari_rpc::GetPeersResponse { peer: Some(peer) };
+                match tx.send(Ok(response)).await {
+                    Ok(_) => (),
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Error sending peer via GRPC:  {}", err);
+                        match tx.send(Err(Status::unknown("Error sending data"))).await {
+                            Ok(_) => (),
+                            Err(send_err) => {
+                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                            },
+                        }
+                        return;
+                    },
+                }
+            }
+        });
+
+        debug!(target: LOG_TARGET, "Sending peers response to client");
+        Ok(Response::new(rx))
     }
 
     async fn get_blocks(

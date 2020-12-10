@@ -99,7 +99,7 @@ fn write_and_fetch_metadata() {
 #[test]
 fn fetch_nonexistent_kernel() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
     let h = vec![0u8; 32];
     unpack_enum!(
@@ -113,7 +113,7 @@ fn fetch_nonexistent_kernel() {
 #[test]
 fn insert_and_fetch_kernel() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
     let kernel1 = create_test_kernel(5.into(), 0);
     let kernel2 = create_test_kernel(10.into(), 0);
@@ -130,7 +130,7 @@ fn insert_and_fetch_kernel() {
 #[test]
 fn fetch_nonexistent_header() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
     unpack_enum!(ChainStorageError::ValueNotFound { entity, field, value } = store.fetch_header(1).unwrap_err());
     assert_eq!(entity, "BlockHeader");
@@ -141,7 +141,7 @@ fn fetch_nonexistent_header() {
 #[test]
 fn insert_and_fetch_header() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
     let mut header1 = BlockHeader::new(0);
     header1.height = 42;
@@ -726,7 +726,7 @@ fn handle_reorg() {
     .is_ok());
 
     // Create Forked Chain 1
-    let consensus_manager_fork = ConsensusManagerBuilder::new(network)
+    let _consensus_manager_fork = ConsensusManagerBuilder::new(network)
         .with_block(blocks[0].clone())
         .build();
     let mut orphan1_store = create_test_blockchain_db();

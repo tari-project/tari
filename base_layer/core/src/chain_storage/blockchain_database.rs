@@ -2049,12 +2049,11 @@ fn convert_to_option_bounds<T: RangeBounds<u64>>(bounds: T) -> (Option<u64>, Opt
 mod test {
     use super::*;
     use crate::test_helpers::blockchain::create_test_blockchain_db;
-    use tari_test_utils::paths::create_temporary_data_path;
     #[test]
     fn lmdb_fetch_monero_seeds() {
         // Perform test
         {
-            let mut db = create_test_blockchain_db();
+            let db = create_test_blockchain_db();
             let seed = "test1".to_string();
             {
                 let db_read = db.db_read_access().unwrap();
