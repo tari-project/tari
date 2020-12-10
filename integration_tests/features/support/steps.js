@@ -3,6 +3,7 @@ const { Given, When, Then } = require("cucumber");
 const BaseNodeProcess = require('../../helpers/baseNodeProcess');
 const expect = require('chai').expect;
 const {waitFor, getTransactionOutputHash} = require('../../helpers/util');
+const TransactionBuilder = require('../../helpers/transactionBuilder');
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -84,7 +85,25 @@ Then('all nodes are at height {int}', {timeout: 120*1000},async function (height
     })
 });
 
+When(/I create a transaction (.*) spending (.*) to (.*)/, function (txnName, inputs, output) {
 
+    let txInputs = inputs.split(",").map(input  => this.outputs[input]);
+    let txn = new TransactionBuilder();
+    txInputs.forEach(txIn => txn.addInput(txIn));
+    let txOutput = txn.addOutput(txn.getSpendableAmount());
+    this.addOutput(output, txOutput);
+    this.transactions[txnName] = txn.build();
+});
+
+When(/I submit transaction (.*) to (.*)/, async  function (txn,  node) {
+    let res = await this.getClient(node).submitTransaction(this.transactions[txn]);
+    this.lastResult = res;
+    expect(this.lastResult.result).to.equal('ACCEPTED');
+});
+
+Then(/(.*) is in the mempool/, function (txn) {
+    expect(this.lastResult.result).to.equal('ACCEPTED');
+});
 
 When(/I save the tip on (.*) as (.*)/, async function (node, name) {
     let client = this.getClient(node);
@@ -99,11 +118,9 @@ Then(/node (.*) is at tip (.*)/, async function (node, name) {
     expect(this.headers[name].hash).to.equal(header.hash);
 });
 
-
 When(/I mine a block on (.*) with coinbase (.*)/, {timeout: 600*1000}, async function (name, coinbaseName) {
         await this.mineBlock(name, candidate => {
-            console.log(candidate.block.body.outputs);
-            this.addOutput(coinbaseName, candidate.block.body.outputs[0]);
+            this.addOutput(coinbaseName, candidate.originalTemplate.coinbase);
             return candidate;
         });
 });
@@ -131,7 +148,7 @@ When(/I mine a block on (.*) based on height (\d+)/, async function (node, atHei
     let template = client.getPreviousBlockTemplate(atHeight);
     let candidate = await client.getMinedCandidateBlock(template);
 
-    await client.submitBlock(candidate, block => {
+    await client.submitBlock(candidate.template, block => {
         return block;
     }, error => {
         // Expect an error
@@ -147,7 +164,7 @@ When(/I mine a block on (.*) at height (\d+) with an invalid MMR/, async functio
     let template = client.getPreviousBlockTemplate(atHeight);
     let candidate = await client.getMinedCandidateBlock(template);
 
-    await client.submitBlock(candidate, block => {
+    await client.submitBlock(candidate.template, block => {
         // console.log("Candidate:", block);
         block.block.header.output_mr[0] = 1;
         // block.block.header.height = atHeight + 1;
@@ -158,11 +175,11 @@ When(/I mine a block on (.*) at height (\d+) with an invalid MMR/, async functio
     })
 });
 
-Then(/I find that the UTXO (.*) exists according to (.*)/, async function (outputName, nodeName) {
+Then(/the UTXO (.*) has been mined according to (.*)/, async function (outputName, nodeName) {
     let client = this.getClient(nodeName);
-    let hash = getTransactionOutputHash(this.outputs[outputName]);
+    let hash = getTransactionOutputHash(this.outputs[outputName].output);
     let lastResult = await client.fetchMatchingUtxos([hash]);
-    expect(lastResult[0].output.commitment.toString('hex')).to.equal(this.outputs[outputName].commitment.toString('hex'));
+    expect(lastResult[0].output.commitment.toString('hex')).to.equal(this.outputs[outputName].output.commitment.toString('hex'));
 });
 
 

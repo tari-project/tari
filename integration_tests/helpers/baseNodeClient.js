@@ -37,7 +37,7 @@ class BaseNodeClient {
     }
 
     getHeaderAt(height) {
-        return this.client.listHeaders().sendMessage({from_height: height, num_headers: 1}).then(header=> {
+        return this.client.listHeaders().sendMessage({from_height: height, num_headers: 1}).then(header => {
             console.log("Header:", header);
             return header;
         })
@@ -51,15 +51,13 @@ class BaseNodeClient {
     }
 
     getTipHeader() {
-        return this.client.listHeaders().sendMessage({from_height: 0, num_headers: 1}).then(header=> {
-          //  console.log("Header:", header);
+        return this.client.listHeaders().sendMessage({from_height: 0, num_headers: 1}).then(header => {
             return header;
         })
     }
 
     getPreviousBlockTemplate(height) {
-        //console.log("Tempaltes:", this.blockTemplates);
-       return cloneDeep(this.blockTemplates["height" +  height]);
+        return cloneDeep(this.blockTemplates["height" + height]);
     }
 
     getBlockTemplate() {
@@ -76,10 +74,8 @@ class BaseNodeClient {
     submitBlockWithCoinbase(template, coinbase) {
 
         const cb = coinbase;
-        // console.log("Coinbase:", coinbase);
         template.body.outputs = template.body.outputs.concat(cb.outputs);
         template.body.kernels = template.body.kernels.concat(cb.kernels);
-        // console.log("Template to submit:", template);
         return this.client.getNewBlock().sendMessage(template)
             .then(b => {
                     return this.client.submitBlock().sendMessage(b.block);
@@ -88,14 +84,15 @@ class BaseNodeClient {
     }
 
     submitTemplate(template, beforeSubmit) {
-        return this.client.getNewBlock().sendMessage(template)
+        return this.client.getNewBlock().sendMessage(template.template)
             .then(b => {
                     //console.log("Sha3 diff", this.getSha3Difficulty(b.block.header));
                     if (beforeSubmit) {
-                        b = beforeSubmit(b);
+                        b = beforeSubmit({block:b, originalTemplate:template});
                         if (!b) {
                             return Promise.resolve();
                         }
+                        b = b.block;
                     }
                     return this.client.submitBlock().sendMessage(b.block);
                 }
@@ -104,6 +101,14 @@ class BaseNodeClient {
 
     submitBlock(b) {
         return this.client.submitBlock().sendMessage(b.block);
+    }
+
+    submitTransaction(txn) {
+        return this.client.submitTransaction().sendMessage({transaction: txn}).then(
+          res => {
+            return res
+          }
+        );
     }
 
     getTipHeight() {
@@ -163,23 +168,25 @@ class BaseNodeClient {
 
     async getMinedCandidateBlock(existingBlockTemplate) {
         let builder = new TransactionBuilder();
-        const privateKey = builder.generatePrivateKey("test");
+        const privateKey = Buffer.from(toLittleEndian(1, 256)).toString('hex');
         let blockTemplate = existingBlockTemplate || await this.getBlockTemplate();
-        //console.log(blockTemplate);
-        let cb = builder.generateCoinbase(blockTemplate.block_reward, privateKey, 0, blockTemplate.block.header.height + 1);
+        let cb = builder.generateCoinbase(blockTemplate.block_reward, privateKey, 0, parseInt(blockTemplate.block.header.height) + 1);
         let template = blockTemplate.block;
-        // console.log("Coinbase:", coinbase);
         template.body.outputs = template.body.outputs.concat(cb.outputs);
         template.body.kernels = template.body.kernels.concat(cb.kernels);
-        return template;
+        return {
+            template: template, coinbase: {
+                output: cb.outputs[0],
+                privateKey: privateKey,
+                amount: parseInt(blockTemplate.block_reward)
+            }
+        };
     }
 
     async mineBlockWithoutWallet(beforeSubmit, onError) {
         let template = await this.getMinedCandidateBlock();
         return this.submitTemplate(template, beforeSubmit).then(async () => {
             let tip = await this.getTipHeight();
-         //   console.log("Tip:", tip);
-            //expect(tip).to.equal(parseInt(template.header.height));
         }, err => {
             if (onError) {
                 if (!onError(err)) {
@@ -197,9 +204,7 @@ class BaseNodeClient {
         hash.update(toLittleEndian(header.version, 16));
         hash.update(toLittleEndian(parseInt(header.height), 64));
         hash.update(header.prev_hash);
-       // console.log("header.Timestamp", header.timestamp);
         let timestamp = parseInt(header.timestamp.seconds);
-       // console.log("Timestamp", timestamp);
         hash.update(toLittleEndian(timestamp, 64));
         hash.update(header.output_mr);
         hash.update(header.range_proof_mr);

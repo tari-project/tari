@@ -34,7 +34,8 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             .map(TryInto::try_into)
             .ok_or_else(|| "transaction output features not provided".to_string())??;
 
-        let commitment = Commitment::from_bytes(&input.commitment).map_err(|err| err.to_string())?;
+        let commitment = Commitment::from_bytes(&input.commitment)
+            .map_err(|err| format!("Could not convert input commitment:{}", err))?;
 
         Ok(Self { features, commitment })
     }

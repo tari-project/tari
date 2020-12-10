@@ -47,7 +47,6 @@ use crate::{
 use croaring::Bitmap;
 use digest::Input;
 use log::*;
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     collections::VecDeque,
@@ -59,7 +58,7 @@ use std::{
 use strum_macros::Display;
 use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
-use tari_mmr::{Hash, MerkleMountainRange, MutableMmr, MutableMmrLeafNodes};
+use tari_mmr::{Hash, MerkleMountainRange, MutableMmr};
 use uint::static_assertions::_core::ops::RangeBounds;
 
 const LOG_TARGET: &str = "c::cs::database";
@@ -89,13 +88,6 @@ pub enum BlockAddResult {
     OrphanBlock,
     /// Indicates the new block caused a chain reorg. This contains removed blocks followed by added blocks.
     ChainReorg(Vec<Arc<Block>>, Vec<Arc<Block>>),
-}
-
-/// MutableMmrState provides the total number of leaf nodes in the base MMR and the requested leaf nodes.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct MutableMmrState {
-    pub total_leaf_count: usize,
-    pub leaf_nodes: MutableMmrLeafNodes,
 }
 
 /// A placeholder struct that contains the two validators that the database uses to decide whether or not a block is

@@ -23,7 +23,9 @@
 use tari_crypto::tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
+use std::convert::{TryFrom, TryInto};
 use tari_core::transactions::transaction::Transaction;
+use tari_crypto::ristretto::RistrettoSecretKey;
 
 impl From<Transaction> for grpc::Transaction {
     fn from(source: Transaction) -> Self {
@@ -31,5 +33,20 @@ impl From<Transaction> for grpc::Transaction {
             offset: Vec::from(source.offset.as_bytes()),
             body: Some(source.body.into()),
         }
+    }
+}
+
+impl TryFrom<grpc::Transaction> for Transaction {
+    type Error = String;
+
+    fn try_from(source: grpc::Transaction) -> Result<Self, Self::Error> {
+        Ok(Self {
+            offset: RistrettoSecretKey::from_bytes(&source.offset)
+                .map_err(|e| format!("Offset is not valid:{}", e.to_string()))?,
+            body: source
+                .body
+                .ok_or_else(|| "Transaction body not provided".to_string())?
+                .try_into()?,
+        })
     }
 }
