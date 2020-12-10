@@ -108,6 +108,7 @@ class BaseNodeProcess {
             envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = ["5cfcf17f41b01980eb4fa03cec5ea12edbd3783496a2b5dabf99e4bf6410f460::/ip4/10.0.0.50/tcp/1"]
 
         }
+
         return envs;
     }
 

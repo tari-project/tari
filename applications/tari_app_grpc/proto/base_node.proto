@@ -52,8 +52,10 @@ service BaseNode {
     rpc GetNewBlockTemplate(PowAlgo) returns (NewBlockTemplateResponse);
     // Construct a new block from a provided template
     rpc GetNewBlock(NewBlockTemplate) returns (GetNewBlockResult);
-    // Submit a new block for propogation
+    // Submit a new block for propagation
     rpc SubmitBlock(Block) returns (Empty);
+    // Submit a transaction for propagation
+    rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
     // Get the base node tip information
     rpc GetTipInfo(Empty) returns (TipInfoResponse);
     // Search for blocks containing the specified kernels
@@ -232,3 +234,20 @@ message GetPeersResponse{
 }
 
 message GetPeersRequest{}
+
+message SubmitTransactionRequest {
+    Transaction transaction  = 1;
+}
+
+message SubmitTransactionResponse {
+    SubmitTransactionResult result =1;
+}
+
+enum SubmitTransactionResult {
+    NONE = 0;
+    ACCEPTED = 1;
+    NOT_PROCESSABLE_AT_THIS_TIME = 2;
+    ALREADY_MINED =  3;
+    REJECTED = 4;
+
+}

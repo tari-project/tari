@@ -86,18 +86,26 @@ impl MempoolStorage {
                 Ok(TxStorageResponse::UnconfirmedPool)
             },
             Err(ValidationError::UnknownInputs) => {
+                warn!(target: LOG_TARGET, "Validation failed due to unknown inputs");
                 self.orphan_pool.insert(tx)?;
                 Ok(TxStorageResponse::OrphanPool)
             },
             Err(ValidationError::ContainsSTxO) => {
+                warn!(target: LOG_TARGET, "Validation failed due to already spent output");
+
                 self.reorg_pool.insert(tx)?;
                 Ok(TxStorageResponse::ReorgPool)
             },
             Err(ValidationError::MaturityError) => {
+                warn!(target: LOG_TARGET, "Validation failed due to maturity error");
+
                 self.pending_pool.insert(tx)?;
                 Ok(TxStorageResponse::PendingPool)
             },
-            _ => Ok(TxStorageResponse::NotStored),
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Validation failed due to error:{}", e);
+                Ok(TxStorageResponse::NotStored)
+            },
         }
     }
 

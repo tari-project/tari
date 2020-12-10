@@ -223,6 +223,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::new(
             rt.handle().clone(),
             ctx.local_node(),
+            ctx.local_mempool(),
             node_config.clone(),
             ctx.state_machine(),
             ctx.base_node_comms().peer_manager(),
@@ -272,7 +273,11 @@ async fn run_grpc(
     Server::builder()
         .add_service(tari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc))
         .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
-        .await?;
+        .await
+        .map_err(|err| {
+            error!(target: LOG_TARGET, "GRPC encountered an  error:{}", err);
+            err
+        })?;
 
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())

@@ -39,7 +39,11 @@ use tari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
 };
-use tari_core::base_node::StateMachineHandle;
+use tari_core::{
+    base_node::StateMachineHandle,
+    mempool::{service::LocalMempoolService, TxStorageResponse},
+    transactions::transaction::Transaction,
+};
 use tari_crypto::tari_utilities::Hashable;
 use tokio::{runtime, sync::mpsc};
 use tonic::{Request, Response, Status};
@@ -66,6 +70,7 @@ const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
 pub struct BaseNodeGrpcServer {
     executor: runtime::Handle,
     node_service: LocalNodeCommsInterface,
+    mempool_service: LocalMempoolService,
     node_config: GlobalConfig,
     state_machine_handle: StateMachineHandle,
     peer_manager: Arc<PeerManager>,
@@ -75,6 +80,7 @@ impl BaseNodeGrpcServer {
     pub fn new(
         executor: runtime::Handle,
         local_node: LocalNodeCommsInterface,
+        local_mempool: LocalMempoolService,
         node_config: GlobalConfig,
         state_machine_handle: StateMachineHandle,
         peer_manager: Arc<PeerManager>,
@@ -83,6 +89,7 @@ impl BaseNodeGrpcServer {
         Self {
             executor,
             node_service: local_node,
+            mempool_service: local_mempool,
             node_config,
             state_machine_handle,
             peer_manager,
@@ -410,6 +417,52 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             target: LOG_TARGET,
             "Sending SubmitBlock #{} response to client", block_height
         );
+        Ok(Response::new(response))
+    }
+
+    async fn submit_transaction(
+        &self,
+        request: Request<tari_rpc::SubmitTransactionRequest>,
+    ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status>
+    {
+        let request = request.into_inner();
+        let txn: Transaction = request
+            .transaction
+            .ok_or_else(|| Status::invalid_argument("Transaction is empty"))?
+            .try_into()
+            .map_err(|e| Status::invalid_argument(format!("Failed to convert arguments. Invalid transaction.{}", e)))?;
+        debug!(
+            target: LOG_TARGET,
+            "Received SubmitTransaction request from client ({} kernels, {} outputs, {} inputs)",
+            txn.body.kernels().len(),
+            txn.body.outputs().len(),
+            txn.body.inputs().len()
+        );
+
+        let mut handler = self.mempool_service.clone();
+        let res = handler.submit_transaction(txn).await.map_err(|e| {
+            error!(target: LOG_TARGET, "Error submitting:{}", e);
+            Status::internal(e.to_string())
+        })?;
+        let response = match res {
+            TxStorageResponse::UnconfirmedPool => tari_rpc::SubmitTransactionResponse {
+                result: tari_rpc::SubmitTransactionResult::Accepted.into(),
+            },
+            TxStorageResponse::OrphanPool => tari_rpc::SubmitTransactionResponse {
+                result: tari_rpc::SubmitTransactionResult::NotProcessableAtThisTime.into(),
+            },
+            TxStorageResponse::PendingPool => tari_rpc::SubmitTransactionResponse {
+                result: tari_rpc::SubmitTransactionResult::NotProcessableAtThisTime.into(),
+            },
+            TxStorageResponse::ReorgPool => tari_rpc::SubmitTransactionResponse {
+                result: tari_rpc::SubmitTransactionResult::AlreadyMined.into(),
+            },
+            TxStorageResponse::NotStored => tari_rpc::SubmitTransactionResponse {
+                result: tari_rpc::SubmitTransactionResult::Rejected.into(),
+            },
+        };
+
+        debug!(target: LOG_TARGET, "Sending SubmitTransaction response to client");
         Ok(Response::new(response))
     }
 

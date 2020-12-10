@@ -44,7 +44,6 @@ pub use blockchain_database::{
     BlockchainBackend,
     BlockchainDatabase,
     BlockchainDatabaseConfig,
-    MutableMmrState,
     Validators,
 };
 
