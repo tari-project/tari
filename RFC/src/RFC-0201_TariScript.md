@@ -404,6 +404,63 @@ Any baseNode can now verify that the transaction is complete, verify the signatu
 For Bob to claim his commitment, \\( C_b\\) he requires the blinding factor \\( C_b.k\\) and he requires his own public key for the script.
 Although Alice knowns the blinding factor \\( C_b.k\\), once mined she cannot claim this as she does not know the private key part fo the of script (`CheckSigVerify`) to unlock the script. 
 
+### HTLC like script
+
+In this use case we have a script that controls to whom it is spend. We have Alice and Bob. Alice owns the commitment \\( C_a). She and Bob work together to create \\( C_c\\). But we dont yet know hom can spend the newly created \\( C_s\\). 
+
+$$
+C_a > C_s > C_x
+$$
+
+
+In this use case Alice and Bob work together to create \\( C_s\\). 
+Because Alice owns \\( C_a\\) she should have the blinding factor \\( C_a.k\\) and know the script spending conditions. 
+Alice and Bob both create a  \\( K_a\\) key, with:
+$$
+K_a = K_{a-Alice} + K_{a-Bob}
+$$
+
+In this case, Alice and Bob both create the normal transaction.  Alice and Bob have to ensure that \\( K_a\\) is inside of the commitment \\( C_s\\). Alice will fill in the script with her \\( K_s\\) to unlock the commitment \\( C_a\\). 
+Alice will construct her part of the \\( ScriptOffset\\) with:
+$$
+scriptoffset_{Alice} = k_s - k_{a-Alice} * H(C_s)
+$$
+
+Bob will construct his part of the \\( ScriptOffset\\) with:
+$$
+scriptoffset_{Bob} = 0 - k_{a-Bob} * H(C_s)
+$$
+The \\( ScriptOffset\\) can then be constructed as:
+$$
+scriptoffset = scriptoffset_{alice} + scriptoffset_{Bob}
+$$
+
+The blinding factor \\( C_s.k\\) can be safely shared between Bob and Alice. And because both use the \\( Hash(C_s)\\) in the construction of their \\( ScriptOffset\\) parts. Both can know that neither party can change any detail of \\( C_s\\) including the script. 
+
+As soon as \\( C_s\\) is mined, Alice and Bob now have a combined Commitment on the blockchain with some spending conditions that require the fulfillment of the script conditions to spend. 
+
+The spending case of either Alice or Bob claiming the commitment \\( C_s\\) is not going to be handled here as it is exactly the same as all the above cases. But The case of Alice and Bob spending this together is going to be explained here. 
+
+In this case, both Alice and Bob want to spend to one or more utxo together. Alice and Bob both create a \\( k_a\\) and need to know their own \\( k_s\\)
+
+Alice will construct her part of the \\( ScriptOffset\\) with:
+$$
+scriptoffset_{Alice} = k_{s-Alice} - k_{a-Alice} * H(C_x)
+$$
+
+Bob will construct his part of the \\( ScriptOffset\\) with:
+$$
+scriptoffset_{Bob} = k_{s-Bob} - k_{a-Bob} * H(C_x)
+$$
+The \\( ScriptOffset\\) can then be constructed as:
+$$
+scriptoffset = scriptoffset_{alice} + scriptoffset_{Bob}
+$$
+
+With this both Alice and Bob have agreed to the terms of commitment \\( C_x\\) lock that in. Both need to sign the input script with their respective \\( k_s\\) keys. And Both need to create their Offset. In this case, both \\( K_s\\) and \\( K_a\\) are aggregate keys. 
+Because the script resolves to an aggregate key \\( K_s\\) neither Alice nor Bob can claim the commitment \\( C_s\\) without the other party's key. 
+
+A BaseNode validating the transaction will also not be able to tell this is an aggregate transaction as all keys are aggregated schnorr signatures. But it will be able to validate that the script input is correctly signed, thus the output public key is correct.  And that the \\( ScriptOffset\\) is correctly calculated, meaning that the commitment \\( C_x\\) is the correct UTXO for the transaction. 
 ### Cut-through
 
 A major issue with many Mimblewimble extension schemes is that miners are able to cut-through UTXOs if an output is spent
