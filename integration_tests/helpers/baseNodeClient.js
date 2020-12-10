@@ -57,7 +57,7 @@ class BaseNodeClient {
 
     getBlockTemplate() {
         return this.client.getNewBlockTemplate()
-            .sendMessage({pow_algo: 1})
+            .sendMessage({pow_algo: 2})
             .then(template => {
 
                 let res = {block_reward: template.block_reward, block: template.new_block_template};
@@ -83,7 +83,7 @@ class BaseNodeClient {
     submitTemplate(template, beforeSubmit) {
         return this.client.getNewBlock().sendMessage(template)
             .then(b => {
-                    console.log("Sha3 diff", this.getSha3Difficulty(b.block.header));
+                    //console.log("Sha3 diff", this.getSha3Difficulty(b.block.header));
                     if (beforeSubmit) {
                         b = beforeSubmit(b);
                         if (!b) {
@@ -127,7 +127,7 @@ class BaseNodeClient {
             .then(tip => {
                 currHeight = parseInt(tip.metadata.height_of_longest_chain);
                 return this.client.getNewBlockTemplate()
-                    .sendMessage({pow_algo: 1});
+                    .sendMessage({pow_algo: 2});
             })
             .then(template => {
                 block = template.new_block_template;
