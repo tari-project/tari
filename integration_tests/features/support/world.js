@@ -15,6 +15,7 @@ class CustomWorld {
         this.testrun = `run${Date.now()}`;
         this.lastResult = null;
         this.blocks =  {};
+        this.peers = {};
     }
 
     async createSeedNode(name) {
@@ -97,4 +98,3 @@ After(function () {
         this.stopNode(property);
     }
 });
-

@@ -157,6 +157,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default("base_node.mainnet.grpc_enabled", false).unwrap();
+    cfg.set_default("base_node.mainnet.allow_test_addresses", false)
+        .unwrap();
     cfg.set_default("base_node.mainnet.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();
     cfg.set_default("base_node.mainnet.grpc_console_wallet_address", "127.0.0.1:18143")
@@ -218,6 +220,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
 
+    cfg.set_default("base_node.ridcully.allow_test_addresses", false)
+        .unwrap();
     cfg.set_default("base_node.ridcully.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.ridcully.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();

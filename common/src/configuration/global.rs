@@ -50,6 +50,7 @@ const DB_RESIZE_MIN_MB: i64 = 10;
 pub struct GlobalConfig {
     pub network: Network,
     pub comms_transport: CommsTransport,
+    pub allow_test_addresses: bool,
     pub listnener_liveness_max_sessions: usize,
     pub listener_liveness_allowlist_cidrs: Vec<String>,
     pub data_dir: PathBuf,
@@ -279,6 +280,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
 
     // Transport
     let comms_transport = network_transport_config(&cfg, &net_str)?;
+
+    let key = config_string("base_node", &net_str, "allow_test_addresses");
+    let allow_test_addresses = cfg
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     // Public address
     let key = config_string("base_node", &net_str, "public_address");
@@ -543,6 +549,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     Ok(GlobalConfig {
         network,
         comms_transport,
+        allow_test_addresses,
         listnener_liveness_max_sessions: liveness_max_sessions,
         listener_liveness_allowlist_cidrs: liveness_allowlist_cidrs,
         data_dir,

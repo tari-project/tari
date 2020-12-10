@@ -21,13 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::helpers::database::create_orphan_block;
-use monero::cryptonote::hash::Hashable as MoneroHashable;
 use tari_core::{
     blocks::BlockHeader,
     chain_storage::{
         create_lmdb_database,
         BlockchainBackend,
-        BlockchainDatabase,
         ChainStorageError,
         DbKey,
         DbTransaction,
@@ -39,7 +37,7 @@ use tari_core::{
     test_helpers::blockchain::create_test_db,
     tx,
 };
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, Hashable};
+use tari_crypto::tari_utilities::Hashable;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 
@@ -93,7 +91,7 @@ fn lmdb_insert_contains_delete_and_fetch_header() {
     }
 }
 
-fn insert_contains_delete_and_fetch_utxo<T: BlockchainBackend>(mut db: T) {
+fn insert_contains_delete_and_fetch_utxo<T: BlockchainBackend>(mut _db: T) {
     unimplemented!();
     // let factories = CryptoFactories::default();
     // let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
@@ -136,7 +134,7 @@ fn lmdb_insert_contains_delete_and_fetch_utxo() {
     }
 }
 
-fn insert_contains_delete_and_fetch_kernel<T: BlockchainBackend>(mut db: T) {
+fn insert_contains_delete_and_fetch_kernel<T: BlockchainBackend>(mut _db: T) {
     unimplemented!();
     // let kernel = create_test_kernel(5.into(), 0);
     // let hash = kernel.hash();
@@ -236,7 +234,7 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
     }
 }
 
-fn spend_utxo_and_unspend_stxo<T: BlockchainBackend>(mut db: T) {
+fn spend_utxo_and_unspend_stxo<T: BlockchainBackend>(mut _db: T) {
     unimplemented!();
     // let factories = CryptoFactories::default();
     // let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
@@ -456,7 +454,7 @@ fn lmdb_fetch_mmr_root_and_proof_for_utxo_and_rp() {
     }
 }
 
-fn fetch_mmr_root_and_proof_for_kernel<T: BlockchainBackend>(mut db: T) {
+fn fetch_mmr_root_and_proof_for_kernel<T: BlockchainBackend>(mut _db: T) {
     unimplemented!()
     // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     // assert_eq!(
@@ -515,7 +513,7 @@ fn lmdb_fetch_mmr_root_and_proof_for_kernel() {
     }
 }
 
-fn fetch_future_mmr_root_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
+fn fetch_future_mmr_root_for_utxo_and_rp<T: BlockchainBackend>(mut _db: T) {
     unimplemented!()
     // let factories = CryptoFactories::default();
     //
@@ -575,7 +573,7 @@ fn lmdb_fetch_future_mmr_root_for_utxo_and_rp() {
     }
 }
 
-fn fetch_future_mmr_root_for_for_kernel<T: BlockchainBackend>(mut db: T) {
+fn fetch_future_mmr_root_for_for_kernel<T: BlockchainBackend>(mut _db: T) {
     unimplemented!()
     // let kernel1 = create_test_kernel(100.into(), 0);
     // let kernel2 = create_test_kernel(200.into(), 1);
@@ -670,7 +668,7 @@ fn lmdb_backend_restore() {
     // }
 }
 
-fn duplicate_utxo<T: BlockchainBackend>(mut db: T) {
+fn duplicate_utxo<T: BlockchainBackend>(mut _db: T) {
     unimplemented!()
     // let factories = CryptoFactories::default();
     // let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
@@ -750,7 +748,7 @@ fn lmdb_fetch_last_header() {
 
     // Perform test
     {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
+        let _db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
     }
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
@@ -761,7 +759,7 @@ fn lmdb_fetch_last_header() {
     }
 }
 
-fn fetch_utxo_rp_mmr_nodes_and_count<T: BlockchainBackend>(mut db: T) {
+fn fetch_utxo_rp_mmr_nodes_and_count<T: BlockchainBackend>(mut _db: T) {
     // let factories = CryptoFactories::default();
     //
     // let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
@@ -868,7 +866,7 @@ fn lmdb_fetch_utxo_rp_nodes_and_count() {
     }
 }
 
-fn fetch_kernel_mmr_nodes_and_count<T: BlockchainBackend>(mut db: T) {
+fn fetch_kernel_mmr_nodes_and_count<T: BlockchainBackend>(mut _db: T) {
     // let kernel1 = create_test_kernel(100.into(), 0);
     // let kernel2 = create_test_kernel(200.into(), 1);
     // let kernel3 = create_test_kernel(300.into(), 1);
@@ -943,7 +941,7 @@ fn lmdb_fetch_kernel_nodes_and_count() {
     }
 }
 
-fn insert_mmr_node_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
+fn insert_mmr_node_for_utxo_and_rp<T: BlockchainBackend>(mut _db: T) {
     // let factories = CryptoFactories::default();
     // let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
     // let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);

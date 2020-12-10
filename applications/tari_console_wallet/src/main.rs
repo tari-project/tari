@@ -227,10 +227,11 @@ async fn init_wallet(
         dht: DhtConfig {
             database_url: DbConnectionUrl::File(config.data_dir.join("dht-console-wallet.db")),
             auto_join: true,
+            allow_test_addresses: config.allow_test_addresses,
             ..Default::default()
         },
         // TODO: This should be false unless testing locally - make this configurable
-        allow_test_addresses: true,
+        allow_test_addresses: config.allow_test_addresses,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),

@@ -28,6 +28,7 @@ mod consensus_constants;
 mod historical_block;
 mod new_block_template;
 mod output_features;
+mod peer;
 mod proof_of_work;
 mod signature;
 mod transaction;
@@ -44,6 +45,7 @@ pub use self::{
     historical_block::*,
     new_block_template::*,
     output_features::*,
+    peer::*,
     proof_of_work::*,
     signature::*,
     transaction::*,

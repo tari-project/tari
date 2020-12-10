@@ -25,6 +25,7 @@ export TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS=/ip4/0.0.0.0/tcp/18190
 
 export TARI_BASE_NODE__LOCALNET__PEER_SEEDS=/ip4/127.0.0.1/tcp/18190
 
+export TARI_BASE_NODE__LOCALNET__ALLOW_TEST_ADDRESSES=true
 export TARI_BASE_NODE__LOCALNET__GRPC_ENABLED=true
 export TARI_BASE_NODE__LOCALNET__ENABLE_WALLET=true
 export TARI_BASE_NODE__LOCALNET__GRPC_ADDRESS=127.0.0.1:9999
@@ -45,4 +46,3 @@ export TARI_MERGE_MINING_PROXY__LOCALNET__WAIT_FOR_INITIAL_SYNC_AT_STARTUP=true
 cd temp/data/integration-test-wallet
 cargo run  --bin tari_console_wallet -- --base-path . --create-id --init
 cargo run  --bin tari_console_wallet -- --base-path . -d
-

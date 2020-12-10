@@ -204,7 +204,7 @@ impl Discovering {
         let is_neighbour = peer_dist <= self.neighbourhood_threshold;
 
         let addresses = peer.addresses.iter();
-        match validate_peer_addresses(addresses, self.config().network.is_localtest()) {
+        match validate_peer_addresses(addresses, self.config().allow_test_addresses) {
             Ok(_) => {
                 if is_neighbour {
                     self.stats.num_new_neighbours += 1;

@@ -61,6 +61,8 @@ service BaseNode {
     // Fetch any utxos that exist in the main chain
     rpc FetchMatchingUtxos(FetchMatchingUtxosRequest) returns (stream FetchMatchingUtxosResponse);
 
+    // get all peers from the base node
+    rpc GetPeers(GetPeersRequest) returns (stream GetPeersResponse);
 }
 
 /// return type of GetTipInfo
@@ -223,3 +225,10 @@ message FetchMatchingUtxosRequest {
 message FetchMatchingUtxosResponse {
     TransactionOutput output = 1;
 }
+
+// This is the request type of the get all peers rpc call
+message GetPeersResponse{
+    Peer peer = 1;
+}
+
+message GetPeersRequest{}
