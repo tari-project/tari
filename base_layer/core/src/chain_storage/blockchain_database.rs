@@ -168,6 +168,12 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetch all the kernels in a block
     fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError>;
 
+    /// Fetch a kernel with this excess and returns a `TransactionKernel` and the hash of the block that it is in
+    fn fetch_kernel_by_excess(&self, excess: &[u8]) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
+
+    /// Fetch a kernel with this excess signature  and returns a `TransactionKernel` and the hash of the block that it is in
+    fn fetch_kernel_by_excess_sig(&self, excess_sig: &Signature) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
+
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError>;
 
@@ -413,12 +419,6 @@ where B: BlockchainBackend
         set_chain_metadata(&mut *db, metadata)
     }
 
-    /// Returns the transaction kernel with the given hash.
-    pub fn fetch_kernel(&self, hash: HashOutput) -> Result<TransactionKernel, ChainStorageError> {
-        let db = self.db_read_access()?;
-        fetch_kernel(&*db, hash)
-    }
-
     // Fetch the utxo
     pub fn fetch_utxo(&self, hash: HashOutput) -> Result<Option<TransactionOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
@@ -453,6 +453,17 @@ where B: BlockchainBackend
         }
         Ok(result)
     }
+
+    pub fn fetch_kernel_by_excess(&self, excess: &[u8]) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
+        let db= self.db_read_access()?;
+        db.fetch_kernel_by_excess(excess)
+    }
+
+    pub fn fetch_kernel_by_excess_sig(&self, excess_sig: &Signature) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
+        let db= self.db_read_access()?;
+        db.fetch_kernel_by_excess_sig(excess_sig)
+    }
+
 
     /// Returns the block header at the given block height.
     pub fn fetch_header(&self, height: u64) -> Result<Option<BlockHeader>, ChainStorageError> {
@@ -1236,10 +1247,6 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
         range_proof_mr: include_legacy_deleted_hash(proof_mmr.get_merkle_root()?),
     };
     Ok(mmr_roots)
-}
-
-fn fetch_kernel<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<TransactionKernel, ChainStorageError> {
-    fetch!(db, hash, TransactionKernel)
 }
 
 pub fn fetch_header<T: BlockchainBackend>(db: &T, block_num: u64) -> Result<BlockHeader, ChainStorageError> {

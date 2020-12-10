@@ -133,9 +133,6 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(set_chain_metadata(metadata: ChainMetadata) -> (), "set_chain_metadata");
 
-    //---------------------------------- Kernels --------------------------------------------//
-    make_async_fn!(fetch_kernel(hash: HashOutput) -> TransactionKernel, "fetch_kernel");
-
     //---------------------------------- TXO --------------------------------------------//
     make_async_fn!(fetch_utxo(hash: HashOutput) -> Option<TransactionOutput>, "fetch_utxo");
 

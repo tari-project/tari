@@ -61,6 +61,7 @@ use std::{
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
+use crate::transactions::types::Signature;
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
@@ -180,6 +181,14 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError> {
         self.db.fetch_kernels_in_block(header_hash)
+    }
+
+    fn fetch_kernel_by_excess(&self, excess: &[u8]) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
+        self.db.fetch_kernel_by_excess(excess)
+    }
+
+    fn fetch_kernel_by_excess_sig(&self, excess_sig: &Signature) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
+        self.db.fetch_kernel_by_excess_sig(excess_sig)
     }
 
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError> {

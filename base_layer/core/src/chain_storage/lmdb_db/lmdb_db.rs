@@ -85,6 +85,9 @@ use tari_common_types::{
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tari_mmr::{Hash, MerkleMountainRange, MutableMmr};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
+use tari_crypto::tari_utilities::ByteArray;
+use crate::chain_storage::lmdb_db::{LMDB_DB_KERNEL_EXCESS_INDEX, LMDB_DB_KERNEL_EXCESS_SIG_INDEX};
+use crate::transactions::types::Signature;
 
 type DatabaseRef = Arc<Database<'static>>;
 
@@ -104,6 +107,8 @@ pub struct LMDBDatabase {
     inputs_db: DatabaseRef,
     txos_hash_to_index_db: DatabaseRef,
     kernels_db: DatabaseRef,
+    kernel_excess_index: DatabaseRef,
+    kernel_excess_sig_index:DatabaseRef,
     orphans_db: DatabaseRef,
     monero_seed_height_db: DatabaseRef,
     orphan_chain_tips_db: DatabaseRef,
@@ -127,6 +132,8 @@ impl LMDBDatabase {
             inputs_db: get_database(&store, LMDB_DB_INPUTS)?,
             txos_hash_to_index_db: get_database(&store, LMDB_DB_TXOS_HASH_TO_INDEX)?,
             kernels_db: get_database(&store, LMDB_DB_KERNELS)?,
+            kernel_excess_index: get_database(&store, LMDB_DB_KERNEL_EXCESS_INDEX)?,
+            kernel_excess_sig_index: get_database(&store, LMDB_DB_KERNEL_EXCESS_SIG_INDEX)?,
             orphans_db: get_database(&store, LMDB_DB_ORPHANS)?,
             monero_seed_height_db: get_database(&store, LMDB_DB_MONERO_SEED_HEIGHT)?,
             orphan_chain_tips_db: get_database(&store, LMDB_DB_ORPHAN_CHAIN_TIPS)?,
@@ -207,11 +214,19 @@ impl LMDBDatabase {
                             unimplemented!();
                         }
                     }
-                    lmdb_delete_keys_starting_with::<Option<TransactionKernelRowData>>(
+                    let kernels = lmdb_delete_keys_starting_with::<Option<TransactionKernelRowData>>(
                         &write_txn,
                         &self.kernels_db,
                         &hash_hex,
                     )?;
+                    for kernel in kernels {
+                        if let Some(k) = kernel {
+                            lmdb_delete(&write_txn, &self.kernel_excess_index, k.kernel.excess.as_bytes())?;
+                        }
+                        else {
+                            unimplemented!("This option around kernels is unnecessary and should be removed")
+                        }
+                    }
                     lmdb_delete_keys_starting_with::<TransactionInputRowData>(&write_txn, &self.inputs_db, &hash_hex)?;
                 },
                 WriteOperation::InsertMoneroSeedHeight(data, height) => {
@@ -287,6 +302,14 @@ impl LMDBDatabase {
     {
         let hash = kernel.hash();
         let key = format!("{}-{:010}-{}", header_hash.to_hex(), mmr_position, hash.to_hex());
+
+        lmdb_insert(txn, &*self.kernel_excess_index, kernel.excess.as_bytes(), &(header_hash.clone(), mmr_position, hash.clone()))?;
+
+        let mut excess_sig_key = Vec::<u8>::new();
+        excess_sig_key.extend(kernel.excess_sig.get_public_nonce().as_bytes());
+        excess_sig_key.extend(kernel.excess_sig.get_signature().as_bytes());
+        lmdb_insert(txn, &*self.kernel_excess_sig_index, excess_sig_key.as_slice(), &(header_hash.clone(), mmr_position, hash.clone()))?;
+
         lmdb_insert(
             txn,
             &*self.kernels_db,
@@ -389,9 +412,6 @@ impl LMDBDatabase {
                     lmdb_delete(&txn, &self.block_hashes_db, hash.as_slice())?;
                     lmdb_delete(&txn, &self.headers_db, &k)?;
                 }
-            },
-            DbKey::TransactionKernel(k) => {
-                lmdb_delete(&txn, &self.kernels_db, k.as_slice())?;
             },
             DbKey::OrphanBlock(k) => {
                 if let Some(orphan) = lmdb_get::<_, Block>(&txn, &self.orphans_db, &k)? {
@@ -567,6 +587,8 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
         .add_database(LMDB_DB_INPUTS, flags)
         .add_database(LMDB_DB_TXOS_HASH_TO_INDEX, flags)
         .add_database(LMDB_DB_KERNELS, flags)
+        .add_database(LMDB_DB_KERNEL_EXCESS_INDEX, flags)
+        .add_database(LMDB_DB_KERNEL_EXCESS_SIG_INDEX, flags)
         .add_database(LMDB_DB_ORPHANS, flags)
         .add_database(LMDB_DB_MONERO_SEED_HEIGHT, flags)
         .add_database(LMDB_DB_ORPHAN_CHAIN_TIPS, flags)
@@ -679,10 +701,6 @@ impl BlockchainBackend for LMDBDatabase {
                     },
                 }
             },
-            DbKey::TransactionKernel(k) => {
-                let val: Option<TransactionKernel> = lmdb_get(&txn, &self.kernels_db, k)?;
-                val.map(|val| DbValue::TransactionKernel(Box::new(val)))
-            },
             DbKey::OrphanBlock(k) => {
                 let val: Option<Block> = lmdb_get(&txn, &self.orphans_db, k)?;
                 val.map(|val| DbValue::OrphanBlock(Box::new(val)))
@@ -698,7 +716,6 @@ impl BlockchainBackend for LMDBDatabase {
             DbKey::Metadata(k) => lmdb_exists(&txn, &self.metadata_db, &(*k as u32))?,
             DbKey::BlockHeader(k) => lmdb_exists(&txn, &self.headers_db, k)?,
             DbKey::BlockHash(h) => lmdb_exists(&txn, &self.block_hashes_db, h)?,
-            DbKey::TransactionKernel(k) => lmdb_exists(&txn, &self.kernels_db, k)?,
             DbKey::OrphanBlock(k) => lmdb_exists(&txn, &self.orphans_db, k)?,
         })
     }
@@ -735,6 +752,29 @@ impl BlockchainBackend for LMDBDatabase {
                 .map(|f: Option<TransactionKernelRowData>| f.unwrap().kernel)
                 .collect(),
         )
+    }
+
+    fn fetch_kernel_by_excess(&self, excess: &[u8]) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
+        let txn = ReadTransaction::new(&*self.env)?;
+        if let Some((header_hash, mmr_position, hash)) = lmdb_get::<_, (HashOutput, u64, HashOutput)>(&txn, &self.kernel_excess_index, excess)? {
+            let key = format!("{}-{:010}-{}", header_hash.to_hex(), mmr_position, hash.to_hex());
+            Ok(lmdb_get(&txn, &self.kernels_db, key.as_str())?.map(|kernel: Option<TransactionKernelRowData>| (kernel.unwrap().kernel, header_hash)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn fetch_kernel_by_excess_sig(&self, excess_sig: &Signature) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
+        let txn = ReadTransaction::new(&*self.env)?;
+        let mut key = Vec::<u8>::new();
+        key.extend(excess_sig.get_public_nonce().as_bytes());
+        key.extend(excess_sig.get_signature().as_bytes());
+        if let Some((header_hash, mmr_position, hash)) = lmdb_get::<_, (HashOutput, u64, HashOutput)>(&txn, &self.kernel_excess_sig_index, key.as_slice())? {
+            let key = format!("{}-{:010}-{}", header_hash.to_hex(), mmr_position, hash.to_hex());
+            Ok(lmdb_get(&txn, &self.kernels_db, key.as_str())?.map(|kernel: Option<TransactionKernelRowData>| (kernel.unwrap().kernel, header_hash)))
+        } else {
+            Ok(None)
+        }
     }
 
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError> {
