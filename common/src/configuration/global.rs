@@ -96,6 +96,7 @@ pub struct GlobalConfig {
     pub transaction_chain_monitoring_timeout: Duration,
     pub transaction_direct_send_timeout: Duration,
     pub transaction_broadcast_send_timeout: Duration,
+    pub console_wallet_password: Option<String>,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
     pub wallet_base_node_service_peers: Vec<String>,
@@ -447,6 +448,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         },
     };
 
+    let key = "wallet.password";
+    let console_wallet_password = optional(cfg.get_str(key))?;
+
     let key = "wallet.base_node_service_refresh_interval";
     let wallet_base_node_service_refresh_interval = match cfg.get_int(key) {
         Ok(seconds) => seconds as u64,
@@ -595,6 +599,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         transaction_chain_monitoring_timeout,
         transaction_direct_send_timeout,
         transaction_broadcast_send_timeout,
+        console_wallet_password,
         wallet_command_send_wait_stage,
         wallet_command_send_wait_timeout,
         wallet_base_node_service_peers,

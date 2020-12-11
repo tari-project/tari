@@ -141,7 +141,7 @@ impl NetworkTab {
 
         let node_id = Span::styled("Node ID:", Style::default().fg(Color::Magenta));
         let public_key = Span::styled("Public Key:", Style::default().fg(Color::Magenta));
-        let address = Span::styled("Address", Style::default().fg(Color::Magenta));
+        let address = Span::styled("Address:", Style::default().fg(Color::Magenta));
 
         let paragraph = Paragraph::new(node_id).wrap(Wrap { trim: true });
         f.render_widget(paragraph, label_layout[0]);
@@ -267,7 +267,7 @@ impl<B: Backend> Component<B> for NetworkTab {
                 [
                     Constraint::Length(3),
                     Constraint::Length(10),
-                    Constraint::Length(7 + app_state.get_base_node_list().len() as u16),
+                    Constraint::Length(8 + app_state.get_base_node_list().len() as u16),
                     Constraint::Length(5),
                     Constraint::Min(12),
                 ]
@@ -346,18 +346,21 @@ impl<B: Backend> Component<B> for NetworkTab {
                 },
                 BaseNodeInputMode::Address => match c {
                     '\n' => {
-                        if let Err(e) = Handle::current().block_on(
+                        match Handle::current().block_on(
                             app_state.set_custom_base_node(self.public_key_field.clone(), self.address_field.clone()),
                         ) {
-                            warn!(target: LOG_TARGET, "Could not set custom base node peer: {}", e);
-                            self.error_message =
-                                Some(format!("Error setting new Base Node Address:\n{}", e.to_string()));
-                            self.address_field = self.previous_address_field.clone();
-                            self.public_key_field = self.previous_public_key_field.clone();
-                        } else {
-                            self.previous_address_field = self.address_field.clone();
-                            self.previous_public_key_field = self.public_key_field.clone();
-                            self.detailed_base_node = Some(app_state.get_selected_base_node().clone());
+                            Ok(peer) => {
+                                self.previous_address_field = self.address_field.clone();
+                                self.previous_public_key_field = self.public_key_field.clone();
+                                self.detailed_base_node = Some(peer);
+                            },
+                            Err(e) => {
+                                warn!(target: LOG_TARGET, "Could not set custom base node peer: {}", e);
+                                self.error_message =
+                                    Some(format!("Error setting new Base Node Address:\n{}", e.to_string()));
+                                self.address_field = self.previous_address_field.clone();
+                                self.public_key_field = self.previous_public_key_field.clone();
+                            },
                         }
 
                         self.base_node_edit_mode = BaseNodeInputMode::None;

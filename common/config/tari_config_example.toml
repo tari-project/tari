@@ -77,6 +77,13 @@
 #wallet_db_file = "wallet/wallet.dat" # or "wallet\\wallet.dat"
 #console_wallet_db_file = "wallet/console-wallet.dat" # or "wallet\\console-wallet.dat"
 
+# Console wallet password
+# Should you wish to start your console wallet without typing in your password, the following options are available:
+# 1. Start the console wallet with the --password=secret argument, or
+# 2. Set the environment variable TARI_WALLET_PASSWORD=secret before starting the console wallet, or
+# 3. Set the "password" key in this [wallet] section of the config
+# password = "secret"
+
 # This is the timeout period that will be used to monitor TXO queries to the base node (default = 60). Larger values
 # are needed for wallets with many (>1000) TXOs to be validated.
 base_node_query_timeout = 120

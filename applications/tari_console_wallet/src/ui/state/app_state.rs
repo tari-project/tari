@@ -273,7 +273,7 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn set_custom_base_node(&mut self, public_key: String, address: String) -> Result<(), UiError> {
+    pub async fn set_custom_base_node(&mut self, public_key: String, address: String) -> Result<Peer, UiError> {
         let pub_key = PublicKey::from_hex(public_key.as_str())?;
         let addr = address.parse::<Multiaddr>().map_err(|_| UiError::AddressParseError)?;
         let node_id = NodeId::from_key(&pub_key)?;
@@ -288,8 +288,8 @@ impl AppState {
         );
 
         let mut inner = self.inner.write().await;
-        inner.set_custom_base_node_peer(peer).await?;
-        Ok(())
+        inner.set_custom_base_node_peer(peer.clone()).await?;
+        Ok(peer)
     }
 
     pub async fn clear_custom_base_node(&mut self) -> Result<(), UiError> {
