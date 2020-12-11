@@ -278,6 +278,8 @@ pub struct TransactionInput {
     script: Vec<u8>,
     /// The script input data, if any
     input_data: Vec<u8>
+    /// Commitment mining height
+    height : u64
     /// A signature with K_s, signing the script and input data
     script_signature: Signature,
     /// The receiver pubkey, K_a
@@ -286,9 +288,11 @@ pub struct TransactionInput {
 ```
 The input data to the script is signed with resolving script public key \\(K_s \\). This is to ensure that resulting public key has a known private key.
 
+The height is the height this UTXO was mined at. This is to stop replay attacks, see section replay attacks.
+
 The script_signature is a Schnorr signature and is defined as follows:
 $$
-signature = r + (H(Script)||InputData))*k_s
+signature = r + (H(Script)||InputData||height))*k_s
 $$ 
 
 
@@ -475,8 +479,39 @@ the spend key, \\( k_i \\) and the receiver key \\( k_{a} \\) and the script key
 deterministically derived from the spend key. For example, the \\( k_{a} \\) can be equal to the hash of the \\( k_i \\).
 
 ### Replay attacks
-TODO
 
+With a lot of these schemes it is possible to perform replay attacks. Look at the following scenario. We have Alice, Bob and Carol. To make the use case more clear lets assume Bob is a merchant. Alice buys some stuff from Bob. And on a later point in time Bob pays Carol:
+
+$$
+C_a > C_b > C_c
+$$
+
+This is all fine and secure. But lets say at a later stage. Alice pays Bob again. But Alice uses the exact same commitment, script and public keys to pay Bob.
+
+$$
+C_a' > C_b'
+$$
+
+After Bob ships his good to Alice, Carol can just take the commitment \\( C_b \\) because \\( C_b == C_b' \\) and she already has a transaction with all the correct signatures to claim \\( C_b \\) to a commitment under her control \\( C_c' \\).
+
+But to ensure that a script is only valid once, we need to sign the block height that the original UTXO was mined at. So going back to the case of:
+$$
+C_b > C_c
+$$
+ Bob would have signed that block height \\( C_b \\) was mined. This means that when Carol tries to publish a transaction for:
+$$
+C_b' > C_c'
+$$
+
+She cant. Because she would need to sign the input of the script with the block height \\( C_b' \\). She cant do it, since she does not have the 
+private key for the script. And the signing data changed between :
+$$
+C_b > C_c
+$$
+and$$
+C_b' > C_c'
+$$
+so her old transaction data is not valid for the new transaction. And for her to be able to spend \\( C_b' \\). Bob would have to unlock the script and spend it to her with his approval. 
 ### Blockchain bloat
 
 The most obvious drawback to TariScript is the effect it will have on blockchain size. The addition of the script and 
