@@ -532,15 +532,14 @@ outputs into vanilla, default UTXOs in a mixing transaction to disassociate Tari
 
 ## Notation
 
-| Symbol            | Definition                                                                 |
-|:------------------|:---------------------------------------------------------------------------|
-| \\( s_a \\)       | An output script for output _a_, serialised to binary                      |
-| \\( \sigma_a \\)  | The 256-bit Blake2b hash of an output script, \\( s_a \\)                  |
-| \\( k_{a'} \\)    | The script private key                                                     |                          |
-| \\( C_a \\)       | A Pedersen commitment, i.e. \\( k_a.G + v_a.H \\)                          |
-| \\( \hat{C_a} \\) | A script-modified Pedersen commitment, i.e. \\( (k_a + k_{a'}).G + v.H \\) |
-| \\( \delta \\)    | The transaction offset                                                     |
-
+| Symbol            | Definition                                                                                                           |
+|:------------------|:---------------------------------------------------------------------------------------------------------------------|
+| \\( s_a \\)       | An output script for output _a_, serialised to binary                                                                |
+| \\( \sigma_a \\)  | The 256-bit Blake2b hash of an output script, \\( s_a \\) , receiver Pubkey ,\\( k_a \\) ,  UTXo output features     |
+| \\( k_{a} \\)     | Receiver Pubkey                                                                                                      |
+| \\( C_a \\)       | A Pedersen commitment,  i.e. \\( k_a \cdot{G} + v \cdot{H} \\)                                                       |
+| \\( {C_a'} \\)    | A script-modified Pedersen commitment, \\( C_a \\)  with \\( \sigma_a \cdot{G} \\), i.e. \\( k_a \cdot{G} + v_a\cdot{H} + \sigma_a \cdot{G} \\)|
+ 
 Note on the notation used in this document:
 $$
  x \cdot{k}
