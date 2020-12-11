@@ -553,8 +553,9 @@ This means the value k from the value x
 
 ### Credits
 
-Thanks to [@philipr-za](https://github.com/philipr-za) and [@SWvheerden](https://github.com/SWvheerden) for their input
-and contributions to this RFC.
+[@CjS77](https://github.com/CjS77)
+[@philipr-za](https://github.com/philipr-za) 
+[@SWvheerden](https://github.com/SWvheerden) 
 
 [data commitments]: https://phyro.github.io/grinvestigation/data_commitments.html
 [LIP-004]: https://github.com/DavidBurkett/lips/blob/master/lip-0004.mediawiki
