@@ -67,17 +67,14 @@ use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::transactions::{tari_amount::uT, types::BlindingFactor};
 use tari_core::{
     base_node::proto as base_node_proto,
-    consensus::ConsensusConstants,
     mempool::{proto as mempool_proto, service::MempoolServiceResponse},
     transactions::{
         tari_amount::MicroTari,
         transaction::Transaction,
         transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::TransactionSenderMessage},
         types::{CryptoFactories, PrivateKey},
-        CoinbaseBuilder,
     },
 };
-use tari_crypto::keys::SecretKey;
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
@@ -182,7 +179,7 @@ where
         event_publisher: TransactionEventSender,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
-        consensus_constants: ConsensusConstants,
+
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -196,7 +193,7 @@ where
             node_identity: node_identity.clone(),
             factories,
             config: config.clone(),
-            consensus_constants,
+
             shutdown_signal,
         };
         let (timeout_update_publisher, _) = broadcast::channel(20);
@@ -1640,7 +1637,7 @@ where
             .find_coinbase_transaction_at_block_height(block_height, amount)
             .await?;
 
-        let completed_transaction = match find_result {
+        let (tx_id, completed_transaction) = match find_result {
             Some(completed_tx) => {
                 debug!(
                     target: LOG_TARGET,
@@ -1650,59 +1647,48 @@ where
                     amount
                 );
 
-                completed_tx
+                (completed_tx.tx_id, completed_tx.transaction)
             },
             None => {
                 // otherwise create a new coinbase tx
                 let tx_id = OsRng.next_u64();
-                let spending_key = self
+                let tx = self
                     .output_manager_service
-                    .get_coinbase_spending_key(tx_id, amount, block_height)
+                    .get_coinbase_transaction(tx_id, reward, fees, block_height)
                     .await?;
-                let nonce = PrivateKey::random(&mut OsRng);
-                let (tx, _) = CoinbaseBuilder::new(self.resources.factories.clone())
-                    .with_block_height(block_height)
-                    .with_fees(fees)
-                    .with_spend_key(spending_key)
-                    .with_nonce(nonce)
-                    .build_with_reward(&self.resources.consensus_constants, reward)?;
 
                 // Cancel existing unmined coinbase transactions for this blockheight
                 self.db
                     .cancel_coinbase_transaction_at_block_height(block_height)
                     .await?;
 
-                let completed_tx = CompletedTransaction::new(
-                    tx_id,
-                    self.node_identity.public_key().clone(),
-                    self.node_identity.public_key().clone(),
-                    amount,
-                    MicroTari::from(0),
-                    tx.clone(),
-                    TransactionStatus::Coinbase,
-                    format!("Coinbase Transaction for Block {}", block_height),
-                    Utc::now().naive_utc(),
-                    TransactionDirection::Inbound,
-                    Some(block_height),
-                );
-
                 self.db
-                    .insert_completed_transaction(tx_id, completed_tx.clone())
+                    .insert_completed_transaction(
+                        tx_id,
+                        CompletedTransaction::new(
+                            tx_id,
+                            self.node_identity.public_key().clone(),
+                            self.node_identity.public_key().clone(),
+                            amount,
+                            MicroTari::from(0),
+                            tx.clone(),
+                            TransactionStatus::Coinbase,
+                            format!("Coinbase Transaction for Block {}", block_height),
+                            Utc::now().naive_utc(),
+                            TransactionDirection::Inbound,
+                            Some(block_height),
+                        ),
+                    )
                     .await?;
 
                 debug!(
                     target: LOG_TARGET,
-                    "Coinbase transaction (TxId: {}) for Block Height: {} added. Amount {}.",
-                    tx_id,
-                    block_height,
-                    amount
+                    "Coinbase transaction (TxId: {}) for Block Height: {} added", tx_id, block_height
                 );
-
-                completed_tx
+                (tx_id, tx)
             },
         };
 
-        let tx_id = completed_transaction.tx_id;
         if let Err(e) = self
             .start_coinbase_transaction_monitoring_protocol(tx_id, coinbase_monitoring_protocol_join_handles)
             .await
@@ -1713,7 +1699,7 @@ where
             );
         }
 
-        Ok(completed_transaction.transaction)
+        Ok(completed_transaction)
     }
 
     /// Send a request to the Base Node to see if the specified coinbase transaction has been mined yet. This function
@@ -1931,7 +1917,7 @@ where
     #[cfg(feature = "test_harness")]
     pub async fn receive_test_transaction(
         &mut self,
-        tx_id: TxId,
+        _tx_id: TxId,
         amount: MicroTari,
         source_public_key: CommsPublicKey,
     ) -> Result<(), TransactionServiceError>
@@ -1939,17 +1925,14 @@ where
         use crate::{
             output_manager_service::{
                 config::OutputManagerServiceConfig,
+                error::OutputManagerError,
                 service::OutputManagerService,
                 storage::{database::OutputManagerDatabase, memory_db::OutputManagerMemoryDatabase},
             },
             transaction_service::{handle::TransactionServiceHandle, storage::models::InboundTransaction},
         };
         use futures::stream;
-        use tari_core::{
-            consensus::{ConsensusConstantsBuilder, Network},
-            transactions::{transaction::OutputFeatures, ReceiverTransactionProtocol},
-        };
-        use tari_crypto::keys::SecretKey as SecretKeyTrait;
+        use tari_core::consensus::{ConsensusConstantsBuilder, Network};
         use tari_shutdown::Shutdown;
 
         let (_sender, receiver) = reply_channel::unbounded();
@@ -1958,7 +1941,7 @@ where
         let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
         let (event_publisher, _) = broadcast::channel(100);
         let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
-        let constants = ConsensusConstantsBuilder::new(Network::Rincewind).build();
+        let constants = ConsensusConstantsBuilder::new(Network::Ridcully).build();
         let shutdown = Shutdown::new();
         let mut fake_oms = OutputManagerService::new(
             OutputManagerServiceConfig::default(),
@@ -1969,7 +1952,7 @@ where
             OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
             oms_event_publisher,
             self.resources.factories.clone(),
-            constants.coinbase_lock_height(),
+            constants,
             shutdown.to_signal(),
         )
         .await?;
@@ -1989,18 +1972,19 @@ where
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
 
-        let spending_key = self
+        let (tx_id, _amount) = match sender_message.clone() {
+            TransactionSenderMessage::Single(data) => (data.tx_id, data.amount),
+            _ => {
+                return Err(TransactionServiceError::OutputManagerError(
+                    OutputManagerError::InvalidSenderMessage,
+                ))
+            },
+        };
+
+        let rtp = self
             .output_manager_service
-            .get_recipient_spending_key(tx_id, amount)
+            .get_recipient_transaction(sender_message)
             .await?;
-        let nonce = PrivateKey::random(&mut OsRng);
-        let rtp = ReceiverTransactionProtocol::new(
-            sender_message,
-            nonce,
-            spending_key.clone(),
-            OutputFeatures::default(),
-            &self.resources.factories,
-        );
 
         let inbound_transaction = InboundTransaction::new(
             tx_id,
@@ -2035,11 +2019,22 @@ where
     /// wallet sending a transaction to this wallet which will become a PendingInboundTransaction
     #[cfg(feature = "test_harness")]
     pub async fn finalize_received_test_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
+        use tari_core::transactions::{transaction::KernelBuilder, types::Signature};
+        use tari_crypto::commitment::HomomorphicCommitmentFactory;
+
+        let factories = CryptoFactories::default();
+
         let inbound_txs = self.db.get_pending_inbound_transactions().await?;
 
         let found_tx = inbound_txs.get(&tx_id).ok_or_else(|| {
             TransactionServiceError::TestHarnessError("Could not find Pending Inbound TX to finalize.".to_string())
         })?;
+
+        let kernel = KernelBuilder::new()
+            .with_excess(&factories.commitment.zero())
+            .with_signature(&Signature::default())
+            .build()
+            .unwrap();
 
         let completed_transaction = CompletedTransaction::new(
             tx_id,
@@ -2047,7 +2042,7 @@ where
             self.node_identity.public_key().clone(),
             found_tx.amount,
             MicroTari::from(2000), // a placeholder fee for this test function
-            Transaction::new(Vec::new(), Vec::new(), Vec::new(), BlindingFactor::default()),
+            Transaction::new(Vec::new(), Vec::new(), vec![kernel], BlindingFactor::default()),
             TransactionStatus::Completed,
             found_tx.message.clone(),
             found_tx.timestamp,
@@ -2085,7 +2080,6 @@ where TBackend: TransactionBackend + 'static
     pub node_identity: Arc<NodeIdentity>,
     pub factories: CryptoFactories,
     pub config: TransactionServiceConfig,
-    pub consensus_constants: ConsensusConstants,
     pub shutdown_signal: ShutdownSignal,
 }
 

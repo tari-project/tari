@@ -24,7 +24,13 @@ use crate::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError},
-        handle::{OutputManagerEvent, OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
+        handle::{
+            OutputManagerEvent,
+            OutputManagerEventSender,
+            OutputManagerRequest,
+            OutputManagerResponse,
+            PublicRewindKeys,
+        },
         protocols::txo_validation_protocol::{TxoValidationProtocol, TxoValidationRetry, TxoValidationType},
         storage::{
             database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
@@ -43,6 +49,7 @@ use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     base_node::proto,
+    consensus::ConsensusConstants,
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
@@ -54,11 +61,17 @@ use tari_core::{
             TransactionOutput,
             UnblindedOutput,
         },
-        types::{CryptoFactories, PrivateKey},
+        transaction_protocol::{sender::TransactionSenderMessage, RewindData},
+        types::{CryptoFactories, PrivateKey, PublicKey},
+        CoinbaseBuilder,
+        ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::keys::SecretKey as SecretKeyTrait;
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    range_proof::REWIND_USER_MESSAGE_LENGTH,
+};
 use tari_key_manager::{
     key_manager::KeyManager,
     mnemonic::{from_secret_key, MnemonicLanguage},
@@ -73,6 +86,10 @@ use tokio::{
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
 const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
+
+const KEY_MANAGER_COINBASE_BRANCH_KEY: &str = "coinbase";
+const KEY_MANAGER_RECOVERY_VIEWONLY_BRANCH_KEY: &str = "recovery_viewonly";
+const KEY_MANAGER_RECOVERY_BLINDING_BRANCH_KEY: &str = "recovery_blinding";
 
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
@@ -109,7 +126,7 @@ where
         db: OutputManagerDatabase<TBackend>,
         event_publisher: OutputManagerEventSender,
         factories: CryptoFactories,
-        coinbase_lock_height: u64,
+        consensus_constants: ConsensusConstants,
         shutdown_signal: ShutdownSignal,
     ) -> Result<OutputManagerService<TBackend, BNResponseStream>, OutputManagerError>
     {
@@ -127,14 +144,37 @@ where
             Some(km) => km,
         };
 
-        let coinbase_key_manager =
-            KeyManager::<PrivateKey, KeyDigest>::from(key_manager_state.master_key.clone(), "coinbase".to_string(), 0);
+        let coinbase_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
+            key_manager_state.master_key.clone(),
+            KEY_MANAGER_COINBASE_BRANCH_KEY.to_string(),
+            0,
+        );
 
         let key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key,
+            key_manager_state.master_key.clone(),
             key_manager_state.branch_seed,
             key_manager_state.primary_key_index,
         );
+
+        let rewind_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
+            key_manager_state.master_key.clone(),
+            KEY_MANAGER_RECOVERY_VIEWONLY_BRANCH_KEY.to_string(),
+            0,
+        );
+        let rewind_key = rewind_key_manager.derive_key(0)?.k;
+
+        let rewind_blinding_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
+            key_manager_state.master_key,
+            KEY_MANAGER_RECOVERY_BLINDING_BRANCH_KEY.to_string(),
+            0,
+        );
+        let rewind_blinding_key = rewind_blinding_key_manager.derive_key(0)?.k;
+
+        let rewind_data = RewindData {
+            rewind_key,
+            rewind_blinding_key,
+            proof_message: [0u8; REWIND_USER_MESSAGE_LENGTH],
+        };
 
         // Clear any encumberances for transactions that were being negotiated but did not complete to become official
         // Pending Transactions.
@@ -148,7 +188,8 @@ where
             factories,
             base_node_public_key: None,
             event_publisher,
-            coinbase_lock_height,
+            rewind_data,
+            consensus_constants,
         };
 
         let (base_node_response_publisher, _) = broadcast::channel(50);
@@ -254,14 +295,14 @@ where
                 self.add_output(uo).await.map(|_| OutputManagerResponse::OutputAdded)
             },
             OutputManagerRequest::GetBalance => self.get_balance(None).await.map(OutputManagerResponse::Balance),
-            OutputManagerRequest::GetRecipientKey((tx_id, amount)) => self
-                .get_recipient_spending_key(tx_id, amount)
+            OutputManagerRequest::GetRecipientTransaction(tsm) => self
+                .get_recipient_transaction(tsm)
                 .await
-                .map(OutputManagerResponse::RecipientKeyGenerated),
-            OutputManagerRequest::GetCoinbaseKey((tx_id, amount, block_height)) => self
-                .get_coinbase_spending_key(tx_id, amount, block_height)
+                .map(OutputManagerResponse::RecipientTransactionGenerated),
+            OutputManagerRequest::GetCoinbaseTransaction((tx_id, reward, fees, block_height)) => self
+                .get_coinbase_transaction(tx_id, reward, fees, block_height)
                 .await
-                .map(OutputManagerResponse::CoinbaseKeyGenerated),
+                .map(OutputManagerResponse::CoinbaseTransaction),
             OutputManagerRequest::PrepareToSendTransaction((amount, fee_per_gram, lock_height, message)) => self
                 .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message)
                 .await
@@ -339,6 +380,9 @@ where
                 .await
                 .map(|_| OutputManagerResponse::EncryptionRemoved)
                 .map_err(OutputManagerError::OutputManagerStorageError),
+            OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
+                self.get_rewind_public_keys(),
+            ))),
         }
     }
 
@@ -443,18 +487,22 @@ where
         Ok(balance)
     }
 
-    /// Request a spending key to be used to accept a transaction from a sender.
-    async fn get_recipient_spending_key(
+    /// Request a receiver transaction be generated from the supplied Sender Message
+    async fn get_recipient_transaction(
         &mut self,
-        tx_id: TxId,
-        amount: MicroTari,
-    ) -> Result<PrivateKey, OutputManagerError>
+        sender_message: TransactionSenderMessage,
+    ) -> Result<ReceiverTransactionProtocol, OutputManagerError>
     {
         let mut key = PrivateKey::default();
         {
             let mut km = self.key_manager.lock().await;
             key = km.next_key()?.k;
         }
+
+        let (tx_id, amount) = match sender_message.clone() {
+            TransactionSenderMessage::Single(data) => (data.tx_id, data.amount),
+            _ => return Err(OutputManagerError::InvalidSenderMessage),
+        };
 
         self.resources.db.increment_key_index().await?;
         self.resources
@@ -470,19 +518,32 @@ where
             .await?;
 
         self.confirm_encumberance(tx_id).await?;
-        Ok(key)
+
+        let nonce = PrivateKey::random(&mut OsRng);
+
+        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
+            sender_message,
+            nonce,
+            key,
+            OutputFeatures::default(),
+            &self.resources.factories,
+            &self.resources.rewind_data,
+        );
+
+        Ok(rtp)
     }
 
-    /// Request a spending key for a coinbase transaction for a specific height. All existing pending transactions with
+    /// Request a Coinbase transaction for a specific block height. All existing pending transactions with
     /// this blockheight will be cancelled.
     /// The key will be derived from the coinbase specific keychain using the blockheight as an index. The coinbase
     /// keychain is based on the wallets master_key and the "coinbase" branch.
-    async fn get_coinbase_spending_key(
+    async fn get_coinbase_transaction(
         &mut self,
         tx_id: TxId,
-        amount: MicroTari,
+        reward: MicroTari,
+        fees: MicroTari,
         block_height: u64,
-    ) -> Result<PrivateKey, OutputManagerError>
+    ) -> Result<Transaction, OutputManagerError>
     {
         let mut key = PrivateKey::default();
         {
@@ -495,20 +556,31 @@ where
             .cancel_pending_transaction_at_block_height(block_height)
             .await?;
 
+        let nonce = PrivateKey::random(&mut OsRng);
+        let (tx, _) = CoinbaseBuilder::new(self.resources.factories.clone())
+            .with_block_height(block_height)
+            .with_fees(fees)
+            .with_spend_key(key.clone())
+            .with_nonce(nonce)
+            .with_rewind_data(self.resources.rewind_data.clone())
+            .build_with_reward(&self.resources.consensus_constants, reward)?;
+
         self.resources
             .db
             .accept_incoming_pending_transaction(
                 tx_id,
-                amount,
-                key.clone(),
-                OutputFeatures::create_coinbase(block_height + self.resources.coinbase_lock_height),
+                reward + fees,
+                key,
+                OutputFeatures::create_coinbase(
+                    block_height + self.resources.consensus_constants.coinbase_lock_height(),
+                ),
                 &self.resources.factories,
                 Some(block_height),
             )
             .await?;
 
         self.confirm_encumberance(tx_id).await?;
-        Ok(key)
+        Ok(tx)
     }
 
     /// Confirm the reception of an expected transaction output. This will be called by the Transaction Service when it
@@ -595,7 +667,7 @@ where
             }
             self.resources.db.increment_key_index().await?;
             change_key = Some(key.clone());
-            builder.with_change_secret(key);
+            builder.with_rewindable_change_secret(key, self.resources.rewind_data.clone());
         }
 
         let stp = builder
@@ -606,11 +678,7 @@ where
         let mut change_output = Vec::<DbUnblindedOutput>::new();
         if let Some(key) = change_key {
             change_output.push(DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput {
-                    value: stp.get_amount_to_self()?,
-                    spending_key: key,
-                    features: OutputFeatures::default(),
-                },
+                UnblindedOutput::new(stp.get_amount_to_self()?, key, None),
                 &self.resources.factories,
             )?);
         }
@@ -920,6 +988,15 @@ where
             &MnemonicLanguage::English,
         )?)
     }
+
+    /// Return the public rewind keys
+
+    fn get_rewind_public_keys(&self) -> PublicRewindKeys {
+        PublicRewindKeys {
+            rewind_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_key),
+            rewind_blinding_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_blinding_key),
+        }
+    }
 }
 
 /// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
@@ -979,5 +1056,6 @@ where TBackend: OutputManagerBackend + 'static
     pub factories: CryptoFactories,
     pub base_node_public_key: Option<CommsPublicKey>,
     pub event_publisher: OutputManagerEventSender,
-    pub coinbase_lock_height: u64,
+    pub rewind_data: RewindData,
+    pub consensus_constants: ConsensusConstants,
 }

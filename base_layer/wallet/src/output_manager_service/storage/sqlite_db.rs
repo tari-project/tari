@@ -990,21 +990,21 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
     type Error = OutputManagerStorageError;
 
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
-        let unblinded_output = UnblindedOutput {
-            value: MicroTari::from(o.value as u64),
-            spending_key: PrivateKey::from_vec(&o.spending_key).map_err(|_| {
+        let unblinded_output = UnblindedOutput::new(
+            MicroTari::from(o.value as u64),
+            PrivateKey::from_vec(&o.spending_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might be encrypted"
                 );
                 OutputManagerStorageError::ConversionError
             })?,
-            features: OutputFeatures {
+            Some(OutputFeatures {
                 flags: OutputFlags::from_bits(o.flags as u8)
                     .ok_or_else(|| OutputManagerStorageError::ConversionError)?,
                 maturity: o.maturity as u64,
-            },
-        };
+            }),
+        );
         let hash = match o.hash {
             None => {
                 // This should only happen if the database didn't migrate yet.

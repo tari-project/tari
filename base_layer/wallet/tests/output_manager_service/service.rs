@@ -47,18 +47,17 @@ use tari_core::{
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
-        transaction::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
-        transaction_protocol::single_receiver::SingleReceiverTransactionProtocol,
-        types::{CryptoFactories, PrivateKey, RangeProof},
+        transaction::{KernelFeatures, OutputFeatures, Transaction, UnblindedOutput},
+        transaction_protocol::{
+            recipient::RecipientState,
+            sender::TransactionSenderMessage,
+            single_receiver::SingleReceiverTransactionProtocol,
+        },
+        types::{CryptoFactories, PrivateKey},
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::SecretKey,
-    range_proof::RangeProofService,
-    tari_utilities::{hash::Hashable, ByteArray},
-};
+use tari_crypto::{hash::blake2::Blake256, keys::SecretKey, tari_utilities::hash::Hashable};
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
@@ -75,6 +74,7 @@ use tari_wallet::{
             models::DbUnblindedOutput,
             sqlite_db::OutputManagerSqliteDatabase,
         },
+        TxId,
     },
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::handle::TransactionServiceHandle,
@@ -109,7 +109,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let (event_publisher, _) = channel(100);
     let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
 
-    let constants = ConsensusConstantsBuilder::new(Network::Rincewind).build();
+    let constants = ConsensusConstantsBuilder::new(Network::Ridcully).build();
 
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
@@ -125,7 +125,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
             OutputManagerDatabase::new(backend),
             oms_event_publisher.clone(),
             factories.clone(),
-            constants.coinbase_lock_height(),
+            constants,
             shutdown.to_signal(),
         ))
         .unwrap();
@@ -162,9 +162,15 @@ async fn complete_transaction(mut stp: SenderTransactionProtocol, mut oms: Outpu
     }
     let msg = stp.build_single_round_message().unwrap();
     let b = TestParams::new(&mut OsRng);
-    let recv_info =
-        SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::default(), &factories)
-            .unwrap();
+    let recv_info = SingleReceiverTransactionProtocol::create(
+        &msg,
+        b.nonce,
+        b.spend_key,
+        OutputFeatures::default(),
+        &factories,
+        None,
+    )
+    .unwrap();
     stp.add_single_recipient_info(recv_info.clone(), &factories.range_proof)
         .unwrap();
     stp.finalize(KernelFeatures::empty(), &factories).unwrap();
@@ -205,6 +211,39 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
     let sender_tx_id = stp.get_tx_id().unwrap();
 
     let tx = runtime.block_on(complete_transaction(stp, oms.clone()));
+
+    let rewind_public_keys = runtime.block_on(oms.get_rewind_public_keys()).unwrap();
+
+    // 1 of the 2 outputs should be rewindable, there should be 2 outputs due to change but if we get unlucky enough
+    // that there is no change we will skip this aspect of the test
+    if tx.body.outputs().len() > 1 {
+        let mut num_rewound = 0;
+
+        let output = tx.body.outputs()[0].clone();
+        match output.rewind_range_proof_value_only(
+            &factories.range_proof,
+            &rewind_public_keys.rewind_public_key,
+            &rewind_public_keys.rewind_blinding_public_key,
+        ) {
+            Ok(_) => {
+                num_rewound += 1;
+            },
+            Err(_) => {},
+        }
+
+        let output = tx.body.outputs()[1].clone();
+        match output.rewind_range_proof_value_only(
+            &factories.range_proof,
+            &rewind_public_keys.rewind_public_key,
+            &rewind_public_keys.rewind_blinding_public_key,
+        ) {
+            Ok(_) => {
+                num_rewound += 1;
+            },
+            Err(_) => {},
+        }
+        assert_eq!(num_rewound, 1, "Should only be 1 rewindable output");
+    }
 
     runtime
         .block_on(oms.confirm_transaction(sender_tx_id, tx.body.inputs().clone(), tx.body.outputs().clone()))
@@ -329,9 +368,15 @@ fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
 
     let b = TestParams::new(&mut OsRng);
 
-    let recv_info =
-        SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, OutputFeatures::default(), &factories)
-            .unwrap();
+    let recv_info = SingleReceiverTransactionProtocol::create(
+        &msg,
+        b.nonce,
+        b.spend_key,
+        OutputFeatures::default(),
+        &factories,
+        None,
+    )
+    .unwrap();
 
     stp.add_single_recipient_info(recv_info.clone(), &factories.range_proof)
         .unwrap();
@@ -413,28 +458,47 @@ fn send_not_enough_for_change_sqlite_db() {
     send_not_enough_for_change(OutputManagerSqliteDatabase::new(connection, None));
 }
 
-fn receiving_and_confirmation<T: OutputManagerBackend + 'static>(backend: T) {
+fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionSenderMessage) {
     let factories = CryptoFactories::default();
 
+    let alice = TestParams::new(&mut OsRng);
+
+    let (utxo, input) = make_input(&mut OsRng, 2 * amount, &factories.commitment);
+    let mut builder = SenderTransactionProtocol::builder(1);
+    builder
+        .with_lock_height(0)
+        .with_fee_per_gram(MicroTari(20))
+        .with_offset(alice.offset.clone())
+        .with_private_nonce(alice.nonce.clone())
+        .with_change_secret(alice.change_key.clone())
+        .with_input(utxo.clone(), input)
+        .with_amount(0, amount);
+    let mut stp = builder.build::<Blake256>(&factories).unwrap();
+    let tx_id = stp.get_tx_id().unwrap();
+    (
+        tx_id,
+        TransactionSenderMessage::new_single_round_message(stp.build_single_round_message().unwrap()),
+    )
+}
+
+fn receiving_and_confirmation<T: OutputManagerBackend + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
 
     let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
 
     let value = MicroTari::from(5000);
-    let recv_key = runtime.block_on(oms.get_recipient_spending_key(1, value)).unwrap();
+    let (tx_id, sender_message) = generate_sender_transaction_message(value);
+    let rtp = runtime.block_on(oms.get_recipient_transaction(sender_message)).unwrap();
     assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 0);
     assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 1);
 
-    let commitment = factories.commitment.commit(&recv_key, &value.into());
-    let rr = factories.range_proof.construct_proof(&recv_key, value.into()).unwrap();
-    let output = TransactionOutput::new(
-        OutputFeatures::create_coinbase(1),
-        commitment,
-        RangeProof::from_bytes(&rr).unwrap(),
-    );
+    let output = match rtp.state {
+        RecipientState::Finalized(s) => s.output,
+        RecipientState::Failed(_) => panic!("Should not be in Failed state"),
+    };
 
     runtime
-        .block_on(oms.confirm_transaction(1, vec![], vec![output]))
+        .block_on(oms.confirm_transaction(tx_id, vec![], vec![output]))
         .unwrap();
 
     assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 0);
@@ -590,7 +654,8 @@ fn test_get_balance<T: OutputManagerBackend + 'static>(backend: T) {
     let change_val = stp.get_change_amount().unwrap();
 
     let recv_value = MicroTari::from(1500);
-    let _recv_key = runtime.block_on(oms.get_recipient_spending_key(1, recv_value)).unwrap();
+    let (_tx_id, sender_message) = generate_sender_transaction_message(recv_value);
+    let _rtp = runtime.block_on(oms.get_recipient_transaction(sender_message)).unwrap();
 
     let balance = runtime.block_on(oms.get_balance()).unwrap();
 
@@ -616,26 +681,35 @@ fn test_get_balance_sqlite_db() {
 }
 
 fn test_confirming_received_output<T: OutputManagerBackend + 'static>(backend: T) {
-    let factories = CryptoFactories::default();
-
     let mut runtime = Runtime::new().unwrap();
 
     let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
 
     let value = MicroTari::from(5000);
-    let recv_key = runtime.block_on(oms.get_recipient_spending_key(1, value)).unwrap();
-    let commitment = factories.commitment.commit(&recv_key, &value.into());
+    let (tx_id, sender_message) = generate_sender_transaction_message(value);
+    let rtp = runtime.block_on(oms.get_recipient_transaction(sender_message)).unwrap();
+    assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 0);
+    assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 1);
 
-    let rr = factories.range_proof.construct_proof(&recv_key, value.into()).unwrap();
-    let output = TransactionOutput::new(
-        OutputFeatures::create_coinbase(1),
-        commitment,
-        RangeProof::from_bytes(&rr).unwrap(),
-    );
+    let output = match rtp.state {
+        RecipientState::Finalized(s) => s.output,
+        RecipientState::Failed(_) => panic!("Should not be in Failed state"),
+    };
     runtime
-        .block_on(oms.confirm_transaction(1, vec![], vec![output]))
+        .block_on(oms.confirm_transaction(tx_id, vec![], vec![output.clone()]))
         .unwrap();
     assert_eq!(runtime.block_on(oms.get_balance()).unwrap().available_balance, value);
+
+    let factories = CryptoFactories::default();
+    let rewind_public_keys = runtime.block_on(oms.get_rewind_public_keys()).unwrap();
+    let rewind_result = output
+        .rewind_range_proof_value_only(
+            &factories.range_proof,
+            &rewind_public_keys.rewind_public_key,
+            &rewind_public_keys.rewind_blinding_public_key,
+        )
+        .unwrap();
+    assert_eq!(rewind_result.committed_value, value);
 }
 
 #[test]
@@ -1422,30 +1496,42 @@ fn coin_split_no_change_sqlite_db() {
 }
 
 fn handle_coinbase<T: Clone + OutputManagerBackend + 'static>(backend: T) {
-    let factories = CryptoFactories::default();
-
     let mut runtime = Runtime::new().unwrap();
+    let factories = CryptoFactories::default();
 
     let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend);
 
-    let value1 = MicroTari::from(1000);
-    let value2 = MicroTari::from(2000);
-    let value3 = MicroTari::from(4000);
-    let recv_key1 = runtime.block_on(oms.get_coinbase_spending_key(1, value1, 1)).unwrap();
+    let reward1 = MicroTari::from(1000);
+    let fees1 = MicroTari::from(500);
+    let value1 = reward1 + fees1;
+    let reward2 = MicroTari::from(2000);
+    let fees2 = MicroTari::from(500);
+    let value2 = reward2 + fees2;
+    let reward3 = MicroTari::from(3000);
+    let fees3 = MicroTari::from(500);
+    let value3 = reward3 + fees3;
+
+    let _ = runtime
+        .block_on(oms.get_coinbase_transaction(1, reward1, fees1, 1))
+        .unwrap();
     assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 0);
     assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 1);
     assert_eq!(
         runtime.block_on(oms.get_balance()).unwrap().pending_incoming_balance,
         value1
     );
-    let recv_key2 = runtime.block_on(oms.get_coinbase_spending_key(2, value2, 1)).unwrap();
+    let _tx2 = runtime
+        .block_on(oms.get_coinbase_transaction(2, reward2, fees2, 1))
+        .unwrap();
     assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 0);
     assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 1);
     assert_eq!(
         runtime.block_on(oms.get_balance()).unwrap().pending_incoming_balance,
         value2
     );
-    let recv_key3 = runtime.block_on(oms.get_coinbase_spending_key(3, value3, 2)).unwrap();
+    let tx3 = runtime
+        .block_on(oms.get_coinbase_transaction(3, reward3, fees3, 2))
+        .unwrap();
     assert_eq!(runtime.block_on(oms.get_unspent_outputs()).unwrap().len(), 0);
     assert_eq!(runtime.block_on(oms.get_pending_transactions()).unwrap().len(), 2);
     assert_eq!(
@@ -1453,19 +1539,17 @@ fn handle_coinbase<T: Clone + OutputManagerBackend + 'static>(backend: T) {
         value2 + value3
     );
 
-    assert_eq!(recv_key1, recv_key2);
-    assert_ne!(recv_key1, recv_key3);
+    let output = tx3.body.outputs()[0].clone();
 
-    let commitment = factories.commitment.commit(&recv_key3, &value3.into());
-    let rr = factories
-        .range_proof
-        .construct_proof(&recv_key3, value3.into())
+    let rewind_public_keys = runtime.block_on(oms.get_rewind_public_keys()).unwrap();
+    let rewind_result = output
+        .rewind_range_proof_value_only(
+            &factories.range_proof,
+            &rewind_public_keys.rewind_public_key,
+            &rewind_public_keys.rewind_blinding_public_key,
+        )
         .unwrap();
-    let output = TransactionOutput::new(
-        OutputFeatures::create_coinbase(3),
-        commitment,
-        RangeProof::from_bytes(&rr).unwrap(),
-    );
+    assert_eq!(rewind_result.committed_value, value3);
 
     runtime
         .block_on(oms.confirm_transaction(3, vec![], vec![output]))

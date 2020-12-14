@@ -29,11 +29,7 @@ use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
 use tari_comms::peer_manager::node_id::NodeIdError;
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::{
-    transaction::TransactionError,
-    transaction_protocol::TransactionProtocolError,
-    CoinbaseBuildError,
-};
+use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
@@ -121,8 +117,6 @@ pub enum TransactionServiceError {
     OneshotCancelled(#[from] Canceled),
     #[error("Liveness error: `{0}`")]
     LivenessError(#[from] LivenessError),
-    #[error("Coinbase build error: `{0}`")]
-    CoinbaseBuildError(#[from] CoinbaseBuildError),
     #[error("Pending Transaction Timed out")]
     Timeout,
     #[error("Shutdown Signal Received")]

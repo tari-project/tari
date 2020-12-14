@@ -89,12 +89,12 @@ pub mod transaction_initializer;
 use crate::transactions::{
     tari_amount::*,
     transaction::TransactionError,
-    types::{Challenge, MessageHash, PublicKey},
+    types::{Challenge, MessageHash, PrivateKey, PublicKey},
 };
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
-    range_proof::RangeProofError,
+    range_proof::{RangeProofError, REWIND_USER_MESSAGE_LENGTH},
     signatures::SchnorrSignatureError,
     tari_utilities::byte_array::ByteArray,
 };
@@ -133,6 +133,13 @@ pub struct TransactionMetadata {
     pub fee: MicroTari,
     /// The earliest block this transaction can be mined
     pub lock_height: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct RewindData {
+    pub rewind_key: PrivateKey,
+    pub rewind_blinding_key: PrivateKey,
+    pub proof_message: [u8; REWIND_USER_MESSAGE_LENGTH],
 }
 
 /// Convenience function that calculates the challenge for the Schnorr signatures

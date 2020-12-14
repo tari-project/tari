@@ -151,7 +151,7 @@ where T: OutputManagerBackend + 'static
                 OutputManagerDatabase::new(backend),
                 publisher,
                 factories,
-                constants.coinbase_lock_height(),
+                constants,
                 handles.get_shutdown_signal(),
             )
             .await

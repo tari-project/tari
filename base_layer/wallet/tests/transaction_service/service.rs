@@ -164,7 +164,7 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static, P: AsRef<Path>
             subscription_factory.clone(),
             OutputManagerMemoryDatabase::new(),
             factories.clone(),
-            Network::Rincewind,
+            Network::Ridcully,
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig {
@@ -177,7 +177,6 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static, P: AsRef<Path>
             backend,
             comms.node_identity().clone(),
             factories.clone(),
-            Network::Rincewind,
         ))
         .build();
 
@@ -257,7 +256,7 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
 
     let outbound_mock_state = mock_outbound_service.get_state();
     runtime.spawn(mock_outbound_service.run());
-    let constants = ConsensusConstantsBuilder::new(Network::Rincewind).build();
+    let constants = ConsensusConstantsBuilder::new(Network::Ridcully).build();
 
     let shutdown = Shutdown::new();
 
@@ -271,13 +270,12 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
             OutputManagerDatabase::new(oms_backend),
             oms_event_publisher.clone(),
             factories.clone(),
-            constants.coinbase_lock_height(),
+            constants,
             shutdown.to_signal(),
         ))
         .unwrap();
 
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
-    let constants = ConsensusConstantsBuilder::new(Network::Rincewind).build();
 
     let test_config = config.unwrap_or(TransactionServiceConfig {
         broadcast_monitoring_timeout: Duration::from_secs(5),
@@ -307,7 +305,6 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
             NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
         ),
         factories.clone(),
-        constants,
         shutdown.to_signal(),
     );
     runtime.spawn(async move { output_manager_service.start().await.unwrap() });

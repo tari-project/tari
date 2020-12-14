@@ -23,7 +23,11 @@
 use crate::output_manager_service::storage::database::DbKey;
 use diesel::result::Error as DieselError;
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
+use tari_core::transactions::{
+    transaction::TransactionError,
+    transaction_protocol::TransactionProtocolError,
+    CoinbaseBuildError,
+};
 use tari_crypto::tari_utilities::ByteArrayError;
 use tari_key_manager::{key_manager::KeyManagerError, mnemonic::MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
@@ -80,6 +84,10 @@ pub enum OutputManagerError {
     ServiceError(String),
     #[error("Base node is not synced")]
     BaseNodeNotSynced,
+    #[error("Invalid Sender Message Type")]
+    InvalidSenderMessage,
+    #[error("Coinbase build error: `{0}`")]
+    CoinbaseBuildError(#[from] CoinbaseBuildError),
 }
 
 #[derive(Debug, Error, PartialEq)]

@@ -166,7 +166,6 @@ impl WalletBootstrapper {
                 transaction_db,
                 self.node_identity.clone(),
                 self.factories,
-                config.network.into(),
             ))
             .build()
             .await?;
