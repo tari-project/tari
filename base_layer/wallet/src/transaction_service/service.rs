@@ -136,7 +136,7 @@ pub struct TransactionService<
     resources: TransactionServiceResources<TBackend>,
     pending_transaction_reply_senders: HashMap<TxId, Sender<(CommsPublicKey, RecipientSignedMessage)>>,
     mempool_response_senders: HashMap<u64, Sender<MempoolServiceResponse>>,
-    base_node_response_senders: HashMap<u64, Sender<base_node_proto::BaseNodeServiceResponse>>,
+    base_node_response_senders: HashMap<u64, (TxId, Sender<base_node_proto::BaseNodeServiceResponse>)>,
     send_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
     finalized_transaction_senders: HashMap<u64, Sender<(CommsPublicKey, TxId, Transaction)>>,
     receiver_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
@@ -1288,7 +1288,8 @@ where
                 let (mempool_response_sender, mempool_response_receiver) = mpsc::channel(500);
                 let (base_node_response_sender, base_node_response_receiver) = mpsc::channel(500);
                 self.mempool_response_senders.insert(tx_id, mempool_response_sender);
-                self.base_node_response_senders.insert(tx_id, base_node_response_sender);
+                self.base_node_response_senders
+                    .insert(tx_id, (tx_id, base_node_response_sender));
                 let protocol = TransactionBroadcastProtocol::new(
                     tx_id,
                     self.resources.clone(),
@@ -1441,7 +1442,7 @@ where
                 self.mempool_response_senders
                     .insert(protocol_id, mempool_response_sender);
                 self.base_node_response_senders
-                    .insert(protocol_id, base_node_response_sender);
+                    .insert(protocol_id, (tx_id, base_node_response_sender));
                 let protocol = TransactionChainMonitoringProtocol::new(
                     protocol_id,
                     completed_tx.tx_id,
@@ -1509,7 +1510,7 @@ where
                 );
                 return Ok(());
             },
-            Some(s) => s,
+            Some((_, s)) => s,
         };
         sender
             .send(response.clone())
@@ -1729,6 +1730,12 @@ where
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
 
+        // Confirm that an existing coinbase monitoring protocol doesn't already exist for this transaction
+        if self.base_node_response_senders.values().any(|(t, _s)| t == &tx_id) {
+            // In this case we do not need to spawn a new monitoring protocol
+            return Ok(());
+        }
+
         let block_height = if let Some(bh) = completed_tx.coinbase_block_height {
             bh
         } else {
@@ -1746,7 +1753,7 @@ where
 
                 let (base_node_response_sender, base_node_response_receiver) = mpsc::channel(100);
                 self.base_node_response_senders
-                    .insert(protocol_id, base_node_response_sender);
+                    .insert(protocol_id, (tx_id, base_node_response_sender));
                 let protocol = TransactionCoinbaseMonitoringProtocol::new(
                     protocol_id,
                     completed_tx.tx_id,
