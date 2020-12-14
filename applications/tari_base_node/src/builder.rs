@@ -41,7 +41,7 @@ use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
     chain_storage::{create_lmdb_database, BlockchainDatabase, BlockchainDatabaseConfig, LMDBDatabase, Validators},
     consensus::ConsensusManagerBuilder,
-    mempool::{service::LocalMempoolService, Mempool, MempoolConfig, MempoolValidators},
+    mempool::{service::LocalMempoolService, Mempool, MempoolConfig},
     mining::{Miner, MinerInstruction},
     transactions::types::CryptoFactories,
     validation::{
@@ -311,12 +311,9 @@ async fn build_node_context(
         pruning_interval: config.pruned_mode_cleanup_interval,
     };
     let blockchain_db = BlockchainDatabase::new(backend, &rules, validators, db_config, cleanup_orphans_at_startup)?;
-    let mempool_validator = MempoolValidators::new(
-        TxInternalConsistencyValidator::new(factories.clone())
-            .and_then(TxInputAndMaturityValidator::new(blockchain_db.clone())),
-        TxInputAndMaturityValidator::new(blockchain_db.clone()),
-    );
-    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
+    let mempool_validator = TxInternalConsistencyValidator::new(factories.clone())
+        .and_then(TxInputAndMaturityValidator::new(blockchain_db.clone()));
+    let mempool = Mempool::new(MempoolConfig::default(), Box::new(mempool_validator));
 
     //---------------------------------- Base Node  --------------------------------------------//
     debug!(target: LOG_TARGET, "Creating base node state machine.");

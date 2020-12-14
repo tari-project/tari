@@ -49,9 +49,8 @@ mod get_stats {
         let expected_stats = StatsResponse {
             total_txs: 1,
             unconfirmed_txs: 2,
-            orphan_txs: 3,
-            timelocked_txs: 4,
-            published_txs: 5,
+
+            reorg_txs: 5,
             total_weight: 6,
         };
         mempool.set_get_stats_response(expected_stats.clone()).await;
@@ -72,8 +71,7 @@ mod get_state {
         let (service, mempool, req_mock, _tmpdir) = setup();
         let expected_state = StateResponse {
             unconfirmed_pool: vec![],
-            orphan_pool: vec![],
-            pending_pool: vec![],
+
             reorg_pool: vec![],
         };
         mempool.set_get_state_response(expected_state.clone()).await;

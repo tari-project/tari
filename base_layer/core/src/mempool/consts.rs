@@ -28,14 +28,6 @@ pub const MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY: usize = 40_000;
 /// skipping over large transactions are performed in an attempt to fit more transactions into the remaining space.
 pub const MEMPOOL_UNCONFIRMED_POOL_WEIGHT_TRANSACTION_SKIP_COUNT: usize = 20;
 
-/// The maximum number of transactions that can be stored in the Orphan pool
-pub const MEMPOOL_ORPHAN_POOL_STORAGE_CAPACITY: usize = 250;
-/// The time-to-live duration used for transactions stored in the OrphanPool
-pub const MEMPOOL_ORPHAN_POOL_CACHE_TTL: Duration = Duration::from_secs(300);
-
-/// The maximum number of transactions that can be stored in the Pending pool
-pub const MEMPOOL_PENDING_POOL_STORAGE_CAPACITY: usize = 5_000;
-
 /// The maximum number of transactions that can be stored in the Reorg pool
 pub const MEMPOOL_REORG_POOL_STORAGE_CAPACITY: usize = 5_000;
 /// The time-to-live duration used for transactions stored in the ReorgPool

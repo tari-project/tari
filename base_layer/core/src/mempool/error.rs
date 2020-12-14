@@ -22,12 +22,7 @@
 
 use crate::{
     chain_storage::ChainStorageError,
-    mempool::{
-        orphan_pool::OrphanPoolError,
-        pending_pool::PendingPoolError,
-        reorg_pool::ReorgPoolError,
-        unconfirmed_pool::UnconfirmedPoolError,
-    },
+    mempool::{reorg_pool::ReorgPoolError, unconfirmed_pool::UnconfirmedPoolError},
     transactions::transaction::TransactionError,
 };
 use tari_service_framework::reply_channel::TransportChannelError;
@@ -37,10 +32,6 @@ use thiserror::Error;
 pub enum MempoolError {
     #[error("Unconfirmed pool error: `{0}`")]
     UnconfirmedPoolError(#[from] UnconfirmedPoolError),
-    #[error("Orphan pool error: `{0}`")]
-    OrphanPoolError(#[from] OrphanPoolError),
-    #[error("Pending pool error: `{0}`")]
-    PendingPoolError(#[from] PendingPoolError),
     #[error("Reorg pool error: `{0}`")]
     ReorgPoolError(#[from] ReorgPoolError),
     #[error("Transaction error: `{0}`")]

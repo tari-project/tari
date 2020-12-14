@@ -118,9 +118,7 @@ mod test {
         StatsResponse {
             total_txs: 10,
             unconfirmed_txs: 3,
-            orphan_txs: 1,
-            timelocked_txs: 2,
-            published_txs: 4,
+            reorg_txs: 4,
             total_weight: 1000,
         }
     }

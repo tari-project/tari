@@ -31,32 +31,9 @@ use crate::{
         TxStorageResponse,
     },
     transactions::{transaction::Transaction, types::Signature},
-    validation::{Validation, Validator},
+    validation::Validator,
 };
 use std::sync::{Arc, RwLock};
-
-/// Struct containing the validators the mempool needs to run, It forces the correct amount of validators are given
-pub struct MempoolValidators {
-    mempool: Validator<Transaction>,
-    orphan: Validator<Transaction>,
-}
-
-impl MempoolValidators {
-    pub fn new(
-        mempool: impl Validation<Transaction> + 'static,
-        orphan: impl Validation<Transaction> + 'static,
-    ) -> Self
-    {
-        Self {
-            mempool: Box::new(mempool),
-            orphan: Box::new(orphan),
-        }
-    }
-
-    pub fn into_validators(self) -> (Validator<Transaction>, Validator<Transaction>) {
-        (self.mempool, self.orphan)
-    }
-}
 
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
 /// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
@@ -68,9 +45,9 @@ pub struct Mempool {
 
 impl Mempool {
     /// Create a new Mempool with an UnconfirmedPool, OrphanPool, PendingPool and ReOrgPool.
-    pub fn new(config: MempoolConfig, validators: MempoolValidators) -> Self {
+    pub fn new(config: MempoolConfig, validator: Validator<Transaction>) -> Self {
         Self {
-            pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, validators))),
+            pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, validator))),
         }
     }
 

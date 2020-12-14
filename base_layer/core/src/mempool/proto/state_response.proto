@@ -13,10 +13,6 @@ message Signature {
 message StateResponse {
     // List of transactions in unconfirmed pool.
     repeated Signature unconfirmed_pool = 1;
-    // List of transactions in orphan pool.
-    repeated Signature orphan_pool = 2;
-    // List of transactions in pending pool.
-    repeated Signature pending_pool = 3;
     // List of transactions in reorg pool.
     repeated Signature reorg_pool = 4;
 }

@@ -448,12 +448,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::UnconfirmedPool => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::Accepted.into(),
             },
-            TxStorageResponse::OrphanPool => tari_rpc::SubmitTransactionResponse {
-                result: tari_rpc::SubmitTransactionResult::NotProcessableAtThisTime.into(),
-            },
-            TxStorageResponse::PendingPool => tari_rpc::SubmitTransactionResponse {
-                result: tari_rpc::SubmitTransactionResult::NotProcessableAtThisTime.into(),
-            },
             TxStorageResponse::ReorgPool => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::AlreadyMined.into(),
             },

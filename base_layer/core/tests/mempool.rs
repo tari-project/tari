@@ -46,14 +46,7 @@ use tari_core::{
     },
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
-    mempool::{
-        Mempool,
-        MempoolConfig,
-        MempoolServiceConfig,
-        MempoolServiceError,
-        MempoolValidators,
-        TxStorageResponse,
-    },
+    mempool::{Mempool, MempoolConfig, MempoolServiceConfig, MempoolServiceError, TxStorageResponse},
     proof_of_work::Difficulty,
     proto,
     test_helpers::blockchain::create_test_blockchain_db,
@@ -77,11 +70,8 @@ use tokio::runtime::Runtime;
 fn test_insert_and_process_published_block() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = MempoolValidators::new(
-        TxInputAndMaturityValidator::new(store.clone()),
-        TxInputAndMaturityValidator::new(store.clone()),
-    );
-    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
+    let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
+    let mempool = Mempool::new(MempoolConfig::default(), Box::new(mempool_validator));
     // Create a block with 4 outputs
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
@@ -125,7 +115,7 @@ fn test_insert_and_process_published_block() {
         mempool
             .has_tx_with_excess_sig(orphan.body.kernels()[0].excess_sig.clone())
             .unwrap(),
-        TxStorageResponse::OrphanPool
+        TxStorageResponse::NotStored
     );
     assert_eq!(
         mempool
@@ -137,14 +127,14 @@ fn test_insert_and_process_published_block() {
         mempool
             .has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.clone())
             .unwrap(),
-        TxStorageResponse::PendingPool
+        TxStorageResponse::NotStored
     );
 
     assert_eq!(
         mempool
             .has_tx_with_excess_sig(tx5.body.kernels()[0].excess_sig.clone())
             .unwrap(),
-        TxStorageResponse::PendingPool
+        TxStorageResponse::NotStored
     );
     assert_eq!(
         mempool
@@ -163,9 +153,7 @@ fn test_insert_and_process_published_block() {
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.total_txs, 4);
     assert_eq!(stats.unconfirmed_txs, 1);
-    assert_eq!(stats.orphan_txs, 1);
-    assert_eq!(stats.timelocked_txs, 2);
-    assert_eq!(stats.published_txs, 0);
+    assert_eq!(stats.reorg_txs, 0);
     assert_eq!(stats.total_weight, 120);
 
     // Spend tx2, so it goes in Reorg pool, tx5 matures, so goes in Unconfirmed pool
@@ -176,7 +164,7 @@ fn test_insert_and_process_published_block() {
         mempool
             .has_tx_with_excess_sig(orphan.body.kernels()[0].excess_sig.clone())
             .unwrap(),
-        TxStorageResponse::OrphanPool
+        TxStorageResponse::NotStored
     );
     assert_eq!(
         mempool
@@ -188,7 +176,7 @@ fn test_insert_and_process_published_block() {
         mempool
             .has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.clone())
             .unwrap(),
-        TxStorageResponse::PendingPool
+        TxStorageResponse::NotStored
     );
     assert_eq!(
         mempool
@@ -212,9 +200,7 @@ fn test_insert_and_process_published_block() {
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.total_txs, 4);
     assert_eq!(stats.unconfirmed_txs, 1);
-    assert_eq!(stats.orphan_txs, 1);
-    assert_eq!(stats.timelocked_txs, 1);
-    assert_eq!(stats.published_txs, 1);
+    assert_eq!(stats.reorg_txs, 1);
     assert_eq!(stats.total_weight, 120);
 }
 
@@ -222,11 +208,8 @@ fn test_insert_and_process_published_block() {
 fn test_retrieve() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = MempoolValidators::new(
-        TxInputAndMaturityValidator::new(store.clone()),
-        TxInputAndMaturityValidator::new(store.clone()),
-    );
-    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
+    let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
+    let mempool = Mempool::new(MempoolConfig::default(), Box::new(mempool_validator));
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
         to: vec![1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T]
@@ -262,8 +245,8 @@ fn test_retrieve() {
     assert!(retrieved_txs.contains(&tx[3]));
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 7);
-    assert_eq!(stats.timelocked_txs, 1);
-    assert_eq!(stats.published_txs, 0);
+    // assert_eq!(stats.timelocked_txs, 1);
+    assert_eq!(stats.reorg_txs, 0);
 
     let block2_txns = vec![
         tx[0].deref().clone(),
@@ -280,8 +263,8 @@ fn test_retrieve() {
     // 2-blocks, 2 unconfirmed txs in mempool, 0 time locked (tx5 time-lock will expire)
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 3);
-    assert_eq!(stats.timelocked_txs, 0);
-    assert_eq!(stats.published_txs, 5);
+    // assert_eq!(stats.timelocked_txs, 0);
+    assert_eq!(stats.reorg_txs, 5);
     // Create transactions wih time-locked inputs
     let txs = vec![
         txn_schema!(from: vec![outputs[2][6].clone()], to: vec![], fee: 80*uT),
@@ -300,8 +283,8 @@ fn test_retrieve() {
     let stats = mempool.stats().unwrap();
 
     assert_eq!(stats.unconfirmed_txs, 4);
-    assert_eq!(stats.timelocked_txs, 1);
-    assert_eq!(stats.published_txs, 5);
+    // assert_eq!(stats.timelocked_txs, 1);
+    assert_eq!(stats.reorg_txs, 5);
     assert_eq!(retrieved_txs.len(), 2);
     assert!(retrieved_txs.contains(&tx[3]));
     assert!(retrieved_txs.contains(&tx2[1]));
@@ -311,11 +294,8 @@ fn test_retrieve() {
 fn test_reorg() {
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    let mempool_validator = MempoolValidators::new(
-        TxInputAndMaturityValidator::new(db.clone()),
-        TxInputAndMaturityValidator::new(db.clone()),
-    );
-    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
+    let mempool_validator = TxInputAndMaturityValidator::new(db.clone());
+    let mempool = Mempool::new(MempoolConfig::default(), Box::new(mempool_validator));
 
     // "Mine" Block 1
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![1 * T, 1 * T])];
@@ -363,8 +343,8 @@ fn test_reorg() {
 
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 0);
-    assert_eq!(stats.timelocked_txs, 1);
-    assert_eq!(stats.published_txs, 5);
+    // assert_eq!(stats.timelocked_txs, 1);
+    assert_eq!(stats.reorg_txs, 5);
 
     db.rewind_to_height(2).unwrap();
 
@@ -376,8 +356,8 @@ fn test_reorg() {
         .unwrap();
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 2);
-    assert_eq!(stats.timelocked_txs, 1);
-    assert_eq!(stats.published_txs, 3);
+    // assert_eq!(stats.timelocked_txs, 1);
+    assert_eq!(stats.reorg_txs, 3);
 
     // "Mine" block 4
     let template = chain_block(&blocks[3], vec![], &consensus_manager);
@@ -422,11 +402,8 @@ fn test_orphaned_mempool_transactions() {
     ];
     let (txns2, _) = schema_to_transaction(&schemas.clone());
     generate_new_block(&mut miner, &mut blocks, &mut outputs, schemas, &consensus_manager).unwrap();
-    let mempool_validator = MempoolValidators::new(
-        TxInputAndMaturityValidator::new(store.clone()),
-        TxInputAndMaturityValidator::new(store.clone()),
-    );
-    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
+    let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
+    let mempool = Mempool::new(MempoolConfig::default(), Box::new(mempool_validator));
     // There are 2 orphan txs
     vec![txns[2].clone(), txns2[0].clone(), txns2[1].clone(), txns2[2].clone()]
         .into_iter()
@@ -437,8 +414,6 @@ fn test_orphaned_mempool_transactions() {
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.total_txs, 4);
     assert_eq!(stats.unconfirmed_txs, 1);
-    assert_eq!(stats.timelocked_txs, 1);
-    assert_eq!(stats.orphan_txs, 2);
     store.add_block(blocks[1].clone().into()).unwrap();
     store.add_block(blocks[2].clone().into()).unwrap();
     mempool.process_published_block(blocks[1].clone().into()).unwrap();
@@ -446,7 +421,6 @@ fn test_orphaned_mempool_transactions() {
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.total_txs, 3);
     assert_eq!(stats.unconfirmed_txs, 1);
-    assert_eq!(stats.orphan_txs, 0);
 }
 
 #[test]
@@ -491,10 +465,8 @@ fn request_response_get_stats() {
     // orphans.
     let stats = bob.mempool.stats().unwrap();
     assert_eq!(stats.total_txs, 3);
-    assert_eq!(stats.orphan_txs, 2);
     assert_eq!(stats.unconfirmed_txs, 0);
-    assert_eq!(stats.timelocked_txs, 1);
-    assert_eq!(stats.published_txs, 0);
+    assert_eq!(stats.reorg_txs, 0);
     assert_eq!(stats.total_weight, 116);
 
     runtime.block_on(async {
@@ -502,9 +474,7 @@ fn request_response_get_stats() {
         let received_stats = alice.outbound_mp_interface.get_stats().await.unwrap();
         assert_eq!(received_stats.total_txs, 3);
         assert_eq!(received_stats.unconfirmed_txs, 0);
-        assert_eq!(received_stats.orphan_txs, 2);
-        assert_eq!(received_stats.timelocked_txs, 1);
-        assert_eq!(received_stats.published_txs, 0);
+        assert_eq!(received_stats.reorg_txs, 0);
         assert_eq!(received_stats.total_weight, 116);
     });
 }
@@ -558,7 +528,7 @@ fn request_response_get_tx_state_by_excess_sig() {
                 .get_tx_state_by_excess_sig(tx_excess_sig)
                 .await
                 .unwrap(),
-            TxStorageResponse::PendingPool
+            TxStorageResponse::NotStored
         );
         assert_eq!(
             alice_node
@@ -574,7 +544,7 @@ fn request_response_get_tx_state_by_excess_sig() {
                 .get_tx_state_by_excess_sig(orphan_tx_excess_sig)
                 .await
                 .unwrap(),
-            TxStorageResponse::OrphanPool
+            TxStorageResponse::NotStored
         );
     });
 }
@@ -645,7 +615,7 @@ fn receive_and_propagate_transaction() {
 
         async_assert_eventually!(
             bob_node.mempool.has_tx_with_excess_sig(tx_excess_sig.clone()).unwrap(),
-            expect = TxStorageResponse::PendingPool,
+            expect = TxStorageResponse::NotStored,
             max_attempts = 20,
             interval = Duration::from_millis(1000)
         );
@@ -654,7 +624,7 @@ fn receive_and_propagate_transaction() {
                 .mempool
                 .has_tx_with_excess_sig(tx_excess_sig.clone())
                 .unwrap(),
-            expect = TxStorageResponse::PendingPool,
+            expect = TxStorageResponse::NotStored,
             max_attempts = 10,
             interval = Duration::from_millis(1000)
         );
@@ -664,7 +634,7 @@ fn receive_and_propagate_transaction() {
                 .mempool
                 .has_tx_with_excess_sig(orphan_excess_sig.clone())
                 .unwrap(),
-            expect = TxStorageResponse::OrphanPool,
+            expect = TxStorageResponse::NotStored,
             max_attempts = 10,
             interval = Duration::from_millis(1000)
         );

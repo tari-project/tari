@@ -26,7 +26,6 @@ use crate::{
         proto,
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
-        MempoolValidators,
     },
     transactions::{helpers::create_tx, tari_amount::uT, transaction::Transaction},
     validation::mocks::MockValidator,
@@ -57,8 +56,7 @@ pub fn create_transactions(n: usize) -> Vec<Transaction> {
 }
 
 fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) {
-    let mempool_validator = MempoolValidators::new(MockValidator::new(true), MockValidator::new(true));
-    let mempool = Mempool::new(Default::default(), mempool_validator);
+    let mempool = Mempool::new(Default::default(), Box::new(MockValidator::new(true)));
 
     let transactions = create_transactions(n);
     for txn in &transactions {
