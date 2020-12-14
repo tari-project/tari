@@ -231,8 +231,8 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_mmr_leaf_index(tree, hash)
     }
 
-    fn get_orphan_count(&self) -> Result<usize, ChainStorageError> {
-        self.db.get_orphan_count()
+    fn orphan_count(&self) -> Result<usize, ChainStorageError> {
+        self.db.orphan_count()
     }
 
     fn fetch_last_header(&self) -> Result<BlockHeader, ChainStorageError> {
@@ -243,12 +243,12 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_chain_metadata()
     }
 
-    fn count_utxos(&self) -> Result<usize, ChainStorageError> {
-        self.db.count_utxos()
+    fn utxo_count(&self) -> Result<usize, ChainStorageError> {
+        self.db.utxo_count()
     }
 
-    fn count_kernels(&self) -> Result<usize, ChainStorageError> {
-        self.db.count_kernels()
+    fn kernel_count(&self) -> Result<usize, ChainStorageError> {
+        self.db.kernel_count()
     }
 
     fn fetch_orphan_chain_tips(&self) -> Result<Vec<HashOutput>, ChainStorageError> {

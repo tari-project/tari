@@ -197,15 +197,15 @@ pub trait BlockchainBackend: Send + Sync {
     #[allow(clippy::ptr_arg)]
     fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &Hash) -> Result<Option<u32>, ChainStorageError>;
     /// Returns the number of blocks in the block orphan pool.
-    fn get_orphan_count(&self) -> Result<usize, ChainStorageError>;
+    fn orphan_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the stored header with the highest corresponding height.
     fn fetch_last_header(&self) -> Result<BlockHeader, ChainStorageError>;
     /// Returns the stored chain metadata.
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError>;
     /// Returns the UTXO count
-    fn count_utxos(&self) -> Result<usize, ChainStorageError>;
+    fn utxo_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the kernel count
-    fn count_kernels(&self) -> Result<usize, ChainStorageError>;
+    fn kernel_count(&self) -> Result<usize, ChainStorageError>;
 
     /// Fetches all of the orphans (hash) that are currently at the tip of an alternate chain
     fn fetch_orphan_chain_tips(&self) -> Result<Vec<HashOutput>, ChainStorageError>;
@@ -621,18 +621,9 @@ where B: BlockchainBackend
         fetch_orphan(&*db, hash)
     }
 
-    pub fn fetch_all_orphans(&self) -> Result<Vec<Block>, ChainStorageError> {
-        unimplemented!()
-        // let db = self.db_read_access()?;
-        // let mut result = vec![];
-        // // TODO: this is a bit clumsy in order to safely handle the results. There should be a cleaner way
-        // db.for_each_orphan(|o| result.push(o))?;
-        // let mut orphans = vec![];
-        // for o in result {
-        //     // check each result
-        //     orphans.push(o?.1);
-        // }
-        // Ok(orphans)
+    pub fn orphan_count(&self) -> Result<usize, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.orphan_count()
     }
 
     /// Returns the set of target difficulties for the specified proof of work algorithm. The calculated target

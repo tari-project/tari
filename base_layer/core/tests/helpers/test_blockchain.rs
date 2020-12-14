@@ -22,7 +22,7 @@
 //
 
 use crate::helpers::{
-    block_builders::{chain_block, find_header_with_achieved_difficulty},
+    block_builders::{chain_block, chain_block_with_new_coinbase, find_header_with_achieved_difficulty},
     block_proxy::BlockProxy,
     sample_blockchains::create_new_blockchain,
     test_block_builder::{TestBlockBuilder, TestBlockBuilderInner},
@@ -34,6 +34,7 @@ use tari_core::{
     chain_storage::{BlockAddResult, BlockchainDatabase},
     consensus::{ConsensusManager, Network},
     test_helpers::blockchain::TempDatabase,
+    transactions::types::CryptoFactories,
 };
 use tari_crypto::tari_utilities::Hashable;
 
@@ -70,7 +71,8 @@ impl TestBlockchain {
         debug!(target: LOG_TARGET, "Adding block '{}' to test block chain", block.name);
         let prev_block = self.blocks.get(&block.child_of.unwrap());
         let prev_block = prev_block.map(|b| &b.block).unwrap();
-        let template = chain_block(prev_block, vec![], &self.consensus_manager);
+        let template =
+            chain_block_with_new_coinbase(prev_block, vec![], &self.consensus_manager, &CryptoFactories::default()).0;
 
         let mut new_block = self.store.prepare_block_merkle_roots(template).unwrap();
         new_block.header.nonce = OsRng.next_u64();
@@ -89,12 +91,8 @@ impl TestBlockchain {
         TestBlockBuilder {}
     }
 
-    pub fn orphan_pool(&self) -> Vec<&BlockProxy> {
-        let mut orphans = vec![];
-        for o in self.store.fetch_all_orphans().unwrap() {
-            orphans.push(self.get_block_by_hash(&o.hash()).unwrap());
-        }
-        orphans
+    pub fn orphan_count(&self) -> usize {
+        self.store.orphan_count().unwrap()
     }
 
     pub fn tip(&self) -> &BlockProxy {

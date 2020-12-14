@@ -897,7 +897,7 @@ impl BlockchainBackend for LMDBDatabase {
     }
 
     /// Returns the number of blocks in the block orphan pool.
-    fn get_orphan_count(&self) -> Result<usize, ChainStorageError> {
+    fn orphan_count(&self) -> Result<usize, ChainStorageError> {
         trace!(target: LOG_TARGET, "Get orphan count");
         let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         lmdb_len(&txn, &self.orphans_db)
@@ -919,12 +919,12 @@ impl BlockchainBackend for LMDBDatabase {
         })
     }
 
-    fn count_utxos(&self) -> Result<usize, ChainStorageError> {
+    fn utxo_count(&self) -> Result<usize, ChainStorageError> {
         let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
         lmdb_len(&txn, &self.utxos_db)
     }
 
-    fn count_kernels(&self) -> Result<usize, ChainStorageError> {
+    fn kernel_count(&self) -> Result<usize, ChainStorageError> {
         let txn = ReadTransaction::new(&*self.env).map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
 
         lmdb_len(&txn, &self.kernels_db)
@@ -952,7 +952,7 @@ impl BlockchainBackend for LMDBDatabase {
         orphan_storage_capacity: usize,
     ) -> Result<(), ChainStorageError>
     {
-        let orphan_count = self.get_orphan_count()?;
+        let orphan_count = self.orphan_count()?;
         let num_over_limit = orphan_count.saturating_sub(orphan_storage_capacity);
         if num_over_limit == 0 {
             return Ok(());

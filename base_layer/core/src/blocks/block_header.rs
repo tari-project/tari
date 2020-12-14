@@ -67,8 +67,8 @@ pub enum BlockHeaderValidationError {
     IncorrectGenesisBlockHeader,
     #[error("Header does not form a valid chain")]
     InvalidChaining,
-    #[error("Invalid timestamp received on the header")]
-    InvalidTimestamp,
+    #[error("Invalid timestamp received on the header: {0}")]
+    InvalidTimestamp(String),
     #[error("Invalid timestamp future time limit received on the header")]
     InvalidTimestampFutureTimeLimit,
     #[error("Invalid Proof of work for the header: {0}")]
