@@ -303,7 +303,7 @@ async fn test_wallet() {
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
 
-    if let Err(WalletStorageError::InvalidEncryptionCipher) = WalletSqliteDatabase::new(connection.clone(), None) {
+    if let Err(WalletStorageError::NoPasswordError) = WalletSqliteDatabase::new(connection.clone(), None) {
         assert!(true);
     } else {
         assert!(
