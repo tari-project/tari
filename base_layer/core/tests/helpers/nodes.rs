@@ -47,7 +47,6 @@ use tari_core::{
         MempoolConfig,
         MempoolServiceConfig,
         MempoolServiceInitializer,
-        MempoolValidators,
         OutboundMempoolServiceInterface,
     },
     test_helpers::blockchain::{create_test_db, TempDatabase},
@@ -203,13 +202,10 @@ impl BaseNodeBuilder {
         let blockchain_db_config = self.blockchain_db_config.unwrap_or(BlockchainDatabaseConfig::default());
         let blockchain_db =
             BlockchainDatabase::new(db, &consensus_manager, validators, blockchain_db_config, false).unwrap();
-        let mempool_validator = MempoolValidators::new(
-            TxInputAndMaturityValidator::new(blockchain_db.clone()),
-            TxInputAndMaturityValidator::new(blockchain_db.clone()),
-        );
+        let mempool_validator = TxInputAndMaturityValidator::new(blockchain_db.clone());
         let mempool = Mempool::new(
             self.mempool_config.unwrap_or(MempoolConfig::default()),
-            mempool_validator,
+            Box::new(mempool_validator),
         );
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
         let node_interfaces = setup_base_node_services(

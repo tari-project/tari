@@ -138,20 +138,6 @@ impl MempoolInboundHandlers {
                 );
                 let propagate = match tx_storage {
                     TxStorageResponse::UnconfirmedPool => true,
-                    TxStorageResponse::OrphanPool => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Transaction `{}` received from peer `{}` is bad: double spend or non-existent input.",
-                            kernel_excess_sig,
-                            exclude_peers
-                                .first()
-                                .as_ref()
-                                .map(|p| format!("{}", p))
-                                .unwrap_or_else(|| "local services".to_string())
-                        );
-                        false
-                    },
-                    TxStorageResponse::PendingPool => true,
                     TxStorageResponse::ReorgPool => false,
                     TxStorageResponse::NotStored => false,
                 };

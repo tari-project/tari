@@ -30,9 +30,7 @@ impl TryFrom<ProtoStatsResponse> for StatsResponse {
         Ok(Self {
             total_txs: stats.total_txs as usize,
             unconfirmed_txs: stats.unconfirmed_txs as usize,
-            orphan_txs: stats.orphan_txs as usize,
-            timelocked_txs: stats.timelocked_txs as usize,
-            published_txs: stats.published_txs as usize,
+            reorg_txs: stats.reorg_txs as usize,
             total_weight: stats.total_weight,
         })
     }
@@ -43,9 +41,7 @@ impl From<StatsResponse> for ProtoStatsResponse {
         Self {
             total_txs: stats.total_txs as u64,
             unconfirmed_txs: stats.unconfirmed_txs as u64,
-            orphan_txs: stats.orphan_txs as u64,
-            timelocked_txs: stats.timelocked_txs as u64,
-            published_txs: stats.published_txs as u64,
+            reorg_txs: stats.reorg_txs as u64,
             total_weight: stats.total_weight,
         }
     }

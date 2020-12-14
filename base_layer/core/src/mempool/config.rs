@@ -20,13 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{
-    consts,
-    orphan_pool::OrphanPoolConfig,
-    pending_pool::PendingPoolConfig,
-    reorg_pool::ReorgPoolConfig,
-    unconfirmed_pool::UnconfirmedPoolConfig,
-};
+use crate::mempool::{consts, reorg_pool::ReorgPoolConfig, unconfirmed_pool::UnconfirmedPoolConfig};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tari_common::{configuration::seconds, NetworkConfigPath};
@@ -35,8 +29,7 @@ use tari_common::{configuration::seconds, NetworkConfigPath};
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct MempoolConfig {
     pub unconfirmed_pool: UnconfirmedPoolConfig,
-    pub orphan_pool: OrphanPoolConfig,
-    pub pending_pool: PendingPoolConfig,
+
     pub reorg_pool: ReorgPoolConfig,
 }
 
@@ -44,8 +37,7 @@ impl Default for MempoolConfig {
     fn default() -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPoolConfig::default(),
-            orphan_pool: OrphanPoolConfig::default(),
-            pending_pool: PendingPoolConfig::default(),
+
             reorg_pool: ReorgPoolConfig::default(),
         }
     }
@@ -89,11 +81,7 @@ impl NetworkConfigPath for MempoolServiceConfig {
 #[cfg(test)]
 mod test {
     use super::{
-        consts::{
-            MEMPOOL_PENDING_POOL_STORAGE_CAPACITY,
-            MEMPOOL_REORG_POOL_CACHE_TTL,
-            MEMPOOL_REORG_POOL_STORAGE_CAPACITY,
-        },
+        consts::{MEMPOOL_REORG_POOL_CACHE_TTL, MEMPOOL_REORG_POOL_STORAGE_CAPACITY},
         MempoolConfig,
     };
     use config::Config;
@@ -109,21 +97,7 @@ mod test {
         config
             .set("mempool.unconfirmed_pool.storage_capacity", 3)
             .expect("Could not set ''");
-        config
-            .set("mempool.mainnet.pending_pool.storage_capacity", 100)
-            .expect("Could not set 'pending_pool.storage_capacity'");
-        config
-            .set("mempool.mainnet.orphan_pool.tx_ttl", 99)
-            .expect("Could not set 'orphan_pool.tx_ttl'");
         let my_config = MempoolConfig::load_from(&config).expect("Could not load configuration");
-        // missing use_network value
-        // [X] mempool.mainnet, [ ]  mempool, [X] Default = 4096
-        assert_eq!(
-            my_config.pending_pool.storage_capacity,
-            MEMPOOL_PENDING_POOL_STORAGE_CAPACITY
-        );
-        // [X] mempool.mainnet, [X] mempool = 70s, [X] Default
-        assert_eq!(my_config.orphan_pool.tx_ttl, Duration::from_secs(70));
         // [ ] mempool.mainnet, [X]  mempool = 3, [X] Default
         assert_eq!(my_config.unconfirmed_pool.storage_capacity, 3);
         // [ ] mempool.mainnet, [ ]  mempool, [X] Default = 512
@@ -139,10 +113,6 @@ mod test {
             .expect("Could not set 'use_network'");
         // use_network = mainnet
         let my_config = MempoolConfig::load_from(&config).expect("Could not load configuration");
-        // [X] mempool.mainnet = 100, [ ]  mempool, [X] Default
-        assert_eq!(my_config.pending_pool.storage_capacity, 100);
-        // [X] mempool.mainnet = 99s, [X] mempool, [X] Default
-        assert_eq!(my_config.orphan_pool.tx_ttl, Duration::from_secs(99));
         // [ ] mempool.mainnet, [X]  mempool = 3, [X] Default
         assert_eq!(my_config.unconfirmed_pool.storage_capacity, 3);
         // [ ] mempool.mainnet, [ ]  mempool, [X] Default = 512

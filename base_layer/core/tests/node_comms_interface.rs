@@ -35,7 +35,7 @@ use tari_core::{
     blocks::{genesis_block, BlockBuilder, BlockHeader},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, HistoricalBlock, Validators},
     consensus::{ConsensusManagerBuilder, Network},
-    mempool::{Mempool, MempoolConfig, MempoolValidators},
+    mempool::{Mempool, MempoolConfig},
     test_helpers::blockchain::{create_test_blockchain_db, create_test_db},
     transactions::{
         helpers::{create_test_kernel, create_utxo},
@@ -59,8 +59,8 @@ async fn test_request_responder(
 }
 
 fn new_mempool() -> Mempool {
-    let mempool_validator = MempoolValidators::new(MockValidator::new(true), MockValidator::new(true));
-    Mempool::new(MempoolConfig::default(), mempool_validator)
+    let mempool_validator = MockValidator::new(true);
+    Mempool::new(MempoolConfig::default(), Box::new(mempool_validator))
 }
 
 #[tokio_macros::test]
@@ -421,11 +421,8 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         ..Default::default()
     };
     let store = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
-    let mempool_validator = MempoolValidators::new(
-        TxInputAndMaturityValidator::new(store.clone()),
-        TxInputAndMaturityValidator::new(store.clone()),
-    );
-    let mempool = Mempool::new(MempoolConfig::default(), mempool_validator);
+    let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
+    let mempool = Mempool::new(MempoolConfig::default(), Box::new(mempool_validator));
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded();

@@ -64,18 +64,6 @@ impl TryFrom<ProtoStateResponse> for StateResponse {
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|err: ByteArrayError| err.to_string())?,
-            orphan_pool: state
-                .orphan_pool
-                .into_iter()
-                .map(TryInto::try_into)
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|err: ByteArrayError| err.to_string())?,
-            pending_pool: state
-                .pending_pool
-                .into_iter()
-                .map(TryInto::try_into)
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|err: ByteArrayError| err.to_string())?,
             reorg_pool: state
                 .reorg_pool
                 .into_iter()
@@ -90,8 +78,6 @@ impl From<StateResponse> for ProtoStateResponse {
     fn from(state: StateResponse) -> Self {
         Self {
             unconfirmed_pool: state.unconfirmed_pool.into_iter().map(Into::into).collect(),
-            orphan_pool: state.orphan_pool.into_iter().map(Into::into).collect(),
-            pending_pool: state.pending_pool.into_iter().map(Into::into).collect(),
             reorg_pool: state.reorg_pool.into_iter().map(Into::into).collect(),
         }
     }

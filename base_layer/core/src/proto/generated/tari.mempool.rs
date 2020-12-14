@@ -4,12 +4,8 @@ pub struct StatsResponse {
     pub total_txs: u64,
     #[prost(uint64, tag = "2")]
     pub unconfirmed_txs: u64,
-    #[prost(uint64, tag = "3")]
-    pub orphan_txs: u64,
-    #[prost(uint64, tag = "4")]
-    pub timelocked_txs: u64,
     #[prost(uint64, tag = "5")]
-    pub published_txs: u64,
+    pub reorg_txs: u64,
     #[prost(uint64, tag = "6")]
     pub total_weight: u64,
 }
@@ -28,12 +24,6 @@ pub struct StateResponse {
     /// List of transactions in unconfirmed pool.
     #[prost(message, repeated, tag = "1")]
     pub unconfirmed_pool: ::std::vec::Vec<Signature>,
-    /// List of transactions in orphan pool.
-    #[prost(message, repeated, tag = "2")]
-    pub orphan_pool: ::std::vec::Vec<Signature>,
-    /// List of transactions in pending pool.
-    #[prost(message, repeated, tag = "3")]
-    pub pending_pool: ::std::vec::Vec<Signature>,
     /// List of transactions in reorg pool.
     #[prost(message, repeated, tag = "4")]
     pub reorg_pool: ::std::vec::Vec<Signature>,
@@ -48,8 +38,6 @@ pub struct TxStorage {
 pub enum TxStorageResponse {
     None = 0,
     UnconfirmedPool = 1,
-    OrphanPool = 2,
-    PendingPool = 3,
     ReorgPool = 4,
     NotStored = 5,
 }
