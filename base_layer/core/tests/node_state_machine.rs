@@ -49,7 +49,6 @@ use tari_core::{
     transactions::types::CryptoFactories,
     validation::mocks::MockValidator,
 };
-use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_shutdown::Shutdown;
 use tempfile::tempdir;
@@ -78,7 +77,6 @@ fn test_listening_lagging() {
         &mut runtime,
         BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
-        MmrCacheConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig {
             auto_ping_interval: Some(Duration::from_millis(100)),

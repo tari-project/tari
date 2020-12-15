@@ -393,7 +393,7 @@ pub fn generate_block<B: BlockchainBackend>(
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let prev_block = blocks.last().unwrap();
-    let template = chain_block(prev_block, transactions, consensus);
+    let template = chain_block_with_new_coinbase(prev_block, transactions, consensus, &CryptoFactories::default()).0;
     let new_block = db.prepare_block_merkle_roots(template)?;
     let result = db.add_block(new_block.clone().into());
     if let Ok(BlockAddResult::Ok) = result {
