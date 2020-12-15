@@ -141,7 +141,6 @@ fn wallet_base_node_integration_test() {
     let (base_node, _consensus_manager) = BaseNodeBuilder::new(network)
         .with_node_identity(base_node_identity.clone())
         .with_base_node_service_config(BaseNodeServiceConfig::default())
-        .with_mmr_cache_config(MmrCacheConfig { rewind_hist_len: 10 })
         .with_mempool_service_config(MempoolServiceConfig::default())
         .with_liveness_service_config(LivenessConfig::default())
         .with_consensus_manager(consensus_manager.clone())

@@ -25,7 +25,7 @@ use monero::{blockdata::block::Block as MoneroBlock, consensus::deserialize};
 use std::{collections::HashMap, sync::Arc};
 use tari_core::{
     blocks::{Block, BlockHeaderValidationError},
-    chain_storage::{BlockAddResult, BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{
         consensus_constants::PowAlgorithmConstants,
         ConsensusConstantsBuilder,
@@ -54,8 +54,13 @@ fn test_genesis_block() {
     );
     let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap();
     let block = rules.get_genesis_block();
-    let result = db.add_block(block.into()).unwrap();
-    assert_eq!(result, BlockAddResult::BlockExists);
+    match db.add_block(block.into()).unwrap_err() {
+        ChainStorageError::ValidationError { source } => match source {
+            ValidationError::ValidatingGenesis => (),
+            _ => panic!("Failed because incorrect validation error was received"),
+        },
+        _ => panic!("Failed because incorrect ChainStorageError was received"),
+    }
 }
 
 #[test]

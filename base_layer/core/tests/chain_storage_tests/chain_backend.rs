@@ -22,7 +22,7 @@
 
 use crate::helpers::database::create_orphan_block;
 use tari_core::{
-    blocks::{BlockBuilder, BlockHeader},
+    blocks::BlockHeader,
     chain_storage::{
         create_lmdb_database,
         BlockchainBackend,
@@ -34,8 +34,7 @@ use tari_core::{
         MetadataValue,
     },
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
-    test_helpers::blockchain::{create_test_db, TempDatabase},
-    transactions::helpers::create_utxo,
+    test_helpers::blockchain::create_test_db,
     tx,
 };
 use tari_crypto::tari_utilities::Hashable;
@@ -293,7 +292,7 @@ fn lmdb_insert_fetch_metadata() {
     insert_fetch_metadata(db);
 }
 
-fn fetch_mmr_root_and_proof_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
+fn fetch_mmr_root_and_proof_for_utxo_and_rp<T: BlockchainBackend>(_db: T) {
     unimplemented!()
     // // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
     // assert_eq!(
@@ -363,51 +362,6 @@ fn lmdb_fetch_mmr_root_and_proof_for_utxo_and_rp() {
     fetch_mmr_root_and_proof_for_utxo_and_rp(db);
 }
 
-fn fetch_mmr_root_and_proof_for_kernel<T: BlockchainBackend>(mut _db: T) {
-    unimplemented!()
-    // This is the zero-length MMR of a mutable MMR with Blake256 as hasher
-    // assert_eq!(
-    //     db.fetch_mmr_root(MmrTree::Kernel).unwrap().to_hex(),
-    //     "26146a5435ef15e8cf7dc3354cb7268137e8be211794e93d04551576c6561565"
-    // );
-    //
-    // let kernel1 = create_test_kernel(100.into(), 0);
-    // let kernel2 = create_test_kernel(200.into(), 1);
-    // let kernel3 = create_test_kernel(300.into(), 2);
-    // let hash1 = kernel1.hash();
-    // let hash2 = kernel2.hash();
-    // let hash3 = kernel3.hash();
-    //
-    // let mut txn = DbTransaction::new();
-    // txn.insert_kernel(kernel1);
-    // txn.insert_kernel(kernel2);
-    // txn.insert_kernel(kernel3);
-    // assert!(db.write(txn).is_ok());
-    //
-    // let mut kernel_mmr_check = MutableMmr::<HashDigest, _>::new(Vec::new(), Bitmap::create());
-    // assert!(kernel_mmr_check.push(hash1.clone()).is_ok());
-    // assert!(kernel_mmr_check.push(hash2.clone()).is_ok());
-    // assert!(kernel_mmr_check.push(hash3.clone()).is_ok());
-    // assert_eq!(
-    //     db.fetch_mmr_root(MmrTree::Kernel).unwrap().to_hex(),
-    //     kernel_mmr_check.get_merkle_root().unwrap().to_hex()
-    // );
-    //
-    // let mmr_only_root = db.fetch_mmr_only_root(MmrTree::Kernel).unwrap();
-    // let proof1 = db.fetch_mmr_proof(MmrTree::Kernel, 0).unwrap();
-    // let proof2 = db.fetch_mmr_proof(MmrTree::Kernel, 1).unwrap();
-    // let proof3 = db.fetch_mmr_proof(MmrTree::Kernel, 2).unwrap();
-    // assert!(proof1.verify_leaf::<HashDigest>(&mmr_only_root, &hash1, 0).is_ok());
-    // assert!(proof2.verify_leaf::<HashDigest>(&mmr_only_root, &hash2, 1).is_ok());
-    // assert!(proof3.verify_leaf::<HashDigest>(&mmr_only_root, &hash3, 2).is_ok());
-}
-
-#[test]
-fn lmdb_fetch_mmr_root_and_proof_for_kernel() {
-    let db = create_test_db();
-    fetch_mmr_root_and_proof_for_kernel(db);
-}
-
 fn fetch_future_mmr_root_for_utxo_and_rp<T: BlockchainBackend>(mut _db: T) {
     unimplemented!()
     // let factories = CryptoFactories::default();
@@ -454,7 +408,7 @@ fn lmdb_fetch_future_mmr_root_for_utxo_and_rp() {
     fetch_future_mmr_root_for_utxo_and_rp(db);
 }
 
-fn fetch_future_mmr_root_for_for_kernel<T: BlockchainBackend>(mut _db: T) {
+fn fetch_future_mmr_root_for_for_kernel<T: BlockchainBackend>(_db: T) {
     unimplemented!()
     // let kernel1 = create_test_kernel(100.into(), 0);
     // let kernel2 = create_test_kernel(200.into(), 1);
@@ -549,7 +503,7 @@ fn lmdb_backend_restore() {
     // }
 }
 
-fn duplicate_utxo<T: BlockchainBackend>(mut db: T) {
+fn duplicate_utxo<T: BlockchainBackend>(_db: T) {
     unimplemented!("This test should probably be done in chain_storage rather");
     // let factories = CryptoFactories::default();
     // let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);

@@ -65,7 +65,6 @@ use tari_core::{
     validation::{block_validators::StatelessBlockValidator, mocks::MockValidator},
 };
 use tari_crypto::tari_utilities::hash::Hashable;
-use tari_mmr::MmrCacheConfig;
 use tari_p2p::services::liveness::LivenessConfig;
 use tari_test_utils::unpack_enum;
 use tempfile::tempdir;
@@ -89,7 +88,6 @@ fn request_response_get_metadata() {
         &mut runtime,
         BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
-        MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,
@@ -288,7 +286,6 @@ fn request_and_response_fetch_blocks() {
         &mut runtime,
         BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
-        MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager.clone(),
@@ -339,7 +336,6 @@ fn request_and_response_fetch_blocks_with_hashes() {
         &mut runtime,
         BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
-        MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager.clone(),
@@ -713,7 +709,6 @@ fn service_request_timeout() {
         &mut runtime,
         BlockchainDatabaseConfig::default(),
         base_node_service_config,
-        MmrCacheConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,

@@ -71,7 +71,6 @@ fn mining() {
         &mut runtime,
         BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
-        MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,
