@@ -76,7 +76,7 @@ impl ConsensusManager {
             Network::MainNet => get_mainnet_genesis_block(),
             Network::Rincewind => get_rincewind_genesis_block(),
             Network::Ridcully => get_ridcully_genesis_block(),
-            Network::LocalNet => get_ridcully_genesis_block(),
+            Network::LocalNet => self.inner.gen_block.clone().unwrap_or_else(get_ridcully_genesis_block),
         }
     }
 
@@ -97,10 +97,8 @@ impl ConsensusManager {
         &self.inner.emission
     }
 
-    // Get a pointer to the emission schedule
-    /// The height provided here, decides the emission curve to use. It swaps to the integer curve upon reaching
-    /// 1_000_000_000
-    pub fn get_emission_reward_at(&self, height: u64) -> MicroTari {
+    // Get the emission reward at height
+    pub fn get_total_emission_at(&self, height: u64) -> MicroTari {
         self.inner.emission.supply_at_block(height)
     }
 

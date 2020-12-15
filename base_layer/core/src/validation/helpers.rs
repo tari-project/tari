@@ -86,21 +86,24 @@ pub fn check_header_timestamp_greater_than_median(
 {
     if timestamps.is_empty() {
         return Err(ValidationError::BlockHeaderError(
-            BlockHeaderValidationError::InvalidTimestamp,
+            BlockHeaderValidationError::InvalidTimestamp("The timestamp is empty".to_string()),
         ));
     }
 
     let median_timestamp = calc_median_timestamp(timestamps);
-    if block_header.timestamp <= median_timestamp {
+    if block_header.timestamp < median_timestamp {
         warn!(
             target: LOG_TARGET,
-            "Block header timestamp {} is less than or equal to median timestamp: {} for block:{}",
+            "Block header timestamp {} is less than median timestamp: {} for block:{}",
             block_header.timestamp,
             median_timestamp,
             block_header.hash().to_hex()
         );
         return Err(ValidationError::BlockHeaderError(
-            BlockHeaderValidationError::InvalidTimestamp,
+            BlockHeaderValidationError::InvalidTimestamp(format!(
+                "The timestamp `{}` was less than the median timestamp `{}`",
+                block_header.timestamp, median_timestamp
+            )),
         ));
     }
 

@@ -29,7 +29,6 @@ use tari_common::{configuration::seconds, NetworkConfigPath};
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct MempoolConfig {
     pub unconfirmed_pool: UnconfirmedPoolConfig,
-
     pub reorg_pool: ReorgPoolConfig,
 }
 
@@ -37,7 +36,6 @@ impl Default for MempoolConfig {
     fn default() -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPoolConfig::default(),
-
             reorg_pool: ReorgPoolConfig::default(),
         }
     }
@@ -91,9 +89,7 @@ mod test {
     #[test]
     pub fn test_mempool() {
         let mut config = Config::new();
-        config
-            .set("mempool.orphan_pool.tx_ttl", 70)
-            .expect("Could not set 'mempool.orphan.tx_ttl'");
+
         config
             .set("mempool.unconfirmed_pool.storage_capacity", 3)
             .expect("Could not set ''");
@@ -109,12 +105,16 @@ mod test {
         assert_eq!(my_config.reorg_pool.tx_ttl, MEMPOOL_REORG_POOL_CACHE_TTL);
 
         config
+            .set("mempool.mainnet.unconfirmed_pool.storage_capacity", 20)
+            .expect("Could not set ''");
+
+        config
             .set("mempool.use_network", "mainnet")
             .expect("Could not set 'use_network'");
         // use_network = mainnet
         let my_config = MempoolConfig::load_from(&config).expect("Could not load configuration");
         // [ ] mempool.mainnet, [X]  mempool = 3, [X] Default
-        assert_eq!(my_config.unconfirmed_pool.storage_capacity, 3);
+        assert_eq!(my_config.unconfirmed_pool.storage_capacity, 20);
         // [ ] mempool.mainnet, [ ]  mempool, [X] Default = 512
         assert_eq!(
             my_config.reorg_pool.storage_capacity,

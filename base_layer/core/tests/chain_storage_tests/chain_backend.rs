@@ -22,7 +22,7 @@
 
 use crate::helpers::database::create_orphan_block;
 use tari_core::{
-    blocks::BlockHeader,
+    blocks::{BlockBuilder, BlockHeader},
     chain_storage::{
         create_lmdb_database,
         BlockchainBackend,
@@ -34,7 +34,8 @@ use tari_core::{
         MetadataValue,
     },
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
-    test_helpers::blockchain::create_test_db,
+    test_helpers::blockchain::{create_test_db, TempDatabase},
+    transactions::helpers::create_utxo,
     tx,
 };
 use tari_crypto::tari_utilities::Hashable;
@@ -73,22 +74,8 @@ fn insert_contains_delete_and_fetch_header<T: BlockchainBackend>(mut db: T) {
 
 #[test]
 fn lmdb_insert_contains_delete_and_fetch_header() {
-    // Create temporary test folder
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
-        insert_contains_delete_and_fetch_header(db);
-    }
-
-    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
-    if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
-        }
-    }
+    let db = create_test_db();
+    insert_contains_delete_and_fetch_header(db);
 }
 
 fn insert_contains_delete_and_fetch_utxo<T: BlockchainBackend>(mut _db: T) {
@@ -116,22 +103,8 @@ fn insert_contains_delete_and_fetch_utxo<T: BlockchainBackend>(mut _db: T) {
 
 #[test]
 fn lmdb_insert_contains_delete_and_fetch_utxo() {
-    // Create temporary test folder
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
-        insert_contains_delete_and_fetch_utxo(db);
-    }
-
-    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
-    if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
-        }
-    }
+    let db = create_test_db();
+    insert_contains_delete_and_fetch_utxo(db);
 }
 
 fn insert_contains_delete_and_fetch_kernel<T: BlockchainBackend>(mut _db: T) {
@@ -160,22 +133,8 @@ fn insert_contains_delete_and_fetch_kernel<T: BlockchainBackend>(mut _db: T) {
 
 #[test]
 fn lmdb_insert_contains_delete_and_fetch_kernel() {
-    // Create temporary test folder
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
-        insert_contains_delete_and_fetch_kernel(db);
-    }
-
-    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
-    if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
-        }
-    }
+    let db = create_test_db();
+    insert_contains_delete_and_fetch_kernel(db);
 }
 
 fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(mut db: T, consensus: &ConsensusManager) {
@@ -205,33 +164,11 @@ fn insert_contains_delete_and_fetch_orphan<T: BlockchainBackend>(mut db: T, cons
 }
 
 #[test]
-fn memory_insert_contains_delete_and_fetch_orphan() {
+fn lmdb_insert_contains_delete_and_fetch_orphan() {
     let network = Network::LocalNet;
     let consensus = ConsensusManagerBuilder::new(network).build();
     let db = create_test_db();
     insert_contains_delete_and_fetch_orphan(db, &consensus);
-}
-
-#[test]
-fn lmdb_insert_contains_delete_and_fetch_orphan() {
-    // Create temporary test folder
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let network = Network::LocalNet;
-        let consensus = ConsensusManagerBuilder::new(network).build();
-        let db = create_test_db();
-        insert_contains_delete_and_fetch_orphan(db, &consensus);
-    }
-
-    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
-    if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
-        }
-    }
 }
 
 fn spend_utxo_and_unspend_stxo<T: BlockchainBackend>(mut _db: T) {
@@ -352,22 +289,8 @@ fn insert_fetch_metadata<T: BlockchainBackend>(mut db: T) {
 
 #[test]
 fn lmdb_insert_fetch_metadata() {
-    // Create temporary test folder
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
-        insert_fetch_metadata(db);
-    }
-
-    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
-    if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
-        }
-    }
+    let db = create_test_db();
+    insert_fetch_metadata(db);
 }
 
 fn fetch_mmr_root_and_proof_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
@@ -436,22 +359,8 @@ fn fetch_mmr_root_and_proof_for_utxo_and_rp<T: BlockchainBackend>(mut db: T) {
 
 #[test]
 fn lmdb_fetch_mmr_root_and_proof_for_utxo_and_rp() {
-    // Create temporary test folder
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
-        fetch_mmr_root_and_proof_for_utxo_and_rp(db);
-    }
-
-    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
-    if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
-        }
-    }
+    let db = create_test_db();
+    fetch_mmr_root_and_proof_for_utxo_and_rp(db);
 }
 
 fn fetch_mmr_root_and_proof_for_kernel<T: BlockchainBackend>(mut _db: T) {
@@ -495,22 +404,8 @@ fn fetch_mmr_root_and_proof_for_kernel<T: BlockchainBackend>(mut _db: T) {
 
 #[test]
 fn lmdb_fetch_mmr_root_and_proof_for_kernel() {
-    // Create temporary test folder
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
-        fetch_mmr_root_and_proof_for_kernel(db);
-    }
-
-    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
-    if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
-        }
-    }
+    let db = create_test_db();
+    fetch_mmr_root_and_proof_for_kernel(db);
 }
 
 fn fetch_future_mmr_root_for_utxo_and_rp<T: BlockchainBackend>(mut _db: T) {
@@ -555,22 +450,8 @@ fn fetch_future_mmr_root_for_utxo_and_rp<T: BlockchainBackend>(mut _db: T) {
 
 #[test]
 fn lmdb_fetch_future_mmr_root_for_utxo_and_rp() {
-    // Create temporary test folder
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
-        fetch_future_mmr_root_for_utxo_and_rp(db);
-    }
-
-    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
-    if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
-        }
-    }
+    let db = create_test_db();
+    fetch_future_mmr_root_for_utxo_and_rp(db);
 }
 
 fn fetch_future_mmr_root_for_for_kernel<T: BlockchainBackend>(mut _db: T) {
@@ -668,12 +549,13 @@ fn lmdb_backend_restore() {
     // }
 }
 
-fn duplicate_utxo<T: BlockchainBackend>(mut _db: T) {
-    unimplemented!()
+fn duplicate_utxo<T: BlockchainBackend>(mut db: T) {
+    unimplemented!("This test should probably be done in chain_storage rather");
     // let factories = CryptoFactories::default();
     // let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
     // let (utxo2, _) = create_utxo(MicroTari(15_000), &factories, None);
     // let hash1 = utxo1.hash();
+    // let block_builder =
     //
     // let mut txn = DbTransaction::new();
     // txn.insert_utxo_with_hash(hash1.clone(), utxo1.clone());
@@ -696,22 +578,8 @@ fn duplicate_utxo<T: BlockchainBackend>(mut _db: T) {
 
 #[test]
 fn lmdb_duplicate_utxo() {
-    // Create temporary test folder
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
-        duplicate_utxo(db);
-    }
-
-    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
-    if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
-        }
-    }
+    let db = create_test_db();
+    duplicate_utxo(db);
 }
 
 fn fetch_last_header<T: BlockchainBackend>(mut db: T) {
@@ -736,27 +604,8 @@ fn fetch_last_header<T: BlockchainBackend>(mut db: T) {
 
 #[test]
 fn lmdb_fetch_last_header() {
-    // Create temporary test folder
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
-        fetch_last_header(db);
-    }
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let _db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
-    }
-    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
-    if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
-        }
-    }
+    let db = create_test_db();
+    fetch_last_header(db);
 }
 
 fn fetch_utxo_rp_mmr_nodes_and_count<T: BlockchainBackend>(mut _db: T) {
@@ -848,22 +697,8 @@ fn fetch_utxo_rp_mmr_nodes_and_count<T: BlockchainBackend>(mut _db: T) {
 
 #[test]
 fn lmdb_fetch_utxo_rp_nodes_and_count() {
-    // Create temporary test folder
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
-        fetch_utxo_rp_mmr_nodes_and_count(db);
-    }
-
-    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
-    if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
-        }
-    }
+    let db = create_test_db();
+    fetch_utxo_rp_mmr_nodes_and_count(db);
 }
 
 fn fetch_kernel_mmr_nodes_and_count<T: BlockchainBackend>(mut _db: T) {
@@ -923,22 +758,8 @@ fn fetch_kernel_mmr_nodes_and_count<T: BlockchainBackend>(mut _db: T) {
 
 #[test]
 fn lmdb_fetch_kernel_nodes_and_count() {
-    // Create temporary test folder
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
-        fetch_kernel_mmr_nodes_and_count(db);
-    }
-
-    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
-    if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
-        }
-    }
+    let db = create_test_db();
+    fetch_kernel_mmr_nodes_and_count(db);
 }
 
 fn insert_mmr_node_for_utxo_and_rp<T: BlockchainBackend>(mut _db: T) {
@@ -1013,22 +834,8 @@ fn insert_mmr_node_for_utxo_and_rp<T: BlockchainBackend>(mut _db: T) {
 
 #[test]
 fn lmdb_insert_mmr_node_for_utxo_and_rp() {
-    // Create temporary test folder
-    let temp_path = create_temporary_data_path();
-
-    // Perform test
-    {
-        let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
-        insert_mmr_node_for_utxo_and_rp(db);
-    }
-
-    // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
-    if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
-        }
-    }
+    let db = create_test_db();
+    insert_mmr_node_for_utxo_and_rp(db);
 }
 
 #[test]
