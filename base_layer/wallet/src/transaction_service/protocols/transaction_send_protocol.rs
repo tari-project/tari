@@ -482,7 +482,7 @@ where TBackend: TransactionBackend + 'static
 
         info!(
             target: LOG_TARGET,
-            "Attempting to Send Transaction (TxId: {}) to recipient with Node Id: {}", self.id, self.dest_pubkey,
+            "Attempting to Send Transaction (TxId: {}) to recipient with Public Key: {}", self.id, self.dest_pubkey,
         );
 
         match self
@@ -506,9 +506,19 @@ where TBackend: TransactionBackend + 'static
                     .await
                     {
                         direct_send_result = true;
-                    } else {
-                        store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
                     }
+                    // Send a Store and Forward (SAF) regardless. Empirical testing determined
+                    // that in some cases a direct send would be reported as true, even though the wallet
+                    // was offline. Possibly due to the Tor connection remaining active for a few
+                    // minutes after wallet shutdown.
+                    info!(
+                        target: LOG_TARGET,
+                        "Direct Send result was {}. Sending SAF for TxId: {} to recipient with Public Key: {}",
+                        direct_send_result,
+                        self.id,
+                        self.dest_pubkey,
+                    );
+                    store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
                 },
                 SendMessageResponse::Failed(err) => {
                     warn!(
