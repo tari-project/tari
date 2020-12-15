@@ -321,7 +321,6 @@ pub enum DbKey {
     Metadata(MetadataKey),
     BlockHeader(u64),
     BlockHash(BlockHash),
-    TransactionKernel(HashOutput),
     OrphanBlock(HashOutput),
 }
 
@@ -331,7 +330,6 @@ impl DbKey {
             DbKey::Metadata(key) => ("MetaData".to_string(), key.to_string(), "".to_string()),
             DbKey::BlockHeader(v) => ("BlockHeader".to_string(), "Height".to_string(), v.to_string()),
             DbKey::BlockHash(v) => ("Block".to_string(), "Hash".to_string(), v.to_hex()),
-            DbKey::TransactionKernel(v) => ("Kernel".to_string(), "Hash".to_string(), v.to_hex()),
             DbKey::OrphanBlock(v) => ("Orphan".to_string(), "Hash".to_string(), v.to_hex()),
         };
         ChainStorageError::ValueNotFound { entity, field, value }
@@ -343,8 +341,6 @@ pub enum DbValue {
     Metadata(MetadataValue),
     BlockHeader(Box<BlockHeader>),
     BlockHash(Box<BlockHeader>),
-    UnspentOutput(Box<TransactionOutput>),
-    TransactionKernel(Box<TransactionKernel>),
     OrphanBlock(Box<Block>),
 }
 
@@ -354,8 +350,6 @@ impl Display for DbValue {
             DbValue::Metadata(v) => v.fmt(f),
             DbValue::BlockHeader(_) => f.write_str("Block header"),
             DbValue::BlockHash(_) => f.write_str("Block hash"),
-            DbValue::UnspentOutput(_) => f.write_str("Unspent output"),
-            DbValue::TransactionKernel(_) => f.write_str("Transaction kernel"),
             DbValue::OrphanBlock(_) => f.write_str("Orphan block"),
         }
     }
@@ -367,7 +361,6 @@ impl Display for DbKey {
             DbKey::Metadata(key) => key.fmt(f),
             DbKey::BlockHeader(v) => f.write_str(&format!("Block header (#{})", v)),
             DbKey::BlockHash(v) => f.write_str(&format!("Block hash (#{})", to_hex(v))),
-            DbKey::TransactionKernel(v) => f.write_str(&format!("Transaction kernel ({})", to_hex(v))),
             DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", to_hex(v))),
         }
     }

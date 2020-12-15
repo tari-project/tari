@@ -174,7 +174,7 @@ pub struct BaseNodeServiceRequest {
     pub request_key: u64,
     #[prost(
         oneof = "base_node_service_request::Request",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19"
     )]
     pub request: ::std::option::Option<base_node_service_request::Request>,
 }
@@ -229,6 +229,9 @@ pub mod base_node_service_request {
         /// Indicates a Fetch block with kernels request
         #[prost(message, tag = "18")]
         FetchBlocksWithUtxos(super::Commitments),
+        /// Indicates a Fetch kernel by excess signature request
+        #[prost(message, tag = "19")]
+        FetchKernelByExcessSig(super::super::types::Signature),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]

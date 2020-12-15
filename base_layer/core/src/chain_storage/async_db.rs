@@ -133,13 +133,13 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(set_chain_metadata(metadata: ChainMetadata) -> (), "set_chain_metadata");
 
-    //---------------------------------- Kernels --------------------------------------------//
-    make_async_fn!(fetch_kernel(hash: HashOutput) -> TransactionKernel, "fetch_kernel");
-
     //---------------------------------- TXO --------------------------------------------//
     make_async_fn!(fetch_utxo(hash: HashOutput) -> Option<TransactionOutput>, "fetch_utxo");
 
     make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>, is_spent_as_of: Option<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
+
+    //---------------------------------- Kernel --------------------------------------------//
+    make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
 
     //---------------------------------- MMR --------------------------------------------//
     make_async_fn!(prepare_block_merkle_roots(template: NewBlockTemplate) -> Block, "create_block");

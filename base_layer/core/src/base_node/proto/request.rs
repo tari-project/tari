@@ -89,6 +89,9 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
                 request.count,
                 request.hist_height,
             ),
+            FetchKernelByExcessSig(sig) => ci::NodeCommsRequest::FetchKernelByExcessSig(
+                Signature::try_from(sig).map_err(|err: ByteArrayError| err.to_string())?,
+            ),
         };
         Ok(request)
     }
@@ -135,6 +138,7 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
                     hist_height,
                 })
             },
+            FetchKernelByExcessSig(signature) => ProtoNodeCommsRequest::FetchKernelByExcessSig(signature.into()),
         }
     }
 }
