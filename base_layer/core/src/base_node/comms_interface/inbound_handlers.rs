@@ -129,18 +129,19 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
                 self.blockchain_db.get_chain_metadata().await?,
             )),
-            NodeCommsRequest::FetchKernels(kernel_hashes) => {
-                let mut kernels = Vec::<TransactionKernel>::new();
-                for hash in kernel_hashes {
-                    match self.blockchain_db.fetch_kernel(hash).await {
-                        Ok(kernel) => kernels.push(kernel),
-                        Err(err) => {
-                            error!(target: LOG_TARGET, "Could not fetch kernel {}", err.to_string());
-                            return Err(err.into());
-                        },
-                    }
-                }
-                Ok(NodeCommsResponse::TransactionKernels(kernels))
+            NodeCommsRequest::FetchKernels(_kernel_hashes) => {
+                unimplemented!()
+                // let mut kernels = Vec::<TransactionKernel>::new();
+                // for hash in kernel_hashes {
+                //     match self.blockchain_db.fetch_kernel(hash).await {
+                //         Ok(kernel) => kernels.push(kernel),
+                //         Err(err) => {
+                //             error!(target: LOG_TARGET, "Could not fetch kernel {}", err.to_string());
+                //             return Err(err.into());
+                //         },
+                //     }
+                // }
+                // Ok(NodeCommsResponse::TransactionKernels(kernels))
             },
             NodeCommsRequest::FetchHeaders(block_nums) => {
                 let mut block_headers = Vec::<BlockHeader>::new();
@@ -449,6 +450,24 @@ where T: BlockchainBackend + 'static
                 }
                 deleted.run_optimize();
                 Ok(NodeCommsResponse::MmrNodes(added, deleted.serialize()))
+            },
+            NodeCommsRequest::FetchKernelByExcessSig(signature) => {
+                let mut kernels = Vec::<TransactionKernel>::new();
+
+                match self.blockchain_db.fetch_kernel_by_excess_sig(signature).await {
+                    Ok(kernel) => match kernel {
+                        None => (),
+                        Some((kernel, _kernel_hash)) => {
+                            kernels.push(kernel);
+                        },
+                    },
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "Could not fetch kernel {}", err.to_string());
+                        return Err(err.into());
+                    },
+                }
+
+                Ok(NodeCommsResponse::TransactionKernels(kernels))
             },
         }
     }

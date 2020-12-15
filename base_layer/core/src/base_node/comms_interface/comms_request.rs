@@ -28,6 +28,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
+use tari_crypto::tari_utilities::hex::Hex;
 
 /// A container for the parameters required for a FetchMmrState request.
 #[derive(Debug, Serialize, Deserialize)]
@@ -56,6 +57,7 @@ pub enum NodeCommsRequest {
     GetNewBlock(NewBlockTemplate),
     FetchMmrNodeCount(MmrTree, u64),
     FetchMatchingMmrNodes(MmrTree, u32, u32, u64),
+    FetchKernelByExcessSig(Signature),
 }
 
 impl Display for NodeCommsRequest {
@@ -87,6 +89,11 @@ impl Display for NodeCommsRequest {
             NodeCommsRequest::FetchMatchingMmrNodes(tree, pos, count, hist_height) => f.write_str(&format!(
                 "FetchMatchingMmrNodes (tree={},pos={},count={},hist_height={})",
                 tree, pos, count, hist_height
+            )),
+            NodeCommsRequest::FetchKernelByExcessSig(s) => f.write_str(&format!(
+                "FetchKernelByExcessSig (signature=({}, {}))",
+                s.get_public_nonce().to_hex(),
+                s.get_signature().to_hex()
             )),
         }
     }

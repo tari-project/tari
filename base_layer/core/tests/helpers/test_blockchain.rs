@@ -22,7 +22,7 @@
 //
 
 use crate::helpers::{
-    block_builders::{chain_block, chain_block_with_new_coinbase, find_header_with_achieved_difficulty},
+    block_builders::{chain_block_with_new_coinbase, find_header_with_achieved_difficulty},
     block_proxy::BlockProxy,
     sample_blockchains::create_new_blockchain,
     test_block_builder::{TestBlockBuilder, TestBlockBuilderInner},

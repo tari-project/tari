@@ -46,7 +46,7 @@ use crate::{
     },
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-        types::{CryptoFactories, HashOutput},
+        types::{CryptoFactories, HashOutput, Signature},
     },
     validation::{
         block_validators::{FullConsensusValidator, StatelessBlockValidator},
@@ -180,6 +180,22 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError> {
         self.db.fetch_kernels_in_block(header_hash)
+    }
+
+    fn fetch_kernel_by_excess(
+        &self,
+        excess: &[u8],
+    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>
+    {
+        self.db.fetch_kernel_by_excess(excess)
+    }
+
+    fn fetch_kernel_by_excess_sig(
+        &self,
+        excess_sig: &Signature,
+    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>
+    {
+        self.db.fetch_kernel_by_excess_sig(excess_sig)
     }
 
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError> {

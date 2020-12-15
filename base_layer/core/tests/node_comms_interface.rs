@@ -164,6 +164,38 @@ async fn inbound_fetch_kernels() {
 }
 
 #[tokio_macros::test]
+async fn inbound_fetch_kernel_by_excess_sig() {
+    let store = create_test_blockchain_db();
+    let mempool = new_mempool();
+
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let (block_event_sender, _) = broadcast::channel(50);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = mpsc::unbounded();
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
+    let inbound_nch = InboundNodeCommsHandlers::new(
+        block_event_sender,
+        store.clone().into(),
+        mempool,
+        consensus_manager,
+        outbound_nci,
+    );
+    let block = store.fetch_block(0).unwrap().block().clone();
+    let sig = block.body.kernels()[0].excess_sig.clone();
+
+    if let Ok(NodeCommsResponse::TransactionKernels(received_kernels)) = inbound_nch
+        .handle_request(NodeCommsRequest::FetchKernelByExcessSig(sig.into()))
+        .await
+    {
+        assert_eq!(received_kernels.len(), 1);
+        assert_eq!(received_kernels[0], block.body.kernels()[0]);
+    } else {
+        assert!(false, "kernel not found");
+    }
+}
+
+#[tokio_macros::test]
 async fn outbound_fetch_headers() {
     let (request_sender, mut request_receiver) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded();
