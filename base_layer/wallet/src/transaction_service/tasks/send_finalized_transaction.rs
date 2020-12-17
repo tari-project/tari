@@ -72,15 +72,22 @@ pub async fn send_finalized_transaction_message(
                 .await
                 {
                     direct_send_result = true;
-                } else {
-                    store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
-                        tx_id,
-                        destination_public_key.clone(),
-                        finalized_transaction_message.clone(),
-                        &mut outbound_message_service,
-                    )
-                    .await?;
                 }
+                // Send a Store and Forward (SAF) regardless.
+                info!(
+                    target: LOG_TARGET,
+                    "Direct Send finalize result was {}. Sending SAF for TxId: {} to recipient with Public Key: {}",
+                    direct_send_result,
+                    tx_id,
+                    destination_public_key,
+                );
+                store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
+                    tx_id,
+                    destination_public_key,
+                    finalized_transaction_message.clone(),
+                    &mut outbound_message_service,
+                )
+                .await?;
             },
             SendMessageResponse::Failed(err) => {
                 warn!(

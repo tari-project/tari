@@ -70,15 +70,22 @@ pub async fn send_transaction_reply(
                 .await
                 {
                     direct_send_result = true;
-                } else {
-                    store_and_forward_send_result = send_transaction_reply_store_and_forward(
-                        tx_id,
-                        inbound_transaction.source_public_key.clone(),
-                        proto_message.clone(),
-                        &mut outbound_message_service,
-                    )
-                    .await?;
                 }
+                // Send a Store and Forward (SAF) regardless.
+                info!(
+                    target: LOG_TARGET,
+                    "Direct Send reply result was {}. Sending SAF for TxId: {} to recipient with Public Key: {}",
+                    direct_send_result,
+                    tx_id,
+                    inbound_transaction.source_public_key,
+                );
+                store_and_forward_send_result = send_transaction_reply_store_and_forward(
+                    tx_id,
+                    inbound_transaction.source_public_key,
+                    proto_message.clone(),
+                    &mut outbound_message_service,
+                )
+                .await?;
             },
             SendMessageResponse::Failed(err) => {
                 warn!(
