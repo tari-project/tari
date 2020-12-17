@@ -53,20 +53,22 @@ use tari_comms_dht::outbound::mock::{
     ResponseType,
 };
 use tari_core::{
-    base_node::{
-        proto as base_node_proto,
-        proto::{
-            base_node_service_request::Request as BaseNodeRequestProto,
-            base_node_service_response::Response as BaseNodeResponseProto,
-        },
-    },
     consensus::{ConsensusConstantsBuilder, Network},
     mempool::{
         proto as mempool_proto,
         service::{MempoolRequest, MempoolResponse, MempoolServiceRequest},
         TxStorageResponse,
     },
-    proto::types::TransactionOutput as TransactionOutputProto,
+    proto::{
+        generated::{
+            base_node as base_node_proto,
+            base_node::{
+                base_node_service_request::Request as BaseNodeRequestProto,
+                base_node_service_response::Response as BaseNodeResponseProto,
+            },
+        },
+        types::TransactionOutput as TransactionOutputProto,
+    },
     transactions::{
         fee::Fee,
         tari_amount::*,

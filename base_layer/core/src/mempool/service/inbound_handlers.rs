@@ -140,6 +140,9 @@ impl MempoolInboundHandlers {
                     TxStorageResponse::UnconfirmedPool => true,
                     TxStorageResponse::ReorgPool => false,
                     TxStorageResponse::NotStored => false,
+                    TxStorageResponse::NotStoredOrphan => false,
+                    TxStorageResponse::NotStoredTimeLocked => false,
+                    TxStorageResponse::NotStoredAlreadySpent => false,
                 };
                 if propagate {
                     debug!(

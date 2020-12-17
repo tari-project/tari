@@ -120,14 +120,17 @@ impl Display for StateResponse {
 pub enum TxStorageResponse {
     UnconfirmedPool,
     ReorgPool,
+    NotStoredOrphan,
+    NotStoredTimeLocked,
+    NotStoredAlreadySpent,
     NotStored,
 }
 
 impl TxStorageResponse {
     pub fn is_stored(&self) -> bool {
         match self {
-            TxStorageResponse::NotStored => false,
-            _ => true,
+            Self::UnconfirmedPool | Self::ReorgPool => true,
+            _ => false,
         }
     }
 }
@@ -137,6 +140,9 @@ impl Display for TxStorageResponse {
         let storage = match self {
             TxStorageResponse::UnconfirmedPool => "Unconfirmed pool",
             TxStorageResponse::ReorgPool => "Reorg pool",
+            TxStorageResponse::NotStoredOrphan => "Not stored orphan transaction",
+            TxStorageResponse::NotStoredTimeLocked => "Not stored time locked transaction",
+            TxStorageResponse::NotStoredAlreadySpent => "Not stored output already spent",
             TxStorageResponse::NotStored => "Not stored",
         };
         fmt.write_str(&storage)

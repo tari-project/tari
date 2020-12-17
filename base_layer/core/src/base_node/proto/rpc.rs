@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{base_node::proto, blocks::Block, tari_utilities::Hashable};
+use crate::{blocks::Block, proto::generated::base_node as proto, tari_utilities::Hashable};
 
 impl From<Block> for proto::BlockBodyResponse {
     fn from(block: Block) -> Self {

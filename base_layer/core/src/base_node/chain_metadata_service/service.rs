@@ -25,9 +25,9 @@ use crate::{
     base_node::{
         chain_metadata_service::handle::{ChainMetadataEvent, PeerChainMetadata},
         comms_interface::{BlockEvent, LocalNodeCommsInterface},
-        proto,
     },
     chain_storage::BlockAddResult,
+    proto::generated::base_node as proto,
 };
 use futures::stream::StreamExt;
 use log::*;

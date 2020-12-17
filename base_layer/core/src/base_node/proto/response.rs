@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub use super::base_node_service_response::Response as ProtoNodeCommsResponse;
+pub use crate::proto::generated::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
 use crate::{
-    base_node::{
-        comms_interface as ci,
-        proto::{
+    base_node::comms_interface as ci,
+    proof_of_work::Difficulty,
+    proto,
+    proto::{
+        core as core_proto_types,
+        generated::base_node::{
             BlockHeaders as ProtoBlockHeaders,
             HistoricalBlocks as ProtoHistoricalBlocks,
             MmrNodes as ProtoMmrNodes,
@@ -33,9 +36,6 @@ use crate::{
             TransactionOutputs as ProtoTransactionOutputs,
         },
     },
-    proof_of_work::Difficulty,
-    proto,
-    proto::core as core_proto_types,
     tari_utilities::convert::try_convert_all,
 };
 use std::{

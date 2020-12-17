@@ -66,8 +66,8 @@ use tari_comms_dht::outbound::OutboundMessageRequester;
 #[cfg(feature = "test_harness")]
 use tari_core::transactions::{tari_amount::uT, types::BlindingFactor};
 use tari_core::{
-    base_node::proto as base_node_proto,
     mempool::{proto as mempool_proto, service::MempoolServiceResponse},
+    proto::generated::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
         transaction::Transaction,

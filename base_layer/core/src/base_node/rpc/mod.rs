@@ -21,60 +21,35 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod service;
-pub use service::BaseNodeSyncRpcService;
-
-// TODO: Tests need to be rewritten
-// #[cfg(test)]
-// mod tests;
+pub use service::BaseNodeWalletRpcService;
 
 use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    proto,
-    proto::generated::base_node::{
-        FindChainSplitRequest,
-        FindChainSplitResponse,
-        SyncBlocksRequest,
-        SyncHeadersRequest,
+    mempool::service::MempoolHandle,
+    proto::generated::{
+        base_node::{TxQueryResponse, TxSubmissionResponse},
+        types::{Signature, Transaction},
     },
 };
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_comms_rpc_macros::tari_rpc;
 
-#[tari_rpc(protocol_name = b"t/blksync/1", server_struct = BaseNodeSyncRpcServer, client_struct = BaseNodeSyncRpcClient)]
-pub trait BaseNodeSyncService: Send + Sync + 'static {
+#[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
+pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 1)]
-    async fn sync_blocks(
+    async fn submit_transaction(
         &self,
-        request: Request<SyncBlocksRequest>,
-    ) -> Result<Streaming<proto::base_node::BlockBodyResponse>, RpcStatus>;
+        request: Request<Transaction>,
+    ) -> Result<Response<TxSubmissionResponse>, RpcStatus>;
 
     #[rpc(method = 2)]
-    async fn sync_headers(
-        &self,
-        request: Request<SyncHeadersRequest>,
-    ) -> Result<Streaming<proto::core::BlockHeader>, RpcStatus>;
-
-    #[rpc(method = 3)]
-    async fn get_header_by_height(
-        &self,
-        request: Request<u64>,
-    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
-
-    #[rpc(method = 4)]
-    async fn find_chain_split(
-        &self,
-        request: Request<FindChainSplitRequest>,
-    ) -> Result<Response<FindChainSplitResponse>, RpcStatus>;
-
-    #[rpc(method = 5)]
-    async fn get_chain_metadata(
-        &self,
-        request: Request<()>,
-    ) -> Result<Response<proto::base_node::ChainMetadata>, RpcStatus>;
+    async fn transaction_query(&self, request: Request<Signature>) -> Result<Response<TxQueryResponse>, RpcStatus>;
 }
 
-pub fn create_base_node_sync_rpc_service<B: BlockchainBackend + 'static>(
+pub fn create_base_node_wallet_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,
-) -> BaseNodeSyncRpcServer<BaseNodeSyncRpcService<B>> {
-    BaseNodeSyncRpcServer::new(BaseNodeSyncRpcService::new(db))
+    mempool: MempoolHandle,
+) -> BaseNodeWalletRpcServer<BaseNodeWalletRpcService<B>>
+{
+    BaseNodeWalletRpcServer::new(BaseNodeWalletRpcService::new(db, mempool))
 }

@@ -21,13 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::{
-        proto::{FindChainSplitRequest, FindChainSplitResponse, SyncBlocksRequest, SyncHeadersRequest},
-        sync::rpc::BaseNodeSyncService,
-    },
+    base_node::sync::rpc::BaseNodeSyncService,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     iterators::NonOverlappingIntegerPairIter,
     proto,
+    proto::generated::base_node::{
+        FindChainSplitRequest,
+        FindChainSplitResponse,
+        SyncBlocksRequest,
+        SyncHeadersRequest,
+    },
 };
 use futures::{channel::mpsc, stream, SinkExt};
 use log::*;

@@ -279,3 +279,37 @@ pub struct FetchMatchingMmrNodes {
     #[prost(uint64, tag = "4")]
     pub hist_height: u64,
 }
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TxSubmissionResponse {
+    #[prost(bool, tag = "1")]
+    pub accepted: bool,
+    #[prost(enumeration = "TxSubmissionRejectionReason", tag = "2")]
+    pub rejection_reason: i32,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TxQueryResponse {
+    #[prost(enumeration = "TxLocation", tag = "1")]
+    pub location: i32,
+    #[prost(message, optional, tag = "2")]
+    pub block_hash: ::std::option::Option<::std::vec::Vec<u8>>,
+    #[prost(uint64, tag = "3")]
+    pub confirmations: u64,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum TxSubmissionRejectionReason {
+    None = 0,
+    AlreadyMined = 1,
+    DoubleSpend = 2,
+    Orphan = 3,
+    TimeLocked = 4,
+    ValidationFailed = 5,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum TxLocation {
+    None = 0,
+    NotStored = 1,
+    InMempool = 2,
+    Mined = 3,
+}
