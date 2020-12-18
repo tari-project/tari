@@ -1429,8 +1429,9 @@ fn transaction_mempool_broadcast() {
         ))
         .unwrap();
     alice_outbound_service
-        .wait_call_count(1, Duration::from_secs(60))
+        .wait_call_count(2, Duration::from_secs(60))
         .expect("Alice call wait 1");
+    let (_, _body) = alice_outbound_service.pop_call().unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -1454,9 +1455,10 @@ fn transaction_mempool_broadcast() {
         )))
         .unwrap();
     bob_outbound_service
-        .wait_call_count(1, Duration::from_secs(60))
+        .wait_call_count(2, Duration::from_secs(60))
         .expect("bob call wait 1");
 
+    let _ = bob_outbound_service.pop_call().unwrap();
     let call = bob_outbound_service.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(&mut call.1.to_vec().as_slice()).unwrap();
@@ -1477,9 +1479,10 @@ fn transaction_mempool_broadcast() {
         ))
         .unwrap();
     alice_outbound_service
-        .wait_call_count(1, Duration::from_secs(60))
+        .wait_call_count(2, Duration::from_secs(60))
         .expect("Alice call wait 2");
 
+    let _ = alice_outbound_service.pop_call().unwrap();
     let call = alice_outbound_service.pop_call().unwrap();
     let tx_sender_msg = try_decode_sender_message(call.1.to_vec().clone()).unwrap();
 
@@ -1497,9 +1500,10 @@ fn transaction_mempool_broadcast() {
         )))
         .unwrap();
     bob_outbound_service
-        .wait_call_count(1, Duration::from_secs(60))
+        .wait_call_count(2, Duration::from_secs(60))
         .expect("Bob call wait 2");
 
+    let (_, _body) = bob_outbound_service.pop_call().unwrap();
     let (_, body) = bob_outbound_service.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -1978,9 +1982,10 @@ fn transaction_base_node_monitoring() {
         .unwrap();
 
     alice_outbound_service
-        .wait_call_count(1, Duration::from_secs(60))
+        .wait_call_count(2, Duration::from_secs(60))
         .unwrap();
 
+    let (_, _body) = alice_outbound_service.pop_call().unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -2006,8 +2011,9 @@ fn transaction_base_node_monitoring() {
         .unwrap();
 
     bob_outbound_service
-        .wait_call_count(1, Duration::from_secs(60))
+        .wait_call_count(2, Duration::from_secs(60))
         .unwrap();
+    let (_, _body) = bob_outbound_service.pop_call().unwrap();
     let (_, body) = bob_outbound_service.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -2031,8 +2037,9 @@ fn transaction_base_node_monitoring() {
         .unwrap();
 
     alice_outbound_service
-        .wait_call_count(1, Duration::from_secs(60))
+        .wait_call_count(2, Duration::from_secs(60))
         .unwrap();
+    let (_, _body) = alice_outbound_service.pop_call().unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -2050,8 +2057,9 @@ fn transaction_base_node_monitoring() {
         )))
         .unwrap();
     bob_outbound_service
-        .wait_call_count(1, Duration::from_secs(60))
+        .wait_call_count(2, Duration::from_secs(60))
         .unwrap();
+    let (_, _body) = bob_outbound_service.pop_call().unwrap();
     let (_, body) = bob_outbound_service.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -3036,9 +3044,10 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .unwrap();
 
     alice_outbound_service
-        .wait_call_count(1, Duration::from_secs(60))
+        .wait_call_count(2, Duration::from_secs(60))
         .unwrap();
 
+    let (_, _body) = alice_outbound_service.pop_call().unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -3084,6 +3093,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     bob_outbound_service
         .wait_call_count(1, Duration::from_secs(60))
         .unwrap();
+
     let (_, body) = bob_outbound_service.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -3123,6 +3133,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     bob2_outbound_service
         .wait_call_count(1, Duration::from_secs(60))
         .unwrap();
+
     let (_, body) = bob2_outbound_service.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -3137,6 +3148,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     assert_eq!(bob2_outbound_service.call_count(), 0, "Should be no more calls");
 
     // Test finalize is sent Direct Only.
+    // UPDATE: both direct and SAF will be sent
     alice_outbound_service.set_behaviour(MockBehaviour {
         direct: ResponseType::Queued,
         broadcast: ResponseType::Queued,
@@ -3149,7 +3161,8 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         )))
         .unwrap();
 
-    let _ = alice_outbound_service.wait_call_count(1, Duration::from_secs(60));
+    let _ = alice_outbound_service.wait_call_count(2, Duration::from_secs(60));
+    let _ = alice_outbound_service.pop_call().unwrap();
     let _ = alice_outbound_service.pop_call().unwrap();
 
     runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
@@ -3172,9 +3185,10 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .unwrap();
 
     alice_outbound_service
-        .wait_call_count(1, Duration::from_secs(60))
+        .wait_call_count(2, Duration::from_secs(60))
         .unwrap();
 
+    let (_, _body) = alice_outbound_service.pop_call().unwrap();
     let (_, body) = alice_outbound_service.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -3195,6 +3209,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     bob_outbound_service
         .wait_call_count(1, Duration::from_secs(60))
         .unwrap();
+
     let (_, body) = bob_outbound_service.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
@@ -3217,8 +3232,8 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         )))
         .unwrap();
 
-    // Should be 1 SAF message
     let _ = alice_outbound_service.wait_call_count(1, Duration::from_secs(60));
+
     assert_eq!(alice_outbound_service.call_count(), 1);
     let _ = alice_outbound_service.pop_call();
     runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
@@ -4136,6 +4151,7 @@ fn test_transaction_resending() {
         assert_eq!(bob_reply_message.tx_id, tx_id);
     }
 
+    runtime.block_on(async { delay_for(Duration::from_secs(2)).await });
     // See if sending a second message too soon is ignored
     runtime
         .block_on(bob_tx_sender.send(create_dummy_message(
@@ -4144,7 +4160,7 @@ fn test_transaction_resending() {
         )))
         .unwrap();
 
-    assert!(bob_outbound_service.wait_call_count(1, Duration::from_secs(4)).is_err());
+    assert!(bob_outbound_service.wait_call_count(1, Duration::from_secs(2)).is_err());
 
     // Wait for the cooldown to expire but before the resend period has elapsed see if a repeat illicts a reponse.
     runtime.block_on(async { delay_for(Duration::from_secs(2)).await });
@@ -4155,8 +4171,9 @@ fn test_transaction_resending() {
         )))
         .unwrap();
     bob_outbound_service
-        .wait_call_count(1, Duration::from_secs(30))
+        .wait_call_count(2, Duration::from_secs(30))
         .expect("Bob call wait 2");
+    let _ = bob_outbound_service.pop_call().unwrap();
     let call = bob_outbound_service.pop_call().unwrap();
     bob_reply_message = try_decode_transaction_reply_message(call.1.to_vec().clone()).unwrap();
     assert_eq!(bob_reply_message.tx_id, tx_id);
@@ -4172,9 +4189,10 @@ fn test_transaction_resending() {
         .unwrap();
 
     alice_outbound_service
-        .wait_call_count(1, Duration::from_secs(30))
+        .wait_call_count(2, Duration::from_secs(30))
         .expect("Alice call wait 2");
 
+    let _ = alice_outbound_service.pop_call().unwrap();
     let call = alice_outbound_service.pop_call().unwrap();
     let alice_finalize_message = try_decode_finalized_transaction_message(call.1.to_vec().clone()).unwrap();
     assert_eq!(alice_finalize_message.tx_id, tx_id);
@@ -4617,7 +4635,7 @@ fn test_transaction_timeout_cancellation() {
     // For testing the resend period is set to 10 seconds and the timeout period is set to 15 seconds so we are going to
     // wait for 3 messages The intial send, the resend and then the cancellation
     alice_outbound_service
-        .wait_call_count(3, Duration::from_secs(60))
+        .wait_call_count(5, Duration::from_secs(60))
         .expect("Alice call wait 1");
 
     let calls = alice_outbound_service.take_calls();
@@ -4631,7 +4649,7 @@ fn test_transaction_timeout_cancellation() {
         assert!(false, "Should be a Single Transaction Sender Message")
     }
     // Resend
-    let sender_message = try_decode_sender_message(calls[1].1.to_vec().clone()).unwrap();
+    let sender_message = try_decode_sender_message(calls[2].1.to_vec().clone()).unwrap();
     if let TransactionSenderMessage::Single(data) = sender_message {
         assert_eq!(data.tx_id, tx_id);
     } else {
@@ -4639,7 +4657,7 @@ fn test_transaction_timeout_cancellation() {
     }
 
     // Timeout Cancellation
-    let alice_cancelled_message = try_decode_transaction_cancelled_message(calls[2].1.to_vec().clone()).unwrap();
+    let alice_cancelled_message = try_decode_transaction_cancelled_message(calls[4].1.to_vec().clone()).unwrap();
     assert_eq!(alice_cancelled_message.tx_id, tx_id);
 
     // Now to test if the timeout has elapsed during downtime and that it is honoured on startup
@@ -4710,7 +4728,7 @@ fn test_transaction_timeout_cancellation() {
     assert!(runtime.block_on(bob_ts.restart_broadcast_protocols()).is_ok());
     assert!(runtime.block_on(bob_ts.restart_transaction_protocols()).is_ok());
 
-    // Make sure we receive this before the timeout as it should be sent immideately on startup
+    // Make sure we receive this before the timeout as it should be sent immediately on startup
     bob_outbound_service
         .wait_call_count(2, Duration::from_secs(14))
         .expect("Bob call wait 1");
