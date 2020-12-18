@@ -7,13 +7,13 @@ Feature: Reorgs
     When I stop SA
     And I mine 3 blocks on B
     Given I have a base node C connected to seed SA
-    And I mine 5 blocks on C
+    And I mine 15 blocks on C
     Then node B is at height 3
-    And node C is at height 5
+    And node C is at height 15
     When I start SA
-    Then node B is at height 5
-    And node C is at height 5
-    And node SA is at height 5
+    Then node B is at height 15
+    And node C is at height 15
+    And node SA is at height 15
 
   @critical
   Scenario: Node rolls back reorg on invalid block

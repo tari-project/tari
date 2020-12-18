@@ -73,6 +73,7 @@ root:
   level: info
   appenders:
     - stdout
+    - base_layer
 
 loggers:
   # Route log events sent to the "core" logger to the "base_layer" appender

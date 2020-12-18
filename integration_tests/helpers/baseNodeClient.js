@@ -168,8 +168,8 @@ class BaseNodeClient {
 
     async getMinedCandidateBlock(existingBlockTemplate) {
         let builder = new TransactionBuilder();
-        const privateKey = Buffer.from(toLittleEndian(1, 256)).toString('hex');
         let blockTemplate = existingBlockTemplate || await this.getBlockTemplate();
+        const privateKey = Buffer.from(toLittleEndian(blockTemplate.block.header.height, 256)).toString('hex');
         let cb = builder.generateCoinbase(blockTemplate.block_reward, privateKey, 0, parseInt(blockTemplate.block.header.height) + 1);
         let template = blockTemplate.block;
         template.body.outputs = template.body.outputs.concat(cb.outputs);
