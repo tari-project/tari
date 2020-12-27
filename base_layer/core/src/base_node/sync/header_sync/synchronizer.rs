@@ -342,7 +342,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             }
 
             debug!(target: LOG_TARGET, "Already in sync with peer `{}`.", peer);
-            return Ok(false);
+            return Ok(true);
         }
 
         // We can trust that the header associated with this hash exists because block_hashes is data this node
