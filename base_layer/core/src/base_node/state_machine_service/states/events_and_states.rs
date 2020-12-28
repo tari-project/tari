@@ -165,6 +165,28 @@ pub enum StateInfo {
     Listening(ListeningInfo),
 }
 
+impl StateInfo {
+    pub fn short_desc(&self) -> String {
+        match self {
+            Self::StartUp => "Starting up".to_string(),
+            Self::HeaderSync(info) => format!(
+                "Syncing headers:{}/{} ({:.0}%)",
+                info.local_height,
+                info.tip_height,
+                info.local_height as f64 / info.tip_height as f64 * 100.0
+            ),
+            Self::HorizonSync(_) => "Syncing to horizon".to_string(),
+            Self::BlockSync(info) => format!(
+                "Syncing blocks:{}/{} ({:.0}%)",
+                info.local_height,
+                info.tip_height,
+                info.local_height as f64 / info.tip_height as f64 * 100.0
+            ),
+            Self::Listening(_) => "Listening".to_string(),
+        }
+    }
+}
+
 impl Display for StateInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         match self {
