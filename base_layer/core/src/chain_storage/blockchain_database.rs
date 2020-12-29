@@ -30,19 +30,22 @@ use crate::{
         },
         db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree},
         error::ChainStorageError,
+        BlockchainBackend,
+        ChainBlock,
+        ChainHeader,
         HistoricalBlock,
         InProgressHorizonSyncState,
         TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusManager},
-    proof_of_work::{monero_rx::MoneroData, PowAlgorithm, ProofOfWork, TargetDifficultyWindow},
+    proof_of_work::{monero_rx::MoneroData, PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
     transactions::{
-        transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{TransactionKernel, TransactionOutput},
         types::{Commitment, HashDigest, HashOutput, Signature},
     },
-    validation::{StatefulValidation, StatefulValidator, Validation, ValidationError, Validator},
+    validation::{HeaderValidation, OrphanValidation, PostOrphanBodyValidation, ValidationError},
 };
 use croaring::Bitmap;
 use digest::Input;
@@ -83,11 +86,52 @@ impl Default for BlockchainDatabaseConfig {
 
 #[derive(Clone, Debug, PartialEq, Display)]
 pub enum BlockAddResult {
-    Ok,
+    Ok(Arc<ChainBlock>),
     BlockExists,
     OrphanBlock,
     /// Indicates the new block caused a chain reorg. This contains removed blocks followed by added blocks.
-    ChainReorg(Vec<Arc<Block>>, Vec<Arc<Block>>),
+    ChainReorg(Vec<Arc<ChainBlock>>, Vec<Arc<ChainBlock>>),
+}
+
+impl BlockAddResult {
+    pub fn is_added(&self) -> bool {
+        match self {
+            BlockAddResult::Ok(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn assert_added(&self) -> ChainBlock {
+        match self {
+            BlockAddResult::ChainReorg(added, removed) => panic!(
+                "Expected added result, but was reorg ({} added, {} removed)",
+                added.len(),
+                removed.len()
+            ),
+            BlockAddResult::Ok(b) => b.as_ref().clone(),
+            BlockAddResult::BlockExists => panic!("Expected added result, but was BlockExists"),
+            BlockAddResult::OrphanBlock => panic!("Expected added result, but was OrphanBlock"),
+        }
+    }
+
+    pub fn assert_orphaned(&self) {
+        match self {
+            BlockAddResult::OrphanBlock => (),
+            _ => panic!("Result was not orphaned"),
+        }
+    }
+
+    pub fn assert_reorg(&self, num_added: usize, num_removed: usize) {
+        match self {
+            BlockAddResult::ChainReorg(a, r) => {
+                assert_eq!(num_added, a.len(), "Number of added reorged blocks was different");
+                assert_eq!(num_removed, r.len(), "Number of removed reorged blocks was different");
+            },
+            BlockAddResult::Ok(_) => panic!("Expected reorg result, but was Ok()"),
+            BlockAddResult::BlockExists => panic!("Expected reorg result, but was BlockExists"),
+            BlockAddResult::OrphanBlock => panic!("Expected reorg result, but was OrphanBlock"),
+        }
+    }
 }
 
 /// A placeholder struct that contains the two validators that the database uses to decide whether or not a block is
@@ -97,14 +141,21 @@ pub enum BlockAddResult {
 /// The `GenesisBlockValidator` is used to check that the chain builds on the correct genesis block.
 /// The `ChainTipValidator` is used to check that the accounting balance and MMR states of the chain state is valid.
 pub struct Validators<B> {
-    block: Arc<StatefulValidator<Block, B>>,
-    orphan: Arc<Validator<Block>>,
+    pub block: Arc<Box<dyn PostOrphanBodyValidation<B>>>,
+    pub header: Arc<Box<dyn HeaderValidation<B>>>,
+    pub orphan: Arc<Box<dyn OrphanValidation>>,
 }
 
 impl<B: BlockchainBackend> Validators<B> {
-    pub fn new(block: impl StatefulValidation<Block, B> + 'static, orphan: impl Validation<Block> + 'static) -> Self {
+    pub fn new(
+        block: impl PostOrphanBodyValidation<B> + 'static,
+        header: impl HeaderValidation<B> + 'static,
+        orphan: impl OrphanValidation + 'static,
+    ) -> Self
+    {
         Self {
             block: Arc::new(Box::new(block)),
+            header: Arc::new(Box::new(header)),
             orphan: Arc::new(Box::new(orphan)),
         }
     }
@@ -114,125 +165,10 @@ impl<B> Clone for Validators<B> {
     fn clone(&self) -> Self {
         Validators {
             block: Arc::clone(&self.block),
+            header: Arc::clone(&self.header),
             orphan: Arc::clone(&self.orphan),
         }
     }
-}
-
-/// Identify behaviour for Blockchain database back ends. Implementations must support `Send` and `Sync` so that
-/// `BlockchainDatabase` can be thread-safe. The backend *must* also execute transactions atomically; i.e., every
-/// operation within it must succeed, or they all fail. Failure to support this contract could lead to
-/// synchronisation issues in your database backend.
-///
-/// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. This strategy allows
-/// us to keep the reading and writing API extremely simple. Extending the types of data that the back ends can handle
-/// will entail adding to those enums, and the back ends, while this trait can remain unchanged.
-#[allow(clippy::ptr_arg)]
-pub trait BlockchainBackend: Send + Sync {
-    /// Commit the transaction given to the backend. If there is an error, the transaction must be rolled back, and
-    /// the error condition returned. On success, every operation in the transaction will have been committed, and
-    /// the function will return `Ok(())`.
-    fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError>;
-    /// Fetch a value from the back end corresponding to the given key. If the value is not found, `get` must return
-    /// `Ok(None)`. It should only error if there is an access or integrity issue with the underlying back end.
-    fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError>;
-    /// Checks to see whether the given key exists in the back end. This function should only fail if there is an
-    /// access or integrity issue with the back end.
-    fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError>;
-
-    /// Fetches data that is calculated and accumulated for blocks that have been
-    /// added to a chain of headers
-    fn fetch_header_accumulated_data(
-        &self,
-        hash: &HashOutput,
-    ) -> Result<Option<BlockHeaderAccumulatedData>, ChainStorageError>;
-
-    /// Used to determine if the database is empty, i.e. a brand new database.
-    /// This is called to decide if the genesis block should be created.
-    fn is_empty(&self) -> Result<bool, ChainStorageError>;
-
-    /// Fetch accumulated data like MMR peaks and deleted hashmap
-    fn fetch_block_accumulated_data(
-        &self,
-        header_hash: &HashOutput,
-    ) -> Result<Option<BlockAccumulatedData>, ChainStorageError>;
-
-    /// Fetch all the kernels in a block
-    fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError>;
-
-    /// Fetch a kernel with this excess and returns a `TransactionKernel` and the hash of the block that it is in
-    fn fetch_kernel_by_excess(
-        &self,
-        excess: &[u8],
-    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
-
-    /// Fetch a kernel with this excess signature  and returns a `TransactionKernel` and the hash of the block that it
-    /// is in
-    fn fetch_kernel_by_excess_sig(
-        &self,
-        excess_sig: &Signature,
-    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
-
-    /// Fetch a specific output. Returns the output and the leaf index in the output MMR
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError>;
-
-    /// Fetch all outputs in a block
-    fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError>;
-
-    /// Fetch all inputs in a block
-    fn fetch_inputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionInput>, ChainStorageError>;
-
-    /// Fetches the total merkle mountain range node count upto the specified height.
-    fn fetch_mmr_node_count(&self, tree: MmrTree, height: u64) -> Result<u32, ChainStorageError>;
-    /// Fetches the leaf node hash and its deletion status for the nth leaf node in the given MMR tree. The height
-    /// parameter is used to select the point in history used for the node deletion status.
-    fn fetch_mmr_node(
-        &self,
-        tree: MmrTree,
-        pos: u32,
-        hist_height: Option<u64>,
-    ) -> Result<(Hash, bool), ChainStorageError>;
-    /// Fetches the set of leaf node hashes and their deletion status' for the nth to nth+count leaf node index in the
-    /// given MMR tree. The height parameter is used to select the point in history used for the node deletion status.
-    fn fetch_mmr_nodes(
-        &self,
-        tree: MmrTree,
-        pos: u32,
-        count: u32,
-        hist_height: Option<u64>,
-    ) -> Result<Vec<(Hash, bool)>, ChainStorageError>;
-    /// Inserts an MMR node consisting of a leaf node hash and its deletion status into the given MMR tree.
-    fn insert_mmr_node(&mut self, tree: MmrTree, hash: Hash, deleted: bool) -> Result<(), ChainStorageError>;
-    /// Marks the MMR node corresponding to the provided hash as deleted.
-    #[allow(clippy::ptr_arg)]
-    fn delete_mmr_node(&mut self, tree: MmrTree, hash: &Hash) -> Result<(), ChainStorageError>;
-    /// Fetches the leaf index of the provided leaf node hash in the given MMR tree.
-    #[allow(clippy::ptr_arg)]
-    fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &Hash) -> Result<Option<u32>, ChainStorageError>;
-    /// Returns the number of blocks in the block orphan pool.
-    fn orphan_count(&self) -> Result<usize, ChainStorageError>;
-    /// Returns the stored header with the highest corresponding height.
-    fn fetch_last_header(&self) -> Result<BlockHeader, ChainStorageError>;
-    /// Returns the stored chain metadata.
-    fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError>;
-    /// Returns the UTXO count
-    fn utxo_count(&self) -> Result<usize, ChainStorageError>;
-    /// Returns the kernel count
-    fn kernel_count(&self) -> Result<usize, ChainStorageError>;
-
-    /// Fetches all of the orphans (hash) that are currently at the tip of an alternate chain
-    fn fetch_orphan_chain_tips(&self) -> Result<Vec<HashOutput>, ChainStorageError>;
-    /// Fetch all orphans that have `hash` as a previous hash
-    fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<HashOutput>, ChainStorageError>;
-    /// Delete orphans according to age. Used to keep the orphan pool at a certain capacity
-    fn delete_oldest_orphans(
-        &mut self,
-        horizon_height: u64,
-        orphan_storage_capacity: usize,
-    ) -> Result<(), ChainStorageError>;
-
-    /// This gets the monero seed_height. This will return 0, if the seed is unkown
-    fn fetch_monero_seed_first_seen_height(&self, seed: &str) -> Result<u64, ChainStorageError>;
 }
 
 // Private macro that pulls out all the boiler plate of extracting a DB query result from its variants
@@ -270,29 +206,6 @@ macro_rules! try_fetch {
 /// You typically don't interact with `BlockChainDatabase` directly, since it doesn't enforce any consensus rules; it
 /// only really stores and fetches blockchain components. To create an instance of `BlockchainDatabase', you must
 /// provide it with the backend it is going to use; for example, for a memory-backed DB:
-///
-/// ```
-/// use tari_core::{
-///     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
-///     consensus::{ConsensusManagerBuilder, Network},
-///     transactions::types::HashDigest,
-///     validation::{mocks::MockValidator, StatefulValidation},
-/// };
-/// let db_backend = MemoryDatabase::<HashDigest>::default();
-/// let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
-/// let db = MemoryDatabase::<HashDigest>::default();
-/// let network = Network::LocalNet;
-/// let rules = ConsensusManagerBuilder::new(network).build();
-/// let db = BlockchainDatabase::new(
-///     db_backend,
-///     &rules,
-///     validators,
-///     BlockchainDatabaseConfig::default(),
-///     false,
-/// )
-/// .unwrap();
-/// // Do stuff with db
-/// ```
 pub struct BlockchainDatabase<B> {
     db: Arc<RwLock<B>>,
     validators: Validators<B>,
@@ -349,6 +262,25 @@ where B: BlockchainBackend
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
         }
         Ok(blockchain_db)
+    }
+
+    pub fn create_chain_header_if_valid(
+        &self,
+        header: BlockHeader,
+        prev: &ChainHeader,
+    ) -> Result<ChainHeader, ChainStorageError>
+    {
+        let db = self.db_read_access()?;
+        // let prev  = db.fetch_chain_header_in_all_chains(&header.prev_hash)?.ok_or_else(||
+        // ChainStorageError::ValueNotFound {     entity: "Header".to_string(),
+        //     field: "hash".to_string(),
+        //     value:  header.prev_hash.to_hex()
+        // })?;
+        let accum_data = self.validators.header.validate(&*db, &header, &prev.accumulated_data)?;
+        Ok(ChainHeader {
+            header,
+            accumulated_data: accum_data.build()?,
+        })
     }
 
     // Be careful about making this method public. Rather use `db_and_metadata_read_access`
@@ -481,6 +413,26 @@ where B: BlockchainBackend
         }
     }
 
+    /// Returns the block header at the given block height.
+    pub fn fetch_header_and_accumulated_data(
+        &self,
+        height: u64,
+    ) -> Result<(BlockHeader, BlockHeaderAccumulatedData), ChainStorageError>
+    {
+        let db = self.db_read_access()?;
+        db.fetch_header_and_accumulated_data(height)
+    }
+
+    /// Returns the block header at the given block height.
+    pub fn fetch_chain_header(&self, height: u64) -> Result<ChainHeader, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let (header, accumulated_data) = db.fetch_header_and_accumulated_data(height)?;
+        Ok(ChainHeader {
+            header,
+            accumulated_data,
+        })
+    }
+
     /// Find the first matching header in a list of block hashes, returning the index of the match and the BlockHeader.
     /// Or None if not found.
     pub fn find_headers_after_hash<I: IntoIterator<Item = HashOutput>>(
@@ -562,7 +514,11 @@ where B: BlockchainBackend
 
     /// Store the provided headers. This function does not do any validation and assumes the inserted header has already
     /// been validated.
-    pub fn insert_valid_headers(&self, headers: Vec<BlockHeader>) -> Result<(), ChainStorageError> {
+    pub fn insert_valid_headers(
+        &self,
+        headers: Vec<(BlockHeader, BlockHeaderAccumulatedData)>,
+    ) -> Result<(), ChainStorageError>
+    {
         let mut db = self.db_write_access()?;
         insert_headers(&mut *db, headers)
     }
@@ -590,10 +546,36 @@ where B: BlockchainBackend
         fetch_header_by_block_hash(&*db, hash)
     }
 
-    /// Returns the header at the tip
-    pub fn fetch_tip_header(&self) -> Result<BlockHeader, ChainStorageError> {
+    /// Returns a connected header in the main chain by block hash
+    pub fn fetch_chain_header_by_block_hash(&self, hash: HashOutput) -> Result<Option<ChainHeader>, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_tip_header(&*db)
+
+        if let Some(header) = fetch_header_by_block_hash(&*db, hash.clone())? {
+            let accumulated_data =
+                db.fetch_header_accumulated_data(&hash)?
+                    .ok_or_else(|| ChainStorageError::ValueNotFound {
+                        entity: "BlockHeaderAccumulatedData".to_string(),
+                        field: "hash".to_string(),
+                        value: hash.to_hex(),
+                    })?;
+            Ok(Some(ChainHeader {
+                header,
+                accumulated_data,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Returns the header at the tip
+    pub fn fetch_tip_header(&self) -> Result<ChainHeader, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_tip_header()
+    }
+
+    pub fn fetch_last_header(&self) -> Result<BlockHeader, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_last_header()
     }
 
     /// Returns the sum of all UTXO commitments
@@ -661,19 +643,7 @@ where B: BlockchainBackend
     ) -> Result<TargetDifficultyWindow, ChainStorageError>
     {
         let db = self.db_read_access()?;
-
-        let mut target_difficulties = self.consensus_manager.new_target_difficulty(pow_algo, height);
-        for height in (0..height).rev() {
-            let header = fetch_header(&*db, height)?;
-            if header.pow.pow_algo == pow_algo {
-                target_difficulties.add_front(header.timestamp(), header.target_difficulty());
-                if target_difficulties.is_full() {
-                    break;
-                }
-            }
-        }
-
-        Ok(target_difficulties)
+        fetch_target_difficulty(&*db, &self.consensus_manager, pow_algo, height)
     }
 
     pub fn fetch_target_difficulties(&self, start_hash: HashOutput) -> Result<TargetDifficulties, ChainStorageError> {
@@ -686,13 +656,30 @@ where B: BlockchainBackend
             })?;
         let start_height = start_header.height;
         let mut targets = TargetDifficulties::new(&self.consensus_manager, start_height);
+        let accum_data =
+            db.fetch_header_accumulated_data(&start_hash)?
+                .ok_or_else(|| ChainStorageError::ValueNotFound {
+                    entity: "BlockHeaderAccumulatedData".to_string(),
+                    field: "hash".to_string(),
+                    value: start_hash.to_hex(),
+                })?;
         // Add start header since we have it on hand
-        targets.add_front(&start_header);
+        targets.add_front(&start_header, accum_data.target_difficulty);
 
         for h in (0..start_height).rev() {
+            // TODO: this can be optimized by retrieving the accumulated data and header at the same time, or even
+            // better by retrieving only the epoch and target difficulty in the same lmdb transaction
             let header = fetch_header(&*db, h)?;
             if !targets.is_algo_full(header.pow_algo()) {
-                targets.add_front(&header);
+                let accum_data = db.fetch_header_accumulated_data(&header.hash())?.ok_or_else(|| {
+                    ChainStorageError::ValueNotFound {
+                        entity: "BlockHeaderAccumulatedData".to_string(),
+                        field: "hash".to_string(),
+                        value: header.hash().to_hex(),
+                    }
+                })?;
+
+                targets.add_front(&header, accum_data.target_difficulty);
             }
             if targets.is_full() {
                 break;
@@ -806,7 +793,8 @@ where B: BlockchainBackend
         let mut db = self.db_write_access()?;
         let block_add_result = add_block(
             &mut *db,
-            &*self.validators.block,
+            &**self.validators.block,
+            &**self.validators.header,
             &*self.consensus_manager.chain_strength_comparer(),
             block,
         )?;
@@ -821,7 +809,7 @@ where B: BlockchainBackend
 
         // Cleanup of backend when in pruned mode.
         match block_add_result {
-            BlockAddResult::Ok | BlockAddResult::ChainReorg(_, _) => prune_database(
+            BlockAddResult::Ok(_) | BlockAddResult::ChainReorg(_, _) => prune_database(
                 &mut *db,
                 self.config.pruning_interval,
                 self.config.pruning_horizon,
@@ -845,7 +833,7 @@ where B: BlockchainBackend
         Ok(())
     }
 
-    fn insert_block(&self, block: Arc<Block>) -> Result<(), ChainStorageError> {
+    fn insert_block(&self, block: Arc<ChainBlock>) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
         let mut txn = DbTransaction::new();
         insert_block(&mut txn, block)?;
@@ -970,7 +958,7 @@ where B: BlockchainBackend
     /// The operation will fail if
     /// * The block height is in the future
     /// * The block height is before the horizon block height determined by the pruning horizon
-    pub fn rewind_to_height(&self, height: u64) -> Result<Vec<Arc<Block>>, ChainStorageError> {
+    pub fn rewind_to_height(&self, height: u64) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
         let mut db = self.db_write_access()?;
         rewind_to_height(&mut *db, height)
     }
@@ -978,49 +966,50 @@ where B: BlockchainBackend
     /// Prepares the database for horizon sync. This function sets the PendingHorizonSyncState for the database
     /// and sets the chain metadata to indicate that this node can not provide any sync data until sync is complete.
     pub fn horizon_sync_begin(&self) -> Result<InProgressHorizonSyncState, ChainStorageError> {
-        let db = self.db_write_access()?;
-        match get_horizon_sync_state(&*db)? {
-            Some(state) => {
-                info!(
-                    target: LOG_TARGET,
-                    "Previous horizon sync was interrupted. Attempting to recover."
-                );
-                debug!(target: LOG_TARGET, "Existing PendingHorizonSyncState = ({})", state);
-                Ok(state)
-            },
-            None => {
-                unimplemented!();
-                // let metadata = db.fetch_chain_metadata()?;
-                //
-                // let state = InProgressHorizonSyncState {
-                //     metadata,
-                //     initial_kernel_checkpoint_count: db.count_checkpoints(MmrTree::Kernel)? as u64,
-                //     initial_utxo_checkpoint_count: db.count_checkpoints(MmrTree::Utxo)? as u64,
-                //     initial_rangeproof_checkpoint_count: db.count_checkpoints(MmrTree::Utxo)? as u64,
-                // };
-                // debug!(target: LOG_TARGET, "Preparing database for horizon sync. ({})", state);
-                //
-                // let mut txn = DbTransaction::new();
-                //
-                // txn.set_metadata(
-                //     MetadataKey::HorizonSyncState,
-                //     MetadataValue::HorizonSyncState(state.clone()),
-                // );
-                //
-                // // During horizon state syncing the blockchain backend will be in an inconsistent state until the
-                // entire // horizon state has been synced. Reset the local chain metadata will limit
-                // other nodes and // local service from requesting data while the horizon sync is in
-                // progress. txn.set_metadata(MetadataKey::ChainHeight,
-                // MetadataValue::ChainHeight(Some(0))); txn.set_metadata(
-                //     MetadataKey::EffectivePrunedHeight,
-                //     MetadataValue::EffectivePrunedHeight(0),
-                // );
-                // txn.set_metadata(MetadataKey::AccumulatedWork, MetadataValue::AccumulatedWork(None));
-                // commit(&mut *db, txn)?;
-                //
-                // Ok(state)
-            },
-        }
+        unimplemented!()
+        // let db = self.db_write_access()?;
+        // match get_horizon_sync_state(&*db)? {
+        //     Some(state) => {
+        //         info!(
+        //             target: LOG_TARGET,
+        //             "Previous horizon sync was interrupted. Attempting to recover."
+        //         );
+        //         debug!(target: LOG_TARGET, "Existing PendingHorizonSyncState = ({})", state);
+        //         Ok(state)
+        //     },
+        //     None => {
+        //         unimplemented!();
+        // let metadata = db.fetch_chain_metadata()?;
+        //
+        // let state = InProgressHorizonSyncState {
+        //     metadata,
+        //     initial_kernel_checkpoint_count: db.count_checkpoints(MmrTree::Kernel)? as u64,
+        //     initial_utxo_checkpoint_count: db.count_checkpoints(MmrTree::Utxo)? as u64,
+        //     initial_rangeproof_checkpoint_count: db.count_checkpoints(MmrTree::Utxo)? as u64,
+        // };
+        // debug!(target: LOG_TARGET, "Preparing database for horizon sync. ({})", state);
+        //
+        // let mut txn = DbTransaction::new();
+        //
+        // txn.set_metadata(
+        //     MetadataKey::HorizonSyncState,
+        //     MetadataValue::HorizonSyncState(state.clone()),
+        // );
+        //
+        // // During horizon state syncing the blockchain backend will be in an inconsistent state until the
+        // entire // horizon state has been synced. Reset the local chain metadata will limit
+        // other nodes and // local service from requesting data while the horizon sync is in
+        // progress. txn.set_metadata(MetadataKey::ChainHeight,
+        // MetadataValue::ChainHeight(Some(0))); txn.set_metadata(
+        //     MetadataKey::EffectivePrunedHeight,
+        //     MetadataValue::EffectivePrunedHeight(0),
+        // );
+        // txn.set_metadata(MetadataKey::AccumulatedWork, MetadataValue::AccumulatedWork(None));
+        // commit(&mut *db, txn)?;
+        //
+        // Ok(state)
+        // },
+        // }
     }
 
     /// Commit the current synced horizon state.
@@ -1035,14 +1024,6 @@ where B: BlockchainBackend
 
         let best_block = tip_header.hash();
         txn.set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(best_block));
-
-        let accumulated_difficulty =
-            ProofOfWork::new_from_difficulty(&tip_header.pow, ProofOfWork::achieved_difficulty(&tip_header)?)
-                .total_accumulated_difficulty();
-        txn.set_metadata(
-            MetadataKey::AccumulatedWork,
-            MetadataValue::AccumulatedWork(accumulated_difficulty),
-        );
 
         txn.set_metadata(
             MetadataKey::EffectivePrunedHeight,
@@ -1281,10 +1262,14 @@ pub fn fetch_headers<T: BlockchainBackend>(
     }
 }
 
-fn insert_headers<T: BlockchainBackend>(db: &mut T, headers: Vec<BlockHeader>) -> Result<(), ChainStorageError> {
+fn insert_headers<T: BlockchainBackend>(
+    db: &mut T,
+    headers: Vec<(BlockHeader, BlockHeaderAccumulatedData)>,
+) -> Result<(), ChainStorageError>
+{
     let mut txn = DbTransaction::new();
-    headers.into_iter().for_each(|header| {
-        txn.insert_header(header);
+    headers.into_iter().for_each(|(header, accum_data)| {
+        txn.insert_header(header, accum_data);
     });
     db.write(txn)
 }
@@ -1297,20 +1282,14 @@ fn fetch_header_by_block_hash<T: BlockchainBackend>(
     try_fetch!(db, hash, BlockHash)
 }
 
-pub fn fetch_tip_header<T: BlockchainBackend>(db: &T) -> Result<BlockHeader, ChainStorageError> {
-    db.fetch_last_header().map_err(|e| {
-        error!(target: LOG_TARGET, "Could not fetch the tip header of the db. {:?}", e);
-        e
-    })
-}
-
 fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: BlockHash) -> Result<Block, ChainStorageError> {
     fetch!(db, hash, OrphanBlock)
 }
 
 fn add_block<T: BlockchainBackend>(
     db: &mut T,
-    block_validator: &StatefulValidator<Block, T>,
+    block_validator: &dyn PostOrphanBodyValidation<T>,
+    header_validator: &dyn HeaderValidation<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
     block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError>
@@ -1319,30 +1298,30 @@ fn add_block<T: BlockchainBackend>(
     if db.contains(&DbKey::BlockHash(block_hash))? {
         return Ok(BlockAddResult::BlockExists);
     }
-    handle_possible_reorg(db, block_validator, chain_strength_comparer, block)
+    handle_possible_reorg(db, block_validator, header_validator, chain_strength_comparer, block)
 }
 
 // Adds a new block onto the chain tip.
-fn insert_block(txn: &mut DbTransaction, block: Arc<Block>) -> Result<(), ChainStorageError> {
-    let block_hash = block.hash();
+fn insert_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<(), ChainStorageError> {
+    let block_hash = block.accumulated_data.hash.clone();
     debug!(
         target: LOG_TARGET,
         "Storing new block #{} `{}`",
-        block.header.height,
+        block.block.header.height,
         block_hash.to_hex()
     );
-    if block.header.pow.pow_algo == PowAlgorithm::Monero {
-        let monero_seed = MoneroData::from_header(&block.header)
+    if block.block.header.pow.pow_algo == PowAlgorithm::Monero {
+        let monero_seed = MoneroData::from_header(&block.block.header)
             .map_err(|e| ValidationError::CustomError(e.to_string()))?
             .key;
-        txn.insert_monero_seed_height(&monero_seed, block.header.height);
+        txn.insert_monero_seed_height(&monero_seed, block.block.header.height);
     }
 
     // Update metadata
-    let accumulated_difficulty = block.header.get_proof_of_work()?.total_accumulated_difficulty();
+    let accumulated_difficulty = block.accumulated_data.total_accumulated_difficulty;
     txn.set_metadata(
         MetadataKey::ChainHeight,
-        MetadataValue::ChainHeight(block.header.height),
+        MetadataValue::ChainHeight(block.block.header.height),
     )
     .set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(block_hash))
     .set_metadata(
@@ -1373,14 +1352,45 @@ fn store_pruning_horizon<T: BlockchainBackend>(db: &mut T, pruning_horizon: u64)
     db.write(txn)
 }
 
+pub fn fetch_target_difficulty<T: BlockchainBackend>(
+    db: &T,
+    consensus_manager: &ConsensusManager,
+    pow_algo: PowAlgorithm,
+    height: u64,
+) -> Result<TargetDifficultyWindow, ChainStorageError>
+{
+    let mut target_difficulties = consensus_manager.new_target_difficulty(pow_algo, height);
+    for height in (0..height).rev() {
+        // TODO: this can be optimized by retrieving the accumulated data and header at the same time, or even
+        // better by retrieving only the epoch and target difficulty in the same lmdb transaction
+        let header = fetch_header(&*db, height)?;
+
+        if header.pow.pow_algo == pow_algo {
+            let accum_data =
+                db.fetch_header_accumulated_data(&header.hash())?
+                    .ok_or_else(|| ChainStorageError::ValueNotFound {
+                        entity: "BlockHeaderAccumulatedData".to_string(),
+                        field: "hash".to_string(),
+                        value: header.hash().to_hex(),
+                    })?;
+
+            target_difficulties.add_front(header.timestamp(), accum_data.target_difficulty);
+            if target_difficulties.is_full() {
+                break;
+            }
+        }
+    }
+
+    Ok(target_difficulties)
+}
+
 fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBlock, ChainStorageError> {
     let mark = Instant::now();
     let tip_height = check_for_valid_height(&*db, height)?;
-    let header = fetch_header(db, height)?;
-    let header_hash = header.hash();
-    let kernels = db.fetch_kernels_in_block(&header_hash)?;
-    let outputs = db.fetch_outputs_in_block(&header_hash)?;
-    let inputs = db.fetch_inputs_in_block(&header_hash)?;
+    let (header, accumulated_data) = db.fetch_header_and_accumulated_data(height)?;
+    let kernels = db.fetch_kernels_in_block(&accumulated_data.hash)?;
+    let outputs = db.fetch_outputs_in_block(&accumulated_data.hash)?;
+    let inputs = db.fetch_inputs_in_block(&accumulated_data.hash)?;
     let block = header
         .into_builder()
         .add_inputs(inputs)
@@ -1393,7 +1403,7 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
         height,
         mark.elapsed()
     );
-    Ok(HistoricalBlock::new(block, tip_height - height + 1))
+    Ok(HistoricalBlock::new(block, tip_height - height + 1, accumulated_data))
 }
 
 fn fetch_blocks<T: BlockchainBackend>(
@@ -1521,11 +1531,8 @@ fn fetch_block_by_hash<T: BlockchainBackend>(
     hash: BlockHash,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError>
 {
-    if let Some(header) = fetch_header_by_block_hash(db, hash.clone())? {
+    if let Some(header) = fetch_header_by_block_hash(db, hash)? {
         return Ok(Some(fetch_block(db, header.height)?));
-    }
-    if let Ok(block) = fetch_orphan(db, hash) {
-        return Ok(Some(HistoricalBlock::new(block, 0)));
     }
     Ok(None)
 }
@@ -1549,7 +1556,7 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<u
     Ok(tip_height)
 }
 
-fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec<Arc<Block>>, ChainStorageError> {
+fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let tip_header = db.fetch_last_header()?;
 
     let mut txn = DbTransaction::new();
@@ -1592,22 +1599,26 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
     );
     for h in 0..steps_back {
         let block = fetch_block(db, block_height - h)?;
-        let block = Arc::new(block.block);
-        txn.delete_block(block.hash());
-        txn.insert_orphan(block.clone());
+        let block = Arc::new(ChainBlock {
+            block: block.block,
+            accumulated_data: block.accumulated_data,
+        });
+        txn.delete_block(block.block.hash());
+        txn.insert_chained_orphan(block.clone());
         removed_blocks.push(block);
     }
 
     // Update metadata
-    let last_header = fetch_header(db, height)?;
-    let accumulated_work =
-        ProofOfWork::new_from_difficulty(&last_header.pow, ProofOfWork::achieved_difficulty(&last_header)?)
-            .total_accumulated_difficulty();
+    let (last_header, header_accumulated_data) = db.fetch_header_and_accumulated_data(height)?;
+
     txn.set_metadata(MetadataKey::ChainHeight, MetadataValue::ChainHeight(last_header.height));
-    txn.set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(last_header.hash()));
+    txn.set_metadata(
+        MetadataKey::BestBlock,
+        MetadataValue::BestBlock(header_accumulated_data.hash.clone()),
+    );
     txn.set_metadata(
         MetadataKey::AccumulatedWork,
-        MetadataValue::AccumulatedWork(accumulated_work),
+        MetadataValue::AccumulatedWork(header_accumulated_data.total_accumulated_difficulty),
     );
     db.write(txn)?;
 
@@ -1618,14 +1629,15 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
 // is reorganised if necessary.
 fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut T,
-    block_validator: &StatefulValidator<Block, T>,
+    block_validator: &dyn PostOrphanBodyValidation<T>,
+    header_validator: &dyn HeaderValidation<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
     new_block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError>
 {
     let db_height = db.fetch_chain_metadata()?.height_of_longest_chain();
 
-    let new_tips = insert_orphan_and_find_new_tips(db, new_block.clone())?;
+    let new_tips = insert_orphan_and_find_new_tips(db, new_block.clone(), header_validator)?;
     debug!(
         target: LOG_TARGET,
         "Added candidate block #{} ({}) to the orphan database. Best height is {}. New tips found:{} ",
@@ -1646,15 +1658,9 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     }
 
     let new_block_hash = new_block.hash();
-    let orphan_chain_tips = db.fetch_orphan_chain_tips()?;
-    trace!(
-        target: LOG_TARGET,
-        "Search for orphan tips linked to block #{} complete. {} tips found",
-        new_block.header.height,
-        orphan_chain_tips.len()
-    );
+
     // Check the accumulated difficulty of the best fork chain compared to the main chain.
-    let fork_header = find_strongest_orphan_tip(db, orphan_chain_tips, chain_strength_comparer)?;
+    let fork_header = find_strongest_orphan_tip(new_tips, chain_strength_comparer)?;
     if fork_header.is_none() {
         // This should never happen because a block is always added to the orphan pool before
         // checking, but just in case
@@ -1663,32 +1669,31 @@ fn handle_possible_reorg<T: BlockchainBackend>(
         ));
     }
     let fork_header = fork_header.unwrap();
-    let fork_tip_hash = fork_header.hash();
 
-    let tip_header = db.fetch_last_header()?;
-    if fork_tip_hash == new_block_hash {
+    let tip_header = db.fetch_tip_header()?;
+    if fork_header.accumulated_data.hash == new_block_hash {
         debug!(
             target: LOG_TARGET,
             "Comparing candidate block #{} (accum_diff:{}, hash:{}) to main chain #{} (accum_diff: {}, hash: ({})).",
             new_block.header.height,
-            fork_header.total_accumulated_difficulty_inclusive_squared()?,
-            fork_tip_hash.to_hex(),
-            tip_header.height,
-            tip_header.total_accumulated_difficulty_inclusive_squared()?,
-            tip_header.hash().to_hex()
+            fork_header.accumulated_data.total_accumulated_difficulty,
+            fork_header.accumulated_data.hash.to_hex(),
+            tip_header.header.height,
+            tip_header.accumulated_data.total_accumulated_difficulty,
+            tip_header.accumulated_data.hash.to_hex()
         );
     } else {
         debug!(
             target: LOG_TARGET,
             "Comparing fork (accum_diff:{}, hash:{}) with block #{} ({}) to main chain #{} (accum_diff: {}, hash: \
              ({})).",
-            fork_header.total_accumulated_difficulty_inclusive_squared()?,
-            fork_tip_hash.to_hex(),
+            fork_header.accumulated_data.total_accumulated_difficulty,
+            fork_header.accumulated_data.hash.to_hex(),
             new_block.header.height,
             new_block_hash.to_hex(),
-            tip_header.height,
-            tip_header.total_accumulated_difficulty_inclusive_squared()?,
-            tip_header.hash().to_hex()
+            tip_header.header.height,
+            tip_header.accumulated_data.total_accumulated_difficulty,
+            tip_header.accumulated_data.hash.to_hex()
         );
     }
 
@@ -1696,43 +1701,41 @@ fn handle_possible_reorg<T: BlockchainBackend>(
         Ordering::Greater => {
             debug!(
                 target: LOG_TARGET,
-                "Accumulated difficulty validation PASSED for block #{} ({})",
-                new_block.header.height,
-                new_block_hash.to_hex()
+                "Fork chain (accum_diff:{}, hash:{}) is stronger than the current tip.",
+                fork_header.header.height,
+                fork_header.accumulated_data.hash.to_hex()
             );
         },
         Ordering::Less | Ordering::Equal => {
             debug!(
                 target: LOG_TARGET,
                 "Fork chain (accum_diff:{}, hash:{}) with block {} ({}) has a weaker difficulty.",
-                fork_header.total_accumulated_difficulty_inclusive_squared()?,
-                fork_tip_hash.to_hex(),
+                fork_header.accumulated_data.total_accumulated_difficulty,
+                fork_header.accumulated_data.hash.to_hex(),
                 new_block.header.height,
                 new_block_hash.to_hex(),
             );
             debug!(
                 target: LOG_TARGET,
-                "Orphan block received: #{}", new_block.header.height
+                "Orphan block received: #{} ", new_block.header.height
             );
             return Ok(BlockAddResult::OrphanBlock);
         },
     }
 
-    // We've built the strongest orphan chain we can by going backwards and forwards from the new orphan block
-    // that is linked with the main chain.
-    // New block is not the tip, find complete chain from tip to main chain.
-    let reorg_chain = get_orphan_link_main_chain(db, &fork_tip_hash)?;
+    let reorg_chain = get_orphan_link_main_chain(db, &fork_header.accumulated_data.hash)?;
     // }
-    let added_blocks = reorg_chain.iter().cloned().collect::<Vec<_>>();
     let fork_height = reorg_chain
         .front()
         .expect("The new orphan block should be in the queue")
+        .block
         .header
         .height -
         1;
-    let removed_blocks = reorganize_chain(db, block_validator, fork_height, reorg_chain)?;
+
+    let num_added_blocks = reorg_chain.len();
+    let removed_blocks = reorganize_chain(db, block_validator, fork_height, &reorg_chain)?;
     let num_removed_blocks = removed_blocks.len();
-    let num_added_blocks = added_blocks.len();
 
     // reorg is required when any blocks are removed or more than one are added
     // see https://github.com/tari-project/tari/issues/2101
@@ -1742,16 +1745,16 @@ fn handle_possible_reorg<T: BlockchainBackend>(
             "Chain reorg required from {} to {} (accum_diff:{}, hash:{}) to (accum_diff:{}, hash:{}). Number of \
              blocks to remove: {}, to add: {}.
             ",
-            tip_header,
-            fork_header,
-            tip_header.pow,
-            tip_header.hash().to_hex(),
-            fork_header.pow,
-            fork_tip_hash.to_hex(),
+            tip_header.header,
+            fork_header.header,
+            tip_header.accumulated_data.total_accumulated_difficulty,
+            tip_header.accumulated_data.hash.to_hex(),
+            fork_header.accumulated_data.total_accumulated_difficulty,
+            fork_header.accumulated_data.hash.to_hex(),
             num_removed_blocks,
             num_added_blocks,
         );
-        Ok(BlockAddResult::ChainReorg(removed_blocks, added_blocks))
+        Ok(BlockAddResult::ChainReorg(removed_blocks, reorg_chain.into()))
     } else {
         trace!(
             target: LOG_TARGET,
@@ -1759,17 +1762,17 @@ fn handle_possible_reorg<T: BlockchainBackend>(
             num_removed_blocks,
             num_added_blocks,
         );
-        Ok(BlockAddResult::Ok)
+        Ok(BlockAddResult::Ok(reorg_chain.front().unwrap().clone()))
     }
 }
 
 // Reorganize the main chain with the provided fork chain, starting at the specified height.
 fn reorganize_chain<T: BlockchainBackend>(
     backend: &mut T,
-    block_validator: &StatefulValidator<Block, T>,
+    block_validator: &dyn PostOrphanBodyValidation<T>,
     height: u64,
-    chain: VecDeque<Arc<Block>>,
-) -> Result<Vec<Arc<Block>>, ChainStorageError>
+    chain: &VecDeque<Arc<ChainBlock>>,
+) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError>
 {
     let removed_blocks = rewind_to_height(backend, height)?;
     debug!(
@@ -1779,29 +1782,31 @@ fn reorganize_chain<T: BlockchainBackend>(
         height,
         removed_blocks
             .iter()
-            .map(|b| b.header.height.to_string())
+            .map(|b| b.block.header.height.to_string())
             .collect::<Vec<_>>()
             .join(", ")
     );
 
     for block in chain {
         let mut txn = DbTransaction::new();
-        let block_hash = block.hash();
-        let block_hash_hex = block_hash.to_hex();
-        txn.delete(DbKey::OrphanBlock(block_hash));
-        if let Err(e) = block_validator.validate(&block, backend) {
+        let block_hash_hex = block.accumulated_data.hash.to_hex();
+        txn.delete(DbKey::OrphanBlock(block.accumulated_data.hash.clone()));
+        if let Err(e) = block_validator.validate_body_for_valid_orphan(&block, backend) {
             warn!(
                 target: LOG_TARGET,
-                "Orphan block {} ({}) failed validation during chain reorg: {}", block.header.height, block_hash_hex, e
+                "Orphan block {} ({}) failed validation during chain reorg: {}",
+                block.block.header.height,
+                block_hash_hex,
+                e
             );
-            remove_orphan(backend, block.hash())?;
+            remove_orphan(backend, block.accumulated_data.hash.clone())?;
 
             info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.");
             restore_reorged_chain(backend, height, removed_blocks)?;
             return Err(e.into());
         }
 
-        insert_block(&mut txn, block)?;
+        insert_block(&mut txn, block.clone())?;
         // Failed to store the block - this should typically never happen unless there is a bug in the validator
         // (e.g. does not catch a double spend). In any case, we still need to restore the chain to a
         // good state before returning.
@@ -1822,7 +1827,7 @@ fn reorganize_chain<T: BlockchainBackend>(
 fn restore_reorged_chain<T: BlockchainBackend>(
     db: &mut T,
     height: u64,
-    previous_chain: Vec<Arc<Block>>,
+    previous_chain: Vec<Arc<ChainBlock>>,
 ) -> Result<(), ChainStorageError>
 {
     let invalid_chain = rewind_to_height(db, height)?;
@@ -1832,14 +1837,14 @@ fn restore_reorged_chain<T: BlockchainBackend>(
         invalid_chain.len(),
         invalid_chain
             .iter()
-            .map(|block| block.hash().to_hex())
+            .map(|block| block.accumulated_data.hash.to_hex())
             .collect::<Vec<_>>(),
     );
     let mut txn = DbTransaction::new();
     // Add removed blocks in the reverse order that they were removed
     // See: https://github.com/tari-project/tari/issues/2182
     for block in previous_chain.into_iter().rev() {
-        txn.delete(DbKey::OrphanBlock(block.hash()));
+        txn.delete(DbKey::OrphanBlock(block.accumulated_data.hash.clone()));
         insert_block(&mut txn, block)?;
     }
     db.write(txn)?;
@@ -1850,42 +1855,64 @@ fn restore_reorged_chain<T: BlockchainBackend>(
 fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     db: &mut T,
     block: Arc<Block>,
-) -> Result<Vec<HashOutput>, ChainStorageError>
+    validator: &dyn HeaderValidation<T>,
+) -> Result<Vec<ChainHeader>, ChainStorageError>
 {
     let hash = block.hash();
 
     let mut txn = DbTransaction::new();
-    txn.insert_orphan(block.clone());
 
     let mut new_tips_found = vec![];
-    let tips = db.fetch_orphan_chain_tips()?;
-    if tips.contains(&block.header.prev_hash) {
-        // Extend tip
+    let parent;
+    if let Some(curr_parent) = db.fetch_orphan_chain_tip_by_hash(&block.hash())? {
+        parent = curr_parent;
         txn.remove_orphan_chain_tip(block.header.prev_hash.clone());
-
-        for new_tip in find_orphan_descendant_tips_of(&*db, hash)? {
-            txn.insert_orphan_chain_tip(new_tip.clone());
-            new_tips_found.push(new_tip);
-        }
+        debug!(
+            target: LOG_TARGET,
+            "New orphan extends a chain in the current candidate tip set"
+        );
     } else {
-        // Find in connected
-        let best_chain_connection = fetch_header_by_block_hash(&*db, block.header.prev_hash.clone())?;
-        if let Some(connected) = best_chain_connection {
+        let best_chain_connection = db.fetch_chain_header_in_all_chains(&block.header.prev_hash.clone())?;
+        if let Some(curr_parent) = best_chain_connection {
             debug!(
                 target: LOG_TARGET,
-                "New orphan connects to existing chain at height: {}", connected.height
+                "New orphan does not have a parent in the current tip set"
             );
-            for new_tip in find_orphan_descendant_tips_of(&*db, hash)? {
-                txn.insert_orphan_chain_tip(new_tip.clone());
-                new_tips_found.push(new_tip);
-            }
+            parent = curr_parent;
         } else {
             debug!(
                 target: LOG_TARGET,
                 "Orphan {} was not connected to any previous headers. Inserting as true orphan",
                 hash.to_hex()
             );
+
+            txn.insert_orphan(block.clone());
+            db.write(txn)?;
+            return Ok(vec![]);
         }
+    }
+
+    let accum_builder = validator.validate(db, &block.header, &parent.accumulated_data)?;
+    let accumulated_data = accum_builder
+        .total_kernel_offset(
+            &parent.accumulated_data.total_kernel_offset,
+            &block.header.total_kernel_offset,
+        )
+        .build()?;
+
+    // Extend tip
+
+    txn.insert_chained_orphan(
+        ChainBlock {
+            accumulated_data: accumulated_data.clone(),
+            block: block.as_ref().clone(),
+        }
+        .into(),
+    );
+
+    for new_tip in find_orphan_descendant_tips_of(&*db, &block.header, &accumulated_data, validator, &mut txn)? {
+        txn.insert_orphan_chain_tip(new_tip.accumulated_data.hash.clone());
+        new_tips_found.push(new_tip);
     }
 
     db.write(txn)?;
@@ -1895,16 +1922,55 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 // Find the tip set of any orphans that have hash as an ancestor
 fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     db: &T,
-    hash: HashOutput,
-) -> Result<Vec<HashOutput>, ChainStorageError>
+    prev_header: &BlockHeader,
+    prev_accumulated_data: &BlockHeaderAccumulatedData,
+    validator: &dyn HeaderValidation<T>,
+    txn: &mut DbTransaction,
+) -> Result<Vec<ChainHeader>, ChainStorageError>
 {
-    let children = db.fetch_orphan_children_of(hash.clone())?;
+    let children = db.fetch_orphan_children_of(prev_accumulated_data.hash.clone())?;
     if children.is_empty() {
-        return Ok(vec![hash]);
+        return Ok(vec![ChainHeader {
+            header: prev_header.clone(),
+            accumulated_data: prev_accumulated_data.clone(),
+        }]);
     }
     let mut res = vec![];
     for child in children {
-        res.extend(find_orphan_descendant_tips_of(db, child)?);
+        match validator.validate(db, &child.header, prev_accumulated_data) {
+            Ok(builder) => {
+                let accum_data = builder
+                    .total_kernel_offset(
+                        &prev_accumulated_data.total_kernel_offset,
+                        &child.header.total_kernel_offset,
+                    )
+                    .build()?;
+                txn.insert_chained_orphan(
+                    ChainBlock {
+                        block: child.clone(),
+                        accumulated_data: accum_data.clone(),
+                    }
+                    .into(),
+                );
+                res.extend(find_orphan_descendant_tips_of(
+                    db,
+                    &child.header,
+                    &accum_data,
+                    validator,
+                    txn,
+                )?);
+            },
+            Err(e) => {
+                // Warn for now, idk might lower to debug later.
+                warn!(
+                    target: LOG_TARGET,
+                    "Discarding orphan {} because it has an invalid header: {}",
+                    child.hash().to_hex(),
+                    e
+                );
+                txn.delete_orphan(child.hash());
+            },
+        };
     }
     Ok(res)
 }
@@ -1917,18 +1983,23 @@ fn remove_orphan<T: BlockchainBackend>(db: &mut T, hash: HashOutput) -> Result<(
 }
 
 /// Gets all blocks from the orphan to the point where it connects to the best chain
+// TODO: this would probably perform better if it reused the db transaction
 #[allow(clippy::ptr_arg)]
 fn get_orphan_link_main_chain<T: BlockchainBackend>(
     db: &mut T,
     orphan_tip: &HashOutput,
-) -> Result<VecDeque<Arc<Block>>, ChainStorageError>
+) -> Result<VecDeque<Arc<ChainBlock>>, ChainStorageError>
 {
-    let mut chain: VecDeque<Arc<Block>> = VecDeque::new();
+    let mut chain: VecDeque<Arc<ChainBlock>> = VecDeque::new();
     let mut curr_hash = orphan_tip.to_owned();
     loop {
-        let curr_block = fetch!(db, curr_hash, OrphanBlock)?;
+        let curr_block = fetch!(db, curr_hash.clone(), OrphanBlock)?;
+        let accumulated_data = db.fetch_orphan_header_accumulated_data(curr_hash.clone())?;
         curr_hash = curr_block.header.prev_hash.clone();
-        chain.push_front(Arc::new(curr_block));
+        chain.push_front(Arc::new(ChainBlock {
+            block: curr_block,
+            accumulated_data,
+        }));
 
         if db.contains(&DbKey::BlockHash(curr_hash.clone()))? {
             break;
@@ -1936,22 +2007,21 @@ fn get_orphan_link_main_chain<T: BlockchainBackend>(
     }
     Ok(chain)
 }
+
 /// Find and return the orphan chain tip with the highest accumulated difficulty.
-fn find_strongest_orphan_tip<T: BlockchainBackend>(
-    db: &T,
-    orphan_chain_tips: Vec<BlockHash>,
+fn find_strongest_orphan_tip(
+    orphan_chain_tips: Vec<ChainHeader>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
-) -> Result<Option<BlockHeader>, ChainStorageError>
+) -> Result<Option<ChainHeader>, ChainStorageError>
 {
-    let mut best_block_header: Option<BlockHeader> = None;
-    for tip_hash in orphan_chain_tips {
-        let header = fetch_orphan(db, tip_hash.clone())?.header;
+    let mut best_block_header: Option<ChainHeader> = None;
+    for tip in orphan_chain_tips {
         best_block_header = match best_block_header {
-            Some(current_best) => match chain_strength_comparer.compare(&current_best, &header) {
-                Ordering::Less => Some(header),
+            Some(current_best) => match chain_strength_comparer.compare(&current_best, &tip) {
+                Ordering::Less => Some(tip),
                 Ordering::Greater | Ordering::Equal => Some(current_best),
             },
-            None => Some(header),
+            None => Some(tip),
         };
     }
 

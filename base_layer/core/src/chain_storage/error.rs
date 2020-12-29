@@ -129,3 +129,17 @@ impl From<lmdb_zero::Error> for ChainStorageError {
         }
     }
 }
+
+pub trait Optional<U> {
+    fn optional(self) -> Result<Option<U>, ChainStorageError>;
+}
+
+impl<U> Optional<U> for Result<U, ChainStorageError> {
+    fn optional(self) -> Result<Option<U>, ChainStorageError> {
+        match self {
+            Ok(item) => Ok(Some(item)),
+            Err(err) if err.is_value_not_found() => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+}

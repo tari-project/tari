@@ -24,8 +24,14 @@
 use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
 
 use tari_core::{
-    blocks::Block,
-    chain_storage::{create_lmdb_database, BlockchainDatabase, BlockchainDatabaseConfig, LMDBDatabase, Validators},
+    chain_storage::{
+        create_lmdb_database,
+        BlockchainDatabase,
+        BlockchainDatabaseConfig,
+        ChainBlock,
+        LMDBDatabase,
+        Validators,
+    },
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, Network},
     test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
     transactions::{
@@ -79,7 +85,7 @@ static EMISSION: [u64; 2] = [10, 10];
 ///             -> change     (5.7)
 pub fn create_blockchain_db_no_cut_through() -> (
     BlockchainDatabase<TempDatabase>,
-    Vec<Block>,
+    Vec<ChainBlock>,
     Vec<Vec<UnblindedOutput>>,
     ConsensusManager,
 ) {
@@ -127,7 +133,7 @@ pub fn create_new_blockchain(
     network: Network,
 ) -> (
     BlockchainDatabase<TempDatabase>,
-    Vec<Block>,
+    Vec<ChainBlock>,
     Vec<Vec<UnblindedOutput>>,
     ConsensusManager,
 ) {
@@ -157,7 +163,7 @@ pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
     config: BlockchainDatabaseConfig,
 ) -> (
     BlockchainDatabase<LMDBDatabase>,
-    Vec<Block>,
+    Vec<ChainBlock>,
     Vec<Vec<UnblindedOutput>>,
     ConsensusManager,
 )

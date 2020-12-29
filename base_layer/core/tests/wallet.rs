@@ -177,7 +177,7 @@ fn wallet_base_node_integration_test() {
             ..Default::default()
         }),
         None,
-        Network::Rincewind,
+        Network::Ridcully,
         None,
         None,
         None,
@@ -234,7 +234,7 @@ fn wallet_base_node_integration_test() {
         factories.clone(),
         None,
         None,
-        Network::Rincewind,
+        Network::Ridcully,
         None,
         None,
         None,

@@ -39,7 +39,7 @@
 
 use crate::{
     blocks::{BlockBuilder, NewBlockHeaderTemplate},
-    proof_of_work::{Difficulty, PowAlgorithm, PowError, ProofOfWork},
+    proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
     transactions::types::{BlindingFactor, HashDigest},
 };
 use chrono::{DateTime, Utc};
@@ -131,8 +131,6 @@ impl BlockHeader {
     /// of work information.
     pub fn from_previous(prev: &BlockHeader) -> Result<BlockHeader, BlockHeaderValidationError> {
         let prev_hash = prev.hash();
-        let mut pow = ProofOfWork::default();
-        pow.add_difficulty(&prev.pow, prev.achieved_difficulty()?);
         Ok(BlockHeader {
             version: prev.version,
             height: prev.height + 1,
@@ -143,27 +141,8 @@ impl BlockHeader {
             kernel_mr: vec![0; BLOCK_HASH_LENGTH],
             total_kernel_offset: BlindingFactor::default(),
             nonce: 0,
-            pow,
+            pow: ProofOfWork::default(),
         })
-    }
-
-    /// Calculates and returns the achieved difficulty for this header and associated proof of work.
-    pub fn achieved_difficulty(&self) -> Result<Difficulty, PowError> {
-        ProofOfWork::achieved_difficulty(self)
-    }
-
-    /// Calculates the total accumulated difficulty for the blockchain from the genesis block up until (and including)
-    /// this block.
-    pub fn total_accumulated_difficulty_inclusive_squared(&self) -> Result<u128, PowError> {
-        Ok(self.get_proof_of_work()?.total_accumulated_difficulty())
-    }
-
-    /// Gets the accumulated `ProofOfWork` from the genesis block up until (and including) this block.
-    ///
-    /// This function is fallible because it calculates the achieved difficulty.
-    pub fn get_proof_of_work(&self) -> Result<ProofOfWork, PowError> {
-        let difficulty = ProofOfWork::achieved_difficulty(self)?;
-        Ok(ProofOfWork::new_from_difficulty(&self.pow, difficulty))
     }
 
     pub fn into_builder(self) -> BlockBuilder {
@@ -218,11 +197,6 @@ impl BlockHeader {
     #[inline]
     pub fn timestamp(&self) -> EpochTime {
         self.timestamp
-    }
-
-    #[inline]
-    pub fn target_difficulty(&self) -> Difficulty {
-        self.pow.target_difficulty
     }
 
     #[inline]
@@ -351,22 +325,10 @@ mod test {
         h1.nonce = 7600;
         assert_eq!(h1.height, 0, "Default block height");
         let hash1 = h1.hash();
-        let diff1 = h1.achieved_difficulty().unwrap();
-        assert_eq!(diff1, 1.into());
         let h2 = BlockHeader::from_previous(&h1).unwrap();
         assert_eq!(h2.height, h1.height + 1, "Incrementing block height");
         assert!(h2.timestamp > h1.timestamp, "Timestamp");
         assert_eq!(h2.prev_hash, hash1, "Previous hash");
-        // default pow is blake, so monero diff should stay the same
-        assert_eq!(
-            h2.pow.accumulated_monero_difficulty, h1.pow.accumulated_monero_difficulty,
-            "Monero difficulty"
-        );
-        assert_eq!(
-            h2.pow.accumulated_blake_difficulty,
-            h1.pow.accumulated_blake_difficulty + diff1,
-            "Blake difficulty"
-        );
     }
 
     #[test]

@@ -80,6 +80,21 @@ pub struct HistoricalBlock {
     /// The underlying block
     #[prost(message, optional, tag = "3")]
     pub block: ::std::option::Option<Block>,
+    #[prost(message, optional, tag = "4")]
+    pub accumulated_data: ::std::option::Option<BlockHeaderAccumulatedData>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockHeaderAccumulatedData {
+    #[prost(uint64, tag = "1")]
+    pub achieved_difficulty: u64,
+    #[prost(uint64, tag = "2")]
+    pub accumulated_monero_difficulty: u64,
+    #[prost(uint64, tag = "3")]
+    pub accumulated_blake_difficulty: u64,
+    #[prost(uint64, tag = "4")]
+    pub target_difficulty: u64,
+    #[prost(bytes, tag = "5")]
+    pub total_kernel_offset: std::vec::Vec<u8>,
 }
 /// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for
 /// the block that the Base Node is able to complete on behalf of a Miner.
@@ -101,6 +116,8 @@ pub struct NewBlockHeaderTemplate {
     /// Proof of work metadata
     #[prost(message, optional, tag = "5")]
     pub pow: ::std::option::Option<ProofOfWork>,
+    #[prost(uint64, tag = "6")]
+    pub target_difficulty: u64,
 }
 /// The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as
 /// a final step the Base node to add the MMR roots to the header.

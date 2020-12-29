@@ -62,14 +62,14 @@ fn fetch_async_headers() {
     test_async(move |rt| {
         let db = AsyncBlockchainDb::new(db);
         for block in blocks.into_iter() {
-            let height = block.header.height;
-            let hash = block.hash();
+            let height = block.block.header.height;
+            let hash = block.hash().clone();
             let db = db.clone();
             rt.spawn(async move {
                 let header_height = db.fetch_header(height).await.unwrap().unwrap();
                 let header_hash = db.fetch_header_by_block_hash(hash).await.unwrap().unwrap();
-                assert_eq!(block.header, header_height);
-                assert_eq!(block.header, header_hash);
+                assert_eq!(block.block.header, header_height);
+                assert_eq!(block.block.header, header_hash);
             });
         }
     });
@@ -86,7 +86,7 @@ fn async_rewind_to_height() {
             assert!(result.is_err());
             let block = db.fetch_block(2).await.unwrap();
             assert_eq!(block.confirmations(), 1);
-            assert_eq!(blocks[2], Block::from(block));
+            assert_eq!(blocks[2].block, block.block);
         });
     });
 }
@@ -123,9 +123,9 @@ fn fetch_async_block() {
         let db = AsyncBlockchainDb::new(db);
         rt.spawn(async move {
             for block in blocks.into_iter() {
-                let height = block.header.height;
+                let height = block.block.header.height;
                 let block_check = db.fetch_block(height).await.unwrap();
-                assert_eq!(&block, block_check.block());
+                assert_eq!(&block.block, block_check.block());
             }
         });
     });
@@ -155,7 +155,7 @@ fn async_add_new_block() {
             let result = db.add_block(new_block.clone().into()).await.unwrap();
             let block = db.fetch_block(1).await.unwrap();
             match result {
-                BlockAddResult::Ok => assert_eq!(Block::from(block).hash(), new_block.hash()),
+                BlockAddResult::Ok(_) => assert_eq!(Block::from(block).hash(), new_block.hash()),
                 _ => panic!("Unexpected result"),
             }
         });

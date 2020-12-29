@@ -23,7 +23,7 @@
 use crate::{
     blocks::BlockHeader,
     consensus::ConsensusManager,
-    proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
+    proof_of_work::{Difficulty, PowAlgorithm, TargetDifficultyWindow},
 };
 
 #[derive(Debug, Clone)]
@@ -40,14 +40,14 @@ impl TargetDifficulties {
         }
     }
 
-    pub fn add_back(&mut self, header: &BlockHeader) {
+    pub fn add_back(&mut self, header: &BlockHeader, target_difficulty: Difficulty) {
         self.get_mut(header.pow_algo())
-            .add_back(header.timestamp(), header.target_difficulty());
+            .add_back(header.timestamp(), target_difficulty);
     }
 
-    pub fn add_front(&mut self, header: &BlockHeader) {
+    pub fn add_front(&mut self, header: &BlockHeader, target_difficulty: Difficulty) {
         self.get_mut(header.pow_algo())
-            .add_front(header.timestamp(), header.target_difficulty());
+            .add_front(header.timestamp(), target_difficulty);
     }
 
     pub fn is_algo_full(&self, algo: PowAlgorithm) -> bool {

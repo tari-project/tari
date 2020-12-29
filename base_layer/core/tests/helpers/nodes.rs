@@ -38,7 +38,6 @@ use tari_core::{
         LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
     },
-    blocks::Block,
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     mempool::{
@@ -53,8 +52,9 @@ use tari_core::{
     validation::{
         mocks::MockValidator,
         transaction_validators::TxInputAndMaturityValidator,
-        StatefulValidation,
-        Validation,
+        HeaderValidation,
+        OrphanValidation,
+        PostOrphanBodyValidation,
     },
 };
 use tari_p2p::{
@@ -167,11 +167,12 @@ impl BaseNodeBuilder {
 
     pub fn with_validators(
         mut self,
-        block: impl StatefulValidation<Block, TempDatabase> + 'static,
-        orphan: impl Validation<Block> + 'static,
+        block: impl PostOrphanBodyValidation<TempDatabase> + 'static,
+        header: impl HeaderValidation<TempDatabase> + 'static,
+        orphan: impl OrphanValidation + 'static,
     ) -> Self
     {
-        let validators = Validators::new(block, orphan);
+        let validators = Validators::new(block, header, orphan);
         self.validators = Some(validators);
         self
     }
@@ -184,9 +185,11 @@ impl BaseNodeBuilder {
 
     /// Build the test base node and start its services.
     pub fn start(self, runtime: &mut Runtime, data_path: &str) -> (NodeInterfaces, ConsensusManager) {
-        let validators = self
-            .validators
-            .unwrap_or(Validators::new(MockValidator::new(true), MockValidator::new(true)));
+        let validators = self.validators.unwrap_or(Validators::new(
+            MockValidator::new(true),
+            MockValidator::new(true),
+            MockValidator::new(true),
+        ));
         let consensus_manager = self
             .consensus_manager
             .unwrap_or(ConsensusManagerBuilder::new(self.network).build());
@@ -194,7 +197,7 @@ impl BaseNodeBuilder {
         let mempool_validator = TxInputAndMaturityValidator::new(blockchain_db.clone());
         let mempool = Mempool::new(
             self.mempool_config.unwrap_or(MempoolConfig::default()),
-            Box::new(mempool_validator),
+            Arc::new(mempool_validator),
         );
         let node_identity = self.node_identity.unwrap_or(random_node_identity());
         let node_interfaces = setup_base_node_services(

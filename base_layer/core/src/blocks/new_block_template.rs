@@ -22,6 +22,7 @@
 
 use crate::{
     blocks::{new_blockheader_template::NewBlockHeaderTemplate, Block},
+    proof_of_work::Difficulty,
     transactions::aggregated_body::AggregateBody,
 };
 use serde::{Deserialize, Serialize};
@@ -35,11 +36,11 @@ pub struct NewBlockTemplate {
     pub body: AggregateBody,
 }
 
-impl From<Block> for NewBlockTemplate {
-    fn from(block: Block) -> Self {
+impl NewBlockTemplate {
+    pub fn from_block(block: Block, target_difficulty: Difficulty) -> Self {
         let Block { header, body } = block;
         Self {
-            header: header.into(),
+            header: NewBlockHeaderTemplate::from_header(header, target_difficulty),
             body,
         }
     }

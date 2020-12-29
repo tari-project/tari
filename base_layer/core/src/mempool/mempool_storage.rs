@@ -32,7 +32,7 @@ use crate::{
         TxStorageResponse,
     },
     transactions::{transaction::Transaction, types::Signature},
-    validation::{ValidationError, Validator},
+    validation::{MempoolTransactionValidation, ValidationError},
 };
 use log::*;
 use std::sync::Arc;
@@ -46,16 +46,16 @@ pub const LOG_TARGET: &str = "c::mp::mempool";
 pub struct MempoolStorage {
     unconfirmed_pool: UnconfirmedPool,
     reorg_pool: ReorgPool,
-    validator: Arc<Validator<Transaction>>,
+    validator: Arc<dyn MempoolTransactionValidation>,
 }
 
 impl MempoolStorage {
     /// Create a new Mempool with an UnconfirmedPool, OrphanPool, PendingPool and ReOrgPool.
-    pub fn new(config: MempoolConfig, validators: Validator<Transaction>) -> Self {
+    pub fn new(config: MempoolConfig, validators: Arc<dyn MempoolTransactionValidation>) -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool),
             reorg_pool: ReorgPool::new(config.reorg_pool),
-            validator: Arc::new(validators),
+            validator: validators,
         }
     }
 

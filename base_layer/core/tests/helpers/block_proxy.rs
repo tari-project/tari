@@ -21,22 +21,22 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use tari_core::blocks::Block;
+use tari_core::chain_storage::ChainBlock;
 
 #[derive(Debug)]
 pub struct BlockProxy {
     pub name: String,
-    pub block: Block,
+    pub block: ChainBlock,
 }
 
 impl PartialEq for BlockProxy {
     fn eq(&self, other: &Self) -> bool {
-        self.block.eq(&other.block)
+        self.block.block.eq(&other.block.block)
     }
 }
 
 impl BlockProxy {
-    pub fn new(name: String, block: Block) -> Self {
+    pub fn new(name: String, block: ChainBlock) -> Self {
         Self { name, block }
     }
 }

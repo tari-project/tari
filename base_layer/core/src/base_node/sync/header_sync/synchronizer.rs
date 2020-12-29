@@ -23,9 +23,10 @@
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
 use crate::{
     base_node::sync::{hooks::Hooks, rpc, BlockSyncConfig},
-    blocks::{Block, BlockHeader},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    blocks::BlockHeader,
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainBlock},
     consensus::ConsensusManager,
+    proof_of_work::randomx_factory::RandomXFactory,
     proto::{
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
         generated::base_node as proto,
@@ -62,11 +63,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         consensus_rules: ConsensusManager,
         connectivity: ConnectivityRequester,
         sync_peers: &'a [NodeId],
+        randomx_factory: RandomXFactory,
     ) -> Self
     {
         Self {
             config,
-            header_validator: BlockHeaderSyncValidator::new(db.clone(), consensus_rules),
+            header_validator: BlockHeaderSyncValidator::new(db.clone(), consensus_rules, randomx_factory),
             db,
             connectivity,
             sync_peers,
@@ -80,7 +82,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     }
 
     pub fn on_rewind<H>(&mut self, hook: H)
-    where H: FnMut(Vec<Arc<Block>>) + Send + Sync + 'static {
+    where H: FnMut(Vec<Arc<ChainBlock>>) + Send + Sync + 'static {
         self.hooks.add_on_rewind_hook(hook);
     }
 
@@ -355,21 +357,23 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let num_new_headers = headers.len();
 
         self.header_validator.initialize_state(chain_split_hash).await?;
-        for header in &headers {
+        let mut chain_headers = Vec::with_capacity(headers.len());
+        for header in headers {
             debug!(
                 target: LOG_TARGET,
                 "Validating header #{} (Pow: {})",
                 header.height,
                 header.pow_algo(),
             );
-            self.header_validator.validate(header)?;
-            debug!(target: LOG_TARGET, "Header #{} is VALID", header.height,)
+            let height = header.height;
+            chain_headers.push(self.header_validator.validate_and_calculate_metadata(header)?);
+            debug!(target: LOG_TARGET, "Header #{} is VALID", height,)
         }
 
         if fork_hash_index > 0 {
             // If the peer is telling us that we have to rewind, check their headers are stronger than our current tip
             self.header_validator
-                .check_stronger_chain(headers.last().expect("already_checked"))
+                .check_stronger_chain(chain_headers.last().expect("already_checked"))
                 .await?;
 
             // TODO: We've established that the peer has a chain that forks from ours, can provide valid headers for
@@ -383,10 +387,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
 
         let mut txn = self.db.write_transaction();
-        let current_height = headers.last().map(|h| h.height).unwrap_or(remote_tip_height);
-        headers.into_iter().for_each(|header| {
-            debug!(target: LOG_TARGET, "Adding header: #{}", header.height);
-            txn.insert_header(header);
+        let current_height = chain_headers.last().map(|h| h.height()).unwrap_or(remote_tip_height);
+        chain_headers.into_iter().for_each(|header| {
+            debug!(target: LOG_TARGET, "Adding header: #{}", header.header.height);
+            txn.insert_header(header.header, header.accumulated_data);
         });
         txn.commit().await?;
 
@@ -398,14 +402,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         Ok(num_new_headers < NUM_HEADERS_TO_REQUEST as usize)
     }
 
-    async fn rewind_blockchain(&self, steps_back: u64) -> Result<Vec<Arc<Block>>, BlockHeaderSyncError> {
+    async fn rewind_blockchain(&self, steps_back: u64) -> Result<Vec<Arc<ChainBlock>>, BlockHeaderSyncError> {
         debug!(
             target: LOG_TARGET,
             "Deleting {} header(s) that no longer form part of the main chain", steps_back
         );
 
         let tip_header = self.db.fetch_tip_header().await?;
-        let new_tip_height = tip_header.height - steps_back;
+        let new_tip_height = tip_header.height() - steps_back;
 
         let blocks = self.db.rewind_to_height(new_tip_height).await?;
         debug!(
@@ -426,12 +430,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         debug!(
             target: LOG_TARGET,
             "Requesting header stream starting from tip header #{} ({}) from peer `{}`",
-            tip_header.height,
-            tip_header.hash().to_hex(),
+            tip_header.header.height,
+            tip_header.accumulated_data.hash.to_hex(),
             peer
         );
         let request = SyncHeadersRequest {
-            start_hash: tip_header.hash(),
+            start_hash: tip_header.accumulated_data.hash,
             // To the tip!
             count: 0,
         };
@@ -459,9 +463,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 );
                 continue;
             }
-            self.header_validator.validate(&header)?;
-            let current_height = header.height;
-            self.db.write_transaction().insert_header(header).commit().await?;
+            let chain_header = self.header_validator.validate_and_calculate_metadata(header)?;
+            let current_height = chain_header.height();
+            self.db
+                .write_transaction()
+                .insert_header(chain_header.header, chain_header.accumulated_data)
+                .commit()
+                .await?;
 
             self.hooks
                 .call_on_progress_header_hooks(current_height, current_height, self.sync_peers);

@@ -20,7 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transactions::types::{BlindingFactor, Commitment, HashOutput};
+use crate::{
+    blocks::{Block, BlockHeader},
+    chain_storage::ChainStorageError,
+    proof_of_work::{Difficulty, PowAlgorithm},
+    transactions::types::{BlindingFactor, Commitment, HashOutput},
+};
 use croaring::Bitmap;
 use serde::{
     de,
@@ -216,8 +221,131 @@ impl<'de> Visitor<'de> for BlockAccumulatedDataVisitor {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Default)]
+pub struct BlockHeaderAccumulatedDataBuilder {
+    hash: Option<HashOutput>,
+    total_kernel_offset: Option<BlindingFactor>,
+    achieved_difficulty: Option<Difficulty>,
+    pub accumulated_monero_difficulty: Option<Difficulty>,
+    pub accumulated_blake_difficulty: Option<Difficulty>,
+    pub target_difficulty: Option<Difficulty>,
+}
+
+impl BlockHeaderAccumulatedDataBuilder {
+    pub fn hash(mut self, hash: HashOutput) -> Self {
+        self.hash = Some(hash);
+        self
+    }
+
+    pub fn total_kernel_offset(
+        mut self,
+        previous_kernel_offset: &BlindingFactor,
+        current_offset: &BlindingFactor,
+    ) -> Self
+    {
+        self.total_kernel_offset = Some(previous_kernel_offset + current_offset);
+        self
+    }
+
+    pub fn target_difficulty(mut self, target: Difficulty) -> Self {
+        self.target_difficulty = Some(target);
+        self
+    }
+
+    pub fn achieved_difficulty(
+        mut self,
+        previous: &BlockHeaderAccumulatedData,
+        algo: PowAlgorithm,
+        achieved: Difficulty,
+    ) -> Self
+    {
+        match algo {
+            PowAlgorithm::Monero => {
+                self.accumulated_monero_difficulty = Some(previous.accumulated_monero_difficulty + achieved);
+                self.accumulated_blake_difficulty = Some(previous.accumulated_blake_difficulty);
+            },
+            PowAlgorithm::Blake => unimplemented!(),
+            PowAlgorithm::Sha3 => {
+                self.accumulated_monero_difficulty = Some(previous.accumulated_monero_difficulty);
+                self.accumulated_blake_difficulty = Some(previous.accumulated_blake_difficulty + achieved);
+            },
+        }
+        self.achieved_difficulty = Some(achieved);
+        self
+    }
+
+    pub fn build(self) -> Result<BlockHeaderAccumulatedData, ChainStorageError> {
+        let monero_diff = self
+            .accumulated_monero_difficulty
+            .ok_or_else(|| ChainStorageError::InvalidOperation("difficulty not provided".to_string()))?;
+
+        let blake_diff = self
+            .accumulated_blake_difficulty
+            .ok_or_else(|| ChainStorageError::InvalidOperation("difficulty not provided".to_string()))?;
+
+        Ok(BlockHeaderAccumulatedData {
+            hash: self
+                .hash
+                .ok_or_else(|| ChainStorageError::InvalidOperation("hash not provided".to_string()))?,
+            total_kernel_offset: self
+                .total_kernel_offset
+                .ok_or_else(|| ChainStorageError::InvalidOperation("total_kernel_offset not provided".to_string()))?,
+            achieved_difficulty: self
+                .achieved_difficulty
+                .ok_or_else(|| ChainStorageError::InvalidOperation("achieved_difficulty not provided".to_string()))?,
+            total_accumulated_difficulty: monero_diff.as_u64() as u128 * blake_diff.as_u64() as u128,
+            accumulated_monero_difficulty: monero_diff,
+            accumulated_blake_difficulty: blake_diff,
+            target_difficulty: self
+                .target_difficulty
+                .ok_or_else(|| ChainStorageError::InvalidOperation("target difficulty not provided".to_string()))?,
+        })
+    }
+}
+
+// TODO: Find a better name and move into `core::blocks` mod
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq)]
 pub struct BlockHeaderAccumulatedData {
     pub hash: HashOutput,
     pub total_kernel_offset: BlindingFactor,
+    pub achieved_difficulty: Difficulty,
+    pub total_accumulated_difficulty: u128,
+    /// The total accumulated difficulty for each proof of work algorithms for all blocks since Genesis,
+    /// but not including this block, tracked separately.
+    pub accumulated_monero_difficulty: Difficulty,
+    pub accumulated_blake_difficulty: Difficulty,
+    /// The target difficulty for solving the current block using the specified proof of work algorithm.
+    pub target_difficulty: Difficulty,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ChainHeader {
+    pub header: BlockHeader,
+    pub accumulated_data: BlockHeaderAccumulatedData,
+}
+
+impl ChainHeader {
+    pub fn height(&self) -> u64 {
+        self.header.height
+    }
+
+    pub fn hash(&self) -> &HashOutput {
+        &self.accumulated_data.hash
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct ChainBlock {
+    pub accumulated_data: BlockHeaderAccumulatedData,
+    pub block: Block,
+}
+
+impl ChainBlock {
+    pub fn height(&self) -> u64 {
+        self.block.header.height
+    }
+
+    pub fn hash(&self) -> &HashOutput {
+        &self.accumulated_data.hash
+    }
 }

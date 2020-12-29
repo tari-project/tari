@@ -31,7 +31,7 @@ use crate::{
         TxStorageResponse,
     },
     transactions::{transaction::Transaction, types::Signature},
-    validation::Validator,
+    validation::MempoolTransactionValidation,
 };
 use std::sync::{Arc, RwLock};
 
@@ -45,7 +45,7 @@ pub struct Mempool {
 
 impl Mempool {
     /// Create a new Mempool with an UnconfirmedPool, OrphanPool, PendingPool and ReOrgPool.
-    pub fn new(config: MempoolConfig, validator: Validator<Transaction>) -> Self {
+    pub fn new(config: MempoolConfig, validator: Arc<dyn MempoolTransactionValidation>) -> Self {
         Self {
             pool_storage: Arc::new(RwLock::new(MempoolStorage::new(config, validator))),
         }

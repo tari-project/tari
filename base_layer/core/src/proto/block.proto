@@ -67,8 +67,18 @@ message HistoricalBlock {
     repeated tari.types.Commitment spent_commitments = 2;
     // The underlying block
     Block block = 3;
+
+    BlockHeaderAccumulatedData accumulated_data = 4;
 }
 
+
+message BlockHeaderAccumulatedData {
+    uint64 achieved_difficulty = 1;
+    uint64 accumulated_monero_difficulty = 2;
+    uint64 accumulated_blake_difficulty = 3;
+    uint64 target_difficulty = 4;
+    bytes total_kernel_offset = 5;
+}
 
 // The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for the block that the Base Node is able to complete on behalf of a Miner.
 message NewBlockHeaderTemplate {
@@ -83,6 +93,7 @@ message NewBlockHeaderTemplate {
     bytes total_kernel_offset = 4;
     // Proof of work metadata
     ProofOfWork pow = 5;
+    uint64 target_difficulty = 6;
 }
 
 // The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as a final step the Base node to add the MMR roots to the header.

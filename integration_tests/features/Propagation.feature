@@ -20,6 +20,7 @@ Feature: Block Propagation
     And I have 4 base nodes connected to all seed nodes
     And I have a base node MINER connected to all seed nodes
     When I mine 5 blocks on MINER
+    Then node MINER is at height 5
     Then all nodes are at height 5
 
   Scenario: Duplicate block is rejected

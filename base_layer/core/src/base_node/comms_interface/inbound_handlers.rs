@@ -30,7 +30,7 @@ use crate::{
         OutboundNodeCommsInterface,
     },
     blocks::{block_header::BlockHeader, Block, NewBlock, NewBlockTemplate},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainBlock},
     consensus::ConsensusManager,
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -56,8 +56,8 @@ const MAX_HEADERS_PER_RESPONSE: u32 = 100;
 pub enum BlockEvent {
     ValidBlockAdded(Arc<Block>, BlockAddResult, Broadcast),
     AddBlockFailed(Arc<Block>, Broadcast),
-    BlockSyncComplete(Arc<Block>),
-    BlockSyncRewind(Vec<Arc<Block>>),
+    BlockSyncComplete(Arc<ChainBlock>),
+    BlockSyncRewind(Vec<Arc<ChainBlock>>),
 }
 
 /// Used to notify if the block event is for a propagated block.
@@ -282,6 +282,7 @@ where T: BlockchainBackend + 'static
                         target: LOG_TARGET,
                         "A peer has requested a block with hash {}", block_hex
                     );
+
                     match self.blockchain_db.fetch_block_by_hash(block_hash).await {
                         Ok(Some(block)) => blocks.push(block),
                         Ok(None) => warn!(
@@ -375,10 +376,9 @@ where T: BlockchainBackend + 'static
             NodeCommsRequest::GetNewBlockTemplate(pow_algo) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
 
-                let mut header = BlockHeader::from_previous(&best_block_header)?;
+                let mut header = BlockHeader::from_previous(&best_block_header.header)?;
                 let constants = self.consensus_manager.consensus_constants(header.height);
                 header.version = constants.blockchain_version();
-                header.pow.target_difficulty = self.get_target_difficulty(pow_algo, header.height).await?;
                 header.pow.pow_algo = pow_algo;
 
                 let transactions = async_mempool::retrieve(
@@ -390,8 +390,12 @@ where T: BlockchainBackend + 'static
                 .map(|tx| (**tx).clone())
                 .collect();
 
-                let block_template =
-                    NewBlockTemplate::from(header.into_builder().with_transactions(transactions).build());
+                let height = header.height;
+
+                let block_template = NewBlockTemplate::from_block(
+                    header.into_builder().with_transactions(transactions).build(),
+                    self.get_target_difficulty(pow_algo, height).await?,
+                );
                 debug!(
                     target: LOG_TARGET,
                     "New block template requested at height {}", block_template.header.height,
@@ -399,18 +403,6 @@ where T: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
-                // let metadata = self.blockchain_db.get_chain_metadata().await?;
-                // if Some(&block_template.header.prev_hash) != metadata.best_block.as_ref() {
-                //     return Ok(NodeCommsResponse::NewBlock {
-                //         success: false,
-                //         error: Some(
-                //             "Cannot calculate MMR roots for this block as it is no longer at the tip of this node"
-                //                 .to_string(),
-                //         ),
-                //         block: None,
-                //     });
-                // }
-
                 let block = self.blockchain_db.prepare_block_merkle_roots(block_template).await?;
                 Ok(NodeCommsResponse::NewBlock {
                     success: true,
@@ -540,7 +532,7 @@ where T: BlockchainBackend + 'static
     {
         let block_hash = block.hash();
         let block_height = block.header.height;
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Block #{} ({}) received from {}",
             block_height,
@@ -558,7 +550,7 @@ where T: BlockchainBackend + 'static
                 trace!(target: LOG_TARGET, "Block event created: {}", block_add_result);
 
                 let should_propagate = match &block_add_result {
-                    BlockAddResult::Ok => true,
+                    BlockAddResult::Ok(_) => true,
                     BlockAddResult::BlockExists => false,
                     BlockAddResult::OrphanBlock => false,
                     BlockAddResult::ChainReorg(_, _) => true,

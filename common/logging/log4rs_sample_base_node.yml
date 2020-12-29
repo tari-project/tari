@@ -82,6 +82,18 @@ loggers:
     appenders:
       - base_layer
     additive: false
+  c::bn::comms_interface:
+    level: trace
+    appenders:
+      - base_layer
+  c::cs:
+    level: trace
+    appenders:
+      - base_layer
+  c::bn::block_sync:
+    level: trace
+    appenders:
+      - base_layer
   tari:
     level: info
     appenders:

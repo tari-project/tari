@@ -161,25 +161,34 @@ impl MempoolInboundHandlers {
     pub async fn handle_block_event(&mut self, block_event: &BlockEvent) -> Result<(), MempoolServiceError> {
         use BlockEvent::*;
         match block_event {
-            ValidBlockAdded(block, BlockAddResult::Ok, broadcast) => {
+            ValidBlockAdded(block, BlockAddResult::Ok(_), broadcast) => {
                 async_mempool::process_published_block(self.mempool.clone(), block.clone()).await?;
                 if broadcast.is_true() {
                     let _ = self.event_publisher.send(MempoolStateEvent::Updated);
                 }
             },
             ValidBlockAdded(_, BlockAddResult::ChainReorg(removed_blocks, added_blocks), broadcast) => {
-                async_mempool::process_reorg(self.mempool.clone(), removed_blocks.clone(), added_blocks.clone())
-                    .await?;
+                async_mempool::process_reorg(
+                    self.mempool.clone(),
+                    removed_blocks.iter().map(|b| b.block.clone().into()).collect(),
+                    added_blocks.iter().map(|b| b.block.clone().into()).collect(),
+                )
+                .await?;
                 if broadcast.is_true() {
                     let _ = self.event_publisher.send(MempoolStateEvent::Updated);
                 }
             },
             BlockSyncRewind(removed_blocks) if !removed_blocks.is_empty() => {
-                async_mempool::process_reorg(self.mempool.clone(), removed_blocks.clone(), vec![]).await?;
+                async_mempool::process_reorg(
+                    self.mempool.clone(),
+                    removed_blocks.iter().map(|b| b.block.clone().into()).collect(),
+                    vec![],
+                )
+                .await?;
                 let _ = self.event_publisher.send(MempoolStateEvent::Updated);
             },
             BlockSyncComplete(tip_block) => {
-                async_mempool::process_published_block(self.mempool.clone(), tip_block.clone()).await?;
+                async_mempool::process_published_block(self.mempool.clone(), tip_block.block.clone().into()).await?;
                 let _ = self.event_publisher.send(MempoolStateEvent::Updated);
             },
             _ => {},

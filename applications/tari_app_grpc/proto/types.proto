@@ -63,7 +63,7 @@ message ProofOfWork {
     uint64 accumulated_monero_difficulty = 2;
     uint64 accumulated_blake_difficulty = 3;
     bytes pow_data = 4;
-    uint64 target_difficulty = 5;
+   // uint64 target_difficulty = 5;
 }
 
 //This is used to request the which pow algo should be used with the block template
@@ -107,6 +107,8 @@ message NewBlockHeaderTemplate {
     bytes total_kernel_offset = 4;
     // Proof of work metadata
     ProofOfWork pow = 5;
+
+    uint64 target_difficulty = 6;
 }
 
 // The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as a final step the Base node to add the MMR roots to the header.

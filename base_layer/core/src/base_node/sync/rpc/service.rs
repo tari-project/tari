@@ -182,7 +182,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 .fetch_tip_header()
                 .await
                 .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
-            count = tip_header.height.saturating_sub(start_header.height);
+            count = tip_header.height().saturating_sub(start_header.height);
         }
         if count == 0 {
             return Ok(Streaming::empty());

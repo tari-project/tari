@@ -28,7 +28,15 @@ use crate::{
     },
     chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{monero_rx::MoneroData, Difficulty, PowAlgorithm, PowError},
+    proof_of_work::{
+        monero_difficulty,
+        monero_rx::MoneroData,
+        randomx_factory::RandomXFactory,
+        sha3_difficulty,
+        Difficulty,
+        PowAlgorithm,
+        PowError,
+    },
     transactions::types::CryptoFactories,
     validation::ValidationError,
 };
@@ -134,28 +142,28 @@ pub fn check_pow_data<B: BlockchainBackend>(
 
             Ok(())
         },
-        Blake | Sha3 => Ok(()),
+        Blake | Sha3 => {
+            if !block_header.pow.pow_data.is_empty() {
+                return Err(ValidationError::CustomError(
+                    "Proof of work data must be empty for Sha3 blocks".to_string(),
+                ));
+            }
+            Ok(())
+        },
     }
 }
 
-pub fn check_target_difficulty(block_header: &BlockHeader, target: Difficulty) -> Result<(), ValidationError> {
-    if block_header.pow.target_difficulty != target {
-        warn!(
-            target: LOG_TARGET,
-            "Header target difficulty ({}) differs from the target difficult ({})",
-            block_header.pow.target_difficulty,
-            target
-        );
-        return Err(ValidationError::BlockHeaderError(
-            BlockHeaderValidationError::ProofOfWorkError(PowError::InvalidTargetDifficulty {
-                expected: target,
-                got: block_header.pow.target_difficulty,
-            }),
-        ));
-    }
-
-    // Now lets compare the achieved and target.
-    let achieved = block_header.achieved_difficulty()?;
+pub fn check_target_difficulty(
+    block_header: &BlockHeader,
+    target: Difficulty,
+    randomx_factory: &RandomXFactory,
+) -> Result<Difficulty, ValidationError>
+{
+    let achieved = match block_header.pow_algo() {
+        PowAlgorithm::Monero => monero_difficulty(block_header, randomx_factory)?,
+        PowAlgorithm::Blake => unimplemented!(),
+        PowAlgorithm::Sha3 => sha3_difficulty(block_header),
+    };
     if achieved < target {
         warn!(
             target: LOG_TARGET,
@@ -169,7 +177,7 @@ pub fn check_target_difficulty(block_header: &BlockHeader, target: Difficulty) -
         ));
     }
 
-    Ok(())
+    Ok(achieved)
 }
 
 pub fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {

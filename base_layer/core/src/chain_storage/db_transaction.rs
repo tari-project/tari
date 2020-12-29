@@ -21,7 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{error::ChainStorageError, InProgressHorizonSyncState},
+    chain_storage::{
+        error::ChainStorageError,
+        BlockHeaderAccumulatedData,
+        ChainBlock,
+        ChainHeader,
+        InProgressHorizonSyncState,
+    },
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -82,6 +88,10 @@ impl DbTransaction {
         self
     }
 
+    pub fn delete_orphan(&mut self, hash: HashOutput) -> &mut Self {
+        self.delete(DbKey::OrphanBlock(hash))
+    }
+
     /// Delete a block header at the given height
     pub fn delete_header(&mut self, height: u64) -> &mut Self {
         self.operations.push(WriteOperation::Delete(DbKey::BlockHeader(height)));
@@ -111,8 +121,13 @@ impl DbTransaction {
     }
 
     /// Inserts a block header into the current transaction.
-    pub fn insert_header(&mut self, header: BlockHeader) -> &mut Self {
-        self.operations.push(WriteOperation::InsertHeader(Box::new(header)));
+    pub fn insert_header(&mut self, header: BlockHeader, accum_data: BlockHeaderAccumulatedData) -> &mut Self {
+        self.operations.push(WriteOperation::InsertHeader {
+            header: Box::new(ChainHeader {
+                header,
+                accumulated_data: accum_data,
+            }),
+        });
         self
     }
 
@@ -138,8 +153,8 @@ impl DbTransaction {
     /// Add the BlockHeader and contents of a `Block` (i.e. inputs, outputs and kernels) to the database.
     /// If the `BlockHeader` already exists, then just the contents are updated along with the relevant accumulated
     /// data.
-    pub fn insert_block(&mut self, block: Arc<Block>) -> &mut Self {
-        self.operations.push(WriteOperation::InsertBlock(block));
+    pub fn insert_block(&mut self, block: Arc<ChainBlock>) -> &mut Self {
+        self.operations.push(WriteOperation::InsertBlock { block });
         self
     }
 
@@ -147,6 +162,11 @@ impl DbTransaction {
     /// with the calling function.
     pub fn insert_orphan(&mut self, orphan: Arc<Block>) -> &mut Self {
         self.operations.push(WriteOperation::InsertOrphanBlock(orphan));
+        self
+    }
+
+    pub fn insert_chained_orphan(&mut self, orphan: Arc<ChainBlock>) -> &mut Self {
+        self.operations.push(WriteOperation::InsertChainOrphanBlock(orphan));
         self
     }
 
@@ -184,8 +204,13 @@ impl DbTransaction {
 pub enum WriteOperation {
     SetMetadata(MetadataKey, MetadataValue),
     InsertOrphanBlock(Arc<Block>),
-    InsertHeader(Box<BlockHeader>),
-    InsertBlock(Arc<Block>),
+    InsertChainOrphanBlock(Arc<ChainBlock>),
+    InsertHeader {
+        header: Box<ChainHeader>,
+    },
+    InsertBlock {
+        block: Arc<ChainBlock>,
+    },
     InsertInput {
         header_hash: HashOutput,
         input: Box<TransactionInput>,
@@ -219,12 +244,17 @@ impl fmt::Display for WriteOperation {
                 block.hash().to_hex(),
                 block.body.to_counts_string()
             ),
-            InsertHeader(header) => write!(f, "InsertBlock(#{} {})", header.height, header.hash().to_hex()),
-            InsertBlock(block) => write!(
+            InsertHeader { header } => write!(
+                f,
+                "InsertHeader(#{} {})",
+                header.header.height,
+                header.accumulated_data.hash.to_hex()
+            ),
+            InsertBlock { block } => write!(
                 f,
                 "InsertBlock({}, {})",
-                block.hash().to_hex(),
-                block.body.to_counts_string()
+                block.accumulated_data.hash.to_hex(),
+                block.block.body.to_counts_string(),
             ),
             InsertKernel {
                 header_hash,
@@ -265,6 +295,9 @@ impl fmt::Display for WriteOperation {
             DeleteBlock(hash) => write!(f, "DeleteBlock({})", hash.to_hex()),
             InsertMoneroSeedHeight(data, height) => {
                 write!(f, "Insert Monero seed string {} for height: {}", data, height)
+            },
+            InsertChainOrphanBlock(block) => {
+                write!(f, "InsertChainOrphanBlock({})", block.accumulated_data.hash.to_hex())
             },
         }
     }

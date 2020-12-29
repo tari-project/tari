@@ -241,9 +241,9 @@ pub async fn init_wallet(
 
     let network = match &config.network {
         Network::MainNet => NetworkType::MainNet,
-        Network::Rincewind => NetworkType::Rincewind,
         Network::Ridcully => NetworkType::Ridcully,
         Network::LocalNet => NetworkType::LocalNet,
+        Network::Rincewind => unimplemented!("Rincewind has been retired"),
     };
 
     let base_node_service_config = BaseNodeServiceConfig::new(

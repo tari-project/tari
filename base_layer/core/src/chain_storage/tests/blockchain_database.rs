@@ -44,7 +44,7 @@ fn add_many_chained_blocks(size: usize, db: &BlockchainDatabase<TempDatabase>) -
         block.header.prev_hash = prev_block_hash.clone();
         prev_block_hash = block.hash();
         let block = Arc::new(block);
-        db.add_block(block.clone()).unwrap();
+        db.add_block(block.clone()).unwrap().assert_added();
         blocks.push(block);
     }
     blocks
@@ -275,7 +275,7 @@ mod fetch_block_hashes_from_header_tip {
         let genesis = db.fetch_tip_header().unwrap();
         let hashes = db.fetch_block_hashes_from_header_tip(10, 0).unwrap();
         assert_eq!(hashes.len(), 1);
-        assert_eq!(hashes[0], genesis.hash());
+        assert_eq!(&hashes[0], genesis.hash());
     }
 
     #[test]
@@ -316,6 +316,6 @@ mod fetch_block_hashes_from_header_tip {
         let hashes = db.fetch_block_hashes_from_header_tip(10, 0).unwrap();
         assert_eq!(hashes.len(), 6);
         assert_eq!(hashes[0], blocks[4].hash());
-        assert_eq!(hashes[5], genesis.hash());
+        assert_eq!(&hashes[5], genesis.hash());
     }
 }

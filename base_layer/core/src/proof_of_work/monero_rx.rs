@@ -22,7 +22,11 @@
 
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{difficulty::util::little_endian_difficulty, Difficulty},
+    proof_of_work::{
+        difficulty::util::little_endian_difficulty,
+        randomx_factory::{RandomXFactory, RandomXVMInstance},
+        Difficulty,
+    },
     tari_utilities::ByteArray,
 };
 use log::*;
@@ -35,7 +39,7 @@ use monero::{
     consensus::{encode::VarInt, serialize},
     cryptonote::hash::{Hash, Hashable},
 };
-use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
+use randomx_rs::RandomXError;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Error, Formatter},
@@ -192,7 +196,7 @@ impl MoneroData {
 
 /// Internal function to calculate the difficulty attained for the given block Deserialized the Monero header from the
 /// provided header
-pub fn monero_difficulty(header: &BlockHeader) -> Result<Difficulty, MergeMineError> {
+pub fn monero_difficulty(header: &BlockHeader, randomx_factory: &RandomXFactory) -> Result<Difficulty, MergeMineError> {
     let monero = MoneroData::from_header(header)?;
     verify_header(&header, &monero)?;
 
@@ -208,22 +212,12 @@ pub fn monero_difficulty(header: &BlockHeader) -> Result<Difficulty, MergeMineEr
     debug!(target: LOG_TARGET, "RandomX input: {}", input);
     let input = from_hex(&input)?;
     let key_bytes = from_hex(&key)?;
-    get_random_x_difficulty(&input, &key_bytes).map(|(diff, _)| diff)
+    let vm = randomx_factory.create(&key_bytes)?;
+    get_random_x_difficulty(&input, &vm).map(|(diff, _)| diff)
 }
 
-fn get_random_x_difficulty(input: &[u8], key: &[u8]) -> Result<(Difficulty, Vec<u8>), MergeMineError> {
-    let flags = RandomXFlag::get_recommended_flags();
-    let cache = RandomXCache::new(flags, &key)?;
-    let dataset = RandomXDataset::new(flags, &cache, 0)?;
-    let vm = RandomXVM::new(flags, Some(&cache), Some(&dataset))?;
+fn get_random_x_difficulty(input: &[u8], vm: &RandomXVMInstance) -> Result<(Difficulty, Vec<u8>), MergeMineError> {
     let hash = vm.calculate_hash(&input)?;
-    debug!(
-        target: LOG_TARGET,
-        "Monero hash: {}, key: {}",
-        hash.to_hex(),
-        Vec::from(key).to_hex()
-    );
-    // ToDo remove this post testnet. This is to fix wrongly calculated monero blocks
     let difficulty = little_endian_difficulty(&hash);
     Ok((difficulty, hash))
 }
@@ -323,6 +317,7 @@ mod test {
                 MergeMineError,
                 MoneroData,
             },
+            randomx_factory::RandomXFactory,
             PowAlgorithm,
             ProofOfWork,
         },
@@ -835,19 +830,13 @@ mod test {
         ))
         .unwrap();
         let key = from_hex("2aca6501719a5c7ab7d4acbc7cc5d277b57ad8c27c6830788c2d5a596308e5b1").unwrap();
+        let rx = RandomXFactory::default();
 
-        let difficulty = get_random_x_difficulty(&input, &key).unwrap();
+        let difficulty = get_random_x_difficulty(&input, &rx.create(&key).unwrap()).unwrap();
         assert_eq!(
             difficulty.1.to_hex(),
             "f68fbc8cc85bde856cd1323e9f8e6f024483038d728835de2f8c014ff6260000"
         );
         assert_eq!(difficulty.0, 430603.into());
-    }
-
-    #[test]
-    fn test_remove_quotes() {
-        let key = "\"2aca6501719a5c7ab7d4acbc7cc5d277b57ad8c27c6830788c2d5a596308e5b1\"";
-        let key_bytes = from_hex(&key.replace("\"", ""));
-        assert!(key_bytes.is_ok());
     }
 }

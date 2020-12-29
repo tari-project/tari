@@ -37,7 +37,7 @@ fn header_iter_empty_and_invalid_height() {
     let headers = iter.map(Result::unwrap).collect::<Vec<_>>();
     assert_eq!(headers.len(), 1);
     let genesis = consensus_manager.get_genesis_block();
-    assert_eq!(&genesis.header, &headers[0]);
+    assert_eq!(&genesis.block.header, &headers[0]);
 
     // Invalid header height
     let iter = HeaderIter::new(&db, 1, 10);
@@ -49,20 +49,30 @@ fn header_iter_empty_and_invalid_height() {
 fn header_iter_fetch_in_chunks() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
     let db = create_store_with_consensus(&consensus_manager);
-    let headers = (1..=15).fold(vec![db.fetch_header(0).unwrap().unwrap()], |mut acc, i| {
+    let headers = (1..=15).fold(vec![db.fetch_chain_header(0).unwrap()], |mut acc, i| {
+        let prev = acc.last().unwrap();
         let mut header = BlockHeader::new(0);
         header.height = i;
-        header.prev_hash = acc.last().map(|b| b.hash()).unwrap();
-        acc.push(header);
+        header.prev_hash = prev.hash().clone();
+
+        let chain_header = db.create_chain_header_if_valid(header, prev).unwrap();
+        acc.push(chain_header);
         acc
     });
-    db.insert_valid_headers(headers.into_iter().skip(1).collect()).unwrap();
+    db.insert_valid_headers(
+        headers
+            .into_iter()
+            .skip(1)
+            .map(|chain_header| (chain_header.header, chain_header.accumulated_data))
+            .collect(),
+    )
+    .unwrap();
 
     let iter = HeaderIter::new(&db, 11, 3);
     let headers = iter.map(Result::unwrap).collect::<Vec<_>>();
     assert_eq!(headers.len(), 12);
     let genesis = consensus_manager.get_genesis_block();
-    assert_eq!(&genesis.header, &headers[0]);
+    assert_eq!(&genesis.block.header, &headers[0]);
 
     (1..=11).for_each(|i| {
         assert_eq!(headers[i].height, i as u64);

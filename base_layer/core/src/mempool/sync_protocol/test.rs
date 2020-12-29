@@ -56,7 +56,7 @@ pub fn create_transactions(n: usize) -> Vec<Transaction> {
 }
 
 fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) {
-    let mempool = Mempool::new(Default::default(), Box::new(MockValidator::new(true)));
+    let mempool = Mempool::new(Default::default(), Arc::new(MockValidator::new(true)));
 
     let transactions = create_transactions(n);
     for txn in &transactions {

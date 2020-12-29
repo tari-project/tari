@@ -58,6 +58,7 @@ use tari_core::{
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
     blocks::Block,
+    chain_storage::ChainBlock,
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     crypto::tari_utilities::Hashable,
     proto::generated::types::{Signature as SignatureProto, Transaction as TransactionProto},
@@ -78,7 +79,7 @@ fn setup() -> (
     NodeInterfaces,
     RpcRequestMock,
     ConsensusManager,
-    Block,
+    ChainBlock,
     UnblindedOutput,
     Runtime,
     TempDir,
@@ -173,7 +174,7 @@ fn test_base_node_wallet_rpc() {
     // Now submit a block with Tx1 in it so that Tx2 is no longer an orphan
     let block1 = base_node
         .blockchain_db
-        .prepare_block_merkle_roots(chain_block(&block0, vec![tx1.clone()], &consensus_manager))
+        .prepare_block_merkle_roots(chain_block(&block0.block, vec![tx1.clone()], &consensus_manager))
         .unwrap();
 
     assert!(runtime
