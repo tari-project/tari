@@ -90,6 +90,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         );
         self.attempt_block_sync(peer_conn).await?;
 
+        self.db.cleanup_all_orphans().await?;
         Ok(())
     }
 

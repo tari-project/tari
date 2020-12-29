@@ -183,6 +183,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     //---------------------------------- Block --------------------------------------------//
     make_async_fn!(add_block(block: Arc<Block>) -> BlockAddResult, "add_block");
 
+    make_async_fn!(cleanup_orphans() -> (), "cleanup_orphans");
+
     make_async_fn!(cleanup_all_orphans() -> (), "cleanup_all_orphans");
 
     make_async_fn!(block_exists(block_hash: BlockHash) -> bool, "block_exists");

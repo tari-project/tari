@@ -556,6 +556,8 @@ where T: BlockchainBackend + 'static
                     BlockAddResult::ChainReorg(_, _) => true,
                 };
 
+                self.blockchain_db.cleanup_orphans().await?;
+
                 self.publish_block_event(BlockEvent::ValidBlockAdded(block, block_add_result, broadcast));
 
                 if should_propagate && broadcast.is_true() {
