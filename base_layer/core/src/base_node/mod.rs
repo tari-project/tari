@@ -59,3 +59,6 @@ pub use sync::{
 
 #[cfg(any(feature = "base_node", feature = "base_node_proto"))]
 pub mod proto;
+
+#[cfg(feature = "base_node")]
+pub mod rpc;

@@ -42,7 +42,7 @@ use tari_core::{
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     mempool::{
-        service::LocalMempoolService,
+        service::{LocalMempoolService, MempoolHandle},
         Mempool,
         MempoolConfig,
         MempoolServiceConfig,
@@ -75,6 +75,7 @@ pub struct NodeInterfaces {
     pub outbound_message_service: OutboundMessageRequester,
     pub blockchain_db: BlockchainDatabase<TempDatabase>,
     pub mempool: Mempool,
+    pub mempool_handle: MempoolHandle,
     pub local_mp_interface: LocalMempoolService,
     pub chain_metadata_handle: ChainMetadataHandle,
     pub liveness_handle: LivenessHandle,
@@ -452,6 +453,7 @@ fn setup_base_node_services(
     let local_nci = handles.expect_handle::<LocalNodeCommsInterface>();
     let outbound_mp_interface = handles.expect_handle::<OutboundMempoolServiceInterface>();
     let local_mp_interface = handles.expect_handle::<LocalMempoolService>();
+    let mempool_handle = handles.expect_handle::<MempoolHandle>();
     let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
     let chain_metadata_handle = handles.expect_handle::<ChainMetadataHandle>();
     let liveness_handle = handles.expect_handle::<LivenessHandle>();
@@ -465,6 +467,7 @@ fn setup_base_node_services(
         blockchain_db,
         mempool,
         local_mp_interface,
+        mempool_handle,
         chain_metadata_handle,
         liveness_handle,
         comms,

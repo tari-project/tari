@@ -23,7 +23,6 @@
 use crate::{
     base_node::{
         comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
-        proto,
         service::service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
         StateMachineHandle,
     },
@@ -32,6 +31,7 @@ use crate::{
     consensus::ConsensusManager,
     mempool::Mempool,
     proto as shared_protos,
+    proto::generated::base_node as proto,
 };
 use futures::{channel::mpsc, future, Future, Stream, StreamExt};
 use log::*;

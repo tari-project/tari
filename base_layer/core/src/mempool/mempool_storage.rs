@@ -79,17 +79,15 @@ impl MempoolStorage {
             },
             Err(ValidationError::UnknownInputs) => {
                 warn!(target: LOG_TARGET, "Validation failed due to unknown inputs");
-                Ok(TxStorageResponse::NotStored)
+                Ok(TxStorageResponse::NotStoredOrphan)
             },
             Err(ValidationError::ContainsSTxO) => {
                 warn!(target: LOG_TARGET, "Validation failed due to already spent output");
-
-                Ok(TxStorageResponse::NotStored)
+                Ok(TxStorageResponse::NotStoredAlreadySpent)
             },
             Err(ValidationError::MaturityError) => {
                 warn!(target: LOG_TARGET, "Validation failed due to maturity error");
-
-                Ok(TxStorageResponse::NotStored)
+                Ok(TxStorageResponse::NotStoredTimeLocked)
             },
             Err(e) => {
                 warn!(target: LOG_TARGET, "Validation failed due to error:{}", e);

@@ -44,6 +44,9 @@ impl From<TxStorageResponse> for proto::TxStorageResponse {
             UnconfirmedPool => proto::TxStorageResponse::UnconfirmedPool,
             ReorgPool => proto::TxStorageResponse::ReorgPool,
             NotStored => proto::TxStorageResponse::NotStored,
+            NotStoredOrphan => proto::TxStorageResponse::NotStored,
+            NotStoredTimeLocked => proto::TxStorageResponse::NotStored,
+            NotStoredAlreadySpent => proto::TxStorageResponse::NotStored,
         }
     }
 }

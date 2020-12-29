@@ -36,7 +36,7 @@ use std::sync::Arc;
 use tari_comms_dht::Dht;
 
 use futures::{future, Future, Stream, StreamExt};
-use tari_core::base_node::proto;
+use tari_core::proto::generated::base_node as proto;
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
     domain_message::DomainMessage,

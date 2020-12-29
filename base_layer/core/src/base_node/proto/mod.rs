@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub use crate::proto::generated::base_node::*;
-
 mod chain_metadata;
+pub mod wallet_response;
+
 #[cfg(feature = "base_node")]
 mod mmr_tree;
 #[cfg(feature = "base_node")]

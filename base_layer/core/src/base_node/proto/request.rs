@@ -20,17 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{
-    base_node_service_request::Request as ProtoNodeCommsRequest,
-    BlockHeights,
-    FetchHeadersAfter as ProtoFetchHeadersAfter,
-    FetchMatchingMmrNodes as ProtoFetchMmrNodes,
-    FetchMmrNodeCount as ProtoFetchMmrNodeCount,
-    HashOutputs,
-};
 use crate::{
     base_node::comms_interface as ci,
     proof_of_work::PowAlgorithm,
+    proto::generated::{
+        base_node as proto,
+        base_node::{
+            base_node_service_request::Request as ProtoNodeCommsRequest,
+            BlockHeights,
+            FetchHeadersAfter as ProtoFetchHeadersAfter,
+            FetchMatchingMmrNodes as ProtoFetchMmrNodes,
+            FetchMmrNodeCount as ProtoFetchMmrNodeCount,
+            HashOutputs,
+        },
+    },
     transactions::types::{Commitment, HashOutput, Signature},
 };
 use std::convert::{From, TryFrom, TryInto};
@@ -114,15 +117,15 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchBlocksWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchBlocksWithHashes(block_hashes.into()),
             FetchBlocksWithKernels(signatures) => {
                 let sigs = signatures.into_iter().map(Into::into).collect();
-                ProtoNodeCommsRequest::FetchBlocksWithKernels(super::Signatures { sigs })
+                ProtoNodeCommsRequest::FetchBlocksWithKernels(proto::Signatures { sigs })
             },
             FetchBlocksWithStxos(commitments) => {
                 let commits = commitments.into_iter().map(Into::into).collect();
-                ProtoNodeCommsRequest::FetchBlocksWithStxos(super::Commitments { commitments: commits })
+                ProtoNodeCommsRequest::FetchBlocksWithStxos(proto::Commitments { commitments: commits })
             },
             FetchBlocksWithUtxos(commitments) => {
                 let commits = commitments.into_iter().map(Into::into).collect();
-                ProtoNodeCommsRequest::FetchBlocksWithUtxos(super::Commitments { commitments: commits })
+                ProtoNodeCommsRequest::FetchBlocksWithUtxos(proto::Commitments { commitments: commits })
             },
             GetNewBlockTemplate(pow_algo) => ProtoNodeCommsRequest::GetNewBlockTemplate(pow_algo as u64),
             GetNewBlock(block_template) => ProtoNodeCommsRequest::GetNewBlock(block_template.into()),

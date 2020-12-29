@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+import "google/protobuf/wrappers.proto";
+import "block.proto";
+
+package tari.base_node;
+
+enum TxSubmissionRejectionReason {
+    TxSubmissionRejectionReasonNone = 0;
+    TxSubmissionRejectionReasonAlreadyMined = 1;
+    TxSubmissionRejectionReasonDoubleSpend = 2;
+    TxSubmissionRejectionReasonOrphan = 3;
+    TxSubmissionRejectionReasonTimeLocked = 4;
+    TxSubmissionRejectionReasonValidationFailed = 5;
+}
+
+message TxSubmissionResponse {
+    bool accepted = 1;
+    TxSubmissionRejectionReason rejection_reason = 2;
+}
+
+enum TxLocation {
+    TxLocationNone = 0;
+    TxLocationNotStored = 1;
+    TxLocationInMempool = 2;
+    TxLocationMined = 3;
+}
+
+message TxQueryResponse {
+    TxLocation location = 1;
+    google.protobuf.BytesValue block_hash = 2;
+    uint64 confirmations = 3;
+}

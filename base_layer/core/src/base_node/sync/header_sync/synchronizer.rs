@@ -22,14 +22,14 @@
 
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
 use crate::{
-    base_node::{
-        proto,
-        sync::{hooks::Hooks, rpc, BlockSyncConfig},
-    },
+    base_node::sync::{hooks::Hooks, rpc, BlockSyncConfig},
     blocks::{Block, BlockHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
-    proto::base_node::{FindChainSplitRequest, SyncHeadersRequest},
+    proto::{
+        base_node::{FindChainSplitRequest, SyncHeadersRequest},
+        generated::base_node as proto,
+    },
     tari_utilities::{hex::Hex, Hashable},
     transactions::types::HashOutput,
     validation::ValidationError,

@@ -194,8 +194,12 @@ where B: BlockchainBackend + 'static
         // Add your RPC services here ‍🏴‍☠️️☮️🌊
         let rpc_server = RpcServer::new()
             .add_service(dht.rpc_service())
-            .add_service(base_node::create_base_node_sync_rpc_service(db))
+            .add_service(base_node::create_base_node_sync_rpc_service(db.clone()))
             .add_service(mempool::create_mempool_rpc_service(
+                handles.expect_handle::<MempoolHandle>(),
+            ))
+            .add_service(base_node::rpc::create_base_node_wallet_rpc_service(
+                db,
                 handles.expect_handle::<MempoolHandle>(),
             ));
 
