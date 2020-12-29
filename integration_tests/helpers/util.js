@@ -48,6 +48,14 @@ function toLittleEndian(n, numBits) {
     return arr;
 }
 
+function hexSwitchEndianness(val) {
+    let res = "";
+    for (let i=val.length - 2; i > 0; i -=2) {
+        res += val[i] + val[i+1];
+    }
+    return res;
+}
+
 // Thanks to https://stackoverflow.com/questions/29860354/in-nodejs-how-do-i-check-if-a-port-is-listening-or-in-use
 var portInUse = function (port, callback) {
     var server = net.createServer(function (socket) {
@@ -117,5 +125,6 @@ module.exports = {
     toLittleEndian,
     // portInUse,
     getFreePort,
-    getTransactionOutputHash
+    getTransactionOutputHash,
+    hexSwitchEndianness
 };

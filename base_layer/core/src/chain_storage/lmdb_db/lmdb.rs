@@ -296,25 +296,25 @@ where
     Ok(result)
 }
 
-pub fn lmdb_list_keys(txn: &ConstTransaction<'_>, db: &Database) -> Result<Vec<Vec<u8>>, ChainStorageError> {
-    let access = txn.access();
-    let mut cursor = txn.cursor(db).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
-        ChainStorageError::AccessError(e.to_string())
-    })?;
-    let iter = CursorIter::new(
-        MaybeOwned::Borrowed(&mut cursor),
-        &access,
-        |c, a| c.first(a),
-        Cursor::next::<[u8], [u8]>,
-    )?;
-
-    let mut result = vec![];
-    for row in iter {
-        result.push(Vec::from(row?.0));
-    }
-    Ok(result)
-}
+// pub fn lmdb_list_keys(txn: &ConstTransaction<'_>, db: &Database) -> Result<Vec<Vec<u8>>, ChainStorageError> {
+//     let access = txn.access();
+//     let mut cursor = txn.cursor(db).map_err(|e| {
+//         error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+//         ChainStorageError::AccessError(e.to_string())
+//     })?;
+//     let iter = CursorIter::new(
+//         MaybeOwned::Borrowed(&mut cursor),
+//         &access,
+//         |c, a| c.first(a),
+//         Cursor::next::<[u8], [u8]>,
+//     )?;
+//
+//     let mut result = vec![];
+//     for row in iter {
+//         result.push(Vec::from(row?.0));
+//     }
+//     Ok(result)
+// }
 
 pub fn lmdb_filter_map_values<F, V, R>(
     txn: &ConstTransaction<'_>,
@@ -347,3 +347,26 @@ where
     }
     Ok(result)
 }
+
+// pub fn lmdb_list_values<V>(txn: &ConstTransaction<'_>, db: &Database) -> Result<Vec<V>, ChainStorageError>
+// where V: DeserializeOwned {
+//     let access = txn.access();
+//     let mut cursor = txn.cursor(db).map_err(|e| {
+//         error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+//         ChainStorageError::AccessError(e.to_string())
+//     })?;
+//     let iter = CursorIter::new(
+//         MaybeOwned::Borrowed(&mut cursor),
+//         &access,
+//         |c, a| c.first(a),
+//         Cursor::next::<[u8], [u8]>,
+//     )?;
+//
+//     let mut result = vec![];
+//     for row in iter {
+//         // result.push(Vec::from(row?.0));
+//         let val = deserialize::<V>(row?.1)?;
+//         result.push(val);
+//     }
+//     Ok(result)
+// }

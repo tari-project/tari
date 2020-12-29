@@ -23,7 +23,7 @@
 use super::core as proto;
 use crate::{
     blocks::{Block, BlockHeader, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
-    chain_storage::HistoricalBlock,
+    chain_storage::{BlockHeaderAccumulatedData, HistoricalBlock},
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     transactions::types::BlindingFactor,
 };
@@ -166,6 +166,8 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
         Ok(Self {
             confirmations: historical_block.confirmations,
             block,
+            // TODO: populate this
+            accumulated_data: Default::default(),
         })
     }
 }
@@ -176,6 +178,19 @@ impl From<HistoricalBlock> for proto::HistoricalBlock {
             confirmations: block.confirmations,
             spent_commitments: vec![],
             block: Some(block.block.into()),
+            accumulated_data: Some(block.accumulated_data.into()),
+        }
+    }
+}
+
+impl From<BlockHeaderAccumulatedData> for proto::BlockHeaderAccumulatedData {
+    fn from(source: BlockHeaderAccumulatedData) -> Self {
+        Self {
+            achieved_difficulty: source.achieved_difficulty.into(),
+            accumulated_monero_difficulty: source.accumulated_monero_difficulty.into(),
+            accumulated_blake_difficulty: source.accumulated_blake_difficulty.into(),
+            target_difficulty: source.target_difficulty.into(),
+            total_kernel_offset: source.total_kernel_offset.to_vec(),
         }
     }
 }
@@ -227,6 +242,7 @@ impl TryFrom<proto::NewBlockHeaderTemplate> for NewBlockHeaderTemplate {
             prev_hash: header.prev_hash,
             total_kernel_offset,
             pow,
+            target_difficulty: Default::default(),
         })
     }
 }
@@ -239,6 +255,7 @@ impl From<NewBlockHeaderTemplate> for proto::NewBlockHeaderTemplate {
             prev_hash: header.prev_hash,
             total_kernel_offset: header.total_kernel_offset.to_vec(),
             pow: Some(proto::ProofOfWork::from(header.pow)),
+            target_difficulty: header.target_difficulty.into(),
         }
     }
 }

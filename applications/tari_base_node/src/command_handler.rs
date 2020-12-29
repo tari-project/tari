@@ -1093,7 +1093,7 @@ impl CommandHandler {
         match end {
             Some(end) => blockchain_db.fetch_headers(start..=end).await.map_err(Into::into),
             None => {
-                let tip = blockchain_db.fetch_tip_header().await?.height;
+                let tip = blockchain_db.fetch_tip_header().await?.height();
                 blockchain_db
                     .fetch_headers((tip.saturating_sub(start) + 1)..)
                     .await

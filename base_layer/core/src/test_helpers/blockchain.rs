@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{Block, BlockHeader, NewBlockTemplate},
+    blocks::{genesis_block::get_ridcully_genesis_block, Block, BlockHeader},
     chain_storage::{
         create_lmdb_database,
         BlockAccumulatedData,
@@ -29,6 +29,7 @@ use crate::{
         BlockchainBackend,
         BlockchainDatabase,
         BlockchainDatabaseConfig,
+        ChainHeader,
         ChainStorageError,
         DbKey,
         DbTransaction,
@@ -49,7 +50,7 @@ use crate::{
         types::{CryptoFactories, HashOutput, Signature},
     },
     validation::{
-        block_validators::{FullConsensusValidator, StatelessBlockValidator},
+        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
         mocks::MockValidator,
     },
 };
@@ -64,24 +65,20 @@ use tari_test_utils::paths::create_temporary_data_path;
 
 /// Create a new blockchain database containing no blocks.
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
-    let network = Network::LocalNet;
+    let network = Network::Ridcully;
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
-    let genesis = genesis_template();
+    let genesis = get_ridcully_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
-        .with_block(Block {
-            header: genesis.header.into(),
-            body: genesis.body,
-        })
+        .with_block(genesis)
         .on_ties(ChainStrengthComparerBuilder::new().by_height().build())
         .build();
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
     create_store_with_consensus_and_validators(&consensus_manager, validators)
-}
-
-fn genesis_template() -> NewBlockTemplate {
-    let header = BlockHeader::new(0);
-    header.into_builder().build().into()
 }
 
 pub fn create_store_with_consensus_and_validators(
@@ -96,8 +93,9 @@ pub fn create_store_with_consensus_and_validators(
 pub fn create_store_with_consensus(rules: &ConsensusManager) -> BlockchainDatabase<TempDatabase> {
     let factories = CryptoFactories::default();
     let validators = Validators::new(
-        FullConsensusValidator::new(rules.clone()),
-        StatelessBlockValidator::new(rules.clone(), factories),
+        BodyOnlyValidator::default(),
+        MockValidator::new(true),
+        OrphanBlockValidator::new(rules.clone(), factories),
     );
     create_store_with_consensus_and_validators(rules, validators)
 }
@@ -158,12 +156,24 @@ impl BlockchainBackend for TempDatabase {
         self.db.contains(key)
     }
 
+    fn fetch_header_and_accumulated_data(
+        &self,
+        height: u64,
+    ) -> Result<(BlockHeader, BlockHeaderAccumulatedData), ChainStorageError>
+    {
+        self.db.fetch_header_and_accumulated_data(height)
+    }
+
     fn fetch_header_accumulated_data(
         &self,
         hash: &HashOutput,
     ) -> Result<Option<BlockHeaderAccumulatedData>, ChainStorageError>
     {
         self.db.fetch_header_accumulated_data(hash)
+    }
+
+    fn fetch_chain_header_in_all_chains(&self, hash: &HashOutput) -> Result<Option<ChainHeader>, ChainStorageError> {
+        self.db.fetch_chain_header_in_all_chains(hash)
     }
 
     fn is_empty(&self) -> Result<bool, ChainStorageError> {
@@ -255,6 +265,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_last_header()
     }
 
+    fn fetch_tip_header(&self) -> Result<ChainHeader, ChainStorageError> {
+        self.db.fetch_tip_header()
+    }
+
     fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
         self.db.fetch_chain_metadata()
     }
@@ -267,12 +281,20 @@ impl BlockchainBackend for TempDatabase {
         self.db.kernel_count()
     }
 
-    fn fetch_orphan_chain_tips(&self) -> Result<Vec<HashOutput>, ChainStorageError> {
-        self.db.fetch_orphan_chain_tips()
+    fn fetch_orphan_chain_tip_by_hash(&self, hash: &HashOutput) -> Result<Option<ChainHeader>, ChainStorageError> {
+        self.db.fetch_orphan_chain_tip_by_hash(hash)
     }
 
-    fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<HashOutput>, ChainStorageError> {
+    fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<Block>, ChainStorageError> {
         self.db.fetch_orphan_children_of(hash)
+    }
+
+    fn fetch_orphan_header_accumulated_data(
+        &self,
+        hash: HashOutput,
+    ) -> Result<BlockHeaderAccumulatedData, ChainStorageError>
+    {
+        self.db.fetch_orphan_header_accumulated_data(hash)
     }
 
     fn delete_oldest_orphans(

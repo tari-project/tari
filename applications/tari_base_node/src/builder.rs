@@ -43,11 +43,12 @@ use tari_core::{
     consensus::ConsensusManagerBuilder,
     mempool::{service::LocalMempoolService, Mempool, MempoolConfig},
     mining::{Miner, MinerInstruction},
+    proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
     transactions::types::CryptoFactories,
     validation::{
-        block_validators::{FullConsensusValidator, StatelessBlockValidator},
-        transaction_validators::{TxInputAndMaturityValidator, TxInternalConsistencyValidator},
-        ValidationExt,
+        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
+        header_validator::HeaderValidator,
+        transaction_validators::{MempoolValidator, TxInputAndMaturityValidator, TxInternalConsistencyValidator},
     },
 };
 use tari_service_framework::ServiceHandles;
@@ -301,9 +302,11 @@ async fn build_node_context(
 
     let rules = ConsensusManagerBuilder::new(config.network.into()).build();
     let factories = CryptoFactories::default();
+    let randomx_factory = RandomXFactory::new(RandomXConfig::default());
     let validators = Validators::new(
-        FullConsensusValidator::new(rules.clone()),
-        StatelessBlockValidator::new(rules.clone(), factories.clone()),
+        BodyOnlyValidator::default(),
+        HeaderValidator::new(rules.clone(), randomx_factory),
+        OrphanBlockValidator::new(rules.clone(), factories.clone()),
     );
     let db_config = BlockchainDatabaseConfig {
         orphan_storage_capacity: config.orphan_storage_capacity,
@@ -311,9 +314,11 @@ async fn build_node_context(
         pruning_interval: config.pruned_mode_cleanup_interval,
     };
     let blockchain_db = BlockchainDatabase::new(backend, &rules, validators, db_config, cleanup_orphans_at_startup)?;
-    let mempool_validator = TxInternalConsistencyValidator::new(factories.clone())
-        .and_then(TxInputAndMaturityValidator::new(blockchain_db.clone()));
-    let mempool = Mempool::new(MempoolConfig::default(), Box::new(mempool_validator));
+    let mempool_validator = MempoolValidator::new(vec![
+        Box::new(TxInternalConsistencyValidator::new(factories.clone())),
+        Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
+    ]);
+    let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
 
     //---------------------------------- Base Node  --------------------------------------------//
     debug!(target: LOG_TARGET, "Creating base node state machine.");

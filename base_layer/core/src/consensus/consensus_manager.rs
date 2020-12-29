@@ -27,12 +27,10 @@ use crate::{
             get_mainnet_genesis_block,
             get_ridcully_block_hash,
             get_ridcully_genesis_block,
-            get_rincewind_block_hash,
-            get_rincewind_genesis_block,
         },
         Block,
     },
-    chain_storage::ChainStorageError,
+    chain_storage::{ChainBlock, ChainStorageError},
     consensus::{
         chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
         emission::{Emission, EmissionSchedule},
@@ -71,20 +69,19 @@ impl ConsensusManager {
     }
 
     /// Returns the genesis block for the selected network.
-    pub fn get_genesis_block(&self) -> Block {
+    pub fn get_genesis_block(&self) -> ChainBlock {
         match self.inner.network {
             Network::MainNet => get_mainnet_genesis_block(),
-            Network::Rincewind => get_rincewind_genesis_block(),
             Network::Ridcully => get_ridcully_genesis_block(),
             Network::LocalNet => self.inner.gen_block.clone().unwrap_or_else(get_ridcully_genesis_block),
         }
     }
 
     /// Returns the genesis block hash for the selected network.
+    #[deprecated]
     pub fn get_genesis_block_hash(&self) -> Vec<u8> {
         match self.inner.network {
             Network::MainNet => get_mainnet_block_hash(),
-            Network::Rincewind => get_rincewind_block_hash(),
             Network::Ridcully => get_ridcully_block_hash(),
             Network::LocalNet => get_ridcully_block_hash(),
         }
@@ -158,7 +155,7 @@ struct ConsensusManagerInner {
     /// The configuration for the emission schedule for integer only.
     pub emission: EmissionSchedule,
     /// This allows the user to set a custom Genesis block
-    pub gen_block: Option<Block>,
+    pub gen_block: Option<ChainBlock>,
     /// The comparer used to determine which chain is stronger for reorgs.
     pub chain_strength_comparer: Box<dyn ChainStrengthComparer + Send + Sync>,
 }
@@ -167,7 +164,7 @@ struct ConsensusManagerInner {
 pub struct ConsensusManagerBuilder {
     consensus_constants: Vec<ConsensusConstants>,
     network: Network,
-    gen_block: Option<Block>,
+    gen_block: Option<ChainBlock>,
     chain_strength_comparer: Option<Box<dyn ChainStrengthComparer + Send + Sync>>,
 }
 
@@ -189,7 +186,7 @@ impl ConsensusManagerBuilder {
     }
 
     /// Adds in a custom block to be used. This will be overwritten if the network is anything else than localnet
-    pub fn with_block(mut self, block: Block) -> Self {
+    pub fn with_block(mut self, block: ChainBlock) -> Self {
         self.gen_block = Some(block);
         self
     }

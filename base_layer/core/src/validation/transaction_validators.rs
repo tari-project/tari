@@ -24,7 +24,7 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase, MmrTree},
     tari_utilities::hex::Hex,
     transactions::{transaction::Transaction, types::CryptoFactories},
-    validation::{Validation, ValidationError},
+    validation::{MempoolTransactionValidation, ValidationError},
 };
 use log::*;
 use tari_crypto::tari_utilities::hash::Hashable;
@@ -48,7 +48,7 @@ impl TxInternalConsistencyValidator {
     }
 }
 
-impl Validation<Transaction> for TxInternalConsistencyValidator {
+impl MempoolTransactionValidation for TxInternalConsistencyValidator {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         tx.validate_internal_consistency(&self.factories, None)
             .map_err(ValidationError::TransactionError)?;
@@ -69,7 +69,7 @@ impl<B: BlockchainBackend> TxInputAndMaturityValidator<B> {
     }
 }
 
-impl<B: BlockchainBackend> Validation<Transaction> for TxInputAndMaturityValidator<B> {
+impl<B: BlockchainBackend> MempoolTransactionValidation for TxInputAndMaturityValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let db = self.db.db_read_access()?;
         verify_not_stxos(tx, &*db)?;
@@ -123,4 +123,23 @@ fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<()
     }
 
     Ok(())
+}
+
+pub struct MempoolValidator {
+    validators: Vec<Box<dyn MempoolTransactionValidation>>,
+}
+
+impl MempoolValidator {
+    pub fn new(validators: Vec<Box<dyn MempoolTransactionValidation>>) -> Self {
+        Self { validators }
+    }
+}
+
+impl MempoolTransactionValidation for MempoolValidator {
+    fn validate(&self, transaction: &Transaction) -> Result<(), ValidationError> {
+        for v in &self.validators {
+            v.validate(transaction)?;
+        }
+        Ok(())
+    }
 }

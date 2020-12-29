@@ -45,6 +45,7 @@ use tari_core::{
     chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::MempoolServiceConfig,
+    proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::blockchain::create_test_blockchain_db,
     transactions::types::CryptoFactories,
     validation::mocks::MockValidator,
@@ -99,6 +100,7 @@ fn test_listening_lagging() {
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         status_event_sender,
         state_change_event_publisher,
+        RandomXFactory::default(),
         consensus_manager.clone(),
         shutdown.to_signal(),
     );
@@ -114,7 +116,7 @@ fn test_listening_lagging() {
         let prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager, 3.into()).unwrap();
         // Bob Block 2 - with block event and liveness service metadata update
         let prev_block = bob_db
-            .prepare_block_merkle_roots(chain_block(&prev_block, vec![], &consensus_manager))
+            .prepare_block_merkle_roots(chain_block(&prev_block.block, vec![], &consensus_manager))
             .unwrap();
         bob_local_nci
             .submit_block(prev_block, Broadcast::from(true))
@@ -128,7 +130,7 @@ fn test_listening_lagging() {
             .unwrap();
 
         match next_event {
-            StateEvent::FallenBehind(Lagging(_, _)) => assert!(true),
+            StateEvent::InitialSync => assert!(true),
             _ => assert!(false),
         }
     });
@@ -139,7 +141,7 @@ fn test_event_channel() {
     let temp_dir = tempdir().unwrap();
     let mut runtime = Runtime::new().unwrap();
     let (node, consensus_manager) =
-        BaseNodeBuilder::new(Network::Rincewind).start(&mut runtime, temp_dir.path().to_str().unwrap());
+        BaseNodeBuilder::new(Network::Ridcully).start(&mut runtime, temp_dir.path().to_str().unwrap());
     // let shutdown = Shutdown::new();
     let db = create_test_blockchain_db();
     let shutdown = Shutdown::new();
@@ -157,6 +159,7 @@ fn test_event_channel() {
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         status_event_sender,
         state_change_event_publisher,
+        RandomXFactory::default(),
         consensus_manager.clone(),
         shutdown.to_signal(),
     );
@@ -175,13 +178,10 @@ fn test_event_channel() {
         let event = state_change_event_subscriber.next().await;
         assert_eq!(*event.unwrap().unwrap(), StateEvent::Initialized);
         let event = state_change_event_subscriber.next().await;
-        match *event.unwrap().unwrap() {
-            StateEvent::FallenBehind(SyncStatus::Lagging(ref data, ref peers)) => {
-                assert_eq!(data.height_of_longest_chain(), 10);
-                assert_eq!(data.accumulated_difficulty(), 5_000);
-                assert_eq!(peers[0].node_id, node_id);
-            },
-            _ => assert!(false),
+        let event = event.unwrap().unwrap();
+        match event.as_ref() {
+            StateEvent::InitialSync => (),
+            _ => panic!("Unexpected state was found:{:?}", event),
         }
     });
 }

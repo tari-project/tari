@@ -116,11 +116,20 @@ fn insert_and_fetch_header() {
     let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
     let genesis_block = store.fetch_tip_header().unwrap();
-    let header1 = BlockHeader::from_previous(&genesis_block).unwrap();
+    let header1 = BlockHeader::from_previous(&genesis_block.header).unwrap();
     let header2 = BlockHeader::from_previous(&header1).unwrap();
 
+    let chain1 = store
+        .create_chain_header_if_valid(header1.clone(), &genesis_block)
+        .unwrap();
+
     store
-        .insert_valid_headers(vec![header1.clone(), header2.clone()])
+        .insert_valid_headers(vec![(header1.clone(), chain1.accumulated_data.clone())])
+        .unwrap();
+    let chain2 = store.create_chain_header_if_valid(header2.clone(), &chain1).unwrap();
+
+    store
+        .insert_valid_headers(vec![(header2.clone(), chain2.accumulated_data.clone())])
         .unwrap();
     store.fetch_header(0).unwrap();
 
@@ -152,14 +161,14 @@ fn store_and_retrieve_block() {
     // Check the metadata
     let metadata = db.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 0);
-    assert_eq!(metadata.best_block(), &hash);
+    assert_eq!(metadata.best_block(), hash);
     assert_eq!(metadata.horizon_block(metadata.height_of_longest_chain()), 0);
     // Fetch the block back
     let block0 = db.fetch_block(0).unwrap();
     assert_eq!(block0.confirmations(), 1);
     // Compare the blocks
     let block0 = Block::from(block0);
-    assert_eq!(blocks[0], block0);
+    assert_eq!(blocks[0].block, block0);
 }
 
 #[test]
@@ -170,23 +179,23 @@ fn add_multiple_blocks() {
     let store = create_store_with_consensus(&consensus_manager);
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 0);
-    let block0 = store.fetch_block(0).unwrap().block().clone();
-    assert_eq!(metadata.best_block(), &block0.hash());
+    let block0 = store.fetch_block(0).unwrap();
+    assert_eq!(metadata.best_block(), block0.hash());
     // Add another block
-    let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
+    let block1 = append_block(&store, &block0.into_chain_block(), vec![], &consensus_manager, 1.into()).unwrap();
     let metadata = store.get_chain_metadata().unwrap();
     let hash = block1.hash();
     assert_eq!(metadata.height_of_longest_chain(), 1);
-    assert_eq!(metadata.best_block(), &hash);
+    assert_eq!(metadata.best_block(), hash);
     // Adding blocks is idempotent
     assert_eq!(
-        store.add_block(block1.clone().into()).unwrap(),
+        store.add_block(block1.block.clone().into()).unwrap(),
         BlockAddResult::BlockExists
     );
     // Check the metadata
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 1);
-    assert_eq!(metadata.best_block(), &hash);
+    assert_eq!(metadata.best_block(), hash);
 }
 
 #[test]
@@ -203,10 +212,10 @@ fn test_checkpoints() {
     // Get the checkpoint
     let block_a = db.fetch_block(0).unwrap();
     assert_eq!(block_a.confirmations(), 2);
-    assert_eq!(blocks[0], Block::from(block_a));
+    assert_eq!(blocks[0].block, block_a.block);
     let block_b = db.fetch_block(1).unwrap();
     assert_eq!(block_b.confirmations(), 1);
-    let block1 = serde_json::to_string(&block1).unwrap();
+    let block1 = serde_json::to_string(&block1.block).unwrap();
     let block_b = serde_json::to_string(&Block::from(block_b)).unwrap();
     assert_eq!(block1, block_b);
 }
@@ -218,24 +227,24 @@ fn rewind_to_height() {
 
     // Block 1
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![6 * T, 3 * T])];
-    assert_eq!(
-        generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap(),
-        BlockAddResult::Ok
+    unpack_enum!(
+        BlockAddResult::Ok(b1) =
+            generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
     // Block 2
     let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
-    assert_eq!(
-        generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap(),
-        BlockAddResult::Ok
+    unpack_enum!(
+        BlockAddResult::Ok(b2) =
+            generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
     // Block 3
     let schema = vec![
         txn_schema!(from: vec![outputs[2][0].clone()], to: vec![2 * T, 500_000 * uT]),
         txn_schema!(from: vec![outputs[1][1].clone()], to: vec![500_000 * uT]),
     ];
-    assert_eq!(
-        generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap(),
-        BlockAddResult::Ok
+    unpack_enum!(
+        BlockAddResult::Ok(b3) =
+            generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
 
     assert!(db.rewind_to_height(3).is_ok());
@@ -253,9 +262,13 @@ fn rewind_to_height() {
 // Ignored until pruned mode fixed
 fn rewind_past_horizon_height() {
     let network = Network::LocalNet;
-    let block0 = genesis_block::get_rincewind_genesis_block_raw();
+    let block0 = genesis_block::get_ridcully_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
     let db = create_test_db();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -317,7 +330,7 @@ fn handle_tip_reorg() {
     // Create Forked Chain
 
     let mut orphan_store = create_store_with_consensus(&consensus_manager);
-    orphan_store.add_block(blocks[1].clone().into()).unwrap();
+    orphan_store.add_block(blocks[1].block.clone().into()).unwrap();
     let mut orphan_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan_outputs = vec![outputs[0].clone(), outputs[1].clone()];
     // Block B2
@@ -333,16 +346,19 @@ fn handle_tip_reorg() {
     .unwrap();
 
     // Adding B2 to the main chain will produce a reorg to GB->A1->B2.
-    if let Ok(BlockAddResult::ChainReorg(_, _)) = store.add_block(orphan_blocks[2].clone().into()) {
+    if let Ok(BlockAddResult::ChainReorg(_, _)) = store.add_block(orphan_blocks[2].block.clone().into()) {
         assert!(true);
     } else {
         assert!(false);
     }
-    assert_eq!(store.fetch_tip_header().unwrap(), orphan_blocks[2].header.clone());
+    assert_eq!(
+        store.fetch_tip_header().unwrap().header,
+        orphan_blocks[2].block.header.clone()
+    );
 
     // Check that B2 was removed from the block orphans and A2 has been orphaned.
-    assert!(store.fetch_orphan(orphan_blocks[2].hash()).is_err());
-    assert!(store.fetch_orphan(blocks[2].hash()).is_ok());
+    assert!(store.fetch_orphan(orphan_blocks[2].hash().clone()).is_err());
+    assert!(store.fetch_orphan(blocks[2].hash().clone()).is_ok());
 }
 
 #[test]
@@ -437,7 +453,10 @@ fn handle_reorg() {
 
     // Create Forked Chain 1
     let mut orphan1_store = create_store_with_consensus(&consensus_manager);
-    orphan1_store.add_block(blocks[1].clone().into()).unwrap(); // A1
+    orphan1_store
+        .add_block(blocks[1].block.clone().into())
+        .unwrap()
+        .assert_added(); // A1
     let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
     // Block B2
@@ -479,9 +498,18 @@ fn handle_reorg() {
 
     // Create Forked Chain 2
     let mut orphan2_store = create_store_with_consensus(&consensus_manager);
-    orphan2_store.add_block(blocks[1].clone().into()).unwrap(); // A1
-    orphan2_store.add_block(orphan1_blocks[2].clone().into()).unwrap(); // B2
-    orphan2_store.add_block(orphan1_blocks[3].clone().into()).unwrap(); // B3
+    orphan2_store
+        .add_block(blocks[1].block.clone().into())
+        .unwrap()
+        .assert_added(); // A1
+    orphan2_store
+        .add_block(orphan1_blocks[2].block.clone().into())
+        .unwrap()
+        .assert_added(); // B2
+    orphan2_store
+        .add_block(orphan1_blocks[3].block.clone().into())
+        .unwrap()
+        .assert_added(); // B3
     let mut orphan2_blocks = vec![
         blocks[0].clone(),
         blocks[1].clone(),
@@ -508,20 +536,32 @@ fn handle_reorg() {
 
     // Now add the fork blocks C4, B2, B4 and B3 (out of order) to the first DB and observe a reorg. Blocks are added
     // out of order to test the forward and reverse chaining.
-    store.add_block(orphan2_blocks[4].clone().into()).unwrap(); // C4
-    store.add_block(orphan1_blocks[2].clone().into()).unwrap(); // B2
-    store.add_block(orphan1_blocks[4].clone().into()).unwrap(); // B4
-    store.add_block(orphan1_blocks[3].clone().into()).unwrap(); // B3
-    assert_eq!(store.fetch_tip_header().unwrap(), orphan2_blocks[4].header.clone());
+    store
+        .add_block(orphan2_blocks[4].block.clone().into())
+        .unwrap()
+        .assert_orphaned(); // C4
+    store
+        .add_block(orphan1_blocks[2].block.clone().into())
+        .unwrap()
+        .assert_orphaned(); // B2
+    store
+        .add_block(orphan1_blocks[4].block.clone().into())
+        .unwrap()
+        .assert_orphaned(); // B4
+    store
+        .add_block(orphan1_blocks[3].block.clone().into())
+        .unwrap()
+        .assert_reorg(3, 3); // B3
+    assert_eq!(store.fetch_tip_header().unwrap().header, orphan2_blocks[4].block.header);
 
     // Check that B2,B3 and C4 were removed from the block orphans and A2,A3,A4 and B4 has been orphaned.
-    assert!(store.fetch_orphan(orphan1_blocks[2].hash()).is_err()); // B2
-    assert!(store.fetch_orphan(orphan1_blocks[3].hash()).is_err()); // B3
-    assert!(store.fetch_orphan(orphan2_blocks[4].hash()).is_err()); // C4
-    assert!(store.fetch_orphan(blocks[2].hash()).is_ok()); // A2
-    assert!(store.fetch_orphan(blocks[3].hash()).is_ok()); // A3
-    assert!(store.fetch_orphan(blocks[4].hash()).is_ok()); // A4
-    assert!(store.fetch_orphan(blocks[4].hash()).is_ok()); // B4
+    assert!(store.fetch_orphan(orphan1_blocks[2].hash().clone()).is_err()); // B2
+    assert!(store.fetch_orphan(orphan1_blocks[3].hash().clone()).is_err()); // B3
+    assert!(store.fetch_orphan(orphan2_blocks[4].hash().clone()).is_err()); // C4
+    assert!(store.fetch_orphan(blocks[2].hash().clone()).is_ok()); // A2
+    assert!(store.fetch_orphan(blocks[3].hash().clone()).is_ok()); // A3
+    assert!(store.fetch_orphan(blocks[4].hash().clone()).is_ok()); // A4
+    assert!(store.fetch_orphan(blocks[4].hash().clone()).is_ok()); // B4
 }
 
 #[test]
@@ -552,7 +592,7 @@ fn handle_reorg_with_no_removed_blocks() {
 
     // Create Forked Chain 1
     let mut orphan1_store = create_store_with_consensus(&consensus_manager);
-    orphan1_store.add_block(blocks[1].clone().into()).unwrap(); // A1
+    orphan1_store.add_block(blocks[1].block.clone().into()).unwrap(); // A1
     let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
     // Block B2
@@ -583,10 +623,10 @@ fn handle_reorg_with_no_removed_blocks() {
 
     // Now add the fork blocks B3 and B2 (out of order) to the first DB and ensure a reorg.
     // see https://github.com/tari-project/tari/issues/2101#issuecomment-679188619
-    store.add_block(orphan1_blocks[3].clone().into()).unwrap(); // B3
-    let result = store.add_block(orphan1_blocks[2].clone().into()).unwrap(); // B2
+    store.add_block(orphan1_blocks[3].block.clone().into()).unwrap(); // B3
+    let result = store.add_block(orphan1_blocks[2].block.clone().into()).unwrap(); // B2
     match result {
-        BlockAddResult::Ok => panic!("Adding multiple blocks without removing any failed to cause a reorg!"),
+        BlockAddResult::Ok(_) => panic!("Adding multiple blocks without removing any failed to cause a reorg!"),
         BlockAddResult::ChainReorg(removed, added) => {
             assert_eq!(added.len(), 2);
             assert_eq!(removed.len(), 0);
@@ -594,7 +634,7 @@ fn handle_reorg_with_no_removed_blocks() {
         _ => assert!(false),
     }
 
-    assert_eq!(store.fetch_tip_header().unwrap(), orphan1_blocks[3].header.clone());
+    assert_eq!(store.fetch_tip_header().unwrap().header, orphan1_blocks[3].block.header);
 }
 
 #[test]
@@ -609,7 +649,7 @@ fn handle_reorg_failure_recovery() {
     let temp_path = create_temporary_data_path();
     {
         let block_validator = MockValidator::new(true);
-        let validators = Validators::new(block_validator, MockValidator::new(true));
+        let validators = Validators::new(block_validator, MockValidator::new(true), MockValidator::new(true));
         // Create Main Chain
         let network = Network::LocalNet;
         let (mut store, mut blocks, mut outputs, consensus_manager) =
@@ -664,7 +704,7 @@ fn handle_reorg_failure_recovery() {
 
         // Create Forked Chain 1
         let mut orphan1_store = create_store_with_consensus(&consensus_manager);
-        orphan1_store.add_block(blocks[1].clone().into()).unwrap(); // A1
+        orphan1_store.add_block(blocks[1].block.clone().into()).unwrap(); // A1
         let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
         let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
         // Block B2
@@ -694,7 +734,7 @@ fn handle_reorg_failure_recovery() {
             }
             orphan1_outputs.push(block_utxos);
 
-            let template = chain_block(&orphan1_blocks.last().unwrap(), txns, &consensus_manager);
+            let template = chain_block(&orphan1_blocks.last().unwrap().block, txns, &consensus_manager);
             let mut block = orphan1_store.prepare_block_merkle_roots(template).unwrap();
             block.header.nonce = OsRng.next_u64();
             block.header.height = block.header.height + 1;
@@ -703,19 +743,19 @@ fn handle_reorg_failure_recovery() {
         };
 
         // Add an orphaned B2
-        let result = store.add_block(orphan1_blocks[2].clone().into()).unwrap(); // B2
+        let result = store.add_block(orphan1_blocks[2].block.clone().into()).unwrap(); // B2
         unpack_enum!(BlockAddResult::OrphanBlock = result);
 
         // Add invalid block B3. Our database should recover
         let res = store.add_block(double_spend_block.clone().into()).unwrap(); // B3
         unpack_enum!(BlockAddResult::OrphanBlock = res);
         let tip_header = store.fetch_tip_header().unwrap();
-        assert_eq!(tip_header.height, 4);
-        assert_eq!(tip_header, blocks[4].header);
+        assert_eq!(tip_header.height(), 4);
+        assert_eq!(tip_header.header, blocks[4].block.header);
 
-        assert!(store.fetch_orphan(blocks[2].hash()).is_err()); // A2
-        assert!(store.fetch_orphan(blocks[3].hash()).is_err()); // A3
-        assert!(store.fetch_orphan(blocks[4].hash()).is_err()); // A4
+        assert!(store.fetch_orphan(blocks[2].hash().clone()).is_err()); // A2
+        assert!(store.fetch_orphan(blocks[3].hash().clone()).is_err()); // A3
+        assert!(store.fetch_orphan(blocks[4].hash().clone()).is_err()); // A4
     }
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
@@ -728,47 +768,34 @@ fn handle_reorg_failure_recovery() {
 
 #[test]
 fn store_and_retrieve_blocks() {
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
     let network = Network::LocalNet;
     let rules = ConsensusManagerBuilder::new(network).build();
     let db = create_test_db();
     let store = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap();
 
-    let block0 = store.fetch_block(0).unwrap().block().clone();
-    let block1 = append_block(&store, &block0, vec![], &rules, 1.into()).unwrap();
+    let block0 = store.fetch_block(0).unwrap().clone();
+    let block1 = append_block(&store, &block0.clone().into_chain_block(), vec![], &rules, 1.into()).unwrap();
     let block2 = append_block(&store, &block1, vec![], &rules, 1.into()).unwrap();
-    assert_eq!(*store.fetch_block(0).unwrap().block(), block0);
-    assert_eq!(*store.fetch_block(1).unwrap().block(), block1);
-    assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
+    assert_eq!(
+        store.fetch_block(0).unwrap().into_chain_block(),
+        block0.clone().into_chain_block()
+    );
+    assert_eq!(store.fetch_block(1).unwrap().into_chain_block(), block1);
+    assert_eq!(store.fetch_block(2).unwrap().into_chain_block(), block2);
 
     let block3 = append_block(&store, &block2, vec![], &rules, 1.into()).unwrap();
-    assert_eq!(*store.fetch_block(0).unwrap().block(), block0);
-    assert_eq!(*store.fetch_block(1).unwrap().block(), block1);
-    assert_eq!(*store.fetch_block(2).unwrap().block(), block2);
-    assert_eq!(*store.fetch_block(3).unwrap().block(), block3);
-}
-
-#[test]
-fn store_and_retrieve_chain_and_orphan_blocks_with_hashes() {
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
-    let network = Network::LocalNet;
-    let rules = ConsensusManagerBuilder::new(network).build();
-    let db = create_test_db();
-    let store = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap();
-
-    let block0 = store.fetch_block(0).unwrap().block().clone();
-    let block1 = append_block(&store, &block0, vec![], &rules, 1.into()).unwrap();
-    let orphan = create_orphan_block(10, vec![], &rules);
-    let mut txn = DbTransaction::new();
-    txn.insert_orphan(orphan.clone().into());
-    assert!(store.commit(txn).is_ok());
-
-    let hash0 = block0.hash();
-    let hash1 = block1.hash();
-    let hash2 = orphan.hash();
-    assert_eq!(*store.fetch_block_by_hash(hash0).unwrap().unwrap().block(), block0);
-    assert_eq!(*store.fetch_block_by_hash(hash1).unwrap().unwrap().block(), block1);
-    assert_eq!(*store.fetch_block_by_hash(hash2).unwrap().unwrap().block(), orphan);
+    assert_eq!(
+        store.fetch_block(0).unwrap().into_chain_block(),
+        block0.into_chain_block()
+    );
+    assert_eq!(store.fetch_block(1).unwrap().into_chain_block(), block1);
+    assert_eq!(store.fetch_block(2).unwrap().into_chain_block(), block2);
+    assert_eq!(store.fetch_block(3).unwrap().into_chain_block(), block3);
 }
 
 #[test]
@@ -780,29 +807,38 @@ fn store_and_retrieve_blocks_from_contents() {
 
     // Block 1
     let schema = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![6 * T, 3 * T])];
-    assert_eq!(
-        generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap(),
-        BlockAddResult::Ok
+    unpack_enum!(
+        BlockAddResult::Ok(b1) =
+            generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
     // Block 2
     let schema = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![3 * T, 1 * T])];
-    assert_eq!(
-        generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap(),
-        BlockAddResult::Ok
+    unpack_enum!(
+        BlockAddResult::Ok(b2) =
+            generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
-    let kernel_sig = blocks[1].body.kernels()[0].clone().excess_sig;
-    let stxo_commit = blocks[1].body.inputs()[0].clone().commitment;
-    let utxo_commit = blocks[1].body.outputs()[0].clone().commitment;
+    let kernel_sig = blocks[1].block.body.kernels()[0].clone().excess_sig;
+    let stxo_commit = blocks[1].block.body.inputs()[0].clone().commitment;
+    let utxo_commit = blocks[1].block.body.outputs()[0].clone().commitment;
     assert_eq!(
-        *db.fetch_block_with_kernel(kernel_sig).unwrap().unwrap().block(),
+        db.fetch_block_with_kernel(kernel_sig)
+            .unwrap()
+            .unwrap()
+            .into_chain_block(),
         blocks[1]
     );
     assert_eq!(
-        *db.fetch_block_with_stxo(stxo_commit).unwrap().unwrap().block(),
+        db.fetch_block_with_stxo(stxo_commit)
+            .unwrap()
+            .unwrap()
+            .into_chain_block(),
         blocks[1]
     );
     assert_eq!(
-        *db.fetch_block_with_utxo(utxo_commit).unwrap().unwrap().block(),
+        db.fetch_block_with_utxo(utxo_commit)
+            .unwrap()
+            .unwrap()
+            .into_chain_block(),
         blocks[1]
     );
 }
@@ -815,9 +851,13 @@ fn restore_metadata_and_pruning_horizon_update() {
 
     // Perform test
     {
-        let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+        let validators = Validators::new(
+            MockValidator::new(true),
+            MockValidator::new(true),
+            MockValidator::new(true),
+        );
         let network = Network::LocalNet;
-        let block0 = genesis_block::get_rincewind_genesis_block_raw();
+        let block0 = genesis_block::get_ridcully_genesis_block();
         let rules = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
         let mut config = BlockchainDatabaseConfig::default();
         let block_hash: BlockHash;
@@ -829,8 +869,8 @@ fn restore_metadata_and_pruning_horizon_update() {
             let db = BlockchainDatabase::new(db, &rules, validators.clone(), config, false).unwrap();
 
             let block1 = append_block(&db, &block0, vec![], &rules, 1.into()).unwrap();
-            db.add_block(block1.clone().into()).unwrap();
-            block_hash = block1.hash();
+            db.add_block(block1.block.clone().into()).unwrap();
+            block_hash = block1.hash().clone();
             let metadata = db.get_chain_metadata().unwrap();
             assert_eq!(metadata.height_of_longest_chain(), 1);
             assert_eq!(metadata.best_block(), &block_hash);
@@ -882,16 +922,16 @@ fn invalid_block() {
         .build();
     let validator = MockValidator::new(true);
     let is_valid = validator.shared_flag();
-    let validators = Validators::new(MockValidator::new(true), validator);
+    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true), validator);
     let mut store = create_store_with_consensus_and_validators(&consensus_manager, validators);
 
     let mut blocks = vec![block0];
     let mut outputs = vec![vec![output]];
-    let block0_hash = blocks[0].hash();
+    let block0_hash = blocks[0].hash().clone();
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 0);
     assert_eq!(metadata.best_block(), &block0_hash);
-    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
+    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash.clone());
     assert!(store.fetch_block(1).is_err());
 
     // Block 1
@@ -900,8 +940,8 @@ fn invalid_block() {
         to: vec![10 * T, 5 * T, 10 * T, 15 * T]
     )];
     let coinbase_value = consensus_manager.emission_schedule().block_reward(1);
-    assert_eq!(
-        generate_new_block_with_coinbase(
+    unpack_enum!(
+        BlockAddResult::Ok(b1) = generate_new_block_with_coinbase(
             &mut store,
             &factories,
             &mut blocks,
@@ -910,15 +950,14 @@ fn invalid_block() {
             coinbase_value,
             &consensus_manager
         )
-        .unwrap(),
-        BlockAddResult::Ok
+        .unwrap()
     );
-    let block1_hash = blocks[1].hash();
+    let block1_hash = blocks[1].hash().clone();
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 1);
     assert_eq!(metadata.best_block(), &block1_hash);
-    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
-    assert_eq!(store.fetch_block(1).unwrap().block().hash(), block1_hash);
+    assert_eq!(store.fetch_block(0).unwrap().hash(), &block0_hash);
+    assert_eq!(store.fetch_block(1).unwrap().hash(), &block1_hash);
     assert!(store.fetch_block(2).is_err());
 
     // Invalid Block 2 - Double spends genesis block output
@@ -940,16 +979,16 @@ fn invalid_block() {
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 1);
     assert_eq!(metadata.best_block(), &block1_hash);
-    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
-    assert_eq!(store.fetch_block(1).unwrap().block().hash(), block1_hash);
+    assert_eq!(store.fetch_block(0).unwrap().hash(), &block0_hash);
+    assert_eq!(store.fetch_block(1).unwrap().hash(), &block1_hash);
     assert!(store.fetch_block(2).is_err());
 
     // Valid Block 2
     is_valid.set(true);
     let txs = vec![txn_schema!(from: vec![outputs[1][0].clone()], to: vec![4 * T, 4 * T])];
     let coinbase_value = consensus_manager.emission_schedule().block_reward(2);
-    assert_eq!(
-        generate_new_block_with_coinbase(
+    unpack_enum!(
+        BlockAddResult::Ok(b1) = generate_new_block_with_coinbase(
             &mut store,
             &factories,
             &mut blocks,
@@ -958,16 +997,15 @@ fn invalid_block() {
             coinbase_value,
             &consensus_manager
         )
-        .unwrap(),
-        BlockAddResult::Ok
+        .unwrap()
     );
     let block2_hash = blocks[2].hash();
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 2);
-    assert_eq!(metadata.best_block(), &block2_hash);
-    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
-    assert_eq!(store.fetch_block(1).unwrap().block().hash(), block1_hash);
-    assert_eq!(store.fetch_block(2).unwrap().block().hash(), block2_hash);
+    assert_eq!(metadata.best_block(), block2_hash);
+    assert_eq!(store.fetch_block(0).unwrap().hash(), &block0_hash);
+    assert_eq!(store.fetch_block(1).unwrap().hash(), &block1_hash);
+    assert_eq!(store.fetch_block(2).unwrap().hash(), block2_hash);
     assert!(store.fetch_block(3).is_err());
 }
 
@@ -975,7 +1013,11 @@ fn invalid_block() {
 fn orphan_cleanup_on_block_add() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
     let db = create_test_db();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -1030,9 +1072,13 @@ fn orphan_cleanup_on_block_add() {
 // Ignored until pruned mode is fixed
 fn horizon_height_orphan_cleanup() {
     let network = Network::LocalNet;
-    let block0 = genesis_block::get_rincewind_genesis_block_raw();
+    let block0 = genesis_block::get_ridcully_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
     let db = create_test_db();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -1085,7 +1131,11 @@ fn orphan_cleanup_on_reorg() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
     let db = create_test_db();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -1186,10 +1236,10 @@ fn orphan_cleanup_on_reorg() {
 
     // Adding B1 and B2 to the main chain will produce a reorg from GB->A1->A2->A3->A4 to GB->B1->B2->B3.
     assert_eq!(
-        store.add_block(orphan_blocks[1].clone().into()).unwrap(),
+        store.add_block(orphan_blocks[1].block.clone().into()).unwrap(),
         BlockAddResult::OrphanBlock
     );
-    if let Ok(BlockAddResult::ChainReorg(_, _)) = store.add_block(orphan_blocks[2].clone().into()) {
+    if let Ok(BlockAddResult::ChainReorg(_, _)) = store.add_block(orphan_blocks[2].block.clone().into()) {
         assert!(true);
     } else {
         assert!(false);
@@ -1198,9 +1248,9 @@ fn orphan_cleanup_on_reorg() {
     // Check that A2, A3 and A4 is in the orphan block pool, A1 and the other orphans were discarded by the orphan
     // cleanup.
     assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 3);
-    assert_eq!(store.fetch_orphan(blocks[2].hash()).unwrap(), blocks[2].clone());
-    assert_eq!(store.fetch_orphan(blocks[3].hash()).unwrap(), blocks[3].clone());
-    assert_eq!(store.fetch_orphan(blocks[4].hash()).unwrap(), blocks[4].clone());
+    assert_eq!(store.fetch_orphan(blocks[2].hash().clone()).unwrap(), blocks[2].block);
+    assert_eq!(store.fetch_orphan(blocks[3].hash().clone()).unwrap(), blocks[3].block);
+    assert_eq!(store.fetch_orphan(blocks[4].hash().clone()).unwrap(), blocks[4].block);
 }
 
 #[test]
@@ -1208,7 +1258,11 @@ fn orphan_cleanup_delete_all_orphans() {
     let path = create_temporary_data_path();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 5,
         pruning_horizon: 0,
@@ -1299,7 +1353,11 @@ fn fails_validation() {
         .with_consensus_constants(consensus_constants.clone())
         .with_block(block0.clone())
         .build();
-    let validators = Validators::new(MockValidator::new(false), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(false),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
     let db = create_test_db();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -1332,9 +1390,13 @@ fn fails_validation() {
 // Ignored until pruned mode fixed
 fn pruned_mode_cleanup_and_fetch_block() {
     let network = Network::LocalNet;
-    let block0 = genesis_block::get_rincewind_genesis_block_raw();
+    let block0 = genesis_block::get_ridcully_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
     let db = create_test_db();
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
@@ -1347,8 +1409,8 @@ fn pruned_mode_cleanup_and_fetch_block() {
     let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
 
     assert!(store.fetch_block(0).is_err()); // Genesis block cant be retrieved in pruned mode
-    assert_eq!(store.fetch_block(1).unwrap().block, block1);
-    assert_eq!(store.fetch_block(2).unwrap().block, block2);
+    assert_eq!(store.fetch_block(1).unwrap().into_chain_block(), block1);
+    assert_eq!(store.fetch_block(2).unwrap().into_chain_block(), block2);
 
     let block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
 
@@ -1356,8 +1418,8 @@ fn pruned_mode_cleanup_and_fetch_block() {
     assert!(store.fetch_block(0).is_err());
     assert!(store.fetch_block(1).is_err());
     assert!(store.fetch_block(2).is_err());
-    assert_eq!(store.fetch_block(3).unwrap().block, block3);
-    assert_eq!(store.fetch_block(4).unwrap().block, block4);
+    assert_eq!(store.fetch_block(3).unwrap().into_chain_block(), block3);
+    assert_eq!(store.fetch_block(4).unwrap().into_chain_block(), block4);
 }
 
 #[test]

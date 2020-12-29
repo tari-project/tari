@@ -46,7 +46,7 @@ impl From<BlockHeader> for grpc::BlockHeader {
                 accumulated_monero_difficulty: h.pow.accumulated_monero_difficulty.into(),
                 accumulated_blake_difficulty: h.pow.accumulated_blake_difficulty.into(),
                 pow_data: h.pow.pow_data,
-                target_difficulty: h.pow.target_difficulty.as_u64(),
+                // target_difficulty: h.pow.target_difficulty.as_u64(),
             }),
         }
     }

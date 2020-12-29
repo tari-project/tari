@@ -30,7 +30,13 @@
 mod tests;
 
 mod accumulated_data;
-pub use accumulated_data::{BlockAccumulatedData, BlockHeaderAccumulatedData};
+pub use accumulated_data::{
+    BlockAccumulatedData,
+    BlockHeaderAccumulatedData,
+    BlockHeaderAccumulatedDataBuilder,
+    ChainBlock,
+    ChainHeader,
+};
 
 pub mod async_db;
 
@@ -39,13 +45,15 @@ pub use blockchain_database::{
     calculate_mmr_roots,
     fetch_header,
     fetch_headers,
-    fetch_tip_header,
+    fetch_target_difficulty,
     BlockAddResult,
-    BlockchainBackend,
     BlockchainDatabase,
     BlockchainDatabaseConfig,
     Validators,
 };
+
+mod blockchain_backend;
+pub use blockchain_backend::BlockchainBackend;
 
 mod consts;
 
@@ -53,7 +61,7 @@ mod db_transaction;
 pub use db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree, WriteOperation};
 
 mod error;
-pub use error::ChainStorageError;
+pub use error::{ChainStorageError, Optional};
 
 mod historical_block;
 pub use historical_block::HistoricalBlock;

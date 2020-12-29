@@ -23,7 +23,7 @@
 use crate::{
     blocks::{block_header::BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
-    proof_of_work::PowError,
+    proof_of_work::{monero_rx::MergeMineError, PowError},
     transactions::transaction::TransactionError,
 };
 use thiserror::Error;
@@ -73,6 +73,8 @@ pub enum ValidationError {
     UnsortedOrDuplicateInput,
     #[error("Duplicate or unsorted output found in block body")]
     UnsortedOrDuplicateOutput,
+    #[error("Error in merge mine data:{0}")]
+    MergeMineError(#[from] MergeMineError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

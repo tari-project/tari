@@ -34,6 +34,7 @@ use crate::{
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
+    proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
     transactions::types::CryptoFactories,
 };
 use futures::{future, Future};
@@ -113,6 +114,7 @@ where B: BlockchainBackend + 'static
                 sync_validators,
                 status_event_sender,
                 state_event_publisher,
+                RandomXFactory::new(RandomXConfig::default()),
                 rules,
                 handles.get_shutdown_signal(),
             );

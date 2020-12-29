@@ -22,16 +22,16 @@
 
 #![allow(clippy::type_complexity)]
 
-use crate::blocks::Block;
+use crate::chain_storage::ChainBlock;
 use std::sync::Arc;
 use tari_comms::peer_manager::NodeId;
 
 #[derive(Default)]
 pub(super) struct Hooks {
     on_progress_header: Vec<Box<dyn FnMut(u64, u64, &[NodeId]) + Send + Sync>>,
-    on_progress_block: Vec<Box<dyn FnMut(Arc<Block>, u64, &[NodeId]) + Send + Sync>>,
-    on_complete: Vec<Box<dyn FnMut(Arc<Block>) + Send + Sync>>,
-    on_rewind: Vec<Box<dyn FnMut(Vec<Arc<Block>>) + Send + Sync>>,
+    on_progress_block: Vec<Box<dyn FnMut(Arc<ChainBlock>, u64, &[NodeId]) + Send + Sync>>,
+    on_complete: Vec<Box<dyn FnMut(Arc<ChainBlock>) + Send + Sync>>,
+    on_rewind: Vec<Box<dyn FnMut(Vec<Arc<ChainBlock>>) + Send + Sync>>,
 }
 
 impl Hooks {
@@ -47,31 +47,37 @@ impl Hooks {
     }
 
     pub fn add_on_progress_block_hook<H>(&mut self, hook: H)
-    where H: FnMut(Arc<Block>, u64, &[NodeId]) + Send + Sync + 'static {
+    where H: FnMut(Arc<ChainBlock>, u64, &[NodeId]) + Send + Sync + 'static {
         self.on_progress_block.push(Box::new(hook));
     }
 
-    pub fn call_on_progress_block_hooks(&mut self, block: Arc<Block>, remote_tip_height: u64, sync_peers: &[NodeId]) {
+    pub fn call_on_progress_block_hooks(
+        &mut self,
+        block: Arc<ChainBlock>,
+        remote_tip_height: u64,
+        sync_peers: &[NodeId],
+    )
+    {
         self.on_progress_block
             .iter_mut()
             .for_each(|f| (*f)(block.clone(), remote_tip_height, sync_peers));
     }
 
     pub fn add_on_complete_hook<H>(&mut self, hook: H)
-    where H: FnMut(Arc<Block>) + Send + Sync + 'static {
+    where H: FnMut(Arc<ChainBlock>) + Send + Sync + 'static {
         self.on_complete.push(Box::new(hook));
     }
 
-    pub fn call_on_complete_hooks(&mut self, final_block: Arc<Block>) {
+    pub fn call_on_complete_hooks(&mut self, final_block: Arc<ChainBlock>) {
         self.on_complete.iter_mut().for_each(|f| (*f)(final_block.clone()));
     }
 
     pub fn add_on_rewind_hook<H>(&mut self, hook: H)
-    where H: FnMut(Vec<Arc<Block>>) + Send + Sync + 'static {
+    where H: FnMut(Vec<Arc<ChainBlock>>) + Send + Sync + 'static {
         self.on_rewind.push(Box::new(hook));
     }
 
-    pub fn call_on_rewind_hooks(&mut self, blocks: Vec<Arc<Block>>) {
+    pub fn call_on_rewind_hooks(&mut self, blocks: Vec<Arc<ChainBlock>>) {
         self.on_rewind.iter_mut().for_each(|f| (*f)(blocks.clone()));
     }
 }

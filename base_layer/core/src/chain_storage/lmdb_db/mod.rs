@@ -44,6 +44,7 @@ pub const LMDB_DB_KERNEL_EXCESS_INDEX: &str = "kernel_excess_index";
 pub const LMDB_DB_KERNEL_EXCESS_SIG_INDEX: &str = "kernel_excess_sig_index";
 pub const LMDB_DB_ORPHANS: &str = "orphans";
 pub const LMDB_DB_MONERO_SEED_HEIGHT: &str = "monero_seed_height";
+pub const LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA: &str = "orphan_accumulated_data";
 pub const LMDB_DB_ORPHAN_CHAIN_TIPS: &str = "orphan_chain_tips";
 pub const LMDB_DB_ORPHAN_PARENT_MAP_INDEX: &str = "orphan_parent_map_index";
 

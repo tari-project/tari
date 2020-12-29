@@ -43,7 +43,7 @@ use tari_crypto::tari_utilities::Hashable;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
-pub struct HorizonStateSynchronization<'a, B> {
+pub struct HorizonStateSynchronization<'a, B: BlockchainBackend> {
     shared: &'a mut BaseNodeStateMachine<B>,
     sync_peers: &'a mut SyncPeers,
     local_metadata: &'a ChainMetadata,

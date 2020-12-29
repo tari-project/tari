@@ -28,7 +28,7 @@ use crate::{
         tari_amount::MicroTari,
         types::{Commitment, CryptoFactories, HashOutput, PrivateKey},
     },
-    validation::{Validation, ValidationError},
+    validation::{FinalHeaderStateValidation, ValidationError},
 };
 use log::*;
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hash::Hashable};
@@ -48,7 +48,7 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
     }
 }
 
-impl<B: BlockchainBackend> Validation<BlockHeader> for ChainBalanceValidator<B> {
+impl<B: BlockchainBackend> FinalHeaderStateValidation for ChainBalanceValidator<B> {
     fn validate(&self, horizon_header: &BlockHeader) -> Result<(), ValidationError> {
         let hash = horizon_header.hash();
         let emission_h = self.get_emission_commitment_at(horizon_header.height);

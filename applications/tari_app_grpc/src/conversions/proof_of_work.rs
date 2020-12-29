@@ -32,7 +32,7 @@ impl TryFrom<grpc::ProofOfWork> for ProofOfWork {
             pow_algo: PowAlgorithm::try_from(pow.pow_algo)?,
             accumulated_monero_difficulty: Difficulty::from(pow.accumulated_monero_difficulty),
             accumulated_blake_difficulty: Difficulty::from(pow.accumulated_blake_difficulty),
-            target_difficulty: Difficulty::from(pow.target_difficulty),
+            target_difficulty: 1.into(),
             pow_data: pow.pow_data,
         })
     }

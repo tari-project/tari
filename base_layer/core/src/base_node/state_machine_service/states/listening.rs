@@ -109,6 +109,10 @@ impl Listening {
         };
         // If we do not have any blocks go straight to initial sync
         if local.height_of_longest_chain() == 0 {
+            info!(
+                target: LOG_TARGET,
+                "Chain height is at 0, proceeding directly to initial sync"
+            );
             return StateEvent::InitialSync;
         }
 

@@ -44,8 +44,8 @@ pub enum BlockSyncError {
     NoSyncPeers,
     #[error("Error fetching PoW: {0}")]
     PowError(#[from] PowError),
-    #[error("Expected to find header at height {0} however the header did not exist")]
-    ExpectedHeaderNotFound(u64),
+    //#[error("Expected to find header at height {0} however the header did not exist")]
+    // ExpectedHeaderNotFound(u64),
     #[error("Block validation failed: {0}")]
     ValidationError(#[from] ValidationError),
 }

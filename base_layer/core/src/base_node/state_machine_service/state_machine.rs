@@ -31,6 +31,7 @@ use crate::{
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
+    proof_of_work::randomx_factory::RandomXFactory,
 };
 use futures::{future, future::Either};
 use log::*;
@@ -57,7 +58,7 @@ pub struct BaseNodeStateMachineConfig {
 ///
 /// This struct holds fields that will be used by all the various FSM state instances, including the local blockchain
 /// database and hooks to the p2p network
-pub struct BaseNodeStateMachine<B> {
+pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) db: AsyncBlockchainDb<B>,
     pub(super) local_node_interface: LocalNodeCommsInterface,
     pub(super) outbound_nci: OutboundNodeCommsInterface,
@@ -66,10 +67,11 @@ pub struct BaseNodeStateMachine<B> {
     pub(super) metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
     pub(super) config: BaseNodeStateMachineConfig,
     pub(super) info: StateInfo,
-    pub(super) sync_validators: SyncValidators,
+    pub(super) sync_validators: SyncValidators<B>,
     pub(super) bootstrapped_sync: bool,
     pub(super) consensus_rules: ConsensusManager,
     pub(super) status_event_sender: Arc<watch::Sender<StatusInfo>>,
+    pub(super) randomx_factory: RandomXFactory,
     event_publisher: broadcast::Sender<Arc<StateEvent>>,
     interrupt_signal: ShutdownSignal,
 }
@@ -85,9 +87,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         peer_manager: Arc<PeerManager>,
         metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
         config: BaseNodeStateMachineConfig,
-        sync_validators: SyncValidators,
+        sync_validators: SyncValidators<B>,
         status_event_sender: watch::Sender<StatusInfo>,
         event_publisher: broadcast::Sender<Arc<StateEvent>>,
+        randomx_factory: RandomXFactory,
         consensus_rules: ConsensusManager,
         interrupt_signal: ShutdownSignal,
     ) -> Self
@@ -105,6 +108,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             status_event_sender: Arc::new(status_event_sender),
             sync_validators,
             bootstrapped_sync: false,
+            randomx_factory,
             consensus_rules,
             interrupt_signal,
         }

@@ -187,7 +187,9 @@ class BaseNodeClient {
         let template = await this.getMinedCandidateBlock();
         return this.submitTemplate(template, beforeSubmit).then(async () => {
             let tip = await this.getTipHeight();
+            console.log("Node is at tip:", tip);
         }, err => {
+            console.log("err submitting block:", err);
             if (onError) {
                 if (!onError(err)) {
                     throw err;

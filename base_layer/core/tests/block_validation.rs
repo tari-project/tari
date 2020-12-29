@@ -32,14 +32,26 @@ use tari_core::{
         ConsensusManagerBuilder,
         Network,
     },
-    proof_of_work::{monero_rx, monero_rx::MoneroData, PowAlgorithm},
-    test_helpers::blockchain::{create_store_with_consensus, create_test_db},
+    proof_of_work::{
+        monero_rx,
+        monero_rx::MoneroData,
+        randomx_factory::{RandomXConfig, RandomXFactory},
+        PowAlgorithm,
+    },
+    test_helpers::blockchain::{
+        create_store_with_consensus,
+        create_store_with_consensus_and_validators,
+        create_test_db,
+    },
     transactions::types::CryptoFactories,
     validation::{
-        block_validators::{FullConsensusValidator, StatelessBlockValidator},
+        block_validators::{BodyOnlyValidator, OrphanBlockValidator},
+        header_validator::HeaderValidator,
+        mocks::MockValidator,
         ValidationError,
     },
 };
+
 mod helpers;
 
 #[test]
@@ -48,13 +60,15 @@ fn test_genesis_block() {
     let network = Network::Ridcully;
     let rules = ConsensusManagerBuilder::new(network).build();
     let backend = create_test_db();
+    let rx = RandomXFactory::new(RandomXConfig::default());
     let validators = Validators::new(
-        FullConsensusValidator::new(rules.clone()),
-        StatelessBlockValidator::new(rules.clone(), factories),
+        BodyOnlyValidator::default(),
+        HeaderValidator::new(rules.clone(), rx),
+        OrphanBlockValidator::new(rules.clone(), factories),
     );
     let db = BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap();
     let block = rules.get_genesis_block();
-    match db.add_block(block.into()).unwrap_err() {
+    match db.add_block(block.block.into()).unwrap_err() {
         ChainStorageError::ValidationError { source } => match source {
             ValidationError::ValidatingGenesis => (),
             _ => panic!("Failed because incorrect validation error was received"),
@@ -91,40 +105,44 @@ fn test_monero_blocks() {
     let cm = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(cc)
         .build();
-    let db = create_store_with_consensus(&cm);
-    let block_0 = db.fetch_block(0).unwrap().into_block();
-    dbg!("hi");
+    let header_validator = HeaderValidator::new(cm.clone(), RandomXFactory::default());
+    let db = create_store_with_consensus_and_validators(
+        &cm,
+        Validators::new(MockValidator::new(true), header_validator, MockValidator::new(true)),
+    );
+    let block_0 = db.fetch_block(0).unwrap().into_chain_block();
     let (block_1_t, _) = chain_block_with_new_coinbase(&block_0, vec![], &cm, &factories);
     let mut block_1 = db.prepare_block_merkle_roots(block_1_t).unwrap();
 
     // Now we have block 1, lets add monero data to it
     add_monero_data(&mut block_1, seed1.clone());
-    assert!(db.add_block(Arc::new(block_1.clone())).is_ok());
-    dbg!("hi");
+    let cb_1 = db.add_block(Arc::new(block_1.clone())).unwrap().assert_added();
     // Now lets add a second faulty block using the same seed hash
-    let (block_2_t, _) = chain_block_with_new_coinbase(&block_1, vec![], &cm, &factories);
+    let (block_2_t, _) = chain_block_with_new_coinbase(&cb_1, vec![], &cm, &factories);
     let mut block_2 = db.prepare_block_merkle_roots(block_2_t).unwrap();
 
     add_monero_data(&mut block_2, seed1.clone());
-    assert!(db.add_block(Arc::new(block_2.clone())).is_ok());
-    dbg!("hi");
+    let cb_2 = db.add_block(Arc::new(block_2.clone())).unwrap().assert_added();
     // Now lets add a third faulty block using the same seed hash. This should fail.
-    let (block_3_t, _) = chain_block_with_new_coinbase(&block_2, vec![], &cm, &factories);
+    let (block_3_t, _) = chain_block_with_new_coinbase(&cb_2, vec![], &cm, &factories);
     let mut block_3 = db.prepare_block_merkle_roots(block_3_t).unwrap();
     let mut block_3_broken = block_3.clone();
     add_monero_data(&mut block_3_broken, seed1.clone());
-    dbg!("hi");
-    let result = match db.add_block(Arc::new(block_3_broken.clone())) {
+    match db.add_block(Arc::new(block_3_broken.clone())) {
         Err(ChainStorageError::ValidationError {
             source: ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash),
-        }) => true,
-        _ => false,
+        }) => (),
+        Err(e) => {
+            panic!("Failed due to other error:{}", e);
+        },
+        Ok(res) => {
+            panic!("Block add unexpectedly succeeded with result: {}", res);
+        },
     };
-    assert!(result);
 
     // now lets fix the seed, and try again
     add_monero_data(&mut block_3, seed2.clone());
-    assert!(db.add_block(Arc::new(block_3.clone())).is_ok());
+    db.add_block(Arc::new(block_3.clone())).unwrap().assert_added();
 }
 
 fn add_monero_data(tblock: &mut Block, seed_hash: String) {

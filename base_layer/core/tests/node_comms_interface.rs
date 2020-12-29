@@ -25,6 +25,7 @@ mod helpers;
 
 use futures::{channel::mpsc, StreamExt};
 use helpers::block_builders::append_block;
+use std::sync::Arc;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::NodeId;
 use tari_core::{
@@ -60,7 +61,7 @@ async fn test_request_responder(
 
 fn new_mempool() -> Mempool {
     let mempool_validator = MockValidator::new(true);
-    Mempool::new(MempoolConfig::default(), Box::new(mempool_validator))
+    Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator))
 }
 
 #[tokio_macros::test]
@@ -398,7 +399,7 @@ async fn outbound_fetch_blocks() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     let gb = BlockBuilder::new(consensus_constants[0].blockchain_version()).build();
-    let block = HistoricalBlock::new(gb, 0);
+    let block = HistoricalBlock::new(gb, 0, Default::default());
     let block_response = NodeCommsResponse::HistoricalBlocks(vec![block.clone()]);
     let (received_blocks, _) = futures::join!(
         outbound_nci.fetch_blocks(vec![0]),
@@ -448,12 +449,16 @@ async fn inbound_fetch_blocks() {
 async fn inbound_fetch_blocks_before_horizon_height() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
-    let block0 = genesis_block::get_rincewind_genesis_block_raw();
+    let block0 = genesis_block::get_ridcully_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())
         .build();
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
     let db = create_test_db();
     let config = BlockchainDatabaseConfig {
         pruning_horizon: 3,
@@ -462,7 +467,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     };
     let store = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
     let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
-    let mempool = Mempool::new(MempoolConfig::default(), Box::new(mempool_validator));
+    let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded();
@@ -494,7 +499,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         .await
     {
         assert_eq!(received_blocks.len(), 1);
-        assert_eq!(*received_blocks[0].block(), block2);
+        assert_eq!(*received_blocks[0].block(), block2.block);
     } else {
         assert!(false);
     }

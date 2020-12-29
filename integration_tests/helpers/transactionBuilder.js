@@ -1,6 +1,6 @@
 var tari_crypto = require('tari_crypto');
 var {blake2bInit, blake2bUpdate, blake2bFinal} = require('blakejs');
-const {toLittleEndian} = require("../helpers/util");
+const {toLittleEndian, hexSwitchEndianness} = require("../helpers/util");
 
 class TransactionBuilder {
     constructor() {

@@ -23,9 +23,12 @@
 use crate::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{
+        accumulated_data::BlockHeaderAccumulatedData,
         blockchain_database::BlockAddResult,
         BlockchainBackend,
         BlockchainDatabase,
+        ChainBlock,
+        ChainHeader,
         ChainStorageError,
         DbTransaction,
         HistoricalBlock,
@@ -150,14 +153,20 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(insert_mmr_node(tree: MmrTree, hash: Hash, deleted: bool) -> (), "insert_mmr_node");
 
-    make_async_fn!(rewind_to_height(height: u64) -> Vec<Arc<Block>>, "rewind_to_height");
+    make_async_fn!(rewind_to_height(height: u64) -> Vec<Arc<ChainBlock>>, "rewind_to_height");
 
     //---------------------------------- Headers --------------------------------------------//
     make_async_fn!(fetch_header(height: u64) -> Option<BlockHeader>, "fetch_header");
 
+    make_async_fn!(fetch_header_and_accumulated_data(height: u64) -> (BlockHeader, BlockHeaderAccumulatedData), "fetch_header_and_accumulated_data");
+
+    make_async_fn!(fetch_header_accumulated_data(hash: HashOutput) -> Option<BlockHeaderAccumulatedData>, "fetch_header_accumulated_data");
+
     make_async_fn!(fetch_headers<T: RangeBounds<u64>>(bounds: T) -> Vec<BlockHeader>, "fetch_headers");
 
     make_async_fn!(fetch_header_by_block_hash(hash: HashOutput) -> Option<BlockHeader>, "fetch_header_by_block_hash");
+
+    make_async_fn!(fetch_chain_header_by_block_hash(hash: HashOutput) -> Option<ChainHeader>, "fetch_chain_header_by_block_hash");
 
     make_async_fn!(
          /// Find the first matching header in a list of block hashes, returning the index of the match and the BlockHeader. Or None if not found.
@@ -165,11 +174,11 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
         "find_headers_after_hash"
     );
 
-    make_async_fn!(fetch_tip_header() -> BlockHeader, "fetch_header");
+    make_async_fn!(fetch_last_header() -> BlockHeader, "fetch_last_header");
 
-    make_async_fn!(insert_valid_headers(headers: Vec<BlockHeader>) -> (), "insert_valid_headers");
+    make_async_fn!(fetch_tip_header() -> ChainHeader, "fetch_tip_header");
 
-    make_async_fn!(fetch_target_difficulty(pow_algo: PowAlgorithm, height: u64) -> TargetDifficultyWindow, "fetch_target_difficulty");
+    make_async_fn!(insert_valid_headers(headers: Vec<(BlockHeader, BlockHeaderAccumulatedData)>) -> (), "insert_valid_headers");
 
     //---------------------------------- Block --------------------------------------------//
     make_async_fn!(add_block(block: Arc<Block>) -> BlockAddResult, "add_block");
@@ -210,6 +219,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     //---------------------------------- Misc. --------------------------------------------//
     make_async_fn!(fetch_block_timestamps(start_hash: HashOutput) -> RollingVec<EpochTime>, "fetch_block_timestamps");
 
+    make_async_fn!(fetch_target_difficulty(pow_algo: PowAlgorithm,height: u64) -> TargetDifficultyWindow, "fetch_target_difficulty");
+
     make_async_fn!(fetch_target_difficulties(start_hash: HashOutput) -> TargetDifficulties, "fetch_target_difficulties");
 
     make_async_fn!(fetch_block_hashes_from_header_tip(n: usize, offset: usize) -> Vec<HashOutput>, "fetch_block_hashes_from_header_tip");
@@ -240,15 +251,15 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         }
     }
 
-    pub fn insert_header(&mut self, header: BlockHeader) -> &mut Self {
-        self.transaction.insert_header(header);
+    pub fn insert_header(&mut self, header: BlockHeader, accum_data: BlockHeaderAccumulatedData) -> &mut Self {
+        self.transaction.insert_header(header, accum_data);
         self
     }
 
     /// Add the BlockHeader and contents of a `Block` (i.e. inputs, outputs and kernels) to the database.
     /// If the `BlockHeader` already exists, then just the contents are updated along with the relevant accumulated
     /// data.
-    pub fn insert_block(&mut self, block: Arc<Block>) -> &mut Self {
+    pub fn insert_block(&mut self, block: Arc<ChainBlock>) -> &mut Self {
         self.transaction.insert_block(block);
         self
     }
