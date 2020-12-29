@@ -109,8 +109,8 @@ mod test {
             .expect("Could not set ''");
 
         config
-            .set("mempool.use_network", "mainnet")
-            .expect("Could not set 'use_network'");
+            .set("mempool.network", "mainnet")
+            .expect("Could not set 'network'");
         // use_network = mainnet
         let my_config = MempoolConfig::load_from(&config).expect("Could not load configuration");
         // [ ] mempool.mainnet, [X]  mempool = 3, [X] Default
@@ -124,8 +124,8 @@ mod test {
         assert_eq!(my_config.reorg_pool.tx_ttl, MEMPOOL_REORG_POOL_CACHE_TTL);
 
         config
-            .set("mempool.use_network", "wrong_network")
-            .expect("Could not set 'use_network'");
+            .set("mempool.network", "wrong_network")
+            .expect("Could not set 'network'");
         assert!(MempoolConfig::load_from(&config).is_err());
     }
 }

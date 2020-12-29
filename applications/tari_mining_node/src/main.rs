@@ -1,0 +1,182 @@
+// Copyright 2021. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+use config::MinerConfig;
+use futures::stream::StreamExt;
+use log::*;
+use std::convert::TryFrom;
+use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient};
+use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
+use tari_common::{configuration::bootstrap::ApplicationType, DefaultConfigLoader, GlobalConfig};
+use tari_core::{blocks::BlockHeader, proof_of_work::sha3_difficulty};
+use tokio::{runtime::Runtime, time::delay_for};
+use tonic::transport::Channel;
+use utils::{coinbase_request, extract_outputs_and_kernels};
+
+mod config;
+mod errors;
+mod miner;
+mod utils;
+
+use errors::{err_block_header, err_empty, MinerError};
+use miner::Miner;
+
+/// Application entry point
+fn main() {
+    let mut rt = Runtime::new().expect("Failed to start tokio runtime");
+    match rt.block_on(main_inner()) {
+        Ok(_) => std::process::exit(0),
+        Err(exit_code) => {
+            eprintln!("Fatal error: {}", exit_code);
+            error!("Exiting with code: {}", exit_code);
+            std::process::exit(exit_code.as_i32())
+        },
+    }
+}
+
+async fn main_inner() -> Result<(), ExitCodes> {
+    let (_, global, cfg) = init_configuration(ApplicationType::MiningNode)?;
+    let config = <MinerConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+
+    let (mut node_conn, mut wallet_conn) = connect(&config, &global).await.map_err(ExitCodes::grpc)?;
+
+    loop {
+        debug!("Starting new mining cycle");
+        match mining_cycle(&mut node_conn, &mut wallet_conn, &config).await {
+            err @ Err(MinerError::GrpcConnection(_)) | err @ Err(MinerError::GrpcStatus(_)) => {
+                // Any GRPC error we will try to reconnect with a standard delay
+                error!("Connection error: {:?}", err);
+                loop {
+                    debug!("Holding for {:?}", config.wait_timeout());
+                    delay_for(config.wait_timeout()).await;
+                    match connect(&config, &global).await {
+                        Ok((nc, wc)) => {
+                            node_conn = nc;
+                            wallet_conn = wc;
+                            break;
+                        },
+                        Err(err) => {
+                            error!("Connection error: {}", err);
+                            continue;
+                        },
+                    }
+                }
+            },
+            Err(err) => {
+                error!("Error: {}", err);
+                debug!("Holding for {:?}", config.wait_timeout());
+                delay_for(config.wait_timeout()).await;
+            },
+            _ => {},
+        }
+    }
+}
+
+async fn connect(
+    config: &MinerConfig,
+    global: &GlobalConfig,
+) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError>
+{
+    let base_node_addr = config.base_node_addr(&global);
+    info!("Connecting to base node at {}", base_node_addr);
+    let node_conn = BaseNodeClient::connect(base_node_addr.clone()).await?;
+    let wallet_addr = config.wallet_addr(&global);
+    info!("Connecting to wallet at {}", wallet_addr);
+    let wallet_conn = WalletClient::connect(wallet_addr.clone()).await?;
+
+    Ok((node_conn, wallet_conn))
+}
+
+async fn mining_cycle(
+    node_conn: &mut BaseNodeClient<Channel>,
+    wallet_conn: &mut WalletClient<Channel>,
+    config: &MinerConfig,
+) -> Result<(), MinerError>
+{
+    let tip = node_conn
+        .get_tip_info(tari_app_grpc::tari_rpc::Empty {})
+        .await?
+        .into_inner();
+    if !tip.initial_sync_achieved && config.mine_on_tip_only || tip.metadata.is_none() {
+        return Err(MinerError::NodeNotReady);
+    }
+
+    // 1. Receive new block template
+    let template = node_conn
+        .get_new_block_template(config.pow_algo_request())
+        .await?
+        .into_inner();
+    let mut block_template = template
+        .new_block_template
+        .clone()
+        .ok_or(err_empty("new_block_template"))?;
+
+    // 2. Get coinbase from wallet and add it to new block template body
+    let request = coinbase_request(&template)?;
+    let coinbase = wallet_conn.get_coinbase(request).await?.into_inner();
+    let (output, kernel) = extract_outputs_and_kernels(coinbase)?;
+    let body = block_template
+        .body
+        .as_mut()
+        .ok_or(err_empty("new_block_template.body"))?;
+    body.outputs.push(output);
+    body.kernels.push(kernel);
+    let target_difficulty = template.miner_data.ok_or(err_empty("miner_data"))?.target_difficulty;
+
+    // 3. Receive new block data
+    let block_result = node_conn.get_new_block(block_template).await?.into_inner();
+    let block = block_result.block.ok_or(err_empty("block"))?;
+    let header = block.clone().header.ok_or(err_empty("block.header"))?;
+    let core_header = BlockHeader::try_from(header.clone()).map_err(err_block_header)?;
+
+    // 4. Initialize miner and start receiving mining statuses in the loop
+    let mut reports = Miner::init_mining(core_header, target_difficulty, config.num_mining_threads);
+    while let Some(report) = reports.next().await {
+        if let Some(header) = report.header {
+            // Mined a block fitting the difficulty
+            info!(
+                "Miner {} found block header {:?} with difficulty {:?}",
+                report.miner,
+                header,
+                sha3_difficulty(&header)
+            );
+            let mut mined_block = block.clone();
+            mined_block.header = Some(header.into());
+            // 5. Sending block to the node
+            node_conn.submit_block(mined_block).await?;
+            break;
+        } else {
+            let hashrate = report.hashes as f64 / report.elapsed.as_micros() as f64;
+            debug!(
+                "Miner {} reported hash rate {:.2}MH/s with total {:.2}MH/s over {} threads",
+                report.miner,
+                hashrate,
+                hashrate * config.num_mining_threads as f64,
+                config.num_mining_threads
+            );
+        }
+    }
+    // Wait for all threads to exit
+    reports.join();
+
+    Ok(())
+}

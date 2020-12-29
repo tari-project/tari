@@ -30,7 +30,7 @@ mod benches {
 #[cfg(feature = "benches")]
 mod benches {
     use blake2::Blake2b;
-    use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+    use criterion::{criterion_group, BatchSize, Criterion};
     use digest::Digest;
     use std::time::Duration;
     use tari_mmr::MerkleMountainRange;

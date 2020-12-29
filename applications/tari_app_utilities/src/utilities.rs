@@ -76,6 +76,12 @@ impl From<tari_common::ConfigError> for ExitCodes {
     }
 }
 
+impl ExitCodes {
+    pub fn grpc<M: std::fmt::Display>(err: M) -> Self {
+        ExitCodes::GrpcError(format!("GRPC connection error: {}", err))
+    }
+}
+
 impl fmt::Display for ExitCodes {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {

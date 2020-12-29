@@ -1,4 +1,20 @@
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TransactionInventory {
+    /// A list of kernel excess sigs used to identify transactions
+    #[prost(bytes, repeated, tag = "1")]
+    pub items: ::std::vec::Vec<std::vec::Vec<u8>>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TransactionItem {
+    #[prost(message, optional, tag = "1")]
+    pub transaction: ::std::option::Option<super::types::Transaction>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InventoryIndexes {
+    #[prost(uint32, repeated, tag = "1")]
+    pub indexes: ::std::vec::Vec<u32>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct StatsResponse {
     #[prost(uint64, tag = "1")]
     pub total_txs: u64,
@@ -84,20 +100,4 @@ pub mod mempool_service_request {
         #[prost(message, tag = "5")]
         SubmitTransaction(super::super::types::Transaction),
     }
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct TransactionInventory {
-    /// A list of kernel excess sigs used to identify transactions
-    #[prost(bytes, repeated, tag = "1")]
-    pub items: ::std::vec::Vec<std::vec::Vec<u8>>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct TransactionItem {
-    #[prost(message, optional, tag = "1")]
-    pub transaction: ::std::option::Option<super::types::Transaction>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct InventoryIndexes {
-    #[prost(uint32, repeated, tag = "1")]
-    pub indexes: ::std::vec::Vec<u32>,
 }

@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,7 +19,27 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//
+use thiserror::Error;
 
-pub mod identity_management;
-pub mod initialization;
-pub mod utilities;
+#[derive(Debug, Error)]
+pub enum MinerError {
+    #[error("GRPC error: {0}")]
+    GrpcStatus(#[from] tonic::Status),
+    #[error("Connection error: {0}")]
+    GrpcConnection(#[from] tonic::transport::Error),
+    #[error("Node not ready")]
+    NodeNotReady,
+    #[error("Expected non empty {0}")]
+    EmptyObject(String),
+    #[error("Invalid block header {0}")]
+    BlockHeader(String),
+}
+
+pub fn err_empty(name: &str) -> MinerError {
+    MinerError::EmptyObject(name.to_string())
+}
+
+pub fn err_block_header(err: String) -> MinerError {
+    MinerError::BlockHeader(err)
+}
