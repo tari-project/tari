@@ -1,0 +1,12 @@
+[package]
+name = "merge_mining_proxy_service_uninstaller"
+version = "0.1.0"
+authors = ["David Main <51991544+StriderDM@users.noreply.github.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+winservice = ["windows-service"]
+
+[dependencies]
+windows-service = { version = "0.3.1", optional = true }

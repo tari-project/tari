@@ -281,14 +281,6 @@ async fn monitor_validation_protocol(
                         );
                         continue;
                     },
-                    // Wait for the next event upon anything else
-                    _ => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "TXO validation unknown event, waiting.",
-                        );
-                        continue;
-                    },
                 }
             },
             // Restart the protocol if it timed out

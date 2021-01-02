@@ -40,3 +40,4 @@ base_layer/wallet_ffi/.cargo/config
 keys.json
 node_modules
 /integration_tests/temp
+comms/dht/file

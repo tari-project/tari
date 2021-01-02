@@ -75,12 +75,19 @@ pub struct ConfigBootstrap {
         alias("base_path"),
         alias("base_dir"),
         alias("base-dir"),
+        env = "TARI_BASE_PATH",
         hide_default_value(true),
         default_value = ""
     )]
     pub base_path: PathBuf,
     /// A path to the configuration file to use (config.toml)
-    #[structopt(short, long, hide_default_value(true), default_value = "")]
+    #[structopt(
+        short,
+        long,
+        hide_default_value(true),
+        default_value = "",
+        env = "TARI_CONFIGURATION"
+    )]
     pub config: PathBuf,
     /// The path to the log configuration file. It is set using the following precedence set
     #[structopt(

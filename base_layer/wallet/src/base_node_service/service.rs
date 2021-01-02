@@ -177,12 +177,12 @@ where BNResponseStream: Stream<Item = DomainMessage<proto::BaseNodeServiceRespon
                 request_context = request_stream.select_next_some() => {
                     trace!(target: LOG_TARGET, "Handling Base Node Service API Request");
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request).await.or_else(|resp| {
+                    let _ = reply_tx.send(self.handle_request(request).await.map_err(|resp| {
                         error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
-                        Err(resp)
-                    })).or_else(|resp| {
+                        resp
+                    })).map_err(|resp| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
-                        Err(resp)
+                        resp
                     });
                 },
 
