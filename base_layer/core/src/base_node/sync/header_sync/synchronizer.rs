@@ -111,10 +111,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     debug!(target: LOG_TARGET, "Block header validation failed: {}", err);
                     self.ban_peer_temporarily(node_id, err.into()).await?;
                 },
-                Err(err) => debug!(
-                    target: LOG_TARGET,
-                    "Failed to synchronize headers from peer `{}`: {}", node_id, err
-                ),
+                Err(err) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Failed to synchronize headers from peer `{}`: {}", node_id, err
+                    );
+                    self.ban_peer_temporarily(node_id, BanReason::GeneralHeaderSyncFailure)
+                        .await?;
+                },
             }
         }
 
@@ -494,4 +498,6 @@ enum BanReason {
     ValidationFailed(#[from] ValidationError),
     #[error("Peer could not find the location of a chain split")]
     ChainSplitNotFound,
+    #[error("Failed to synchronize headers from peer")]
+    GeneralHeaderSyncFailure,
 }
