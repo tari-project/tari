@@ -45,7 +45,6 @@ impl WalletEventMonitor {
 
     pub async fn run(mut self) {
         let mut shutdown_signal = self.app_state_inner.read().await.get_shutdown_signal();
-
         let mut transaction_service_events = self.app_state_inner.read().await.get_transaction_service_event_stream();
 
         let mut output_manager_service_events = self
@@ -128,7 +127,7 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
-                                if let OutputManagerEvent::TxoValidationSuccess(_) = msg {
+                                if let OutputManagerEvent::TxoValidationSuccess(_) = *msg.clone() {
                                         self.trigger_balance_refresh().await;
                                 }
                             },

@@ -47,6 +47,8 @@ use tari_p2p::tari_message::TariMessageType;
 use tokio::{sync::broadcast, time::delay_for};
 
 const LOG_TARGET: &str = "wallet::output_manager_service::protocols::utxo_validation_protocol";
+const MIN_RETRY_DELAY: u64 = 2;
+const MAX_RETRY_DELAY: u64 = 32;
 
 pub struct TxoValidationProtocol<TBackend>
 where TBackend: OutputManagerBackend + 'static
@@ -57,6 +59,7 @@ where TBackend: OutputManagerBackend + 'static
     resources: OutputManagerResources<TBackend>,
     base_node_public_key: CommsPublicKey,
     timeout: Duration,
+    retry_delay: Duration,
     base_node_response_receiver: Option<broadcast::Receiver<Arc<proto::BaseNodeServiceResponse>>>,
     cancellation_receiver: Option<broadcast::Receiver<()>>,
     pending_queries: HashMap<u64, Vec<Vec<u8>>>,
@@ -78,6 +81,7 @@ where TBackend: OutputManagerBackend + 'static
         cancellation_receiver: broadcast::Receiver<()>,
     ) -> Self
     {
+        let retry_delay = Duration::from_secs(MIN_RETRY_DELAY);
         Self {
             id,
             validation_type,
@@ -85,6 +89,7 @@ where TBackend: OutputManagerBackend + 'static
             resources,
             base_node_public_key,
             timeout,
+            retry_delay,
             base_node_response_receiver: Some(base_node_response_receiver),
             cancellation_receiver: Some(cancellation_receiver),
             pending_queries: Default::default(),
@@ -164,7 +169,7 @@ where TBackend: OutputManagerBackend + 'static
             let _ = self
                 .resources
                 .event_publisher
-                .send(OutputManagerEvent::TxoValidationSuccess(self.id))
+                .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(self.id)))
                 .map_err(|e| {
                     trace!(
                         target: LOG_TARGET,
@@ -182,33 +187,53 @@ where TBackend: OutputManagerBackend + 'static
         };
 
         let mut retries = 0;
+
         loop {
             self.send_queries(outputs_to_query.clone()).await?;
 
-            let mut delay = delay_for(self.timeout).fuse();
+            let mut timeout = delay_for(self.timeout).fuse();
 
-            loop {
+            let retry_reason = loop {
                 futures::select! {
                     base_node_response = base_node_response_receiver.select_next_some() => {
                         match base_node_response {
-                            Ok(response) => if self.handle_base_node_response(response).await? {
-                                trace!(target: LOG_TARGET, "Response handled with success for {} and pending_queries len: {}", self.id, self.pending_queries.len());
-                                if self.pending_queries.is_empty() {
+                            Ok(response) => match self.handle_base_node_response(response).await? {
+                                Retry::None => {
+                                    trace!(target: LOG_TARGET, "Response handled with success for {} and pending_queries len: {}", self.id, self.pending_queries.len());
+                                    if self.pending_queries.is_empty() {
+                                        let _ = self
+                                            .resources
+                                            .event_publisher
+                                            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(self.id)))
+                                            .map_err(|e| {
+                                            trace!(
+                                                    target: LOG_TARGET,
+                                                    "Error sending event {:?}, because there are no subscribers.",
+                                                    e.0
+                                                );
+                                                e
+                                            });
+                                        return Ok(self.id);
+                                    }
+                                },
+                                Retry::Delay => {
+                                    trace!(target: LOG_TARGET, "Response handled with delay for {} and pending_queries len: {}", self.id, self.pending_queries.len());
                                     let _ = self
                                         .resources
                                         .event_publisher
-                                        .send(OutputManagerEvent::TxoValidationSuccess(self.id))
+                                        .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(self.id)))
                                         .map_err(|e| {
-                                           trace!(
+                                        trace!(
                                                 target: LOG_TARGET,
                                                 "Error sending event {:?}, because there are no subscribers.",
                                                 e.0
                                             );
                                             e
                                         });
-                                    return Ok(self.id);
-                                }
-                            },
+                                    break Retry::Delay;
+                                },
+                                Retry::Timeout => {},
+                            }
                             Err(e) => trace!(target: LOG_TARGET, "Error reading broadcast base_node_response: {:?}", e),
                         }
 
@@ -219,7 +244,7 @@ where TBackend: OutputManagerBackend + 'static
                             let _ = self
                                 .resources
                                 .event_publisher
-                                .send(OutputManagerEvent::TxoValidationAborted(self.id))
+                                .send(Arc::new(OutputManagerEvent::TxoValidationAborted(self.id)))
                                 .map_err(|e| {
                                     trace!(
                                         target: LOG_TARGET,
@@ -234,43 +259,51 @@ where TBackend: OutputManagerBackend + 'static
                             ))
                         }
                     },
-                    () = delay => {
-                        break;
+                    () = timeout => {
+                        break Retry::Timeout;
                     },
                 }
-            }
+            };
 
-            debug!(
-                target: LOG_TARGET,
-                "TXO Validation protocol (Id: {}) attempt {} out of {} timed out.",
-                self.id,
-                retries + 1,
-                total_retries_str
-            );
-
-            let _ = self
-                .resources
-                .event_publisher
-                .send(OutputManagerEvent::TxoValidationTimedOut(self.id))
-                .map_err(|e| {
-                    trace!(
+            match retry_reason {
+                Retry::None => {},
+                Retry::Delay => {
+                    debug!(target: LOG_TARGET, "Delaying for {:#?}", self.retry_delay);
+                    delay_for(self.retry_delay).await;
+                },
+                Retry::Timeout => {
+                    debug!(
                         target: LOG_TARGET,
-                        "Error sending event {:?}, because there are no subscribers.",
-                        e.0
+                        "TXO Validation protocol (Id: {}) attempt {} out of {} timed out.",
+                        self.id,
+                        retries + 1,
+                        total_retries_str
                     );
-                    e
-                });
 
-            retries += 1;
-            match self.retry_strategy {
-                TxoValidationRetry::Limited(n) => {
-                    if retries >= n {
-                        break;
+                    let _ = self
+                        .resources
+                        .event_publisher
+                        .send(Arc::new(OutputManagerEvent::TxoValidationTimedOut(self.id)))
+                        .map_err(|e| {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Error sending event {:?}, because there are no subscribers.",
+                                e.0
+                            );
+                            e
+                        });
+
+                    retries += 1;
+                    match self.retry_strategy {
+                        TxoValidationRetry::Limited(n) => {
+                            if retries >= n {
+                                break;
+                            }
+                        },
+                        TxoValidationRetry::UntilSuccess => (),
                     }
                 },
-                TxoValidationRetry::UntilSuccess => (),
             }
-
             self.pending_queries.clear();
         }
 
@@ -371,34 +404,25 @@ where TBackend: OutputManagerBackend + 'static
         Ok(())
     }
 
+    // exponential back-off with max and min delays
+    fn update_retry_delay(&mut self, synced: bool) {
+        let new_delay = if synced {
+            MIN_RETRY_DELAY
+        } else {
+            let delay = self.retry_delay.as_secs();
+            cmp::min(delay * 2, MAX_RETRY_DELAY)
+        };
+
+        self.retry_delay = Duration::from_secs(new_delay);
+    }
+
     async fn handle_base_node_response(
         &mut self,
         response: Arc<proto::BaseNodeServiceResponse>,
-    ) -> Result<bool, OutputManagerProtocolError>
+    ) -> Result<Retry, OutputManagerProtocolError>
     {
         let request_key = response.request_key;
-        if !response.is_synced {
-            warn!(
-                target: LOG_TARGET,
-                "Assigned Base Node is not synced to chain tip, aborted TXO Validation protocol (id: {})", self.id
-            );
-            let _ = self
-                .resources
-                .event_publisher
-                .send(OutputManagerEvent::TxoValidationAborted(self.id))
-                .map_err(|e| {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Error sending event {:?}, because there are no subscribers.",
-                        e.0
-                    );
-                    e
-                });
-            return Err(OutputManagerProtocolError::new(
-                self.id,
-                OutputManagerError::BaseNodeNotSynced,
-            ));
-        }
+
         let queried_hashes = if let Some(hashes) = self.pending_queries.remove(&request_key) {
             hashes
         } else {
@@ -408,8 +432,21 @@ where TBackend: OutputManagerBackend + 'static
                 request_key,
                 self.id
             );
-            return Ok(false);
+            return Ok(Retry::None);
         };
+
+        self.update_retry_delay(response.is_synced);
+
+        if !response.is_synced {
+            info!(
+                target: LOG_TARGET,
+                "Assigned Base Node is not synced to chain tip, delaying by {:#?} to retry TXO Validation protocol \
+                 (id: {})",
+                self.retry_delay,
+                self.id
+            );
+            return Ok(Retry::Delay);
+        }
 
         trace!(
             target: LOG_TARGET,
@@ -567,7 +604,8 @@ where TBackend: OutputManagerBackend + 'static
                 );
             },
         }
-        Ok(true)
+
+        Ok(Retry::None)
     }
 }
 
@@ -587,9 +625,15 @@ impl fmt::Display for TxoValidationType {
     }
 }
 
-// 0 means keep retying until success
 #[derive(Debug)]
 pub enum TxoValidationRetry {
     Limited(u8),
     UntilSuccess,
+}
+
+#[derive(Debug)]
+enum Retry {
+    None,
+    Timeout,
+    Delay,
 }
