@@ -24,7 +24,7 @@
 //! This CallbackHandler will monitor event streams from the various wallet services and on relevant events will call
 //! the assigned callbacks to provide asynchronous feedback to the client application that an event has occured
 //!
-//! ## Callbacks  
+//! ## Callbacks
 //! `callback_received_transaction` - This will be called when an inbound transaction is received from an external
 //! wallet
 //!
@@ -224,7 +224,7 @@ where TBackend: TransactionBackend + 'static
                     match result {
                         Ok(msg) => {
                             trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
-                            match msg {
+                            match (*msg).clone() {
                                 OutputManagerEvent::TxoValidationSuccess(request_key) => {
                                     self.receive_sync_process_result(request_key, true);
                                 },
@@ -711,9 +711,11 @@ mod test {
             .send(Arc::new(TransactionEvent::TransactionCancelled(5u64)))
             .unwrap();
 
-        oms_sender.send(OutputManagerEvent::TxoValidationSuccess(1u64)).unwrap();
         oms_sender
-            .send(OutputManagerEvent::TxoValidationTimedOut(1u64))
+            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1u64)))
+            .unwrap();
+        oms_sender
+            .send(Arc::new(OutputManagerEvent::TxoValidationTimedOut(1u64)))
             .unwrap();
         dht_sender
             .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))

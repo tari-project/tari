@@ -37,7 +37,10 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
     error::{WalletError, WalletStorageError},
-    output_manager_service::config::OutputManagerServiceConfig,
+    output_manager_service::{
+        config::OutputManagerServiceConfig,
+        protocols::txo_validation_protocol::{TxoValidationRetry, TxoValidationType},
+    },
     storage::sqlite_utilities::initialize_sqlite_database_backends,
     transaction_service::config::TransactionServiceConfig,
     wallet::WalletConfig,
@@ -339,6 +342,38 @@ pub async fn start_wallet(wallet: &mut WalletSqlite, base_node: &Peer) -> Result
     if let Err(e) = wallet.transaction_service.restart_broadcast_protocols().await {
         error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
     }
+
+    debug!(target: LOG_TARGET, "Starting TXO validations.");
+
+    // Unspent TXOs
+    wallet
+        .output_manager_service
+        .validate_txos(TxoValidationType::Unspent, TxoValidationRetry::UntilSuccess)
+        .await
+        .map_err(|e| {
+            error!(target: LOG_TARGET, "Error validating Unspent TXOs: {}", e);
+            ExitCodes::WalletError(e.to_string())
+        })?;
+
+    // Spent TXOs
+    wallet
+        .output_manager_service
+        .validate_txos(TxoValidationType::Spent, TxoValidationRetry::UntilSuccess)
+        .await
+        .map_err(|e| {
+            error!(target: LOG_TARGET, "Error validating Spent TXOs: {}", e);
+            ExitCodes::WalletError(e.to_string())
+        })?;
+
+    // Invalid TXOs
+    wallet
+        .output_manager_service
+        .validate_txos(TxoValidationType::Invalid, TxoValidationRetry::UntilSuccess)
+        .await
+        .map_err(|e| {
+            error!(target: LOG_TARGET, "Error validating Invalid TXOs: {}", e);
+            ExitCodes::WalletError(e.to_string())
+        })?;
 
     Ok(())
 }

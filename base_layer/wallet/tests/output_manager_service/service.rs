@@ -885,10 +885,15 @@ fn test_utxo_validation() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    match event.unwrap() {
-                        OutputManagerEvent::TxoValidationTimedOut(_) => {
-                            timeouts+=1;
-                         },
+                    match event {
+                        Ok(msg) => {
+                            match (*msg).clone() {
+                                OutputManagerEvent::TxoValidationTimedOut(_) => {
+                                    timeouts+=1;
+                                },
+                                _ => (),
+                            }
+                        }
                         _ => (),
                     }
                     if timeouts >= 2 {
@@ -969,11 +974,19 @@ fn test_utxo_validation() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    if let OutputManagerEvent::TxoValidationSuccess(_) = event.unwrap() {
-                        acc += 1;
-                        if acc >= 1 {
-                            break;
-                        }
+                    match event {
+                        Ok(msg) => {
+                            match (*msg).clone() {
+                                OutputManagerEvent::TxoValidationSuccess(_) => {
+                                    acc += 1;
+                                    if acc >= 1 {
+                                        break;
+                                    }
+                                },
+                                _ => (),
+                            }
+                        },
+                        _ => (),
                     }
                 },
                 () = delay => {
@@ -1053,11 +1066,19 @@ fn test_utxo_validation() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    if let OutputManagerEvent::TxoValidationSuccess(_) = event.unwrap() {
-                        acc += 1;
-                        if acc >= 1 {
-                            break;
-                        }
+                    match event {
+                        Ok(msg) => {
+                            match (*msg).clone() {
+                                OutputManagerEvent::TxoValidationSuccess(_) => {
+                                    acc += 1;
+                                    if acc >= 1 {
+                                        break;
+                                    }
+                                },
+                                _ => (),
+                            }
+                        },
+                        _ => (),
                     }
                 },
                 () = delay => {
@@ -1113,11 +1134,19 @@ fn test_utxo_validation() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    if let OutputManagerEvent::TxoValidationAborted(_r) = event.unwrap() {
-                        acc += 1;
-                        if acc >= 1 {
-                            break;
-                        }
+                    match event {
+                        Ok(msg) => {
+                            match (*msg).clone() {
+                                OutputManagerEvent::TxoValidationAborted(_) => {
+                                    acc += 1;
+                                    if acc >= 1 {
+                                        break;
+                                    }
+                                },
+                                _ => (),
+                            }
+                        },
+                        _ => (),
                     }
                 },
                 () = delay => {
@@ -1190,11 +1219,19 @@ fn test_utxo_validation() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    if let OutputManagerEvent::TxoValidationSuccess(_r) = event.unwrap() {
-                        acc += 1;
-                        if acc >= 1 {
-                            break;
-                        }
+                    match event {
+                        Ok(msg) => {
+                            match (*msg).clone() {
+                                OutputManagerEvent::TxoValidationSuccess(_) => {
+                                    acc += 1;
+                                    if acc >= 1 {
+                                        break;
+                                    }
+                                },
+                                _ => (),
+                            }
+                        },
+                        _ => (),
                     }
                 },
                 () = delay => {
@@ -1318,11 +1355,19 @@ fn test_spent_txo_validation() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    if let OutputManagerEvent::TxoValidationSuccess(_) = event.unwrap() {
-                        acc += 1;
-                        if acc >= 1 {
-                            break;
-                        }
+                    match event {
+                        Ok(msg) => {
+                            match (*msg).clone() {
+                                OutputManagerEvent::TxoValidationSuccess(_) => {
+                                    acc += 1;
+                                    if acc >= 1 {
+                                        break;
+                                    }
+                                },
+                                _ => (),
+                            }
+                        },
+                        _ => (),
                     }
                 },
                 () = delay => {

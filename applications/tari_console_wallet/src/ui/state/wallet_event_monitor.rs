@@ -27,7 +27,7 @@ use std::sync::Arc;
 use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
-    output_manager_service::TxId,
+    output_manager_service::{handle::OutputManagerEvent, TxId},
     transaction_service::handle::TransactionEvent,
 };
 use tokio::sync::RwLock;
@@ -44,13 +44,15 @@ impl WalletEventMonitor {
     }
 
     pub async fn run(mut self) {
-        let mut shutdown_signal = self.app_state_inner.read().await.get_shutdown_signal();
-
-        let mut transaction_service_events = self.app_state_inner.read().await.get_transaction_service_event_stream();
-
-        let mut connectivity_events = self.app_state_inner.read().await.get_connectivity_event_stream();
-
         let mut base_node_events = self.app_state_inner.read().await.get_base_node_event_stream();
+        let mut connectivity_events = self.app_state_inner.read().await.get_connectivity_event_stream();
+        let mut output_manager_service_events = self
+            .app_state_inner
+            .read()
+            .await
+            .get_output_manager_service_event_stream();
+        let mut shutdown_signal = self.app_state_inner.read().await.get_shutdown_signal();
+        let mut transaction_service_events = self.app_state_inner.read().await.get_transaction_service_event_stream();
 
         info!(target: LOG_TARGET, "Wallet Event Monitor starting");
         loop {
@@ -80,6 +82,20 @@ impl WalletEventMonitor {
                                 }
                             },
                             Err(_) => debug!(target: LOG_TARGET, "Lagging read on Transaction Service event broadcast channel"),
+                        }
+                    },
+                    result = output_manager_service_events.select_next_some() => {
+                        match result {
+                            Ok(msg) => {
+                                trace!(target: LOG_TARGET, "Output Manager Event {:?}", msg);
+                                match (*msg).clone() {
+                                    OutputManagerEvent::TxoValidationSuccess(_) => {
+                                        self.trigger_balance_refresh().await;
+                                    },
+                                    _ => {}
+                                }
+                            }
+                            Err(_) => debug!(target: LOG_TARGET, "Lagging read on Output Manager Service event broadcast channel"),
                         }
                     },
                     result = connectivity_events.select_next_some() => {
@@ -127,6 +143,14 @@ impl WalletEventMonitor {
                         break;
                     },
             }
+        }
+    }
+
+    async fn trigger_balance_refresh(&mut self) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_balance().await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
     }
 

@@ -149,7 +149,7 @@ where TBackend: OutputManagerBackend + 'static
             let _ = self
                 .resources
                 .event_publisher
-                .send(OutputManagerEvent::TxoValidationSuccess(self.id))
+                .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(self.id)))
                 .map_err(|e| {
                     trace!(
                         target: LOG_TARGET,
@@ -182,7 +182,7 @@ where TBackend: OutputManagerBackend + 'static
                                     let _ = self
                                         .resources
                                         .event_publisher
-                                        .send(OutputManagerEvent::TxoValidationSuccess(self.id))
+                                        .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(self.id)))
                                         .map_err(|e| {
                                            trace!(
                                                 target: LOG_TARGET,
@@ -215,7 +215,7 @@ where TBackend: OutputManagerBackend + 'static
             let _ = self
                 .resources
                 .event_publisher
-                .send(OutputManagerEvent::TxoValidationTimedOut(self.id))
+                .send(Arc::new(OutputManagerEvent::TxoValidationTimedOut(self.id)))
                 .map_err(|e| {
                     trace!(
                         target: LOG_TARGET,
@@ -349,7 +349,7 @@ where TBackend: OutputManagerBackend + 'static
             let _ = self
                 .resources
                 .event_publisher
-                .send(OutputManagerEvent::TxoValidationAborted(self.id))
+                .send(Arc::new(OutputManagerEvent::TxoValidationAborted(self.id)))
                 .map_err(|e| {
                     trace!(
                         target: LOG_TARGET,

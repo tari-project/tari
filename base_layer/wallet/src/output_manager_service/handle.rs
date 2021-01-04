@@ -29,7 +29,7 @@ use crate::output_manager_service::{
 };
 use aes_gcm::Aes256Gcm;
 use futures::{stream::Fuse, StreamExt};
-use std::{collections::HashMap, fmt, time::Duration};
+use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -121,8 +121,8 @@ pub enum OutputManagerResponse {
     PublicRewindKeys(Box<PublicRewindKeys>),
 }
 
-pub type OutputManagerEventSender = broadcast::Sender<OutputManagerEvent>;
-pub type OutputManagerEventReceiver = broadcast::Receiver<OutputManagerEvent>;
+pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
+pub type OutputManagerEventReceiver = broadcast::Receiver<Arc<OutputManagerEvent>>;
 
 /// Events that can be published on the Text Message Service Event Stream
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

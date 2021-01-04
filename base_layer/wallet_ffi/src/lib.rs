@@ -6371,6 +6371,8 @@ mod test {
                 error_ptr,
             );
             comms_config_set_secret_key(alice_config, secret_key_alice, error_ptr);
+
+            // no passphrase
             let _alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
@@ -6390,7 +6392,7 @@ mod test {
                 error_ptr,
             );
 
-            assert_eq!(error, 420);
+            assert_eq!(error, 426);
 
             let wrong_passphrase = "wrong pf".to_string();
             let wrong_passphrase_str = CString::new(wrong_passphrase).unwrap();
