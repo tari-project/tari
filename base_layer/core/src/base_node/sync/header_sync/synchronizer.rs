@@ -408,8 +408,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             "Deleting {} header(s) that no longer form part of the main chain", steps_back
         );
 
-        let tip_header = self.db.fetch_tip_header().await?;
-        let new_tip_height = tip_header.height() - steps_back;
+        let tip_header = self.db.fetch_last_header().await?;
+        let new_tip_height = tip_header.height - steps_back;
 
         let blocks = self.db.rewind_to_height(new_tip_height).await?;
         debug!(
@@ -426,16 +426,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         client: &mut rpc::BaseNodeSyncRpcClient,
     ) -> Result<(), BlockHeaderSyncError>
     {
-        let tip_header = self.db.fetch_tip_header().await?;
+        let tip_header = self.db.fetch_last_header().await?;
         debug!(
             target: LOG_TARGET,
-            "Requesting header stream starting from tip header #{} ({}) from peer `{}`",
-            tip_header.header.height,
-            tip_header.accumulated_data.hash.to_hex(),
-            peer
+            "Requesting header stream starting from tip header #{} from peer `{}`", tip_header.height, peer
         );
         let request = SyncHeadersRequest {
-            start_hash: tip_header.accumulated_data.hash,
+            start_hash: tip_header.hash(),
             // To the tip!
             count: 0,
         };
