@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 tari_comms = { version = "^0.2", path = "../../comms" }
 tari_comms_dht = { version = "^0.2.1", path = "../../comms/dht" }
-tari_crypto = { version = "^0.8", git = "https://github.com/tari-project/tari-crypto", branch="main"}
+tari_crypto = "^0.8"
 tari_p2p = { version = "^0.2", path = "../p2p" }
 tari_wallet = { version = "^0.2.2", path = "../wallet", features = ["test_harness", "c_integration"]}
 tari_shutdown = { version = "^0.2", path = "../../infrastructure/shutdown" }

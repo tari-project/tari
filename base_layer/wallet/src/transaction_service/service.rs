@@ -382,7 +382,7 @@ where
                 },
                 // Incoming messages from the Comms layer
                 msg = mempool_response_stream.select_next_some() => {
-                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
+                    let (_origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Mempool Response, Trace: {}", msg.dht_header.message_tag);
                     let _ = self.handle_mempool_response(inner_msg).await.or_else(|resp| {
                         warn!(target: LOG_TARGET, "Error handling mempool service response: {:?}, Trace: {}", resp,
