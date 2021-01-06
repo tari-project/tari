@@ -60,8 +60,8 @@ message ProofOfWork {
     // 0 = Monero
     // 1 = Blake
     uint64 pow_algo = 1;
-    uint64 accumulated_monero_difficulty = 2;
-    uint64 accumulated_blake_difficulty = 3;
+//    uint64 accumulated_monero_difficulty = 2;
+//    uint64 accumulated_blake_difficulty = 3;
     bytes pow_data = 4;
    // uint64 target_difficulty = 5;
 }
@@ -108,7 +108,7 @@ message NewBlockHeaderTemplate {
     // Proof of work metadata
     ProofOfWork pow = 5;
 
-    uint64 target_difficulty = 6;
+//    uint64 target_difficulty = 6;
 }
 
 // The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as a final step the Base node to add the MMR roots to the header.
@@ -262,5 +262,5 @@ message Peer{
     /// used as information for more efficient protocol negotiation.
     repeated bytes supported_protocols = 11;
     /// User agent advertised by the peer
-    string user_agent = 12; 
+    string user_agent = 12;
 }

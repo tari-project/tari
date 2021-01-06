@@ -75,8 +75,8 @@ message TipInfoResponse{
 /// return type of GetNewBlockTemplate
 message NewBlockTemplateResponse{
     NewBlockTemplate new_block_template = 1;
-    uint64 block_reward = 2;
     bool initial_sync_achieved = 3;
+    MinerData miner_data = 4;
 }
 
 /// An Empty placeholder for endpoints without request parameters
@@ -203,8 +203,7 @@ message GetNewBlockResult{
     bytes block_hash = 1;
     // This is the completed block
     Block block = 2;
-    // This is the merge_mining hash of the completed block.
-    MinerData miner_data = 3;
+    bytes merge_mining_hash =3;
 }
 
 // This is mining data for the miner asking for a new block
@@ -212,7 +211,7 @@ message MinerData{
     PowAlgo algo = 1;
     uint64 target_difficulty = 2;
     uint64 reward = 3;
-    bytes merge_mining_hash =4;
+    uint64 total_fees = 5;
 }
 
 // This is the request type for the Search Kernels rpc

@@ -116,8 +116,6 @@ pub struct NewBlockHeaderTemplate {
     /// Proof of work metadata
     #[prost(message, optional, tag = "5")]
     pub pow: ::std::option::Option<ProofOfWork>,
-    #[prost(uint64, tag = "6")]
-    pub target_difficulty: u64,
 }
 /// The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as
 /// a final step the Base node to add the MMR roots to the header.
@@ -127,4 +125,10 @@ pub struct NewBlockTemplate {
     pub header: ::std::option::Option<NewBlockHeaderTemplate>,
     #[prost(message, optional, tag = "2")]
     pub body: ::std::option::Option<super::types::AggregateBody>,
+    #[prost(uint64, tag = "3")]
+    pub target_difficulty: u64,
+    #[prost(uint64, tag = "4")]
+    pub reward: u64,
+    #[prost(uint64, tag = "5")]
+    pub total_fees: u64,
 }

@@ -211,6 +211,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             );
 
             let timer = Instant::now();
+            let accumulated_difficulty = block.accumulated_data.total_accumulated_difficulty;
             self.db
                 .write_transaction()
                 .insert_block(block.clone())
@@ -219,6 +220,10 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     MetadataValue::ChainHeight(block.block.header.height),
                 )
                 .set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(header_hash))
+                .set_metadata(
+                    MetadataKey::AccumulatedWork,
+                    MetadataValue::AccumulatedWork(accumulated_difficulty),
+                )
                 .commit()
                 .await?;
 

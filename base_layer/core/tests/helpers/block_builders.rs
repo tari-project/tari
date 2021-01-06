@@ -88,7 +88,11 @@ fn genesis_template(
 {
     let header = BlockHeader::new(consensus_constants.blockchain_version());
     let (utxo, kernel, output) = create_coinbase(factories, coinbase_value, consensus_constants.coinbase_lock_height());
-    let block = NewBlockTemplate::from_block(header.into_builder().with_coinbase_utxo(utxo, kernel).build(), 1.into());
+    let block = NewBlockTemplate::from_block(
+        header.into_builder().with_coinbase_utxo(utxo, kernel).build(),
+        1.into(),
+        coinbase_value,
+    );
     (block, output)
 }
 
@@ -138,7 +142,7 @@ pub fn create_genesis_block(
 
 // Calculate the MMR Merkle roots for the genesis block template and update the header.
 fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
-    let NewBlockTemplate { header, mut body } = template;
+    let NewBlockTemplate { header, mut body, .. } = template;
     // Make sure the body components are sorted. If they already are, this is a very cheap call.
     body.sort();
     let kernel_hashes: Vec<HashOutput> = body.kernels().iter().map(|k| k.hash()).collect();
@@ -228,7 +232,12 @@ pub fn chain_block(
 {
     let mut header = BlockHeader::from_previous(&prev_block.header).unwrap();
     header.version = consensus.consensus_constants(header.height).blockchain_version();
-    NewBlockTemplate::from_block(header.into_builder().with_transactions(transactions).build(), 1.into())
+    let height = header.height;
+    NewBlockTemplate::from_block(
+        header.into_builder().with_transactions(transactions).build(),
+        1.into(),
+        consensus.get_block_reward_at(height),
+    )
 }
 
 /// Create a new block using the provided coinbase and transactions that adds to the blockchain given in `prev_block`.
@@ -242,6 +251,7 @@ pub fn chain_block_with_coinbase(
 {
     let mut header = BlockHeader::from_previous(&prev_block.block.header).unwrap();
     header.version = consensus.consensus_constants(header.height).blockchain_version();
+    let height = header.height;
     NewBlockTemplate::from_block(
         header
             .into_builder()
@@ -249,6 +259,7 @@ pub fn chain_block_with_coinbase(
             .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
             .build(),
         1.into(),
+        consensus.get_block_reward_at(height),
     )
 }
 
@@ -274,6 +285,7 @@ pub fn chain_block_with_new_coinbase(
     header.version = consensus_manager
         .consensus_constants(header.height)
         .blockchain_version();
+    let reward = consensus_manager.get_block_reward_at(header.height);
     let template = NewBlockTemplate::from_block(
         header
             .into_builder()
@@ -281,6 +293,7 @@ pub fn chain_block_with_new_coinbase(
             .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
             .build(),
         1.into(),
+        reward,
     );
     (template, coinbase_output)
 }

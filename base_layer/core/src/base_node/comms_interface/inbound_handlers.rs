@@ -395,6 +395,7 @@ where T: BlockchainBackend + 'static
                 let block_template = NewBlockTemplate::from_block(
                     header.into_builder().with_transactions(transactions).build(),
                     self.get_target_difficulty(pow_algo, height).await?,
+                    self.consensus_manager.get_block_reward_at(height),
                 );
                 debug!(
                     target: LOG_TARGET,

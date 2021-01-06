@@ -211,7 +211,13 @@ impl TryFrom<proto::NewBlockTemplate> for NewBlockTemplate {
             .map(TryInto::try_into)
             .ok_or_else(|| "Block body not provided".to_string())??;
 
-        Ok(Self { header, body })
+        Ok(Self {
+            header,
+            body,
+            target_difficulty: block_template.target_difficulty.into(),
+            reward: block_template.reward.into(),
+            total_fees: block_template.total_fees.into(),
+        })
     }
 }
 
@@ -220,6 +226,9 @@ impl From<NewBlockTemplate> for proto::NewBlockTemplate {
         Self {
             header: Some(block_template.header.into()),
             body: Some(block_template.body.into()),
+            target_difficulty: block_template.target_difficulty.as_u64(),
+            reward: block_template.reward.0,
+            total_fees: block_template.total_fees.0,
         }
     }
 }
@@ -242,7 +251,6 @@ impl TryFrom<proto::NewBlockHeaderTemplate> for NewBlockHeaderTemplate {
             prev_hash: header.prev_hash,
             total_kernel_offset,
             pow,
-            target_difficulty: Default::default(),
         })
     }
 }
@@ -255,7 +263,6 @@ impl From<NewBlockHeaderTemplate> for proto::NewBlockHeaderTemplate {
             prev_hash: header.prev_hash,
             total_kernel_offset: header.total_kernel_offset.to_vec(),
             pow: Some(proto::ProofOfWork::from(header.pow)),
-            target_difficulty: header.target_difficulty.into(),
         }
     }
 }

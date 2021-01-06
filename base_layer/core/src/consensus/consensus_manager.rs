@@ -94,6 +94,10 @@ impl ConsensusManager {
         &self.inner.emission
     }
 
+    pub fn get_block_reward_at(&self, height: u64) -> MicroTari {
+        self.emission_schedule().block_reward(height)
+    }
+
     // Get the emission reward at height
     pub fn get_total_emission_at(&self, height: u64) -> MicroTari {
         self.inner.emission.supply_at_block(height)

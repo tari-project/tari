@@ -690,7 +690,7 @@ where B: BlockchainBackend
     }
 
     pub fn prepare_block_merkle_roots(&self, template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
-        let NewBlockTemplate { header, mut body } = template;
+        let NewBlockTemplate { header, mut body, .. } = template;
         body.sort();
         let header = BlockHeader::from(header);
         let mut block = Block { header, body };

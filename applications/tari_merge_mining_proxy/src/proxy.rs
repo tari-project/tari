@@ -326,8 +326,11 @@ impl InnerService {
             })?;
 
         let new_block_template_response = new_block_template_response.into_inner();
-
-        let new_block_template_reward = new_block_template_response.block_reward;
+        let mining_data = new_block_template_response
+            .clone()
+            .miner_data
+            .ok_or_else(|| MmProxyError::GrpcResponseMissingField("miner_data"))?;
+        let new_block_template_reward = mining_data.reward;
         let new_block_template = new_block_template_response
             .new_block_template
             .ok_or_else(|| MmProxyError::GrpcResponseMissingField("new_block_template"))?;
@@ -391,6 +394,8 @@ impl InnerService {
             })?
             .into_inner();
 
+        let mining_hash = block.merge_mining_hash;
+
         let tari_block = Block::try_from(
             block
                 .block
@@ -399,11 +404,6 @@ impl InnerService {
         )
         .map_err(MmProxyError::MissingDataError)?;
         debug!(target: LOG_TARGET, "New block received from Tari: {}", (tari_block));
-        debug!(target: LOG_TARGET, "with miner data: {:?}", block.miner_data);
-        let mining_data = block
-            .clone()
-            .miner_data
-            .ok_or_else(|| MmProxyError::GrpcResponseMissingField("mining_data"))?;
 
         let block_data = BlockTemplateDataBuilder::default();
         let block_data = block_data
@@ -423,7 +423,7 @@ impl InnerService {
 
         debug!(target: LOG_TARGET, "Appending Merged Mining Tag",);
         // Add the Tari merge mining tag to the retrieved block template
-        monero_rx::append_merge_mining_tag(&mut monero_block, mining_data.merge_mining_hash.as_slice())?;
+        monero_rx::append_merge_mining_tag(&mut monero_block, mining_hash.as_slice())?;
 
         debug!(target: LOG_TARGET, "Creating blockhashing blob from blocktemplate blob",);
         // Must be done after the tag is inserted since it will affect the hash of the miner tx
@@ -449,9 +449,7 @@ impl InnerService {
             .monero_difficulty(monero_difficulty)
             .tari_difficulty(tari_difficulty);
 
-        self.block_templates
-            .save(mining_data.merge_mining_hash, block_data.build()?)
-            .await;
+        self.block_templates.save(mining_hash, block_data.build()?).await;
         info!(
             target: LOG_TARGET,
             "Difficulties: Tari ({}), Monero({}), Selected({})", tari_difficulty, monero_difficulty, mining_difficulty

@@ -50,6 +50,7 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
             .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
             .build(),
         1.into(),
+        coinbase_value,
     );
     Block::new(template.header.into(), template.body)
 }
