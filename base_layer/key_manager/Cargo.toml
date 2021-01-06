@@ -8,7 +8,7 @@ version = "0.2.14"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "^0.8", git = "https://github.com/tari-project/tari-crypto", branch="main"}
+tari_crypto = "^0.8"
 rand = "0.7.2"
 digest = "0.8.0"
 sha2 = "0.8.0"

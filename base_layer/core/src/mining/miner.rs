@@ -282,7 +282,6 @@ impl Miner {
                                     spawn_mining_task = true;
                                     wait_for_mining_event = false;
                                 },
-                                _ => (),
                             }
                         }
                     },
