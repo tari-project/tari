@@ -21,8 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{method_info::RpcMethodInfo, options::RpcTraitOptions};
+use proc_macro2::TokenStream;
 use quote::quote;
-use syn::export::TokenStream2;
 
 pub struct RpcCodeGenerator {
     options: RpcTraitOptions,
@@ -39,7 +39,7 @@ impl RpcCodeGenerator {
         }
     }
 
-    pub fn generate(self) -> TokenStream2 {
+    pub fn generate(self) -> TokenStream {
         let server_code = self.generate_server_code();
         let client_code = self.generate_client_code();
 
@@ -49,7 +49,7 @@ impl RpcCodeGenerator {
         }
     }
 
-    fn generate_server_code(&self) -> TokenStream2 {
+    fn generate_server_code(&self) -> TokenStream {
         let server_struct = self.options.server_struct.as_ref().unwrap();
         let trait_ident = &self.trait_ident;
         let protocol_name = &self.options.protocol_name;
@@ -76,7 +76,7 @@ impl RpcCodeGenerator {
                     },
                 }
             })
-            .collect::<TokenStream2>();
+            .collect::<TokenStream>();
 
         let service_method_select_body = quote! {
             match req.method().id() {
@@ -150,7 +150,7 @@ impl RpcCodeGenerator {
         }
     }
 
-    fn generate_client_code(&self) -> TokenStream2 {
+    fn generate_client_code(&self) -> TokenStream {
         let client_struct = self.options.client_struct.as_ref().unwrap();
         let protocol_name = &self.options.protocol_name;
         let dep_mod = quote!(::tari_comms::protocol::rpc::__macro_reexports);
@@ -180,7 +180,7 @@ impl RpcCodeGenerator {
                 };
 
                 let params = if is_unit {
-                    TokenStream2::new()
+                    TokenStream::new()
                 } else {
                     quote!(request: #request_type)
                 };
@@ -191,7 +191,7 @@ impl RpcCodeGenerator {
                     }
                 }
             })
-            .collect::<TokenStream2>();
+            .collect::<TokenStream>();
 
         let client_struct_body = quote! {
             pub async fn connect<TSubstream>(framed: #dep_mod::CanonicalFraming<TSubstream>) -> Result<Self, #dep_mod::RpcError>

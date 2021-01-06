@@ -21,22 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{generator::RpcCodeGenerator, method_info::RpcMethodInfo, options::RpcTraitOptions};
+use proc_macro2::TokenStream;
 use quote::ToTokens;
-use syn::{
-    export::TokenStream2,
-    fold,
-    fold::Fold,
-    FnArg,
-    GenericArgument,
-    ItemTrait,
-    Meta,
-    NestedMeta,
-    PathArguments,
-    ReturnType,
-    Type,
-};
+use syn::{fold, fold::Fold, FnArg, GenericArgument, ItemTrait, Meta, NestedMeta, PathArguments, ReturnType, Type};
 
-pub fn expand_trait(node: ItemTrait, options: RpcTraitOptions) -> TokenStream2 {
+pub fn expand_trait(node: ItemTrait, options: RpcTraitOptions) -> TokenStream {
     let mut collector = TraitInfoCollector::new();
     let trait_code = collector.fold_item_trait(node);
     let generator = RpcCodeGenerator::new(options, collector.expect_trait_ident(), collector.rpc_methods);

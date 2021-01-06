@@ -3933,6 +3933,7 @@ name = "tari_comms_rpc_macros"
 version = "0.1.1"
 dependencies = [
  "futures 0.3.6",
+ "proc-macro2 1.0.24",
  "prost",
  "quote 1.0.7",
  "syn 1.0.42",
