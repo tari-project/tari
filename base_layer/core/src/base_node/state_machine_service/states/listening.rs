@@ -33,6 +33,7 @@ use crate::{
 };
 use futures::StreamExt;
 use log::*;
+use num_format::{Locale, ToFormattedString};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Formatter},
@@ -277,9 +278,9 @@ fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers
              with an accumulated difficulty of {}, and the network chain tip is at #{} with an accumulated difficulty \
              of {}",
             local_tip_height,
-            local_tip_accum_difficulty,
+            local_tip_accum_difficulty.to_formatted_string(&Locale::en),
             network_tip_height,
-            network_tip_accum_difficulty,
+            network_tip_accum_difficulty.to_formatted_string(&Locale::en),
         );
 
         let network_horizon_block = local.horizon_block(network_tip_height);
@@ -300,9 +301,9 @@ fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers
             "Our blockchain is up-to-date. We're at block {} with an accumulated difficulty of {} and the network \
              chain tip is at {} with an accumulated difficulty of {}",
             local.height_of_longest_chain(),
-            local_tip_accum_difficulty,
+            local_tip_accum_difficulty.to_formatted_string(&Locale::en),
             network.height_of_longest_chain(),
-            network_tip_accum_difficulty,
+            network_tip_accum_difficulty.to_formatted_string(&Locale::en),
         );
         UpToDate
     }

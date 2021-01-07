@@ -92,11 +92,6 @@ impl BlockSync {
         match synchronizer.synchronize().await {
             Ok(()) => {
                 info!(target: LOG_TARGET, "Blocks synchronized in {:.0?}", timer.elapsed());
-                if !shared.bootstrapped_sync {
-                    debug!(target: LOG_TARGET, "Initial sync achieved, bootstrap done",);
-                    shared.bootstrapped_sync = true;
-                    shared.publish_event_info();
-                }
                 StateEvent::BlocksSynchronized
             },
             Err(err) => {
