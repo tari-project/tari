@@ -6,6 +6,7 @@ Feature: Wallet Querying
     Then node WalletSeedA is at height 1
     Then the UTXO CB1 has been mined according to WalletSeedA
 
+    @critical
   Scenario: As a wallet I want to submit a transaction
     # Using GRPC
     Given I have a seed node SeedA

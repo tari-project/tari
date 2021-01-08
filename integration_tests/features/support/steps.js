@@ -1,6 +1,8 @@
 // features/support/steps.js
 const { Given, When, Then } = require("cucumber");
 const BaseNodeProcess = require('../../helpers/baseNodeProcess');
+const MergeMiningProxyProcess = require('../../helpers/mergeMiningProxyProcess');
+const WalletProcess = require('../../helpers/walletProcess');
 const expect = require('chai').expect;
 const {waitFor, getTransactionOutputHash} = require('../../helpers/util');
 const TransactionBuilder = require('../../helpers/transactionBuilder');
@@ -59,6 +61,22 @@ Given('I have {int} base nodes connected to all seed nodes',{timeout: 190*1000},
        promises.push(miner.startNew().then(() => this.addNode(`BaseNode${i}`, miner)));
    }
     await Promise.all(promises);
+});
+
+Given(/I have wallet (.*) connected to all seed nodes/, {timeout: 20*1000}, async function (name) {
+    let wallet = new WalletProcess(name);
+    wallet.setPeerSeeds([this.seedAddresses()]);
+    await wallet.startNew();
+    this.addWallet(name, wallet);
+});
+
+
+Given(/I have a merge mining proxy (.*) connected to (.*) and (.*)/,{timeout: 20*1000}, async function (mmProxy, node, wallet) {
+    let baseNode = this.getNode(node);
+    let walletNode = this.getWallet(wallet);
+    const proxy = new MergeMiningProxyProcess(mmProxy, baseNode.getGrpcAddress(), walletNode.getGrpcAddress());
+    await proxy.startNew();
+    this.addProxy(mmProxy, proxy);
 });
 
 
@@ -130,6 +148,13 @@ When(/I mine (\d+) blocks on (.*)/, {timeout: 600*1000}, async function (numBloc
         await this.mineBlock(name);
     }
 });
+
+When(/I merge mine (.*) blocks via (.*)/, {timeout: 600*1000}, async function (numBlocks, mmProxy) {
+    for(let i=0;i<numBlocks;i++) {
+        await this.mergeMineBlock(mmProxy);
+    }
+});
+
 
 When(/I mine but don't submit a block (.*) on (.*)/, async function (blockName, nodeName) {
     await this.mineBlock(nodeName, block => {

@@ -9,6 +9,8 @@ class CustomWorld {
         //this.variable = 0;
         this.seeds = {};
         this.nodes = {};
+        this.proxies = {};
+        this.wallets = {};
         this.clients = {};
         this.headers = {};
         this.outputs = {};
@@ -40,12 +42,25 @@ class CustomWorld {
         this.clients[name] = process.createGrpcClient();
     }
 
+    addProxy(name, process) {
+        this.proxies[name] = process;
+    }
+
+    addWallet(name, process) {
+        this.wallets[name] = process;
+    }
+
     addOutput(name, output) {
         this.outputs[name] = output;
     }
 
     async mineBlock(name, beforeSubmit, onError) {
         await this.clients[name].mineBlockWithoutWallet(beforeSubmit, onError);
+    }
+
+    async mergeMineBlock(name) {
+        let client = this.proxies[name].createClient();
+        await client.mineBlock();
     }
 
     saveBlock(name, block) {
@@ -61,6 +76,14 @@ class CustomWorld {
 
     getClient(name) {
         return this.clients[name];
+    }
+
+    getNode(name) {
+        return this.nodes[name] || this.seeds[name];
+    }
+
+    getWallet(name) {
+        return this.wallets[name];
     }
 
     async forEachClientAsync(f) {
@@ -91,11 +114,15 @@ setWorldConstructor(CustomWorld);
 After(function () {
     console.log('Stopping nodes');
     for (const property in this.seeds) {
-        // console.log("Stopping seed", property);
         this.stopNode(property);
     }
     for (const property in this.nodes) {
-        // console.log("Stopping node", property);
         this.stopNode(property);
+    }
+    for (const property in this.proxies) {
+        this.proxies[property].stop();
+    }
+    for (const property in this.wallets) {
+        this.wallets[property].stop();
     }
 });
