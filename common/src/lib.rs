@@ -96,5 +96,6 @@ pub const DEFAULT_CONFIG: &str = "config/config.toml";
 pub const DEFAULT_BASE_NODE_LOG_CONFIG: &str = "config/log4rs_base_node.yml";
 pub const DEFAULT_WALLET_LOG_CONFIG: &str = "config/log4rs_console_wallet.yml";
 pub const DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG: &str = "config/log4rs_merge_mining_proxy.yml";
+pub const DEFAULT_MINING_NODE_LOG_CONFIG: &str = "config/log4rs_mining_node.yml";
 
 pub(crate) const LOG_TARGET: &str = "common::config";

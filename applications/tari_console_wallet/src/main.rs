@@ -8,9 +8,12 @@
 #![recursion_limit = "512"]
 use init::{change_password, get_base_node_peer_config, init_wallet, start_wallet, wallet_mode};
 use log::*;
-use structopt::StructOpt;
-use tari_app_utilities::{identity_management::setup_node_identity, utilities::ExitCodes};
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
+use tari_app_utilities::{
+    identity_management::setup_node_identity,
+    initialization::init_configuration,
+    utilities::ExitCodes,
+};
+use tari_common::configuration::bootstrap::ApplicationType;
 use tari_comms::peer_manager::PeerFeatures;
 use tari_shutdown::Shutdown;
 use wallet_modes::{command_mode, grpc_mode, script_mode, tui_mode, WalletMode};
@@ -43,25 +46,7 @@ fn main_inner() -> Result<(), ExitCodes> {
         .build()
         .expect("Failed to build a runtime!");
 
-    let mut shutdown = Shutdown::new();
-
-    // Parse and validate command-line arguments
-    let mut bootstrap = ConfigBootstrap::from_args();
-
-    // Check and initialize configuration files
-    bootstrap.init_dirs(ApplicationType::ConsoleWallet)?;
-
-    // Load and apply configuration file
-    let cfg = bootstrap.load_configuration()?;
-
-    // Initialise the logger
-    bootstrap.initialize_logging()?;
-
-    // Populate the configuration struct
-    let config = GlobalConfig::convert_from(cfg).map_err(|err| {
-        error!(target: LOG_TARGET, "The configuration file has an error. {}", err);
-        ExitCodes::ConfigError(format!("The configuration file has an error. {}", err))
-    })?;
+    let (bootstrap, config, _) = init_configuration(ApplicationType::ConsoleWallet)?;
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
     // Load or create the Node identity
@@ -90,6 +75,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // get command line password if provided
     let arg_password = bootstrap.password.clone();
 
+    let mut shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
 
     if bootstrap.change_password {

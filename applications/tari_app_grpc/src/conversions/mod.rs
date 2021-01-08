@@ -70,6 +70,11 @@ pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> EpochTime {
     (timestamp.seconds as u64).into()
 }
 
+/// Current unix time as timestamp (seconds part only)
+pub fn timestamp() -> Timestamp {
+    datetime_to_timestamp(EpochTime::now())
+}
+
 impl From<u64> for grpc::IntegerValue {
     fn from(value: u64) -> Self {
         Self { value }

@@ -63,11 +63,7 @@ impl CpuPow {
         while difficulty < target_difficulty {
             if start.elapsed() >= Duration::from_secs(60) {
                 // nonce might have wrapped around
-                let hashes = if nonce >= last_measured_nonce {
-                    nonce - last_measured_nonce
-                } else {
-                    std::u64::MAX - last_measured_nonce + nonce
-                };
+                let hashes = nonce.wrapping_sub(last_measured_nonce);
                 let hash_rate = hashes as f64 / start.elapsed().as_micros() as f64;
                 hashrate.store((hash_rate * 1_000_000.0) as u64, Ordering::Relaxed);
                 info!(target: LOG_TARGET, "Mining hash rate per thread: {:.6} MH/s", hash_rate);
@@ -80,12 +76,7 @@ impl CpuPow {
                 info!(target: LOG_TARGET, "Mining stopped via flag");
                 return None;
             }
-            if nonce == std::u64::MAX {
-                nonce = 0;
-            } else {
-                nonce += 1;
-            }
-
+            nonce = nonce.wrapping_add(1);
             header.nonce = nonce;
             difficulty = sha3_difficulty(&header);
         }

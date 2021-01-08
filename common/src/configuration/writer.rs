@@ -43,7 +43,7 @@
 //!     port: 3001,
 //!     address: "localhost".to_string(),
 //! };
-//! // Merging configs into resulting structure, accounting preset use_network params
+//! // Merging configs into resulting structure, accounting preset network params
 //! let mut config = Config::new();
 //! config.set(&MyNodeConfig::network_config_key(), "rincewind");
 //! main_config.merge_into(&mut config).unwrap();
@@ -57,7 +57,7 @@
 //! name = "test_server"
 //!
 //! [my_node]
-//! use_network = "rincewind"
+//! network = "rincewind"
 //!
 //! [my_node.rincewind]
 //! address = "localhost"

@@ -104,12 +104,12 @@ use log::*;
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use std::{net::SocketAddr, sync::Arc, time::Duration};
-use structopt::StructOpt;
 use tari_app_utilities::{
     identity_management::setup_node_identity,
+    initialization::init_configuration,
     utilities::{setup_runtime, ExitCodes},
 };
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
+use tari_common::configuration::bootstrap::ApplicationType;
 use tari_comms::peer_manager::PeerFeatures;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{task, time};
@@ -127,22 +127,7 @@ fn main() {
 
 /// Sets up the base node and runs the cli_loop
 fn main_inner() -> Result<(), ExitCodes> {
-    // Parse and validate command-line arguments
-    let mut bootstrap = ConfigBootstrap::from_args();
-    // Check and initialize configuration files
-    bootstrap.init_dirs(ApplicationType::BaseNode)?;
-
-    // Load and apply configuration file
-    let cfg = bootstrap.load_configuration()?;
-
-    // Initialise the logger
-    bootstrap.initialize_logging()?;
-
-    // Populate the configuration struct
-    let mut node_config = GlobalConfig::convert_from(cfg).map_err(|err| {
-        error!(target: LOG_TARGET, "The configuration file has an error. {}", err);
-        ExitCodes::ConfigError(format!("The configuration file has an error. {}", err))
-    })?;
+    let (bootstrap, mut node_config, _) = init_configuration(ApplicationType::BaseNode)?;
 
     // enable-mining argument takes precedence over config setting
     if bootstrap.enable_mining {

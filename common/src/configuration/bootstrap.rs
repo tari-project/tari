@@ -58,6 +58,7 @@ use crate::{
     DEFAULT_BASE_NODE_LOG_CONFIG,
     DEFAULT_CONFIG,
     DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG,
+    DEFAULT_MINING_NODE_LOG_CONFIG,
     DEFAULT_WALLET_LOG_CONFIG,
 };
 use std::{
@@ -183,6 +184,9 @@ impl ConfigBootstrap {
                     self.log_config =
                         dir_utils::default_path(DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG, Some(&self.base_path))
                 },
+                ApplicationType::MiningNode => {
+                    self.log_config = dir_utils::default_path(DEFAULT_MINING_NODE_LOG_CONFIG, Some(&self.base_path))
+                },
             }
         }
 
@@ -226,6 +230,9 @@ impl ConfigBootstrap {
                         &self.log_config,
                         logging::install_default_merge_mining_proxy_logfile_config,
                     ),
+                    ApplicationType::MiningNode => {
+                        install_configuration(&self.log_config, logging::install_default_mining_node_logfile_config)
+                    },
                 }
             }
         };
@@ -271,6 +278,7 @@ pub enum ApplicationType {
     BaseNode,
     ConsoleWallet,
     MergeMiningProxy,
+    MiningNode,
 }
 
 #[cfg(test)]
