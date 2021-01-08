@@ -43,10 +43,7 @@ impl From<BlockHeader> for grpc::BlockHeader {
             nonce: h.nonce,
             pow: Some(grpc::ProofOfWork {
                 pow_algo: h.pow_algo().as_u64(),
-                accumulated_monero_difficulty: h.pow.accumulated_monero_difficulty.into(),
-                accumulated_blake_difficulty: h.pow.accumulated_blake_difficulty.into(),
                 pow_data: h.pow.pow_data,
-                // target_difficulty: h.pow.target_difficulty.as_u64(),
             }),
         }
     }

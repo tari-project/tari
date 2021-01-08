@@ -64,8 +64,7 @@ class BaseNodeClient {
         return this.client.getNewBlockTemplate()
             .sendMessage({pow_algo: 2})
             .then(template => {
-
-                let res = {block_reward: template.block_reward, block: template.new_block_template};
+                let res = {minerData: template.miner_data, block: template.new_block_template};
                 this.blockTemplates["height" + template.new_block_template.header.height] = cloneDeep(res);
                 return res;
             });
@@ -145,8 +144,8 @@ class BaseNodeClient {
                 block = template.new_block_template;
                 return walletClient.getCoinbase()
                     .sendMessage({
-                        "reward": template.block_reward,
-                        "fee": 0,
+                        "reward": template.minerData.reward,
+                        "fee": template.minerData.total_fees,
                         "height": block.header.height
                     });
             }).then(coinbase => {
@@ -170,7 +169,7 @@ class BaseNodeClient {
         let builder = new TransactionBuilder();
         let blockTemplate = existingBlockTemplate || await this.getBlockTemplate();
         const privateKey = Buffer.from(toLittleEndian(blockTemplate.block.header.height, 256)).toString('hex');
-        let cb = builder.generateCoinbase(blockTemplate.block_reward, privateKey, 0, parseInt(blockTemplate.block.header.height) + 1);
+        let cb = builder.generateCoinbase(blockTemplate.minerData.reward, privateKey, blockTemplate.minerData.total_fees, parseInt(blockTemplate.block.header.height) + 1);
         let template = blockTemplate.block;
         template.body.outputs = template.body.outputs.concat(cb.outputs);
         template.body.kernels = template.body.kernels.concat(cb.kernels);
@@ -178,7 +177,7 @@ class BaseNodeClient {
             template: template, coinbase: {
                 output: cb.outputs[0],
                 privateKey: privateKey,
-                amount: parseInt(blockTemplate.block_reward)
+                amount: parseInt(blockTemplate.minerData.reward) + parseInt(blockTemplate.minerData.total_fees)
             }
         };
     }

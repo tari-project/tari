@@ -27,6 +27,8 @@ use crate::{
     transactions::types::{BlindingFactor, Commitment, HashOutput},
 };
 use croaring::Bitmap;
+use log::*;
+use num_format::{Locale, ToFormattedString};
 use serde::{
     de,
     de::{MapAccess, SeqAccess, Visitor},
@@ -38,6 +40,8 @@ use serde::{
 };
 use std::fmt;
 use tari_mmr::pruned_hashset::PrunedHashSet;
+
+const LOG_TARGET: &str = "c::bn::acc_data";
 
 #[derive(Debug)]
 pub struct BlockAccumulatedData {
@@ -283,7 +287,7 @@ impl BlockHeaderAccumulatedDataBuilder {
             .accumulated_blake_difficulty
             .ok_or_else(|| ChainStorageError::InvalidOperation("difficulty not provided".to_string()))?;
 
-        Ok(BlockHeaderAccumulatedData {
+        let result = BlockHeaderAccumulatedData {
             hash: self
                 .hash
                 .ok_or_else(|| ChainStorageError::InvalidOperation("hash not provided".to_string()))?,
@@ -299,7 +303,15 @@ impl BlockHeaderAccumulatedDataBuilder {
             target_difficulty: self
                 .target_difficulty
                 .ok_or_else(|| ChainStorageError::InvalidOperation("target difficulty not provided".to_string()))?,
-        })
+        };
+        trace!(
+            target: LOG_TARGET,
+            "Calculated: Tot_acc_diff {}, Monero {}, SHA3 {}",
+            result.total_accumulated_difficulty.to_formatted_string(&Locale::en),
+            result.accumulated_monero_difficulty,
+            result.accumulated_blake_difficulty,
+        );
+        Ok(result)
     }
 }
 

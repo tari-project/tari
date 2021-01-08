@@ -340,14 +340,17 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             Status::internal(e.to_string())
         })?;
 
-        let height = new_template.header.height;
-
-        let cm = ConsensusManagerBuilder::new(self.node_config.network.into()).build();
-
         let status_watch = self.state_machine_handle.get_status_info_watch();
+        let pow = algo as i32;
         let response = tari_rpc::NewBlockTemplateResponse {
+            miner_data: Some(tari_rpc::MinerData {
+                reward: new_template.reward.0,
+                target_difficulty: new_template.target_difficulty.as_u64(),
+                total_fees: new_template.total_fees.0,
+                algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
+            }),
             new_block_template: Some(new_template.into()),
-            block_reward: cm.emission_schedule().block_reward(height).0,
+
             initial_sync_achieved: (*status_watch.borrow()).bootstrapped,
         };
 
@@ -373,23 +376,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         // construct response
-        let cm = ConsensusManagerBuilder::new(self.node_config.network.into()).build();
         let block_hash = new_block.hash();
         let mining_hash = new_block.header.merged_mining_hash();
-        let pow = new_block.header.pow_algo() as i32;
-        let target_difficulty = new_block.header.pow.target_difficulty;
-        let reward = cm.calculate_coinbase_and_fees(&new_block);
         let block: Option<tari_rpc::Block> = Some(new_block.into());
-        let miner_data = Some(tari_rpc::MinerData {
-            algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
-            target_difficulty: target_difficulty.as_u64(),
-            reward: reward.0,
-            merge_mining_hash: mining_hash,
-        });
+
         let response = tari_rpc::GetNewBlockResult {
             block_hash,
             block,
-            miner_data,
+            merge_mining_hash: mining_hash,
         };
         debug!(target: LOG_TARGET, "Sending GetNewBlock response to client");
         Ok(Response::new(response))

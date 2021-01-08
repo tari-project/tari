@@ -31,6 +31,7 @@ use crate::{
 };
 use futures::stream::StreamExt;
 use log::*;
+use num_format::{Locale, ToFormattedString};
 use prost::Message;
 use std::{convert::TryFrom, sync::Arc, time::Instant};
 use tari_common::log_if_error;
@@ -247,9 +248,10 @@ impl ChainMetadataService {
                 .map_err(|err| ChainMetadataSyncError::ReceivedInvalidChainMetadata(node_id.clone(), err))?;
             debug!(
                 target: LOG_TARGET,
-                "Received chain metadata from NodeId '{}' #{}",
+                "Received chain metadata from NodeId '{}' #{}, Acc_diff {}",
                 node_id,
                 chain_metadata.height_of_longest_chain(),
+                chain_metadata.accumulated_difficulty().to_formatted_string(&Locale::en),
             );
 
             if let Some(pos) = self
@@ -280,9 +282,10 @@ impl ChainMetadataService {
             .map_err(|err| ChainMetadataSyncError::ReceivedInvalidChainMetadata(node_id.clone(), err))?;
         debug!(
             target: LOG_TARGET,
-            "Received chain metadata from NodeId '{}' #{}",
+            "Received chain metadata from NodeId '{}' #{}, Acc_diff {}",
             node_id,
-            chain_metadata.height_of_longest_chain()
+            chain_metadata.height_of_longest_chain(),
+            chain_metadata.accumulated_difficulty().to_formatted_string(&Locale::en),
         );
 
         if let Some(pos) = self

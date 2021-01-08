@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::block_header::{hash_serializer, BlockHeader},
-    proof_of_work::{Difficulty, ProofOfWork},
+    proof_of_work::ProofOfWork,
     transactions::types::BlindingFactor,
 };
 use serde::{Deserialize, Serialize};
@@ -46,19 +46,16 @@ pub struct NewBlockHeaderTemplate {
     pub total_kernel_offset: BlindingFactor,
     /// Proof of work summary
     pub pow: ProofOfWork,
-    /// Target difficulty for this block template
-    pub target_difficulty: Difficulty,
 }
 
 impl NewBlockHeaderTemplate {
-    pub(crate) fn from_header(header: BlockHeader, target_difficulty: Difficulty) -> Self {
+    pub(crate) fn from_header(header: BlockHeader) -> Self {
         Self {
             version: header.version,
             height: header.height,
             prev_hash: header.prev_hash,
             total_kernel_offset: header.total_kernel_offset,
             pow: header.pow,
-            target_difficulty,
         }
     }
 }
@@ -66,11 +63,10 @@ impl NewBlockHeaderTemplate {
 impl Display for NewBlockHeaderTemplate {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         let msg = format!(
-            "Version: {}\nBlock height: {}\nPrevious block hash: {}\nTarget Difficulty: {}\n",
+            "Version: {}\nBlock height: {}\nPrevious block hash: {}\n",
             self.version,
             self.height,
             self.prev_hash.to_hex(),
-            self.target_difficulty,
         );
         fmt.write_str(&msg)?;
         fmt.write_str(&format!(

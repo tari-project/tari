@@ -166,7 +166,7 @@ impl Miner {
             return Ok(self);
         };
         let mut block_template = block_template.unwrap();
-        let target_difficulty = block_template.header.target_difficulty;
+        let target_difficulty = block_template.target_difficulty;
         let output = self.add_coinbase(&mut block_template);
         if output.is_err() {
             error!(

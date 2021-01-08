@@ -32,6 +32,7 @@ use crate::{
 };
 use futures::StreamExt;
 use log::*;
+use num_format::{Locale, ToFormattedString};
 use std::{
     convert::TryFrom,
     sync::Arc,
@@ -211,6 +212,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             );
 
             let timer = Instant::now();
+            let accumulated_difficulty = block.accumulated_data.total_accumulated_difficulty;
             self.db
                 .write_transaction()
                 .insert_block(block.clone())
@@ -219,6 +221,10 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     MetadataValue::ChainHeight(block.block.header.height),
                 )
                 .set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(header_hash))
+                .set_metadata(
+                    MetadataKey::AccumulatedWork,
+                    MetadataValue::AccumulatedWork(accumulated_difficulty),
+                )
                 .commit()
                 .await?;
 
@@ -227,9 +233,15 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
 
             debug!(
                 target: LOG_TARGET,
-                "Block body #{} added in {:.0?}",
+                "Block body #{} added in {:.0?}, Tot_acc_diff {}, Monero {}, SHA3 {}",
                 block.block.header.height,
-                timer.elapsed()
+                timer.elapsed(),
+                block
+                    .accumulated_data
+                    .total_accumulated_difficulty
+                    .to_formatted_string(&Locale::en),
+                block.accumulated_data.accumulated_monero_difficulty,
+                block.accumulated_data.accumulated_blake_difficulty,
             );
             current_block = Some(block);
         }
