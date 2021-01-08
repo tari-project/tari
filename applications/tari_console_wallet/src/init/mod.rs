@@ -192,7 +192,7 @@ pub async fn init_wallet(
         Err(e) => {
             if matches!(e, WalletStorageError::NoPasswordError) {
                 // get supplied or prompt password
-                let passphrase = get_or_prompt_password(arg_password, config.console_wallet_password.clone())?;
+                let passphrase = get_or_prompt_password(arg_password.clone(), config.console_wallet_password.clone())?;
                 let backends = initialize_sqlite_database_backends(db_path, passphrase)
                     .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?;
 
@@ -292,19 +292,26 @@ pub async fn init_wallet(
     })?;
 
     if !wallet_encrypted {
-        debug!(
-            target: LOG_TARGET,
-            "Wallet is not encrypted, prompting to create password."
-        );
+        debug!(target: LOG_TARGET, "Wallet is not encrypted.");
 
-        let passphrase =
-            prompt_password_stdout("Create wallet password: ").map_err(|e| ExitCodes::IOError(e.to_string()))?;
-        let confirmed =
-            prompt_password_stdout("Confirm wallet password: ").map_err(|e| ExitCodes::IOError(e.to_string()))?;
+        // create using --password arg if supplied
+        let passphrase = if let Some(password) = arg_password {
+            debug!(target: LOG_TARGET, "Setting password from command line argument.");
 
-        if passphrase != confirmed {
-            return Err(ExitCodes::InputError("Passwords don't match!".to_string()));
-        }
+            password
+        } else {
+            debug!(target: LOG_TARGET, "Prompting for password.");
+            let password =
+                prompt_password_stdout("Create wallet password: ").map_err(|e| ExitCodes::IOError(e.to_string()))?;
+            let confirmed =
+                prompt_password_stdout("Confirm wallet password: ").map_err(|e| ExitCodes::IOError(e.to_string()))?;
+
+            if password != confirmed {
+                return Err(ExitCodes::InputError("Passwords don't match!".to_string()));
+            }
+
+            password
+        };
 
         wallet
             .apply_encryption(passphrase)
