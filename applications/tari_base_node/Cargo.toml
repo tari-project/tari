@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari full base node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.6.3"
+version = "0.7.0"
 edition = "2018"
 
 [dependencies]
