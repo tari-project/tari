@@ -393,10 +393,10 @@ monerod_password=""
 #num_mining_threads=8
 
 # GRPC address of base node. Will use local setting from the [base_node] config section by default.
-#grpc_base_node_address = "127.0.0.1:18142"
+#base_node_grpc_address = "127.0.0.1:18142"
 
 # GRPC address of console wallet. Will use local setting from the [base_node] config section by default.
-#grpc_console_wallet_address = "127.0.0.1:18143"
+#wallet_grpc_address = "127.0.0.1:18143"
 
 ## Will start mining only when base node has reported that it is bootstrapped
 #mine_on_tip_only=true
