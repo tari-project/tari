@@ -257,16 +257,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bigint"
-version = "4.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0e8c8a600052b52482eff2cf4d810e462fdff1f656ac1ecb6232132a1ed7def"
-dependencies = [
- "byteorder",
- "crunchy 0.1.6",
-]
-
-[[package]]
 name = "bincode"
 version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4223,7 +4213,6 @@ dependencies = [
 name = "tari_mining_node"
 version = "0.1.0"
 dependencies = [
- "bigint",
  "chrono",
  "crossbeam",
  "futures 0.3.6",
