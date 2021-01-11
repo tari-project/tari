@@ -311,15 +311,15 @@ $$ \hat{C_i} = v_i\cdot{H} + k_i\cdot{G} + \sigma_i\cdot{G} $$
 
 We can then verify the rangeproof. If the rangeproof is valid, we know that the value v, is positive and that none of the values have been changed.
 
-And we use the new receiver pubkey ( \\(K_a \\) )  and the script public key ( \\(K_s \\) ) to create a \\( OwnerOffset\\).
-The \\( OwnerOffset\\) must match for every block. This can be calculated as follows:
+And we use the new receiver pubkey ( \\(K_a \\) )  and the script public key ( \\(K_s \\) ) to create a \\( ScriptOffset\\).
+The \\( ScriptOffset\\) must match for every block. This can be calculated as follows:
 $$
-OwnerOffset\cdot{G} = \sum\mathrm{K_s} - \sum(\mathrm{K_a * Hash(UTXO)}) 
+ScriptOffset\cdot{G} = \sum\mathrm{K_s} - \sum(\mathrm{K_a * Hash(UTXO)}) 
 $$
 The \\(Hash(UTXO)\\) is the serialized hash of the entire output.
 
 
-For every block and/or transactions, an accompanying \\( \mathrm OwnerOffset \\) needs to be provided. 
+For every block and/or transactions, an accompanying \\( \mathrm ScriptOffset \\) needs to be provided. 
 
 
 
@@ -352,14 +352,14 @@ But this UTXO is still secure as the UTXO is still locked with the normal MW bli
 Bob's wallet will use the public \\( K_s\\) as input to the script. He can then sign the input of the script with his private key \\( k_s\\). 
 On his UTXO \\( C_b\\) he attaches his second public key \\( K_a\\). 
 
-Bob will then construct his \\( OwnerOffset\\) with:
+Bob will then construct his \\( ScriptOffset\\) with:
 $$
-OwnerOffset = k_s - C_b.k_a * Hash(C_b)
+ScriptOffset = k_s - C_b.k_a * Hash(C_b)
 $$
 
-Any BaseNode can validate the transaction as with normal MW transactional rules. And any node can validate the script and script signature. As well as validate the \\( OwnerOffset\\) with: 
+Any BaseNode can validate the transaction as with normal MW transactional rules. And any node can validate the script and script signature. As well as validate the \\( ScriptOffset\\) with: 
 $$
-OwnerOffset \cdot{G} = K_s - C_b.K_a * Hash(C_b)
+ScriptOffset \cdot{G} = K_s - C_b.K_a * Hash(C_b)
 $$
 
 This allows that Alice can give over the UTXO to Bob, Bob cannot claim the UTXO without alice giving it to Bob as he does not know the blinding factor of \\( C_a\\). 
@@ -372,23 +372,23 @@ K_a = K_{a-Alice} + K_{a-Bob}
 $$
 
 In this case, Alice and Bob both create the normal transaction.  Except here Bob has the fill in the aggregated \\( K_a\\) inside of his commitment \\( C_b\\). Alice will fill in the script with her \\( K_s\\) to unlock the commitment \\( C_a\\). 
-Alice will construct her part of the \\( OwnerOffset\\) with:
+Alice will construct her part of the \\( ScriptOffset\\) with:
 $$
-OwnerOffset_{Alice} = k_s - k_{a-Alice} * H(C_b)
-$$
-
-Bob will construct his part of the \\( OwnerOffset\\) with:
-$$
-OwnerOffset_{Bob} = 0 - k_{a-Bob} * H(C_b)
-$$
-The \\( OwnerOffset\\) can then be constructed as:
-$$
-OwnerOffset = OwnerOffset_{alice} + OwnerOffset_{Bob}
+ScriptOffset_{Alice} = k_s - k_{a-Alice} * H(C_b)
 $$
 
-In this method it is crucial that the Alice's script key \\( k_s\\) keeps hidden. But with the method provided Bob cannot construct \\( k_s\\) as he only sees the public part\\( K_s\\). Alice helps create the \\( OwnerOffset\\) and although her key is now part of the commitment \\( C_b\\) this key is not used after transaction mining. Because Alice owns \\(C_a\\), she needs to sign the input on the transaction. They can then both publish the completed transaction with the completed \\( OwnerOffset\\).
+Bob will construct his part of the \\( ScriptOffset\\) with:
+$$
+ScriptOffset_{Bob} = 0 - k_{a-Bob} * H(C_b)
+$$
+The \\( ScriptOffset\\) can then be constructed as:
+$$
+ScriptOffset = ScriptOffset_{alice} + ScriptOffset_{Bob}
+$$
 
-Any BaseNode can now validate the \\( OwnerOffset\\) and the normal MW transaction. They can also check and prove that Alice did sign the script and provided the correct key. 
+In this method it is crucial that the Alice's script key \\( k_s\\) keeps hidden. But with the method provided Bob cannot construct \\( k_s\\) as he only sees the public part\\( K_s\\). Alice helps create the \\( ScriptOffset\\) and although her key is now part of the commitment \\( C_b\\) this key is not used after transaction mining. Because Alice owns \\(C_a\\), she needs to sign the input on the transaction. They can then both publish the completed transaction with the completed \\( ScriptOffset\\).
+
+Any BaseNode can now validate the \\( ScriptOffset\\) and the normal MW transaction. They can also check and prove that Alice did sign the script and provided the correct key. 
 
 ### One sided payment
 
@@ -402,9 +402,9 @@ Alice owns \\( C_a \\) and in this case the attached script it not important and
 
 Alice knowns the blinding factor  \\( C_a.k\\) and knowns the script redeeming private key \\( k_s\\). Alice and Bob needs to know the blinding factor \\( C_b.k\\) but Bob does not need to know the receiver pubkey \\( C_b.k_a\\). 
 
-Alice will create the entire transaction including the \\( OwnerOffset\\). Bob is not required for any part of this transaction. But Alice will include a script on \\( C_b\\) of (`CheckSigVerify`) with the public key Bob provided out of band for her. 
+Alice will create the entire transaction including the \\( ScriptOffset\\). Bob is not required for any part of this transaction. But Alice will include a script on \\( C_b\\) of (`CheckSigVerify`) with the public key Bob provided out of band for her. 
 
-Any baseNode can now verify that the transaction is complete, verify the signature on the script, and verify the \\( OwnerOffset\\).
+Any baseNode can now verify that the transaction is complete, verify the signature on the script, and verify the \\( ScriptOffset\\).
 
 For Bob to claim his commitment, \\( C_b\\) he requires the blinding factor \\( C_b.k\\) and he requires his own public key for the script.
 Although Alice knowns the blinding factor \\( C_b.k\\), once mined she cannot claim this as she does not know the private key part fo the of script (`CheckSigVerify`) to unlock the script. 
@@ -426,21 +426,21 @@ K_a = K_{a-Alice} + K_{a-Bob}
 $$
 
 In this case, Alice and Bob both create the normal transaction.  Alice and Bob have to ensure that \\( K_a\\) is inside of the commitment \\( C_s\\). Alice will fill in the script with her \\( K_s\\) to unlock the commitment \\( C_a\\). 
-Alice will construct her part of the \\( OwnerOffset\\) with:
+Alice will construct her part of the \\( ScriptOffset\\) with:
 $$
-OwnerOffset_{Alice} = k_s - k_{a-Alice} * H(C_s)
-$$
-
-Bob will construct his part of the \\( OwnerOffset\\) with:
-$$
-OwnerOffset_{Bob} = 0 - k_{a-Bob} * H(C_s)
-$$
-The \\( OwnerOffset\\) can then be constructed as:
-$$
-OwnerOffset = OwnerOffset_{alice} + OwnerOffset_{Bob}
+ScriptOffset_{Alice} = k_s - k_{a-Alice} * H(C_s)
 $$
 
-The blinding factor \\( C_s.k\\) can be safely shared between Bob and Alice. And because both use the \\( Hash(C_s)\\) in the construction of their \\( OwnerOffset\\) parts. Both can know that neither party can change any detail of \\( C_s\\) including the script. 
+Bob will construct his part of the \\( ScriptOffset\\) with:
+$$
+ScriptOffset_{Bob} = 0 - k_{a-Bob} * H(C_s)
+$$
+The \\( ScriptOffset\\) can then be constructed as:
+$$
+ScriptOffset = ScriptOffset_{alice} + ScriptOffset_{Bob}
+$$
+
+The blinding factor \\( C_s.k\\) can be safely shared between Bob and Alice. And because both use the \\( Hash(C_s)\\) in the construction of their \\( ScriptOffset\\) parts. Both can know that neither party can change any detail of \\( C_s\\) including the script. 
 
 As soon as \\( C_s\\) is mined, Alice and Bob now have a combined Commitment on the blockchain with some spending conditions that require the fulfillment of the script conditions to spend. 
 
@@ -448,28 +448,28 @@ The spending case of either Alice or Bob claiming the commitment \\( C_s\\) is n
 
 In this case, both Alice and Bob want to spend to one or more utxo together. Alice and Bob both create a \\( k_a\\) and need to know their own \\( k_s\\)
 
-Alice will construct her part of the \\( OwnerOffset\\) with:
+Alice will construct her part of the \\( ScriptOffset\\) with:
 $$
-OwnerOffset_{Alice} = k_{s-Alice} - k_{a-Alice} * H(C_x)
+ScriptOffset_{Alice} = k_{s-Alice} - k_{a-Alice} * H(C_x)
 $$
 
-Bob will construct his part of the \\( OwnerOffset\\) with:
+Bob will construct his part of the \\( ScriptOffset\\) with:
 $$
-OwnerOffset_{Bob} = k_{s-Bob} - k_{a-Bob} * H(C_x)
+ScriptOffset_{Bob} = k_{s-Bob} - k_{a-Bob} * H(C_x)
 $$
-The \\( OwnerOffset\\) can then be constructed as:
+The \\( ScriptOffset\\) can then be constructed as:
 $$
-OwnerOffset = OwnerOffset_{alice} + OwnerOffset_{Bob}
+ScriptOffset = ScriptOffset_{alice} + ScriptOffset_{Bob}
 $$
 
 With this both Alice and Bob have agreed to the terms of commitment \\( C_x\\) lock that in. Both need to sign the input script with their respective \\( k_s\\) keys. And Both need to create their Offset. In this case, both \\( K_s\\) and \\( K_a\\) are aggregate keys. 
 Because the script resolves to an aggregate key \\( K_s\\) neither Alice nor Bob can claim the commitment \\( C_s\\) without the other party's key. 
 
-A BaseNode validating the transaction will also not be able to tell this is an aggregate transaction as all keys are aggregated schnorr signatures. But it will be able to validate that the script input is correctly signed, thus the output public key is correct.  And that the \\( OwnerOffset\\) is correctly calculated, meaning that the commitment \\( C_x\\) is the correct UTXO for the transaction. 
+A BaseNode validating the transaction will also not be able to tell this is an aggregate transaction as all keys are aggregated schnorr signatures. But it will be able to validate that the script input is correctly signed, thus the output public key is correct.  And that the \\( ScriptOffset\\) is correctly calculated, meaning that the commitment \\( C_x\\) is the correct UTXO for the transaction. 
 ### Cut-through
 
 A major issue with many Mimblewimble extension schemes is that miners are able to cut-through UTXOs if an output is spent
-in the same block it was created. Tari_script with its OwnerOffset will stop cut-through completely as it currently works. It will still allow pruning thou. Cut-through is still possible if the original owner participates. Example Alice, pays Bob, who pays Carol. Cut-through can happen only if Alice and Carol negotiate a new transaction. 
+in the same block it was created. Tari_script with its ScriptOffset will stop cut-through completely as it currently works. It will still allow pruning thou. Cut-through is still possible if the original owner participates. Example Alice, pays Bob, who pays Carol. Cut-through can happen only if Alice and Carol negotiate a new transaction. 
 
 This will ensure that the original owner is happy with the spending the transaction to a new party, eg verified the spending conditions like a script.
 
@@ -477,7 +477,7 @@ This will ensure that the original owner is happy with the spending the transact
 
 At face value, it looks like the burden for wallets has doubled, since each UTXO owner has to remember three private keys,
 the spend key, \\( k_i \\) and the receiver key \\( k_{a} \\) and the script key \\( k_{s} \\) . In practice, the other keys can be
-deterministically derived from the spend key. For example, the \\( k_{a} \\) can be equal to the hash of the \\( k_i \\). The the receiver key \\( k_{a} \\) is also not required to be stored as this key is only used in creation of the OwnerOffset with the purpose of proving that the correct output is included.
+deterministically derived from the spend key. For example, the \\( k_{a} \\) can be equal to the hash of the \\( k_i \\). The the receiver key \\( k_{a} \\) is also not required to be stored as this key is only used in creation of the ScriptOffset with the purpose of proving that the correct output is included.
 
 ### Replay attacks
 
