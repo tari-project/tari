@@ -1,4 +1,6 @@
 @echo off
+title Tari Merge Mining Proxy
+
 rem Verify arguments
 if ["%config_path%"]==[""] (
     echo Problem with "config_path" environment variable: '%config_path%'
@@ -91,7 +93,7 @@ if exist "%my_exe_path%\%my_exe%" (
 
 rem First time run
 if not exist "%config_path%\log4rs_merge_mining_proxy.yml" (
-    "%merge_mining_proxy%" --init --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_merge_mining_proxy.yml" --base-path "%base_path%"
+    "%merge_mining_proxy%" --init --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_merge_mining_proxy.yml" --base-path "%base_path%"
     echo.
     echo.
     echo Created "%config_path%\log4rs_merge_mining_proxy.yml".
@@ -104,4 +106,4 @@ if not exist "%config_path%\log4rs_merge_mining_proxy.yml" (
 )
 
 rem Consecutive runs
-"%merge_mining_proxy%" --config "%config_path%\windows.toml" --log_config "%config_path%\log4rs_merge_mining_proxy.yml" --base-path "%base_path%"
+"%merge_mining_proxy%" --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_merge_mining_proxy.yml" --base-path "%base_path%"

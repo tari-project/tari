@@ -19,7 +19,7 @@ goto END:
 :INSTALL_XMRIG
 rem Download and install
 del /f "%TEMP%\%xmrig_zip%" 2>null
-powershell "Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process; .\get-xmrig-win.ps1"
+powershell "Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process; .\get_xmrig_win.ps1"
 powershell Expand-Archive -Force -LiteralPath "%TEMP%\%xmrig_zip%" -DestinationPath '%xmrig_folder%'
 powershell "Get-Childitem -File -Recurse '%xmrig_folder%\' | Move-Item  -Force -Destination '%xmrig_folder%'"
 powershell "Get-Childitem -Directory $env:USERPROFILE\.xmrig | Remove-item -Force"

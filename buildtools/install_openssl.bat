@@ -18,7 +18,7 @@ goto END:
 :INSTALL_OPEN_SSL
 rem Download install file
 del /f "%TEMP%\%openssl_install_file%" 2>null
-powershell "Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process; .\get-openssl-win.ps1"
+powershell "Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process; .\get_openssl_win.ps1"
 rem Install
 "%TEMP%\%openssl_install_file%"
 goto :eof
