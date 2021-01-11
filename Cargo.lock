@@ -4178,6 +4178,7 @@ version = "0.7.0"
 dependencies = [
  "bincode",
  "bytes 0.5.6",
+ "chrono",
  "config",
  "derive-error",
  "env_logger 0.7.1",

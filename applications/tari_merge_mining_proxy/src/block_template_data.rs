@@ -20,13 +20,36 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::error::MmProxyError;
+use chrono::{self, DateTime, Duration, Utc};
 use std::{collections::HashMap, sync::Arc};
 use tari_app_grpc::tari_rpc::{Block, MinerData};
 use tokio::sync::RwLock;
+use tracing::trace;
+
+pub const LOG_TARGET: &str = "tari_mm_proxy::xmrig";
 
 #[derive(Debug, Clone)]
 pub struct BlockTemplateRepository {
-    blocks: Arc<RwLock<HashMap<Vec<u8>, BlockTemplateData>>>,
+    blocks: Arc<RwLock<HashMap<Vec<u8>, BlockTemplateRepositoryItem>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BlockTemplateRepositoryItem {
+    pub data: BlockTemplateData,
+    datetime: DateTime<Utc>,
+}
+
+impl BlockTemplateRepositoryItem {
+    pub fn new(block_template: BlockTemplateData) -> Self {
+        Self {
+            data: block_template,
+            datetime: Utc::now(),
+        }
+    }
+
+    pub fn datetime(&self) -> DateTime<Utc> {
+        self.datetime
+    }
 }
 
 impl BlockTemplateRepository {
@@ -37,18 +60,43 @@ impl BlockTemplateRepository {
     }
 
     pub async fn get<T: AsRef<[u8]>>(&self, hash: T) -> Option<BlockTemplateData> {
+        trace!(
+            target: LOG_TARGET,
+            "Retrieving blocktemplate with merge mining hash: {:?}",
+            hex::encode(hash.as_ref())
+        );
         let b = self.blocks.read().await;
-        b.get(hash.as_ref()).cloned()
+        match b.get(hash.as_ref()).cloned() {
+            Some(item) => Some(item.data),
+            None => None,
+        }
     }
 
     pub async fn save<T: AsRef<[u8]>>(&mut self, hash: T, block_template: BlockTemplateData) {
+        trace!(
+            target: LOG_TARGET,
+            "Saving blocktemplate with merge mining hash: {:?}",
+            hex::encode(hash.as_ref())
+        );
         let mut b = self.blocks.write().await;
-        b.insert(Vec::from(hash.as_ref()), block_template);
+        let repository_item = BlockTemplateRepositoryItem::new(block_template);
+        b.insert(Vec::from(hash.as_ref()), repository_item);
     }
 
-    pub async fn remove<T: AsRef<[u8]>>(&mut self, hash: T) -> Option<BlockTemplateData> {
+    pub async fn remove_outdated(&mut self) {
+        trace!(target: LOG_TARGET, "Removing outdated blocktemplates");
         let mut b = self.blocks.write().await;
-        b.remove(hash.as_ref())
+        let threshold = Utc::now() - Duration::minutes(20);
+        for item in b.clone().iter() {
+            if item.1.datetime() < threshold {
+                trace!(
+                    target: LOG_TARGET,
+                    "Blocktemplate removed with merge mining hash {:?}",
+                    hex::encode(item.0)
+                );
+                b.remove(item.0);
+            }
+        }
     }
 }
 

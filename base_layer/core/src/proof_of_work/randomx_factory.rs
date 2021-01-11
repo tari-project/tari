@@ -15,7 +15,7 @@ pub struct RandomXConfig {
 
 impl From<&RandomXConfig> for RandomXFlag {
     fn from(source: &RandomXConfig) -> Self {
-        let mut result = RandomXFlag::default();
+        let mut result = RandomXFlag::get_recommended_flags();
         if source.use_large_pages {
             result |= RandomXFlag::FLAG_LARGE_PAGES
         }
