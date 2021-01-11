@@ -192,6 +192,7 @@ impl StateInfo {
             _ => None,
         }
     }
+}
 
 impl Display for StateInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
@@ -205,7 +206,7 @@ impl Display for StateInfo {
     }
 }
 
-    /// This struct contains global state machine state and the info specific to the current State
+/// This struct contains global state machine state and the info specific to the current State
 #[derive(Debug, Clone, PartialEq)]
 pub struct StatusInfo {
     pub bootstrapped: bool,
@@ -234,7 +235,7 @@ impl Display for StatusInfo {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-    /// This struct contains info that is use full for external viewing of state info
+/// This struct contains info that is use full for external viewing of state info
 pub struct BlockSyncInfo {
     pub tip_height: u64,
     pub local_height: u64,
@@ -260,5 +261,4 @@ impl Display for BlockSyncInfo {
         }
         fmt.write_str(&format!("Syncing {}/{}\n", self.local_height, self.tip_height))
     }
-}
 }

@@ -24,6 +24,7 @@ use crate::grpc::{
     helpers::{mean, median},
 };
 use tari_comms::PeerManager;
+use tari_core::base_node::state_machine_service::states::BlockSyncInfo;
 
 use log::*;
 use std::{cmp, convert::TryInto, sync::Arc};
@@ -809,7 +810,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     {
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN sync data");
 
-        let mut channel = self.state_machine.get_status_info_watch();
+        let mut channel = self.state_machine_handle.get_status_info_watch();
 
         let mut sync_info: Option<BlockSyncInfo> = None;
 
@@ -827,7 +828,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             let mut node_ids = Vec::new();
             info.sync_peers
                 .iter()
-                .for_each(|x| node_ids.push(x.node_id.to_string().as_bytes().to_vec()));
+                .for_each(|x| node_ids.push(x.to_string().as_bytes().to_vec()));
             response = tari_rpc::SyncInfoResponse {
                 tip_height: info.tip_height,
                 local_height: info.local_height,
