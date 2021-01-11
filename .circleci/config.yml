@@ -97,8 +97,7 @@ jobs:
       - run:
           name: RFC documentation
           command: |
-            # Workaround for bug https://github.com/rust-lang-nursery/mdBook/issues/855
-            (test -x /usr/local/cargo/bin/mdbook || cargo install --git "https://github.com/integer32llc/mdBook" --rev "d7c7d910057d22180a8eaffee9e17fa983652b64" mdbook)
+            cargo install mdbook --version 0.4.5 --force
             cd RFC && mdbook test && mdbook build
 
       - persist_to_workspace:
