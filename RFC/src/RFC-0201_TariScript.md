@@ -59,6 +59,15 @@ payments and atomic swaps.
 * [RFC-0202: Tari Script Opcodes](RFC-0202_TariScriptOpcodes.md)
 * [RFC-0300: The Tari Digital Assets Network](RFC-0300_DAN.md)
 
+
+$$  
+\newcommand{\script}{\alpha} % utxo script
+\newcommand{\scripthash}{ \sigma }
+\newcommand{\HU}{\mathrm{HU}} % UTXO hash
+\newcommand{\cat}{\Vert}
+\newcommand{\so}{\gamma} % script offset
+$$
+
 ## Introduction
 
 It is hopefully clear to anyone reading these RFCs that the ambitions of the Tari project extend beyond a
@@ -129,14 +138,9 @@ manifested as a script that provides additional constraints over whether a UTXO 
 
 This means that in a very hand wavy sort of way, there ought to be no reason that Tari Script is not workable.
 
-Note that range proofs can be discarded after a UTXO is spent. This entails that the global security guarantees of Mimblewimble are
-not that every transaction in history was valid from an inflation perspective, but that the net effect of all
-transactions lead to zero spurious inflation. This sounds worse than it is, since locally, every individual transaction is
-checked for validity at the time of inclusion in the blockchain. 
+Note that range proofs can be discarded after a UTXO is spent. This entails that the global security guarantees of Mimblewimble are not that every transaction in history was valid from an inflation perspective, but that the net effect of all transactions lead to zero spurious inflation. This sounds worse than it is, since locally, every individual transaction is checked for validity at the time of inclusion in the blockchain. 
 
-If it somehow happened that two illegal transactions made it into the blockchain (perhaps due to a bug), and the two
-cancelled each other out such that the global coin supply was still correct, one would never know this when doing a
-chain synchronisation in pruned mode.
+If it somehow happened that two illegal transactions made it into the blockchain (perhaps due to a bug), and the two cancelled each other out such that the global coin supply was still correct, one would never know this when doing a chain synchronisation in pruned mode.
 
 But if there was a steady inflation bug due to invalid range proofs making it into the blockchain, a pruned mode sync
 would still detect that _something_ was awry, because the global coin supply balance acts as another check.
@@ -219,7 +223,7 @@ pub struct TransactionOutput {
     proof: RangeProof,
     /// The serialised script
     script_hash: Vec<u8>,
-    /// The receiver pubkey, K_a
+    /// The receiver pubkey, K_R
     receiver_pub_key: PublicKey
 }
 ```
@@ -233,15 +237,15 @@ $$
 C_i = v_i \cdot{H} + k_i \cdot{G}
 $$
 
-We define \\( \sigma_i \\) to be the hash of the serialised script, output features and receiver public key
+We define \\( \beta_i \\)  to be the hash of the serialised script, output features and receiver public key
 
 $$
-  \sigma_i = \mathrm{H}(s_i \Vert \mathrm{features_i}\Vert ReceiverPubKey)
+  \beta_i = \mathrm{H}(s_i \Vert \mathrm{F_i}\Vert k_{Ri})
 $$
 
 Wallets now generate the range proof with
 
-$$ k_i  +\sigma_i $$
+$$ k_i  +\beta_i $$
 
 rather than just \\( k_i \\).
 
@@ -279,11 +283,11 @@ pub struct TransactionInput {
     script: Vec<u8>,
     /// The script input data, if any
     input_data: Vec<u8>
-    /// Commitment mining height
+    /// Commitment mining height, h_i
     height : u64
     /// A signature with K_s, signing the script and input data
     script_signature: Signature,
-    /// The receiver pubkey, K_a
+    /// The receiver pubkey, K_R
     receiver_pubkey: PublicKey
 }
 ```
@@ -293,11 +297,10 @@ The height is the height this UTXO was mined at. This is to stop replay attacks,
 
 The script_signature is a Schnorr signature and is defined as follows:
 $$
-signature = r + (H(Script)||InputData||height))*k_s
+s_{Si} = r_{Si} + (\alpha_i||\theta_i||h_i))*k_{si}
 $$ 
 
-Note that it is possible to reduce the wire size of the input by sending only the hash of input (as the hash is currently defined) with the new information.
-
+Note that it is possible to reduce the wire size of the input by sending only a hash of input bundled with rest of the script information.
 
 ### Consensus changes
 While normal block and/or transactions balance stays the same and uses the normal commitment below for balance:
@@ -307,16 +310,16 @@ $$ C_i = v_i\cdot{H} + k_i\cdot{G} $$
 
 We use the rangeproof to lock all the values inside of the transactional output. Before we can calculate and verify the rangeproof we need to calculate the new "rangeproof" commitment \\ ( \hat{C_i} ) \\. 
 
-$$ \hat{C_i} = v_i\cdot{H} + k_i\cdot{G} + \sigma_i\cdot{G} $$
+$$ \hat{C_i} = v_i\cdot{H} + k_i\cdot{G} + \beta_i\cdot{G} $$
 
 We can then verify the rangeproof. If the rangeproof is valid, we know that the value v, is positive and that none of the values have been changed.
 
-And we use the new receiver pubkey ( \\(K_a \\) )  and the script public key ( \\(K_s \\) ) to create a \\( ScriptOffset\\).
+And we use the new receiver pubkey ( \\(K_R \\) )  and the script public key ( \\(K_S \\) ) to create a \\( ScriptOffset\\).
 The \\( ScriptOffset\\) must match for every block. This can be calculated as follows:
 $$
-ScriptOffset\cdot{G} = \sum\mathrm{K_s} - \sum(\mathrm{K_a * Hash(UTXO)}) 
+ScriptOffset\cdot{G} = \sum\mathrm{K_{Si}} - \sum(\mathrm{K_{Ri} * \HU_i}) 
 $$
-The \\(Hash(UTXO)\\) is the serialized hash of the entire output.
+The \\(  \HU_i \\)  is the serialized hash of the entire output sans the rangeproof.
 
 
 For every block and/or transactions, an accompanying \\( \mathrm ScriptOffset \\) needs to be provided. 
@@ -348,45 +351,45 @@ This can be done in two ways.
 #### Method 1
 Alice stored her her commitment \\( C_a\\) with a script of (`NO_OP`). This means that the script will technically do nothing and will only output the input public key. So technically any person can claim the script. 
 
-But this UTXO is still secure as the UTXO is still locked with the normal MW blinding factors. Alice and Bob's wallets communicate to complete a normal MW transaction with normal MW signing. After all this is completed. Bob's wallet will choose a private keys \\( k_s\\) and \\( k_a\\). 
-Bob's wallet will use the public \\( K_s\\) as input to the script. He can then sign the input of the script with his private key \\( k_s\\). 
-On his UTXO \\( C_b\\) he attaches his second public key \\( K_a\\). 
+But this UTXO is still secure as the UTXO is still locked with the normal MW blinding factors. Alice and Bob's wallets communicate to complete a normal MW transaction with normal MW signing. After all this is completed. Bob's wallet will choose a private keys \\( k_{S}\\) and \\( k_{Rb}\\). 
+Bob's wallet will use the public \\( K_{Sa}\\) as input to the script. He can then sign the input of the script with his private key \\( k_{Sa}\\). 
+On his UTXO \\( C_b\\) he attaches his second public key \\( K_{Rb}\\). 
 
 Bob will then construct his \\( ScriptOffset\\) with:
 $$
-ScriptOffset = k_s - C_b.k_a * Hash(C_b)
+ScriptOffset = k_{Sa} - k_{Rb} * \HU_b
 $$
 
 Any BaseNode can validate the transaction as with normal MW transactional rules. And any node can validate the script and script signature. As well as validate the \\( ScriptOffset\\) with: 
 $$
-ScriptOffset \cdot{G} = K_s - C_b.K_a * Hash(C_b)
+ScriptOffset \cdot{G} = K_{Sa} - K_{Rb}* \HU_b
 $$
 
 This allows that Alice can give over the UTXO to Bob, Bob cannot claim the UTXO without alice giving it to Bob as he does not know the blinding factor of \\( C_a\\). 
 #### Method 2
 Alice stored her her commitment \\( C_a\\) with script. This means that the script needs to be provided by some pubkey before unlocking and resolving to a known pubkey.
 
-Alice and Bob both create a  \\( K_a\\) key, with:
+Alice and Bob both create a  \\( K_R\\) key, with:
 $$
-K_a = K_{a-Alice} + K_{a-Bob}
+K_R = K_{Rb-Alice} + K_{Rb-Bob}
 $$
 
-In this case, Alice and Bob both create the normal transaction.  Except here Bob has the fill in the aggregated \\( K_a\\) inside of his commitment \\( C_b\\). Alice will fill in the script with her \\( K_s\\) to unlock the commitment \\( C_a\\). 
+In this case, Alice and Bob both create the normal transaction.  Except here Bob has the fill in the aggregated \\( K_{Rb}\\) inside of his commitment \\( C_b\\). Alice will fill in the script with her \\( K_s\\) to unlock the commitment \\( C_a\\). 
 Alice will construct her part of the \\( ScriptOffset\\) with:
 $$
-ScriptOffset_{Alice} = k_s - k_{a-Alice} * H(C_b)
+ScriptOffset_{Alice} = k_{Sa} - k_{Rb-Alice} * \HU_b
 $$
 
 Bob will construct his part of the \\( ScriptOffset\\) with:
 $$
-ScriptOffset_{Bob} = 0 - k_{a-Bob} * H(C_b)
+ScriptOffset_{Bob} = 0 - k_{Rb-Bob} * \HU_b
 $$
 The \\( ScriptOffset\\) can then be constructed as:
 $$
 ScriptOffset = ScriptOffset_{alice} + ScriptOffset_{Bob}
 $$
 
-In this method it is crucial that the Alice's script key \\( k_s\\) keeps hidden. But with the method provided Bob cannot construct \\( k_s\\) as he only sees the public part\\( K_s\\). Alice helps create the \\( ScriptOffset\\) and although her key is now part of the commitment \\( C_b\\) this key is not used after transaction mining. Because Alice owns \\(C_a\\), she needs to sign the input on the transaction. They can then both publish the completed transaction with the completed \\( ScriptOffset\\).
+In this method it is crucial that the Alice's script key \\( k_{Sa}\\) keeps hidden. But with the method provided Bob cannot construct \\( k_{Sa}\\) as he only sees the public part\\( K_{Sa}\\). Alice helps create the \\( ScriptOffset\\) and although her key is now part of the commitment \\( C_b\\) this key is not used after transaction mining. Because Alice owns \\(C_a\\), she needs to sign the input on the transaction. They can then both publish the completed transaction with the completed \\( ScriptOffset\\).
 
 Any BaseNode can now validate the \\( ScriptOffset\\) and the normal MW transaction. They can also check and prove that Alice did sign the script and provided the correct key. 
 
@@ -398,16 +401,16 @@ $$
 C_a > C_b
 $$
 
-Alice owns \\( C_a \\) and in this case the attached script it not important and has zero effect on the transactions. Because Bob is offline at the time of the transaction, Alice has to create the entire transaction herself. But a one sided transaction needs some out of bound communication. Alice requires a Public key from Bob and needs to supply the blinding factor \\( C_b.k\\) from the Commitment \\( C_b\\) to Bob. 
+Alice owns \\( C_a \\) and in this case the attached script it not important and has zero effect on the transactions. Because Bob is offline at the time of the transaction, Alice has to create the entire transaction herself. But a one sided transaction needs some out of bound communication. Alice requires a Public key from Bob and needs to supply the blinding factor \\( k_b\\) from the Commitment \\( C_b\\) to Bob. 
 
-Alice knowns the blinding factor  \\( C_a.k\\) and knowns the script redeeming private key \\( k_s\\). Alice and Bob needs to know the blinding factor \\( C_b.k\\) but Bob does not need to know the receiver pubkey \\( C_b.k_a\\). 
+Alice knowns the blinding factor  \\( k_{Rb}\\) and knowns the script redeeming private key \\( k_{Sa}\\). Alice and Bob needs to know the blinding factor \\( k_b\\) but Bob does not need to know the receiver pubkey \\( k_{Rb}\\). 
 
 Alice will create the entire transaction including the \\( ScriptOffset\\). Bob is not required for any part of this transaction. But Alice will include a script on \\( C_b\\) of (`CheckSigVerify`) with the public key Bob provided out of band for her. 
 
 Any baseNode can now verify that the transaction is complete, verify the signature on the script, and verify the \\( ScriptOffset\\).
 
-For Bob to claim his commitment, \\( C_b\\) he requires the blinding factor \\( C_b.k\\) and he requires his own public key for the script.
-Although Alice knowns the blinding factor \\( C_b.k\\), once mined she cannot claim this as she does not know the private key part fo the of script (`CheckSigVerify`) to unlock the script. 
+For Bob to claim his commitment, \\( C_b\\) he requires the blinding factor \\( k_b\\) and he requires his own public key for the script.
+Although Alice knowns the blinding factor \\( k_b\\), once mined she cannot claim this as she does not know the private key part fo the of script (`CheckSigVerify`) to unlock the script. 
 
 ### HTLC like script
 
@@ -420,49 +423,49 @@ $$
 
 In this use case Alice and Bob work together to create \\( C_s\\). 
 Because Alice owns \\( C_a\\) she should have the blinding factor \\( C_a.k\\) and know the script spending conditions. 
-Alice and Bob both create a  \\( K_a\\) key, with:
+Alice and Bob both create a  \\( K_{Rs}\\) key, with:
 $$
-K_a = K_{a-Alice} + K_{a-Bob}
+K_{Rs} = K_{R-Alice} + K_{R-Bob}
 $$
 
-In this case, Alice and Bob both create the normal transaction.  Alice and Bob have to ensure that \\( K_a\\) is inside of the commitment \\( C_s\\). Alice will fill in the script with her \\( K_s\\) to unlock the commitment \\( C_a\\). 
+In this case, Alice and Bob both create the normal transaction.  Alice and Bob have to ensure that \\( K_{Rs}\\) is inside of the commitment \\( C_s\\). Alice will fill in the script with her \\( k_{Sa}\\) to unlock the commitment \\( C_a\\). 
 Alice will construct her part of the \\( ScriptOffset\\) with:
 $$
-ScriptOffset_{Alice} = k_s - k_{a-Alice} * H(C_s)
+ScriptOffset_{Alice} = k_{Sa} - k_{R-Alice} * \HU_s
 $$
 
 Bob will construct his part of the \\( ScriptOffset\\) with:
 $$
-ScriptOffset_{Bob} = 0 - k_{a-Bob} * H(C_s)
+ScriptOffset_{Bob} = 0 - k_{R-Bob} * \HU_s
 $$
 The \\( ScriptOffset\\) can then be constructed as:
 $$
 ScriptOffset = ScriptOffset_{alice} + ScriptOffset_{Bob}
 $$
 
-The blinding factor \\( C_s.k\\) can be safely shared between Bob and Alice. And because both use the \\( Hash(C_s)\\) in the construction of their \\( ScriptOffset\\) parts. Both can know that neither party can change any detail of \\( C_s\\) including the script. 
+The blinding factor \\( k_s\\) can be safely shared between Bob and Alice. And because both use the \\( \HU_s\\) in the construction of their \\( ScriptOffset\\) parts. Both can know that neither party can change any detail of \\( C_s\\) including the script. 
 
 As soon as \\( C_s\\) is mined, Alice and Bob now have a combined Commitment on the blockchain with some spending conditions that require the fulfillment of the script conditions to spend. 
 
 The spending case of either Alice or Bob claiming the commitment \\( C_s\\) is not going to be handled here as it is exactly the same as all the above cases. But The case of Alice and Bob spending this together is going to be explained here. 
 
-In this case, both Alice and Bob want to spend to one or more utxo together. Alice and Bob both create a \\( k_a\\) and need to know their own \\( k_s\\)
+In this case, both Alice and Bob want to spend to one or more utxo together. Alice and Bob both create a \\( k_{Rx}\\) and need to know their own \\( k_{Rx}\\)
 
 Alice will construct her part of the \\( ScriptOffset\\) with:
 $$
-ScriptOffset_{Alice} = k_{s-Alice} - k_{a-Alice} * H(C_x)
+ScriptOffset_{Alice} = k_{Ss-Alice} - k_{Rx-Alice} * \HU_x
 $$
 
 Bob will construct his part of the \\( ScriptOffset\\) with:
 $$
-ScriptOffset_{Bob} = k_{s-Bob} - k_{a-Bob} * H(C_x)
+ScriptOffset_{Bob} = k_{Ss-Bob} - k_{Rx-Bob} * \HU_x
 $$
 The \\( ScriptOffset\\) can then be constructed as:
 $$
 ScriptOffset = ScriptOffset_{alice} + ScriptOffset_{Bob}
 $$
 
-With this both Alice and Bob have agreed to the terms of commitment \\( C_x\\) lock that in. Both need to sign the input script with their respective \\( k_s\\) keys. And Both need to create their Offset. In this case, both \\( K_s\\) and \\( K_a\\) are aggregate keys. 
+With this both Alice and Bob have agreed to the terms of commitment \\( C_x\\) lock that in. Both need to sign the input script with their respective \\( k_S\\) keys. And Both need to create their Offset. In this case, both \\( K_S\\) and \\( K_R\\) are aggregate keys. 
 Because the script resolves to an aggregate key \\( K_s\\) neither Alice nor Bob can claim the commitment \\( C_s\\) without the other party's key. 
 
 A BaseNode validating the transaction will also not be able to tell this is an aggregate transaction as all keys are aggregated schnorr signatures. But it will be able to validate that the script input is correctly signed, thus the output public key is correct.  And that the \\( ScriptOffset\\) is correctly calculated, meaning that the commitment \\( C_x\\) is the correct UTXO for the transaction. 
@@ -476,8 +479,8 @@ This will ensure that the original owner is happy with the spending the transact
 ### Script lock key generation
 
 At face value, it looks like the burden for wallets has doubled, since each UTXO owner has to remember three private keys,
-the spend key, \\( k_i \\) and the receiver key \\( k_{a} \\) and the script key \\( k_{s} \\) . In practice, the other keys can be
-deterministically derived from the spend key. For example, the \\( k_{a} \\) can be equal to the hash of the \\( k_i \\). The the receiver key \\( k_{a} \\) is also not required to be stored as this key is only used in creation of the ScriptOffset with the purpose of proving that the correct output is included.
+the spend key, \\( k_i \\) and the receiver key \\( k_{R} \\) and the script key \\( k_{S} \\) . In practice, the other keys can be
+deterministically derived from the spend key. For example, the \\( k_{R} \\) can be equal to the hash of the \\( k_i \\). The the receiver key \\( k_{R} \\) is also not required to be stored as this key is only used in creation of the ScriptOffset with the purpose of proving that the correct output is included.
 
 ### Replay attacks
 
@@ -528,23 +531,27 @@ outputs into vanilla, default UTXOs in a mixing transaction to disassociate Tari
 
 ## Notation
 
-| Symbol            | Definition                                                                                                           |
-|:------------------|:---------------------------------------------------------------------------------------------------------------------|
-| \\( s_a \\)       | An output script for output _a_, serialised to binary                                                                |
-| \\( \sigma_a \\)  | The 256-bit Blake2b hash of an output script, \\( s_a \\) , receiver Pubkey ,\\( k_a \\) ,  UTXo output features     |
-| \\( k_{a} \\)     | Receiver Pubkey                                                                                                      |
-| \\( C_a \\)       | A Pedersen commitment,  i.e. \\( k_a \cdot{G} + v \cdot{H} \\)                                                       |
-| \\( {C_a'} \\)    | A script-modified Pedersen commitment, \\( C_a \\)  with \\( \sigma_a \cdot{G} \\), i.e. \\( k_a \cdot{G} + v_a\cdot{H} + \sigma_a \cdot{G} \\)|
- 
-Note on the notation used in this document:
-$$
- x \cdot{k}
-$$
-This means the value x over curve K. 
-$$
- x.k
-$$
-This means the value k from the value x
+
+Where possible, the "usual" notation is used to denote terms commonly found in cryptocurrency literature. New terms introduced by Tariscript are assigned greek lowercase letters in most cases.  
+The capital letter subscripts, _R_ and _S_ refer to a UTXO _receiver_ and _script_ respectively.
+
+| Symbol                  | Definition                                                                                                                         |
+|:------------------------|:-----------------------------------------------------------------------------------------------------------------------------------|
+| \\( \script_i \\)       | An output script for output _i_, serialised to binary                                                                              |
+| \\( h_i \\)             | Block height that UTXO \\(i\\) was previously mined.                                                                               |
+| \\(  \HU_i \\)          | The hash of the full UTXO _i_ _sans_ rangeproof.                                                                                   |
+| \\( F_i \\)             | Output features for UTXO _i_.                                                                                                      |
+| \\( f_t \\)             | transaction fee for transaction _t_.                                                                                               |
+| \\( \alpha_i \\)   | The 256-bit Blake2b hash of an output script, \\( \script_i \\)                                                                    |
+| \\( k_{Ri}\, K_{Ri} \\) | The private - public keypair for the UTXO receiver.                                                                                |
+| \\( k_{Si}\, K_{Si} \\) | The private - public keypair for the script key. The script, \\( \script_i \\) resolves to \\( K_S \\) after completing execution. |
+| \\( \beta_i \\)         | Auxilliary data committed to in the range proof. \\( \beta_i = \mathrm{H}(s_i \cat F_i \cat K_{Ri})    \\)                         |
+| \\( \so_t \\)           | The script offset for transaction _t_. \\( \so_t = \sum_j{ k_{Sjt}} - \sum_j{k_{Rjt}\cdot\HU_i} \\)                                |
+| \\( C_i \\)             | A Pedersen commitment,  i.e. \\( k_i \cdot{G} + v_i \cdot{H} \\)                                                                   |
+| \\( \hat{C}_i \\)       | A modified Pedersen commitment, \\( \hat{C}_i = (k_i + \beta_i)\cdot{G} + v_i\cdot{H} \\)                                          |
+| \\( \theta_i \\)        | The serialised input for script \\( s_i \\)                                                                                        |
+| \\( s_{Si} \\)          | A script signature for output \\( i \\). \\( s_{Si} = r_{Si} + k_{Si}\mathrm{H}(\alpha_i \cat \theta_i \cat h_i) \\)    
+
 
 ### Credits
 
