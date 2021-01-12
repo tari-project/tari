@@ -281,6 +281,7 @@ async fn monitor_validation_protocol(
                         );
                         continue;
                     },
+                    _ => (),
                 }
             },
             // Restart the protocol if it timed out
