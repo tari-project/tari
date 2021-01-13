@@ -28,8 +28,8 @@ use crate::{
     lmdb_store::LMDBDatabase,
 };
 use lmdb_zero::traits::AsLmdbBytes;
-use serde::{de::DeserializeOwned, export::PhantomData, Serialize};
-use std::sync::Arc;
+use serde::{de::DeserializeOwned, Serialize};
+use std::{marker::PhantomData, sync::Arc};
 
 /// This is a simple wrapper struct that lifts the generic parameters so that KeyValStore can be implemented on
 /// LMDBDatabase. LMDBDatabase doesn't have the generics at the struct level because the LMDBStore can contain many
