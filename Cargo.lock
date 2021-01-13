@@ -2610,6 +2610,23 @@ dependencies = [
 [[package]]
 name = "parity-multiaddr"
 version = "0.7.3"
+source = "git+https://github.com/tari-project/rust-libp2p.git?branch=sb-backport-1912#b92ec7a9975afb8b71461be32fdc070ed212a688"
+dependencies = [
+ "arrayref",
+ "bs58",
+ "byteorder",
+ "data-encoding",
+ "parity-multihash 0.2.3 (git+https://github.com/tari-project/rust-libp2p.git?branch=sb-backport-1912)",
+ "percent-encoding 2.1.0",
+ "serde 1.0.116",
+ "static_assertions 1.1.0",
+ "unsigned-varint",
+ "url 2.1.1",
+]
+
+[[package]]
+name = "parity-multiaddr"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f77055f9e81921a8cc7bebeb6cded3d128931d51f1e3dd6251f0770a6d431477"
 dependencies = [
@@ -2617,12 +2634,26 @@ dependencies = [
  "bs58",
  "byteorder",
  "data-encoding",
- "parity-multihash",
+ "parity-multihash 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "percent-encoding 2.1.0",
  "serde 1.0.116",
  "static_assertions 1.1.0",
  "unsigned-varint",
  "url 2.1.1",
+]
+
+[[package]]
+name = "parity-multihash"
+version = "0.2.3"
+source = "git+https://github.com/tari-project/rust-libp2p.git?branch=sb-backport-1912#b92ec7a9975afb8b71461be32fdc070ed212a688"
+dependencies = [
+ "blake2",
+ "bytes 0.5.6",
+ "rand 0.7.3",
+ "sha-1",
+ "sha2",
+ "sha3 0.8.2",
+ "unsigned-varint",
 ]
 
 [[package]]
@@ -3904,7 +3935,7 @@ dependencies = [
  "get_if_addrs",
  "log 0.4.11",
  "log4rs",
- "parity-multiaddr",
+ "parity-multiaddr 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "path-clean",
  "prost-build",
  "serde 1.0.116",
@@ -3948,7 +3979,7 @@ dependencies = [
  "lmdb-zero",
  "log 0.4.11",
  "nom 5.1.2",
- "parity-multiaddr",
+ "parity-multiaddr 0.7.3 (git+https://github.com/tari-project/rust-libp2p.git?branch=sb-backport-1912)",
  "pin-project",
  "prost",
  "rand 0.7.3",
