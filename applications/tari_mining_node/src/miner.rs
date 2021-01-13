@@ -51,6 +51,7 @@ pub struct MiningReport {
     /// Will be set for when mined header is matching required difficulty
     pub header: Option<BlockHeader>,
     pub height: u64,
+    pub last_nonce: u64,
 }
 
 /// Miner is starting number of mining threads and implements Stream for async reports polling
@@ -191,6 +192,7 @@ pub fn mining_task(
                 height: header.height,
                 header: Some(header),
                 target_difficulty,
+                last_nonce: nonce,
             }) {
                 error!("Miner {} failed to send report: {}", miner, err);
             }
@@ -207,6 +209,7 @@ pub fn mining_task(
                 header: None,
                 height: header.height,
                 target_difficulty,
+                last_nonce: nonce,
             });
             waker.clone().wake();
             trace!("Reporting from {} result {:?}", miner, res);

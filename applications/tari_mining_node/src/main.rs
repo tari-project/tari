@@ -39,6 +39,7 @@ mod utils;
 
 use errors::{err_block_header, err_empty, MinerError};
 use miner::Miner;
+use std::time::{Duration, Instant};
 
 /// Application entry point
 fn main() {
@@ -150,6 +151,7 @@ async fn mining_cycle(
 
     // 4. Initialize miner and start receiving mining statuses in the loop
     let mut reports = Miner::init_mining(core_header, target_difficulty, config.num_mining_threads);
+    let template_time = Instant::now();
     while let Some(report) = reports.next().await {
         if let Some(header) = report.header {
             // Mined a block fitting the difficulty
@@ -166,15 +168,21 @@ async fn mining_cycle(
             break;
         } else {
             let hashrate = report.hashes as f64 / report.elapsed.as_micros() as f64;
+            let estimated_time =
+                report.target_difficulty as f64 / (hashrate * config.num_mining_threads as f64 * 1000000.0);
+            let remaining = estimated_time as i32 - template_time.elapsed().as_secs() as i32;
             debug!(
-                "Miner {} reported hash rate {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target Diff: \
-                 {}",
+                "Miner {} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {}, Estimated \
+                 block in approx. {}m{}s (+/- Ave. {:.0}s)",
                 report.miner,
                 hashrate,
                 hashrate * config.num_mining_threads as f64,
                 config.num_mining_threads,
                 report.height,
-                report.target_difficulty
+                report.target_difficulty,
+                remaining / 60,
+                remaining % 60,
+                estimated_time,
             );
         }
     }
