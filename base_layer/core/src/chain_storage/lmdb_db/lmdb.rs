@@ -36,6 +36,7 @@ use lmdb_zero::{
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
+use tari_crypto::tari_utilities::hex::to_hex;
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
 
 // TODO: Calling `access` for every lmdb operation has some overhead (an atomic read and set). Check if is possible to
@@ -65,13 +66,16 @@ where T: DeserializeOwned {
 pub fn lmdb_insert<K, V>(txn: &WriteTransaction<'_>, db: &Database, key: &K, val: &V) -> Result<(), ChainStorageError>
 where
     K: AsLmdbBytes + ?Sized,
-    V: Serialize,
+    V: Serialize + std::fmt::Debug,
 {
     let val_buf = serialize(val)?;
     txn.access().put(&db, key, &val_buf, put::NOOVERWRITE).map_err(|e| {
         error!(
             target: LOG_TARGET,
-            "Could not insert value into lmdb transaction: {:?}", e
+            "Could not insert value into lmdb transaction ({}/{:?}): {:?}",
+            to_hex(key.as_lmdb_bytes()),
+            val,
+            e,
         );
         ChainStorageError::AccessError(e.to_string())
     })

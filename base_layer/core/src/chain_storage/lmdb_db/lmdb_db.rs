@@ -65,6 +65,7 @@ use crate::{
         ChainHeader,
         MetadataKey,
     },
+    crypto::tari_utilities::hex::to_hex,
     transactions::{
         aggregated_body::AggregateBody,
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
@@ -88,6 +89,7 @@ use tari_common_types::{
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
 use tari_mmr::{Hash, MerkleMountainRange, MutableMmr};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
+use uint::rustc_hex::ToHex;
 
 type DatabaseRef = Arc<Database<'static>>;
 
@@ -180,6 +182,11 @@ impl LMDBDatabase {
                     kernel,
                     mmr_position,
                 } => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Inserting kernel `{}`",
+                        kernel.excess_sig.get_signature().to_hex()
+                    );
                     self.insert_kernel(&write_txn, header_hash, *kernel, mmr_position)?;
                 },
                 InsertOutput {
@@ -187,6 +194,11 @@ impl LMDBDatabase {
                     output,
                     mmr_position,
                 } => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Inserting output `{}`",
+                        to_hex(&output.commitment.as_bytes())
+                    );
                     self.insert_output(&write_txn, header_hash, *output, mmr_position)?;
                 },
                 InsertInput {
@@ -194,6 +206,11 @@ impl LMDBDatabase {
                     input,
                     mmr_position,
                 } => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Inserting input `{}`",
+                        to_hex(&input.commitment.as_bytes())
+                    );
                     self.insert_input(&write_txn, header_hash, *input, mmr_position)?;
                 },
                 DeleteOrphanChainTip(hash) => {
@@ -204,6 +221,8 @@ impl LMDBDatabase {
                 },
                 DeleteBlock(hash) => {
                     let hash_hex = hash.to_hex();
+                    debug!(target: LOG_TARGET, "Deleting block `{}`", hash_hex);
+                    debug!(target: LOG_TARGET, "Deleting UTXOs...");
                     let rows = lmdb_delete_keys_starting_with::<Option<TransactionOutputRowData>>(
                         &write_txn,
                         &self.utxos_db,
@@ -212,12 +231,14 @@ impl LMDBDatabase {
 
                     for utxo in rows {
                         if let Some(u) = utxo {
+                            trace!(target: LOG_TARGET, "Deleting UTXO `{}`", to_hex(&u.hash));
                             lmdb_delete(&write_txn, &self.txos_hash_to_index_db, u.hash.as_slice())?;
                         } else {
                             // TODO: Replace when this node is pruned
                             unimplemented!();
                         }
                     }
+                    debug!(target: LOG_TARGET, "Deleting kernels...");
                     let kernels = lmdb_delete_keys_starting_with::<Option<TransactionKernelRowData>>(
                         &write_txn,
                         &self.kernels_db,
@@ -225,11 +246,26 @@ impl LMDBDatabase {
                     )?;
                     for kernel in kernels {
                         if let Some(k) = kernel {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Deleting excess `{}`",
+                                to_hex(k.kernel.excess.as_bytes())
+                            );
                             lmdb_delete(&write_txn, &self.kernel_excess_index, k.kernel.excess.as_bytes())?;
+                            let mut excess_sig_key = Vec::<u8>::new();
+                            excess_sig_key.extend(k.kernel.excess_sig.get_public_nonce().as_bytes());
+                            excess_sig_key.extend(k.kernel.excess_sig.get_signature().as_bytes());
+                            trace!(
+                                target: LOG_TARGET,
+                                "Deleting excess signature `{}`",
+                                to_hex(&excess_sig_key)
+                            );
+                            lmdb_delete(&write_txn, &self.kernel_excess_sig_index, excess_sig_key.as_slice())?;
                         } else {
                             unimplemented!("This option around kernels is unnecessary and should be removed")
                         }
                     }
+                    debug!(target: LOG_TARGET, "Deleting Inputs...");
                     lmdb_delete_keys_starting_with::<TransactionInputRowData>(&write_txn, &self.inputs_db, &hash_hex)?;
                 },
                 WriteOperation::InsertMoneroSeedHeight(data, height) => {
@@ -494,6 +530,11 @@ impl LMDBDatabase {
         for kernel in kernels {
             total_kernel_sum = &total_kernel_sum + &kernel.excess;
             let pos = kernel_mmr.push(kernel.hash())?;
+            trace!(
+                target: LOG_TARGET,
+                "Inserting kernel `{}`",
+                kernel.excess_sig.get_signature().to_hex()
+            );
             self.insert_kernel(txn, block_hash.clone(), kernel, pos as u32)?;
         }
 
@@ -503,6 +544,11 @@ impl LMDBDatabase {
             total_utxo_sum = &total_utxo_sum + &output.commitment;
             output_mmr.push(output.hash())?;
             proof_mmr.push(output.proof().hash())?;
+            trace!(
+                target: LOG_TARGET,
+                "Inserting output `{}`",
+                to_hex(&output.commitment.as_bytes())
+            );
             self.insert_output(
                 txn,
                 block_hash.clone(),
@@ -522,6 +568,11 @@ impl LMDBDatabase {
                     index
                 )));
             }
+            trace!(
+                target: LOG_TARGET,
+                "Inserting input `{}`",
+                to_hex(&input.commitment.as_bytes())
+            );
             self.insert_input(txn, block_hash.clone(), input, index)?;
         }
         output_mmr.compress();

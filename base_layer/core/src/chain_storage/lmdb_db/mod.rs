@@ -48,7 +48,7 @@ pub const LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA: &str = "orphan_accumulated_dat
 pub const LMDB_DB_ORPHAN_CHAIN_TIPS: &str = "orphan_chain_tips";
 pub const LMDB_DB_ORPHAN_PARENT_MAP_INDEX: &str = "orphan_parent_map_index";
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct TransactionOutputRowData {
     pub output: TransactionOutput,
     pub header_hash: HashOutput,
@@ -57,7 +57,7 @@ pub(crate) struct TransactionOutputRowData {
     pub range_proof_hash: HashOutput,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct TransactionInputRowData {
     pub input: TransactionInput,
     pub header_hash: HashOutput,
@@ -65,7 +65,7 @@ pub(crate) struct TransactionInputRowData {
     pub hash: HashOutput,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct TransactionKernelRowData {
     pub kernel: TransactionKernel,
     pub header_hash: HashOutput,
