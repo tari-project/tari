@@ -129,7 +129,6 @@ else
   gitclean="gitclean"
 fi
 
-#if [ "$1" == "latest-tag" ]; then
 if [[ "$1" =~ ^latest* ]]; then
   if [ "$gitclean" == "uncommitted" ]; then
     echo "Can't use latest options with uncommitted changes"
@@ -142,7 +141,8 @@ if [[ "$1" =~ ^latest* ]]; then
   fi
 
   if [ "$1" == "latest-tagv" ]; then
-    gitTagVersion=$(git describe --tags --match "v[0-9]*" --abbrev=4 HEAD)
+    #gitTagVersion=$(git describe --tags --match "v[0-9]*" --abbrev=4 HEAD)
+    gitTagVersion=$(git describe --tags `git rev-list --tags=v[0-9].[0-9].[0-9]* --max-count=1`)
   fi
   git checkout tags/$gitTagVersion -B $gitTagVersion-build
 else
@@ -151,10 +151,6 @@ fi
 
 gitBranch="$(git rev-parse --symbolic-full-name --abbrev-ref HEAD)"
 gitCommitHash="$(git rev-parse --short HEAD)"
-
-echo $gitTagVersion
-echo $gitBranch
-echo $gitCommitHash
 
 #if [ "git branch --list ${gitTagVersion-build}" ]; then
 #  git checkout tags/$gitTagVersion
@@ -180,16 +176,25 @@ else
   archiveBase="$distFullName-$rustVer-$gitTagVersion-$gitclean"
 fi
 
-echo $rustVer
+echo "git Tag Version $gitTagVersion"
+echo "git Branch $gitBranch"
+echo "git Commit Hash $gitCommitHash"
+echo "Rust Version $rustVer"
+if [ "$gitTagVersion" == "$rustVer" ]; then
+  echo "git Tag and rust version match"
+else
+  echo "Warning, git Tag Version does not match rust Version!"
+  #exit 6
+fi
 
 shaSumVal="256"
 
 #archiveBase="$distFullName-$rustVer-$gitTagVersion-$gitclean"
 hashFile="$archiveBase.sha${shaSumVal}sum"
 archiveFile="$archiveBase.zip"
-echo $archiveBase
-echo $hashFile
-echo $archiveFile
+echo "Archive Base $archiveBase"
+echo "Hash file $hashFile"
+echo "Archive file $archiveFile"
 
 distDir=$(mktemp -d)
 if [ -d $distDir ]; then
@@ -214,7 +219,7 @@ COPY_FILES=(
 )
 
 for COPY_FILE in "${COPY_FILES[@]}"; do
-  cp "$COPY_FILE" "$distDir/dist/"
+  cp -vr "$COPY_FILE" "$distDir/dist/"
 done
 
 pushd $distDir/dist
