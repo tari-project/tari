@@ -223,11 +223,6 @@ impl UnspawnedCommsNode {
             "Your node's network ID is '{}'",
             node_identity.node_id()
         );
-        info!(
-            target: LOG_TARGET,
-            "Your node's public address is '{}'",
-            node_identity.public_address()
-        );
 
         let listening_addr = Self::wait_listening(connection_manager_event_subscription).await?;
         let mut hidden_service = None;
@@ -237,6 +232,11 @@ impl UnspawnedCommsNode {
             node_identity.set_public_address(hs.get_onion_address());
             hidden_service = Some(hs);
         }
+        info!(
+            target: LOG_TARGET,
+            "Your node's public address is '{}'",
+            node_identity.public_address()
+        );
 
         Ok(CommsNode {
             shutdown_signal,

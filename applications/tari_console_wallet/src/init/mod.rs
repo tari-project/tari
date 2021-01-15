@@ -27,7 +27,10 @@ use crate::{
 use log::*;
 use rpassword::prompt_password_stdout;
 use std::{fs, str::FromStr, sync::Arc};
-use tari_app_utilities::utilities::{setup_wallet_transport_type, ExitCodes};
+use tari_app_utilities::{
+    identity_management,
+    utilities::{setup_wallet_transport_type, ExitCodes},
+};
 use tari_common::{ConfigBootstrap, GlobalConfig, Network};
 use tari_comms::{peer_manager::Peer, NodeIdentity};
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
@@ -290,6 +293,13 @@ pub async fn init_wallet(
             ExitCodes::WalletError(format!("Error creating Wallet Container: {}", e))
         }
     })?;
+
+    if let Some(hs) = wallet.comms.hidden_service() {
+        identity_management::save_as_json(&config.console_wallet_tor_identity_file, hs.tor_identity())
+            .map_err(|e| ExitCodes::WalletError(format!("Failed to save tor identity: {:?}", e)))?;
+    }
+    identity_management::save_as_json(&config.console_wallet_identity_file, wallet.comms.node_identity_ref())
+        .map_err(|e| ExitCodes::WalletError(format!("Failed to save identity: {:?}", e)))?;
 
     if !wallet_encrypted {
         debug!(target: LOG_TARGET, "Wallet is not encrypted.");
