@@ -26,8 +26,7 @@ use crate::{
     helpers,
 };
 use bytes::BytesMut;
-use core::sync::atomic::AtomicBool;
-use futures::StreamExt;
+use futures::{StreamExt, TryFutureExt};
 use hyper::{
     body::Bytes,
     http::{header, response::Parts},
@@ -47,8 +46,12 @@ use std::{
     cmp::min,
     convert::TryFrom,
     future::Future,
+    io::Write,
     net::SocketAddr,
-    sync::{atomic::Ordering, Arc},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     task::{Context, Poll},
 };
 use tari_app_grpc::{tari_rpc as grpc, tari_rpc::GetCoinbaseRequest};
@@ -106,6 +109,83 @@ impl MergeMiningProxyService {
                 initial_sync_achieved: Arc::new(AtomicBool::new(false)),
             },
         }
+    }
+
+    pub async fn check_connections<W: Write>(&self, w: &mut W) -> bool {
+        let mut is_success = true;
+        let inner = &self.inner;
+
+        let _ = writeln!(w, "Connections:");
+
+        let _ = write!(w, "- monerod ({})... ", inner.config.monerod_url);
+        let monerod_uri = inner
+            .get_fully_qualified_monerod_url(&Uri::from_static("/json_rpc"))
+            .expect("Configuration error: Unable to parse monero_url");
+        let result = inner
+            .http_client
+            .request(Method::POST, monerod_uri)
+            .body(
+                json::to_string(&jsonrpc::Request {
+                    method: "get_version",
+                    params: &[],
+                    id: Default::default(),
+                    jsonrpc: None,
+                })
+                .expect("conversion to json should always succeed"),
+            )
+            .send()
+            .map_err(MmProxyError::MonerodRequestFailed)
+            .and_then(|resp| async {
+                resp.json::<jsonrpc::Response>()
+                    .await
+                    .map_err(MmProxyError::MonerodRequestFailed)
+            })
+            .await;
+
+        match result {
+            Ok(jsonrpc::Response { error: Some(error), .. }) => {
+                let _ = writeln!(w, "❌ ({})", error.message);
+                is_success = false;
+            },
+            Ok(jsonrpc::Response { result: Some(resp), .. }) => {
+                let _ = writeln!(w, "✅ (v{})", resp["version"].as_u64().unwrap_or(0));
+            },
+            Ok(_) => {
+                let _ = writeln!(w, "✅");
+            },
+            Err(err) => {
+                let _ = writeln!(w, "❌ ({})", err);
+                is_success = false;
+            },
+        }
+
+        let _ = write!(w, "- Tari base node GRPC ({})... ", inner.config.grpc_base_node_address);
+        match inner.connect_grpc_client().await {
+            Ok(_) => {
+                let _ = writeln!(w, "✅");
+            },
+            Err(err) => {
+                let _ = writeln!(w, "❌ ({})", err);
+                is_success = false;
+            },
+        }
+
+        let _ = write!(
+            w,
+            "- Tari wallet GRPC ({})... ",
+            inner.config.grpc_console_wallet_address
+        );
+        match inner.connect_grpc_wallet_client().await {
+            Ok(_) => {
+                let _ = writeln!(w, "✅");
+            },
+            Err(err) => {
+                let _ = writeln!(w, "❌ ({})", err);
+                is_success = false;
+            },
+        }
+
+        is_success
     }
 }
 
