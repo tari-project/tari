@@ -6,7 +6,9 @@
 export xmrig_zip="xmrig-linux64.tar.gz"
 export xmrig_folder="${HOME}/xmrig"
 export xmrig_runtime="xmrig"
-export xmrig_repo="https://api.github.com/repos/xmrig/xmrig/releases/latest"
+# TODO: Standardize on version 6.6.2 for now as later version(s) has a breaking interface change with the merge mining proxy
+#export xmrig_repo="https://api.github.com/repos/xmrig/xmrig/releases/latest"
+export xmrig_repo="https://api.github.com/repos/xmrig/xmrig/releases"
 
 echo "Downloading and installing XMRig..."
 echo

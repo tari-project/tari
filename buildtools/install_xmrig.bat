@@ -7,7 +7,9 @@ rem   - Download `XMRig` at `https://github.com/xmrig/xmrig/releases/`
 set xmrig_zip=xmrig-win64.zip
 set xmrig_folder=%USERPROFILE%\.xmrig
 set xmrig_runtime=xmrig.exe
-set xmrig_repo=https://api.github.com/repos/xmrig/xmrig/releases/latest
+rem TODO: Standardize on version 6.6.2 for now as later version(s) has a breaking interface change with the merge mining proxy
+rem set xmrig_repo=https://api.github.com/repos/xmrig/xmrig/releases/latest
+set xmrig_repo=https://api.github.com/repos/xmrig/xmrig/releases
 
 echo Downloading and installing XMRig...
 echo.
