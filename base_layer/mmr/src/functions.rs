@@ -29,8 +29,7 @@ use crate::{
     MutableMmr,
 };
 use digest::Digest;
-use serde::export::PhantomData;
-use std::convert::TryFrom;
+use std::{convert::TryFrom, marker::PhantomData};
 
 pub type PrunedMmr<D> = MerkleMountainRange<D, PrunedHashSet>;
 pub type PrunedMutableMmr<D> = MutableMmr<D, PrunedHashSet>;

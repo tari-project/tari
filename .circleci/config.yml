@@ -1,7 +1,7 @@
 version: 2.1
 
 defaults:
-  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2020-06-10
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2020-08-13
 
 commands:
   test:

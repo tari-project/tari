@@ -21,8 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::util::luhn::{checksum, is_valid};
-use serde::export::{fmt::Error, Formatter};
-use std::{collections::HashMap, fmt::Display};
+use std::{
+    collections::HashMap,
+    fmt::{Display, Error, Formatter},
+};
 use tari_core::transactions::types::PublicKey;
 use tari_crypto::tari_utilities::{
     hex::{Hex, HexError},
