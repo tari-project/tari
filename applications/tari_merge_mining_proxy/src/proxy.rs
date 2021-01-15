@@ -280,6 +280,16 @@ impl InnerService {
         monerod_resp: Response<json::Value>,
     ) -> Result<Response<Body>, MmProxyError>
     {
+        debug!(
+            target: LOG_TARGET,
+            "handle_submit_block: submit request #{}",
+            request.body()
+        );
+        debug!(
+            target: LOG_TARGET,
+            "Params received: #{:?}",
+            request.body()["params"].as_array()
+        );
         let params = match request.body()["params"].as_array() {
             Some(v) => v,
             None => {
@@ -307,6 +317,8 @@ impl InnerService {
                     ))
                 },
             };
+
+            debug!(target: LOG_TARGET, "Located Tari Hash: {:?}", hash);
 
             if let Some(mut block_data) = self.block_templates.get(&hash).await {
                 let monero_data = helpers::construct_monero_data(monero_block, block_data.clone().monero_seed)?;
@@ -342,7 +354,8 @@ impl InnerService {
                             start.elapsed()
                         ),
                     }
-                    block_templates_clone.remove(&hash).await;
+
+                    block_templates_clone.remove_outdated().await;
                 });
             } else {
                 info!(
