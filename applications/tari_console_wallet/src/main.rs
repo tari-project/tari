@@ -6,8 +6,18 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 #![recursion_limit = "512"]
-use init::{change_password, get_base_node_peer_config, init_wallet, start_wallet, wallet_mode};
+use init::{
+    boot,
+    change_password,
+    get_base_node_peer_config,
+    init_wallet,
+    start_wallet,
+    tari_splash_screen,
+    wallet_mode,
+    WalletBoot,
+};
 use log::*;
+use recovery::prompt_private_key_from_seed_words;
 use tari_app_utilities::{
     identity_management::setup_node_identity,
     initialization::init_configuration,
@@ -16,13 +26,14 @@ use tari_app_utilities::{
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_comms::peer_manager::PeerFeatures;
 use tari_shutdown::Shutdown;
-use wallet_modes::{command_mode, grpc_mode, script_mode, tui_mode, WalletMode};
+use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
 mod automation;
 mod grpc;
 mod init;
+mod recovery;
 mod ui;
 mod utils;
 pub mod wallet_modes;
@@ -49,34 +60,35 @@ fn main_inner() -> Result<(), ExitCodes> {
     let (bootstrap, config, _) = init_configuration(ApplicationType::ConsoleWallet)?;
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
+
+    tari_splash_screen("Console Wallet");
+
+    // check for recovery
+    let boot_mode = boot(&bootstrap, &config)?;
+
+    let master_key = if matches!(boot_mode, WalletBoot::Recovery) {
+        let private_key = prompt_private_key_from_seed_words()?;
+        Some(private_key)
+    } else {
+        None
+    };
+
+    let id_exists = config.console_wallet_identity_file.exists();
+    let create_id = !id_exists || bootstrap.create_id;
+
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &config.console_wallet_identity_file,
         &config.public_address,
-        bootstrap.create_id,
+        create_id,
         PeerFeatures::COMMUNICATION_CLIENT,
     )?;
 
-    // Exit if create_id or init arguments were run
-    if bootstrap.create_id {
-        info!(
-            target: LOG_TARGET,
-            "Console wallet's node ID created at '{}'. Done.",
-            config.console_wallet_identity_file.to_string_lossy()
-        );
-        return Ok(());
-    }
-
-    if bootstrap.init {
-        info!(target: LOG_TARGET, "Default configuration created. Done.");
-        return Ok(());
-    }
+    let mut shutdown = Shutdown::new();
+    let shutdown_signal = shutdown.to_signal();
 
     // get command line password if provided
     let arg_password = bootstrap.password.clone();
-
-    let mut shutdown = Shutdown::new();
-    let shutdown_signal = shutdown.to_signal();
 
     if bootstrap.change_password {
         info!(target: LOG_TARGET, "Change password requested.");
@@ -84,7 +96,13 @@ fn main_inner() -> Result<(), ExitCodes> {
     }
 
     // initialize wallet
-    let mut wallet = runtime.block_on(init_wallet(&config, node_identity, arg_password, shutdown_signal))?;
+    let mut wallet = runtime.block_on(init_wallet(
+        &config,
+        node_identity,
+        arg_password,
+        master_key,
+        shutdown_signal,
+    ))?;
 
     // get base node/s
     let base_node_config = runtime.block_on(get_base_node_peer_config(&config, &mut wallet))?;
@@ -96,11 +114,12 @@ fn main_inner() -> Result<(), ExitCodes> {
     debug!(target: LOG_TARGET, "Starting app");
 
     let handle = runtime.handle().clone();
-    let result = match wallet_mode(bootstrap) {
+    let result = match wallet_mode(bootstrap, boot_mode) {
         WalletMode::Tui => tui_mode(handle, config, wallet.clone(), base_node, base_node_config),
         WalletMode::Grpc => grpc_mode(handle, wallet.clone(), config),
         WalletMode::Script(path) => script_mode(handle, path, wallet.clone(), config),
         WalletMode::Command(command) => command_mode(handle, command, wallet.clone(), config),
+        WalletMode::Recovery => recovery_mode(handle, config, wallet.clone(), base_node, base_node_config),
         WalletMode::Invalid => Err(ExitCodes::InputError(
             "Invalid wallet mode - are you trying too many command options at once?".to_string(),
         )),

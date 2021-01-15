@@ -298,17 +298,18 @@ where
                 request_context = request_stream.select_next_some() => {
                     trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request,
+                    let response = self.handle_request(request,
                         &mut send_transaction_protocol_handles,
                         &mut receive_transaction_protocol_handles,
                         &mut transaction_broadcast_protocol_handles,
                         &mut transaction_chain_monitoring_protocol_handles,
-                        &mut coinbase_transaction_monitoring_protocol_handles).await.or_else(|resp| {
-                        warn!(target: LOG_TARGET, "Error handling request: {:?}", resp);
-                        Err(resp)
-                    })).or_else(|resp| {
+                        &mut coinbase_transaction_monitoring_protocol_handles).await.map_err(|e| {
+                        warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
+                        e
+                    });
+                    let _ = reply_tx.send(response).map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
-                        Err(resp)
+                        e
                     });
                 },
                 // Incoming Transaction messages from the Comms layer
@@ -384,30 +385,29 @@ where
                 msg = mempool_response_stream.select_next_some() => {
                     let (_origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Mempool Response, Trace: {}", msg.dht_header.message_tag);
-                    let _ = self.handle_mempool_response(inner_msg).await.or_else(|resp| {
-                        warn!(target: LOG_TARGET, "Error handling mempool service response: {:?}, Trace: {}", resp,
+                    let _ = self.handle_mempool_response(inner_msg).await.map_err(|e| {
+                        warn!(target: LOG_TARGET, "Error handling mempool service response: {:?}, Trace: {}", e,
                         msg.dht_header.message_tag.as_value());
-                        Err(resp)
+                        e
                     });
                 }
                 // Incoming messages from the Comms layer
                 msg = base_node_response_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
-                    let _ = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
+                    let _ = self.handle_base_node_response(inner_msg).await.map_err(|e| {
                         warn!(target: LOG_TARGET, "Error handling base node service response from {}: {:?} for \
-                        NodeID: {}, Trace: {}", origin_public_key, resp, self.node_identity.node_id().short_str(),
+                        NodeID: {}, Trace: {}", origin_public_key, e, self.node_identity.node_id().short_str(),
                         msg.dht_header.message_tag.as_value());
-                        Err(resp)
+                        e
                     });
                 }
                 // Incoming messages from the Comms layer
                 msg = transaction_cancelled_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Transaction Cancelled message, Trace: {}", msg.dht_header.message_tag);
-                    match self.handle_transaction_cancelled_message(origin_public_key, inner_msg, ).await {
-                        Err(e) => warn!(target: LOG_TARGET, "Error handing Transaction Cancelled Message: {:?}", e),
-                        _ => (),
+                    if let Err(e) = self.handle_transaction_cancelled_message(origin_public_key, inner_msg, ).await {
+                        warn!(target: LOG_TARGET, "Error handing Transaction Cancelled Message: {:?}", e);
                     }
                 }
                 join_result = send_transaction_protocol_handles.select_next_some() => {
