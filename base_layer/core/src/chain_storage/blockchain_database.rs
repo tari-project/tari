@@ -1582,12 +1582,12 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
     // Delete blocks
     let metadata = db.fetch_chain_metadata()?;
     let block_height = metadata.height_of_longest_chain();
-    let steps_back = block_height.checked_sub(height).ok_or_else(|| {
-        ChainStorageError::InvalidQuery(format!(
-            "Cannot rewind to height ({}) that is greater than the block height {}.",
-            height, block_height
-        ))
-    })?;
+    let steps_back = block_height.saturating_sub(height);
+    // No blocks to remove
+    if steps_back == 0 {
+        db.write(txn)?;
+        return Ok(vec![]);
+    }
 
     let mut removed_blocks = Vec::with_capacity(steps_back as usize);
     debug!(

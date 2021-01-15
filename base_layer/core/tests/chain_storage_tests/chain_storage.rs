@@ -1057,6 +1057,7 @@ fn orphan_cleanup_on_block_add() {
         BlockAddResult::OrphanBlock
     );
 
+    store.cleanup_orphans().unwrap();
     assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 3);
     assert_eq!(store.fetch_orphan(orphan1_hash).unwrap(), orphan1);
     assert!(store.fetch_orphan(orphan2_hash).is_err());
@@ -1247,6 +1248,7 @@ fn orphan_cleanup_on_reorg() {
 
     // Check that A2, A3 and A4 is in the orphan block pool, A1 and the other orphans were discarded by the orphan
     // cleanup.
+    store.cleanup_orphans().unwrap();
     assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 3);
     assert_eq!(store.fetch_orphan(blocks[2].hash().clone()).unwrap(), blocks[2].block);
     assert_eq!(store.fetch_orphan(blocks[3].hash().clone()).unwrap(), blocks[3].block);
