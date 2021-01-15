@@ -307,6 +307,10 @@ where
                 .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message)
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
+            OutputManagerRequest::FeeEstimate((amount, fee_per_gram, num_kernels, num_outputs)) => self
+                .fee_estimate(amount, fee_per_gram, num_kernels, num_outputs)
+                .await
+                .map(OutputManagerResponse::FeeEstimate),
             OutputManagerRequest::ConfirmPendingTransaction(tx_id) => self
                 .confirm_encumberance(tx_id)
                 .await
@@ -617,6 +621,24 @@ where
         Ok(())
     }
 
+    /// Get a fee estimate for an amount of MicroTari, at a specified fee per gram and given number of kernels and
+    /// outputs.
+    async fn fee_estimate(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        num_kernels: u64,
+        num_outputs: u64,
+    ) -> Result<MicroTari, OutputManagerError>
+    {
+        let (utxos, _) = self
+            .select_utxos(amount, fee_per_gram, num_outputs as usize, None)
+            .await?;
+        let fee = Fee::calculate_with_minimum(fee_per_gram, num_kernels as usize, utxos.len(), num_outputs as usize);
+
+        Ok(fee)
+    }
+
     /// Prepare a Sender Transaction Protocol for the amount and fee_per_gram specified. If required a change output
     /// will be produced.
     pub async fn prepare_transaction_to_send(
@@ -657,7 +679,7 @@ where
 
         let fee_without_change = Fee::calculate(fee_per_gram, 1, outputs.len(), 1);
         let mut change_key: Option<PrivateKey> = None;
-        // If the input values > the amount to be sent + fees_without_change then we will need to include a change
+        // If the input values > the amount to be sent + fee_without_change then we will need to include a change
         // output
         if total > amount + fee_without_change {
             let mut key = PrivateKey::default();

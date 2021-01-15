@@ -275,6 +275,52 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
     }
 }
 
+fn fee_estimate<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+    let (mut oms, _, _shutdown, _, _) = setup_output_manager_service(&mut runtime, backend.clone());
+
+    let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(3000), &factories.commitment);
+    runtime.block_on(oms.add_output(uo.clone())).unwrap();
+
+    // minimum fee
+    let fee_per_gram = MicroTari::from(1);
+    let fee = runtime
+        .block_on(oms.fee_estimate(MicroTari::from(100), fee_per_gram, 1, 1))
+        .unwrap();
+    assert_eq!(fee, MicroTari::from(100));
+
+    let fee_per_gram = MicroTari::from(25);
+    for outputs in 1..5 {
+        let fee = runtime
+            .block_on(oms.fee_estimate(MicroTari::from(100), fee_per_gram, 1, outputs))
+            .unwrap();
+        assert_eq!(fee, Fee::calculate(fee_per_gram, 1, 1, outputs as usize));
+    }
+
+    // not enough funds
+    let err = runtime
+        .block_on(oms.fee_estimate(MicroTari::from(2750), fee_per_gram, 1, 1))
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
+}
+
+#[test]
+fn fee_estimate_memory_db() {
+    fee_estimate(OutputManagerMemoryDatabase::new());
+}
+
+#[test]
+fn fee_estimate_sqlite_db() {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+
+    fee_estimate(OutputManagerSqliteDatabase::new(connection, None));
+}
+
 #[test]
 fn sending_transaction_and_confirmation_memory_db() {
     sending_transaction_and_confirmation(OutputManagerMemoryDatabase::new());

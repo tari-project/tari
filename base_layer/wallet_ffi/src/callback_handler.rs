@@ -24,7 +24,7 @@
 //! This CallbackHandler will monitor event streams from the various wallet services and on relevant events will call
 //! the assigned callbacks to provide asynchronous feedback to the client application that an event has occured
 //!
-//! ## Callbacks  
+//! ## Callbacks
 //! `callback_received_transaction` - This will be called when an inbound transaction is received from an external
 //! wallet
 //!
@@ -213,11 +213,11 @@ where TBackend: TransactionBackend + 'static
                                 TransactionEvent::TransactionMined(tx_id) => {
                                     self.receive_transaction_mined_event(tx_id).await;
                                 },
-                                /// Only the above variants are mapped to callbacks
+                                // Only the above variants are mapped to callbacks
                                 _ => (),
                             }
                         },
-                        Err(e) => error!(target: LOG_TARGET, "Error reading from Transaction Service event broadcast channel"),
+                        Err(_e) => error!(target: LOG_TARGET, "Error reading from Transaction Service event broadcast channel"),
                     }
                 },
                 result = self.output_manager_service_event_stream.select_next_some() => {
@@ -230,18 +230,18 @@ where TBackend: TransactionBackend + 'static
                                 },
                                 OutputManagerEvent::TxoValidationTimedOut(request_key) => {
                                     self.receive_sync_process_result(request_key, false);
-                                }
+                                },
                                 OutputManagerEvent::TxoValidationFailure(request_key) => {
                                     self.receive_sync_process_result(request_key, false);
-                                }
+                                },
                                 OutputManagerEvent::TxoValidationAborted(request_key) => {
                                     self.receive_sync_process_result(request_key, false);
-                                }
-                                /// Only the above variants are mapped to callbacks
+                                },
+                                // Only the above variants are mapped to callbacks
                                 _ => (),
                             }
                         },
-                        Err(e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
+                        Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
                     }
                 },
                 result = self.dht_event_stream.select_next_some() => {
@@ -252,11 +252,11 @@ where TBackend: TransactionBackend + 'static
                                 DhtEvent::StoreAndForwardMessagesReceived => {
                                     self.saf_messages_received_event();
                                 },
-                                /// Only the above variants are mapped to callbacks
+                                // Only the above variants are mapped to callbacks
                                 _ => (),
                             }
                         },
-                        Err(e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
+                        Err(_e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
                     }
                 }
                 complete => {

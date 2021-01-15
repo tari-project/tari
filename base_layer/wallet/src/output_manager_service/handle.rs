@@ -65,6 +65,7 @@ pub enum OutputManagerRequest {
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
     GetPublicRewindKeys,
+    FeeEstimate((MicroTari, MicroTari, u64, u64)),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -92,6 +93,7 @@ impl fmt::Display for OutputManagerRequest {
             OutputManagerRequest::RemoveEncryption => f.write_str("RemoveEncryption"),
             OutputManagerRequest::GetCoinbaseTransaction(_) => f.write_str("GetCoinbaseTransaction"),
             OutputManagerRequest::GetPublicRewindKeys => f.write_str("GetPublicRewindKeys"),
+            OutputManagerRequest::FeeEstimate(_) => f.write_str("FeeEstimate"),
         }
     }
 }
@@ -119,6 +121,7 @@ pub enum OutputManagerResponse {
     EncryptionApplied,
     EncryptionRemoved,
     PublicRewindKeys(Box<PublicRewindKeys>),
+    FeeEstimate(MicroTari),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<OutputManagerEvent>;
@@ -232,6 +235,31 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::TransactionToSend(stp) => Ok(stp),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Get a fee estimate for an amount of MicroTari, at a specified fee per gram and given number of kernels and
+    /// outputs.
+    pub async fn fee_estimate(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        num_kernels: u64,
+        num_outputs: u64,
+    ) -> Result<MicroTari, OutputManagerError>
+    {
+        match self
+            .handle
+            .call(OutputManagerRequest::FeeEstimate((
+                amount,
+                fee_per_gram,
+                num_kernels,
+                num_outputs,
+            )))
+            .await??
+        {
+            OutputManagerResponse::FeeEstimate(fee) => Ok(fee),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
