@@ -20,17 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
+use super::difficulty::BlockHeaderSha3;
 use crossbeam::channel::{bounded, Select, Sender, TrySendError};
 use futures::Stream;
 use log::*;
-use rand::{rngs::OsRng, RngCore};
 use std::{
     pin::Pin,
     task::{Context, Poll, Waker},
     thread,
     time::{Duration, Instant},
 };
-use tari_core::{blocks::BlockHeader, proof_of_work::sha3_difficulty, tari_utilities::epoch_time::EpochTime};
+use tari_app_grpc::{conversions::timestamp, tari_rpc::BlockHeader};
 use thread::JoinHandle;
 
 // Identify how often mining thread is reporting / checking context
@@ -101,12 +101,6 @@ impl Miner {
         self.threads = threads;
         self.channels = channels;
     }
-
-    pub fn join(self) {
-        for handle in self.threads.into_iter() {
-            handle.join().unwrap();
-        }
-    }
 }
 
 impl Stream for Miner {
@@ -163,7 +157,7 @@ impl Stream for Miner {
 /// Miner starts with a random nonce and iterates until it finds a header hash that meets the desired
 /// target
 pub fn mining_task(
-    mut header: BlockHeader,
+    header: BlockHeader,
     target_difficulty: u64,
     sender: Sender<MiningReport>,
     waker: Waker,
@@ -171,28 +165,27 @@ pub fn mining_task(
 )
 {
     let start = Instant::now();
-    let mut nonce: u64 = OsRng.next_u64();
-    let start_nonce = nonce;
+    let mut hasher = BlockHeaderSha3::new(header).unwrap();
+    hasher.random_nonce();
     // We're mining over here!
     info!("Mining thread {} started", miner);
     // Mining work
     loop {
-        header.nonce = nonce;
-        let difficulty: u64 = sha3_difficulty(&header).into();
+        let difficulty = hasher.difficulty();
         if difficulty >= target_difficulty {
             debug!(
                 "Miner {} found nonce {} with matching difficulty {}",
-                miner, nonce, difficulty
+                miner, hasher.nonce, difficulty
             );
             if let Err(err) = sender.try_send(MiningReport {
                 miner,
                 difficulty,
-                hashes: nonce.wrapping_sub(start_nonce),
+                hashes: hasher.hashes,
                 elapsed: start.elapsed(),
-                height: header.height,
-                header: Some(header),
+                height: hasher.height(),
+                last_nonce: hasher.nonce,
+                header: Some(hasher.into_header()),
                 target_difficulty,
-                last_nonce: nonce,
             }) {
                 error!("Miner {} failed to send report: {}", miner, err);
             }
@@ -200,16 +193,16 @@ pub fn mining_task(
             info!("Mining thread {} stopped", miner);
             return;
         }
-        if nonce % REPORTING_FREQUENCY == 0 {
+        if hasher.nonce % REPORTING_FREQUENCY == 0 {
             let res = sender.try_send(MiningReport {
                 miner,
                 difficulty,
-                hashes: nonce.wrapping_sub(start_nonce),
+                hashes: hasher.hashes,
                 elapsed: start.elapsed(),
                 header: None,
-                height: header.height,
+                last_nonce: hasher.nonce,
+                height: hasher.height(),
                 target_difficulty,
-                last_nonce: nonce,
             });
             waker.clone().wake();
             trace!("Reporting from {} result {:?}", miner, res);
@@ -217,8 +210,8 @@ pub fn mining_task(
                 info!("Mining thread {} disconnected", miner);
                 return;
             }
-            header.timestamp = EpochTime::now();
+            hasher.set_timestamp(timestamp().seconds as u64);
         }
-        nonce = nonce.wrapping_add(1);
+        hasher.inc_nonce();
     }
 }

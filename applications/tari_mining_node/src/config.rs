@@ -31,12 +31,13 @@
 //! where Tari Wallet Node can be found
 //! - num_mining_threads - number of mining threads, defaults to number of cpu cores
 //! - mine_on_tip_only - will start mining only when node is reporting bootstrapped state
+//! - validate_tip_timeout_sec - will check tip with node every N seconds to validate that still
+//! mining on a tip
 //! All miner options configured under `[mining_node]` section of
 //! Tari's `config.toml`.
 
-use std::time::Duration;
-
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tari_app_grpc::tari_rpc::{pow_algo::PowAlgos, PowAlgo};
 use tari_common::{GlobalConfig, NetworkConfigPath};
 
@@ -47,6 +48,7 @@ pub struct MinerConfig {
     pub num_mining_threads: usize,
     pub mine_on_tip_only: bool,
     pub proof_of_work_algo: ProofOfWork,
+    pub validate_tip_timeout_sec: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -68,6 +70,7 @@ impl Default for MinerConfig {
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
             proof_of_work_algo: ProofOfWork::Sha3,
+            validate_tip_timeout_sec: 30,
         }
     }
 }
@@ -96,5 +99,9 @@ impl MinerConfig {
     pub fn wait_timeout(&self) -> Duration {
         // TODO: add config parameter
         Duration::from_secs(10)
+    }
+
+    pub fn validate_tip_timeout_sec(&self) -> Duration {
+        Duration::from_secs(self.validate_tip_timeout_sec)
     }
 }

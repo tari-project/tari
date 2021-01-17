@@ -23,21 +23,20 @@
 use config::MinerConfig;
 use futures::stream::StreamExt;
 use log::*;
-use std::convert::TryFrom;
 use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient};
 use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
 use tari_common::{configuration::bootstrap::ApplicationType, DefaultConfigLoader, GlobalConfig};
-use tari_core::{blocks::BlockHeader, proof_of_work::sha3_difficulty};
 use tokio::{runtime::Runtime, time::delay_for};
 use tonic::transport::Channel;
 use utils::{coinbase_request, extract_outputs_and_kernels};
 
 mod config;
+mod difficulty;
 mod errors;
 mod miner;
 mod utils;
 
-use errors::{err_block_header, err_empty, MinerError};
+use errors::{err_empty, MinerError};
 use miner::Miner;
 use std::time::Instant;
 
@@ -82,6 +81,9 @@ async fn main_inner() -> Result<(), ExitCodes> {
                     }
                 }
             },
+            Err(MinerError::MinerLostBlock(h)) => {
+                info!("Height {} already mined by other node. Restarting ...", h);
+            },
             Err(err) => {
                 error!("Error: {}", err);
                 debug!("Holding for {:?}", config.wait_timeout());
@@ -113,14 +115,6 @@ async fn mining_cycle(
     config: &MinerConfig,
 ) -> Result<(), MinerError>
 {
-    let tip = node_conn
-        .get_tip_info(tari_app_grpc::tari_rpc::Empty {})
-        .await?
-        .into_inner();
-    if !tip.initial_sync_achieved && config.mine_on_tip_only || tip.metadata.is_none() {
-        return Err(MinerError::NodeNotReady);
-    }
-
     // 1. Receive new block template
     let template = node_conn
         .get_new_block_template(config.pow_algo_request())
@@ -130,6 +124,16 @@ async fn mining_cycle(
         .new_block_template
         .clone()
         .ok_or_else(|| err_empty("new_block_template"))?;
+
+    // Validate that template is on tip
+    if config.mine_on_tip_only {
+        let height = block_template
+            .header
+            .as_ref()
+            .ok_or_else(|| err_empty("header"))?
+            .height;
+        validate_tip(node_conn, height).await?;
+    }
 
     // 2. Get coinbase from wallet and add it to new block template body
     let request = coinbase_request(&template)?;
@@ -148,24 +152,22 @@ async fn mining_cycle(
 
     // 3. Receive new block data
     let block_result = node_conn.get_new_block(block_template).await?.into_inner();
-    let block = block_result.block.ok_or_else(|| err_empty("block.header"))?;
+    let block = block_result.block.ok_or_else(|| err_empty("block"))?;
     let header = block.clone().header.ok_or_else(|| err_empty("block.header"))?;
-    let core_header = BlockHeader::try_from(header.clone()).map_err(err_block_header)?;
 
     // 4. Initialize miner and start receiving mining statuses in the loop
-    let mut reports = Miner::init_mining(core_header, target_difficulty, config.num_mining_threads);
+    let mut reports = Miner::init_mining(header.clone(), target_difficulty, config.num_mining_threads);
     let template_time = Instant::now();
+    let mut reporting_timeout = Instant::now();
     while let Some(report) = reports.next().await {
         if let Some(header) = report.header {
             // Mined a block fitting the difficulty
             info!(
                 "Miner {} found block header {:?} with difficulty {:?}",
-                report.miner,
-                header,
-                sha3_difficulty(&header)
+                report.miner, header, report.difficulty,
             );
             let mut mined_block = block.clone();
-            mined_block.header = Some(header.into());
+            mined_block.header = Some(header);
             // 5. Sending block to the node
             node_conn.submit_block(mined_block).await?;
             break;
@@ -188,9 +190,27 @@ async fn mining_cycle(
                 estimated_time,
             );
         }
+        if config.mine_on_tip_only && reporting_timeout.elapsed() > config.validate_tip_timeout_sec() {
+            validate_tip(node_conn, report.height).await?;
+            reporting_timeout = Instant::now();
+        }
     }
-    // Wait for all threads to exit
-    reports.join();
+    // Not waiting for threads to stop, they should stop in a short while after `reports` dropped
+    Ok(())
+}
 
+/// If config
+async fn validate_tip(node_conn: &mut BaseNodeClient<Channel>, height: u64) -> Result<(), MinerError> {
+    let tip = node_conn
+        .get_tip_info(tari_app_grpc::tari_rpc::Empty {})
+        .await?
+        .into_inner();
+    if !tip.initial_sync_achieved || tip.metadata.is_none() {
+        return Err(MinerError::NodeNotReady);
+    }
+    let longest_height = tip.metadata.unwrap().height_of_longest_chain;
+    if height <= longest_height {
+        return Err(MinerError::MinerLostBlock(height));
+    }
     Ok(())
 }
