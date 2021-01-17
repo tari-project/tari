@@ -63,7 +63,7 @@ use tari_core::{
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, instrument, trace, warn};
 
-pub const LOG_TARGET: &str = "tari_mm_proxy::xmrig";
+pub const LOG_TARGET: &str = "tari_mm_proxy::proxy";
 
 #[derive(Debug, Clone)]
 pub struct MergeMiningProxyConfig {
