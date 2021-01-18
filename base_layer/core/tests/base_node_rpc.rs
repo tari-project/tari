@@ -57,7 +57,6 @@ use tari_core::{
         rpc::{BaseNodeWalletRpcService, BaseNodeWalletService},
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
-    blocks::Block,
     chain_storage::ChainBlock,
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     crypto::tari_utilities::Hashable,

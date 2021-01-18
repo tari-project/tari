@@ -107,10 +107,7 @@ pub enum ChainStorageError {
 
 impl ChainStorageError {
     pub fn is_value_not_found(&self) -> bool {
-        match self {
-            ChainStorageError::ValueNotFound { .. } => true,
-            _ => false,
-        }
+        matches!(self, ChainStorageError::ValueNotFound { .. })
     }
 }
 

@@ -249,9 +249,10 @@ pub fn create_tx(
     let mut unblinded_inputs = Vec::with_capacity(input_count as usize);
     let mut unblinded_outputs = Vec::with_capacity(output_count as usize);
     let amount_per_input = amount / input_count;
-    for _ in 0..input_count - 1 {
+    for i in 0..input_count - 1 {
         let (utxo, input) = create_test_input(amount_per_input, input_maturity, &factories.commitment);
-        unblinded_inputs.push(input.clone());
+        let size = i + 1;
+        unblinded_inputs.resize(size as usize, input.clone());
         stx_builder.with_input(utxo, input);
     }
     let amount_for_last_input = amount - amount_per_input * (input_count - 1);

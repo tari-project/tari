@@ -39,10 +39,7 @@ pub enum PeerManagerError {
 impl PeerManagerError {
     /// Returns true if this error indicates that the peer is not found, otherwise false
     pub fn is_peer_not_found(&self) -> bool {
-        match self {
-            PeerManagerError::PeerNotFoundError => true,
-            _ => false,
-        }
+        matches!(self, PeerManagerError::PeerNotFoundError)
     }
 }
 

@@ -115,7 +115,7 @@ impl Stream for Miner {
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         trace!("Polling Miner");
         // First poll would start all the threads passing async context waker
-        if self.threads.len() == 0 && self.num_threads > 0 {
+        if self.threads.is_empty() && self.num_threads > 0 {
             debug!(
                 "Starting {} mining threads for target difficulty {}",
                 self.num_threads, self.target_difficulty
@@ -125,7 +125,7 @@ impl Stream for Miner {
         } else if self.num_threads == 0 {
             error!("Cannot mine: no mining threads");
             return Poll::Ready(None);
-        } else if self.channels.len() == 0 {
+        } else if self.channels.is_empty() {
             debug!("Finished mining");
             return Poll::Ready(None);
         }
@@ -156,7 +156,7 @@ impl Stream for Miner {
             // Dropping recipients would stop miners next time they try to report
             self.channels.clear();
         }
-        return Poll::Ready(Some(report));
+        Poll::Ready(Some(report))
     }
 }
 
@@ -186,7 +186,7 @@ pub fn mining_task(
             );
             if let Err(err) = sender.try_send(MiningReport {
                 miner,
-                difficulty: difficulty.into(),
+                difficulty,
                 hashes: nonce.wrapping_sub(start_nonce),
                 elapsed: start.elapsed(),
                 height: header.height,
@@ -196,14 +196,14 @@ pub fn mining_task(
             }) {
                 error!("Miner {} failed to send report: {}", miner, err);
             }
-            waker.clone().wake();
+            waker.wake();
             info!("Mining thread {} stopped", miner);
             return;
         }
         if nonce % REPORTING_FREQUENCY == 0 {
             let res = sender.try_send(MiningReport {
                 miner,
-                difficulty: difficulty.into(),
+                difficulty,
                 hashes: nonce.wrapping_sub(start_nonce),
                 elapsed: start.elapsed(),
                 header: None,

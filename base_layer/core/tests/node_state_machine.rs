@@ -36,7 +36,7 @@ use tari_core::{
         comms_interface::Broadcast,
         service::BaseNodeServiceConfig,
         state_machine_service::{
-            states::{Listening, StateEvent, StatusInfo, SyncStatus, SyncStatus::Lagging},
+            states::{Listening, StateEvent, StatusInfo},
             BaseNodeStateMachine,
             BaseNodeStateMachineConfig,
         },

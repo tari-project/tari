@@ -90,6 +90,7 @@ pub fn get_ridcully_genesis_block() -> ChainBlock {
     }
 }
 
+#[allow(deprecated)]
 pub fn get_ridcully_genesis_block_raw() -> Block {
     let sig = Signature::new(
         PublicKey::from_hex("f2139d1cdbcfa670bbb60d4d03d9d50b0a522e674b11280e8064f6dc30e84133").unwrap(),

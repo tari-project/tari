@@ -419,33 +419,30 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         }
 
         // Construct a DhtOutboundMessage for each recipient
-        let messages = selected_peers
-            .into_iter()
-            .map(|node_id| {
-                let (reply_tx, reply_rx) = oneshot::channel();
-                let tag = MessageTag::new();
-                let send_state = MessageSendState::new(tag, reply_rx);
-                (
-                    DhtOutboundMessage {
-                        tag,
-                        destination_node_id: node_id,
-                        destination: destination.clone(),
-                        dht_message_type,
-                        network: self.target_network,
-                        dht_flags,
-                        custom_header: custom_header.clone(),
-                        body: body.clone(),
-                        reply: reply_tx.into(),
-                        ephemeral_public_key: ephemeral_public_key.clone(),
-                        origin_mac: origin_mac.clone(),
-                        is_broadcast,
-                    },
-                    send_state,
-                )
-            })
-            .collect::<Vec<_>>();
+        let messages = selected_peers.into_iter().map(|node_id| {
+            let (reply_tx, reply_rx) = oneshot::channel();
+            let tag = MessageTag::new();
+            let send_state = MessageSendState::new(tag, reply_rx);
+            (
+                DhtOutboundMessage {
+                    tag,
+                    destination_node_id: node_id,
+                    destination: destination.clone(),
+                    dht_message_type,
+                    network: self.target_network,
+                    dht_flags,
+                    custom_header: custom_header.clone(),
+                    body: body.clone(),
+                    reply: reply_tx.into(),
+                    ephemeral_public_key: ephemeral_public_key.clone(),
+                    origin_mac: origin_mac.clone(),
+                    is_broadcast,
+                },
+                send_state,
+            )
+        });
 
-        Ok(messages.into_iter().unzip())
+        Ok(messages.unzip())
     }
 
     async fn add_to_dedup_cache(&mut self, body: &[u8]) -> Result<bool, DhtOutboundError> {

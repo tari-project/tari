@@ -34,11 +34,18 @@ pub fn coinbase_request(template_response: &NewBlockTemplateResponse) -> Result<
     let template = template_response
         .new_block_template
         .as_ref()
-        .ok_or(err_empty("new_block_template"))?;
-    let miner_data = template_response.miner_data.as_ref().ok_or(err_empty("miner_data"))?;
+        .ok_or_else(|| err_empty("new_block_template"))?;
+    let miner_data = template_response
+        .miner_data
+        .as_ref()
+        .ok_or_else(|| err_empty("miner_data"))?;
     let fee = miner_data.total_fees;
     let reward = miner_data.reward;
-    let height = template.header.as_ref().ok_or(err_empty("template.header"))?.height;
+    let height = template
+        .header
+        .as_ref()
+        .ok_or_else(|| err_empty("template.header"))?
+        .height;
     Ok(GetCoinbaseRequest { height, fee, reward })
 }
 
@@ -47,18 +54,18 @@ pub fn extract_outputs_and_kernels(
 ) -> Result<(TransactionOutput, TransactionKernel), MinerError> {
     let transaction_body = coinbase
         .transaction
-        .ok_or(err_empty("coinbase.transaction"))?
+        .ok_or_else(|| err_empty("coinbase.transaction"))?
         .body
-        .ok_or(err_empty("transaction.body"))?;
+        .ok_or_else(|| err_empty("transaction.body"))?;
     let output = transaction_body
         .outputs
         .get(0)
         .cloned()
-        .ok_or(err_empty("transaction.body.outputs"))?;
+        .ok_or_else(|| err_empty("transaction.body.outputs"))?;
     let kernel = transaction_body
         .kernels
         .get(0)
         .cloned()
-        .ok_or(err_empty("transaction.body.kernels"))?;
+        .ok_or_else(|| err_empty("transaction.body.kernels"))?;
     Ok((output, kernel))
 }

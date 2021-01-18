@@ -32,17 +32,11 @@ pub enum PowAlgorithm {
 
 impl PowAlgorithm {
     pub fn is_monero(&self) -> bool {
-        match self {
-            Self::Monero => true,
-            _ => false,
-        }
+        matches!(self, Self::Monero)
     }
 
     pub fn is_sha3(&self) -> bool {
-        match self {
-            Self::Sha3 => true,
-            _ => false,
-        }
+        matches!(self, Self::Sha3)
     }
 
     pub fn as_u64(&self) -> u64 {

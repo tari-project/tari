@@ -171,10 +171,7 @@ macro_rules! is_fn {
     ) => {
         $(#[$outer])*
         pub fn $name(&self) -> bool {
-            match self {
-                $($enum_key)::+ => true,
-                _ => false
-            }
+            matches!(self, $($enum_key)::+)
         }
     };
     (
@@ -182,10 +179,7 @@ macro_rules! is_fn {
         $name: ident, $($enum_key:ident)::+ ( $($p:tt),* )
     ) => {
       pub fn $name(&self) -> bool {
-            match self {
-                $($enum_key)::+($($p),*) => true,
-                _ => false
-            }
+        matches!(self, $($enum_key)::+($($p),*))
         }
     };
 }

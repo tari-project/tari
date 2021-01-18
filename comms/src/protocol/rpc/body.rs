@@ -76,17 +76,11 @@ impl Body {
     }
 
     pub fn is_single(&self) -> bool {
-        match self.kind {
-            BodyKind::Single(_) => true,
-            _ => false,
-        }
+        matches!(self.kind, BodyKind::Single(_))
     }
 
     pub fn is_streaming(&self) -> bool {
-        match self.kind {
-            BodyKind::Streaming(_) => true,
-            _ => false,
-        }
+        matches!(self.kind, BodyKind::Streaming(_))
     }
 }
 

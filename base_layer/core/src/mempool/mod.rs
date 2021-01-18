@@ -128,10 +128,7 @@ pub enum TxStorageResponse {
 
 impl TxStorageResponse {
     pub fn is_stored(&self) -> bool {
-        match self {
-            Self::UnconfirmedPool | Self::ReorgPool => true,
-            _ => false,
-        }
+        matches!(self, Self::UnconfirmedPool | Self::ReorgPool)
     }
 }
 

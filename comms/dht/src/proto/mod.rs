@@ -50,24 +50,15 @@ pub mod message_header;
 
 impl envelope::Network {
     pub fn is_mainnet(self) -> bool {
-        match self {
-            Network::MainNet => true,
-            _ => false,
-        }
+        matches!(self, Network::MainNet)
     }
 
     pub fn is_testnet(self) -> bool {
-        match self {
-            Network::TestNet => true,
-            _ => false,
-        }
+        matches!(self, Network::TestNet)
     }
 
     pub fn is_localtest(self) -> bool {
-        match self {
-            Network::LocalTest => true,
-            _ => false,
-        }
+        matches!(self, Network::LocalTest)
     }
 }
 
