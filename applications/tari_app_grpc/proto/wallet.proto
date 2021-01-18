@@ -31,6 +31,30 @@ import "google/protobuf/timestamp.proto";
 service Wallet {
     // This returns a coinbase transaction
     rpc GetCoinbase (GetCoinbaseRequest) returns (GetCoinbaseResponse);
+    // Send Tari to a number of recipients
+    rpc Transfer (TransferRequest)  returns (TransferResponse);
+}
+
+message TransferRequest {
+    repeated PaymentRecipient recipients = 1;
+}
+
+message PaymentRecipient {
+    string address = 1;
+    uint64 amount = 2;
+    uint64 fee_per_gram = 3;
+    string message = 4;
+}
+
+message TransferResponse {
+  repeated TransferResult results = 1;
+}
+
+message TransferResult {
+    string address = 1;
+    uint64 transaction_id = 2;
+    bool is_success = 3;
+    string failure_message = 4;
 }
 
 message GetCoinbaseRequest {

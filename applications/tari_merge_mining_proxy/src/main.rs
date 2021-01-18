@@ -54,7 +54,7 @@ async fn main() -> Result<(), MmProxyError> {
     if !xmrig_service.check_connections(&mut io::stdout()).await {
         println!(
             "Warning: some services have not been started or are mis-configured in the proxy config. The proxy will \
-             remaining running and connect to these services on demand."
+             remain running and connect to these services on demand."
         );
     }
     let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(xmrig_service.clone())));
