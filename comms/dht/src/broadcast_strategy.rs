@@ -82,18 +82,12 @@ impl BroadcastStrategy {
     /// Returns true if this strategy will send multiple messages, otherwise false
     pub fn is_multi_message(&self) -> bool {
         use BroadcastStrategy::*;
-        match self {
-            Closest(_) | Flood(_) | Broadcast(_) | Random(_, _) | Propagate(_, _) => true,
-            _ => false,
-        }
+        matches!(self, Closest(_) | Flood(_) | Broadcast(_) | Random(_, _) | Propagate(_, _))
     }
 
     pub fn is_direct(&self) -> bool {
         use BroadcastStrategy::*;
-        match self {
-            DirectNodeId(_) | DirectPublicKey(_) => true,
-            _ => false,
-        }
+        matches!(self, DirectNodeId(_) | DirectPublicKey(_))
     }
 
     pub fn direct_node_id(&self) -> Option<&NodeId> {

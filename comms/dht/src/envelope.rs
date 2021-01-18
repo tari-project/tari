@@ -83,25 +83,16 @@ impl DhtMessageType {
     }
 
     pub fn is_dht_discovery(self) -> bool {
-        match self {
-            DhtMessageType::Discovery => true,
-            _ => false,
-        }
+        matches!(self, DhtMessageType::Discovery)
     }
 
     pub fn is_dht_join(self) -> bool {
-        match self {
-            DhtMessageType::Join => true,
-            _ => false,
-        }
+        matches!(self, DhtMessageType::Join)
     }
 
     pub fn is_saf_message(self) -> bool {
         use DhtMessageType::*;
-        match self {
-            SafRequestMessages | SafStoredMessages => true,
-            _ => false,
-        }
+        matches!(self, SafRequestMessages | SafStoredMessages)
     }
 }
 
@@ -252,10 +243,7 @@ impl NodeDestination {
     }
 
     pub fn is_unknown(&self) -> bool {
-        match self {
-            NodeDestination::Unknown => true,
-            _ => false,
-        }
+        matches!(self, NodeDestination::Unknown)
     }
 
     #[inline]

@@ -95,10 +95,7 @@ pub enum BlockAddResult {
 
 impl BlockAddResult {
     pub fn is_added(&self) -> bool {
-        match self {
-            BlockAddResult::Ok(_) => true,
-            _ => false,
-        }
+        matches!(self, BlockAddResult::Ok(_))
     }
 
     pub fn assert_added(&self) -> ChainBlock {

@@ -89,7 +89,6 @@ use tari_common_types::{
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex, ByteArray};
 use tari_mmr::{Hash, MerkleMountainRange, MutableMmr};
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
-use uint::rustc_hex::ToHex;
 
 type DatabaseRef = Arc<Database<'static>>;
 

@@ -24,7 +24,7 @@ pub fn median(mut list: Vec<u64>) -> Option<f64> {
     if list.is_empty() {
         return None;
     }
-    list.sort();
+    list.sort_unstable();
     let mid_index = list.len() / 2;
     let median = if list.len() % 2 == 0 {
         (list[mid_index - 1] + list[mid_index]) as f64 / 2.0

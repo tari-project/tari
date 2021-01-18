@@ -125,7 +125,7 @@ impl From<BlockHeader> for proto::BlockHeader {
 }
 
 //---------------------------------- ProofOfWork --------------------------------------------//
-
+#[allow(deprecated)]
 impl TryFrom<proto::ProofOfWork> for ProofOfWork {
     type Error = String;
 
@@ -140,6 +140,7 @@ impl TryFrom<proto::ProofOfWork> for ProofOfWork {
     }
 }
 
+#[allow(deprecated)]
 impl From<ProofOfWork> for proto::ProofOfWork {
     fn from(pow: ProofOfWork) -> Self {
         Self {

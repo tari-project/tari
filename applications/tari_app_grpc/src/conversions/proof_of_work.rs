@@ -27,6 +27,7 @@ use tari_core::proof_of_work::{PowAlgorithm, ProofOfWork};
 impl TryFrom<grpc::ProofOfWork> for ProofOfWork {
     type Error = String;
 
+    #[allow(deprecated)]
     fn try_from(pow: grpc::ProofOfWork) -> Result<Self, Self::Error> {
         Ok(Self {
             pow_algo: PowAlgorithm::try_from(pow.pow_algo)?,

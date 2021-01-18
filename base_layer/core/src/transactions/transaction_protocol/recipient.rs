@@ -144,18 +144,12 @@ impl ReceiverTransactionProtocol {
 
     /// Returns true if the recipient protocol is finalised, and the signature data is ready to be sent to the sender.
     pub fn is_finalized(&self) -> bool {
-        match self.state {
-            RecipientState::Finalized(_) => true,
-            _ => false,
-        }
+        matches!(self.state, RecipientState::Finalized(_))
     }
 
     /// Method to determine if the transaction protocol has failed
     pub fn is_failed(&self) -> bool {
-        match &self.state {
-            RecipientState::Failed(_) => true,
-            _ => false,
-        }
+        matches!(&self.state, RecipientState::Failed(_))
     }
 
     /// Method to return the error behind a failure, if one has occurred

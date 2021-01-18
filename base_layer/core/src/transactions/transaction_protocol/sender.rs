@@ -123,34 +123,22 @@ impl SenderTransactionProtocol {
 
     /// Convenience method to check whether we're receiving recipient data
     pub fn is_collecting_single_signature(&self) -> bool {
-        match &self.state {
-            SenderState::CollectingSingleSignature(_) => true,
-            _ => false,
-        }
+        matches!(&self.state, SenderState::CollectingSingleSignature(_))
     }
 
     /// Convenience method to check whether we're ready to send a message to a single recipient
     pub fn is_single_round_message_ready(&self) -> bool {
-        match &self.state {
-            SenderState::SingleRoundMessageReady(_) => true,
-            _ => false,
-        }
+        matches!(&self.state, SenderState::SingleRoundMessageReady(_))
     }
 
     /// Method to determine if we are in the SenderState::Finalizing state
     pub fn is_finalizing(&self) -> bool {
-        match &self.state {
-            SenderState::Finalizing(_) => true,
-            _ => false,
-        }
+        matches!(&self.state, SenderState::Finalizing(_))
     }
 
     /// Method to determine if we are in the SenderState::FinalizedTransaction state
     pub fn is_finalized(&self) -> bool {
-        match &self.state {
-            SenderState::FinalizedTransaction(_) => true,
-            _ => false,
-        }
+        matches!(&self.state, SenderState::FinalizedTransaction(_))
     }
 
     pub fn get_transaction(&self) -> Result<&Transaction, TPE> {
@@ -172,10 +160,7 @@ impl SenderTransactionProtocol {
 
     /// Method to determine if the transaction protocol has failed
     pub fn is_failed(&self) -> bool {
-        match &self.state {
-            SenderState::Failed(_) => true,
-            _ => false,
-        }
+        matches!(&self.state, SenderState::Failed(_))
     }
 
     /// Method to return the error behind a failure, if one has occurred

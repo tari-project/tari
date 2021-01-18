@@ -53,7 +53,7 @@ impl FromStr for SeedPeer {
             .and_then(|s| CommsPublicKey::from_hex(&s).ok())
             .ok_or_else(|| anyhow!("Invalid public key string"))?;
         let addresses = parts.map(Multiaddr::from_str).collect::<Result<Vec<_>, _>>()?;
-        if addresses.is_empty() || addresses.iter().any(|a| a.len() == 0) {
+        if addresses.is_empty() || addresses.iter().any(|a| a.is_empty()) {
             return Err(anyhow!("Empty or invalid address in seed peer string"));
         }
         Ok(SeedPeer { public_key, addresses })

@@ -47,7 +47,6 @@ use tari_core::{
     transactions::{helpers::schema_to_transaction, tari_amount::T, types::CryptoFactories},
     txn_schema,
 };
-use tari_mmr::MmrCacheConfig;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert_eventually;

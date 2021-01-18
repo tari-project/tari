@@ -29,6 +29,7 @@ pub trait AchievedDifficulty {}
 
 /// The proof of work data structure that is included in the block header. There's some non-Rustlike redundancy here
 /// to make serialization more straightforward
+#[allow(deprecated)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProofOfWork {
     #[deprecated]
@@ -45,6 +46,7 @@ pub struct ProofOfWork {
 }
 
 impl Default for ProofOfWork {
+    #[allow(deprecated)]
     fn default() -> Self {
         Self {
             accumulated_monero_difficulty: Default::default(),
@@ -66,6 +68,7 @@ impl ProofOfWork {
     }
 
     /// Serialises the ProofOfWork instance into a byte string. Useful for feeding the PoW into a hash function.
+    #[allow(deprecated)]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(256);
         buf.put_u8(self.pow_algo as u8);

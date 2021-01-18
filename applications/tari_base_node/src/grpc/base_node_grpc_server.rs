@@ -116,6 +116,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeader, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
 
+    #[allow(deprecated)]
     async fn get_network_difficulty(
         &self,
         request: Request<tari_rpc::HeightRequest>,

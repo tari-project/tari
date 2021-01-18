@@ -1177,6 +1177,7 @@ impl CommandHandler {
         });
     }
 
+    #[allow(deprecated)]
     pub fn period_stats(&self, period_end: u64, mut period_ticker_end: u64, period: u64) {
         let mut node = self.node_service.clone();
         self.executor.spawn(async move {
