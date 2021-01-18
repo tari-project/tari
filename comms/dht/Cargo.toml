@@ -1,6 +1,6 @@
 [package]
 name = "tari_comms_dht"
-version = "0.2.16"
+version = "0.7.3"
 authors = ["The Tari Development Community"]
 description = "Tari comms DHT module"
 repository = "https://github.com/tari-project/tari"
@@ -10,12 +10,12 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms  = { version = "^0.2", path = "../", features = ["rpc"]}
-tari_comms_rpc_macros  = { version = "^0.1", path = "../rpc_macros"}
+tari_comms  = { version = "^0.7", path = "../", features = ["rpc"]}
+tari_comms_rpc_macros  = { version = "^0.7", path = "../rpc_macros"}
 tari_crypto = "^0.8"
 tari_utilities  = { version = "^0.3" }
-tari_shutdown = { version = "^0.2", path = "../../infrastructure/shutdown"}
-tari_storage  = { version = "^0.2", path = "../../infrastructure/storage"}
+tari_shutdown = { version = "^0.7", path = "../../infrastructure/shutdown"}
+tari_storage  = { version = "^0.7", path = "../../infrastructure/storage"}
 
 anyhow = "1.0.32"
 bitflags = "1.2.0"
@@ -41,7 +41,7 @@ ttl_cache = "0.5.1"
 pin-project = "0.4"
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.2", path = "../../infrastructure/test_utils"}
+tari_test_utils = { version = "^0.7", path = "../../infrastructure/test_utils"}
 
 env_logger = "0.7.0"
 futures-test = { version = "0.3.0-alpha.19", package = "futures-test-preview" }
@@ -59,7 +59,7 @@ futures-util = "^0.3.1"
 lazy_static = "1.4.0"
 
 [build-dependencies]
-tari_common  = { version = "^0.2", path="../../common"}
+tari_common  = { version = "^0.7", path="../../common"}
 
 [features]
 test-mocks = []

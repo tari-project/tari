@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.2.16"
+version = "0.7.3"
 edition = "2018"
 
 [features]
@@ -18,19 +18,18 @@ base_node_proto = []
 avx2 = ["tari_crypto/avx2"]
 
 [dependencies]
-tari_common = { version = "^0.2", path = "../../common"}
-tari_common_types = { version = "^0.2", path = "../../base_layer/common_types"}
-tari_comms = { version = "^0.2", path = "../../comms"}
-tari_comms_dht = { version = "^0.2.1", path = "../../comms/dht"}
-tari_comms_rpc_macros = { version = "^0.1", path = "../../comms/rpc_macros"}
-# TODO Once the crate is pushed to crates.io reert to using the official crate.
+tari_common = { version = "^0.7", path = "../../common"}
+tari_common_types = { version = "^0.7", path = "../../base_layer/common_types"}
+tari_comms = { version = "^0.7", path = "../../comms"}
+tari_comms_dht = { version = "^0.7", path = "../../comms/dht"}
+tari_comms_rpc_macros = { version = "^0.7", path = "../../comms/rpc_macros"}
 tari_crypto = "^0.8"
-tari_mmr = { version = "^0.2", path = "../../base_layer/mmr", optional = true }
-tari_p2p = { version = "^0.2", path = "../../base_layer/p2p" }
-tari_service_framework = { version = "^0.2", path = "../service_framework"}
-tari_shutdown = { version = "^0.2", path = "../../infrastructure/shutdown" }
-tari_storage = { version = "^0.2", path = "../../infrastructure/storage" }
-tari_test_utils = { version = "^0.2", path = "../../infrastructure/test_utils" }
+tari_mmr = { version = "^0.7", path = "../../base_layer/mmr", optional = true }
+tari_p2p = { version = "^0.7", path = "../../base_layer/p2p" }
+tari_service_framework = { version = "^0.7", path = "../service_framework"}
+tari_shutdown = { version = "^0.7", path = "../../infrastructure/shutdown" }
+tari_storage = { version = "^0.7", path = "../../infrastructure/storage" }
+tari_test_utils = { version = "^0.7", path = "../../infrastructure/test_utils" }
 
 bincode = "1.1.4"
 bitflags = "1.0.4"
@@ -65,14 +64,14 @@ uint = { version = "0.8", default-features = false }
 num-format = "0.4.0"
 
 [dev-dependencies]
-tari_p2p = { version = "^0.2", path = "../../base_layer/p2p", features=["test-mocks"]}
-tari_test_utils = { version = "^0.2", path = "../../infrastructure/test_utils" }
+tari_p2p = { version = "^0.7", path = "../../base_layer/p2p", features=["test-mocks"]}
+tari_test_utils = { version = "^0.7", path = "../../infrastructure/test_utils" }
 
 config = { version = "0.9.3" }
 env_logger = "0.7.0"
 tempfile = "3.1.0"
 tokio-macros = "0.2.4"
-tari_wallet = { version = "^0.2", path = "../../base_layer/wallet" }
+tari_wallet = { version = "^0.7", path = "../../base_layer/wallet" }
 
 [build-dependencies]
-tari_common = { version = "^0.2", path="../../common"}
+tari_common = { version = "^0.7", path="../../common"}
