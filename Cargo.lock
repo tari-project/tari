@@ -3073,9 +3073,9 @@ dependencies = [
 
 [[package]]
 name = "randomx-rs"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f132cf96745b4803e0c86e2fa0c2b301ebf1eb608a705a2788d6c876062089b"
+checksum = "d5b1588934c19acc7218925816a7d6af57699c4e0d43c1c1ccda3463f619e53b"
 dependencies = [
  "bitflags 1.2.1",
  "derive-error",
