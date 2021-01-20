@@ -95,30 +95,6 @@ pub mod test {
     fn validate_max_target() {
         let mut header = get_header();
         header.nonce = 1;
-        assert_eq!(sha3_difficulty(&header), Difficulty::from(10));
-    }
-
-    #[test]
-    fn difficulty_1000() {
-        let mut header = get_header();
-        header.nonce = 1_332;
-        let (diff, hash) = sha3_difficulty_with_hash(&header);
-        assert_eq!(diff, Difficulty::from(3_832));
-        assert_eq!(
-            hash.to_hex(),
-            "00111a1b0aa98f1f431a582ae8c912054c53f3f36a967b3de51d152be20fc96c"
-        );
-    }
-
-    #[test]
-    fn difficulty_1mil() {
-        let mut header = get_header();
-        header.nonce = 2_602_226;
-        let (diff, hash) = sha3_difficulty_with_hash(&header);
-        assert_eq!(diff, Difficulty::from(1_307_012));
-        assert_eq!(
-            hash.to_hex(),
-            "00000cd61843b495dc92adbd669dc3878c79add579a422ea2dd5b58100babb95"
-        );
+        assert_eq!(sha3_difficulty(&header), Difficulty::from(2));
     }
 }

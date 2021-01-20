@@ -23,16 +23,7 @@
 use crate::helpers::database::create_orphan_block;
 use tari_core::{
     blocks::BlockHeader,
-    chain_storage::{
-        create_lmdb_database,
-        BlockchainBackend,
-        ChainStorageError,
-        DbKey,
-        DbTransaction,
-        DbValue,
-        MetadataKey,
-        MetadataValue,
-    },
+    chain_storage::{create_lmdb_database, BlockchainBackend, ChainStorageError, DbKey, DbTransaction, DbValue},
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     test_helpers::blockchain::create_test_db,
     tx,
@@ -122,73 +113,6 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
     txn.delete(DbKey::OrphanBlock(hash.clone()));
     assert!(db.write(txn).is_ok());
     assert_eq!(db.contains(&DbKey::OrphanBlock(hash)).unwrap(), false);
-}
-
-fn insert_fetch_metadata<T: BlockchainBackend>(mut db: T) {
-    assert!(db.fetch(&DbKey::Metadata(MetadataKey::ChainHeight)).unwrap().is_none());
-    assert!(db
-        .fetch(&DbKey::Metadata(MetadataKey::AccumulatedWork))
-        .unwrap()
-        .is_none());
-    assert!(db
-        .fetch(&DbKey::Metadata(MetadataKey::PruningHorizon))
-        .unwrap()
-        .is_none());
-    assert!(db.fetch(&DbKey::Metadata(MetadataKey::BestBlock)).unwrap().is_none());
-
-    let header = BlockHeader::new(0);
-    let hash = header.hash();
-    let pruning_horizon = 1u64;
-    let chain_height = 2u64;
-    let accumulated_work = 3u64;
-
-    let mut txn = DbTransaction::new();
-    txn.set_metadata(MetadataKey::ChainHeight, MetadataValue::ChainHeight(chain_height));
-    txn.set_metadata(
-        MetadataKey::AccumulatedWork,
-        MetadataValue::AccumulatedWork(accumulated_work.into()),
-    );
-    txn.set_metadata(
-        MetadataKey::PruningHorizon,
-        MetadataValue::PruningHorizon(pruning_horizon),
-    );
-    txn.set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(hash.clone()));
-    assert!(db.write(txn).is_ok());
-
-    if let Some(DbValue::Metadata(MetadataValue::ChainHeight(retrieved_chain_height))) =
-        db.fetch(&DbKey::Metadata(MetadataKey::ChainHeight)).unwrap()
-    {
-        assert_eq!(retrieved_chain_height, chain_height);
-    } else {
-        assert!(false);
-    }
-    if let Some(DbValue::Metadata(MetadataValue::AccumulatedWork(retrieved_accumulated_work))) =
-        db.fetch(&DbKey::Metadata(MetadataKey::AccumulatedWork)).unwrap()
-    {
-        assert_eq!(retrieved_accumulated_work, accumulated_work.into());
-    } else {
-        assert!(false);
-    }
-    if let Some(DbValue::Metadata(MetadataValue::PruningHorizon(retrieved_pruning_horizon))) =
-        db.fetch(&DbKey::Metadata(MetadataKey::PruningHorizon)).unwrap()
-    {
-        assert_eq!(retrieved_pruning_horizon, pruning_horizon);
-    } else {
-        assert!(false);
-    }
-    if let Some(DbValue::Metadata(MetadataValue::BestBlock(retrieved_hash))) =
-        db.fetch(&DbKey::Metadata(MetadataKey::BestBlock)).unwrap()
-    {
-        assert_eq!(retrieved_hash, hash);
-    } else {
-        assert!(false);
-    }
-}
-
-#[test]
-fn lmdb_insert_fetch_metadata() {
-    let db = create_test_db();
-    insert_fetch_metadata(db);
 }
 
 #[test]

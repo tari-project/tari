@@ -5,14 +5,8 @@ pub struct ProofOfWork {
     /// 1 = Blake
     #[prost(uint64, tag = "1")]
     pub pow_algo: u64,
-    #[prost(uint64, tag = "2")]
-    pub accumulated_monero_difficulty: u64,
-    #[prost(uint64, tag = "3")]
-    pub accumulated_blake_difficulty: u64,
     #[prost(bytes, tag = "4")]
     pub pow_data: std::vec::Vec<u8>,
-    #[prost(uint64, tag = "5")]
-    pub target_difficulty: u64,
 }
 /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
 /// and the transaction kernels.
@@ -50,6 +44,12 @@ pub struct BlockHeader {
     /// Proof of work metadata
     #[prost(message, optional, tag = "11")]
     pub pow: ::std::option::Option<ProofOfWork>,
+    /// The size of the kernel MMR
+    #[prost(uint64, tag = "12")]
+    pub kernel_mmr_size: u64,
+    /// The size of the output MMR
+    #[prost(uint64, tag = "13")]
+    pub output_mmr_size: u64,
 }
 /// A Tari block. Blocks are linked together into a blockchain.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -74,14 +74,17 @@ pub struct HistoricalBlock {
     /// confirmation.
     #[prost(uint64, tag = "1")]
     pub confirmations: u64,
-    /// An array of commitments of the outputs from this block that have subsequently been spent.
-    #[prost(message, repeated, tag = "2")]
-    pub spent_commitments: ::std::vec::Vec<super::types::Commitment>,
     /// The underlying block
     #[prost(message, optional, tag = "3")]
     pub block: ::std::option::Option<Block>,
     #[prost(message, optional, tag = "4")]
     pub accumulated_data: ::std::option::Option<BlockHeaderAccumulatedData>,
+    #[prost(bytes, repeated, tag = "5")]
+    pub pruned_output_hashes: ::std::vec::Vec<std::vec::Vec<u8>>,
+    #[prost(bytes, repeated, tag = "6")]
+    pub pruned_proof_hashes: ::std::vec::Vec<std::vec::Vec<u8>>,
+    #[prost(uint64, tag = "7")]
+    pub pruned_input_count: u64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockHeaderAccumulatedData {
@@ -95,6 +98,10 @@ pub struct BlockHeaderAccumulatedData {
     pub target_difficulty: u64,
     #[prost(bytes, tag = "5")]
     pub total_kernel_offset: std::vec::Vec<u8>,
+    #[prost(bytes, tag = "6")]
+    pub hash: std::vec::Vec<u8>,
+    #[prost(bytes, tag = "7")]
+    pub total_accumulated_difficulty: std::vec::Vec<u8>,
 }
 /// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for
 /// the block that the Base Node is able to complete on behalf of a Miner.

@@ -80,7 +80,6 @@ impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 },
             },
             TargetDifficulty(difficulty) => ci::NodeCommsResponse::TargetDifficulty(Difficulty::from(difficulty)),
-            MmrNodeCount(u64) => ci::NodeCommsResponse::MmrNodeCount(u64),
             MmrNodes(response) => ci::NodeCommsResponse::MmrNodes(response.added, response.deleted),
         };
 
@@ -120,7 +119,6 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 block: block.map(|b| b.into()),
             }),
             TargetDifficulty(difficulty) => ProtoNodeCommsResponse::TargetDifficulty(difficulty.as_u64()),
-            MmrNodeCount(node_count) => ProtoNodeCommsResponse::MmrNodeCount(node_count),
             MmrNodes(added, deleted) => ProtoNodeCommsResponse::MmrNodes(ProtoMmrNodes { added, deleted }),
         }
     }

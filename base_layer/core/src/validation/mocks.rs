@@ -24,11 +24,11 @@ use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{BlockHeaderAccumulatedData, BlockHeaderAccumulatedDataBuilder, BlockchainBackend, ChainBlock},
     proof_of_work::sha3_difficulty,
-    transactions::transaction::Transaction,
+    transactions::{transaction::Transaction, types::Commitment},
     validation::{
         error::ValidationError,
         CandidateBlockBodyValidation,
-        FinalHeaderStateValidation,
+        FinalHorizonStateValidation,
         HeaderValidation,
         MempoolTransactionValidation,
         OrphanValidation,
@@ -143,8 +143,15 @@ impl MempoolTransactionValidation for MockValidator {
     }
 }
 
-impl FinalHeaderStateValidation for MockValidator {
-    fn validate(&self, _header: &BlockHeader) -> Result<(), ValidationError> {
+impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for MockValidator {
+    fn validate(
+        &self,
+        _height: u64,
+        _total_utxo_sum: &Commitment,
+        _total_kernel_sum: &Commitment,
+        _backend: &B,
+    ) -> Result<(), ValidationError>
+    {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {

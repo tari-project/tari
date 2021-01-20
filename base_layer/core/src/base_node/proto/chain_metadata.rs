@@ -60,7 +60,7 @@ impl From<ChainMetadata> for proto::ChainMetadata {
             height_of_longest_chain: Some(metadata.height_of_longest_chain()),
             best_block: Some(metadata.best_block().clone()),
             pruning_horizon: metadata.pruning_horizon(),
-            effective_pruned_height: metadata.effective_pruned_height(),
+            effective_pruned_height: metadata.pruned_height(),
             accumulated_difficulty,
         }
     }

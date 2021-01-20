@@ -29,7 +29,7 @@ pub struct BaseNodeServiceResponse {
     pub is_synced: bool,
     #[prost(
         oneof = "base_node_service_response::Response",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 12"
     )]
     pub response: ::std::option::Option<base_node_service_response::Response>,
 }
@@ -63,9 +63,6 @@ pub mod base_node_service_response {
         /// Block headers in range response
         #[prost(message, tag = "10")]
         FetchHeadersAfterResponse(super::BlockHeaders),
-        /// Indicates a MmrNodeCount response
-        #[prost(uint32, tag = "11")]
-        MmrNodeCount(u32),
         /// Indicates a MmrNodes response
         #[prost(message, tag = "12")]
         MmrNodes(super::MmrNodes),
@@ -106,6 +103,14 @@ pub struct MmrNodes {
     pub added: ::std::vec::Vec<std::vec::Vec<u8>>,
     #[prost(bytes, tag = "2")]
     pub deleted: std::vec::Vec<u8>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum MmrTree {
+    None = 0,
+    Utxo = 1,
+    Kernel = 2,
+    RangeProof = 3,
 }
 /// Request message used to initiate a sync
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -159,13 +164,41 @@ pub struct FindChainSplitResponse {
     #[prost(uint64, tag = "3")]
     pub tip_height: u64,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum MmrTree {
-    None = 0,
-    Utxo = 1,
-    Kernel = 2,
-    RangeProof = 3,
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SyncKernelsRequest {
+    #[prost(uint64, tag = "1")]
+    pub start: u64,
+    #[prost(bytes, tag = "2")]
+    pub end_header_hash: std::vec::Vec<u8>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SyncUtxosRequest {
+    #[prost(uint64, tag = "1")]
+    pub start: u64,
+    #[prost(bytes, tag = "2")]
+    pub end_header_hash: std::vec::Vec<u8>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SyncUtxosResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub utxos: ::std::vec::Vec<SyncUtxo>,
+    /// present if a utxo in utxos is the last in a block so that the merkle root can be
+    /// checked
+    #[prost(bytes, repeated, tag = "2")]
+    pub deleted_bitmaps: ::std::vec::Vec<std::vec::Vec<u8>>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SyncUtxo {
+    /// The output. optional, if deleted at the time of the requested height,
+    /// will be empty and `hash` and `rangeproof_hash` will be populated instead
+    #[prost(message, optional, tag = "1")]
+    pub output: ::std::option::Option<super::types::TransactionOutput>,
+    /// Only present if 'output` is empty
+    #[prost(bytes, tag = "2")]
+    pub hash: std::vec::Vec<u8>,
+    /// Only present if `output` is empty
+    #[prost(bytes, tag = "3")]
+    pub rangeproof_hash: std::vec::Vec<u8>,
 }
 /// Request type for a received BaseNodeService request.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -174,7 +207,7 @@ pub struct BaseNodeServiceRequest {
     pub request_key: u64,
     #[prost(
         oneof = "base_node_service_request::Request",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 16, 17, 18, 19"
     )]
     pub request: ::std::option::Option<base_node_service_request::Request>,
 }
@@ -211,12 +244,6 @@ pub mod base_node_service_request {
         /// Get headers in best chain following any headers in this list
         #[prost(message, tag = "12")]
         FetchHeadersAfter(super::FetchHeadersAfter),
-        /// Indicates a FetchMmrNodeCount request.
-        #[prost(message, tag = "13")]
-        FetchMmrNodeCount(super::FetchMmrNodeCount),
-        /// Indicates a FetchMatchingMmrNodes request.
-        #[prost(message, tag = "14")]
-        FetchMatchingMmrNodes(super::FetchMatchingMmrNodes),
         /// Indicates a FetchMatchingTxos request.
         #[prost(message, tag = "15")]
         FetchMatchingTxos(super::HashOutputs),
@@ -267,17 +294,6 @@ pub struct FetchMmrNodeCount {
     pub tree: i32,
     #[prost(uint64, tag = "2")]
     pub height: u64,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct FetchMatchingMmrNodes {
-    #[prost(enumeration = "MmrTree", tag = "1")]
-    pub tree: i32,
-    #[prost(uint32, tag = "2")]
-    pub pos: u32,
-    #[prost(uint32, tag = "3")]
-    pub count: u32,
-    #[prost(uint64, tag = "4")]
-    pub hist_height: u64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TxSubmissionResponse {

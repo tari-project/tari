@@ -352,7 +352,7 @@ fn test_reorg() {
     assert_eq!(stats.reorg_txs, 3);
 
     // "Mine" block 4
-    let template = chain_block(&blocks[3].block, vec![], &consensus_manager);
+    let template = chain_block(&blocks[2].block, vec![], &consensus_manager);
     let reorg_block4 = db.prepare_block_merkle_roots(template).unwrap();
 
     // test that process_reorg can handle the case when removed_blocks is empty

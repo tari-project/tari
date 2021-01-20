@@ -450,7 +450,7 @@ impl CommandHandler {
                     warn!(target: LOG_TARGET, "{}", err);
                     return;
                 },
-                Ok(mut data) => match (data.pop().map(|hb| hb.block), format) {
+                Ok(mut data) => match (data.pop(), format) {
                     (Some(block), Format::Text) => println!("{}", block),
                     (Some(block), Format::Json) => println!(
                         "{}",
@@ -475,7 +475,7 @@ impl CommandHandler {
                     return;
                 },
                 Ok(mut data) => match data.pop() {
-                    Some(v) => println!("{}", v.block),
+                    Some(v) => println!("{}", v.block()),
                     _ => println!(
                         "Pruned node: utxo found, but lock not found for utxo commitment {}",
                         commitment.to_hex()
@@ -498,7 +498,7 @@ impl CommandHandler {
                     return;
                 },
                 Ok(mut data) => match data.pop() {
-                    Some(v) => println!("{}", v.block),
+                    Some(v) => println!("{}", v.block()),
                     _ => println!(
                         "Pruned node: stxo found, but block not found for stxo commitment {}",
                         commitment.to_hex()
@@ -522,7 +522,7 @@ impl CommandHandler {
                     return;
                 },
                 Ok(mut data) => match data.pop() {
-                    Some(v) => println!("{}", v.block),
+                    Some(v) => println!("{}", v.block()),
                     _ => println!(
                         "Pruned node: kernel found, but block not found for kernel signature {}",
                         hex_sig
@@ -1206,7 +1206,7 @@ impl CommandHandler {
                     Ok(mut data) => match data.pop() {
                         // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
                         // logging it.
-                        Some(historical_block) => historical_block.block,
+                        Some(historical_block) => historical_block,
                         None => {
                             println!("Error in db, could not get block");
                             break;
@@ -1221,7 +1221,7 @@ impl CommandHandler {
                     Ok(mut data) => match data.pop() {
                         // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
                         // logging it.
-                        Some(historical_block) => historical_block.block,
+                        Some(historical_block) => historical_block,
                         None => {
                             println!("Error in db, could not get block");
                             break;
@@ -1229,11 +1229,11 @@ impl CommandHandler {
                     },
                 };
                 height -= 1;
-                if block.header.timestamp.as_u64() > period_ticker_end {
+                if block.block().header.timestamp.as_u64() > period_ticker_end {
                     print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
                     continue;
                 };
-                while block.header.timestamp.as_u64() < period_ticker_start {
+                while block.block().header.timestamp.as_u64() < period_ticker_start {
                     results.push((
                         period_tx_count,
                         period_hash,
@@ -1249,14 +1249,14 @@ impl CommandHandler {
                     period_ticker_end -= period;
                     period_ticker_start -= period;
                 }
-                period_tx_count += block.body.kernels().len() - 1;
+                period_tx_count += block.block().body.kernels().len() - 1;
                 period_block_count += 1;
-                let st = if prev_block.header.timestamp.as_u64() >= block.header.timestamp.as_u64() {
+                let st = if prev_block.block().header.timestamp.as_u64() >= block.block().header.timestamp.as_u64() {
                     1.0
                 } else {
-                    (block.header.timestamp.as_u64() - prev_block.header.timestamp.as_u64()) as f64
+                    (block.block().header.timestamp.as_u64() - prev_block.block().header.timestamp.as_u64()) as f64
                 };
-                let diff = block.header.pow.target_difficulty.as_u64();
+                let diff = block.accumulated_data.target_difficulty.as_u64();
                 period_difficulty += diff;
                 period_solvetime += st as u64;
                 period_hash += diff as f64 / st / 1_000_000.0;
@@ -1282,7 +1282,7 @@ impl CommandHandler {
             println!("Emoji ID: {}", emoji_id);
             println!();
             // TODO: Pass the network in as a var
-            let qr_link = format!("tari://ridcully/pubkey/{}", &wallet_node_identity.public_key().to_hex());
+            let qr_link = format!("tari://stibbons/pubkey/{}", &wallet_node_identity.public_key().to_hex());
             let code = QrCode::new(qr_link).unwrap();
             let image = code
                 .render::<unicode::Dense1x2>()

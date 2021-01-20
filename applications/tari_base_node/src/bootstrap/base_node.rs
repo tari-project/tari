@@ -153,6 +153,7 @@ where B: BlockchainBackend + 'static
                         horizon_sync_height_offset: rules.consensus_constants(0).coinbase_lock_height() + 50,
                         ..Default::default()
                     },
+                    pruning_horizon: config.pruning_horizon,
                     orphan_db_clean_out_threshold: config.orphan_db_clean_out_threshold,
                     ..Default::default()
                 },

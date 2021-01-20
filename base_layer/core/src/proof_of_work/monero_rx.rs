@@ -441,7 +441,9 @@ mod test {
             timestamp: Default::default(),
             output_mr: vec![0],
             range_proof_mr: vec![0],
+            output_mmr_size: 0,
             kernel_mr: vec![0],
+            kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
@@ -460,9 +462,6 @@ mod test {
         };
         let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
-            accumulated_monero_difficulty: Default::default(),
-            accumulated_blake_difficulty: Default::default(),
-            target_difficulty: Default::default(),
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
         };
@@ -535,7 +534,9 @@ mod test {
             timestamp: Default::default(),
             output_mr: vec![0],
             range_proof_mr: vec![0],
+            output_mmr_size: 0,
             kernel_mr: vec![0],
+            kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
@@ -562,9 +563,6 @@ mod test {
         };
         let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
-            accumulated_monero_difficulty: Default::default(),
-            accumulated_blake_difficulty: Default::default(),
-            target_difficulty: Default::default(),
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
         };
@@ -586,7 +584,9 @@ mod test {
             timestamp: Default::default(),
             output_mr: vec![0],
             range_proof_mr: vec![0],
+            output_mmr_size: 0,
             kernel_mr: vec![0],
+            kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
@@ -611,9 +611,6 @@ mod test {
         };
         let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
-            accumulated_monero_difficulty: Default::default(),
-            accumulated_blake_difficulty: Default::default(),
-            target_difficulty: Default::default(),
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
         };
@@ -637,7 +634,9 @@ mod test {
             timestamp: Default::default(),
             output_mr: vec![0],
             range_proof_mr: vec![0],
+            output_mmr_size: 0,
             kernel_mr: vec![0],
+            kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
@@ -664,9 +663,6 @@ mod test {
         };
         let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
-            accumulated_monero_difficulty: Default::default(),
-            accumulated_blake_difficulty: Default::default(),
-            target_difficulty: Default::default(),
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
         };
@@ -690,7 +686,9 @@ mod test {
             timestamp: Default::default(),
             output_mr: vec![0],
             range_proof_mr: vec![0],
+            output_mmr_size: 0,
             kernel_mr: vec![0],
+            kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
@@ -717,9 +715,6 @@ mod test {
         };
         let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
-            accumulated_monero_difficulty: Default::default(),
-            accumulated_blake_difficulty: Default::default(),
-            target_difficulty: Default::default(),
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
         };
@@ -739,7 +734,9 @@ mod test {
             timestamp: Default::default(),
             output_mr: vec![0],
             range_proof_mr: vec![0],
+            output_mmr_size: 0,
             kernel_mr: vec![0],
+            kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
@@ -747,9 +744,6 @@ mod test {
         let monero_data = MoneroData::default();
         let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
-            accumulated_monero_difficulty: Default::default(),
-            accumulated_blake_difficulty: Default::default(),
-            target_difficulty: Default::default(),
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
         };
@@ -773,7 +767,9 @@ mod test {
             timestamp: Default::default(),
             output_mr: vec![0],
             range_proof_mr: vec![0],
+            output_mmr_size: 0,
             kernel_mr: vec![0],
+            kernel_mmr_size: 0,
             total_kernel_offset: RistrettoSecretKey::from(0),
             nonce: 0,
             pow: ProofOfWork::default(),
@@ -799,9 +795,6 @@ mod test {
         };
         let serialized = bincode::serialize(&monero_data).unwrap();
         let pow = ProofOfWork {
-            accumulated_monero_difficulty: Default::default(),
-            accumulated_blake_difficulty: Default::default(),
-            target_difficulty: Default::default(),
             pow_algo: PowAlgorithm::Monero,
             pow_data: serialized,
         };

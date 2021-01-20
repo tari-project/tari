@@ -21,45 +21,62 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::BlockHeader,
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
     transactions::{
         tari_amount::MicroTari,
-        types::{Commitment, CryptoFactories, HashOutput, PrivateKey},
+        types::{Commitment, CryptoFactories, PrivateKey},
     },
-    validation::{FinalHeaderStateValidation, ValidationError},
+    validation::{FinalHorizonStateValidation, ValidationError},
 };
 use log::*;
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hash::Hashable};
+use std::marker::PhantomData;
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
 const LOG_TARGET: &str = "c::bn::states::horizon_state_sync::chain_balance";
 
 /// Validate that the chain balances at a given height.
 pub struct ChainBalanceValidator<B> {
     rules: ConsensusManager,
-    db: BlockchainDatabase<B>,
     factories: CryptoFactories,
+    _phantom: PhantomData<B>,
 }
 
 impl<B: BlockchainBackend> ChainBalanceValidator<B> {
-    pub fn new(db: BlockchainDatabase<B>, rules: ConsensusManager, factories: CryptoFactories) -> Self {
-        Self { db, rules, factories }
+    pub fn new(rules: ConsensusManager, factories: CryptoFactories) -> Self {
+        Self {
+            rules,
+            factories,
+            _phantom: Default::default(),
+        }
     }
 }
 
-impl<B: BlockchainBackend> FinalHeaderStateValidation for ChainBalanceValidator<B> {
-    fn validate(&self, horizon_header: &BlockHeader) -> Result<(), ValidationError> {
-        let hash = horizon_header.hash();
-        let emission_h = self.get_emission_commitment_at(horizon_header.height);
-        let kernel_excess = self.db.fetch_kernel_commitment_sum(&hash)?;
-        let output = self.db.fetch_utxo_commitment_sum(&hash)?;
-        let total_offset = self.fetch_total_offset_commitment(hash)?;
+impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValidator<B> {
+    fn validate(
+        &self,
+        height: u64,
+        total_utxo_sum: &Commitment,
+        total_kernel_sum: &Commitment,
+        backend: &B,
+    ) -> Result<(), ValidationError>
+    {
+        let emission_h = self.get_emission_commitment_at(height);
+        let total_offset = self.fetch_total_offset_commitment(height, backend)?;
 
-        let input = &(&emission_h + &kernel_excess) + &total_offset;
+        warn!(
+            target: LOG_TARGET,
+            "Emission:{:?}. Offset:{:?}, total kernel: {:?}, height: {}, total_utxo: {:?}",
+            emission_h,
+            total_offset,
+            total_kernel_sum,
+            height,
+            total_utxo_sum
+        );
+        let input = &(&emission_h + total_kernel_sum) + &total_offset;
 
-        if output != input {
-            return Err(ValidationError::ChainBalanceValidationFailed(horizon_header.height));
+        if total_utxo_sum != &input {
+            return Err(ValidationError::ChainBalanceValidationFailed(height));
         }
 
         Ok(())
@@ -67,12 +84,8 @@ impl<B: BlockchainBackend> FinalHeaderStateValidation for ChainBalanceValidator<
 }
 
 impl<B: BlockchainBackend> ChainBalanceValidator<B> {
-    fn fetch_total_offset_commitment(&self, hash: HashOutput) -> Result<Commitment, ValidationError> {
-        let offset = self
-            .db
-            .fetch_header_accumulated_data(hash)?
-            .ok_or_else(|| ValidationError::CustomError("Could not find header accumulated data".to_string()))?
-            .total_kernel_offset;
+    fn fetch_total_offset_commitment(&self, height: u64, backend: &B) -> Result<Commitment, ValidationError> {
+        let offset = backend.fetch_header_and_accumulated_data(height)?.1.total_kernel_offset;
         Ok(self.factories.commitment.commit(&offset, &0u64.into()))
     }
 

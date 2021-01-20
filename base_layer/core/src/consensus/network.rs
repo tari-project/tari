@@ -31,6 +31,8 @@ pub enum Network {
     // Rincewind,
     /// Second test net version
     Ridcully,
+    /// Third test net
+    Stibbons,
     /// Local network constants used inside of unit and integration tests. Contains the genesis block to be used for
     /// that chain.
     LocalNet,
@@ -41,6 +43,7 @@ impl Network {
         match self {
             Network::MainNet => ConsensusConstants::mainnet(),
             Network::Ridcully => ConsensusConstants::ridcully(),
+            Network::Stibbons => ConsensusConstants::stibbons(),
             Network::LocalNet => ConsensusConstants::localnet(),
         }
     }
@@ -51,6 +54,7 @@ impl From<GlobalNetwork> for Network {
         match global_network {
             GlobalNetwork::MainNet => Network::MainNet,
             GlobalNetwork::Ridcully => Network::Ridcully,
+            GlobalNetwork::Stibbons => Network::Stibbons,
             GlobalNetwork::LocalNet => Network::LocalNet,
             GlobalNetwork::Rincewind => unimplemented!("Rincewind has been retired"),
         }

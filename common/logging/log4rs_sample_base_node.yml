@@ -86,6 +86,11 @@ loggers:
     level: trace
     appenders:
       - base_layer
+  c::bn::state_machine_service::states:
+    level: trace
+    appenders:
+      - base_layer
+      - stdout
   c::cs:
     level: trace
     appenders:

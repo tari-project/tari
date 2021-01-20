@@ -143,4 +143,6 @@ loggers:
     level: info
     appenders:
       - mining_node
+      - stdout
     additive: false
+

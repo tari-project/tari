@@ -233,14 +233,17 @@ fn test_base_node_wallet_rpc() {
     assert_eq!(resp.rejection_reason, TxSubmissionRejectionReason::DoubleSpend);
 
     // Now we will Mine block 2 so that we can see 1 confirmation on tx1
-    let block2 = base_node
+    let mut block2 = base_node
         .blockchain_db
         .prepare_block_merkle_roots(chain_block(&block1, vec![], &consensus_manager))
         .unwrap();
 
-    assert!(runtime
+    block2.header.output_mmr_size += 1;
+    block2.header.kernel_mmr_size += 1;
+
+    runtime
         .block_on(base_node.local_nci.submit_block(block2.clone(), Broadcast::from(true)))
-        .is_ok());
+        .unwrap();
 
     // Query Tx1 which should be in block 1 with 1 confirmation
     let msg = SignatureProto::from(tx1_sig.clone());

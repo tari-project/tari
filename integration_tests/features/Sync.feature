@@ -8,13 +8,13 @@ Feature: Block Sync
     # All nodes should sync to tip
     Then all nodes are at height <NumBlocks>
     Examples:
-      | NumSeeds |  NumBlocks | NumSyncers |
-      | 1        | 1           | 1         |
-      | 1        | 10          | 2         |
-      | 1        | 50          | 4          |
-      | 8        | 40          | 8         |
+      | NumSeeds | NumBlocks | NumSyncers |
+      | 1        | 1         | 1          |
+      | 1        | 10        | 2          |
+      | 1        | 50        | 4          |
+      | 8        | 40        | 8          |
 
-    @critical
+  @critical
   Scenario: Simple block sync
     Given I have 1 seed nodes
     And I have a base node MINER connected to all seed nodes
@@ -23,10 +23,52 @@ Feature: Block Sync
     # All nodes should sync to tip
     Then all nodes are at height 20
 
-  Scenario: When a new node joins the network, it should receive all peers. 
-  Given I have 10 seed nodes
-  And I have a base node NODE1 connected to all seed nodes
-  Then NODE1 should have 10 peers
-  Given I have a base node NODE2 connected to node NODE1
-  Then NODE1 should have 11 peers
-  Then NODE2 should have 11 peers
+  Scenario: When a new node joins the network, it should receive all peers.
+    Given I have 10 seed nodes
+    And I have a base node NODE1 connected to all seed nodes
+    Then NODE1 should have 10 peers
+    Given I have a base node NODE2 connected to node NODE1
+    Then NODE1 should have 11 peers
+    Then NODE2 should have 11 peers
+
+  @critical
+  Scenario: Pruned mode
+      #TODO: Merge steps into single lines
+    Given I have a base node NODE1 connected to all seed nodes
+    When I mine a block on NODE1 with coinbase CB1
+    When I mine a block on NODE1 with coinbase CB2
+    When I mine a block on NODE1 with coinbase CB3
+    When I mine a block on NODE1 with coinbase CB4
+    When I mine a block on NODE1 with coinbase CB5
+    Then all nodes are at height 5
+    When I spend outputs CB1 via NODE1
+#      When I spend outputs CB2 via NODE1
+#      When I spend outputs CB3 via NODE1
+    And I mine 3 blocks on NODE1
+    Given I have a pruned node PNODE2 connected to node NODE1
+    Then all nodes are at height 8
+      # Spend txns so that they are pruned when tip moves
+#      When I spend outputs CB4 via PNODE2
+#      When I spend outputs CB5 via PNODE2
+    When I mine 15 blocks on PNODE2
+    Then all nodes are at height 23
+
+
+  @critical @reorg
+  Scenario: Pruned mode reorg
+    Given I have a base node NODE1 connected to all seed nodes
+    When I mine 5 blocks on NODE1
+    Then all nodes are at height 5
+    Given I have a pruned node PNODE2 connected to node NODE1
+    When I mine 4 blocks on NODE1
+    Then all nodes are at height 9
+    When I mine 5 blocks on PNODE2
+    Then all nodes are at height 14
+    When I stop PNODE2
+    And I mine 3 blocks on NODE1
+    And I stop NODE1
+    And I start PNODE2
+    And I mine 6 blocks on PNODE2
+    When I start NODE1
+    Then all nodes are at height 20
+

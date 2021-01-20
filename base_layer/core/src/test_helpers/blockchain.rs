@@ -34,8 +34,10 @@ use crate::{
         DbKey,
         DbTransaction,
         DbValue,
+        HorizonData,
         LMDBDatabase,
         MmrTree,
+        PrunedOutput,
         Validators,
     },
     consensus::{
@@ -54,6 +56,7 @@ use crate::{
         mocks::MockValidator,
     },
 };
+use croaring::Bitmap;
 use std::{
     fs,
     ops::Deref,
@@ -176,6 +179,14 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_chain_header_in_all_chains(hash)
     }
 
+    fn fetch_header_containing_kernel_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
+        self.db.fetch_header_containing_kernel_mmr(mmr_position)
+    }
+
+    fn fetch_header_containing_utxo_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
+        self.db.fetch_header_containing_utxo_mmr(mmr_position)
+    }
+
     fn is_empty(&self) -> Result<bool, ChainStorageError> {
         self.db.is_empty()
     }
@@ -186,6 +197,14 @@ impl BlockchainBackend for TempDatabase {
     ) -> Result<Option<BlockAccumulatedData>, ChainStorageError>
     {
         self.db.fetch_block_accumulated_data(header_hash)
+    }
+
+    fn fetch_block_accumulated_data_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<BlockAccumulatedData>, ChainStorageError>
+    {
+        self.db.fetch_block_accumulated_data_by_height(height)
     }
 
     fn fetch_kernels_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionKernel>, ChainStorageError> {
@@ -208,11 +227,25 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_kernel_by_excess_sig(excess_sig)
     }
 
+    fn fetch_kernels_by_mmr_position(&self, start: u64, end: u64) -> Result<Vec<TransactionKernel>, ChainStorageError> {
+        self.db.fetch_kernels_by_mmr_position(start, end)
+    }
+
+    fn fetch_utxos_by_mmr_position(
+        &self,
+        start: u64,
+        end: u64,
+        deleted: &Bitmap,
+    ) -> Result<(Vec<PrunedOutput>, Vec<Bitmap>), ChainStorageError>
+    {
+        self.db.fetch_utxos_by_mmr_position(start, end, deleted)
+    }
+
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError> {
         self.db.fetch_output(output_hash)
     }
 
-    fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
+    fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
         self.db.fetch_outputs_in_block(header_hash)
     }
 
@@ -220,37 +253,8 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_inputs_in_block(header_hash)
     }
 
-    fn fetch_mmr_node_count(&self, tree: MmrTree, height: u64) -> Result<u32, ChainStorageError> {
-        self.db.fetch_mmr_node_count(tree, height)
-    }
-
-    fn fetch_mmr_node(
-        &self,
-        tree: MmrTree,
-        pos: u32,
-        hist_height: Option<u64>,
-    ) -> Result<(HashOutput, bool), ChainStorageError>
-    {
-        self.db.fetch_mmr_node(tree, pos, hist_height)
-    }
-
-    fn fetch_mmr_nodes(
-        &self,
-        tree: MmrTree,
-        pos: u32,
-        count: u32,
-        hist_height: Option<u64>,
-    ) -> Result<Vec<(HashOutput, bool)>, ChainStorageError>
-    {
-        self.db.fetch_mmr_nodes(tree, pos, count, hist_height)
-    }
-
-    fn insert_mmr_node(&mut self, tree: MmrTree, hash: HashOutput, deleted: bool) -> Result<(), ChainStorageError> {
-        self.db.insert_mmr_node(tree, hash, deleted)
-    }
-
-    fn delete_mmr_node(&mut self, tree: MmrTree, hash: &HashOutput) -> Result<(), ChainStorageError> {
-        self.db.delete_mmr_node(tree, hash)
+    fn fetch_mmr_size(&self, tree: MmrTree) -> Result<u64, ChainStorageError> {
+        self.db.fetch_mmr_size(tree)
     }
 
     fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &HashOutput) -> Result<Option<u32>, ChainStorageError> {
@@ -308,5 +312,9 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_monero_seed_first_seen_height(&self, seed: &str) -> Result<u64, ChainStorageError> {
         self.db.fetch_monero_seed_first_seen_height(seed)
+    }
+
+    fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError> {
+        self.db.fetch_horizon_data()
     }
 }

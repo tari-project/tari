@@ -49,6 +49,7 @@ pub struct BaseNodeStateMachineConfig {
     pub horizon_sync_config: HorizonSyncConfig,
     pub sync_peer_config: SyncPeerConfig,
     pub orphan_db_clean_out_threshold: usize,
+    pub pruning_horizon: u64,
 }
 
 /// A Tari full node, aka Base Node.
@@ -61,7 +62,7 @@ pub struct BaseNodeStateMachineConfig {
 pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) db: AsyncBlockchainDb<B>,
     pub(super) local_node_interface: LocalNodeCommsInterface,
-    pub(super) outbound_nci: OutboundNodeCommsInterface,
+    pub(super) _outbound_nci: OutboundNodeCommsInterface,
     pub(super) connectivity: ConnectivityRequester,
     pub(super) peer_manager: Arc<PeerManager>,
     pub(super) metadata_event_stream: broadcast::Receiver<Arc<ChainMetadataEvent>>,
@@ -98,7 +99,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         Self {
             db,
             local_node_interface,
-            outbound_nci,
+            _outbound_nci: outbound_nci,
             connectivity,
             peer_manager,
             metadata_event_stream,
@@ -121,14 +122,19 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
             (Listening(s), InitialSync) => HeaderSync(s.into()),
-            (HeaderSync(_), HeadersSynchronized(conn)) => BlockSync(states::BlockSync::with_peer(conn)),
+            (HeaderSync(_), HeadersSynchronized(conn)) => {
+                if self.config.pruning_horizon > 0 {
+                    HorizonStateSync(states::HorizonStateSync::with_peer(conn))
+                } else {
+                    BlockSync(states::BlockSync::with_peer(conn))
+                }
+            },
             (HeaderSync(s), HeaderSyncFailed) => Waiting(s.into()),
             (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(s.into()),
             (HorizonStateSync(s), HorizonStateSyncFailure) => Waiting(s.into()),
             (BlockSync(s), BlocksSynchronized) => Listening(s.into()),
             (BlockSync(s), BlockSyncFailed) => Waiting(s.into()),
             (Listening(_), FallenBehind(Lagging(_, sync_peers))) => HeaderSync(sync_peers.into()),
-            // TODO: The transition to horizon sync should be determined by header sync
             (Listening(_), FallenBehind(LaggingBehindHorizon(_, sync_peers))) => HeaderSync(sync_peers.into()),
             (Waiting(s), Continue) => Listening(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
