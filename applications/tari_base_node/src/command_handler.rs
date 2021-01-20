@@ -29,7 +29,6 @@ use crate::{
     utils::{format_duration_basic, format_naive_datetime},
 };
 use chrono::{DateTime, Utc};
-use itertools::Itertools;
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use regex::Regex;
@@ -1580,7 +1579,7 @@ impl CommandHandler {
 
             // Initiate make-it-rain
             for command in make_it_rain_commands {
-                println!("Command: make-it-rain {}", command.iter().join(" "));
+                println!("Command: make-it-rain {}", command.join(" "));
                 // [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx] [start time (UTC) / 'now'] [public key
                 // or emoji id to send to] [message]
                 let inputs = match get_make_it_rain_tx_values(command) {

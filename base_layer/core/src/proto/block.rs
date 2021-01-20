@@ -27,7 +27,6 @@ use crate::{
     proof_of_work::{PowAlgorithm, ProofOfWork},
     transactions::types::BlindingFactor,
 };
-use itertools::zip;
 use prost_types::Timestamp;
 use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::BLOCK_HASH_LENGTH;
@@ -168,11 +167,11 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
             .map(TryInto::try_into)
             .ok_or_else(|| "accumulated_data in historical block not provided".to_string())??;
 
-        let pruned = zip(
-            historical_block.pruned_output_hashes,
-            historical_block.pruned_proof_hashes,
-        )
-        .collect();
+        let pruned = historical_block
+            .pruned_output_hashes
+            .into_iter()
+            .zip(historical_block.pruned_proof_hashes)
+            .collect();
 
         Ok(HistoricalBlock::new(
             block,

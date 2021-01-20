@@ -720,7 +720,7 @@ dependencies = [
  "clap",
  "criterion-plot",
  "csv",
- "itertools 0.8.2",
+ "itertools",
  "lazy_static 1.4.0",
  "libc",
  "num-traits 0.2.12",
@@ -744,7 +744,7 @@ checksum = "76f9212ddf2f4a9eb2d401635190600656a1f88a932ef53d06e7fa4c7e02fb8e"
 dependencies = [
  "byteorder",
  "cast",
- "itertools 0.8.2",
+ "itertools",
 ]
 
 [[package]]
@@ -1871,15 +1871,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "itertools"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37d572918e350e82412fe766d24b15e6682fb2ed2bbe018280caa810397cb319"
-dependencies = [
- "either",
-]
-
-[[package]]
 name = "itoa"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2885,7 +2876,7 @@ checksum = "02b10678c913ecbd69350e8535c3aef91a8676c0773fc1d7b95cdd196d7f2f26"
 dependencies = [
  "bytes 0.5.6",
  "heck",
- "itertools 0.8.2",
+ "itertools",
  "log 0.4.11",
  "multimap",
  "petgraph",
@@ -2902,7 +2893,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "537aa19b95acde10a12fec4301466386f757403de4cd4e5b4fa78fb5ecb18f72"
 dependencies = [
  "anyhow",
- "itertools 0.8.2",
+ "itertools",
  "proc-macro2 1.0.24",
  "quote 1.0.7",
  "syn 1.0.58",
@@ -3866,7 +3857,6 @@ dependencies = [
  "dirs-next",
  "futures 0.3.6",
  "git2",
- "itertools 0.8.2",
  "log 0.4.11",
  "log4rs",
  "prost",
@@ -4111,7 +4101,6 @@ dependencies = [
  "fs2",
  "futures 0.3.6",
  "hex",
- "itertools 0.10.0",
  "lmdb-zero",
  "log 0.4.11",
  "monero",
