@@ -24,15 +24,18 @@ syntax = "proto3";
 package tari.rpc;
 
 import "types.proto";
-import "google/protobuf/wrappers.proto";
-import "google/protobuf/timestamp.proto";
 
 // The gRPC interface for interacting with the wallet.
 service Wallet {
+    rpc GetVersion (Empty) returns (GetVersionResponse);
     // This returns a coinbase transaction
     rpc GetCoinbase (GetCoinbaseRequest) returns (GetCoinbaseResponse);
     // Send Tari to a number of recipients
     rpc Transfer (TransferRequest)  returns (TransferResponse);
+}
+
+message GetVersionResponse {
+    string version = 1;
 }
 
 message TransferRequest {

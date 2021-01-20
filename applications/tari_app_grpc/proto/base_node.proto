@@ -22,8 +22,6 @@
 syntax = "proto3";
 
 
-import "google/protobuf/wrappers.proto";
-import "google/protobuf/timestamp.proto";
 import "types.proto";
 
 package tari.rpc;
@@ -80,9 +78,6 @@ message NewBlockTemplateResponse{
     bool initial_sync_achieved = 3;
     MinerData miner_data = 4;
 }
-
-/// An Empty placeholder for endpoints without request parameters
-message Empty {}
 
 // Network difficulty response
 message NetworkDifficultyResponse {

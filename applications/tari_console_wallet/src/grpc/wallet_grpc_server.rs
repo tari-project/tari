@@ -2,8 +2,10 @@ use futures::future;
 use log::*;
 use tari_app_grpc::tari_rpc::{
     wallet_server,
+    Empty,
     GetCoinbaseRequest,
     GetCoinbaseResponse,
+    GetVersionResponse,
     TransferRequest,
     TransferResponse,
     TransferResult,
@@ -31,6 +33,12 @@ impl WalletGrpcServer {
 
 #[tonic::async_trait]
 impl wallet_server::Wallet for WalletGrpcServer {
+    async fn get_version(&self, _: Request<Empty>) -> Result<Response<GetVersionResponse>, Status> {
+        Ok(Response::new(GetVersionResponse {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        }))
+    }
+
     async fn get_coinbase(
         &self,
         request: Request<GetCoinbaseRequest>,
