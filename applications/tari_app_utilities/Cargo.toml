@@ -1,14 +1,14 @@
 [package]
 name = "tari_app_utilities"
-version = "0.7.2"
+version = "0.7.3"
 authors = ["Philip Robinson <simian@tari.com>"]
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.2", path = "../../comms"}
+tari_comms = { path = "../../comms"}
 tari_crypto = "^0.8"
-tari_common = { version= "^0.2", path = "../../common" }
-tari_p2p = { version= "^0.2", path = "../../base_layer/p2p" }
+tari_common = { path = "../../common" }
+tari_p2p = { path = "../../base_layer/p2p" }
 tari_wallet = { path = "../../base_layer/wallet" }
 
 config = { version = "0.9.3" }
@@ -27,6 +27,6 @@ tonic = "0.2"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
-version = "^0.2"
+version = "^0.7"
 default-features = false
 features = ["transactions"]

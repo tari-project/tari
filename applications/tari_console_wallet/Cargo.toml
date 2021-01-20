@@ -1,19 +1,19 @@
 [package]
 name = "tari_console_wallet"
-version = "0.7.2"
+version = "0.7.3"
 authors = ["Philip Robinson <simian@tari.com>"]
 edition = "2018"
 
 [dependencies]
-tari_wallet = { version = "^0.2", path = "../../base_layer/wallet" }
+tari_wallet = {  path = "../../base_layer/wallet" }
 tari_crypto = "^0.8"
-tari_common = { version= "^0.2", path = "../../common" }
+tari_common = {  path = "../../common" }
 tari_app_utilities = { path = "../tari_app_utilities"}
-tari_comms = { version = "^0.2", path = "../../comms"}
-tari_comms_dht = { version = "^0.2", path = "../../comms/dht"}
-tari_p2p = { version= "^0.2", path = "../../base_layer/p2p" }
+tari_comms = {  path = "../../comms"}
+tari_comms_dht = {  path = "../../comms/dht"}
+tari_p2p = {  path = "../../base_layer/p2p" }
 tari_app_grpc = {  path = "../tari_app_grpc" }
-tari_shutdown = { version= "^0.2", path = "../../infrastructure/shutdown" }
+tari_shutdown = {  path = "../../infrastructure/shutdown" }
 
 chrono = { version = "0.4.6", features = ["serde"]}
 chrono-english = "0.1"
@@ -37,7 +37,7 @@ tonic = "0.2"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
-version = "^0.2"
+version = "^0.7"
 default-features = false
 features = ["transactions", "mempool_proto", "base_node_proto"]
 
