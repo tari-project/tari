@@ -4,12 +4,12 @@ authors = ["The Tari Development Community"]
 description = "The tari mining node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.7.2"
+version = "0.7.3"
 edition = "2018"
 
 [dependencies]
-tari_common = { version= "^0.2", path = "../../common" }
-tari_core = { path = "../../base_layer/core", version = "^0.2", default-features = false }
+tari_core = { path = "../../base_layer/core",  default-features = false }
+tari_common = {  path = "../../common" }
 tari_app_utilities = { path = "../tari_app_utilities"}
 tari_app_grpc = {  path = "../tari_app_grpc" }
 

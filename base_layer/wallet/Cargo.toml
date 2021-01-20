@@ -3,19 +3,20 @@ name = "tari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "0.2.16"
+version = "0.7.3"
 edition = "2018"
 
 [dependencies]
-tari_common_types = { version = "^0.2", path = "../../base_layer/common_types"}
-tari_comms = { version = "^0.2", path = "../../comms"}
-tari_comms_dht = { version = "^0.2.1", path = "../../comms/dht" }
+tari_common_types = { version = "^0.7", path = "../../base_layer/common_types"}
+tari_comms = { version = "^0.7", path = "../../comms"}
+tari_comms_dht = { version = "^0.7", path = "../../comms/dht" }
 tari_crypto = "^0.8"
-tari_key_manager = { version = "^0.2", path = "../key_manager" }
-tari_p2p = { version = "^0.2", path = "../p2p" }
-tari_service_framework = { version = "^0.2", path = "../service_framework"}
-tari_shutdown = { version = "^0.2", path = "../../infrastructure/shutdown" }
-tari_storage = { version = "^0.2", path = "../../infrastructure/storage"}
+tari_key_manager = { version = "^0.7", path = "../key_manager" }
+tari_p2p = { version = "^0.7", path = "../p2p" }
+tari_service_framework = { version = "^0.7", path = "../service_framework"}
+tari_shutdown = { version = "^0.7", path = "../../infrastructure/shutdown" }
+tari_storage = { version = "^0.7", path = "../../infrastructure/storage"}
+tari_test_utils = { version = "^0.7", path = "../../infrastructure/test_utils", optional = true}
 
 aes-gcm = "^0.8"
 blake2 = "0.8.0"
@@ -36,20 +37,19 @@ serde_json = "1.0.39"
 tokio = { version = "0.2.10", features = ["blocking", "sync"]}
 tower = "0.3.0-alpha.2"
 tempfile = "3.1.0"
-tari_test_utils = { version = "^0.2", path = "../../infrastructure/test_utils", optional = true}
 time = {version = "0.1.39"}
 thiserror = "1.0.20"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
-version = "^0.2"
+version = "^0.7"
 default-features = false
 features = ["transactions", "mempool_proto", "base_node_proto"]
 
 [dev-dependencies]
-tari_p2p = { version = "^0.2", path = "../p2p", features=["test-mocks"]}
-tari_comms_dht = { version = "^0.2", path = "../../comms/dht", features=["test-mocks"]}
-tari_test_utils = { version = "^0.2", path = "../../infrastructure/test_utils" }
+tari_p2p = { version = "^0.7", path = "../p2p", features=["test-mocks"]}
+tari_comms_dht = { version = "^0.7", path = "../../comms/dht", features=["test-mocks"]}
+tari_test_utils = { version = "^0.7", path = "../../infrastructure/test_utils" }
 lazy_static = "1.3.0"
 env_logger = "0.7.1"
 prost = "0.6.1"
