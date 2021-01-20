@@ -30,6 +30,8 @@ pub enum MinerError {
     GrpcConnection(#[from] tonic::transport::Error),
     #[error("Node not ready")]
     NodeNotReady,
+    #[error("Block height {0} already mined")]
+    MinerLostBlock(u64),
     #[error("Expected non empty {0}")]
     EmptyObject(String),
     #[error("Invalid block header {0}")]
@@ -38,8 +40,4 @@ pub enum MinerError {
 
 pub fn err_empty(name: &str) -> MinerError {
     MinerError::EmptyObject(name.to_string())
-}
-
-pub fn err_block_header(err: String) -> MinerError {
-    MinerError::BlockHeader(err)
 }

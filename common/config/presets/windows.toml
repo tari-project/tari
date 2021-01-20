@@ -389,14 +389,25 @@ monerod_password=""
 
 
 [mining_node]
-## Number of mining threads - will use number of logica CPU cores if not set
+# Number of mining threads
+# Default: number of logical CPU cores
 #num_mining_threads=8
 
-# GRPC address of base node. Will use local setting from the [base_node] config section by default.
+# GRPC address of base node
+# Default: value from `base_node.grpc_base_node_address`
 #base_node_grpc_address = "127.0.0.1:18142"
 
-# GRPC address of console wallet. Will use local setting from the [base_node] config section by default.
+# GRPC address of console wallet
+# Default: value from `base_node.grpc_console_wallet_address`
 #wallet_grpc_address = "127.0.0.1:18143"
 
-## Will start mining only when base node has reported that it is bootstrapped
+# Start mining only when base node is bootstrapped 
+# and current block height is on the tip of network
+# Default: true
 #mine_on_tip_only=true
+
+# Will check tip with node every N seconds and restart mining
+# if height already taken and option `mine_on_tip_only` is set 
+# to true
+# Default: 30 seconds
+#validate_tip_timeout_sec=30

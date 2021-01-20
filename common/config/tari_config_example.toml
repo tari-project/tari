@@ -386,3 +386,27 @@ monerod_password=""
 # or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
 # accepted. (Default value = true; will wait for base node initial sync).
 #wait_for_initial_sync_at_startup = true
+
+[mining_node]
+# Number of mining threads
+# Default: number of logical CPU cores
+#num_mining_threads=8
+
+# GRPC address of base node
+# Default: value from `base_node.grpc_base_node_address`
+#base_node_grpc_address = "127.0.0.1:18142"
+
+# GRPC address of console wallet
+# Default: value from `base_node.grpc_console_wallet_address`
+#wallet_grpc_address = "127.0.0.1:18143"
+
+# Start mining only when base node is bootstrapped 
+# and current block height is on the tip of network
+# Default: true
+#mine_on_tip_only=true
+
+# Will check tip with node every N seconds and restart mining
+# if height already taken and option `mine_on_tip_only` is set 
+# to true
+# Default: 30 seconds
+#validate_tip_timeout_sec=30

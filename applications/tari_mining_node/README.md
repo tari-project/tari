@@ -25,6 +25,8 @@ Miner node is managed through Tari's `config.toml` file under `[mining_node]` su
  - `wallet_grpc_address` - is IPv4/IPv6 address including port number, where Tari Wallet Node can be found
  - `num_mining_threads` - number of mining threads, defaults to number of cpu cores
  - `mine_on_tip_only` - will start mining only when node is reporting bootstrapped state
+ - `validate_tip_timeout_sec` - will check tip with node every N seconds and restart mining
+ if current template height is taken
 
 ### Caveats 
 
