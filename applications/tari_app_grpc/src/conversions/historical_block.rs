@@ -21,13 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::tari_rpc as grpc;
-use tari_core::chain_storage::HistoricalBlock;
+use std::convert::TryFrom;
+use tari_core::chain_storage::{ChainStorageError, HistoricalBlock};
 
-impl From<HistoricalBlock> for grpc::HistoricalBlock {
-    fn from(hb: HistoricalBlock) -> Self {
-        Self {
+impl TryFrom<HistoricalBlock> for grpc::HistoricalBlock {
+    type Error = ChainStorageError;
+
+    fn try_from(hb: HistoricalBlock) -> Result<Self, Self::Error> {
+        Ok(Self {
             confirmations: hb.confirmations,
-            block: Some(hb.block.into()),
-        }
+            block: Some(hb.try_into_block()?.into()),
+        })
     }
 }

@@ -35,7 +35,7 @@ pub(crate) mod helpers;
 mod traits;
 pub use traits::{
     CandidateBlockBodyValidation,
-    FinalHeaderStateValidation,
+    FinalHorizonStateValidation,
     HeaderValidation,
     MempoolTransactionValidation,
     OrphanValidation,

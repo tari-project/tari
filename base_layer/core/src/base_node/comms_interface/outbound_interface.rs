@@ -23,7 +23,7 @@
 use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
     blocks::{block_header::BlockHeader, NewBlock},
-    chain_storage::{HistoricalBlock, MmrTree},
+    chain_storage::HistoricalBlock,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::HashOutput,
@@ -282,49 +282,5 @@ impl OutboundNodeCommsInterface {
             .map_err(|err| {
                 CommsInterfaceError::InternalChannelError(format!("Failed to send on block_sender: {}", err))
             })
-    }
-
-    /// Fetches the total merkle mountain range node count upto the specified height from remote base nodes.
-    pub async fn fetch_mmr_node_count(
-        &mut self,
-        tree: MmrTree,
-        height: u64,
-        node_id: Option<NodeId>,
-    ) -> Result<u32, CommsInterfaceError>
-    {
-        if let NodeCommsResponse::MmrNodeCount(node_count) = self
-            .request_sender
-            .call((NodeCommsRequest::FetchMmrNodeCount(tree, height), node_id))
-            .await??
-        {
-            Ok(node_count)
-        } else {
-            Err(CommsInterfaceError::UnexpectedApiResponse)
-        }
-    }
-
-    /// Fetches the set of leaf node hashes and their deletion status' for the nth to nth+count leaf node index in the
-    /// given MMR tree.
-    pub async fn fetch_mmr_nodes(
-        &mut self,
-        tree: MmrTree,
-        pos: u32,
-        count: u32,
-        hist_height: u64,
-        node_id: Option<NodeId>,
-    ) -> Result<(Vec<HashOutput>, Vec<u8>), CommsInterfaceError>
-    {
-        if let NodeCommsResponse::MmrNodes(added, deleted) = self
-            .request_sender
-            .call((
-                NodeCommsRequest::FetchMatchingMmrNodes(tree, pos, count, hist_height),
-                node_id,
-            ))
-            .await??
-        {
-            Ok((added, deleted))
-        } else {
-            Err(CommsInterfaceError::UnexpectedApiResponse)
-        }
     }
 }

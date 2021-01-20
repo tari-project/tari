@@ -31,9 +31,6 @@ impl TryFrom<grpc::ProofOfWork> for ProofOfWork {
     fn try_from(pow: grpc::ProofOfWork) -> Result<Self, Self::Error> {
         Ok(Self {
             pow_algo: PowAlgorithm::try_from(pow.pow_algo)?,
-            accumulated_monero_difficulty: 1.into(),
-            accumulated_blake_difficulty: 1.into(),
-            target_difficulty: 1.into(),
             pow_data: pow.pow_data,
         })
     }

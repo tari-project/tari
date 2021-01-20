@@ -24,6 +24,7 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 use crate::{
     blocks::BlockHeader,
+    chain_storage::MmrTree,
     consensus::ConsensusConstants,
     proof_of_work::ProofOfWork,
     tari_utilities::hex::Hex,
@@ -49,6 +50,12 @@ pub enum BlockValidationError {
     InvalidInput,
     #[error("Mismatched MMR roots")]
     MismatchedMmrRoots,
+    #[error("MMR size for {mmr_tree} does not match. Expected: {expected}, received: {actual}")]
+    MismatchedMmrSize {
+        mmr_tree: MmrTree,
+        expected: u64,
+        actual: u64,
+    },
     #[error("The block contains transactions that should have been cut through.")]
     NoCutThrough,
     #[error("The block weight is above the maximum")]
@@ -182,7 +189,9 @@ impl BlockBuilder {
         for tx in iter {
             let (inputs, outputs, kernels) = tx.body.dissolve();
             self = self.add_inputs(inputs);
+            self.header.output_mmr_size += outputs.len() as u64;
             self = self.add_outputs(outputs);
+            self.header.kernel_mmr_size += kernels.len() as u64;
             self = self.add_kernels(kernels);
             self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
         }
@@ -193,7 +202,9 @@ impl BlockBuilder {
     pub fn add_transaction(mut self, tx: Transaction) -> Self {
         let (inputs, outputs, kernels) = tx.body.dissolve();
         self = self.add_inputs(inputs);
+        self.header.output_mmr_size += outputs.len() as u64;
         self = self.add_outputs(outputs);
+        self.header.kernel_mmr_size += kernels.len() as u64;
         self = self.add_kernels(kernels);
         self.header.total_kernel_offset = &self.header.total_kernel_offset + &tx.offset;
         self

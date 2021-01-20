@@ -49,7 +49,6 @@ pub enum NodeCommsResponse {
     },
     TargetDifficulty(Difficulty),
     FetchHeadersAfterResponse(Vec<BlockHeader>),
-    MmrNodeCount(u32),
     MmrNodes(Vec<HashOutput>, Vec<u8>),
 }
 
@@ -75,7 +74,6 @@ impl Display for NodeCommsResponse {
             ),
             TargetDifficulty(_) => write!(f, "TargetDifficulty"),
             FetchHeadersAfterResponse(_) => write!(f, "FetchHeadersAfterResponse"),
-            MmrNodeCount(_) => write!(f, "MmrNodeCount"),
             MmrNodes(_, _) => write!(f, "MmrNodes"),
         }
     }

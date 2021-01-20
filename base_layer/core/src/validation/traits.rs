@@ -23,7 +23,7 @@
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{BlockHeaderAccumulatedData, BlockHeaderAccumulatedDataBuilder, BlockchainBackend, ChainBlock},
-    transactions::transaction::Transaction,
+    transactions::{transaction::Transaction, types::Commitment},
     validation::error::ValidationError,
 };
 
@@ -55,6 +55,12 @@ pub trait HeaderValidation<B: BlockchainBackend>: Send + Sync {
     ) -> Result<BlockHeaderAccumulatedDataBuilder, ValidationError>;
 }
 
-pub trait FinalHeaderStateValidation: Send + Sync {
-    fn validate(&self, header: &BlockHeader) -> Result<(), ValidationError>;
+pub trait FinalHorizonStateValidation<B>: Send + Sync {
+    fn validate(
+        &self,
+        height: u64,
+        total_utxo_sum: &Commitment,
+        total_kernel_sum: &Commitment,
+        backend: &B,
+    ) -> Result<(), ValidationError>;
 }

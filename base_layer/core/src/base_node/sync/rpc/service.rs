@@ -22,7 +22,7 @@
 
 use crate::{
     base_node::sync::rpc::BaseNodeSyncService,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, OrNotFound, PrunedOutput},
     iterators::NonOverlappingIntegerPairIter,
     proto,
     proto::generated::base_node::{
@@ -30,12 +30,17 @@ use crate::{
         FindChainSplitResponse,
         SyncBlocksRequest,
         SyncHeadersRequest,
+        SyncKernelsRequest,
+        SyncUtxo,
+        SyncUtxosRequest,
+        SyncUtxosResponse,
     },
 };
 use futures::{channel::mpsc, stream, SinkExt};
 use log::*;
 use std::cmp;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_crypto::tari_utilities::hex::Hex;
 use tokio::task;
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";
@@ -78,11 +83,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
         let start = start_header.height + 1;
-        if start < metadata.effective_pruned_height() {
+        if start < metadata.pruned_height() {
             return Err(RpcStatus::bad_request(format!(
                 "Requested full block body at height {}, however this node has an effective pruned height of {}",
                 start,
-                metadata.effective_pruned_height()
+                metadata.pruned_height()
             )));
         }
 
@@ -134,9 +139,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         let mut blocks = stream::iter(
                             blocks
                                 .into_iter()
-                                .map(|hb| hb.block)
-                                .map(proto::base_node::BlockBodyResponse::from)
-                                .map(Ok)
+                                .map(|hb| hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)))
+                                .map(|block| match block {
+                                    Ok(b) => Ok(proto::base_node::BlockBodyResponse::from(b)),
+                                    Err(err) => Err(err),
+                                })
                                 .map(Ok),
                         );
 
@@ -329,5 +336,147 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
         Ok(Response::new(chain_metadata.into()))
+    }
+
+    async fn sync_kernels(
+        &self,
+        request: Request<SyncKernelsRequest>,
+    ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus>
+    {
+        let req = request.into_message();
+        const BATCH_SIZE: usize = 1000;
+        let (mut tx, rx) = mpsc::channel(BATCH_SIZE);
+        let db = self.db();
+
+        task::spawn(async move {
+            let end = match db
+                .fetch_chain_header_by_block_hash(req.end_header_hash.clone())
+                .await
+                .or_not_found("BlockHeader", "hash", req.end_header_hash.to_hex())
+                .map_err(RpcStatus::log_internal_error(LOG_TARGET))
+            {
+                Ok(header) => {
+                    if header.header.kernel_mmr_size < req.start {
+                        let _ = tx
+                            .send(Err(RpcStatus::bad_request("Start mmr position after requested header")))
+                            .await;
+                        return;
+                    }
+
+                    header.header.kernel_mmr_size
+                },
+                Err(err) => {
+                    let _ = tx.send(Err(err)).await;
+                    return;
+                },
+            };
+            let iter = NonOverlappingIntegerPairIter::new(req.start, end, BATCH_SIZE);
+            for (start, end) in iter {
+                if tx.is_closed() {
+                    break;
+                }
+                debug!(target: LOG_TARGET, "Streaming kernels {} to {}", start, end);
+                let res = db
+                    .fetch_kernels_by_mmr_position(start, end)
+                    .await
+                    .map_err(RpcStatus::log_internal_error(LOG_TARGET));
+                match res {
+                    Ok(kernels) if kernels.is_empty() => {
+                        break;
+                    },
+                    Ok(kernels) => {
+                        let mut kernels = stream::iter(
+                            kernels
+                                .into_iter()
+                                .map(proto::types::TransactionKernel::from)
+                                .map(Ok)
+                                .map(Ok),
+                        );
+                        // Ensure task stops if the peer prematurely stops their RPC session
+                        if tx.send_all(&mut kernels).await.is_err() {
+                            break;
+                        }
+                    },
+                    Err(err) => {
+                        let _ = tx.send(Err(err)).await;
+                        break;
+                    },
+                }
+            }
+        });
+        Ok(Streaming::new(rx))
+    }
+
+    async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus> {
+        let req = request.into_message();
+        const UTXOS_PER_BATCH: usize = 1000;
+        const BATCH_SIZE: usize = 100;
+        let (mut tx, rx) = mpsc::channel(BATCH_SIZE);
+        let db = self.db();
+
+        task::spawn(async move {
+            let end_header = match db
+                .fetch_header_by_block_hash(req.end_header_hash.clone())
+                .await
+                .or_not_found("BlockHeader", "hash", req.end_header_hash.to_hex())
+                .map_err(RpcStatus::log_internal_error(LOG_TARGET))
+            {
+                Ok(header) => header,
+                Err(err) => {
+                    let _ = tx.send(Err(err)).await;
+                    return;
+                },
+            };
+
+            let iter = NonOverlappingIntegerPairIter::new(req.start, end_header.output_mmr_size, UTXOS_PER_BATCH);
+            for (start, end) in iter {
+                if tx.is_closed() {
+                    break;
+                }
+                debug!(target: LOG_TARGET, "Streaming utxos {} to {}", start, end);
+                let res = db
+                    .fetch_utxos_by_mmr_position(start, end, req.end_header_hash.clone())
+                    .await
+                    .map_err(RpcStatus::log_internal_error(LOG_TARGET));
+                match res {
+                    Ok((utxos, deleted)) => {
+                        if utxos.is_empty() {
+                            break;
+                        }
+                        let response = SyncUtxosResponse {
+                            utxos: utxos
+                                .into_iter()
+                                .map(|pruned_output| match pruned_output {
+                                    PrunedOutput::Pruned {
+                                        output_hash,
+                                        range_proof_hash,
+                                    } => SyncUtxo {
+                                        output: None,
+                                        hash: output_hash,
+                                        rangeproof_hash: range_proof_hash,
+                                    },
+                                    PrunedOutput::NotPruned { output } => SyncUtxo {
+                                        output: Some(output.into()),
+                                        hash: vec![],
+                                        rangeproof_hash: vec![],
+                                    },
+                                })
+                                .collect(),
+                            deleted_bitmaps: deleted.into_iter().map(|d| d.serialize()).collect(),
+                        };
+
+                        // Ensure task stops if the peer prematurely stops their RPC session
+                        if tx.send(Ok(response)).await.is_err() {
+                            break;
+                        }
+                    },
+                    Err(err) => {
+                        let _ = tx.send(Err(err)).await;
+                        break;
+                    },
+                }
+            }
+        });
+        Ok(Streaming::new(rx))
     }
 }

@@ -399,7 +399,7 @@ async fn outbound_fetch_blocks() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
     let gb = BlockBuilder::new(consensus_constants[0].blockchain_version()).build();
-    let block = HistoricalBlock::new(gb, 0, Default::default());
+    let block = HistoricalBlock::new(gb, 0, Default::default(), vec![], 0);
     let block_response = NodeCommsResponse::HistoricalBlocks(vec![block.clone()]);
     let (received_blocks, _) = futures::join!(
         outbound_nci.fetch_blocks(vec![0]),

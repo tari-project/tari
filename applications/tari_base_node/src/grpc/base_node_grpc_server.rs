@@ -57,8 +57,8 @@ const GET_TOKENS_IN_CIRCULATION_PAGE_SIZE: usize = 1_000;
 // The maximum number of difficulty ints that can be requested at a time. These will be streamed to the
 // client, so memory is not really a concern here, but a malicious client could request a large
 // number here to keep the node busy
-const GET_DIFFICULTY_MAX_HEIGHTS: usize = 10_000;
-const GET_DIFFICULTY_PAGE_SIZE: usize = 1_000;
+// const GET_DIFFICULTY_MAX_HEIGHTS: usize = 10_000;
+// const GET_DIFFICULTY_PAGE_SIZE: usize = 1_000;
 // The maximum number of headers a client can request at a time. If the client requests more than
 // this, this is the maximum that will be returned.
 const LIST_HEADERS_MAX_NUM_HEADERS: u64 = 10_000;
@@ -119,109 +119,110 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     #[allow(deprecated)]
     async fn get_network_difficulty(
         &self,
-        request: Request<tari_rpc::HeightRequest>,
+        _request: Request<tari_rpc::HeightRequest>,
     ) -> Result<Response<Self::GetNetworkDifficultyStream>, Status>
     {
-        let request = request.into_inner();
-        debug!(
-            target: LOG_TARGET,
-            "Incoming GRPC request for GetNetworkDifficulty: from_tip: {:?} start_height: {:?} end_height: {:?}",
-            request.from_tip,
-            request.start_height,
-            request.end_height
-        );
-        let mut handler = self.node_service.clone();
-        let mut heights: Vec<u64> = get_heights(&request, handler.clone()).await?;
-        heights = heights
-            .drain(..cmp::min(heights.len(), GET_DIFFICULTY_MAX_HEIGHTS))
-            .collect();
-        let (mut tx, rx) = mpsc::channel(GET_DIFFICULTY_MAX_HEIGHTS);
-
-        self.executor.spawn(async move {
-            let mut page: Vec<u64> = heights
-                .drain(..cmp::min(heights.len(), GET_DIFFICULTY_PAGE_SIZE))
-                .collect();
-            while !page.is_empty() {
-                let mut difficulties = match handler.get_headers(page.clone()).await {
-                    Err(err) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Error communicating with local base node: {:?}", err,
-                        );
-                        return;
-                    },
-                    Ok(mut data) => {
-                        data.sort_by(|a, b| a.height.cmp(&b.height));
-                        let mut iter = data.iter().peekable();
-                        let mut result = Vec::new();
-                        while let Some(next) = iter.next() {
-                            let current_difficulty = next.pow.target_difficulty.as_u64();
-                            let current_timestamp = next.timestamp.as_u64();
-                            let current_height = next.height;
-                            let estimated_hash_rate = if let Some(peek) = iter.peek() {
-                                let peeked_timestamp = peek.timestamp.as_u64();
-                                // Sometimes blocks can have the same timestamp, lucky miner and some clock drift.
-                                if peeked_timestamp > current_timestamp {
-                                    current_difficulty / (peeked_timestamp - current_timestamp)
-                                } else {
-                                    0
-                                }
-                            } else {
-                                0
-                            };
-
-                            result.push((
-                                current_height,
-                                current_difficulty,
-                                estimated_hash_rate,
-                                current_timestamp,
-                            ))
-                        }
-
-                        result
-                    },
-                };
-                difficulties.sort_by(|a, b| b.0.cmp(&a.0));
-                let result_size = difficulties.len();
-                for difficulty in difficulties {
-                    match tx
-                        .send(Ok({
-                            tari_rpc::NetworkDifficultyResponse {
-                                height: difficulty.0,
-                                difficulty: difficulty.1,
-                                estimated_hash_rate: difficulty.2,
-                                timestamp: difficulty.3,
-                            }
-                        }))
-                        .await
-                    {
-                        Ok(_) => (),
-                        Err(err) => {
-                            warn!(target: LOG_TARGET, "Error sending difficulty via GRPC:  {}", err);
-                            match tx.send(Err(Status::unknown("Error sending data"))).await {
-                                Ok(_) => (),
-                                Err(send_err) => {
-                                    warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
-                                },
-                            }
-                            return;
-                        },
-                    }
-                }
-                if result_size < GET_DIFFICULTY_PAGE_SIZE {
-                    break;
-                }
-                page = heights
-                    .drain(..cmp::min(heights.len(), GET_DIFFICULTY_PAGE_SIZE))
-                    .collect();
-            }
-        });
-
-        debug!(
-            target: LOG_TARGET,
-            "Sending GetNetworkDifficulty response stream to client"
-        );
-        Ok(Response::new(rx))
+        unimplemented!("Need to fix where target difficulty comes from")
+        // let request = request.into_inner();
+        // debug!(
+        //     target: LOG_TARGET,
+        //     "Incoming GRPC request for GetNetworkDifficulty: from_tip: {:?} start_height: {:?} end_height: {:?}",
+        //     request.from_tip,
+        //     request.start_height,
+        //     request.end_height
+        // );
+        // let mut handler = self.node_service.clone();
+        // let mut heights: Vec<u64> = get_heights(&request, handler.clone()).await?;
+        // heights = heights
+        //     .drain(..cmp::min(heights.len(), GET_DIFFICULTY_MAX_HEIGHTS))
+        //     .collect();
+        // let (mut tx, rx) = mpsc::channel(GET_DIFFICULTY_MAX_HEIGHTS);
+        //
+        // self.executor.spawn(async move {
+        //     let mut page: Vec<u64> = heights
+        //         .drain(..cmp::min(heights.len(), GET_DIFFICULTY_PAGE_SIZE))
+        //         .collect();
+        //     while !page.is_empty() {
+        //         let mut difficulties = match handler.get_headers(page.clone()).await {
+        //             Err(err) => {
+        //                 warn!(
+        //                     target: LOG_TARGET,
+        //                     "Error communicating with local base node: {:?}", err,
+        //                 );
+        //                 return;
+        //             },
+        //             Ok(mut data) => {
+        //                 data.sort_by(|a, b| a.height.cmp(&b.height));
+        //                 let mut iter = data.iter().peekable();
+        //                 let mut result = Vec::new();
+        //                 while let Some(next) = iter.next() {
+        //                     let current_difficulty: u64 = unimplemented!("Need to retrieve difficulty correctly");
+        //                     let current_timestamp = next.timestamp.as_u64();
+        //                     let current_height = next.height;
+        //                     let estimated_hash_rate = if let Some(peek) = iter.peek() {
+        //                         let peeked_timestamp = peek.timestamp.as_u64();
+        //                         // Sometimes blocks can have the same timestamp, lucky miner and some clock drift.
+        //                         if peeked_timestamp > current_timestamp {
+        //                             current_difficulty / (peeked_timestamp - current_timestamp)
+        //                         } else {
+        //                             0
+        //                         }
+        //                     } else {
+        //                         0
+        //                     };
+        //
+        //                     result.push((
+        //                         current_height,
+        //                         current_difficulty,
+        //                         estimated_hash_rate,
+        //                         current_timestamp,
+        //                     ))
+        //                 }
+        //
+        //                 result
+        //             },
+        //         };
+        //         difficulties.sort_by(|a, b| b.0.cmp(&a.0));
+        //         let result_size = difficulties.len();
+        //         for difficulty in difficulties {
+        //             match tx
+        //                 .send(Ok({
+        //                     tari_rpc::NetworkDifficultyResponse {
+        //                         height: difficulty.0,
+        //                         difficulty: difficulty.1,
+        //                         estimated_hash_rate: difficulty.2,
+        //                         timestamp: difficulty.3,
+        //                     }
+        //                 }))
+        //                 .await
+        //             {
+        //                 Ok(_) => (),
+        //                 Err(err) => {
+        //                     warn!(target: LOG_TARGET, "Error sending difficulty via GRPC:  {}", err);
+        //                     match tx.send(Err(Status::unknown("Error sending data"))).await {
+        //                         Ok(_) => (),
+        //                         Err(send_err) => {
+        //                             warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+        //                         },
+        //                     }
+        //                     return;
+        //                 },
+        //             }
+        //         }
+        //         if result_size < GET_DIFFICULTY_PAGE_SIZE {
+        //             break;
+        //         }
+        //         page = heights
+        //             .drain(..cmp::min(heights.len(), GET_DIFFICULTY_PAGE_SIZE))
+        //             .collect();
+        //     }
+        // });
+        //
+        // debug!(
+        //     target: LOG_TARGET,
+        //     "Sending GetNetworkDifficulty response stream to client"
+        // );
+        // Ok(Response::new(rx))
     }
 
     async fn list_headers(
@@ -530,7 +531,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 };
                 let result_size = blocks.len();
                 for block in blocks {
-                    match tx.send(Ok(block.into())).await {
+                    match tx
+                        .send(
+                            block
+                                .try_into()
+                                .map_err(|err| Status::internal(format!("Could not provide block: {}", err))),
+                        )
+                        .await
+                    {
                         Ok(_) => (),
                         Err(err) => {
                             warn!(target: LOG_TARGET, "Error sending header via GRPC:  {}", err);
@@ -606,7 +614,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(data) => data,
             };
             for block in blocks {
-                match tx.send(Ok(block.into())).await {
+                match tx
+                    .send(
+                        block
+                            .try_into()
+                            .map_err(|err| Status::internal(format!("Could not provide block:{}", err))),
+                    )
+                    .await
+                {
                     Ok(_) => (),
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Error sending header via GRPC:  {}", err);

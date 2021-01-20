@@ -1,4 +1,4 @@
-const { setWorldConstructor, After,Before } = require("cucumber");
+const { setWorldConstructor, After,BeforeAll } = require("cucumber");
 
 // const BaseNodeClient = require('../helpers/baseNodeClient');
 // const TransactionBuilder = require('../helpers/transactionBuilder');
@@ -110,6 +110,17 @@ class CustomWorld {
 }
 
 setWorldConstructor(CustomWorld);
+
+BeforeAll({timeout: 120000}, function(callback) {
+    // Ensure the project can compile
+    let proc  =new BaseNodeProcess(`compile-tester`);
+    console.log("Precompiling node. This can take a while whenever the code changes...");
+    proc.startNew().then(function() {
+        proc.stop();
+        console.log("Finished check...");
+        callback();
+    });
+});
 
 After(function () {
     console.log('Stopping nodes');

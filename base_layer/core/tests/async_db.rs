@@ -86,7 +86,7 @@ fn async_rewind_to_height() {
             assert!(result.is_err());
             let block = db.fetch_block(2).await.unwrap();
             assert_eq!(block.confirmations(), 1);
-            assert_eq!(blocks[2].block, block.block);
+            assert_eq!(&blocks[2].block, block.block());
         });
     });
 }

@@ -727,6 +727,7 @@ pub enum Network {
     Rincewind,
     LocalNet,
     Ridcully,
+    Stibbons,
 }
 
 impl FromStr for Network {
@@ -736,6 +737,7 @@ impl FromStr for Network {
         match value.to_lowercase().as_str() {
             "rincewind" => Ok(Self::Rincewind),
             "ridcully" => Ok(Self::Ridcully),
+            "stibbons" => Ok(Self::Stibbons),
             "mainnet" => Ok(Self::MainNet),
             "localnet" => Ok(Self::LocalNet),
             invalid => Err(ConfigurationError::new(
@@ -752,6 +754,7 @@ impl Display for Network {
             Self::MainNet => "mainnet",
             Self::Rincewind => "rincewind",
             Self::Ridcully => "ridcully",
+            Self::Stibbons => "stibbons",
             Self::LocalNet => "localnet",
         };
         f.write_str(msg)

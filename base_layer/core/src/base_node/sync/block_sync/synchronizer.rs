@@ -24,7 +24,7 @@ use super::error::BlockSyncError;
 use crate::{
     base_node::sync::{hooks::Hooks, rpc},
     blocks::Block,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainBlock, MetadataKey, MetadataValue},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainBlock},
     proto::base_node::SyncBlocksRequest,
     tari_utilities::{hex::Hex, Hashable},
     transactions::aggregated_body::AggregateBody,
@@ -212,18 +212,13 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             );
 
             let timer = Instant::now();
-            let accumulated_difficulty = block.accumulated_data.total_accumulated_difficulty;
             self.db
                 .write_transaction()
                 .insert_block(block.clone())
-                .set_metadata(
-                    MetadataKey::ChainHeight,
-                    MetadataValue::ChainHeight(block.block.header.height),
-                )
-                .set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(header_hash))
-                .set_metadata(
-                    MetadataKey::AccumulatedWork,
-                    MetadataValue::AccumulatedWork(accumulated_difficulty),
+                .set_best_block(
+                    block.height(),
+                    header_hash,
+                    block.accumulated_data.total_accumulated_difficulty,
                 )
                 .commit()
                 .await?;
@@ -254,12 +249,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             let accumulated_difficulty = block.accumulated_data.total_accumulated_difficulty;
             self.db
                 .write_transaction()
-                .set_metadata(MetadataKey::ChainHeight, MetadataValue::ChainHeight(height))
-                .set_metadata(MetadataKey::BestBlock, MetadataValue::BestBlock(best_block.to_vec()))
-                .set_metadata(
-                    MetadataKey::AccumulatedWork,
-                    MetadataValue::AccumulatedWork(accumulated_difficulty),
-                )
+                .set_best_block(height, best_block.to_vec(), accumulated_difficulty)
                 .commit()
                 .await?;
 

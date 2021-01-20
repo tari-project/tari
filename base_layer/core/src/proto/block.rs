@@ -24,9 +24,10 @@ use super::core as proto;
 use crate::{
     blocks::{Block, BlockHeader, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
     chain_storage::{BlockHeaderAccumulatedData, HistoricalBlock},
-    proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
+    proof_of_work::{PowAlgorithm, ProofOfWork},
     transactions::types::BlindingFactor,
 };
+use itertools::zip;
 use prost_types::Timestamp;
 use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::BLOCK_HASH_LENGTH;
@@ -99,7 +100,9 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
             timestamp,
             output_mr: header.output_mr,
             range_proof_mr: header.range_proof_mr,
+            output_mmr_size: header.output_mmr_size,
             kernel_mr: header.kernel_mr,
+            kernel_mmr_size: header.kernel_mmr_size,
             total_kernel_offset,
             nonce: header.nonce,
             pow,
@@ -120,6 +123,8 @@ impl From<BlockHeader> for proto::BlockHeader {
             total_kernel_offset: header.total_kernel_offset.to_vec(),
             nonce: header.nonce,
             pow: Some(proto::ProofOfWork::from(header.pow)),
+            kernel_mmr_size: header.kernel_mmr_size,
+            output_mmr_size: header.output_mmr_size,
         }
     }
 }
@@ -132,9 +137,6 @@ impl TryFrom<proto::ProofOfWork> for ProofOfWork {
     fn try_from(pow: proto::ProofOfWork) -> Result<Self, Self::Error> {
         Ok(Self {
             pow_algo: PowAlgorithm::try_from(pow.pow_algo)?,
-            accumulated_monero_difficulty: Difficulty::from(pow.accumulated_monero_difficulty),
-            accumulated_blake_difficulty: Difficulty::from(pow.accumulated_blake_difficulty),
-            target_difficulty: Difficulty::from(pow.target_difficulty),
             pow_data: pow.pow_data,
         })
     }
@@ -145,9 +147,6 @@ impl From<ProofOfWork> for proto::ProofOfWork {
     fn from(pow: ProofOfWork) -> Self {
         Self {
             pow_algo: pow.pow_algo as u64,
-            accumulated_monero_difficulty: pow.accumulated_monero_difficulty.as_u64(),
-            accumulated_blake_difficulty: pow.accumulated_blake_difficulty.as_u64(),
-            target_difficulty: pow.target_difficulty.as_u64(),
             pow_data: pow.pow_data,
         }
     }
@@ -164,22 +163,39 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
             .map(TryInto::try_into)
             .ok_or_else(|| "block in historical block not provided".to_string())??;
 
-        Ok(Self {
-            confirmations: historical_block.confirmations,
+        let accumulated_data = historical_block
+            .accumulated_data
+            .map(TryInto::try_into)
+            .ok_or_else(|| "accumulated_data in historical block not provided".to_string())??;
+
+        let pruned = zip(
+            historical_block.pruned_output_hashes,
+            historical_block.pruned_proof_hashes,
+        )
+        .collect();
+
+        Ok(HistoricalBlock::new(
             block,
-            // TODO: populate this
-            accumulated_data: Default::default(),
-        })
+            historical_block.confirmations,
+            accumulated_data,
+            pruned,
+            historical_block.pruned_input_count,
+        ))
     }
 }
 
 impl From<HistoricalBlock> for proto::HistoricalBlock {
     fn from(block: HistoricalBlock) -> Self {
+        let pruned_output_hashes = block.pruned_outputs().iter().map(|x| x.0.clone()).collect();
+        let pruned_proof_hashes = block.pruned_outputs().iter().map(|x| x.1.clone()).collect();
+        let (block, accumulated_data, confirmations, pruned_input_count) = block.dissolve();
         Self {
-            confirmations: block.confirmations,
-            spent_commitments: vec![],
-            block: Some(block.block.into()),
-            accumulated_data: Some(block.accumulated_data.into()),
+            confirmations,
+            accumulated_data: Some(accumulated_data.into()),
+            block: Some(block.into()),
+            pruned_output_hashes,
+            pruned_proof_hashes,
+            pruned_input_count,
         }
     }
 }
@@ -192,7 +208,30 @@ impl From<BlockHeaderAccumulatedData> for proto::BlockHeaderAccumulatedData {
             accumulated_blake_difficulty: source.accumulated_blake_difficulty.into(),
             target_difficulty: source.target_difficulty.into(),
             total_kernel_offset: source.total_kernel_offset.to_vec(),
+            hash: source.hash,
+            total_accumulated_difficulty: Vec::from(source.total_accumulated_difficulty.to_le_bytes()),
         }
+    }
+}
+
+impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
+    type Error = String;
+
+    fn try_from(source: proto::BlockHeaderAccumulatedData) -> Result<Self, Self::Error> {
+        let mut acc_diff = [0; 16];
+        acc_diff.copy_from_slice(&source.total_accumulated_difficulty[0..16]);
+        let accumulated_difficulty = u128::from_le_bytes(acc_diff);
+
+        Ok(Self {
+            hash: source.hash,
+            achieved_difficulty: source.achieved_difficulty.into(),
+            total_accumulated_difficulty: accumulated_difficulty,
+            accumulated_monero_difficulty: source.accumulated_monero_difficulty.into(),
+            accumulated_blake_difficulty: source.accumulated_blake_difficulty.into(),
+            target_difficulty: source.target_difficulty.into(),
+            total_kernel_offset: BlindingFactor::from_bytes(source.total_kernel_offset.as_slice())
+                .map_err(|err| format!("Invalid value for total_kernel_offset: {}", err))?,
+        })
     }
 }
 

@@ -243,7 +243,7 @@ fn select_sync_peers(
         .iter()
         // Check if the peer can provide blocks higher than the local tip height
         .filter(|peer| {
-                let peer_horizon_height = peer.chain_metadata.effective_pruned_height();
+                let peer_horizon_height = peer.chain_metadata.pruned_height();
                 local_tip_height >= peer_horizon_height && peer.chain_metadata.best_block() == best_metadata.best_block()
         })
         .cloned()

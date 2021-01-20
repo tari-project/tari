@@ -29,7 +29,7 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::{HistoricalBlock, MmrTree},
+    chain_storage::HistoricalBlock,
     proof_of_work::PowAlgorithm,
     transactions::{
         transaction::TransactionOutput,
@@ -152,26 +152,6 @@ impl LocalNodeCommsInterface {
     pub fn publish_block_event(&self, event: BlockEvent) -> usize {
         // If event send fails, that means that there are no receivers (i.e. it was sent to zero receivers)
         self.block_event_sender.send(Arc::new(event)).unwrap_or(0)
-    }
-
-    /// Fetches the set of leaf node hashes and their deletion status' for the nth to nth+count leaf node index in the
-    /// given MMR tree.
-    pub async fn fetch_mmr_nodes(
-        &mut self,
-        tree: MmrTree,
-        pos: u32,
-        count: u32,
-        hist_height: u64,
-    ) -> Result<(Vec<HashOutput>, Vec<u8>), CommsInterfaceError>
-    {
-        match self
-            .request_sender
-            .call(NodeCommsRequest::FetchMatchingMmrNodes(tree, pos, count, hist_height))
-            .await??
-        {
-            NodeCommsResponse::MmrNodes(added, deleted) => Ok((added, deleted)),
-            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
-        }
     }
 
     pub async fn fetch_matching_utxos(

@@ -42,6 +42,8 @@ pub const LMDB_DB_TXOS_HASH_TO_INDEX: &str = "txos_hash_to_index";
 pub const LMDB_DB_KERNELS: &str = "kernels";
 pub const LMDB_DB_KERNEL_EXCESS_INDEX: &str = "kernel_excess_index";
 pub const LMDB_DB_KERNEL_EXCESS_SIG_INDEX: &str = "kernel_excess_sig_index";
+pub const LMDB_DB_KERNEL_MMR_SIZE_INDEX: &str = "kernel_mmr_size_index";
+pub const LMDB_DB_UTXO_MMR_SIZE_INDEX: &str = "utxo_mmr_size_index";
 pub const LMDB_DB_ORPHANS: &str = "orphans";
 pub const LMDB_DB_MONERO_SEED_HEIGHT: &str = "monero_seed_height";
 pub const LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA: &str = "orphan_accumulated_data";
@@ -50,7 +52,7 @@ pub const LMDB_DB_ORPHAN_PARENT_MAP_INDEX: &str = "orphan_parent_map_index";
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct TransactionOutputRowData {
-    pub output: TransactionOutput,
+    pub output: Option<TransactionOutput>,
     pub header_hash: HashOutput,
     pub mmr_position: u32,
     pub hash: HashOutput,

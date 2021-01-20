@@ -6,9 +6,10 @@ const {getFreePort} = require("./util");
 const dateFormat = require('dateformat');
 
 class BaseNodeProcess {
-    constructor(name, nodeFile) {
+    constructor(name, options, nodeFile) {
         this.name = name;
         this.nodeFile = nodeFile;
+        this.options = options;
         // this.port = getFreePort(19000, 20000);
         // this.grpcPort = getFreePort(50000, 51000);
         // this.name = `Basenode${this.port}-${name}`;
@@ -113,8 +114,20 @@ class BaseNodeProcess {
 
         }
 
-        return envs;
+
+
+        return { ...envs, ...this.mapEnvs(this.options || {}) } ;
     }
+
+    mapEnvs(options) {
+        let res = {};
+        if (options.pruningHorizon) {
+            res.TARI_BASE_NODE__LOCALNET__PRUNING_HORIZON=options.pruningHorizon;
+        }
+        return res;
+    }
+
+
 
     //
     // runSync(cmd, args) {
@@ -141,10 +154,15 @@ class BaseNodeProcess {
                 fs.mkdirSync(this.baseDir, {recursive: true});
                 fs.mkdirSync(this.baseDir + "/log", {recursive: true});
             }
+
+            let envs =this.createEnvs();
+            fs.appendFileSync(`${this.baseDir}/log/stdout.log`, `Starting node...`);
+            fs.appendFileSync(`${this.baseDir}/log/stdout.log`, JSON.stringify(envs));
+
             var ps = spawn(cmd, args, {
                 cwd: this.baseDir,
                 shell: true,
-                env: {...process.env, ...this.createEnvs()}
+                env: {...process.env, ...envs}
             });
 
             ps.stdout.on('data', (data) => {

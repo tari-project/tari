@@ -36,6 +36,8 @@ use lmdb_zero::{
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
+use std::fmt::Debug;
+
 use tari_crypto::tari_utilities::hex::to_hex;
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
 
@@ -63,21 +65,31 @@ where T: DeserializeOwned {
         .map_err(|e| error::Error::ValRejected(e.to_string()))
 }
 
-pub fn lmdb_insert<K, V>(txn: &WriteTransaction<'_>, db: &Database, key: &K, val: &V) -> Result<(), ChainStorageError>
+pub fn lmdb_insert<K, V>(
+    txn: &WriteTransaction<'_>,
+    db: &Database,
+    key: &K,
+    val: &V,
+    table_name: &'static str,
+) -> Result<(), ChainStorageError>
 where
-    K: AsLmdbBytes + ?Sized,
+    K: AsLmdbBytes + ?Sized + Debug,
     V: Serialize + std::fmt::Debug,
 {
     let val_buf = serialize(val)?;
     txn.access().put(&db, key, &val_buf, put::NOOVERWRITE).map_err(|e| {
         error!(
             target: LOG_TARGET,
-            "Could not insert value into lmdb transaction ({}/{:?}): {:?}",
+            "Could not insert value into lmdb {} ({}/{:?}): {:?}",
+            table_name,
             to_hex(key.as_lmdb_bytes()),
             val,
             e,
         );
-        ChainStorageError::AccessError(e.to_string())
+        ChainStorageError::InsertError {
+            table: table_name,
+            error: e.to_string(),
+        }
     })
 }
 
@@ -300,25 +312,29 @@ where
     Ok(result)
 }
 
-// pub fn lmdb_list_keys(txn: &ConstTransaction<'_>, db: &Database) -> Result<Vec<Vec<u8>>, ChainStorageError> {
-//     let access = txn.access();
-//     let mut cursor = txn.cursor(db).map_err(|e| {
-//         error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
-//         ChainStorageError::AccessError(e.to_string())
-//     })?;
-//     let iter = CursorIter::new(
-//         MaybeOwned::Borrowed(&mut cursor),
-//         &access,
-//         |c, a| c.first(a),
-//         Cursor::next::<[u8], [u8]>,
-//     )?;
-//
-//     let mut result = vec![];
-//     for row in iter {
-//         result.push(Vec::from(row?.0));
-//     }
-//     Ok(result)
-// }
+pub fn lmdb_first_after<K, V>(
+    txn: &ConstTransaction<'_>,
+    db: &Database,
+    key: &K,
+) -> Result<Option<V>, ChainStorageError>
+where
+    K: AsLmdbBytes + ?Sized + FromLmdbBytes,
+    V: DeserializeOwned,
+{
+    let access = txn.access();
+    let mut cursor = txn.cursor(db).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
+        ChainStorageError::AccessError(e.to_string())
+    })?;
+
+    match cursor.seek_range_k(&access, key) {
+        Ok(r) => {
+            let val = deserialize::<V>(r.1)?;
+            Ok(Some(val))
+        },
+        Err(_) => Ok(None),
+    }
+}
 
 pub fn lmdb_filter_map_values<F, V, R>(
     txn: &ConstTransaction<'_>,
@@ -351,26 +367,3 @@ where
     }
     Ok(result)
 }
-
-// pub fn lmdb_list_values<V>(txn: &ConstTransaction<'_>, db: &Database) -> Result<Vec<V>, ChainStorageError>
-// where V: DeserializeOwned {
-//     let access = txn.access();
-//     let mut cursor = txn.cursor(db).map_err(|e| {
-//         error!(target: LOG_TARGET, "Could not get read cursor from lmdb: {:?}", e);
-//         ChainStorageError::AccessError(e.to_string())
-//     })?;
-//     let iter = CursorIter::new(
-//         MaybeOwned::Borrowed(&mut cursor),
-//         &access,
-//         |c, a| c.first(a),
-//         Cursor::next::<[u8], [u8]>,
-//     )?;
-//
-//     let mut result = vec![];
-//     for row in iter {
-//         // result.push(Vec::from(row?.0));
-//         let val = deserialize::<V>(row?.1)?;
-//         result.push(val);
-//     }
-//     Ok(result)
-// }

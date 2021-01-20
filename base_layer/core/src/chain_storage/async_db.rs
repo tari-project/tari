@@ -25,6 +25,7 @@ use crate::{
     chain_storage::{
         accumulated_data::BlockHeaderAccumulatedData,
         blockchain_database::BlockAddResult,
+        BlockAccumulatedData,
         BlockchainBackend,
         BlockchainDatabase,
         ChainBlock,
@@ -32,10 +33,9 @@ use crate::{
         ChainStorageError,
         DbTransaction,
         HistoricalBlock,
-        InProgressHorizonSyncState,
-        MetadataKey,
-        MetadataValue,
+        HorizonData,
         MmrTree,
+        PrunedOutput,
         TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
@@ -46,11 +46,12 @@ use crate::{
         types::{Commitment, HashOutput, Signature},
     },
 };
+use croaring::Bitmap;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
 use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
-use tari_mmr::Hash;
+use tari_mmr::pruned_hashset::PrunedHashSet;
 
 const LOG_TARGET: &str = "c::bn::async_db";
 
@@ -134,29 +135,31 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     //---------------------------------- Metadata --------------------------------------------//
     make_async_fn!(get_chain_metadata() -> ChainMetadata, "get_chain_metadata");
 
-    make_async_fn!(set_chain_metadata(metadata: ChainMetadata) -> (), "set_chain_metadata");
+    make_async_fn!(fetch_horizon_data() -> Option<HorizonData>, "fetch_horizon_data");
 
     //---------------------------------- TXO --------------------------------------------//
     make_async_fn!(fetch_utxo(hash: HashOutput) -> Option<TransactionOutput>, "fetch_utxo");
 
     make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>, is_spent_as_of: Option<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
 
+    make_async_fn!(fetch_utxos_by_mmr_position(start: u64, end: u64, end_header_hash: HashOutput) -> (Vec<PrunedOutput>, Vec<Bitmap>), "fetch_utxos_by_mmr_position");
+
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
+
+    make_async_fn!(fetch_kernels_by_mmr_position(start: u64, end: u64) -> Vec<TransactionKernel>, "fetch_kernels_by_mmr_position");
 
     //---------------------------------- MMR --------------------------------------------//
     make_async_fn!(prepare_block_merkle_roots(template: NewBlockTemplate) -> Block, "create_block");
 
-    make_async_fn!(fetch_mmr_node_count(tree: MmrTree, height: u64) -> u32, "fetch_mmr_node_count");
-
-    make_async_fn!(fetch_mmr_nodes(tree: MmrTree, pos: u32, count: u32, hist_height:Option<u64>) -> Vec<(Vec<u8>, bool)>, "fetch_mmr_nodes");
-
-    make_async_fn!(insert_mmr_node(tree: MmrTree, hash: Hash, deleted: bool) -> (), "insert_mmr_node");
+    make_async_fn!(fetch_mmr_size(tree: MmrTree) -> u64, "fetch_mmr_node_count");
 
     make_async_fn!(rewind_to_height(height: u64) -> Vec<Arc<ChainBlock>>, "rewind_to_height");
 
     //---------------------------------- Headers --------------------------------------------//
     make_async_fn!(fetch_header(height: u64) -> Option<BlockHeader>, "fetch_header");
+
+    make_async_fn!(fetch_chain_header(height: u64) -> ChainHeader, "fetch_chain_header");
 
     make_async_fn!(fetch_header_and_accumulated_data(height: u64) -> (BlockHeader, BlockHeaderAccumulatedData), "fetch_header_and_accumulated_data");
 
@@ -165,6 +168,10 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_headers<T: RangeBounds<u64>>(bounds: T) -> Vec<BlockHeader>, "fetch_headers");
 
     make_async_fn!(fetch_header_by_block_hash(hash: HashOutput) -> Option<BlockHeader>, "fetch_header_by_block_hash");
+
+    make_async_fn!(fetch_header_containing_kernel_mmr(mmr_position: u64) -> ChainHeader, "fetch_header_containing_kernel_mmr");
+
+    make_async_fn!(fetch_header_containing_utxo_mmr(mmr_position: u64) -> ChainHeader, "fetch_header_containing_utxo_mmr");
 
     make_async_fn!(fetch_chain_header_by_block_hash(hash: HashOutput) -> Option<ChainHeader>, "fetch_chain_header_by_block_hash");
 
@@ -203,20 +210,9 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_block_with_utxo(commitment: Commitment) -> Option<HistoricalBlock>, "fetch_block_with_utxo");
 
-    //---------------------------------- Horizon Sync --------------------------------------------//
-    make_async_fn!(get_horizon_sync_state() -> Option<InProgressHorizonSyncState>, "get_horizon_sync_state");
+    make_async_fn!(fetch_block_accumulated_data(hash: HashOutput) -> BlockAccumulatedData, "fetch_block_accumulated_data");
 
-    make_async_fn!(set_horizon_sync_state(state: InProgressHorizonSyncState) -> (), "set_horizon_sync_state");
-
-    make_async_fn!(horizon_sync_begin() -> InProgressHorizonSyncState, "horizon_sync_begin");
-
-    make_async_fn!(horizon_sync_commit() -> (), "horizon_sync_commit");
-
-    make_async_fn!(horizon_sync_rollback() -> (), "horizon_sync_rollback");
-
-    make_async_fn!(horizon_sync_insert_kernels(kernels: Vec<TransactionKernel>) -> (), "horizon_sync_insert_kernels");
-
-    make_async_fn!(horizon_sync_spend_utxos(hash: Vec<HashOutput>) -> (), "horizon_sync_spend_utxos");
+    make_async_fn!(fetch_block_accumulated_data_by_height(height: u64) -> BlockAccumulatedData, "fetch_block_accumulated_data_by_height");
 
     //---------------------------------- Misc. --------------------------------------------//
     make_async_fn!(fetch_block_timestamps(start_hash: HashOutput) -> RollingVec<EpochTime>, "fetch_block_timestamps");
@@ -253,6 +249,78 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         }
     }
 
+    pub fn set_best_block(&mut self, height: u64, hash: HashOutput, accumulated_data: u128) -> &mut Self {
+        self.transaction.set_best_block(height, hash, accumulated_data);
+        self
+    }
+
+    pub fn set_pruned_height(&mut self, height: u64, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
+        self.transaction.set_pruned_height(height, kernel_sum, utxo_sum);
+        self
+    }
+
+    pub fn insert_kernel_via_horizon_sync(
+        &mut self,
+        kernel: TransactionKernel,
+        header_hash: HashOutput,
+        mmr_position: u32,
+    ) -> &mut Self
+    {
+        self.transaction.insert_kernel(kernel, header_hash, mmr_position);
+        self
+    }
+
+    pub fn insert_output_via_horizon_sync(
+        &mut self,
+        output: TransactionOutput,
+        header_hash: HashOutput,
+        mmr_position: u32,
+    ) -> &mut Self
+    {
+        self.transaction.insert_utxo(output, header_hash, mmr_position);
+        self
+    }
+
+    pub fn insert_pruned_output_via_horizon_sync(
+        &mut self,
+        output_hash: HashOutput,
+        proof_hash: HashOutput,
+        header_hash: HashOutput,
+        mmr_position: u32,
+    ) -> &mut Self
+    {
+        self.transaction
+            .insert_pruned_utxo(output_hash, proof_hash, header_hash, mmr_position);
+        self
+    }
+
+    pub fn update_pruned_hash_set(
+        &mut self,
+        mmr_tree: MmrTree,
+        header_hash: HashOutput,
+        pruned_hash_set: PrunedHashSet,
+    ) -> &mut Self
+    {
+        self.transaction
+            .update_pruned_hash_set(mmr_tree, header_hash, pruned_hash_set);
+        self
+    }
+
+    pub fn update_deleted(&mut self, header_hash: HashOutput, deleted: Bitmap) -> &mut Self {
+        self.transaction.update_deleted(header_hash, deleted);
+        self
+    }
+
+    pub fn update_kernel_sum(&mut self, header_hash: HashOutput, kernel_sum: Commitment) -> &mut Self {
+        self.transaction.update_kernel_sum(header_hash, kernel_sum);
+        self
+    }
+
+    pub fn update_utxo_sum(&mut self, header_hash: HashOutput, utxo_sum: Commitment) -> &mut Self {
+        self.transaction.update_utxo_sum(header_hash, utxo_sum);
+        self
+    }
+
     pub fn insert_header(&mut self, header: BlockHeader, accum_data: BlockHeaderAccumulatedData) -> &mut Self {
         self.transaction.insert_header(header, accum_data);
         self
@@ -263,11 +331,6 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
     /// data.
     pub fn insert_block(&mut self, block: Arc<ChainBlock>) -> &mut Self {
         self.transaction.insert_block(block);
-        self
-    }
-
-    pub fn set_metadata(&mut self, key: MetadataKey, value: MetadataValue) -> &mut Self {
-        self.transaction.set_metadata(key, value);
         self
     }
 

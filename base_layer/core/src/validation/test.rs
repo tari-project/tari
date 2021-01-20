@@ -54,6 +54,9 @@ fn header_iter_fetch_in_chunks() {
         let mut header = BlockHeader::new(0);
         header.height = i;
         header.prev_hash = prev.hash().clone();
+        // These have to be unique
+        header.kernel_mmr_size = 2 + i;
+        header.output_mmr_size = 4001 + i;
 
         let chain_header = db.create_chain_header_if_valid(header, prev).unwrap();
         acc.push(chain_header);

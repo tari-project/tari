@@ -63,7 +63,7 @@ pub async fn block_heights(
 }
 
 pub fn block_size(block: &HistoricalBlock) -> u64 {
-    let body = block.clone().block.body;
+    let body = &block.block().body;
 
     let input_size = body.inputs().len() as u64 * BLOCK_INPUT_SIZE;
     let output_size = body.outputs().len() as u64 * BLOCK_OUTPUT_SIZE;
@@ -71,7 +71,7 @@ pub fn block_size(block: &HistoricalBlock) -> u64 {
 }
 
 pub fn block_fees(block: &HistoricalBlock) -> u64 {
-    let body = block.clone().block.body;
+    let body = &block.block().body;
     body.kernels()
         .iter()
         .map(|k| k.fee.into())
