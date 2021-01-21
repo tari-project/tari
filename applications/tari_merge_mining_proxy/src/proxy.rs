@@ -341,12 +341,15 @@ impl InnerService {
                             status,
                             details: "failed to submit block".to_string(),
                         }) {
-                        Ok(..) => debug!(
-                            target: LOG_TARGET,
-                            "Submitted block #{} to Tari node in {:.0?} (SubmitBlock)",
-                            height,
-                            start.elapsed()
-                        ),
+                        Ok(..) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Submitted block #{} to Tari node in {:.0?} (SubmitBlock)",
+                                height,
+                                start.elapsed()
+                            );
+                            block_templates_clone.remove(&hash).await;
+                        },
                         _ => debug!(
                             target: LOG_TARGET,
                             "Problem submitting block #{} to Tari node, responded in  {:.0?} (SubmitBlock)",
@@ -360,7 +363,7 @@ impl InnerService {
             } else {
                 info!(
                     target: LOG_TARGET,
-                    "Block submitted but no matching block template was found"
+                    "Block submitted but no matching block template was found, possible duplicate submission"
                 );
             }
         }
