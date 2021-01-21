@@ -72,6 +72,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let transaction =
             Transaction::try_from(message).map_err(|_| RpcStatus::bad_request("Transaction was invalid"))?;
         let mut mempool = self.mempool();
+
         let response = match mempool
             .submit_transaction(transaction.clone())
             .await

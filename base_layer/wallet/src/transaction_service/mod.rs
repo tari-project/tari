@@ -40,10 +40,9 @@ use crate::{
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
-use tari_comms::peer_manager::NodeIdentity;
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_core::{
-    mempool::proto as mempool_proto,
     proto::generated::base_node as base_node_proto,
     transactions::{transaction_protocol::proto, types::CryptoFactories},
 };
@@ -134,19 +133,6 @@ where T: TransactionBackend
             .filter_map(ok_or_skip_result)
     }
 
-    fn mempool_response_stream(&self) -> impl Stream<Item = DomainMessage<mempool_proto::MempoolServiceResponse>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::MempoolResponse
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::MempoolResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<mempool_proto::MempoolServiceResponse>)
-            .filter_map(ok_or_skip_result)
-    }
-
     fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<base_node_proto::BaseNodeServiceResponse>> {
         trace!(
             target: LOG_TARGET,
@@ -184,7 +170,6 @@ where T: TransactionBackend + 'static
         let transaction_stream = self.transaction_stream();
         let transaction_reply_stream = self.transaction_reply_stream();
         let transaction_finalized_stream = self.transaction_finalized_stream();
-        let mempool_response_stream = self.mempool_response_stream();
         let base_node_response_stream = self.base_node_response_stream();
         let transaction_cancelled_stream = self.transaction_cancelled_stream();
 
@@ -207,6 +192,7 @@ where T: TransactionBackend + 'static
         context.spawn_when_ready(move |handles| async move {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
+            let connectivity_manager = handles.expect_handle::<ConnectivityRequester>();
 
             let service = TransactionService::new(
                 config,
@@ -215,11 +201,11 @@ where T: TransactionBackend + 'static
                 transaction_stream,
                 transaction_reply_stream,
                 transaction_finalized_stream,
-                mempool_response_stream,
                 base_node_response_stream,
                 transaction_cancelled_stream,
                 output_manager_service,
                 outbound_message_service,
+                connectivity_manager,
                 publisher,
                 node_identity,
                 factories,

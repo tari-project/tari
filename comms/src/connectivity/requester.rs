@@ -43,7 +43,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{sync::broadcast, time};
-
 const LOG_TARGET: &str = "comms::connectivity::requester";
 
 pub type ConnectivityEventRx = broadcast::Receiver<Arc<ConnectivityEvent>>;
