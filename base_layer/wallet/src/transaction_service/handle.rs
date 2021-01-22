@@ -29,12 +29,15 @@ use crate::{
 };
 use aes_gcm::Aes256Gcm;
 use futures::{stream::Fuse, StreamExt};
+use log::*;
 use std::{collections::HashMap, fmt, sync::Arc};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
+
+const LOG_TARGET: &str = "wallet::transaction_service::handle";
 
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
@@ -322,6 +325,7 @@ impl TransactionServiceHandle {
         tx_id: TxId,
     ) -> Result<Option<WalletTransaction>, TransactionServiceError>
     {
+        trace!(target: LOG_TARGET, "tx_id: {}", tx_id);
         match self
             .handle
             .call(TransactionServiceRequest::GetAnyTransaction(tx_id))

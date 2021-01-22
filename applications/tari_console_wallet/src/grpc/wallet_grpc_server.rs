@@ -1,16 +1,26 @@
 use futures::future;
 use log::*;
+use std::str::FromStr;
 use tari_app_grpc::tari_rpc::{
     wallet_server,
     GetCoinbaseRequest,
     GetCoinbaseResponse,
+    GetTransactionDetailsRequest,
+    GetTransactionDetailsResponse,
+    TransactionDetailsResult,
     TransferRequest,
     TransferResponse,
     TransferResult,
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::tari_utilities::hex::Hex;
-use tari_wallet::{transaction_service::handle::TransactionServiceHandle, WalletSqlite};
+use tari_wallet::{
+    transaction_service::{
+        handle::TransactionServiceHandle,
+        storage::models::WalletTransaction::{Completed, PendingInbound, PendingOutbound},
+    },
+    WalletSqlite,
+};
 use tonic::{Request, Response, Status};
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
@@ -49,6 +59,80 @@ impl wallet_server::Wallet for WalletGrpcServer {
             })),
             Err(err) => Err(Status::unknown(err.to_string())),
         }
+    }
+
+    async fn get_transaction_details(
+        &self,
+        request: Request<GetTransactionDetailsRequest>,
+    ) -> Result<Response<GetTransactionDetailsResponse>, Status>
+    {
+        let request_inner = request.into_inner();
+        let tx_id = match u64::from_str(&request_inner.tx_id.to_string()) {
+            Ok(val) => val,
+            Err(err) => {
+                let msg = format!(
+                    "Transaction ID '{}' malformed, should be an unsigned integer value. ({})",
+                    &request_inner.tx_id.to_string(),
+                    err.to_string()
+                );
+                info!(target: LOG_TARGET, "{}", msg);
+                return Err(Status::unknown(msg));
+            },
+        };
+
+        let mut tx_service = self.get_transaction_service();
+        let tx_status_result: TransactionDetailsResult;
+        let response = tx_service.get_any_transaction(tx_id).await;
+        match response {
+            Ok(found) => match found {
+                None => return Err(Status::unknown(format!("Transaction '{}' not found.", tx_id))),
+                Some(val) => {
+                    tx_status_result = match val {
+                        PendingInbound(tx) => TransactionDetailsResult {
+                            txid: tx_id.to_string(),
+                            source_pub_key: tx.source_public_key.to_hex(),
+                            dest_pub_key: format!("{}", self.wallet.comms.node_identity().public_key()),
+                            direction: "Inbound".to_string(),
+                            amount: format!("{}", tx.amount),
+                            fee: "Not known".to_string(),
+                            status: format!("{}", tx.status),
+                            cancelled: tx.cancelled,
+                            message: tx.message,
+                            time_stamp: tx.timestamp.format("%Y-%m-%d %H:%M:%S").to_string(),
+                        },
+                        PendingOutbound(tx) => TransactionDetailsResult {
+                            txid: tx_id.to_string(),
+                            source_pub_key: format!("{}", self.wallet.comms.node_identity().public_key()),
+                            dest_pub_key: tx.destination_public_key.to_hex(),
+                            direction: "Outbound".to_string(),
+                            amount: format!("{}", tx.amount),
+                            fee: format!("{}", tx.fee),
+                            status: format!("{}", tx.status),
+                            cancelled: tx.cancelled,
+                            message: tx.message,
+                            time_stamp: tx.timestamp.format("%Y-%m-%d %H:%M:%S").to_string(),
+                        },
+                        Completed(tx) => TransactionDetailsResult {
+                            txid: tx_id.to_string(),
+                            source_pub_key: tx.source_public_key.to_hex(),
+                            dest_pub_key: tx.destination_public_key.to_hex(),
+                            direction: format!("{}", tx.direction),
+                            amount: format!("{}", tx.amount),
+                            fee: format!("{}", tx.fee),
+                            status: format!("{}", tx.status),
+                            cancelled: tx.cancelled,
+                            message: tx.message,
+                            time_stamp: tx.timestamp.format("%Y-%m-%d %H:%M:%S").to_string(),
+                        },
+                    }
+                },
+            },
+            Err(err) => return Err(Status::unknown(err.to_string())),
+        };
+
+        Ok(Response::new(GetTransactionDetailsResponse {
+            tx_details: Some(tx_status_result),
+        }))
     }
 
     async fn transfer(&self, request: Request<TransferRequest>) -> Result<Response<TransferResponse>, Status> {
