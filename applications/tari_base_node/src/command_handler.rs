@@ -898,12 +898,22 @@ impl CommandHandler {
                         "Age",
                         "Role",
                         "User Agent",
+                        "Chain Height",
                     ]);
                     for conn in conns {
                         let peer = peer_manager
                             .find_by_node_id(conn.peer_node_id())
                             .await
                             .expect("Unexpected peer database error or peer not found");
+
+                        let chain_height = if let Some(metadata) = peer
+                            .get_metadata(1)
+                            .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
+                        {
+                            Some(format!("Height = #{}", metadata.metadata.height_of_longest_chain()))
+                        } else {
+                            None
+                        };
 
                         table.add_row(row![
                             peer.node_id,
@@ -920,7 +930,8 @@ impl CommandHandler {
                             },
                             Some(peer.user_agent)
                                 .map(|ua| if ua.is_empty() { "<unknown>".to_string() } else { ua })
-                                .unwrap()
+                                .unwrap(),
+                            chain_height.unwrap_or_default(),
                         ]);
                     }
 
