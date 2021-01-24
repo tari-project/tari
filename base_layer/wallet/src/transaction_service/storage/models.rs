@@ -35,6 +35,7 @@ use tari_core::transactions::{
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TransactionStatus {
     /// This transaction has been completed between the parties but has not been broadcast to the base layer network.
@@ -231,6 +232,7 @@ impl CompletedTransaction {
         }
     }
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TransactionDirection {
     Inbound,
