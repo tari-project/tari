@@ -3083,14 +3083,14 @@ dependencies = [
 
 [[package]]
 name = "randomx-rs"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5b1588934c19acc7218925816a7d6af57699c4e0d43c1c1ccda3463f619e53b"
+checksum = "8da103db7f8022a2646a11e8f58de98d137089f90c3eb0bb54ed18f12ecb73b7"
 dependencies = [
  "bitflags 1.2.1",
- "derive-error",
  "git2",
  "libc",
+ "thiserror",
 ]
 
 [[package]]
