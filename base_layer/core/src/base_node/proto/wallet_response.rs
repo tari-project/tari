@@ -36,6 +36,7 @@ pub struct TxSubmissionResponse {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum TxSubmissionRejectionReason {
+    None,
     AlreadyMined,
     DoubleSpend,
     Orphan,
@@ -51,6 +52,7 @@ impl Display for TxSubmissionRejectionReason {
             TxSubmissionRejectionReason::Orphan => "Orphan",
             TxSubmissionRejectionReason::TimeLocked => "Time Locked",
             TxSubmissionRejectionReason::ValidationFailed => "Validation Failed",
+            TxSubmissionRejectionReason::None => "None",
         };
         fmt.write_str(&response)
     }
@@ -62,7 +64,7 @@ impl TryFrom<proto::TxSubmissionRejectionReason> for TxSubmissionRejectionReason
     fn try_from(tx_rejection_reason: proto::TxSubmissionRejectionReason) -> Result<Self, Self::Error> {
         use proto::TxSubmissionRejectionReason::*;
         Ok(match tx_rejection_reason {
-            None => return Err("TxSubmissionRejectionReason not provided".to_string()),
+            None => TxSubmissionRejectionReason::None,
             AlreadyMined => TxSubmissionRejectionReason::AlreadyMined,
             DoubleSpend => TxSubmissionRejectionReason::DoubleSpend,
             Orphan => TxSubmissionRejectionReason::Orphan,
@@ -76,6 +78,7 @@ impl From<TxSubmissionRejectionReason> for proto::TxSubmissionRejectionReason {
     fn from(resp: TxSubmissionRejectionReason) -> Self {
         use TxSubmissionRejectionReason::*;
         match resp {
+            None => proto::TxSubmissionRejectionReason::None,
             AlreadyMined => proto::TxSubmissionRejectionReason::AlreadyMined,
             DoubleSpend => proto::TxSubmissionRejectionReason::DoubleSpend,
             Orphan => proto::TxSubmissionRejectionReason::Orphan,
@@ -96,6 +99,15 @@ impl TryFrom<proto::TxSubmissionResponse> for TxSubmissionResponse {
                     .ok_or_else(|| "Invalid or unrecognised `TxSubmissionRejectionReason` enum".to_string())?,
             )?,
         })
+    }
+}
+
+impl From<TxSubmissionResponse> for proto::TxSubmissionResponse {
+    fn from(value: TxSubmissionResponse) -> Self {
+        Self {
+            accepted: value.accepted,
+            rejection_reason: proto::TxSubmissionRejectionReason::from(value.rejection_reason) as i32,
+        }
     }
 }
 
@@ -161,5 +173,15 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
             block_hash: proto_response.block_hash,
             confirmations: proto_response.confirmations,
         })
+    }
+}
+
+impl From<TxQueryResponse> for proto::TxQueryResponse {
+    fn from(response: TxQueryResponse) -> Self {
+        Self {
+            location: proto::TxLocation::from(response.location) as i32,
+            block_hash: response.block_hash,
+            confirmations: response.confirmations,
+        }
     }
 }

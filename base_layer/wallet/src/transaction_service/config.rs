@@ -35,6 +35,8 @@ pub struct TransactionServiceConfig {
     pub transaction_resend_period: Duration,
     pub resend_response_cooldown: Duration,
     pub pending_transaction_cancellation_timeout: Duration,
+    pub num_confirmations_required: u64,
+    pub peer_dial_retry_timeout: Duration,
 }
 
 impl Default for TransactionServiceConfig {
@@ -48,6 +50,8 @@ impl Default for TransactionServiceConfig {
             transaction_resend_period: Duration::from_secs(3600),
             resend_response_cooldown: Duration::from_secs(300),
             pending_transaction_cancellation_timeout: Duration::from_secs(259200), // 3 Days
+            num_confirmations_required: 6,
+            peer_dial_retry_timeout: Duration::from_secs(20),
         }
     }
 }

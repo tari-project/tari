@@ -99,6 +99,7 @@ impl fmt::Display for OutputManagerRequest {
 }
 
 /// API Reply enum
+#[derive(Debug, Clone)]
 pub enum OutputManagerResponse {
     Balance(Balance),
     OutputAdded,
@@ -137,6 +138,7 @@ pub enum OutputManagerEvent {
     Error(String),
 }
 
+#[derive(Debug, Clone)]
 pub struct PublicRewindKeys {
     pub rewind_public_key: PublicKey,
     pub rewind_blinding_public_key: PublicKey,
