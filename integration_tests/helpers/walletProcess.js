@@ -15,7 +15,7 @@ class WalletProcess {
         this.name = `Wallet${this.port}-${this.name}`;
         this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
            await this.run("cargo",
-                 ["run", "--bin", "tari_console_wallet", "--", "--base-path", ".", "--create-id", "--init"]);
+                 ["run", "--release", "--bin", "tari_console_wallet", "--", "--base-path", ".", "--create-id", "--init"]);
     }
 
     getGrpcAddress() {
@@ -121,7 +121,7 @@ class WalletProcess {
 
     async startNew() {
         await this.init();
-        return this.run("cargo", ["run", "--bin tari_console_wallet", "--", "--base-path", ".", "--password", "kensentme", "--daemon"]);
+        return this.run("cargo", ["run", "--release", "--bin tari_console_wallet", "--", "--base-path", ".", "--password", "kensentme", "--daemon"]);
     }
 
     stop() {
