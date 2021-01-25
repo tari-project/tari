@@ -58,10 +58,18 @@ use crate::{tari_rpc as grpc, tari_rpc::BlockGroupRequest};
 use prost_types::Timestamp;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
-/// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`
+/// Utility function that converts a `EpochTime` to a `prost::Timestamp`
 pub fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {
     Timestamp {
         seconds: datetime.as_u64() as i64,
+        nanos: 0,
+    }
+}
+
+/// Utility function that converts a `chrono::NaiveDateTime` to a `prost::Timestamp`
+pub fn naive_datetime_to_timestamp(datetime: chrono::NaiveDateTime) -> Timestamp {
+    Timestamp {
+        seconds: datetime.timestamp(),
         nanos: 0,
     }
 }

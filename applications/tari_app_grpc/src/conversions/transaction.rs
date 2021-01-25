@@ -20,12 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_crypto::tari_utilities::ByteArray;
-
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
 use tari_core::transactions::transaction::Transaction;
-use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray};
+use tari_wallet::transaction_service::storage::models;
 
 impl From<Transaction> for grpc::Transaction {
     fn from(source: Transaction) -> Self {
@@ -48,5 +47,30 @@ impl TryFrom<grpc::Transaction> for Transaction {
                 .ok_or_else(|| "Transaction body not provided".to_string())?
                 .try_into()?,
         })
+    }
+}
+
+impl From<models::TransactionStatus> for grpc::TransactionStatus {
+    fn from(status: models::TransactionStatus) -> Self {
+        use models::TransactionStatus::*;
+        match status {
+            Completed => grpc::TransactionStatus::Completed,
+            Broadcast => grpc::TransactionStatus::Broadcast,
+            Mined => grpc::TransactionStatus::Mined,
+            Imported => grpc::TransactionStatus::Imported,
+            Pending => grpc::TransactionStatus::Pending,
+            Coinbase => grpc::TransactionStatus::Coinbase,
+        }
+    }
+}
+
+impl From<models::TransactionDirection> for grpc::TransactionDirection {
+    fn from(status: models::TransactionDirection) -> Self {
+        use models::TransactionDirection::*;
+        match status {
+            Unknown => grpc::TransactionDirection::Unknown,
+            Inbound => grpc::TransactionDirection::Inbound,
+            Outbound => grpc::TransactionDirection::Outbound,
+        }
     }
 }

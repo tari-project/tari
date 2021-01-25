@@ -3800,12 +3800,14 @@ dependencies = [
 name = "tari_app_grpc"
 version = "0.7.3"
 dependencies = [
+ "chrono",
  "prost",
  "prost-types",
  "tari_common_types",
  "tari_comms",
  "tari_core",
  "tari_crypto",
+ "tari_wallet",
  "tonic",
  "tonic-build",
 ]
