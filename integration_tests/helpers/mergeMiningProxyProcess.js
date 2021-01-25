@@ -20,7 +20,7 @@ class MergeMiningProxyProcess {
         this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
     //    await this.run("cargo",
 //
-  //          ["run", "--bin", "tari_merge_mining_proxy", "--", "--base-path", ".", "--init"]);
+  //          ["run", "--release", "--bin", "tari_merge_mining_proxy", "--", "--base-path", ".", "--init"]);
     }
 
     createEnvs() {
@@ -113,7 +113,7 @@ class MergeMiningProxyProcess {
 
     async startNew() {
         await this.init();
-        return await this.run("cargo", ["run", "--bin tari_merge_mining_proxy", "--", "--base-path", ".", "--init"]);
+        return await this.run("cargo", ["run", "--release", "--bin tari_merge_mining_proxy", "--", "--base-path", ".", "--init"]);
     }
 
     stop() {
