@@ -3976,3 +3976,198 @@ fn broadcast_all_completed_transactions_on_startup() {
         assert!(found3);
     });
 }
+
+/// This test the case where a transaction broadcast protocol has started and the base node pubkey gets updated, does
+/// the update make it through to the protocol
+#[test]
+fn transaction_service_tx_broadcast_with_base_node_change() {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    let alice_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+
+    let bob_node_identity =
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+
+    let (
+        mut alice_ts,
+        mut alice_output_manager,
+        alice_outbound_service,
+        connectivity_mock_state,
+        mut _alice_tx_sender,
+        mut alice_tx_ack_sender,
+        _,
+        _alice_base_node_response_sender,
+        _,
+        _shutdown,
+        _mock_rpc_server,
+        server_node_identity,
+        rpc_service_state,
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
+        .unwrap();
+
+    let (_bob_ts, _bob_output_manager, bob_outbound_service, _, mut bob_tx_sender, _, _, _, _, _shutdown, _, _, _) =
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
+
+    let alice_output_value = MicroTari(250000);
+
+    let (_utxo, uo) = make_input(&mut OsRng, alice_output_value, &factories.commitment);
+    runtime.block_on(alice_output_manager.add_output(uo)).unwrap();
+
+    let (_utxo, uo2) = make_input(&mut OsRng, alice_output_value, &factories.commitment);
+    runtime.block_on(alice_output_manager.add_output(uo2)).unwrap();
+
+    let amount_sent1 = 10000 * uT;
+
+    // Send Tx1
+    let tx_id1 = runtime
+        .block_on(alice_ts.send_transaction(
+            bob_node_identity.public_key().clone(),
+            amount_sent1,
+            100 * uT,
+            "Testing Message".to_string(),
+        ))
+        .unwrap();
+    alice_outbound_service
+        .wait_call_count(2, Duration::from_secs(60))
+        .expect("Alice call wait 1");
+    let (_, _body) = alice_outbound_service.pop_call().unwrap();
+    let (_, body) = alice_outbound_service.pop_call().unwrap();
+
+    let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
+    let tx_sender_msg: TransactionSenderMessage = envelope_body
+        .decode_part::<proto::TransactionSenderMessage>(1)
+        .unwrap()
+        .unwrap()
+        .try_into()
+        .unwrap();
+    match tx_sender_msg.clone() {
+        TransactionSenderMessage::Single(_) => (),
+        _ => {
+            assert!(false, "Transaction is the not a single rounder sender variant");
+        },
+    };
+
+    runtime
+        .block_on(bob_tx_sender.send(create_dummy_message(
+            tx_sender_msg.into(),
+            alice_node_identity.public_key(),
+        )))
+        .unwrap();
+    bob_outbound_service
+        .wait_call_count(2, Duration::from_secs(60))
+        .expect("bob call wait 1");
+
+    let _ = bob_outbound_service.pop_call().unwrap();
+    let call = bob_outbound_service.pop_call().unwrap();
+
+    let envelope_body = EnvelopeBody::decode(&mut call.1.to_vec().as_slice()).unwrap();
+    let bob_tx_reply_msg1: RecipientSignedMessage = envelope_body
+        .decode_part::<proto::RecipientSignedMessage>(1)
+        .unwrap()
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+    // Give Alice the tx reply to start the broadcast process.
+    runtime
+        .block_on(alice_tx_ack_sender.send(create_dummy_message(
+            bob_tx_reply_msg1.into(),
+            bob_node_identity.public_key(),
+        )))
+        .unwrap();
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut tx1_received = false;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                     if let TransactionEvent::ReceivedTransactionReply(tx_id) = &*event.unwrap(){
+                        if tx_id == &tx_id1 {
+                            tx1_received = true;
+                            break;
+                        }
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert!(tx1_received);
+    });
+
+    let alice_completed_tx1 = runtime
+        .block_on(alice_ts.get_completed_transactions())
+        .unwrap()
+        .remove(&tx_id1)
+        .expect("Transaction must be in collection");
+
+    assert_eq!(alice_completed_tx1.status, TransactionStatus::Completed);
+
+    let _ = runtime
+        .block_on(rpc_service_state.wait_pop_submit_transaction_calls(1, Duration::from_secs(20)))
+        .expect("Should receive a tx submission");
+    let _ = runtime
+        .block_on(rpc_service_state.wait_pop_transaction_query_calls(1, Duration::from_secs(20)))
+        .expect("Should receive a tx query");
+
+    // Setup new RPC Server
+    let new_server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let service = BaseNodeWalletRpcMockService::new();
+    let new_rpc_service_state = service.get_state();
+
+    let new_server = BaseNodeWalletRpcServer::new(service);
+    let protocol_name = new_server.as_protocol_name();
+
+    let mut new_mock_server = runtime
+        .handle()
+        .enter(|| MockRpcServer::new(new_server, new_server_node_identity.clone()));
+
+    runtime.handle().enter(|| new_mock_server.serve());
+
+    let connection =
+        runtime.block_on(new_mock_server.create_connection(new_server_node_identity.to_peer(), protocol_name.into()));
+    runtime.block_on(connectivity_mock_state.add_active_connection(connection));
+
+    // Set new Base Node response to be mined but unconfirmed
+    new_rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::Mined,
+        block_hash: None,
+        confirmations: TransactionServiceConfig::default().num_confirmations_required,
+    });
+
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(new_server_node_identity.public_key().clone()))
+        .unwrap();
+
+    // Wait for 1 query
+    let _ = runtime
+        .block_on(new_rpc_service_state.wait_pop_transaction_query_calls(1, Duration::from_secs(5)))
+        .unwrap();
+
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut tx_mined = false;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                     if let TransactionEvent::TransactionMined(_) = &*event.unwrap(){
+                            tx_mined = true;
+                            break;
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert!(tx_mined);
+    });
+}

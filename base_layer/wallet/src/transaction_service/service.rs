@@ -118,6 +118,7 @@ pub struct TransactionService<
     finalized_transaction_senders: HashMap<u64, Sender<(CommsPublicKey, TxId, Transaction)>>,
     receiver_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
     timeout_update_publisher: broadcast::Sender<Duration>,
+    base_node_update_publisher: broadcast::Sender<CommsPublicKey>,
     power_mode: PowerMode,
 }
 
@@ -168,6 +169,7 @@ where
             shutdown_signal,
         };
         let (timeout_update_publisher, _) = broadcast::channel(20);
+        let (base_node_update_publisher, _) = broadcast::channel(20);
 
         TransactionService {
             config,
@@ -189,6 +191,7 @@ where
             finalized_transaction_senders: HashMap::new(),
             receiver_transaction_cancellation_senders: HashMap::new(),
             timeout_update_publisher,
+            base_node_update_publisher,
             power_mode: PowerMode::Normal,
         }
     }
@@ -1115,7 +1118,18 @@ where
     /// for the presence of spendable outputs. If this is the first time the base node public key is set do the initial
     /// mempool broadcast
     fn set_base_node_public_key(&mut self, base_node_public_key: CommsPublicKey) {
-        self.base_node_public_key = Some(base_node_public_key);
+        info!(
+            target: LOG_TARGET,
+            "Setting base node public key {} for service", base_node_public_key
+        );
+        self.base_node_public_key = Some(base_node_public_key.clone());
+        if let Err(e) = self.base_node_update_publisher.send(base_node_public_key) {
+            trace!(
+                target: LOG_TARGET,
+                "No subscribers to receive base node public key update: {:?}",
+                e
+            );
+        }
     }
 
     async fn restart_transaction_negotiation_protocols(
@@ -1212,6 +1226,7 @@ where
                     timeout,
                     pk,
                     self.timeout_update_publisher.subscribe(),
+                    self.base_node_update_publisher.subscribe(),
                 );
                 let join_handle = tokio::spawn(protocol.execute());
                 join_handles.push(join_handle);
