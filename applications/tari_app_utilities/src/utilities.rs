@@ -26,8 +26,10 @@ use log::*;
 use std::{fmt, fmt::Formatter, net::SocketAddr, path::Path};
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
+    connectivity::ConnectivityError,
     multiaddr::{Multiaddr, Protocol},
     peer_manager::NodeId,
+    protocol::rpc::RpcError,
     socks,
     tor,
     tor::TorIdentity,
@@ -36,7 +38,7 @@ use tari_comms::{
 };
 use tari_core::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
-use tari_wallet::util::emoji::EmojiId;
+use tari_wallet::{error::WalletError, output_manager_service::error::OutputManagerError, util::emoji::EmojiId};
 use tokio::{runtime, runtime::Runtime};
 
 pub const LOG_TARGET: &str = "tari::application";
@@ -52,6 +54,9 @@ pub enum ExitCodes {
     InputError(String),
     CommandError(String),
     IOError(String),
+    RecoveryError(String),
+    NetworkError(String),
+    ConversionError(String),
 }
 
 impl ExitCodes {
@@ -65,6 +70,9 @@ impl ExitCodes {
             Self::InputError(_) => 106,
             Self::CommandError(_) => 107,
             Self::IOError(_) => 108,
+            Self::RecoveryError(_) => 109,
+            Self::NetworkError(_) => 110,
+            Self::ConversionError(_) => 111,
         }
     }
 }
@@ -73,6 +81,34 @@ impl From<tari_common::ConfigError> for ExitCodes {
     fn from(err: tari_common::ConfigError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
         Self::ConfigError(err.to_string())
+    }
+}
+
+impl From<WalletError> for ExitCodes {
+    fn from(err: WalletError) -> Self {
+        error!(target: LOG_TARGET, "{}", err);
+        Self::WalletError(err.to_string())
+    }
+}
+
+impl From<OutputManagerError> for ExitCodes {
+    fn from(err: OutputManagerError) -> Self {
+        error!(target: LOG_TARGET, "{}", err);
+        Self::WalletError(err.to_string())
+    }
+}
+
+impl From<ConnectivityError> for ExitCodes {
+    fn from(err: ConnectivityError) -> Self {
+        error!(target: LOG_TARGET, "{}", err);
+        Self::NetworkError(err.to_string())
+    }
+}
+
+impl From<RpcError> for ExitCodes {
+    fn from(err: RpcError) -> Self {
+        error!(target: LOG_TARGET, "{}", err);
+        Self::NetworkError(err.to_string())
     }
 }
 
@@ -91,6 +127,9 @@ impl fmt::Display for ExitCodes {
             ExitCodes::InputError(e) => write!(f, "Input Error ({}): {}", self.as_i32(), e),
             ExitCodes::CommandError(e) => write!(f, "Command Error ({}): {}", self.as_i32(), e),
             ExitCodes::IOError(e) => write!(f, "IO Error ({}): {}", self.as_i32(), e),
+            ExitCodes::RecoveryError(e) => write!(f, "Recovery Error ({}): {}", self.as_i32(), e),
+            ExitCodes::NetworkError(e) => write!(f, "Network Error ({}): {}", self.as_i32(), e),
+            ExitCodes::ConversionError(e) => write!(f, "Conversion Error ({}): {}", self.as_i32(), e),
             _ => write!(f, "{}", self.as_i32()),
         }
     }

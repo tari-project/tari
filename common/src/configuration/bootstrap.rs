@@ -123,6 +123,9 @@ pub struct ConfigBootstrap {
     /// Change the password for the console wallet
     #[structopt(long, alias("update-password"))]
     pub change_password: bool,
+    /// Force wallet recovery
+    #[structopt(long, alias("recover"))]
+    pub recovery: bool,
 }
 
 impl Default for ConfigBootstrap {
@@ -141,6 +144,7 @@ impl Default for ConfigBootstrap {
             enable_mining: false,
             password: None,
             change_password: false,
+            recovery: false,
         }
     }
 }
