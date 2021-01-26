@@ -320,7 +320,7 @@ async fn test_wallet() {
     let result = WalletSqliteDatabase::new(connection.clone(), Some(cipher));
 
     if let Err(WalletStorageError::AeadError(s)) = result {
-        assert_eq!(s, "Decryption Error".to_string());
+        assert_eq!(s, "Decryption Error:aead::Error".to_string());
     } else {
         assert!(
             false,

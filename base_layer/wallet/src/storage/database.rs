@@ -27,7 +27,12 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
-use tari_comms::types::{CommsPublicKey, CommsSecretKey};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::NodeIdentity,
+    tor::TorIdentity,
+    types::{CommsPublicKey, CommsSecretKey},
+};
 
 const LOG_TARGET: &str = "wallet::database";
 
@@ -47,12 +52,20 @@ pub trait WalletBackend: Send + Sync + Clone {
 pub enum DbKey {
     CommsSecretKey,
     CommsPublicKey,
+    CommsAddress,
+    CommsFeatures,
+    Identity,
+    TorId,
     ClientKey(String),
 }
 
 pub enum DbValue {
     CommsSecretKey(CommsSecretKey),
     CommsPublicKey(CommsPublicKey),
+    CommsAddress(Multiaddr),
+    CommsFeatures(u64),
+    Identity(NodeIdentity),
+    TorId(TorIdentity),
     ClientValue(String),
     ValueCleared,
 }
@@ -61,6 +74,8 @@ pub enum DbValue {
 pub enum DbKeyValuePair {
     CommsSecretKey(CommsSecretKey),
     ClientKeyValue(String, String),
+    Identity(Box<NodeIdentity>),
+    TorId(TorIdentity),
 }
 
 pub enum WriteOperation {
@@ -104,6 +119,29 @@ where T: WalletBackend + 'static
         })
         .await
         .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
+    pub async fn get_tor_id(&self) -> Result<Option<TorIdentity>, WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::TorId) {
+            Ok(None) => Ok(None),
+            Ok(Some(DbValue::TorId(k))) => Ok(Some(k)),
+            Ok(Some(other)) => unexpected_result(DbKey::TorId, other),
+            Err(e) => log_error(DbKey::CommsSecretKey, e),
+        })
+        .await
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(c)
+    }
+
+    pub async fn set_tor_identity(&self, id: TorIdentity) -> Result<(), WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Insert(DbKeyValuePair::TorId(id))))
+            .await
+            .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 
@@ -178,6 +216,10 @@ impl Display for DbKey {
         match self {
             DbKey::CommsSecretKey => f.write_str(&"CommsSecretKey".to_string()),
             DbKey::CommsPublicKey => f.write_str(&"CommsPublicKey".to_string()),
+            DbKey::CommsAddress => f.write_str(&"CommsAddress".to_string()),
+            DbKey::CommsFeatures => f.write_str(&"Node features".to_string()),
+            DbKey::Identity => f.write_str(&"NodeIdentity".to_string()),
+            DbKey::TorId => f.write_str(&"TorId".to_string()),
             DbKey::ClientKey(k) => f.write_str(&format!("ClientKey: {:?}", k)),
         }
     }
@@ -190,6 +232,10 @@ impl Display for DbValue {
             DbValue::CommsPublicKey(k) => f.write_str(&format!("CommsPublicKey: {:?}", k)),
             DbValue::ClientValue(v) => f.write_str(&format!("ClientValue: {:?}", v)),
             DbValue::ValueCleared => f.write_str(&"ValueCleared".to_string()),
+            DbValue::CommsFeatures(_) => f.write_str(&"Node features".to_string()),
+            DbValue::CommsAddress(_) => f.write_str(&"Comms Address".to_string()),
+            DbValue::TorId(v) => f.write_str(&format!("Tor ID: {}", v)),
+            DbValue::Identity(v) => f.write_str(&format!("Node Identity: {}", v)),
         }
     }
 }

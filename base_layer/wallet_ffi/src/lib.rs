@@ -209,6 +209,7 @@ use log4rs::append::{
     Append,
 };
 use tari_core::consensus::Network;
+use tari_p2p::transport::TransportType::Tor;
 use tari_wallet::{
     error::WalletStorageError,
     output_manager_service::protocols::txo_validation_protocol::TxoValidationType,
@@ -2339,7 +2340,6 @@ pub unsafe extern "C" fn transport_tcp_create(
 pub unsafe extern "C" fn transport_tor_create(
     control_server_address: *const c_char,
     tor_cookie: *const ByteVector,
-    tor_identity: *const ByteVector,
     tor_port: c_ushort,
     socks_username: *const c_char,
     socks_password: *const c_char,
@@ -2375,24 +2375,7 @@ pub unsafe extern "C" fn transport_tor_create(
         tor::Authentication::None
     };
 
-    let mut identity = None;
-    if !tor_identity.is_null() {
-        let bytes = (*tor_identity).0.as_slice();
-        match tor::TorIdentity::from_binary(bytes) {
-            Ok(ident) => {
-                identity = Some(Box::new(ident));
-            },
-            Err(err) => {
-                error = LibWalletError::from(InterfaceError::DeserializationError(format!(
-                    "Failed to deserialize tor identity: {}",
-                    err
-                )))
-                .code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        }
-    }
+    let identity = None;
 
     let tor_config = TorConfig {
         control_server_addr: control_address_str.parse::<Multiaddr>().unwrap(),
@@ -2586,7 +2569,7 @@ pub unsafe extern "C" fn comms_config_create(
 
     // Try create a Wallet Sqlite backend without a Cipher, if it fails then the DB is encrypted and we will have to
     // extract the Comms Secret Key in wallet_create(...) with the supplied passphrase
-    let comms_secret_key = match WalletSqliteDatabase::new(connection, None) {
+    let comms_secret_key = match WalletSqliteDatabase::new(connection.clone(), None) {
         Ok(wallet_sqlite_db) => {
             let wallet_backend = WalletDatabase::new(wallet_sqlite_db);
 
@@ -2615,6 +2598,41 @@ pub unsafe extern "C" fn comms_config_create(
         Err(_) => CommsSecretKey::default(),
     };
 
+    let transport_type = (*transport_type).clone();
+    let transport_type = match transport_type {
+        Tor(mut tor_config) => {
+            match WalletSqliteDatabase::new(connection, None) {
+                Ok(database) => {
+                    let db = WalletDatabase::new(database);
+
+                    match Runtime::new() {
+                        Ok(mut rt) => {
+                            tor_config.identity = match tor_config.identity {
+                                Some(v) => {
+                                    // This is temp code and should be removed after testnet
+                                    let _ = rt.block_on(db.set_tor_identity((*v).clone()));
+                                    Some(v)
+                                },
+                                _ => match rt.block_on(db.get_tor_id()) {
+                                    Ok(Some(v)) => Some(Box::new(v)),
+                                    _ => None,
+                                },
+                            };
+                            Tor(tor_config)
+                        },
+                        Err(e) => {
+                            error = LibWalletError::from(InterfaceError::TokioError(e.to_string())).code;
+                            ptr::swap(error_out, &mut error as *mut c_int);
+                            return ptr::null_mut();
+                        },
+                    }
+                },
+                _ => Tor(tor_config),
+            }
+        },
+        _ => transport_type,
+    };
+
     let public_address = public_address_str.parse::<Multiaddr>();
 
     match public_address {
@@ -2624,7 +2642,7 @@ pub unsafe extern "C" fn comms_config_create(
                 Ok(ni) => {
                     let config = TariCommsConfig {
                         node_identity: Arc::new(ni),
-                        transport_type: (*transport_type).clone(),
+                        transport_type,
                         datastore_path,
                         peer_database_name: database_name_string,
                         max_concurrent_inbound_tasks: 100,
@@ -2951,6 +2969,12 @@ pub unsafe extern "C" fn wallet_create(
 
             match w {
                 Ok(mut w) => {
+                    // lets ensure the wallet tor_id is saved
+                    if let Some(hs) = w.comms.hidden_service() {
+                        if let Err(e) = runtime.block_on(w.db.set_tor_identity(hs.tor_identity().clone())) {
+                            warn!(target: LOG_TARGET, "Could not save tor identity to db: {}", e);
+                        }
+                    }
                     // Start Callback Handler
                     let callback_handler = CallbackHandler::new(
                         TransactionDatabase::new(transaction_backend),
@@ -5544,7 +5568,6 @@ mod test {
             let address_control_str: *const c_char = CString::into_raw(address_control.clone()) as *const c_char;
             let _transport = transport_tor_create(
                 address_control_str,
-                ptr::null_mut(),
                 ptr::null_mut(),
                 8080,
                 ptr::null_mut(),

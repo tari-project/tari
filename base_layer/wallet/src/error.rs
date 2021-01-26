@@ -73,8 +73,8 @@ pub enum WalletStorageError {
     DuplicateContact,
     #[error("This write operation is not supported for provided DbKey")]
     OperationNotSupported,
-    #[error("Error converting a type")]
-    ConversionError,
+    #[error("Error converting a type: `{0}`")]
+    ConversionError(String),
     #[error("Could not find all values specified for batch operation")]
     ValuesNotFound,
     #[error("Db Path does not exist")]
