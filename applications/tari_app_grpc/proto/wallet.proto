@@ -70,7 +70,7 @@ message GetTransactionInfoRequest {
 }
 
 message GetTransactionInfoResponse {
-    repeated TransactionInfo statuses = 1;
+    repeated TransactionInfo transactions = 1;
 }
 
 message TransactionInfo {
