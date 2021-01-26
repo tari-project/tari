@@ -6,6 +6,7 @@ const WalletProcess = require('../../helpers/walletProcess');
 const expect = require('chai').expect;
 const {waitFor, getTransactionOutputHash} = require('../../helpers/util');
 const TransactionBuilder = require('../../helpers/transactionBuilder');
+var lastResult;
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -220,3 +221,87 @@ Then(/(.*) should have (\d+) peers/, async function (nodeName, peerCount){
     // we add a non existing node when the node starts before adding any actual peers. So the count should always be 1 higher
     expect(peers.length).to.equal(peerCount+1)
 })
+
+When(/I send (.*) tari from (.*) to (.*),(.*) at fee (.*)/, async function (tariAmount,source,dest,dest2,fee) {
+ let wallet = this.getWallet(source);
+ let client = wallet.getClient();
+ var destWallet = this.getWallet(dest);
+ var destWallet2 = this.getWallet(dest2);
+ console.log("Pubkey:", destWallet.getPubKey());
+ console.log("Pubkey:", destWallet2.getPubKey());
+ let output = await client.transfer({"recipients": [{"address": destWallet.getPubKey(),
+                                                     "amount": tariAmount,
+                                                      "fee_per_gram": fee,
+                                                      "message": "msg"
+                                                     },
+                                                     {
+                                                      "address": destWallet2.getPubKey(),
+                                                      "amount": tariAmount,
+                                                      "fee_per_gram": fee,
+                                                      "message": "msg"}]
+                                                    });
+  console.log("output", output);
+  lastResult = output;
+});
+
+When(/I wait (.*) seconds/, {timeout: 600*1000}, async  function (int) {
+    console.log("Waiting for", int, "seconds");
+    await sleep(int*1000);
+});
+
+Then(/Batch transfer of (.*) transactions was a success from (.*) to (.*),(.*)/,  async function (txCount,walletA,walletB,walletC) {
+   var WalletA = this.getWallet(walletA);
+   var ClientA = WalletA.getClient();
+   var WalletB = this.getWallet(walletB);
+   var ClientB = WalletB.getClient();
+   var WalletC = this.getWallet(walletC);
+   var ClientC = WalletC.getClient();
+
+   var resultObj = lastResult["results"];
+   for(var i = 0; i < txCount; i++) {
+       var found = 0;
+       var obj = resultObj[i];
+       if (obj["is_success"] == false) {
+            console.log(obj["transaction_id"],"failed");
+            return false;
+       } else {
+            // Note: Wallet A transaction finds transaction in pending state, wallet B and wallet C do not find
+            // the transaction
+            console.log("Transaction",obj["transaction_id"],"passed from original request succeeded");
+            let req = { "transaction_ids" : [
+              obj["transaction_id"].toString()
+            ]};
+            console.log(req);
+            try {
+              let txA = await ClientA.getTransactionInfo(req);
+              console.log(txA);
+              console.log();
+            } catch (err) {
+               console.log(err);
+            }
+            try {
+              let txB = await ClientB.getTransactionInfo(req);
+              console.log(txB);
+              console.log();
+              found++;
+             } catch (err) {
+               console.log(err);
+             }
+            try {
+              let txC = await ClientC.getTransactionInfo(req);
+              console.log(txC);
+              found++;
+            } catch (err) {
+               console.log(err);
+            }
+       }
+   }
+
+   console.log("Number of transactions found is",found,"of",txCount);
+   if (found != txCount)
+   {
+         return false;
+   }
+});
+
+

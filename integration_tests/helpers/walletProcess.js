@@ -3,7 +3,8 @@ const dateFormat = require('dateformat');
 const fs = require('fs');
 const {spawnSync, spawn, execSync} = require('child_process');
 const {expect} = require('chai');
-
+const WalletClient = require('./walletClient')
+;
 class WalletProcess {
 
     constructor(name) {
@@ -13,13 +14,35 @@ class WalletProcess {
     async init() {
         this.port = await getFreePort(19000, 20000);
         this.name = `Wallet${this.port}-${this.name}`;
+        this.nodeFile = "cwalletid.json";
         this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
            await this.run("cargo",
                  ["run", "--release", "--bin", "tari_console_wallet", "--", "--base-path", ".", "--create-id", "--init"]);
     }
 
+  ensureNodeInfo() {
+        while (true) {
+            if (fs.existsSync(this.baseDir + "/" + this.nodeFile)) {
+                break;
+            }
+        }
+
+        this.nodeInfo = JSON.parse(fs.readFileSync(this.baseDir + "/" + this.nodeFile, 'utf8'));
+
+    }
+
+    getPubKey() {
+        this.ensureNodeInfo();
+       return  this.nodeInfo["public_key"];
+    }
+
+
     getGrpcAddress() {
         return "127.0.0.1:" + this.port;
+    }
+
+    getClient() {
+     return new WalletClient(this.getGrpcAddress());
     }
 
     setPeerSeeds(addresses) {
