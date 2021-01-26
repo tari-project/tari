@@ -48,8 +48,6 @@ pub enum InterfaceError {
     PositionInvalidError,
     #[error("An error has occurred when trying to create the tokio runtime: `{0}`")]
     TokioError(String),
-    #[error("An error has occurred when attempting to deserialize input data: `{0}`")]
-    DeserializationError(String),
     #[error("Emoji ID is invalid")]
     InvalidEmojiId,
     #[error("Comms Private Key is not present while Db appears to be encrypted which should not happen")]
@@ -82,10 +80,6 @@ impl From<InterfaceError> for LibWalletError {
             },
             InterfaceError::TokioError(_) => Self {
                 code: 4,
-                message: format!("{:?}", v),
-            },
-            InterfaceError::DeserializationError(_) => Self {
-                code: 5,
                 message: format!("{:?}", v),
             },
             InterfaceError::InvalidEmojiId => Self {

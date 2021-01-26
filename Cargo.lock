@@ -4380,6 +4380,7 @@ name = "tari_wallet"
 version = "0.7.3"
 dependencies = [
  "aes-gcm",
+ "bincode",
  "blake2",
  "chrono",
  "crossbeam-channel 0.3.9",
