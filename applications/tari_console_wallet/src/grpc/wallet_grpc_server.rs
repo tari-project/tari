@@ -155,12 +155,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let wallet_pk = self.wallet.comms.node_identity_ref().public_key();
 
-        let statuses = transactions
+        let transactions = transactions
             .into_iter()
             .map(|tx| convert_wallet_transaction_into_transaction_info(tx, wallet_pk))
             .collect();
 
-        Ok(Response::new(GetTransactionInfoResponse { statuses }))
+        Ok(Response::new(GetTransactionInfoResponse { transactions }))
     }
 }
 
