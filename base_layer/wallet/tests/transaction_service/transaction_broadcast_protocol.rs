@@ -273,7 +273,7 @@ async fn tx_broadcast_protocol_submit_success() {
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::Mined,
         block_hash: None,
-        confirmations: 3,
+        confirmations: 1,
     });
     // Wait for 1 query
     let _ = rpc_service_state
@@ -305,7 +305,7 @@ async fn tx_broadcast_protocol_submit_success() {
         futures::select! {
             event = event_stream.select_next_some() => {
                 match &*event.unwrap() {
-                        TransactionEvent::TransactionMinedUnconfirmed(_, confirmations) => if *confirmations == 3 {
+                        TransactionEvent::TransactionMinedUnconfirmed(_, confirmations) => if *confirmations == 1 {
                             unconfirmed = true;
                         }
                         TransactionEvent::TransactionMined(_) => {
@@ -633,7 +633,7 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::Mined,
         block_hash: None,
-        confirmations: 3,
+        confirmations: 1,
     });
     // Wait for 1 query
     let _ = rpc_service_state
