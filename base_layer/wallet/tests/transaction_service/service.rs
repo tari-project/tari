@@ -323,8 +323,8 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
         transaction_resend_period: Duration::from_secs(200),
         resend_response_cooldown: Duration::from_secs(200),
         pending_transaction_cancellation_timeout: Duration::from_secs(300),
-        num_confirmations_required: 6,
         peer_dial_retry_timeout: Duration::from_secs(5),
+        ..Default::default()
     });
 
     let ts_service = TransactionService::new(
