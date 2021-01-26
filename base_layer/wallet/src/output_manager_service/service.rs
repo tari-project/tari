@@ -106,6 +106,8 @@ where TBackend: OutputManagerBackend + 'static
     base_node_response_stream: Option<BNResponseStream>,
     base_node_response_publisher: broadcast::Sender<Arc<proto::BaseNodeServiceResponse>>,
     shutdown_signal: Option<ShutdownSignal>,
+    txo_validation_cancellation_publisher: broadcast::Sender<()>,
+    txo_validation_cancellation_triggered: bool,
 }
 
 impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream>
@@ -193,6 +195,7 @@ where
         };
 
         let (base_node_response_publisher, _) = broadcast::channel(50);
+        let (txo_validation_cancellation_publisher, _) = broadcast::channel(50);
 
         Ok(OutputManagerService {
             resources,
@@ -202,6 +205,8 @@ where
             base_node_response_stream: Some(base_node_response_stream),
             base_node_response_publisher,
             shutdown_signal: Some(shutdown_signal),
+            txo_validation_cancellation_publisher,
+            txo_validation_cancellation_triggered: false,
         })
     }
 
@@ -226,7 +231,7 @@ where
             .expect("Output Manager Service initialized without shutdown signal");
         pin_mut!(shutdown);
 
-        let mut utxo_validation_handles: FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>> =
+        let mut txo_validation_handles: FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>> =
             FuturesUnordered::new();
 
         info!(target: LOG_TARGET, "Output Manager Service started");
@@ -235,7 +240,7 @@ where
                 request_context = request_stream.select_next_some() => {
                 trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request, &mut utxo_validation_handles).await.or_else(|resp| {
+                    let _ = reply_tx.send(self.handle_request(request, &mut txo_validation_handles).await.or_else(|resp| {
                         warn!(target: LOG_TARGET, "Error handling request: {:?}", resp);
                         Err(resp)
                     })).or_else(|resp| {
@@ -260,11 +265,11 @@ where
                                 ;
                     }
                 }
-                join_result = utxo_validation_handles.select_next_some() => {
-                   trace!(target: LOG_TARGET, "UTXO Validation protocol has ended with result {:?}", join_result);
+                join_result = txo_validation_handles.select_next_some() => {
+                   trace!(target: LOG_TARGET, "TXO Validation protocol has ended with result {:?}", join_result);
                    match join_result {
                         Ok(join_result_inner) => self.complete_utxo_validation_protocol(join_result_inner).await,
-                        Err(e) => error!(target: LOG_TARGET, "Error resolving UTXO Validation protocol: {:?}", e),
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving TXO Validation protocol: {:?}", e),
                     };
                 }
                 _ = shutdown => {
@@ -276,7 +281,33 @@ where
                     break;
                 }
             }
-            trace!(target: LOG_TARGET, "Select Loop end");
+
+            if self.txo_validation_cancellation_triggered {
+                // Check if all the in progress TXO validation protocols have cancelled
+                // Once they are all finished we can restart them using the newly specified base node address
+                if txo_validation_handles.is_empty() {
+                    info!(
+                        target: LOG_TARGET,
+                        "Starting TXO validation protocols for newly specified Base Node"
+                    );
+                    let _ = self.validate_outputs(
+                        TxoValidationType::Unspent,
+                        TxoValidationRetry::UntilSuccess,
+                        &mut txo_validation_handles,
+                    );
+                    let _ = self.validate_outputs(
+                        TxoValidationType::Spent,
+                        TxoValidationRetry::UntilSuccess,
+                        &mut txo_validation_handles,
+                    );
+                    let _ = self.validate_outputs(
+                        TxoValidationType::Invalid,
+                        TxoValidationRetry::UntilSuccess,
+                        &mut txo_validation_handles,
+                    );
+                    self.txo_validation_cancellation_triggered = false;
+                }
+            }
         }
         info!(target: LOG_TARGET, "Output Manager Service ended");
         Ok(())
@@ -286,7 +317,7 @@ where
     async fn handle_request(
         &mut self,
         request: OutputManagerRequest,
-        utxo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
+        txo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<OutputManagerResponse, OutputManagerError>
     {
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
@@ -355,7 +386,7 @@ where
                 .await
                 .map(|_| OutputManagerResponse::BaseNodePublicKeySet),
             OutputManagerRequest::ValidateUtxos(validation_type, retries) => self
-                .validate_outputs(validation_type, retries, utxo_validation_handles)
+                .validate_outputs(validation_type, retries, txo_validation_handles)
                 .map(OutputManagerResponse::UtxoValidationStarted),
             OutputManagerRequest::GetInvalidOutputs => {
                 let outputs = self
@@ -411,7 +442,7 @@ where
         &mut self,
         validation_type: TxoValidationType,
         retry_strategy: TxoValidationRetry,
-        utxo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
+        txo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<u64, OutputManagerError>
     {
         match self.resources.base_node_public_key.as_ref() {
@@ -427,10 +458,11 @@ where
                     pk.clone(),
                     self.resources.config.base_node_query_timeout,
                     self.base_node_response_publisher.subscribe(),
+                    self.txo_validation_cancellation_publisher.subscribe(),
                 );
 
                 let join_handle = tokio::spawn(utxo_validation_protocol.execute());
-                utxo_validation_handles.push(join_handle);
+                txo_validation_handles.push(join_handle);
 
                 Ok(id)
             },
@@ -455,6 +487,8 @@ where
                     OutputManagerError::MaximumAttemptsExceeded => (),
                     // An event for this error has already been sent at this time
                     OutputManagerError::BaseNodeNotSynced => (),
+                    // An event for this error has already been sent at this time
+                    OutputManagerError::Cancellation => (),
                     // A generic event is sent for all other errors
                     _ => {
                         let _ = self
@@ -883,7 +917,18 @@ where
         base_node_public_key: CommsPublicKey,
     ) -> Result<(), OutputManagerError>
     {
+        info!(
+            target: LOG_TARGET,
+            "Setting base node public key {} for service", base_node_public_key
+        );
+        let do_txo_validation = self.resources.base_node_public_key.is_some();
         self.resources.base_node_public_key = Some(base_node_public_key);
+
+        if do_txo_validation {
+            let _ = self.txo_validation_cancellation_publisher.send(());
+            self.txo_validation_cancellation_triggered = true;
+        }
+
         Ok(())
     }
 

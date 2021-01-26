@@ -88,6 +88,8 @@ pub enum OutputManagerError {
     InvalidSenderMessage,
     #[error("Coinbase build error: `{0}`")]
     CoinbaseBuildError(#[from] CoinbaseBuildError),
+    #[error("TXO Validation protocol cancelled")]
+    Cancellation,
 }
 
 #[derive(Debug, Error, PartialEq)]

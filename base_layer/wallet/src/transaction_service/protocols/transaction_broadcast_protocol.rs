@@ -56,7 +56,7 @@ where TBackend: TransactionBackend + 'static
     timeout: Duration,
     base_node_public_key: CommsPublicKey,
     timeout_update_receiver: Option<broadcast::Receiver<Duration>>,
-    // base_node_update_receiver: Option<broadcast::Receiver<CommsPublicKey>>,
+    base_node_update_receiver: Option<broadcast::Receiver<CommsPublicKey>>,
     first_rejection: bool,
 }
 
@@ -69,7 +69,7 @@ where TBackend: TransactionBackend + 'static
         timeout: Duration,
         base_node_public_key: CommsPublicKey,
         timeout_update_receiver: broadcast::Receiver<Duration>,
-        // base_node_update_receiver: broadcast::Receiver<CommsPublicKey>,
+        base_node_update_receiver: broadcast::Receiver<CommsPublicKey>,
     ) -> Self
     {
         Self {
@@ -79,7 +79,7 @@ where TBackend: TransactionBackend + 'static
             timeout,
             base_node_public_key,
             timeout_update_receiver: Some(timeout_update_receiver),
-            // base_node_update_receiver: Some(base_node_update_receiver),
+            base_node_update_receiver: Some(base_node_update_receiver),
             first_rejection: false,
         }
     }
@@ -93,20 +93,20 @@ where TBackend: TransactionBackend + 'static
                 TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
             })?
             .fuse();
-        // TODO this will be done in the next PR on this topic
-        // let mut _base_node_update_receiver = self
-        //     .base_node_update_receiver
-        //     .take()
-        //     .ok_or_else(|| {
-        //         TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
-        //     })?
-        //     .fuse();
 
-        let base_node_node_id = NodeId::from_key(&self.base_node_public_key.clone())
-            .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
+        let mut base_node_update_receiver = self
+            .base_node_update_receiver
+            .take()
+            .ok_or_else(|| {
+                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
+            })?
+            .fuse();
+
         let mut shutdown = self.resources.shutdown_signal.clone();
         // Main protocol loop
         loop {
+            let base_node_node_id = NodeId::from_key(&self.base_node_public_key.clone())
+                .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
             let mut connection: Option<PeerConnection> = None;
 
             let delay = delay_for(self.resources.config.peer_dial_retry_timeout);
@@ -141,21 +141,44 @@ where TBackend: TransactionBackend + 'static
                     }
                 },
                 updated_timeout = timeout_update_receiver.select_next_some() => {
-                    if let Ok(to) = updated_timeout {
-                        self.timeout = to;
-                         info!(
-                            target: LOG_TARGET,
-                            "Transaction Broadcast protocol (TxId: {}) timeout updated to {:?}", self.tx_id, self.timeout
-                        );
-                    } else {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Transaction Broadcast protocol event 'updated_timeout' triggered (TxId: {}) ({:?})",
-                            self.tx_id,
-                            updated_timeout,
-                        );
+                    match updated_timeout {
+                        Ok(to) => {
+                            self.timeout = to;
+                             info!(
+                                target: LOG_TARGET,
+                                "Transaction Broadcast protocol (TxId: {}) timeout updated to {:?}", self.tx_id, self.timeout
+                            );
+                        },
+                        Err(e) => {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Transaction Broadcast protocol (TxId: {}) event 'updated_timeout' triggered with error: {:?}",
+                                self.tx_id,
+                                e,
+                            );
+                        }
                     }
                 },
+                new_base_node = base_node_update_receiver.select_next_some() => {
+                    match new_base_node {
+                        Ok(bn) => {
+                            self.base_node_public_key = bn;
+                             info!(
+                                target: LOG_TARGET,
+                                "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {:?}", self.tx_id, self.base_node_public_key
+                            );
+                            continue;
+                        },
+                        Err(e) => {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Transaction Broadcast protocol (TxId: {}) event 'base_node_update' triggered with error: {:?}",
+                                self.tx_id,
+                                e,
+                            );
+                        }
+                    }
+                }
                 _ = shutdown => {
                     info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
                     return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
@@ -206,6 +229,26 @@ where TBackend: TransactionBackend + 'static
             let delay = delay_for(self.timeout);
             loop {
                 futures::select! {
+                    new_base_node = base_node_update_receiver.select_next_some() => {
+                        match new_base_node {
+                            Ok(bn) => {
+                                self.base_node_public_key = bn;
+                                 info!(
+                                    target: LOG_TARGET,
+                                    "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {:?}", self.tx_id, self.base_node_public_key
+                                );
+                                continue;
+                            },
+                            Err(e) => {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "Transaction Broadcast protocol (TxId: {}) event 'base_node_update' triggered with error: {:?}",
+                                    self.tx_id,
+                                    e,
+                                );
+                            }
+                        }
+                    },
                     result = self.query_or_submit_transaction(completed_tx.clone(), base_node_connection.clone()).fuse() => {
                         match self.mode {
                             TxBroadcastMode::TransactionSubmission => {

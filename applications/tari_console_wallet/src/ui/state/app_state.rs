@@ -29,7 +29,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     contacts_service::storage::database::Contact,
-    output_manager_service::{service::Balance, TxId},
+    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId},
     transaction_service::{
         handle::{TransactionEvent, TransactionEventReceiver, TransactionServiceHandle},
         storage::models::{CompletedTransaction, TransactionStatus},
@@ -524,6 +524,10 @@ impl AppStateInner {
 
     pub fn get_transaction_service_event_stream(&self) -> Fuse<TransactionEventReceiver> {
         self.wallet.transaction_service.get_event_stream_fused()
+    }
+
+    pub fn get_output_manager_service_event_stream(&self) -> Fuse<OutputManagerEventReceiver> {
+        self.wallet.output_manager_service.get_event_stream_fused()
     }
 
     pub fn get_connectivity_event_stream(&self) -> Fuse<ConnectivityEventRx> {

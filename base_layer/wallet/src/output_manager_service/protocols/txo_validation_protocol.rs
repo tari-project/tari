@@ -58,6 +58,7 @@ where TBackend: OutputManagerBackend + 'static
     base_node_public_key: CommsPublicKey,
     timeout: Duration,
     base_node_response_receiver: Option<broadcast::Receiver<Arc<proto::BaseNodeServiceResponse>>>,
+    cancellation_receiver: Option<broadcast::Receiver<()>>,
     pending_queries: HashMap<u64, Vec<Vec<u8>>>,
 }
 
@@ -65,6 +66,7 @@ where TBackend: OutputManagerBackend + 'static
 impl<TBackend> TxoValidationProtocol<TBackend>
 where TBackend: OutputManagerBackend + 'static
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: u64,
         validation_type: TxoValidationType,
@@ -73,6 +75,7 @@ where TBackend: OutputManagerBackend + 'static
         base_node_public_key: CommsPublicKey,
         timeout: Duration,
         base_node_response_receiver: broadcast::Receiver<Arc<proto::BaseNodeServiceResponse>>,
+        cancellation_receiver: broadcast::Receiver<()>,
     ) -> Self
     {
         Self {
@@ -83,6 +86,7 @@ where TBackend: OutputManagerBackend + 'static
             base_node_public_key,
             timeout,
             base_node_response_receiver: Some(base_node_response_receiver),
+            cancellation_receiver: Some(cancellation_receiver),
             pending_queries: Default::default(),
         }
     }
@@ -96,6 +100,17 @@ where TBackend: OutputManagerBackend + 'static
                 OutputManagerProtocolError::new(
                     self.id,
                     OutputManagerError::ServiceError("No base node response channel provided".to_string()),
+                )
+            })?
+            .fuse();
+
+        let mut cancellation_receiver = self
+            .cancellation_receiver
+            .take()
+            .ok_or_else(|| {
+                OutputManagerProtocolError::new(
+                    self.id,
+                    OutputManagerError::ServiceError("No cancellation channel provided".to_string()),
                 )
             })?
             .fuse();
@@ -197,6 +212,27 @@ where TBackend: OutputManagerBackend + 'static
                             Err(e) => trace!(target: LOG_TARGET, "Error reading broadcast base_node_response: {:?}", e),
                         }
 
+                    },
+                    cancellation_trigger = cancellation_receiver.select_next_some() => {
+                        if let Ok(()) = cancellation_trigger {
+                            info!(target: LOG_TARGET, "TXO Validation protocol (Id: {}) is ending due to cancellation", self.id);
+                            let _ = self
+                                .resources
+                                .event_publisher
+                                .send(OutputManagerEvent::TxoValidationAborted(self.id))
+                                .map_err(|e| {
+                                    trace!(
+                                        target: LOG_TARGET,
+                                        "Error sending event {:?}, because there are no subscribers.",
+                                        e.0
+                                    );
+                                    e
+                                });
+                            return Err(OutputManagerProtocolError::new(
+                                self.id,
+                                OutputManagerError::Cancellation,
+                            ))
+                        }
                     },
                     () = delay => {
                         break;
@@ -496,7 +532,7 @@ where TBackend: OutputManagerBackend + 'static
                             .await
                             .is_ok()
                         {
-                            trace!(
+                            info!(
                                 target: LOG_TARGET,
                                 "Output with value {} has been restored to a valid spendable output",
                                 output.unblinded_output.value
