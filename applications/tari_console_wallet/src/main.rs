@@ -61,6 +61,18 @@ fn main_inner() -> Result<(), ExitCodes> {
         Ok(v) => Some(v),
         _ => None,
     };
+
+    if bootstrap.init {
+        info!(target: LOG_TARGET, "Default configuration created. Done.");
+        return Ok(());
+    }
+    if node_identity.is_none() {
+        warn!(
+            target: LOG_TARGET,
+            "Wallet has no identity, new wallet identity will be created"
+        );
+    }
+
     if node_identity.is_some() {
         // This is for wallets that still have a file with the password in it, we need to remove the file to protect the
         // sensitive tari_comms private key
@@ -68,11 +80,6 @@ fn main_inner() -> Result<(), ExitCodes> {
         // If we know files dont exist anymore we dont have to check for a file and delete a file
         std::fs::remove_file(&config.console_wallet_identity_file)
             .map_err(|e| ExitCodes::WalletError(format!("Could not delete identity file {}", e)))?;
-    }
-
-    if bootstrap.init {
-        info!(target: LOG_TARGET, "Default configuration created. Done.");
-        return Ok(());
     }
 
     // get command line password if provided
