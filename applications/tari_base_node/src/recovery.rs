@@ -93,7 +93,7 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
     };
     let rules = ConsensusManagerBuilder::new(node_config.network.into()).build();
     let factories = CryptoFactories::default();
-    let randomx_factory = RandomXFactory::new(RandomXConfig::default());
+    let randomx_factory = RandomXFactory::new(RandomXConfig::default(), node_config.max_randomx_vms);
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone(), randomx_factory),

@@ -302,7 +302,7 @@ async fn build_node_context(
 
     let rules = ConsensusManagerBuilder::new(config.network.into()).build();
     let factories = CryptoFactories::default();
-    let randomx_factory = RandomXFactory::new(RandomXConfig::default());
+    let randomx_factory = RandomXFactory::new(RandomXConfig::default(), config.max_randomx_vms);
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone(), randomx_factory),

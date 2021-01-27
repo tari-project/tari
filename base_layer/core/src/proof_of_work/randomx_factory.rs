@@ -1,4 +1,5 @@
 use crate::proof_of_work::monero_rx::MergeMineError;
+use log::*;
 use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
 use std::{
     collections::HashMap,
@@ -6,7 +7,7 @@ use std::{
     time::Instant,
 };
 
-const MAX_VMS: usize = 5;
+const LOG_TARGET: &str = "c::pow::randomx_factory";
 
 #[derive(Default)]
 pub struct RandomXConfig {
@@ -59,14 +60,14 @@ pub struct RandomXFactory {
 
 impl Default for RandomXFactory {
     fn default() -> Self {
-        Self::new(RandomXConfig::default())
+        Self::new(RandomXConfig::default(), 2)
     }
 }
 
 impl RandomXFactory {
-    pub fn new(config: RandomXConfig) -> Self {
+    pub fn new(config: RandomXConfig, max_vms: usize) -> Self {
         Self {
-            inner: Arc::new(RwLock::new(RandomXFactoryInner::new(config))),
+            inner: Arc::new(RwLock::new(RandomXFactoryInner::new(config, max_vms))),
         }
     }
 
@@ -83,13 +84,16 @@ impl RandomXFactory {
 struct RandomXFactoryInner {
     // config: RandomXConfig,
     vms: HashMap<Vec<u8>, (Instant, RandomXVMInstance)>,
+    max_vms: usize,
 }
 
 impl RandomXFactoryInner {
-    pub fn new(_config: RandomXConfig) -> Self {
+    pub fn new(_config: RandomXConfig, max_vms: usize) -> Self {
+        debug!(target: LOG_TARGET, "RandomX factory started with {} max VMs", max_vms);
         Self {
             // config,
             vms: Default::default(),
+            max_vms,
         }
     }
 
@@ -100,12 +104,13 @@ impl RandomXFactoryInner {
             return Ok(vm);
         }
 
-        if self.vms.len() + 1 > MAX_VMS {
-            let oldest_value = Instant::now();
+        if self.vms.len() >= self.max_vms {
+            let mut oldest_value = Instant::now();
             let mut oldest_key = None;
             for (k, v) in self.vms.iter() {
                 if v.0 < oldest_value {
                     oldest_key = Some(k.clone());
+                    oldest_value = v.0;
                 }
             }
             if let Some(k) = oldest_key {
