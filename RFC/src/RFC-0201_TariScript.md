@@ -540,7 +540,7 @@ To summarise, the information required for one-sided transactions is as follows:
 
 ### HTLC like script
 
-In this use case we have a script that controls to whom it is spend. We have Alice and Bob. Alice owns the commitment \\( C_a). She and Bob work together to create \\( C_s\\). But we dont yet know hom can spend the newly created \\( C_s\\). 
+In this use case we have a script that controls to whom it is spend. The exact script is out of scope for this example, but would typically be something along the lines of: Alice can spend after x blocks, or Alice&Bob can spend it together before hand. We have Alice and Bob. Alice owns the commitment \\( C_a). She and Bob work together to create \\( C_s\\). But we dont yet know hom can spend the newly created \\( C_s\\). 
 
 $$
 C_a \Rightarrow  C_s \Rightarrow  C_x
@@ -549,33 +549,21 @@ $$
 
 In this use case Alice and Bob work together to create \\( C_s\\). 
 Because Alice owns \\( C_a\\) she should have the blinding factor \\( k_a\\) and know the script spending conditions. 
-Alice and Bob both create a  \\( K_{Os}\\) key, with:
+Alice creates  \\( K_{Os}\\).
+
+In this case, Alice and Bob both create the normal transaction.  Alice and Bob have to ensure that \\( K_{Os}\\) is inside of the commitment \\( C_s\\). Alice will fill in the script with her \\( k_{Sa}\\) to unlock the commitment \\( C_a\\). Because Alice owns \\( C_a\\) she needs to construct  \\( \so\\) with:
 $$
-K_{Os} = K_{O-Alice} + K_{O-Bob}
+\so_ = k_{Sa} - k_{O} * \HU_s
 $$
 
-In this case, Alice and Bob both create the normal transaction.  Alice and Bob have to ensure that \\( K_{Os}\\) is inside of the commitment \\( C_s\\). Alice will fill in the script with her \\( k_{Sa}\\) to unlock the commitment \\( C_a\\). 
-Alice will construct her part of the \\( \so\\) with:
-$$
-\so_{Alice} = k_{Sa} - k_{O-Alice} * \HU_s
-$$
-
-Bob will construct his part of the \\( \so\\) with:
-$$
-\so_{Bob} = 0 - k_{O-Bob} * \HU_s
-$$
-The \\( \so\\) can then be constructed as:
-$$
-\so = \so_{alice} + \so_{Bob}
-$$
 
 The blinding factor \\( k_s\\) can be safely shared between Bob and Alice. And because both use the \\( \HU_s\\) in the construction of their \\( \so\\) parts. Both can know that neither party can change any detail of \\( C_s\\) including the script.
 
-As soon as \\( C_s\\) is mined, Alice and Bob now have a combined Commitment on the blockchain with some spending conditions that require the fulfillment of the script conditions to spend. 
+As soon as \\( C_s\\) is mined, Alice and Bob now have a combined Commitment on the blockchain with some spending conditions that require the fulfillment of the script conditions to spend.
 
 The spending case of either Alice or Bob claiming the commitment \\( C_s\\) is not going to be handled here as it is exactly the same as all the above cases. But The case of Alice and Bob spending this together is going to be explained here. 
 
-In this case, both Alice and Bob want to spend to one or more utxo together. Alice and Bob both create a \\( k_{Ox}\\) and need to know their own \\( k_{Ox}\\)
+In this case, both Alice and Bob want to spend to one or more utxo together. Alice and Bob both create a \\( k_{Ox}\\) and need to know their own \\( k_{Ox}\\). Because \\( C_s\\) is a shared commitment, Alice and Bob have to effectively unlock it and for that we use aggregated keys.
 
 Alice will construct her part of the \\( \so\\) with:
 $$
@@ -592,9 +580,44 @@ $$
 $$
 
 With this both Alice and Bob have agreed to the terms of commitment \\( C_x\\) lock that in. Both need to sign the input script with their respective \\( k_S\\) keys. And Both need to create their Offset. In this case, both \\( K_S\\) and \\( K_O\\) are aggregate keys. 
-Because the script resolves to an aggregate key \\( K_s\\) neither Alice nor Bob can claim the commitment \\( C_s\\) without the other party's key. 
+Because the script resolves to an aggregate key \\( K_s\\) neither Alice nor Bob can claim the commitment \\( C_s\\) without the other party's key. If either party tries to cheat, the offset will not validate correctly as the offset locks the output of the transaction. 
 
 A BaseNode validating the transaction will also not be able to tell this is an aggregate transaction as all keys are aggregated schnorr signatures. But it will be able to validate that the script input is correctly signed, thus the output public key is correct.  And that the \\( \so\\) is correctly calculated, meaning that the commitment \\( C_x\\) is the correct UTXO for the transaction.
+
+To summarise, the information required for creating a multiparty utxo is as follows:
+
+| Transaction input | Symbols                               | Knowledge                                                       |
+|:------------------|:--------------------------------------|:----------------------------------------------------------------|
+| commitment        | \\( C_a = k_a \cdot G + v \cdot H \\) | Alice knows spend key and value                                 |
+| features          | \\( F_a \\)                           | Public                                                          |
+| script            | \\( \alpha_a \\)                      | Public, can verify that \\( \hash{\alpha_a} = \scripthash_a \\) |
+| script input      | \\( \input_a \\)                      | Public                                                          |
+| height            | \\( h_a \\)                           | Public                                                          |
+| script signature  | \\( s_{Sa}, R_{Sa} \\)                | Alice knows \\( k_{Sa},\\, r_{Sa} \\)                           |
+| offset public key | \\( K_{Oa} \\)                        | Not used in this transaction                                    |
+
+| Transaction output | Symbols                               | Knowledge                                                              |
+|:-------------------|:--------------------------------------|:-----------------------------------------------------------------------|
+| commitment         | \\( C_s = k_s \cdot G + v \cdot H \\) | Alice and Bob know the spend key and value                             |
+| features           | \\( F_s \\)                           | Public                                                                 |
+| script hash        | \\( \scripthash_s \\)                 | Script is effectively public. Alice and Bob only knows their part of the  correct script input. |
+| range proof        |                                       | Alice and Bob know opening parameters                                  |
+| offset public key  | \\( K_{Ob} \\)                        | Alice knows her part of \\( k_{Os} \\), Bob knows his part of \\( k_{Os} \\)|
+
+When spending a multi party input
+| Transaction input | Symbols                               | Knowledge                                                       |
+|:------------------|:--------------------------------------|:----------------------------------------------------------------|
+| commitment        | \\( C_s = k_s \cdot G + v \cdot H \\) | Alice and Bob knows spend key and value                                 |
+| features          | \\( F_s \\)                           | Public                                                          |
+| script            | \\( \alpha_s \\)                      | Public, can verify that \\( \hash{\alpha_d} = \scripthash_d \\) |
+| script input      | \\( \input_s \\)                      | Public                                                          |
+| height            | \\( h_a \\)                           | Public                                                          |
+| script signature  | \\( s_{Sa}, R_{Sa} \\)                | Alice knows her \\( k_{Sa},\\, r_{Sa} \\), Bob knows his \\( k_{Sa},\\, r_{Sa} \\). Both need to provide a signature to sign the input which is provided here as aggregated.                             |
+| offset public key | \\( K_{Oa} \\)                        | Not used in this transaction                                    |
+
+
+
+
 ### Cut-through
 
 A major issue with many Mimblewimble extension schemes is that miners are able to cut-through UTXOs if an output is spent
