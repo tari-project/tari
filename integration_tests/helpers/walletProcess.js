@@ -14,6 +14,7 @@ class WalletProcess {
     async init() {
         this.port = await getFreePort(19000, 25000);
         this.name = `Wallet${this.port}-${this.name}`;
+        this.grpcPort = await getFreePort(19000, 25000);
         this.nodeFile = "cwalletid.json";
         this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
            await this.run("cargo",
@@ -38,7 +39,7 @@ class WalletProcess {
 
 
     getGrpcAddress() {
-        return "127.0.0.1:" + this.port;
+        return "127.0.0.1:" + this.grpcPort;
     }
 
     getClient() {
@@ -54,7 +55,7 @@ class WalletProcess {
             RUST_BACKTRACE: 1,
             TARI_BASE_NODE__NETWORK: "localnet",
             TARI_BASE_NODE__LOCALNET__GRPC_BASE_NODE_ADDRESS: "127.0.0.1:1",
-            TARI_BASE_NODE__LOCALNET__GRPC_CONSOLE_WALLET_ADDRESS: `127.0.0.1:${this.port}`,
+            TARI_BASE_NODE__LOCALNET__GRPC_CONSOLE_WALLET_ADDRESS: `127.0.0.1:${this.grpcPort}`,
             // Defaults:
             TARI_BASE_NODE__LOCALNET__DATA_DIR: "localnet",
             TARI_BASE_NODE__LOCALNET__DB_TYPE: "lmdb",
