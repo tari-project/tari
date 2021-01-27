@@ -135,16 +135,27 @@ class BaseNodeProcess {
     //
     // }
 
-    run(cmd, args) {
+    run(cmd, args, saveFile) {
         return new Promise((resolve, reject) => {
             if (!fs.existsSync(this.baseDir)) {
                 fs.mkdirSync(this.baseDir, {recursive: true});
                 fs.mkdirSync(this.baseDir + "/log", {recursive: true});
             }
+
+            let envs = this.createEnvs();
+            if (saveFile) {
+                let envSource = "";
+                for (let e in envs) {
+                    envSource += `\nexport ${e}=${envs[e]}`;
+                }
+                fs.writeFileSync(this.baseDir + "/env", envSource);
+                fs.writeFileSync(this.baseDir + "/run.sh", `source ./env\n\n${cmd} ${args.join(" ")}`);
+            }
+
             var ps = spawn(cmd, args, {
                 cwd: this.baseDir,
                 shell: true,
-                env: {...process.env, ...this.createEnvs()}
+                env: {...process.env, ...envs}
             });
 
             ps.stdout.on('data', (data) => {
@@ -185,7 +196,7 @@ class BaseNodeProcess {
     }
 
     start() {
-        return this.run("cargo", ["run", "--release", "--bin tari_base_node", "--", "--base-path", "."]);
+        return this.run("cargo", ["run", "--release", "--bin tari_base_node", "--", "--base-path", "."], true);
     }
 
     stop() {
