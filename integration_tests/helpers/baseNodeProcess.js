@@ -9,7 +9,7 @@ class BaseNodeProcess {
     constructor(name, nodeFile) {
         this.name = name;
         this.nodeFile = nodeFile;
-        // this.port = getFreePort(19000, 20000);
+        // this.port = getFreePort(19000, 25000);
         // this.grpcPort = getFreePort(50000, 51000);
         // this.name = `Basenode${this.port}-${name}`;
         // this.nodeFile = nodeFile || "newnode_id.json";
@@ -20,8 +20,8 @@ class BaseNodeProcess {
 
 
     async init() {
-        this.port = await getFreePort(19000, 20000);
-        this.grpcPort = await getFreePort(50000, 51000);
+        this.port = await getFreePort(19000, 25000);
+        this.grpcPort = await getFreePort(19000, 25000);
         this.name = `Basenode${this.port}-${this.name}`;
         this.nodeFile = this.nodeFile || "newnode_id.json";
         this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
@@ -92,12 +92,11 @@ class BaseNodeProcess {
             TARI_BASE_NODE__LOCALNET__ENABLE_MINING: "false",
             TARI_BASE_NODE__LOCALNET__NUM_MINING_THREADS: "1",
             TARI_BASE_NODE__LOCALNET__ORPHAN_DB_CLEAN_OUT_THRESHOLD: "0",
-            TARI_BASE_NODE__LOCALNET__GRPC_WALLET_ADDRESS: "127.0.0.1:5999",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_URL: "aasdf",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USE_AUTH: "false",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USERNAME: "asdf",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_PASSWORD: "asdf",
-            TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: "127.0.0.1:50071",
+            TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: "127.0.0.1:30071",
             TARI_BASE_NODE__LOCALNET__DB_INIT_SIZE_MB: 100,
             TARI_BASE_NODE__LOCALNET__DB_RESIZE_THRESHOLD_MB: 10,
             TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
