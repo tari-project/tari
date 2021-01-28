@@ -28,7 +28,10 @@ import "types.proto";
 
 // The gRPC interface for interacting with the wallet.
 service Wallet {
+    // This returns the current version
     rpc GetVersion (GetVersionRequest) returns (GetVersionResponse);
+    // This returns the identity information
+    rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
     // This returns a coinbase transaction
     rpc GetCoinbase (GetCoinbaseRequest) returns (GetCoinbaseResponse);
     // Send Tari to a number of recipients
@@ -38,6 +41,14 @@ service Wallet {
 }
 
 message GetVersionRequest { }
+
+message GetIdentityRequest { }
+
+message GetIdentityResponse {
+    bytes public_key = 1;
+    string public_address = 2;
+    bytes node_id = 3;
+}
 
 message GetVersionResponse {
     string version = 1;

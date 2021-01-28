@@ -30,7 +30,7 @@ class MergeMiningProxyProcess {
             }
 
             let proxyAddress = "127.0.0.1:"+this.port;
-            let envs = createEnv("nodeid.json",this.walletAddress,this.walletGrpcPort,this.nodeAddress,this.nodeGrpcPort, this.baseNodePort, proxyAddress,[], []);
+            let envs = createEnv(this.name,false, "nodeid.json",this.walletAddress,this.walletGrpcPort,this.port,this.nodeAddress,this.nodeGrpcPort, this.baseNodePort, proxyAddress,[], []);
 
             var ps = spawn(cmd, args, {
                 cwd: this.baseDir,

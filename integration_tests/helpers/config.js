@@ -29,8 +29,7 @@ function baseEnvs(peerSeeds = [])
              TARI_BASE_NODE__LOCALNET__WALLET_IDENTITY_FILE: "walletid.json",
              TARI_BASE_NODE__LOCALNET__CONSOLE_WALLET_IDENTITY_FILE: "cwalletid.json",
              TARI_BASE_NODE__LOCALNET__WALLET_TOR_IDENTITY_FILE: "wallettorid.json",
-             TARI_BASE_NODE__LOCALNET__CONSOLE_WALLET_TOR_IDENTITY_FILE: "wallet_tor_id.json",
-             TARI_BASE_NODE__LOCALNET__TRANSPORT: "tcp",
+             TARI_BASE_NODE__LOCALNET__CONSOLE_WALLET_TOR_IDENTITY_FILE: "none.json",
              TARI_BASE_NODE__LOCALNET__ALLOW_TEST_ADDRESSES: true,
              TARI_BASE_NODE__LOCALNET__GRPC_ENABLED: true,
              TARI_BASE_NODE__LOCALNET__ENABLE_WALLET: false,
@@ -60,16 +59,18 @@ function baseEnvs(peerSeeds = [])
      return envs;
 }
 
-function createEnv(nodeFile="newnodeid.json",walletGrpcAddress, walletGrpcPort, baseNodeGrpcAddress="127.0.0.1",baseNodeGrpcPort="8080", baseNodePort="8080",proxyFullAddress="127.0.0.1:8080",options, peerSeeds=[]) {
+function createEnv(name="config_identity",isWallet=false, nodeFile="newnodeid.json",walletGrpcAddress="127.0.0.1", walletGrpcPort="8082", walletPort="8083", baseNodeGrpcAddress="127.0.0.1", baseNodeGrpcPort="8080", baseNodePort="8081",proxyFullAddress="127.0.0.1:8084",options, peerSeeds=[]) {
           var envs = baseEnvs(peerSeeds);
           var configEnvs = {
              TARI_BASE_NODE__LOCALNET__GRPC_BASE_NODE_ADDRESS: `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`,
              TARI_BASE_NODE__LOCALNET__GRPC_CONSOLE_WALLET_ADDRESS: `${walletGrpcAddress}:${walletGrpcPort}`,
              TARI_BASE_NODE__LOCALNET__BASE_NODE_IDENTITY_FILE: `${nodeFile}`,
-             TARI_BASE_NODE__LOCALNET__TCP_LISTENER_ADDRESS: "/ip4/0.0.0.0/tcp/" + `${baseNodePort}`,
-             TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS: "/ip4/127.0.0.1/tcp/" + `${baseNodePort}`,
+             TARI_BASE_NODE__LOCALNET__TCP_LISTENER_ADDRESS: "/ip4/0.0.0.0/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`),
+             TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS: "/ip4/127.0.0.1/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`),
              TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: `${proxyFullAddress}`,
+             TARI_BASE_NODE__LOCALNET__TRANSPORT: "tcp",
          }
+         console.log(name);
          console.log(configEnvs);
          var fullEnvs = {...envs,...configEnvs};
          return {...fullEnvs, ...mapEnvs(options || {}) } ;

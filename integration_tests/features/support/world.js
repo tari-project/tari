@@ -111,7 +111,7 @@ class CustomWorld {
 
 setWorldConstructor(CustomWorld);
 
-BeforeAll({timeout: 600000}, function(callback) {
+BeforeAll({timeout: 1200000}, function(callback) {
     // Ensure the project can compile
     let proc = new BaseNodeProcess(`compile-tester`);
     console.log("Precompiling node. This can take a while whenever the code changes...");

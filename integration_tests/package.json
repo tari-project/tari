@@ -25,6 +25,6 @@
     "sha3": "^2.1.3",
     "synchronized-promise": "^0.3.1",
     "tari_crypto": "^0.8.0",
-    "wallet-grpc-client": "git://github.com/tari-project/wallet-grpc-client.git#938153acf2729aca2027f9d6f1c174c41afad86d"
+    "wallet-grpc-client": "git://github.com/tari-project/wallet-grpc-client.git#1abca1c91bac9a76ca0db208b6b08f759d4096a4"
   }
 }

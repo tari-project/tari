@@ -23,7 +23,7 @@ class MergeMiningProxyClient {
                 "reserve_size": 60
             }
         });
-        console.log(res.data);
+        console.log("Blocktemplate:",res.data.result.blocktemplate_blob);
         return res.data.result;
     }
 
@@ -39,9 +39,10 @@ class MergeMiningProxyClient {
 
     async mineBlock() {
         // Mines a block in the same way that xmrig would
-       let height = await this.getHeight();
        let template = await this.getBlockTemplate();
+       let height = await this.getHeight();
        let block = template.blocktemplate_blob;
+        // Need to insert a nonce into the template as xmrig would for it to be a valid block.
        let result = await this.submitBlock(block);
     }
 

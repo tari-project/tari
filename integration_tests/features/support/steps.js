@@ -1,4 +1,5 @@
 // features/support/steps.js
+const assert = require('assert');
 const { Given, When, Then } = require("cucumber");
 const BaseNodeProcess = require('../../helpers/baseNodeProcess');
 const MergeMiningProxyProcess = require('../../helpers/mergeMiningProxyProcess');
@@ -246,17 +247,23 @@ Then(/(.*) should have (\d+) peers/, async function (nodeName, peerCount){
 When(/I send (.*) tari from (.*) to (.*),(.*) at fee (.*)/, async function (tariAmount,source,dest,dest2,fee) {
  let wallet = this.getWallet(source);
  let client = wallet.getClient();
- var destWallet = this.getWallet(dest);
- var destWallet2 = this.getWallet(dest2);
- console.log("Pubkey:", destWallet.getPubKey());
- console.log("Pubkey:", destWallet2.getPubKey());
- let output = await client.transfer({"recipients": [{"address": destWallet.getPubKey(),
+ let destWallet = this.getWallet(dest);
+ let destClient = destWallet.getClient();
+ let destWallet2 = this.getWallet(dest2);
+ let destClient2 = destWallet2.getClient();
+
+ var destInfo = await destClient.identify();
+ var dest2Info = await destClient2.identify();
+ console.log("Starting Transfer of",tariAmount,"to");
+ console.log(destInfo);
+ console.log(dest2Info);
+ let output = await client.transfer({"recipients": [{"address": destInfo["public_key"],
                                                      "amount": tariAmount,
                                                       "fee_per_gram": fee,
                                                       "message": "msg"
                                                      },
                                                      {
-                                                      "address": destWallet2.getPubKey(),
+                                                      "address": dest2Info["public_key"],
                                                       "amount": tariAmount,
                                                       "fee_per_gram": fee,
                                                       "message": "msg"}]
@@ -268,61 +275,56 @@ When(/I send (.*) tari from (.*) to (.*),(.*) at fee (.*)/, async function (tari
 When(/I wait (.*) seconds/, {timeout: 600*1000}, async  function (int) {
     console.log("Waiting for", int, "seconds");
     await sleep(int*1000);
+    console.log("Waiting finished");
 });
 
 Then(/Batch transfer of (.*) transactions was a success from (.*) to (.*),(.*)/,  async function (txCount,walletA,walletB,walletC) {
-   var WalletA = this.getWallet(walletA);
-   var ClientA = WalletA.getClient();
-   var WalletB = this.getWallet(walletB);
-   var ClientB = WalletB.getClient();
-   var WalletC = this.getWallet(walletC);
-   var ClientC = WalletC.getClient();
+   let walletAObj = this.getWallet(walletA);
+   let clientA = walletAObj.getClient();
+   let walletBObj = this.getWallet(walletB);
+   let clientB = walletBObj.getClient();
+   let walletCObj = this.getWallet(walletC);
+   let clientC = walletCObj.getClient();
 
    var resultObj = lastResult["results"];
+   console.log(resultObj);
    for(var i = 0; i < txCount; i++) {
        var found = 0;
        var obj = resultObj[i];
        if (obj["is_success"] == false) {
             console.log(obj["transaction_id"],"failed");
-            return false;
+            assert(obj["is_success"],true);
        } else {
-            // Note: Wallet A transaction finds transaction in pending state, wallet B and wallet C do not find
-            // the transaction
             console.log("Transaction",obj["transaction_id"],"passed from original request succeeded");
             let req = { "transaction_ids" : [
               obj["transaction_id"].toString()
             ]};
             console.log(req);
             try {
-              let txA = await ClientA.getTransactionInfo(req);
+              let txA = await clientA.getTransactionInfo(req);
               console.log(txA);
-              console.log();
             } catch (err) {
-               console.log(err);
+               console.log(obj["transaction_id"].toString(),"not found in :", await clientA.identify());
             }
             try {
-              let txB = await ClientB.getTransactionInfo(req);
+              let txB = await clientB.getTransactionInfo(req);
               console.log(txB);
-              console.log();
               found++;
              } catch (err) {
-               console.log(err);
+               console.log(obj["transaction_id"].toString(),"not found in :", await clientB.identify());
              }
             try {
-              let txC = await ClientC.getTransactionInfo(req);
+              let txC = await clientC.getTransactionInfo(req);
               console.log(txC);
               found++;
             } catch (err) {
-               console.log(err);
+               console.log(obj["transaction_id"].toString(),"not found in :",await clientC.identify());
             }
        }
    }
 
    console.log("Number of transactions found is",found,"of",txCount);
-   if (found != txCount)
-   {
-         return false;
-   }
+   assert(found == txCount);
+   console.log("All transactions found");
 });
-
 
