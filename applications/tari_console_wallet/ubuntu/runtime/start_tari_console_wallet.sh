@@ -13,23 +13,17 @@ then
 fi
 "${exe_path}/start_tor.sh"
 
-if [ ! -f "${config_path}/console_wallet_id.json" ]
-then
-    echo Creating new "${config_path}/console_wallet_id.json";
-    "${exe_path}/tari_console_wallet" --create_id --init --config "${config_path}/config.toml" --log_config "${config_path}/log4rs_console_wallet.yml" --base-path ${base_path}
-else
-    echo Using existing "${config_path}/console_wallet_id.json";
-fi
 if [ ! -f "${config_path}/log4rs_console_wallet.yml" ]
 then
     echo Creating new "${config_path}/log4rs_console_wallet.yml";
-    "${exe_path}/tari_console_wallet" --init --config "${config_path}/config.toml" --log_config "${config_path}/log4rs_console_wallet.yml" --base-path ${base_path}
+    init_flag="--init"
 else
     echo Using existing "${config_path}/log4rs_console_wallet.yml";
+    init_flag=""
 fi
 echo
 
 # Run
 echo Spawning Console Wallet into new terminal..
-gnome-terminal --working-directory="$PWD" -- "${exe_path}/tari_console_wallet" --config "${config_path}/config.toml" --log_config "${config_path}/log4rs_console_wallet.yml" --base-path ${base_path}
 echo
+gnome-terminal --working-directory="$PWD" -- "${exe_path}/tari_console_wallet" ${init_flag} --config "${config_path}/config.toml" --log_config "${config_path}/log4rs_console_wallet.yml" --base-path ${base_path}

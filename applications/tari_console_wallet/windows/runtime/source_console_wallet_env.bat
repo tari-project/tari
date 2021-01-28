@@ -135,34 +135,16 @@ if exist "%my_exe_path%\%my_exe%" (
     )
 )
 
-rem First time run
-if not exist "%config_path%\console_wallet_id.json" (
-    cd "%base_path%"
-    "%console_wallet%" --create-id --init --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
-    echo.
-    echo.
-    echo Created "%config_path%\console_wallet_id.json".
-    echo.
-) else (
-    echo.
-    echo.
-    echo Using existing "%config_path%\console_wallet_id.json"
-    echo.
-)
+echo.
+echo.
 if not exist "%config_path%\log4rs_console_wallet.yml" (
-    cd "%base_path%"
-    "%console_wallet%" --init --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
-    echo.
-    echo.
-    echo Created "%config_path%\log4rs_console_wallet.yml".
-    echo.
+    echo Creating new "%config_path%\log4rs_console_wallet.yml".
+    set INIT_FLAG=--init
 ) else (
-    echo.
-    echo.
     echo Using existing "%config_path%\log4rs_console_wallet.yml"
-    echo.
+    set INIT_FLAG=
 )
+echo.
 
-rem Consecutive runs
 cd "%base_path%"
-"%console_wallet%" --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
+"%console_wallet%" %INIT_FLAG% --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
