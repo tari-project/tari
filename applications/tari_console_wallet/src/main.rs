@@ -61,7 +61,12 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
 
-    tari_splash_screen("Console Wallet");
+    // get command line password if provided
+    let arg_password = bootstrap.password.clone();
+
+    if arg_password.is_none() {
+        tari_splash_screen("Console Wallet");
+    }
 
     // check for recovery
     let boot_mode = boot(&bootstrap, &config)?;
@@ -89,10 +94,6 @@ fn main_inner() -> Result<(), ExitCodes> {
         _ => None,
     };
 
-    if bootstrap.init {
-        info!(target: LOG_TARGET, "Default configuration created. Done.");
-        return Ok(());
-    }
     if node_identity.is_none() {
         warn!(
             target: LOG_TARGET,
@@ -108,9 +109,6 @@ fn main_inner() -> Result<(), ExitCodes> {
         std::fs::remove_file(&config.console_wallet_identity_file)
             .map_err(|e| ExitCodes::WalletError(format!("Could not delete identity file {}", e)))?;
     }
-
-    // get command line password if provided
-    let arg_password = bootstrap.password.clone();
 
     let mut shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
