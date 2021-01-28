@@ -60,7 +60,7 @@ fn test_genesis_block() {
     let network = Network::Ridcully;
     let rules = ConsensusManagerBuilder::new(network).build();
     let backend = create_test_db();
-    let rx = RandomXFactory::new(RandomXConfig::default());
+    let rx = RandomXFactory::new(RandomXConfig::default(), 1);
     let validators = Validators::new(
         BodyOnlyValidator::default(),
         HeaderValidator::new(rules.clone(), rx),

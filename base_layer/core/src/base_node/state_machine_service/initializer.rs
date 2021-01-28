@@ -102,6 +102,7 @@ where B: BlockchainBackend + 'static
             let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
             let sync_validators = SyncValidators::full_consensus(db.clone().into_inner(), rules.clone(), factories);
+            let max_randomx_vms = config.max_randomx_vms;
 
             let node = BaseNodeStateMachine::new(
                 db,
@@ -114,7 +115,7 @@ where B: BlockchainBackend + 'static
                 sync_validators,
                 status_event_sender,
                 state_event_publisher,
-                RandomXFactory::new(RandomXConfig::default()),
+                RandomXFactory::new(RandomXConfig::default(), max_randomx_vms),
                 rules,
                 handles.get_shutdown_signal(),
             );
