@@ -77,12 +77,40 @@ fn main_inner() -> Result<(), ExitCodes> {
     let create_id = !id_exists || bootstrap.create_id;
 
     // Load or create the Node identity
-    let node_identity = setup_node_identity(
+    // TODO remove after test net
+    // If we know wallets dont have a node_id file anymore, we dont have to check to see if we can load one.
+    let node_identity = match setup_node_identity(
         &config.console_wallet_identity_file,
         &config.public_address,
         create_id,
         PeerFeatures::COMMUNICATION_CLIENT,
-    )?;
+    ) {
+        Ok(v) => Some(v),
+        _ => None,
+    };
+
+    if bootstrap.init {
+        info!(target: LOG_TARGET, "Default configuration created. Done.");
+        return Ok(());
+    }
+    if node_identity.is_none() {
+        warn!(
+            target: LOG_TARGET,
+            "Wallet has no identity, new wallet identity will be created"
+        );
+    }
+
+    if node_identity.is_some() {
+        // This is for wallets that still have a file with the password in it, we need to remove the file to protect the
+        // sensitive tari_comms private key
+        // TODO remove after test net
+        // If we know files dont exist anymore we dont have to check for a file and delete a file
+        std::fs::remove_file(&config.console_wallet_identity_file)
+            .map_err(|e| ExitCodes::WalletError(format!("Could not delete identity file {}", e)))?;
+    }
+
+    // get command line password if provided
+    let arg_password = bootstrap.password.clone();
 
     let mut shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();

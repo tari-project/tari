@@ -15,12 +15,11 @@ class MergeMiningProxyProcess {
     }
 
     async init() {
-        this.port = await getFreePort(19000, 20000);
+        this.port = await getFreePort(19000, 25000);
         this.name = `MMProxy${this.port}-${this.name}`;
         this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
-    //    await this.run("cargo",
-//
-  //          ["run", "--bin", "tari_merge_mining_proxy", "--", "--base-path", ".", "--init"]);
+        this.grpcPort = await getFreePort(19000, 25000);
+        //console.log("MergeMiningProxyProcess init - assign server GRPC:", this.grpcPort);
     }
 
     createEnvs() {
@@ -56,12 +55,12 @@ class MergeMiningProxyProcess {
             TARI_BASE_NODE__LOCALNET__ENABLE_MINING: "false",
             TARI_BASE_NODE__LOCALNET__NUM_MINING_THREADS: "1",
             TARI_BASE_NODE__LOCALNET__ORPHAN_DB_CLEAN_OUT_THRESHOLD: "0",
-            TARI_BASE_NODE__LOCALNET__GRPC_WALLET_ADDRESS: "127.0.0.1:5999",
+            TARI_BASE_NODE__LOCALNET__MAX_RANDOMX_VMS: "1",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_URL: "http://18.133.55.120:38081",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USE_AUTH: "false",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USERNAME: "",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_PASSWORD: "",
-            TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: "127.0.0.1:50071",
+            TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: "127.0.0.1:" + this.grpcPort,
             TARI_BASE_NODE__LOCALNET__DB_INIT_SIZE_MB: 100,
             TARI_BASE_NODE__LOCALNET__DB_RESIZE_THRESHOLD_MB: 10,
             TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
@@ -113,7 +112,7 @@ class MergeMiningProxyProcess {
 
     async startNew() {
         await this.init();
-        return await this.run("cargo", ["run", "--bin tari_merge_mining_proxy", "--", "--base-path", ".", "--init"]);
+        return await this.run("cargo", ["run", "--release", "--bin tari_merge_mining_proxy", "--", "--base-path", ".", "--init"]);
     }
 
     stop() {
@@ -121,8 +120,9 @@ class MergeMiningProxyProcess {
     }
 
     createClient() {
-        // Mostly only going to need one proxy
-        return new MergeMiningProxyClient("http://127.0.0.1:50071");
+        let address = "http://127.0.0.1:" + this.grpcPort;
+        //console.log("MergeMiningProxyProcess createClient - client address:", address);
+        return new MergeMiningProxyClient(address);
     }
 }
 

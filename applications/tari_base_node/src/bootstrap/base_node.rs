@@ -155,6 +155,7 @@ where B: BlockchainBackend + 'static
                     },
                     pruning_horizon: config.pruning_horizon,
                     orphan_db_clean_out_threshold: config.orphan_db_clean_out_threshold,
+                    max_randomx_vms: config.max_randomx_vms,
                     ..Default::default()
                 },
                 self.rules,

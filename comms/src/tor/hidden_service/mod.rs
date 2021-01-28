@@ -24,15 +24,15 @@ mod builder;
 pub use builder::{HiddenServiceBuilder, HiddenServiceBuilderError, HsFlags};
 
 mod controller;
-pub use controller::{HiddenServiceController, HiddenServiceControllerError};
-
 use crate::{
     multiaddr::Multiaddr,
     socks,
     tor::{PrivateKey, TorClientError},
     transports::{SocksConfig, SocksTransport},
 };
+pub use controller::{HiddenServiceController, HiddenServiceControllerError};
 use serde_derive::{Deserialize, Serialize};
+use std::fmt;
 use tari_shutdown::OptionalShutdownSignal;
 
 /// Handle for a Tor Hidden Service. This handle keeps the session to the Tor control port alive.
@@ -105,5 +105,14 @@ pub struct TorIdentity {
 impl TorIdentity {
     pub fn try_get_onion_address(&self) -> Result<Multiaddr, TorClientError> {
         multiaddr_from_service_id_and_port(&self.service_id, self.onion_port)
+    }
+}
+
+impl fmt::Display for TorIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Service ID: {}", self.service_id)?;
+        writeln!(f, "Port: {}", self.onion_port)?;
+
+        Ok(())
     }
 }

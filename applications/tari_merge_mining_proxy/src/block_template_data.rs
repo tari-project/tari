@@ -98,6 +98,16 @@ impl BlockTemplateRepository {
             }
         }
     }
+
+    pub async fn remove<T: AsRef<[u8]>>(&mut self, hash: T) {
+        let mut b = self.blocks.write().await;
+        trace!(
+            target: LOG_TARGET,
+            "Blocktemplate removed with merge mining hash {:?}",
+            hex::encode(hash.as_ref())
+        );
+        b.remove(hash.as_ref());
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -25,21 +25,28 @@ use crate::{
     wallet_modes::{PeerConfig, WalletMode},
 };
 use log::*;
+use rand::rngs::OsRng;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use std::{fs, str::FromStr, sync::Arc};
-use tari_app_utilities::{
-    identity_management,
-    utilities::{setup_wallet_transport_type, ExitCodes},
-};
+use tari_app_utilities::utilities::{setup_wallet_transport_type, ExitCodes};
 use tari_common::{ConfigBootstrap, GlobalConfig, Network};
-use tari_comms::{peer_manager::Peer, NodeIdentity};
+use tari_comms::{
+    peer_manager::{Peer, PeerFeatures},
+    NodeIdentity,
+};
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 use tari_core::{
     consensus::Network as NetworkType,
     transactions::types::{CryptoFactories, PrivateKey},
 };
-use tari_p2p::{initialization::CommsConfig, seed_peer::SeedPeer, DEFAULT_DNS_SEED_RESOLVER};
+use tari_crypto::keys::SecretKey;
+use tari_p2p::{
+    initialization::CommsConfig,
+    seed_peer::SeedPeer,
+    transport::TransportType::Tor,
+    DEFAULT_DNS_SEED_RESOLVER,
+};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
@@ -47,11 +54,14 @@ use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         storage::{
-            database::{DbKeyValuePair, KeyManagerState, OutputManagerBackend, WriteOperation},
+            database::{DbKeyValuePair as OutputDbKeyValuePair, KeyManagerState, OutputManagerBackend, WriteOperation as OutputWriteOperation},
             sqlite_db::OutputManagerSqliteDatabase,
         },
     },
-    storage::sqlite_utilities::initialize_sqlite_database_backends,
+    storage::{
+        database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
+        sqlite_utilities::initialize_sqlite_database_backends,
+    },
     transaction_service::config::TransactionServiceConfig,
     wallet::WalletConfig,
     Wallet,
@@ -115,7 +125,7 @@ fn prompt_password(prompt: &str) -> Result<String, ExitCodes> {
 /// Allows the user to change the password of the wallet.
 pub async fn change_password(
     config: &GlobalConfig,
-    node_identity: Arc<NodeIdentity>,
+    node_identity: Option<Arc<NodeIdentity>>,
     arg_password: Option<String>,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), ExitCodes>
@@ -198,7 +208,7 @@ pub fn wallet_mode(bootstrap: ConfigBootstrap, boot_mode: WalletBoot) -> WalletM
 /// Setup the app environment and state for use by the UI
 pub async fn init_wallet(
     config: &GlobalConfig,
-    node_identity: Arc<NodeIdentity>,
+    node_identity: Option<Arc<NodeIdentity>>,
     arg_password: Option<String>,
     master_key: Option<PrivateKey>,
     shutdown_signal: ShutdownSignal,
@@ -238,21 +248,77 @@ pub async fn init_wallet(
             }
         },
     };
-
     let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) = backends;
 
     debug!(
         target: LOG_TARGET,
         "Databases Initialized. Wallet encrypted? {}.", wallet_encrypted
     );
-
+    // TODO remove after next TestNet
+    // If we know node_identity is not passed in anymore we dont have to check if we need to write it to db. This
+    // assumes that if its passed in we need to still save it the database.
+    if let Some(mut id_arc) = node_identity {
+        let v = (*Arc::make_mut(&mut id_arc)).clone();
+        wallet_backend
+            .write(WriteOperation::Insert(DbKeyValuePair::Identity(Box::new(v))))
+            .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?;
+    }
+    let node_identity = match wallet_backend
+        .fetch(&DbKey::Identity)
+        .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?
+    {
+        Some(DbValue::Identity(v)) => Arc::new(v),
+        _ => {
+            let private_key = PrivateKey::random(&mut OsRng);
+            let node_id = NodeIdentity::new(
+                private_key,
+                config.public_address.clone(),
+                PeerFeatures::COMMUNICATION_CLIENT,
+            )
+            .map_err(|e| ExitCodes::WalletError(format!("We were unable to construct a node identity. {}", e)))?;
+            wallet_backend
+                .write(WriteOperation::Insert(DbKeyValuePair::Identity(Box::new(
+                    node_id.clone(),
+                ))))
+                .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?;
+            Arc::new(node_id)
+        },
+    };
     // TODO remove after next TestNet
     transaction_backend.migrate(node_identity.public_key().clone());
+    let transport_type = setup_wallet_transport_type(&config);
+    let transport_type = match transport_type {
+        Tor(mut tor_config) => {
+            tor_config.identity = match tor_config.identity {
+                Some(v) => {
+                    // This is temp code and should be removed after testnet
+                    wallet_backend
+                        .write(WriteOperation::Insert(DbKeyValuePair::TorId((*v).clone())))
+                        .map_err(|e| {
+                            ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e))
+                        })?;
+                    std::fs::remove_file(&config.console_wallet_tor_identity_file)
+                        .map_err(|e| ExitCodes::WalletError(format!("Could not delete identity file {}", e)))?;
+                    Some(v)
+                },
+                _ => {
+                    match wallet_backend.fetch(&DbKey::TorId).map_err(|e| {
+                        ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e))
+                    })? {
+                        Some(DbValue::TorId(v)) => Some(Box::new(v)),
+                        _ => None,
+                    }
+                },
+            };
+            Tor(tor_config)
+        },
+        _ => transport_type,
+    };
 
     let comms_config = CommsConfig {
         node_identity,
         user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
-        transport_type: setup_wallet_transport_type(&config),
+        transport_type,
         datastore_path: config.console_wallet_peer_db_path.clone(),
         peer_database_name: "peers".to_string(),
         max_concurrent_inbound_tasks: 100,
@@ -328,13 +394,13 @@ pub async fn init_wallet(
             ExitCodes::WalletError(format!("Error creating Wallet Container: {}", e))
         }
     })?;
-
     if let Some(hs) = wallet.comms.hidden_service() {
-        identity_management::save_as_json(&config.console_wallet_tor_identity_file, hs.tor_identity())
-            .map_err(|e| ExitCodes::WalletError(format!("Failed to save tor identity: {:?}", e)))?;
+        wallet
+            .db
+            .set_tor_identity(hs.tor_identity().clone())
+            .await
+            .map_err(|e| ExitCodes::WalletError(format!("Problem writing tor identity. {}", e)))?;
     }
-    identity_management::save_as_json(&config.console_wallet_identity_file, wallet.comms.node_identity_ref())
-        .map_err(|e| ExitCodes::WalletError(format!("Failed to save identity: {:?}", e)))?;
 
     if !wallet_encrypted {
         debug!(target: LOG_TARGET, "Wallet is not encrypted.");

@@ -13,7 +13,15 @@ class MergeMiningProxyClient {
     }
 
     async getBlockTemplate() {
-        let res = await axios.post(`${this.address}/json_rpc`, {"jsonrpc":"2.0","id":"0","method":"getblocktemplate","params":{"wallet_address":"55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt","reserve_size":60}});
+        let res = await axios.post(`${this.address}/json_rpc`, {
+            "jsonrpc": "2.0",
+            "id": "0",
+            "method": "getblocktemplate",
+            "params": {
+                "wallet_address": "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt",
+                "reserve_size": 60
+            }
+        });
         console.log(res.data);
         return res.data.result;
     }

@@ -10,7 +10,7 @@ class BaseNodeProcess {
         this.name = name;
         this.nodeFile = nodeFile;
         this.options = options;
-        // this.port = getFreePort(19000, 20000);
+        // this.port = getFreePort(19000, 25000);
         // this.grpcPort = getFreePort(50000, 51000);
         // this.name = `Basenode${this.port}-${name}`;
         // this.nodeFile = nodeFile || "newnode_id.json";
@@ -21,8 +21,8 @@ class BaseNodeProcess {
 
 
     async init() {
-        this.port = await getFreePort(19000, 20000);
-        this.grpcPort = await getFreePort(50000, 51000);
+        this.port = await getFreePort(19000, 25000);
+        this.grpcPort = await getFreePort(19000, 25000);
         this.name = `Basenode${this.port}-${this.name}`;
         this.nodeFile = this.nodeFile || "newnode_id.json";
         this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
@@ -31,7 +31,7 @@ class BaseNodeProcess {
         // console.log(`Starting node ${this.name}...`);
         await this.run("cargo",
 
-            ["run", "--bin", "tari_base_node", "--", "--base-path", ".", "--create-id", "--init"]);
+            ["run", "--release", "--bin", "tari_base_node", "--", "--base-path", ".", "--create-id", "--init"]);
     }
 
 
@@ -93,12 +93,12 @@ class BaseNodeProcess {
             TARI_BASE_NODE__LOCALNET__ENABLE_MINING: "false",
             TARI_BASE_NODE__LOCALNET__NUM_MINING_THREADS: "1",
             TARI_BASE_NODE__LOCALNET__ORPHAN_DB_CLEAN_OUT_THRESHOLD: "0",
-            TARI_BASE_NODE__LOCALNET__GRPC_WALLET_ADDRESS: "127.0.0.1:5999",
+            TARI_BASE_NODE__LOCALNET__MAX_RANDOMX_VMS: "1",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_URL: "aasdf",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USE_AUTH: "false",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USERNAME: "asdf",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_PASSWORD: "asdf",
-            TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: "127.0.0.1:50071",
+            TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: "127.0.0.1:30071",
             TARI_BASE_NODE__LOCALNET__DB_INIT_SIZE_MB: 100,
             TARI_BASE_NODE__LOCALNET__DB_RESIZE_THRESHOLD_MB: 10,
             TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
@@ -148,16 +148,22 @@ class BaseNodeProcess {
     //
     // }
 
-    run(cmd, args) {
+    run(cmd, args, saveFile) {
         return new Promise((resolve, reject) => {
             if (!fs.existsSync(this.baseDir)) {
                 fs.mkdirSync(this.baseDir, {recursive: true});
                 fs.mkdirSync(this.baseDir + "/log", {recursive: true});
             }
 
-            let envs =this.createEnvs();
-            fs.appendFileSync(`${this.baseDir}/log/stdout.log`, `Starting node...`);
-            fs.appendFileSync(`${this.baseDir}/log/stdout.log`, JSON.stringify(envs));
+            let envs = this.createEnvs();
+            if (saveFile) {
+                let envSource = "";
+                for (let e in envs) {
+                    envSource += `\nexport ${e}=${envs[e]}`;
+                }
+                fs.writeFileSync(this.baseDir + "/env", envSource);
+                fs.writeFileSync(this.baseDir + "/run.sh", `source ./env\n\n${cmd} ${args.join(" ")}`);
+            }
 
             var ps = spawn(cmd, args, {
                 cwd: this.baseDir,
@@ -203,7 +209,7 @@ class BaseNodeProcess {
     }
 
     start() {
-        return this.run("cargo", ["run", "--bin tari_base_node", "--", "--base-path", "."]);
+        return this.run("cargo", ["run", "--release", "--bin tari_base_node", "--", "--base-path", "."], true);
     }
 
     stop() {

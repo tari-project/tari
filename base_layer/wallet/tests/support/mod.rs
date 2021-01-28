@@ -22,4 +22,5 @@
 
 pub mod comms_and_services;
 pub mod data;
+pub mod rpc;
 pub mod utils;

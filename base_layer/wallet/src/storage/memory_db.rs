@@ -29,13 +29,22 @@ use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
 };
-use tari_comms::types::{CommsPublicKey, CommsSecretKey};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    tor::TorIdentity,
+    types::{CommsPublicKey, CommsSecretKey},
+    NodeIdentity,
+};
 use tari_crypto::keys::PublicKey;
 
 #[derive(Default)]
 pub struct InnerDatabase {
     comms_private_key: Option<CommsSecretKey>,
     client_key_values: HashMap<String, String>,
+    comms_address: Option<Multiaddr>,
+    features: u64,
+    identity: Option<NodeIdentity>,
+    tor_id: Option<TorIdentity>,
 }
 
 impl InnerDatabase {
@@ -43,6 +52,10 @@ impl InnerDatabase {
         Self {
             comms_private_key: None,
             client_key_values: HashMap::new(),
+            comms_address: None,
+            features: 0,
+            identity: None,
+            tor_id: None,
         }
     }
 }
@@ -76,6 +89,10 @@ impl WalletBackend for WalletMemoryDatabase {
                 .clone()
                 .map(|sk| DbValue::CommsPublicKey(CommsPublicKey::from_secret_key(&sk))),
             DbKey::ClientKey(k) => db.client_key_values.get(k).map(|v| DbValue::ClientValue(v.clone())),
+            DbKey::CommsAddress => db.comms_address.clone().map(DbValue::CommsAddress),
+            DbKey::CommsFeatures => Some(DbValue::CommsFeatures(db.features)),
+            DbKey::Identity => db.identity.clone().map(DbValue::Identity),
+            DbKey::TorId => db.tor_id.clone().map(DbValue::TorId),
         };
 
         Ok(result)
@@ -91,6 +108,12 @@ impl WalletBackend for WalletMemoryDatabase {
                 DbKeyValuePair::ClientKeyValue(k, v) => {
                     db.client_key_values.insert(k, v);
                 },
+                DbKeyValuePair::Identity(v) => {
+                    db.identity = Some(*v);
+                },
+                DbKeyValuePair::TorId(v) => {
+                    db.tor_id = Some(v);
+                },
             },
             WriteOperation::Remove(k) => match k {
                 DbKey::CommsSecretKey => {
@@ -105,6 +128,18 @@ impl WalletBackend for WalletMemoryDatabase {
                     } else {
                         return Ok(None);
                     }
+                },
+                DbKey::CommsAddress => {
+                    return Err(WalletStorageError::OperationNotSupported);
+                },
+                DbKey::CommsFeatures => {
+                    return Err(WalletStorageError::OperationNotSupported);
+                },
+                DbKey::Identity => {
+                    return Err(WalletStorageError::OperationNotSupported);
+                },
+                DbKey::TorId => {
+                    db.tor_id = None;
                 },
             },
         }

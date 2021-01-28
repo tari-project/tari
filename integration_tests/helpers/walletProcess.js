@@ -3,7 +3,8 @@ const dateFormat = require('dateformat');
 const fs = require('fs');
 const {spawnSync, spawn, execSync} = require('child_process');
 const {expect} = require('chai');
-
+const WalletClient = require('./walletClient')
+;
 class WalletProcess {
 
     constructor(name) {
@@ -11,15 +12,38 @@ class WalletProcess {
     }
 
     async init() {
-        this.port = await getFreePort(19000, 20000);
+        this.port = await getFreePort(19000, 25000);
         this.name = `Wallet${this.port}-${this.name}`;
+        this.grpcPort = await getFreePort(19000, 25000);
+        this.nodeFile = "cwalletid.json";
         this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
            await this.run("cargo",
-                 ["run", "--bin", "tari_console_wallet", "--", "--base-path", ".", "--create-id", "--init"]);
+                 ["run", "--release", "--bin", "tari_console_wallet", "--", "--base-path", ".", "--create-id", "--init"]);
     }
 
+  ensureNodeInfo() {
+        while (true) {
+            if (fs.existsSync(this.baseDir + "/" + this.nodeFile)) {
+                break;
+            }
+        }
+
+        this.nodeInfo = JSON.parse(fs.readFileSync(this.baseDir + "/" + this.nodeFile, 'utf8'));
+
+    }
+
+    getPubKey() {
+        this.ensureNodeInfo();
+       return  this.nodeInfo["public_key"];
+    }
+
+
     getGrpcAddress() {
-        return "127.0.0.1:" + this.port;
+        return "127.0.0.1:" + this.grpcPort;
+    }
+
+    getClient() {
+     return new WalletClient(this.getGrpcAddress());
     }
 
     setPeerSeeds(addresses) {
@@ -31,7 +55,7 @@ class WalletProcess {
             RUST_BACKTRACE: 1,
             TARI_BASE_NODE__NETWORK: "localnet",
             TARI_BASE_NODE__LOCALNET__GRPC_BASE_NODE_ADDRESS: "127.0.0.1:1",
-            TARI_BASE_NODE__LOCALNET__GRPC_CONSOLE_WALLET_ADDRESS: `127.0.0.1:${this.port}`,
+            TARI_BASE_NODE__LOCALNET__GRPC_CONSOLE_WALLET_ADDRESS: `127.0.0.1:${this.grpcPort}`,
             // Defaults:
             TARI_BASE_NODE__LOCALNET__DATA_DIR: "localnet",
             TARI_BASE_NODE__LOCALNET__DB_TYPE: "lmdb",
@@ -59,12 +83,12 @@ class WalletProcess {
             TARI_BASE_NODE__LOCALNET__ENABLE_MINING: "false",
             TARI_BASE_NODE__LOCALNET__NUM_MINING_THREADS: "1",
             TARI_BASE_NODE__LOCALNET__ORPHAN_DB_CLEAN_OUT_THRESHOLD: "0",
-            TARI_BASE_NODE__LOCALNET__GRPC_WALLET_ADDRESS: "127.0.0.1:5999",
+            TARI_BASE_NODE__LOCALNET__MAX_RANDOMX_VMS: "1",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_URL: "aasdf",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USE_AUTH: "false",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USERNAME: "asdf",
             TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_PASSWORD: "asdf",
-            TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: "127.0.0.1:50071",
+            TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: "127.0.0.1:30071",
             TARI_BASE_NODE__LOCALNET__DB_INIT_SIZE_MB: 100,
             TARI_BASE_NODE__LOCALNET__DB_RESIZE_THRESHOLD_MB: 10,
             TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
@@ -121,7 +145,7 @@ class WalletProcess {
 
     async startNew() {
         await this.init();
-        return this.run("cargo", ["run", "--bin tari_console_wallet", "--", "--base-path", ".", "--password", "kensentme", "--daemon"]);
+        return this.run("cargo", ["run", "--release", "--bin tari_console_wallet", "--", "--base-path", ".", "--password", "kensentme", "--daemon"]);
     }
 
     stop() {

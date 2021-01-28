@@ -161,6 +161,8 @@ pub enum TransactionEvent {
     TransactionBroadcast(TxId),
     TransactionMined(TxId),
     TransactionMinedRequestTimedOut(TxId),
+    TransactionMinedUnconfirmed(TxId, u64),
+    TransactionBaseNodeConnectionProblem(TxId),
     Error(String),
 }
 

@@ -110,6 +110,7 @@ pub struct GlobalConfig {
     pub proxy_host_address: SocketAddr,
     pub force_sync_peers: Vec<String>,
     pub wait_for_initial_sync_at_startup: bool,
+    pub max_randomx_vms: usize,
 }
 
 impl GlobalConfig {
@@ -238,6 +239,12 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let key = config_string("base_node", &net_str, "max_threads");
     let max_threads =
         optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
+    // Max RandomX VMs
+    let key = config_string("base_node", &net_str, "max_randomx_vms");
+    let max_randomx_vms = optional(cfg.get_int(&key).map(|n| n as usize))
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .unwrap_or(2) as usize;
 
     // Base node identity path
     let key = config_string("base_node", &net_str, "base_node_identity_file");
@@ -613,6 +620,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         monerod_use_auth,
         force_sync_peers,
         wait_for_initial_sync_at_startup,
+        max_randomx_vms,
     })
 }
 

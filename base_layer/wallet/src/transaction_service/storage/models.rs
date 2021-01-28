@@ -35,12 +35,15 @@ use tari_core::transactions::{
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TransactionStatus {
     /// This transaction has been completed between the parties but has not been broadcast to the base layer network.
     Completed,
     /// This transaction has been broadcast to the base layer network and is currently in one or more base node
     /// mempools.
+    /// TODO This status is no longer used but it is left here for backward compatibility. A transaction will be
+    /// Completed and transition straight to mined
     Broadcast,
     /// This transaction has been mined and included in a block.
     Mined,
@@ -231,6 +234,7 @@ impl CompletedTransaction {
         }
     }
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TransactionDirection {
     Inbound,

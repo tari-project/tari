@@ -32,7 +32,7 @@ use futures::{
 };
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
-use std::{thread, time::Duration};
+use std::{collections::HashSet, thread, time::Duration};
 use tari_comms::{
     message::EnvelopeBody,
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -1632,4 +1632,161 @@ fn handle_coinbase_sqlite_db() {
     let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
 
     handle_coinbase(OutputManagerSqliteDatabase::new(connection, None));
+}
+
+#[test]
+fn test_base_node_switching_triggered_txo_validation() {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let backend = OutputManagerSqliteDatabase::new(connection, None);
+
+    let mut hashes = HashSet::new();
+
+    // This output will be created and then invalidated
+    let key1 = PrivateKey::random(&mut OsRng);
+    let value1 = 5000;
+    let output1 = UnblindedOutput::new(MicroTari::from(value1), key1.clone(), None);
+    let tx_output1 = output1.as_transaction_output(&factories).unwrap();
+    let output1_hash = tx_output1.hash();
+    hashes.insert(output1_hash.clone());
+    backend
+        .write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
+            output1.spending_key.clone(),
+            Box::new(DbUnblindedOutput::from_unblinded_output(output1.clone(), &factories).unwrap()),
+        )))
+        .unwrap();
+
+    backend
+        .invalidate_unspent_output(&DbUnblindedOutput::from_unblinded_output(output1.clone(), &factories).unwrap())
+        .unwrap();
+
+    let key2 = PrivateKey::random(&mut OsRng);
+    let value2 = 800;
+    let output2 = UnblindedOutput::new(MicroTari::from(value2), key2.clone(), None);
+    let tx_output2 = output2.as_transaction_output(&factories).unwrap();
+    let output2_hash = tx_output2.hash();
+    hashes.insert(output2_hash.clone());
+
+    backend
+        .write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
+            output2.spending_key.clone(),
+            Box::new(DbUnblindedOutput::from_unblinded_output(output2.clone(), &factories).unwrap()),
+        )))
+        .unwrap();
+
+    let key3 = PrivateKey::random(&mut OsRng);
+    let value3 = 1300;
+    let output3 = UnblindedOutput::new(MicroTari::from(value3), key3.clone(), None);
+    let tx_output3 = output3.as_transaction_output(&factories).unwrap();
+    let output3_hash = tx_output3.hash();
+    hashes.insert(output3_hash.clone());
+
+    backend
+        .write(WriteOperation::Insert(DbKeyValuePair::SpentOutput(
+            output3.spending_key.clone(),
+            Box::new(DbUnblindedOutput::from_unblinded_output(output3.clone(), &factories).unwrap()),
+        )))
+        .unwrap();
+
+    let (mut oms, outbound_service, _shutdown, _base_node_response_sender, _) =
+        setup_output_manager_service(&mut runtime, backend);
+    let mut event_stream = oms.get_event_stream_fused();
+
+    let balance = runtime.block_on(oms.get_balance()).unwrap();
+    assert_eq!(balance.available_balance, MicroTari::from(value2));
+    let base_node_identity = NodeIdentity::random(
+        &mut OsRng,
+        "/ip4/127.0.0.1/tcp/58217".parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    )
+    .unwrap();
+
+    runtime
+        .block_on(oms.set_base_node_public_key(base_node_identity.public_key().clone()))
+        .unwrap();
+
+    // Make sure that setting the base_node the first time does not trigger any validation automatically
+    assert!(outbound_service.wait_call_count(1, Duration::from_secs(5)).is_err());
+
+    // Trigger 3 validations:
+    runtime
+        .block_on(oms.validate_txos(TxoValidationType::Unspent, TxoValidationRetry::UntilSuccess))
+        .unwrap();
+    runtime
+        .block_on(oms.validate_txos(TxoValidationType::Spent, TxoValidationRetry::UntilSuccess))
+        .unwrap();
+    runtime
+        .block_on(oms.validate_txos(TxoValidationType::Invalid, TxoValidationRetry::UntilSuccess))
+        .unwrap();
+
+    outbound_service
+        .wait_call_count(3, Duration::from_secs(60))
+        .expect("call wait 3");
+
+    // Setting a base node a second time will cancel the previous protocols and trigger 3 more.
+    runtime
+        .block_on(oms.set_base_node_public_key(base_node_identity.public_key().clone()))
+        .unwrap();
+
+    // Check we get 3 protocol abort events
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(60)).fuse();
+        let mut acc = 0;
+        loop {
+            futures::select! {
+                event = event_stream.select_next_some() => {
+                    if let OutputManagerEvent::TxoValidationAborted(_) = event.unwrap() {
+                        acc += 1;
+                        if acc >= 3 {
+                            break;
+                        }
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert!(acc >= 3, "Did not receive enough abort events");
+    });
+
+    outbound_service
+        .wait_call_count(3, Duration::from_secs(60))
+        .expect("call wait 3");
+
+    let mut hashes_found = 0;
+    for _ in 0..3 {
+        let (_, body) = outbound_service.pop_call().unwrap();
+        let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
+        let bn_request: base_node_proto::BaseNodeServiceRequest = envelope_body
+            .decode_part::<base_node_proto::BaseNodeServiceRequest>(1)
+            .unwrap()
+            .unwrap();
+
+        match bn_request.request {
+            None => assert!(false, "Invalid request"),
+            Some(request) => match request {
+                Request::FetchMatchingUtxos(hash_outputs) => {
+                    for h in hash_outputs.outputs {
+                        if hashes.remove(h.as_slice()) {
+                            hashes_found += 1;
+                            break;
+                        }
+                    }
+                },
+                _ => assert!(false, "invalid request"),
+            },
+        }
+    }
+
+    assert_eq!(
+        hashes_found, 3,
+        "Should have found all three hashes in three separate requests."
+    );
 }

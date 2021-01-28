@@ -27,7 +27,7 @@ use std::sync::Arc;
 use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
-    output_manager_service::TxId,
+    output_manager_service::{handle::OutputManagerEvent, TxId},
     transaction_service::handle::TransactionEvent,
 };
 use tokio::sync::RwLock;
@@ -47,6 +47,12 @@ impl WalletEventMonitor {
         let mut shutdown_signal = self.app_state_inner.read().await.get_shutdown_signal();
 
         let mut transaction_service_events = self.app_state_inner.read().await.get_transaction_service_event_stream();
+
+        let mut output_manager_service_events = self
+            .app_state_inner
+            .read()
+            .await
+            .get_output_manager_service_event_stream();
 
         let mut connectivity_events = self.app_state_inner.read().await.get_connectivity_event_stream();
 
@@ -118,6 +124,21 @@ impl WalletEventMonitor {
                             Err(_) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel"),
                         }
                     },
+                    result = output_manager_service_events.select_next_some() => {
+                        match result {
+                            Ok(msg) => {
+                                trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
+                                match msg {
+                                    OutputManagerEvent::TxoValidationSuccess(request_key) => {
+                                        self.trigger_balance_refresh().await;
+                                    },
+                                    // Only the above variants are monitored
+                                    _ => (),
+                                }
+                            },
+                            Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
+                        }
+                },
                     complete => {
                         info!(target: LOG_TARGET, "Wallet Event Monitor is exiting because all tasks have completed");
                         break;
@@ -158,6 +179,14 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.refresh_base_node_peer(peer).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+        }
+    }
+
+    async fn trigger_balance_refresh(&mut self) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_balance().await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
     }

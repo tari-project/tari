@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod transaction_broadcast_protocol;
-pub mod transaction_chain_monitoring_protocol;
 pub mod transaction_coinbase_monitoring_protocol;
 pub mod transaction_receive_protocol;
 pub mod transaction_send_protocol;

@@ -161,11 +161,9 @@ where
     ) -> Result<Wallet<T, U, V, W>, WalletError>
     {
         let db = WalletDatabase::new(wallet_backend);
-
         // Persist the Comms Private Key provided to this function
         db.set_comms_secret_key(config.comms_config.node_identity.secret_key().clone())
             .await?;
-
         #[cfg(feature = "test_harness")]
         let transaction_backend_handle = transaction_backend.clone();
 

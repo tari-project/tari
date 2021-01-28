@@ -20,17 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "base_node")]
 mod service;
-pub use service::BaseNodeWalletRpcService;
-
+#[cfg(feature = "base_node")]
 use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     mempool::service::MempoolHandle,
-    proto::generated::{
-        base_node::{TxQueryResponse, TxSubmissionResponse},
-        types::{Signature, Transaction},
-    },
 };
+#[cfg(feature = "base_node")]
+pub use service::BaseNodeWalletRpcService;
+
+use crate::proto::generated::{
+    base_node::{TxQueryResponse, TxSubmissionResponse},
+    types::{Signature, Transaction},
+};
+
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_comms_rpc_macros::tari_rpc;
 
@@ -46,6 +50,7 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
     async fn transaction_query(&self, request: Request<Signature>) -> Result<Response<TxQueryResponse>, RpcStatus>;
 }
 
+#[cfg(feature = "base_node")]
 pub fn create_base_node_wallet_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,
     mempool: MempoolHandle,

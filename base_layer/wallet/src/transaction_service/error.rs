@@ -27,7 +27,7 @@ use crate::{
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
-use tari_comms::peer_manager::node_id::NodeIdError;
+use tari_comms::{peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
 use tari_p2p::services::liveness::error::LivenessError;
@@ -121,6 +121,18 @@ pub enum TransactionServiceError {
     Timeout,
     #[error("Shutdown Signal Received")]
     Shutdown,
+    #[error("Transaction detected as rejected by mempool due to containing time-locked input")]
+    MempoolRejectionTimeLocked,
+    #[error("Transaction detected as rejected by mempool due to containing  orphan input")]
+    MempoolRejectionOrphan,
+    #[error("Transaction detected as rejected by mempool due to containing double spend")]
+    MempoolRejectionDoubleSpend,
+    #[error("Transaction detected as rejected by mempool due to invalid transaction")]
+    MempoolRejectionInvalidTransaction,
+    #[error("Transaction is malformed")]
+    InvalidTransaction,
+    #[error("RpcError: `{0}`")]
+    RpcError(#[from] RpcError),
 }
 
 #[derive(Debug, Error)]

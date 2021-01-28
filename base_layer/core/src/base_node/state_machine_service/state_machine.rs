@@ -50,6 +50,7 @@ pub struct BaseNodeStateMachineConfig {
     pub sync_peer_config: SyncPeerConfig,
     pub orphan_db_clean_out_threshold: usize,
     pub pruning_horizon: u64,
+    pub max_randomx_vms: usize,
 }
 
 /// A Tari full node, aka Base Node.
