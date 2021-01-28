@@ -540,7 +540,7 @@ To summarise, the information required for one-sided transactions is as follows:
 
 ### HTLC like script
 
-In this use case we have a script that controls to whom it is spend. The exact script is out of scope for this example, but would typically be something along the lines of: Alice can spend after x blocks, or Alice&Bob can spend it together before hand. We have Alice and Bob. Alice owns the commitment \\( C_a). She and Bob work together to create \\( C_s\\). But we dont yet know hom can spend the newly created \\( C_s\\). 
+In this use case we have a script that controls to whom it is spend. The exact script is out of scope for this example, but would typically be something along the lines of: Alice can spend after x blocks, or Alice&Bob can spend it together before hand. This would be typically what a lightning type channel would require. We have Alice and Bob. Alice owns the commitment \\( C_a). She and Bob work together to create \\( C_s\\). But we dont yet know hom can spend the newly created \\( C_s\\) and under what conditions this will be. 
 
 $$
 C_a \Rightarrow  C_s \Rightarrow  C_x
@@ -551,19 +551,19 @@ In this use case Alice and Bob work together to create \\( C_s\\).
 Because Alice owns \\( C_a\\) she should have the blinding factor \\( k_a\\) and know the script spending conditions. 
 Alice creates  \\( K_{Os}\\).
 
-In this case, Alice and Bob both create the normal transaction.  Alice and Bob have to ensure that \\( K_{Os}\\) is inside of the commitment \\( C_s\\). Alice will fill in the script with her \\( k_{Sa}\\) to unlock the commitment \\( C_a\\). Because Alice owns \\( C_a\\) she needs to construct  \\( \so\\) with:
+In this case, Alice and Bob both create a normal transaction.  Alice and Bob have to ensure that \\( K_{Os}\\) is inside of the commitment \\( C_s\\). Alice will fill in the script with her \\( k_{Sa}\\) to unlock the commitment \\( C_a\\). Because Alice owns \\( C_a\\) she needs to construct \\( \so\\) with:
 $$
 \so_ = k_{Sa} - k_{O} * \HU_s
 $$
 
 
-The blinding factor \\( k_s\\) can be safely shared between Bob and Alice. And because both use the \\( \HU_s\\) in the construction of their \\( \so\\) parts. Both can know that neither party can change any detail of \\( C_s\\) including the script.
+The blinding factor \\( k_s\\) can be safely shared between Bob and Alice, but they could also use diffie-hellman to construct to prevent man in the middle attacks. Because Alice controls \\( C_a\\) she needs to commit to \\( \HU_s\\) in the construction of her \\( \so\\) part. It does not matter if she commits to the wrong commit or the like, as this will be akin to a double spend transaction, as on this point in time, \\( C_a\\) is still wholely hers. 
 
-As soon as \\( C_s\\) is mined, Alice and Bob now have a combined Commitment on the blockchain with some spending conditions that require the fulfillment of the script conditions to spend.
+The commitment \\( C_s\\) needs to be constructed with the script the Bob agrees on. But Bob can only verify this once this is mined. As before this point in time, the \\( C_a\\) is still fully controlled by Alice and she can double spend that. As soon as \\( C_s\\) is mined, Alice and Bob now have a combined Commitment on the blockchain with some spending conditions that require the fulfillment of the script conditions to spend.
 
-The spending case of either Alice or Bob claiming the commitment \\( C_s\\) is not going to be handled here as it is exactly the same as all the above cases. But The case of Alice and Bob spending this together is going to be explained here. 
+The spending case of either Alice or Bob claiming the commitment \\( C_s\\) is not going to be handled here as it is exactly the same as all the above cases. Alice or Bob provides a \\( k_Ss\\) that "unlocks" the script and spends that .But The case of Alice and Bob spending this together to a new multiparty commitment is going to be explained here. 
 
-In this case, both Alice and Bob want to spend to one or more utxo together. Alice and Bob both create a \\( k_{Ox}\\) and need to know their own \\( k_{Ox}\\). Because \\( C_s\\) is a shared commitment, Alice and Bob have to effectively unlock it and for that we use aggregated keys.
+In this case, both Alice and Bob want to spend to one or more utxos together. Alice and Bob both create an aggregate \\( k_{Ox}\\) and need to know their own \\( k_{Ox}\\). Because \\( C_s\\) is a shared commitment, Alice and Bob have to effectively unlock it and for that we use aggregated keys.
 
 Alice will construct her part of the \\( \so\\) with:
 $$
@@ -579,8 +579,30 @@ $$
 \so = \so_{alice} + \so_{Bob}
 $$
 
-With this both Alice and Bob have agreed to the terms of commitment \\( C_x\\) lock that in. Both need to sign the input script with their respective \\( k_S\\) keys. And Both need to create their Offset. In this case, both \\( K_S\\) and \\( K_O\\) are aggregate keys. 
-Because the script resolves to an aggregate key \\( K_s\\) neither Alice nor Bob can claim the commitment \\( C_s\\) without the other party's key. If either party tries to cheat, the offset will not validate correctly as the offset locks the output of the transaction. 
+With this both Alice and Bob have agreed to the terms of commitment \\( C_x\\) and lock that in with \\( \so\\). Both need to sign the input script with their respective \\( k_S\\) keys. And Both need to create their Offset. In this case, both \\( K_S\\) and \\( K_O\\) are aggregate keys. 
+
+They both need to sign the input signature with \\( s_{Ss} \\), but is an aggregate key and is constructed as follows:
+
+Alice will construct her part of the \\(  s_{Ss}\\) with:
+$$
+ s_{Ss-Alice}= r_{Ss-Alice} + k_{Ss-Alice}\hash{\alpha_i \cat \theta_i \cat h_i}
+$$
+
+Bob will construct his part of the \\( \so\\) with:
+$$
+s_{Ss-Bob}= r_{Ss-Bob} + k_{Ss-Bob}\hash{\alpha_i \cat \theta_i \cat h_i}
+$$
+The \\(  s_{Ss}\\) can then be constructed as:
+$$
+ s_{Ss} = s_{Ss-Alice} + s_{Ss-Bob}
+$$
+The random nonce \\(R_{Ss}\\)  of \\( s_{Ss}\\) can then be constructed as:
+$$
+ R_{Ss} = R_{Ss-Alice} + R_{Ss-Bob}
+$$
+
+
+Because the script resolves to an aggregate key \\( K_s\\) neither Alice nor Bob can claim the commitment \\( C_s\\) without the other party's key. If either party tries to check by editing the input, the script validation will fail, as we need both partie's input and we need the aggregate signature for each party. If either of these parts are edited the signature or the script will fail. If either party tries to cheat by creating a new output, the offset will not validate correctly as the offset locks the output of the transaction. 
 
 A BaseNode validating the transaction will also not be able to tell this is an aggregate transaction as all keys are aggregated schnorr signatures. But it will be able to validate that the script input is correctly signed, thus the output public key is correct.  And that the \\( \so\\) is correctly calculated, meaning that the commitment \\( C_x\\) is the correct UTXO for the transaction.
 
@@ -602,7 +624,7 @@ To summarise, the information required for creating a multiparty utxo is as foll
 | features           | \\( F_s \\)                           | Public                                                                 |
 | script hash        | \\( \scripthash_s \\)                 | Script is effectively public. Alice and Bob only knows their part of the  correct script input. |
 | range proof        |                                       | Alice and Bob know opening parameters                                  |
-| offset public key  | \\( K_{Ob} \\)                        | Alice knows her part of \\( k_{Os} \\), Bob knows his part of \\( k_{Os} \\)|
+| offset public key  | \\( K_{Os} \\)                        | Alice knows her part of \\( k_{Os} \\), Bob knows his part of \\( k_{Os}. Neither party knows \\( k_{Os} \\) \\)|
 
 When spending a multi party input
 | Transaction input | Symbols                               | Knowledge                                                       |
@@ -612,7 +634,7 @@ When spending a multi party input
 | script            | \\( \alpha_s \\)                      | Public, can verify that \\( \hash{\alpha_d} = \scripthash_d \\) |
 | script input      | \\( \input_s \\)                      | Public                                                          |
 | height            | \\( h_a \\)                           | Public                                                          |
-| script signature  | \\( s_{Sa}, R_{Sa} \\)                | Alice knows her \\( k_{Sa},\\, r_{Sa} \\), Bob knows his \\( k_{Sa},\\, r_{Sa} \\). Both need to provide a signature to sign the input which is provided here as aggregated.                             |
+| script signature  | \\( s_{Sa}, R_{Sa} \\)                | Alice knows her \\( k_{Sa},\\, r_{Sa} \\), Bob knows his \\( k_{Sa},\\, r_{Sa} \\). Both need to provide a signature to sign the input which is provided here as aggregated. Neither party knows \\( k_{Sa}                           |
 | offset public key | \\( K_{Oa} \\)                        | Not used in this transaction                                    |
 
 
