@@ -1,6 +1,6 @@
 [package]
 name = "tari_app_utilities"
-version = "0.7.3"
+version = "0.8.0"
 authors = ["Philip Robinson <simian@tari.com>"]
 edition = "2018"
 
@@ -27,6 +27,6 @@ tonic = "0.2"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
-version = "^0.7"
+version = "0.8.0"
 default-features = false
 features = ["transactions"]
