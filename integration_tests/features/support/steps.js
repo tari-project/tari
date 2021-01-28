@@ -74,6 +74,7 @@ Given('I have {int} base nodes connected to all seed nodes',{timeout: 190*1000},
 
 Given(/I have wallet (.*) connected to all seed nodes/, {timeout: 20*1000}, async function (name) {
     let wallet = new WalletProcess(name);
+    wallet.preInit();
     wallet.setPeerSeeds([this.seedAddresses()]);
     await wallet.startNew();
     this.addWallet(name, wallet);
