@@ -1,6 +1,6 @@
 [package]
 name = "tari_p2p"
-version = "0.7.3"
+version = "0.8.0"
 authors = ["The Tari Development community"]
 description = "Tari base layer-specific peer-to-peer communication features"
 repository = "https://github.com/tari-project/tari"
@@ -10,13 +10,13 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.7", path = "../../comms"}
-tari_comms_dht = { version = "^0.7", path = "../../comms/dht"}
-tari_common = { version= "^0.7", path = "../../common" }
+tari_comms = { version = "^0.8", path = "../../comms"}
+tari_comms_dht = { version = "^0.8", path = "../../comms/dht"}
+tari_common = { version= "^0.8", path = "../../common" }
 tari_crypto = "^0.8"
-tari_service_framework = { version = "^0.7", path = "../service_framework"}
-tari_shutdown = { version = "^0.7", path="../../infrastructure/shutdown" }
-tari_storage = { version = "^0.7", path = "../../infrastructure/storage"}
+tari_service_framework = { version = "^0.8", path = "../service_framework"}
+tari_shutdown = { version = "^0.8", path="../../infrastructure/shutdown" }
+tari_storage = { version = "^0.8", path = "../../infrastructure/storage"}
 tari_utilities = "^0.3"
 
 anyhow = "1.0.32"
@@ -37,7 +37,7 @@ tower-service = { version="0.3.0-alpha.2" }
 trust-dns-client = {version="0.19.5", features=["dns-over-openssl"]}
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.7", path="../../infrastructure/test_utils" }
+tari_test_utils = { version = "^0.8", path="../../infrastructure/test_utils" }
 
 clap = "2.33.0"
 env_logger = "0.6.2"
@@ -49,12 +49,12 @@ tempfile = "3.1.0"
 tokio-macros = "0.2.4"
 
 [dev-dependencies.log4rs]
-version ="0.8.3"
+version = "0.8.0"
 features = ["console_appender", "file_appender", "file", "yaml_format"]
 default-features = false
 
 [build-dependencies]
-tari_common = { version = "^0.7", path="../../common"}
+tari_common = { version = "^0.8", path="../../common"}
 
 [features]
 test-mocks = []

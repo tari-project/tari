@@ -3846,7 +3846,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_grpc"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "chrono",
  "prost",
@@ -3862,7 +3862,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_utilities"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "config",
  "dirs-next",
@@ -3887,7 +3887,7 @@ dependencies = [
 
 [[package]]
 name = "tari_base_node"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -3952,7 +3952,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "config",
@@ -3975,7 +3975,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "futures 0.3.12",
  "rand 0.7.3",
@@ -3986,7 +3986,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4029,7 +4029,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "bitflags 1.2.1",
@@ -4074,7 +4074,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "futures 0.3.12",
  "proc-macro2 1.0.24",
@@ -4090,7 +4090,7 @@ dependencies = [
 
 [[package]]
 name = "tari_console_wallet"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "chrono",
  "chrono-english",
@@ -4128,7 +4128,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "bincode",
  "bitflags 1.2.1",
@@ -4208,7 +4208,7 @@ dependencies = [
 
 [[package]]
 name = "tari_infra_derive"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "blake2",
  "proc-macro2 0.4.30",
@@ -4234,7 +4234,7 @@ dependencies = [
 
 [[package]]
 name = "tari_key_manager"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "digest 0.8.1",
  "rand 0.7.3",
@@ -4248,7 +4248,7 @@ dependencies = [
 
 [[package]]
 name = "tari_merge_mining_proxy"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "bincode",
  "bytes 0.5.6",
@@ -4286,7 +4286,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mining_node"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "bigint",
  "chrono",
@@ -4310,7 +4310,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "bincode",
  "blake2",
@@ -4329,7 +4329,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "bytes 0.4.12",
@@ -4369,7 +4369,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "futures 0.3.12",
@@ -4386,7 +4386,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "futures 0.3.12",
  "tokio",
@@ -4394,7 +4394,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "bincode",
  "bytes 0.4.12",
@@ -4412,7 +4412,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "futures 0.3.12",
  "futures-test",
@@ -4442,7 +4442,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "aes-gcm",
  "bincode",
@@ -4468,7 +4468,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_core",
  "tari_crypto",
- "tari_key_manager 0.7.3",
+ "tari_key_manager 0.8.0",
  "tari_p2p",
  "tari_service_framework",
  "tari_shutdown",
@@ -4484,7 +4484,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet_ffi"
-version = "0.16.14"
+version = "0.16.15"
 dependencies = [
  "chrono",
  "env_logger 0.7.1",
@@ -4498,7 +4498,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_core",
  "tari_crypto",
- "tari_key_manager 0.7.3",
+ "tari_key_manager 0.8.0",
  "tari_p2p",
  "tari_shutdown",
  "tari_utilities",
@@ -4533,7 +4533,7 @@ dependencies = [
 
 [[package]]
 name = "test_faucet"
-version = "0.7.3"
+version = "0.8.0"
 dependencies = [
  "rand 0.7.3",
  "serde 1.0.123",
