@@ -125,9 +125,6 @@ impl ConsensusManager {
         let constants = self.consensus_constants(height);
         let block_window = constants.get_difficulty_block_window();
 
-        // TODO: 🐛🚨 Due to a previous off-by-one error the actual block window used is one less. Remove this line on
-        //       the next testnet reset. #testnetreset
-        let block_window = block_window - 1;
         TargetDifficultyWindow::new(
             usize::try_from(block_window).expect("difficulty block window exceeds usize::MAX"),
             constants.get_diff_target_block_interval(pow_algo),
