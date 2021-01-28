@@ -53,7 +53,7 @@ mod helpers;
 #[test]
 fn test_genesis_block() {
     let factories = CryptoFactories::default();
-    let network = Network::Ridcully;
+    let network = Network::Stibbons;
     let rules = ConsensusManagerBuilder::new(network).build();
     let backend = create_test_db();
     let rx = RandomXFactory::new(RandomXConfig::default(), 1);
@@ -80,7 +80,7 @@ fn test_monero_blocks() {
     let seed2 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad98".to_string();
 
     let factories = CryptoFactories::default();
-    let network = Network::Ridcully;
+    let network = Network::Stibbons;
     let mut algos = HashMap::new();
     algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
         max_target_time: 1800,

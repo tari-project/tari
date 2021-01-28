@@ -118,7 +118,7 @@ where TBackend: TransactionBackend + 'static
             futures::select! {
                 dial_result = self.resources.connectivity_manager.dial_peer(base_node_node_id.clone()).fuse() => {
                     match dial_result {
-                        Ok(mut base_node_connection) => {
+                        Ok(base_node_connection) => {
                             connection = Some(base_node_connection);
                         },
                         Err(e) => {

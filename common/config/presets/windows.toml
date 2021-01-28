@@ -142,12 +142,12 @@ base_node_query_timeout = 120
 
 # Select the network to connect to. Valid options are:
 #   mainnet - the "real" Tari network (default)
-#   ridcully - the Tari test net
-network = "ridcully"
+#   stibbons - the Tari test net
+network = "stibbons"
 
 # Configuration options for testnet
 
-[base_node.ridcully]
+[base_node.stibbons]
 # The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
 # almost all use cases.
 db_type = "lmdb"
@@ -171,7 +171,7 @@ db_type = "lmdb"
 #num_mining_threads = 1
 
 # The relative path to store persistent data
-data_dir = "ridcully"
+data_dir = "stibbons"
 
 # When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
 # any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
@@ -203,7 +203,7 @@ force_sync_peers = [
 # DNS seeds
 # The DNS records in these hostnames should provide TXT records as per https://github.com/tari-project/tari/pull/2319
 # Enter a domain name for the TXT records: seeds.tari.com
-dns_seeds =["seeds.ridcully.tari.com"]
+dns_seeds =["seeds.stibbons.tari.com"]
 # The name server used to resolve DNS seeds
 # dns_seeds_name_server = "1.1.1.1:53"
 # Set to true to only accept DNS records that pass DNSSEC validation (Default: true)
@@ -293,7 +293,7 @@ console_wallet_tor_identity_file = ".\\config\\cosole_wallet_tor.json"
 #                                             Mempool Configuration Options                                            #
 #                                                                                                                      #
 ########################################################################################################################
-[mempool.ridcully]
+[mempool.stibbons]
 
 # The maximum number of transactions that can be stored in the Unconfirmed Transaction pool. This is the main waiting
 # area in the mempool and almost all transactions will end up in this pool before being mined. It's for this reason
@@ -365,7 +365,7 @@ console_wallet_tor_identity_file = ".\\config\\cosole_wallet_tor.json"
 ########################################################################################################################
 
 
-[merge_mining_proxy.ridcully]
+[merge_mining_proxy.stibbons]
 
 # URL to monerod, currently set to a seed node
 monerod_url = "http://18.133.55.120:38081"

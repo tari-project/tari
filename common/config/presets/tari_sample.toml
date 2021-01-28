@@ -1,4 +1,4 @@
-# A simple set of sane defaults for connecting to the Ridcully testnet
+# A simple set of sane defaults for connecting to the Stibbons testnet
 
 [base_node]
 network = "stibbons"

@@ -54,7 +54,7 @@ if [ ! "$(uname)" == "Darwin" ]; then
 fi
 
 DATA_DIR=${1:-"$HOME/.tari"}
-NETWORK=ridcully
+NETWORK=stibbons
 
 banner Installing and setting up your Tari Base Node
 if [ ! -d "$DATA_DIR/$NETWORK" ]; then
