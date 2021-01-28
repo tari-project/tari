@@ -54,7 +54,12 @@ use tari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         storage::{
-            database::{DbKeyValuePair as OutputDbKeyValuePair, KeyManagerState, OutputManagerBackend, WriteOperation as OutputWriteOperation},
+            database::{
+                DbKeyValuePair as OutputDbKeyValuePair,
+                KeyManagerState,
+                OutputManagerBackend,
+                WriteOperation as OutputWriteOperation,
+            },
             sqlite_db::OutputManagerSqliteDatabase,
         },
     },
@@ -449,7 +454,9 @@ async fn set_master_key(
         };
 
         output_manager_backend
-            .write(WriteOperation::Insert(DbKeyValuePair::KeyManagerState(state)))
+            .write(OutputWriteOperation::Insert(OutputDbKeyValuePair::KeyManagerState(
+                state,
+            )))
             .map_err(|e| ExitCodes::IOError(e.to_string()))?;
 
         Ok(true)

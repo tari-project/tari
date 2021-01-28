@@ -115,9 +115,6 @@ fn main_inner() -> Result<(), ExitCodes> {
     let mut shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
 
-    // get command line password if provided
-    let arg_password = bootstrap.password.clone();
-
     if bootstrap.change_password {
         info!(target: LOG_TARGET, "Change password requested.");
         return runtime.block_on(change_password(&config, node_identity, arg_password, shutdown_signal));
