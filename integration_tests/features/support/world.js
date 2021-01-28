@@ -68,8 +68,8 @@ class CustomWorld {
     }
 
     async submitBlock(blockName, nodeName) {
-        let result  = await this.clients[nodeName].submitBlock(this.blocks[blockName]).catch(err =>  {
-            console.log("erro", err);
+        let result  = await this.clients[nodeName].submitBlock(this.blocks[blockName].block).catch(err =>  {
+            console.log("submit block erro", err);
         });
         console.log(result);
     }

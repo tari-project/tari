@@ -396,7 +396,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         let block: Block = request
             .try_into()
-            .map_err(|_| Status::invalid_argument("Failed to convert arguments. Invalid block.".to_string()))?;
+            .map_err(|e| Status::invalid_argument(format!("Failed to convert arguments. Invalid block : {:?}", e)))?;
         let block_height = block.clone().header.height;
         debug!(
             target: LOG_TARGET,
