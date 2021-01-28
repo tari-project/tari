@@ -240,29 +240,29 @@ where
                 request_context = request_stream.select_next_some() => {
                 trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request, &mut txo_validation_handles).await.or_else(|resp| {
-                        warn!(target: LOG_TARGET, "Error handling request: {:?}", resp);
-                        Err(resp)
-                    })).or_else(|resp| {
+                    let response = self.handle_request(request, &mut txo_validation_handles).await.map_err(|e| {
+                        warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
+                        e
+                    });
+                    let _ = reply_tx.send(response).map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
-                        Err(resp)
+                        e
                     });
                 },
                  // Incoming messages from the Comms layer
                 msg = base_node_response_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
-                    let result = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
-                        warn!(target: LOG_TARGET, "Error handling base node service response from {}: {:?}, Trace: {}", origin_public_key, resp, msg.dht_header.message_tag);
-                        Err(resp)
+                    let result = self.handle_base_node_response(inner_msg).await.map_err(|e| {
+                        warn!(target: LOG_TARGET, "Error handling base node service response from {}: {:?}, Trace: {}", origin_public_key, e, msg.dht_header.message_tag);
+                        e
                     });
 
                     if result.is_err() {
                         let _ = self.resources.event_publisher
                                 .send(OutputManagerEvent::Error(
                                     "Error handling Base Node Response message".to_string(),
-                                ))
-                                ;
+                                ));
                     }
                 }
                 join_result = txo_validation_handles.select_next_some() => {
@@ -418,6 +418,10 @@ where
             OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
                 self.get_rewind_public_keys(),
             ))),
+            OutputManagerRequest::RewindOutputs(outputs) => self
+                .rewind_outputs(outputs)
+                .await
+                .map(OutputManagerResponse::RewindOutputs),
         }
     }
 
@@ -665,11 +669,23 @@ where
         num_outputs: u64,
     ) -> Result<MicroTari, OutputManagerError>
     {
+        debug!(
+            target: LOG_TARGET,
+            "Getting fee estimate. Amount: {}. Fee per gram: {}. Num kernels: {}. Num outputs: {}",
+            amount,
+            fee_per_gram,
+            num_kernels,
+            num_outputs
+        );
+
         let (utxos, _) = self
             .select_utxos(amount, fee_per_gram, num_outputs as usize, None)
             .await?;
+        debug!(target: LOG_TARGET, "{} utxos selected.", utxos.len());
+
         let fee = Fee::calculate_with_minimum(fee_per_gram, num_kernels as usize, utxos.len(), num_outputs as usize);
 
+        debug!(target: LOG_TARGET, "Fee calculated: {}", fee);
         Ok(fee)
     }
 
@@ -1057,12 +1073,36 @@ where
     }
 
     /// Return the public rewind keys
-
     fn get_rewind_public_keys(&self) -> PublicRewindKeys {
         PublicRewindKeys {
             rewind_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_key),
             rewind_blinding_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_blinding_key),
         }
+    }
+
+    /// Attempt to rewind all of the given transaction outputs into unblinded outputs
+    async fn rewind_outputs(
+        &mut self,
+        outputs: Vec<TransactionOutput>,
+    ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
+    {
+        let rewind_data = &self.resources.rewind_data;
+
+        let rewound_outputs: Vec<UnblindedOutput> = outputs
+            .into_iter()
+            .filter_map(|output| {
+                output
+                    .full_rewind_range_proof(
+                        &self.resources.factories.range_proof,
+                        &rewind_data.rewind_key,
+                        &rewind_data.rewind_blinding_key,
+                    )
+                    .ok()
+            })
+            .map(|output| UnblindedOutput::new(output.committed_value, output.blinding_factor, None))
+            .collect();
+
+        Ok(rewound_outputs)
     }
 }
 

@@ -55,6 +55,10 @@ message BlockHeader {
     uint64 nonce = 10;
     // Proof of work metadata
     ProofOfWork pow = 11;
+    // Kernel MMR size
+    uint64 kernel_mmr_size = 12;
+    // Output MMR size
+    uint64 output_mmr_size = 13;
 }
 
 // Metadata required for validating the Proof of Work calculation

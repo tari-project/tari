@@ -80,12 +80,13 @@ where T: ContactsBackend + 'static
             futures::select! {
                 request_context = request_stream.select_next_some() => {
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
-                        Err(resp)
-                    })).or_else(|resp| {
+                    let response = self.handle_request(request).await.map_err(|e| {
+                        error!(target: LOG_TARGET, "Error handling request: {:?}", e);
+                        e
+                    });
+                    let _ = reply_tx.send(response).map_err(|e| {
                         error!(target: LOG_TARGET, "Failed to send reply");
-                        Err(resp)
+                        e
                     });
                 },
                 _ = shutdown => {

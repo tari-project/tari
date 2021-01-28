@@ -48,7 +48,6 @@ use tari_core::{
         BlockchainDatabaseConfig,
         ChainStorageError,
         DbTransaction,
-        InProgressHorizonSyncState,
         Validators,
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
@@ -73,35 +72,6 @@ use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
 #[test]
-fn write_and_fetch_metadata() {
-    // let network = Network::LocalNet;
-    // let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_test_blockchain_db();
-    let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), 0);
-
-    let height = 10;
-    let accumulated_difficulty = 20;
-    let metadata = ChainMetadata::new(height, Vec::new(), 0, 0, accumulated_difficulty);
-    store.set_chain_metadata(metadata).unwrap();
-
-    let metadata = store.get_chain_metadata().unwrap();
-    assert_eq!(metadata.height_of_longest_chain(), height);
-    assert_eq!(metadata.accumulated_difficulty(), accumulated_difficulty);
-    assert_eq!(metadata.effective_pruned_height(), 0);
-
-    let state = InProgressHorizonSyncState {
-        metadata: metadata.clone(),
-        initial_rangeproof_checkpoint_count: 1,
-        initial_utxo_checkpoint_count: 2,
-        initial_kernel_checkpoint_count: 3,
-    };
-    store.set_horizon_sync_state(state).unwrap();
-    let state = store.get_horizon_sync_state().unwrap().unwrap();
-    assert_eq!(state.metadata, metadata);
-}
-
-#[test]
 fn fetch_nonexistent_header() {
     let network = Network::LocalNet;
     let _consensus_manager = ConsensusManagerBuilder::new(network).build();
@@ -116,8 +86,13 @@ fn insert_and_fetch_header() {
     let _consensus_manager = ConsensusManagerBuilder::new(network).build();
     let store = create_test_blockchain_db();
     let genesis_block = store.fetch_tip_header().unwrap();
-    let header1 = BlockHeader::from_previous(&genesis_block.header).unwrap();
-    let header2 = BlockHeader::from_previous(&header1).unwrap();
+    let mut header1 = BlockHeader::from_previous(&genesis_block.header).unwrap();
+    let mut header2 = BlockHeader::from_previous(&header1).unwrap();
+
+    header1.kernel_mmr_size += 1;
+    header1.output_mmr_size += 1;
+    header2.kernel_mmr_size += 2;
+    header2.output_mmr_size += 2;
 
     let chain1 = store
         .create_chain_header_if_valid(header1.clone(), &genesis_block)
@@ -182,7 +157,14 @@ fn add_multiple_blocks() {
     let block0 = store.fetch_block(0).unwrap();
     assert_eq!(metadata.best_block(), block0.hash());
     // Add another block
-    let block1 = append_block(&store, &block0.into_chain_block(), vec![], &consensus_manager, 1.into()).unwrap();
+    let block1 = append_block(
+        &store,
+        &block0.try_into_chain_block().unwrap(),
+        vec![],
+        &consensus_manager,
+        1.into(),
+    )
+    .unwrap();
     let metadata = store.get_chain_metadata().unwrap();
     let hash = block1.hash();
     assert_eq!(metadata.height_of_longest_chain(), 1);
@@ -212,7 +194,7 @@ fn test_checkpoints() {
     // Get the checkpoint
     let block_a = db.fetch_block(0).unwrap();
     assert_eq!(block_a.confirmations(), 2);
-    assert_eq!(blocks[0].block, block_a.block);
+    assert_eq!(&blocks[0].block, block_a.block());
     let block_b = db.fetch_block(1).unwrap();
     assert_eq!(block_b.confirmations(), 1);
     let block1 = serde_json::to_string(&block1.block).unwrap();
@@ -222,6 +204,7 @@ fn test_checkpoints() {
 
 #[test]
 fn rewind_to_height() {
+    let _ = env_logger::builder().is_test(true).try_init();
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
 
@@ -247,13 +230,13 @@ fn rewind_to_height() {
             generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
 
-    assert!(db.rewind_to_height(3).is_ok());
+    db.rewind_to_height(3).unwrap();
     assert_eq!(db.get_height().unwrap(), 3);
 
     // Invalid rewind
     assert!(db.rewind_to_height(4).is_err());
     assert_eq!(db.get_height().unwrap(), 3);
-    assert!(db.rewind_to_height(1).is_ok());
+    db.rewind_to_height(1).unwrap();
     assert_eq!(db.get_height().unwrap(), 1);
 }
 
@@ -284,7 +267,7 @@ fn rewind_past_horizon_height() {
 
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 4);
-    let horizon_height = metadata.effective_pruned_height();
+    let horizon_height = metadata.pruned_height();
     assert_eq!(horizon_height, 2);
     assert!(store.rewind_to_height(horizon_height - 1).is_err());
     assert!(store.rewind_to_height(horizon_height).is_ok());
@@ -779,23 +762,30 @@ fn store_and_retrieve_blocks() {
     let store = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap();
 
     let block0 = store.fetch_block(0).unwrap().clone();
-    let block1 = append_block(&store, &block0.clone().into_chain_block(), vec![], &rules, 1.into()).unwrap();
+    let block1 = append_block(
+        &store,
+        &block0.clone().try_into_chain_block().unwrap(),
+        vec![],
+        &rules,
+        1.into(),
+    )
+    .unwrap();
     let block2 = append_block(&store, &block1, vec![], &rules, 1.into()).unwrap();
     assert_eq!(
-        store.fetch_block(0).unwrap().into_chain_block(),
-        block0.clone().into_chain_block()
+        store.fetch_block(0).unwrap().try_into_chain_block().unwrap(),
+        block0.clone().try_into_chain_block().unwrap()
     );
-    assert_eq!(store.fetch_block(1).unwrap().into_chain_block(), block1);
-    assert_eq!(store.fetch_block(2).unwrap().into_chain_block(), block2);
+    assert_eq!(store.fetch_block(1).unwrap().try_into_chain_block().unwrap(), block1);
+    assert_eq!(store.fetch_block(2).unwrap().try_into_chain_block().unwrap(), block2);
 
     let block3 = append_block(&store, &block2, vec![], &rules, 1.into()).unwrap();
     assert_eq!(
-        store.fetch_block(0).unwrap().into_chain_block(),
-        block0.into_chain_block()
+        store.fetch_block(0).unwrap().try_into_chain_block().unwrap(),
+        block0.try_into_chain_block().unwrap()
     );
-    assert_eq!(store.fetch_block(1).unwrap().into_chain_block(), block1);
-    assert_eq!(store.fetch_block(2).unwrap().into_chain_block(), block2);
-    assert_eq!(store.fetch_block(3).unwrap().into_chain_block(), block3);
+    assert_eq!(store.fetch_block(1).unwrap().try_into_chain_block().unwrap(), block1);
+    assert_eq!(store.fetch_block(2).unwrap().try_into_chain_block().unwrap(), block2);
+    assert_eq!(store.fetch_block(3).unwrap().try_into_chain_block().unwrap(), block3);
 }
 
 #[test]
@@ -824,21 +814,24 @@ fn store_and_retrieve_blocks_from_contents() {
         db.fetch_block_with_kernel(kernel_sig)
             .unwrap()
             .unwrap()
-            .into_chain_block(),
+            .try_into_chain_block()
+            .unwrap(),
         blocks[1]
     );
     assert_eq!(
         db.fetch_block_with_stxo(stxo_commit)
             .unwrap()
             .unwrap()
-            .into_chain_block(),
+            .try_into_chain_block()
+            .unwrap(),
         blocks[1]
     );
     assert_eq!(
         db.fetch_block_with_utxo(utxo_commit)
             .unwrap()
             .unwrap()
-            .into_chain_block(),
+            .try_into_chain_block()
+            .unwrap(),
         blocks[1]
     );
 }
@@ -1411,8 +1404,8 @@ fn pruned_mode_cleanup_and_fetch_block() {
     let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
 
     assert!(store.fetch_block(0).is_err()); // Genesis block cant be retrieved in pruned mode
-    assert_eq!(store.fetch_block(1).unwrap().into_chain_block(), block1);
-    assert_eq!(store.fetch_block(2).unwrap().into_chain_block(), block2);
+    assert_eq!(store.fetch_block(1).unwrap().try_into_chain_block().unwrap(), block1);
+    assert_eq!(store.fetch_block(2).unwrap().try_into_chain_block().unwrap(), block2);
 
     let block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
 
@@ -1420,8 +1413,8 @@ fn pruned_mode_cleanup_and_fetch_block() {
     assert!(store.fetch_block(0).is_err());
     assert!(store.fetch_block(1).is_err());
     assert!(store.fetch_block(2).is_err());
-    assert_eq!(store.fetch_block(3).unwrap().into_chain_block(), block3);
-    assert_eq!(store.fetch_block(4).unwrap().into_chain_block(), block4);
+    assert_eq!(store.fetch_block(3).unwrap().try_into_chain_block().unwrap(), block3);
+    assert_eq!(store.fetch_block(4).unwrap().try_into_chain_block().unwrap(), block4);
 }
 
 #[test]

@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::proof_of_work::{monero_rx::MoneroData, Difficulty, PowAlgorithm};
+use crate::proof_of_work::{monero_rx::MoneroData, PowAlgorithm};
 use bytes::BufMut;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
@@ -32,12 +32,6 @@ pub trait AchievedDifficulty {}
 #[allow(deprecated)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ProofOfWork {
-    #[deprecated]
-    pub accumulated_monero_difficulty: Difficulty,
-    #[deprecated]
-    pub accumulated_blake_difficulty: Difficulty,
-    #[deprecated]
-    pub target_difficulty: Difficulty,
     /// The algorithm used to mine this block
     pub pow_algo: PowAlgorithm,
     /// Supplemental proof of work data. For example for Sha3, this would be empty (only the block header is
@@ -49,9 +43,6 @@ impl Default for ProofOfWork {
     #[allow(deprecated)]
     fn default() -> Self {
         Self {
-            accumulated_monero_difficulty: Default::default(),
-            accumulated_blake_difficulty: Default::default(),
-            target_difficulty: Default::default(),
             pow_algo: PowAlgorithm::Sha3,
             pow_data: vec![],
         }
@@ -72,8 +63,6 @@ impl ProofOfWork {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(256);
         buf.put_u8(self.pow_algo as u8);
-        buf.put_u64_le(self.accumulated_monero_difficulty.as_u64());
-        buf.put_u64_le(self.accumulated_blake_difficulty.as_u64());
         buf.put_slice(&self.pow_data);
         buf
     }
@@ -121,6 +110,6 @@ mod test {
     fn to_bytes() {
         let mut pow = ProofOfWork::default();
         pow.pow_algo = PowAlgorithm::Sha3;
-        assert_eq!(pow.to_bytes(), vec![2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(pow.to_bytes(), vec![2]);
     }
 }

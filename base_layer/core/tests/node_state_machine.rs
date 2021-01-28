@@ -115,9 +115,11 @@ fn test_listening_lagging() {
         // Bob Block 1 - no block event
         let prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager, 3.into()).unwrap();
         // Bob Block 2 - with block event and liveness service metadata update
-        let prev_block = bob_db
+        let mut prev_block = bob_db
             .prepare_block_merkle_roots(chain_block(&prev_block.block, vec![], &consensus_manager))
             .unwrap();
+        prev_block.header.output_mmr_size += 1;
+        prev_block.header.kernel_mmr_size += 1;
         bob_local_nci
             .submit_block(prev_block, Broadcast::from(true))
             .await

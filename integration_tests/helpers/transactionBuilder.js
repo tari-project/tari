@@ -7,9 +7,7 @@ class TransactionBuilder {
         this.kv = tari_crypto.KeyRing.new();
         this.inputs = [];
         this.outputs = [];
-        // TODO: The fees are not added to the coinbase value yet,
-        // so this must be 0 for now
-        this.fee = 0;
+        this.fee = 100;
         this.lockHeight = 0;
     }
 
@@ -98,13 +96,13 @@ class TransactionBuilder {
 
 
     generateCoinbase(value, privateKey, fee, lockHeight) {
-        let coinbase = tari_crypto.commit(privateKey, value);
+        let coinbase = tari_crypto.commit(privateKey, BigInt(value + fee));
         let rangeproofFactory = tari_crypto.RangeProofFactory.new();
-        let rangeproof = rangeproofFactory.create_proof(privateKey, value).proof;
+        let rangeproof = rangeproofFactory.create_proof(privateKey, BigInt(value + fee)).proof;
         let excess = tari_crypto.commit(privateKey, BigInt(0));
         this.kv.new_key("nonce");
         let public_nonce = this.kv.public_key("nonce");
-        let challenge = this.buildChallenge(public_nonce, fee, lockHeight);
+        let challenge = this.buildChallenge(public_nonce, 0, lockHeight);
         let private_nonce = this.kv.private_key("nonce");
         let sig = tari_crypto.sign_challenge_with_nonce(privateKey, private_nonce, challenge);
         let outputFeatures = {

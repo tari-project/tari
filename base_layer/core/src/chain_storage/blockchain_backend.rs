@@ -1,6 +1,7 @@
 use crate::{
     blocks::{Block, BlockHeader},
     chain_storage::{
+        pruned_output::PrunedOutput,
         BlockAccumulatedData,
         BlockHeaderAccumulatedData,
         ChainHeader,
@@ -8,6 +9,7 @@ use crate::{
         DbKey,
         DbTransaction,
         DbValue,
+        HorizonData,
         MmrTree,
     },
     transactions::{
@@ -15,6 +17,7 @@ use crate::{
         types::{HashOutput, Signature},
     },
 };
+use croaring::Bitmap;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_mmr::Hash;
 
@@ -55,6 +58,10 @@ pub trait BlockchainBackend: Send + Sync {
 
     fn fetch_chain_header_in_all_chains(&self, hash: &HashOutput) -> Result<Option<ChainHeader>, ChainStorageError>;
 
+    fn fetch_header_containing_kernel_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError>;
+
+    fn fetch_header_containing_utxo_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError>;
+
     /// Used to determine if the database is empty, i.e. a brand new database.
     /// This is called to decide if the genesis block should be created.
     fn is_empty(&self) -> Result<bool, ChainStorageError>;
@@ -63,6 +70,11 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_block_accumulated_data(
         &self,
         header_hash: &HashOutput,
+    ) -> Result<Option<BlockAccumulatedData>, ChainStorageError>;
+
+    fn fetch_block_accumulated_data_by_height(
+        &self,
+        height: u64,
     ) -> Result<Option<BlockAccumulatedData>, ChainStorageError>;
 
     /// Fetch all the kernels in a block
@@ -81,39 +93,28 @@ pub trait BlockchainBackend: Send + Sync {
         excess_sig: &Signature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
 
+    /// Fetch kernels by MMR position
+    fn fetch_kernels_by_mmr_position(&self, start: u64, end: u64) -> Result<Vec<TransactionKernel>, ChainStorageError>;
+
+    fn fetch_utxos_by_mmr_position(
+        &self,
+        start: u64,
+        end: u64,
+        deleted: &Bitmap,
+    ) -> Result<(Vec<PrunedOutput>, Vec<Bitmap>), ChainStorageError>;
+
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError>;
 
     /// Fetch all outputs in a block
-    fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError>;
+    fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError>;
 
     /// Fetch all inputs in a block
     fn fetch_inputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionInput>, ChainStorageError>;
 
     /// Fetches the total merkle mountain range node count upto the specified height.
-    fn fetch_mmr_node_count(&self, tree: MmrTree, height: u64) -> Result<u32, ChainStorageError>;
-    /// Fetches the leaf node hash and its deletion status for the nth leaf node in the given MMR tree. The height
-    /// parameter is used to select the point in history used for the node deletion status.
-    fn fetch_mmr_node(
-        &self,
-        tree: MmrTree,
-        pos: u32,
-        hist_height: Option<u64>,
-    ) -> Result<(Hash, bool), ChainStorageError>;
-    /// Fetches the set of leaf node hashes and their deletion status' for the nth to nth+count leaf node index in the
-    /// given MMR tree. The height parameter is used to select the point in history used for the node deletion status.
-    fn fetch_mmr_nodes(
-        &self,
-        tree: MmrTree,
-        pos: u32,
-        count: u32,
-        hist_height: Option<u64>,
-    ) -> Result<Vec<(Hash, bool)>, ChainStorageError>;
-    /// Inserts an MMR node consisting of a leaf node hash and its deletion status into the given MMR tree.
-    fn insert_mmr_node(&mut self, tree: MmrTree, hash: Hash, deleted: bool) -> Result<(), ChainStorageError>;
-    /// Marks the MMR node corresponding to the provided hash as deleted.
-    #[allow(clippy::ptr_arg)]
-    fn delete_mmr_node(&mut self, tree: MmrTree, hash: &Hash) -> Result<(), ChainStorageError>;
+    fn fetch_mmr_size(&self, tree: MmrTree) -> Result<u64, ChainStorageError>;
+
     /// Fetches the leaf index of the provided leaf node hash in the given MMR tree.
     #[allow(clippy::ptr_arg)]
     fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &Hash) -> Result<Option<u32>, ChainStorageError>;
@@ -149,4 +150,6 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// This gets the monero seed_height. This will return 0, if the seed is unkown
     fn fetch_monero_seed_first_seen_height(&self, seed: &str) -> Result<u64, ChainStorageError>;
+
+    fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError>;
 }

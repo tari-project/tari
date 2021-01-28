@@ -248,12 +248,8 @@ where TBackend: TransactionBackend + 'static
                     match result {
                         Ok(msg) => {
                             trace!(target: LOG_TARGET, "DHT Callback Handler event {:?}", msg);
-                            match *msg {
-                                DhtEvent::StoreAndForwardMessagesReceived => {
-                                    self.saf_messages_received_event();
-                                },
-                                // Only the above variants are mapped to callbacks
-                                _ => (),
+                            if let DhtEvent::StoreAndForwardMessagesReceived = *msg {
+                                self.saf_messages_received_event();
                             }
                         },
                         Err(_e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),

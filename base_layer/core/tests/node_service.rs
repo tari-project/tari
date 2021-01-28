@@ -591,7 +591,7 @@ fn local_get_metadata() {
     let (mut node, consensus_manager) =
         BaseNodeBuilder::new(network).start(&mut runtime, temp_dir.path().to_str().unwrap());
     let db = &node.blockchain_db;
-    let block0 = db.fetch_block(0).unwrap().into_chain_block();
+    let block0 = db.fetch_block(0).unwrap().try_into_chain_block().unwrap();
     let block1 = append_block(db, &block0, vec![], &consensus_manager, 1.into()).unwrap();
     let block2 = append_block(db, &block1, vec![], &consensus_manager, 1.into()).unwrap();
 
@@ -634,7 +634,6 @@ fn local_get_new_block_template_and_get_new_block() {
         assert_eq!(block_template.body.kernels().len(), 2);
 
         let mut block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
-        block.header.pow.accumulated_blake_difficulty = Difficulty::from(100);
         assert_eq!(block.header.height, 1);
         assert_eq!(block.body, block_template.body);
 
@@ -655,15 +654,16 @@ fn local_submit_block() {
     let db = &node.blockchain_db;
     let mut event_stream = node.local_nci.get_block_event_stream();
     let block0 = db.fetch_block(0).unwrap().block().clone();
-    let block1 = db
+    let mut block1 = db
         .prepare_block_merkle_roots(chain_block(&block0, vec![], &consensus_manager))
         .unwrap();
+    block1.header.kernel_mmr_size += 1;
+    block1.header.output_mmr_size += 1;
     runtime.block_on(async {
-        assert!(node
-            .local_nci
+        node.local_nci
             .submit_block(block1.clone(), Broadcast::from(true))
             .await
-            .is_ok());
+            .unwrap();
 
         let event = event_stream_next(&mut event_stream, Duration::from_millis(20000)).await;
         if let BlockEvent::ValidBlockAdded(received_block, result, _) = &*event.unwrap().unwrap() {

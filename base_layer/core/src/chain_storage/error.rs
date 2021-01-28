@@ -50,6 +50,8 @@ pub enum ChainStorageError {
     CriticalError(String),
     #[error("Cannot return data for requests older than the current pruning horizon")]
     BeyondPruningHorizon,
+    #[error("Could not insert {table}: {error}")]
+    InsertError { table: &'static str, error: String },
     #[error("An invalid query was attempted: {0}")]
     InvalidQuery(String),
     #[error("Invalid argument `{arg}` in `{func}`: {message}")]
@@ -136,6 +138,26 @@ impl<U> Optional<U> for Result<U, ChainStorageError> {
         match self {
             Ok(item) => Ok(Some(item)),
             Err(err) if err.is_value_not_found() => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+}
+
+pub trait OrNotFound<U> {
+    fn or_not_found(self, entity: &str, field: &str, value: String) -> Result<U, ChainStorageError>;
+}
+
+impl<U> OrNotFound<U> for Result<Option<U>, ChainStorageError> {
+    fn or_not_found(self, entity: &str, field: &str, value: String) -> Result<U, ChainStorageError> {
+        match self {
+            Ok(inner) => match inner {
+                None => Err(ChainStorageError::ValueNotFound {
+                    entity: entity.to_string(),
+                    field: field.to_string(),
+                    value,
+                }),
+                Some(v) => Ok(v),
+            },
             Err(err) => Err(err),
         }
     }

@@ -30,10 +30,6 @@ message BaseNodeServiceRequest {
         tari.core.NewBlockTemplate get_new_block = 10;
         // Get headers in best chain following any headers in this list
         FetchHeadersAfter fetch_headers_after = 12;
-        // Indicates a FetchMmrNodeCount request.
-        FetchMmrNodeCount fetch_mmr_node_count = 13;
-        // Indicates a FetchMatchingMmrNodes request.
-        FetchMatchingMmrNodes fetch_matching_mmr_nodes = 14;
         // Indicates a FetchMatchingTxos request.
         HashOutputs fetch_matching_txos = 15;
         // Indicates a Fetch block with kernels request
@@ -73,9 +69,3 @@ message FetchMmrNodeCount {
     uint64 height = 2;
 }
 
-message FetchMatchingMmrNodes{
-    MmrTree tree = 1;
-    uint32 pos = 2;
-    uint32 count = 3;
-    uint64 hist_height = 4;
-}

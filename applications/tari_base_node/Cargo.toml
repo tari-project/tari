@@ -44,7 +44,6 @@ strum = "^0.19"
 strum_macros = "0.18.0"
 thiserror = "^1.0.20"
 tonic = "0.2"
-itertools = "0.8.2"
 
 [build-dependencies]
 tonic-build = "0.2"

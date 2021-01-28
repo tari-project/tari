@@ -58,16 +58,22 @@ pub use blockchain_backend::BlockchainBackend;
 mod consts;
 
 mod db_transaction;
-pub use db_transaction::{DbKey, DbTransaction, DbValue, MetadataKey, MetadataValue, MmrTree, WriteOperation};
+pub use db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation};
+
+mod mmr_tree;
+pub use mmr_tree::*;
 
 mod error;
-pub use error::{ChainStorageError, Optional};
+pub use error::{ChainStorageError, Optional, OrNotFound};
 
 mod historical_block;
 pub use historical_block::HistoricalBlock;
 
-pub mod horizon_sync_state;
-pub use horizon_sync_state::InProgressHorizonSyncState;
+mod horizon_data;
+pub use horizon_data::HorizonData;
+
+mod pruned_output;
+pub use pruned_output::PrunedOutput;
 
 mod lmdb_db;
 pub use lmdb_db::{

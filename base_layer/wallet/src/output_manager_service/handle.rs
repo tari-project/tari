@@ -66,6 +66,7 @@ pub enum OutputManagerRequest {
     RemoveEncryption,
     GetPublicRewindKeys,
     FeeEstimate((MicroTari, MicroTari, u64, u64)),
+    RewindOutputs(Vec<TransactionOutput>),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -89,11 +90,12 @@ impl fmt::Display for OutputManagerRequest {
             Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
             Self::ValidateUtxos(validation_type, retry) => f.write_str(&format!("{} ({:?})", validation_type, retry)),
             Self::CreateCoinSplit(v) => f.write_str(&format!("CreateCoinSplit ({})", v.0)),
-            OutputManagerRequest::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
-            OutputManagerRequest::RemoveEncryption => f.write_str("RemoveEncryption"),
-            OutputManagerRequest::GetCoinbaseTransaction(_) => f.write_str("GetCoinbaseTransaction"),
-            OutputManagerRequest::GetPublicRewindKeys => f.write_str("GetPublicRewindKeys"),
-            OutputManagerRequest::FeeEstimate(_) => f.write_str("FeeEstimate"),
+            Self::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
+            Self::RemoveEncryption => f.write_str("RemoveEncryption"),
+            Self::GetCoinbaseTransaction(_) => f.write_str("GetCoinbaseTransaction"),
+            Self::GetPublicRewindKeys => f.write_str("GetPublicRewindKeys"),
+            Self::FeeEstimate(_) => f.write_str("FeeEstimate"),
+            Self::RewindOutputs(_) => f.write_str("RewindAndImportOutputs"),
         }
     }
 }
@@ -123,6 +125,7 @@ pub enum OutputManagerResponse {
     EncryptionRemoved,
     PublicRewindKeys(Box<PublicRewindKeys>),
     FeeEstimate(MicroTari),
+    RewindOutputs(Vec<UnblindedOutput>),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<OutputManagerEvent>;
@@ -428,6 +431,17 @@ impl OutputManagerHandle {
     pub async fn remove_encryption(&mut self) -> Result<(), OutputManagerError> {
         match self.handle.call(OutputManagerRequest::RemoveEncryption).await?? {
             OutputManagerResponse::EncryptionRemoved => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn rewind_outputs(
+        &mut self,
+        outputs: Vec<TransactionOutput>,
+    ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
+    {
+        match self.handle.call(OutputManagerRequest::RewindOutputs(outputs)).await?? {
+            OutputManagerResponse::RewindOutputs(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

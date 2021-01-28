@@ -2,6 +2,7 @@ syntax = "proto3";
 
 import "transaction.proto";
 import "block.proto";
+import "mmr_tree.proto";
 
 package tari.base_node;
 
@@ -32,8 +33,7 @@ message FindChainSplitRequest {
   // A set of block hashes ordered in height descending order from the chain tip.
   repeated bytes block_hashes = 1;
   // The maximum number of headers to return starting at the first header after the matched height
-  uint64 header_count = 2;
-}
+  uint64 header_count = 2;}
 
 message FindChainSplitResponse {
   // An ordered list of headers starting from next header after the matching hash, up until `FindChainSplitRequest::count`
@@ -42,5 +42,32 @@ message FindChainSplitResponse {
   uint32 fork_hash_index = 2;
   /// The current header height of this node
   uint64 tip_height = 3;
+}
+
+message SyncKernelsRequest {
+  uint64 start = 1;
+  bytes end_header_hash = 2;
+}
+
+message SyncUtxosRequest  {
+  uint64 start = 1;
+  bytes end_header_hash = 2;
+}
+
+message SyncUtxosResponse  {
+  repeated SyncUtxo utxos = 1;
+  // present if a utxo in utxos is the last in a block so that the merkle root can be
+  // checked
+  repeated bytes deleted_bitmaps = 2;
+}
+
+message SyncUtxo {
+  // The output. optional, if deleted at the time of the requested height,
+  // will be empty and `hash` and `rangeproof_hash` will be populated instead
+  tari.types.TransactionOutput output = 1;
+  // Only present if 'output` is empty
+  bytes hash = 2;
+  // Only present if `output` is empty
+  bytes rangeproof_hash = 3;
 }
 

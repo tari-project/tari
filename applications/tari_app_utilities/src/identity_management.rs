@@ -147,6 +147,33 @@ pub fn create_new_identity<P: AsRef<Path>>(
     Ok(node_identity)
 }
 
+/// Recover a node id from a given private key and save it to disk
+/// ## Parameters
+/// `private_key` - The private key
+/// `path` - Reference to path to save the file
+/// `public_addr` - Network address of the base node
+/// `peer_features` - The features enabled for the base node
+///
+/// ## Returns
+/// A NodeIdentity wrapped in an atomic reference counter on success, the exit code indicating the reason on failure
+pub fn recover_node_identity<P: AsRef<Path>>(
+    private_key: PrivateKey,
+    path: P,
+    public_addr: &Multiaddr,
+    features: PeerFeatures,
+) -> Result<Arc<NodeIdentity>, ExitCodes>
+{
+    let node_identity = NodeIdentity::new(private_key, public_addr.clone(), features).map_err(|e| {
+        ExitCodes::ConfigError(format!(
+            "We were unable to construct a node identity. {}",
+            e.to_string()
+        ))
+    })?;
+    save_as_json(path, &node_identity).map_err(ExitCodes::IOError)?;
+
+    Ok(Arc::new(node_identity))
+}
+
 /// Loads the node identity from json at the given path
 /// ## Parameters
 /// `path` - Path to file from which to load the node identity

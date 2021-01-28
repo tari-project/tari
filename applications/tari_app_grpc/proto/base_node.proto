@@ -214,6 +214,7 @@ message MinerData{
     PowAlgo algo = 1;
     uint64 target_difficulty = 2;
     uint64 reward = 3;
+//    bytes merge_mining_hash =4;
     uint64 total_fees = 5;
 }
 

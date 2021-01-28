@@ -140,7 +140,7 @@ fn find_mnemonic_word_from_index(index: usize, language: &MnemonicLanguage) -> R
 pub fn from_bytes(bytes: Vec<u8>, language: &MnemonicLanguage) -> Result<Vec<String>, MnemonicError> {
     let mut bits = bytes_to_bits(&bytes);
 
-    // Pad with zeros if length not devisable by 11
+    // Pad with zeros if length not divisible by 11
     let group_bit_count = 11;
     let padded_size = ((bits.len() as f32 / group_bit_count as f32).ceil() * group_bit_count as f32) as usize;
     bits.resize(padded_size, false);
@@ -151,13 +151,13 @@ pub fn from_bytes(bytes: Vec<u8>, language: &MnemonicLanguage) -> Result<Vec<Str
         let start_index = i * group_bit_count;
         let stop_index = start_index + group_bit_count;
         let sub_v = &bits[start_index..stop_index].to_vec();
-        // let word_index = bits_to_uint(sub_v);
         let word_index = bits_to_uint(sub_v);
         match find_mnemonic_word_from_index(word_index as usize, language) {
             Ok(mnemonic_word) => mnemonic_sequence.push(mnemonic_word),
             Err(err) => return Err(err),
         }
     }
+
     Ok(mnemonic_sequence)
 }
 
@@ -198,8 +198,8 @@ pub fn to_bytes_with_language(mnemonic_seq: &[String], language: &MnemonicLangua
     }
 }
 
-/// Generates a SecretKey that represent the provided mnemonic sequence of words, the language of the mnemonic sequence
-/// is autodetected
+/// Generates a SecretKey that represents the provided mnemonic sequence of words.
+/// The language of the mnemonic sequence is autodetected.
 pub fn to_secretkey<K: SecretKey>(mnemonic_seq: &[String]) -> Result<K, MnemonicError> {
     let bytes = to_bytes(mnemonic_seq)?;
     match K::from_bytes(&bytes) {

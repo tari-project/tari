@@ -27,6 +27,7 @@ use crate::{
 use log::*;
 use rand::rngs::OsRng;
 use rpassword::prompt_password_stdout;
+use rustyline::Editor;
 use std::{fs, str::FromStr, sync::Arc};
 use tari_app_utilities::utilities::{setup_wallet_transport_type, ExitCodes};
 use tari_common::{ConfigBootstrap, GlobalConfig, Network};
@@ -50,7 +51,18 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
     error::{WalletError, WalletStorageError},
-    output_manager_service::config::OutputManagerServiceConfig,
+    output_manager_service::{
+        config::OutputManagerServiceConfig,
+        storage::{
+            database::{
+                DbKeyValuePair as OutputDbKeyValuePair,
+                KeyManagerState,
+                OutputManagerBackend,
+                WriteOperation as OutputWriteOperation,
+            },
+            sqlite_db::OutputManagerSqliteDatabase,
+        },
+    },
     storage::{
         database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
         sqlite_utilities::initialize_sqlite_database_backends,
@@ -66,6 +78,14 @@ pub const LOG_TARGET: &str = "wallet::console_wallet::init";
 const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
 const TARI_WALLET_PASSWORD: &str = "TARI_WALLET_PASSWORD";
 
+pub enum WalletBoot {
+    New,
+    Existing,
+    Recovery,
+}
+
+/// Gets the password provided by command line argument or environment variable if available.
+/// Otherwise prompts for the password to be typed in.
 pub fn get_or_prompt_password(
     arg_password: Option<String>,
     config_password: Option<String>,
@@ -94,11 +114,20 @@ pub fn get_or_prompt_password(
 }
 
 fn prompt_password(prompt: &str) -> Result<String, ExitCodes> {
-    let password = prompt_password_stdout(prompt).map_err(|e| ExitCodes::IOError(e.to_string()))?;
+    let password = loop {
+        let pass = prompt_password_stdout(prompt).map_err(|e| ExitCodes::IOError(e.to_string()))?;
+        if pass.is_empty() {
+            println!("Password cannot be empty!");
+            continue;
+        } else {
+            break pass;
+        }
+    };
 
     Ok(password)
 }
 
+/// Allows the user to change the password of the wallet.
 pub async fn change_password(
     config: &GlobalConfig,
     node_identity: Option<Arc<NodeIdentity>>,
@@ -106,7 +135,7 @@ pub async fn change_password(
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), ExitCodes>
 {
-    let mut wallet = init_wallet(config, node_identity, arg_password, shutdown_signal).await?;
+    let mut wallet = init_wallet(config, node_identity, arg_password, None, shutdown_signal).await?;
 
     let passphrase = prompt_password("New wallet password: ")?;
     let confirmed = prompt_password("Confirm new password: ")?;
@@ -115,21 +144,19 @@ pub async fn change_password(
         return Err(ExitCodes::InputError("Passwords don't match!".to_string()));
     }
 
-    wallet
-        .remove_encryption()
-        .await
-        .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
+    wallet.remove_encryption().await?;
 
-    wallet
-        .apply_encryption(passphrase)
-        .await
-        .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
+    wallet.apply_encryption(passphrase).await?;
 
     println!("Wallet password changed successfully.");
 
     Ok(())
 }
 
+/// Populates the PeerConfig struct from:
+/// 1. The custom peer in the wallet if it exists
+/// 2. The service peers defined in config they exist
+/// 3. The peer seeds defined in config
 pub async fn get_base_node_peer_config(
     config: &GlobalConfig,
     wallet: &mut WalletSqlite,
@@ -162,7 +189,13 @@ pub async fn get_base_node_peer_config(
     Ok(peer_config)
 }
 
-pub fn wallet_mode(bootstrap: ConfigBootstrap) -> WalletMode {
+/// Determines which mode the wallet should run in.
+pub fn wallet_mode(bootstrap: ConfigBootstrap, boot_mode: WalletBoot) -> WalletMode {
+    // Recovery mode
+    if matches!(boot_mode, WalletBoot::Recovery) {
+        return WalletMode::Recovery;
+    }
+
     match (bootstrap.daemon_mode, bootstrap.input_file, bootstrap.command) {
         // TUI mode
         (false, None, None) => WalletMode::Tui,
@@ -182,6 +215,7 @@ pub async fn init_wallet(
     config: &GlobalConfig,
     node_identity: Option<Arc<NodeIdentity>>,
     arg_password: Option<String>,
+    master_key: Option<PrivateKey>,
     shutdown_signal: ShutdownSignal,
 ) -> Result<WalletSqlite, ExitCodes>
 {
@@ -315,6 +349,7 @@ pub async fn init_wallet(
         Network::MainNet => NetworkType::MainNet,
         Network::Ridcully => NetworkType::Ridcully,
         Network::LocalNet => NetworkType::LocalNet,
+        Network::Stibbons => NetworkType::Stibbons,
         Network::Rincewind => unimplemented!("Rincewind has been retired"),
     };
 
@@ -346,6 +381,8 @@ pub async fn init_wallet(
     );
     wallet_config.buffer_size = std::cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
 
+    let recovery = set_master_key(&output_manager_backend, master_key).await?;
+
     let mut wallet = Wallet::new(
         wallet_config,
         wallet_backend,
@@ -373,36 +410,62 @@ pub async fn init_wallet(
     if !wallet_encrypted {
         debug!(target: LOG_TARGET, "Wallet is not encrypted.");
 
-        // create using --password arg if supplied
-        let passphrase = if let Some(password) = arg_password {
+        // create using --password arg if supplied and skip seed words confirmation
+        let (passphrase, interactive) = if let Some(password) = arg_password {
             debug!(target: LOG_TARGET, "Setting password from command line argument.");
 
-            password
+            (password, false)
         } else {
             debug!(target: LOG_TARGET, "Prompting for password.");
-            let password =
-                prompt_password_stdout("Create wallet password: ").map_err(|e| ExitCodes::IOError(e.to_string()))?;
-            let confirmed =
-                prompt_password_stdout("Confirm wallet password: ").map_err(|e| ExitCodes::IOError(e.to_string()))?;
+            let password = prompt_password("Create wallet password: ")?;
+            let confirmed = prompt_password("Confirm wallet password: ")?;
 
             if password != confirmed {
                 return Err(ExitCodes::InputError("Passwords don't match!".to_string()));
             }
 
-            password
+            (password, true)
         };
 
-        wallet
-            .apply_encryption(passphrase)
-            .await
-            .map_err(|e| ExitCodes::WalletError(e.to_string()))?;
+        wallet.apply_encryption(passphrase).await?;
 
         debug!(target: LOG_TARGET, "Wallet encrypted.");
+
+        if interactive && !recovery {
+            confirm_seed_words(&mut wallet).await?;
+        }
     }
 
     Ok(wallet)
 }
 
+/// If a master key is provided, set the initial key manager state to use that master key.
+/// Returns true if the master key was provided, which means recovery is required.
+async fn set_master_key(
+    output_manager_backend: &OutputManagerSqliteDatabase,
+    master_key: Option<PrivateKey>,
+) -> Result<bool, ExitCodes>
+{
+    if let Some(master_key) = master_key {
+        let state = KeyManagerState {
+            master_key,
+            branch_seed: "".to_string(),
+            primary_key_index: 0,
+        };
+
+        output_manager_backend
+            .write(OutputWriteOperation::Insert(OutputDbKeyValuePair::KeyManagerState(
+                state,
+            )))
+            .map_err(|e| ExitCodes::IOError(e.to_string()))?;
+
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Starts the wallet by setting the base node peer, and restarting the transaction and broadcast protocols.
 pub async fn start_wallet(wallet: &mut WalletSqlite, base_node: &Peer) -> Result<(), ExitCodes> {
     // TODO gRPC interfaces for setting base node
     debug!(target: LOG_TARGET, "Setting base node peer");
@@ -427,4 +490,109 @@ pub async fn start_wallet(wallet: &mut WalletSqlite, base_node: &Peer) -> Result
     }
 
     Ok(())
+}
+
+async fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitCodes> {
+    let seed_words = wallet.output_manager_service.get_seed_words().await?;
+
+    println!();
+    println!("=========================");
+    println!("       IMPORTANT!        ");
+    println!("=========================");
+    println!("These are your wallet seed words.");
+    println!("They can be used to recover your wallet and funds.");
+    println!("WRITE THEM DOWN OR COPY THEM NOW. THIS IS YOUR ONLY CHANCE TO DO SO.");
+    println!();
+    println!("=========================");
+    println!("{}", seed_words.join(" "));
+    println!("=========================");
+    println!("\x07"); // beep!
+
+    let mut rl = Editor::<()>::new();
+    loop {
+        println!("I confirm that I will never see these seed words again.");
+        println!(r#"Type the word "confirm" to continue."#);
+        let readline = rl.readline(">> ");
+        match readline {
+            Ok(line) => match line.to_lowercase().as_ref() {
+                "confirm" => return Ok(()),
+                _ => continue,
+            },
+            Err(e) => {
+                return Err(ExitCodes::IOError(e.to_string()));
+            },
+        }
+    }
+}
+
+/// Clear the terminal and print the Tari splash
+pub fn tari_splash_screen(heading: &str) {
+    // clear the terminal
+    print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
+
+    println!("⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣶⣦⣀                                                         ");
+    println!("⠀⢀⣤⣾⣿⡿⠋⠀⠀⠀⠀⠉⠛⠿⣿⣿⣶⣤⣀⠀⠀⠀⠀⠀⠀⢰⣿⣾⣾⣾⣾⣾⣾⣾⣾⣾⣿⠀⠀⠀⣾⣾⣾⡀⠀⠀⠀⠀⢰⣾⣾⣾⣾⣿⣶⣶⡀⠀⠀⠀⢸⣾⣿⠀");
+    println!("⠀⣿⣿⣿⣿⣿⣶⣶⣤⣄⡀⠀⠀⠀⠀⠀⠉⠛⣿⣿⠀⠀⠀⠀⠀⠈⠉⠉⠉⠉⣿⣿⡏⠉⠉⠉⠉⠀⠀⣰⣿⣿⣿⣿⠀⠀⠀⠀⢸⣿⣿⠉⠉⠉⠛⣿⣿⡆⠀⠀⢸⣿⣿⠀");
+    println!("⠀⣿⣿⠀⠀⠀⠈⠙⣿⡿⠿⣿⣿⣿⣶⣶⣤⣤⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⢠⣿⣿⠃⣿⣿⣷⠀⠀⠀⢸⣿⣿⣀⣀⣀⣴⣿⣿⠃⠀⠀⢸⣿⣿⠀");
+    println!("⠀⣿⣿⣤⠀⠀⠀⢸⣿⡟⠀⠀⠀⠀⠀⠉⣽⣿⣿⠟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⠀⣿⣿⣿⣤⣬⣿⣿⣆⠀⠀⢸⣿⣿⣿⣿⣿⡿⠟⠉⠀⠀⠀⢸⣿⣿⠀");
+    println!("⠀⠀⠙⣿⣿⣤⠀⢸⣿⡟⠀⠀⠀⣠⣾⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⠀⣾⣿⣿⠿⠿⠿⢿⣿⣿⡀⠀⢸⣿⣿⠙⣿⣿⣿⣄⠀⠀⠀⠀⢸⣿⣿⠀");
+    println!("⠀⠀⠀⠀⠙⣿⣿⣼⣿⡟⣀⣶⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⣰⣿⣿⠃⠀⠀⠀⠀⣿⣿⣿⠀⢸⣿⣿⠀⠀⠙⣿⣿⣷⣄⠀⠀⢸⣿⣿⠀");
+    println!("⠀⠀⠀⠀⠀⠀⠙⣿⣿⣿⣿⠛⠀                                                          ");
+    println!("⠀⠀⠀⠀⠀⠀⠀⠀⠙⠁⠀                                                            ");
+    println!("{}", heading);
+    println!();
+}
+
+/// Prompts the user for a new wallet or to recover an existing wallet.
+/// Returns the wallet bootmode indicating if it's a new or existing wallet, or if recovery is required.
+pub(crate) fn boot(bootstrap: &ConfigBootstrap, config: &GlobalConfig) -> Result<WalletBoot, ExitCodes> {
+    let wallet_exists = config.console_wallet_db_file.exists();
+
+    // forced recovery
+    if bootstrap.recovery {
+        if wallet_exists {
+            return Err(ExitCodes::RecoveryError(format!(
+                "Wallet already exists at {:#?}. Remove it if you really want to run recovery in this directory!",
+                config.console_wallet_db_file
+            )));
+        }
+        return Ok(WalletBoot::Recovery);
+    }
+
+    if wallet_exists {
+        // normal startup of existing wallet
+        Ok(WalletBoot::Existing)
+    } else {
+        // automation/wallet created with --password
+        if bootstrap.password.is_some() {
+            return Ok(WalletBoot::New);
+        }
+
+        // prompt for new or recovery
+        let mut rl = Editor::<()>::new();
+
+        loop {
+            println!("1. Create a new wallet.");
+            println!("2. Recover wallet from seed words.");
+            let readline = rl.readline(">> ");
+            match readline {
+                Ok(line) => {
+                    match line.as_ref() {
+                        "1" | "c" | "n" | "create" => {
+                            // new wallet
+                            return Ok(WalletBoot::New);
+                        },
+                        "2" | "r" | "s" | "recover" => {
+                            // recover wallet
+                            return Ok(WalletBoot::Recovery);
+                        },
+                        _ => continue,
+                    }
+                },
+                Err(e) => {
+                    return Err(ExitCodes::IOError(e.to_string()));
+                },
+            }
+        }
+    }
 }

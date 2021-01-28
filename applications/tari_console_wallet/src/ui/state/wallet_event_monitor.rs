@@ -81,7 +81,7 @@ impl WalletEventMonitor {
                                             self.trigger_tx_state_refresh(tx_id).await;
                                         }
                                     },
-                                    /// Only the above variants trigger state refresh
+                                    // Only the above variants trigger state refresh
                                     _ => (),
                                 }
                             },
@@ -101,7 +101,7 @@ impl WalletEventMonitor {
                                     ConnectivityEvent::PeerConnectionWillClose(_, _) => {
                                     self.trigger_peer_state_refresh().await;
                                     },
-                                    /// Only the above variants trigger state refresh
+                                    // Only the above variants trigger state refresh
                                     _ => (),
                                 }
                             },
@@ -129,7 +129,7 @@ impl WalletEventMonitor {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
                                 match msg {
-                                    OutputManagerEvent::TxoValidationSuccess(request_key) => {
+                                    OutputManagerEvent::TxoValidationSuccess(_) => {
                                         self.trigger_balance_refresh().await;
                                     },
                                     // Only the above variants are monitored

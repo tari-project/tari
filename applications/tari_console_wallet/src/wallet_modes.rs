@@ -22,12 +22,13 @@
 use crate::{
     automation::{command_parser::parse_command, commands::command_runner},
     grpc::WalletGrpcServer,
+    recovery::wallet_recovery,
     ui::{run, App},
 };
 
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
-use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
+use std::{fs, fs::remove_file, io::Stdout, net::SocketAddr, path::PathBuf};
 use tari_app_utilities::utilities::ExitCodes;
 use tari_common::GlobalConfig;
 use tari_comms::peer_manager::Peer;
@@ -45,6 +46,7 @@ pub enum WalletMode {
     Grpc,
     Script(PathBuf),
     Command(String),
+    Recovery,
     Invalid,
 }
 
@@ -162,6 +164,31 @@ pub fn tui_mode(
     );
 
     Ok(())
+}
+
+pub fn recovery_mode(
+    handle: Handle,
+    config: GlobalConfig,
+    mut wallet: WalletSqlite,
+    base_node_selected: Peer,
+    base_node_config: PeerConfig,
+) -> Result<(), ExitCodes>
+{
+    println!("Starting recovery...");
+    match handle.block_on(wallet_recovery(&mut wallet, &base_node_selected)) {
+        Ok(_) => println!("Wallet recovered!"),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Recovery failed: {}", e);
+            println!("Recovery failed.");
+            // remove the wallet file
+            remove_file(config.console_wallet_db_file).map_err(|e| ExitCodes::IOError(e.to_string()))?;
+
+            return Err(e);
+        },
+    }
+
+    println!("Starting TUI.");
+    tui_mode(handle, config, wallet, base_node_selected, base_node_config)
 }
 
 pub fn grpc_mode(handle: Handle, wallet: WalletSqlite, node_config: GlobalConfig) -> Result<(), ExitCodes> {

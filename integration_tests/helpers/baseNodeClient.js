@@ -169,7 +169,7 @@ class BaseNodeClient {
         let builder = new TransactionBuilder();
         let blockTemplate = existingBlockTemplate || await this.getBlockTemplate();
         const privateKey = Buffer.from(toLittleEndian(blockTemplate.block.header.height, 256)).toString('hex');
-        let cb = builder.generateCoinbase(blockTemplate.minerData.reward, privateKey, blockTemplate.minerData.total_fees, parseInt(blockTemplate.block.header.height) + 1);
+        let cb = builder.generateCoinbase(parseInt(blockTemplate.minerData.reward), privateKey, parseInt(blockTemplate.minerData.total_fees), parseInt(blockTemplate.block.header.height) + 1);
         let template = blockTemplate.block;
         template.body.outputs = template.body.outputs.concat(cb.outputs);
         template.body.kernels = template.body.kernels.concat(cb.kernels);

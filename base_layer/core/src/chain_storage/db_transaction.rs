@@ -21,21 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{
-        error::ChainStorageError,
-        BlockHeaderAccumulatedData,
-        ChainBlock,
-        ChainHeader,
-        InProgressHorizonSyncState,
-    },
+    chain_storage::{error::ChainStorageError, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, MmrTree},
     transactions::{
         transaction::{TransactionInput, TransactionKernel, TransactionOutput},
-        types::HashOutput,
+        types::{Commitment, HashOutput},
     },
 };
-use serde::{Deserialize, Serialize};
+use croaring::Bitmap;
 use std::{
-    convert::TryFrom,
     fmt,
     fmt::{Display, Error, Formatter},
     sync::Arc,
@@ -45,6 +38,7 @@ use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     Hashable,
 };
+use tari_mmr::pruned_hashset::PrunedHashSet;
 
 #[derive(Debug)]
 pub struct DbTransaction {
@@ -74,12 +68,6 @@ impl DbTransaction {
     /// transaction as a parameter.
     pub fn new() -> Self {
         DbTransaction::default()
-    }
-
-    /// Set a metadata entry
-    pub fn set_metadata(&mut self, key: MetadataKey, value: MetadataValue) -> &mut Self {
-        self.operations.push(WriteOperation::SetMetadata(key, value));
-        self
     }
 
     /// A general insert request. There are convenience functions for specific delete queries.
@@ -141,12 +129,72 @@ impl DbTransaction {
         self
     }
 
+    pub fn insert_pruned_utxo(
+        &mut self,
+        output_hash: HashOutput,
+        proof_hash: HashOutput,
+        header_hash: HashOutput,
+        mmr_leaf_index: u32,
+    ) -> &mut Self
+    {
+        self.operations.push(WriteOperation::InsertPrunedOutput {
+            header_hash,
+            output_hash,
+            proof_hash,
+            mmr_position: mmr_leaf_index,
+        });
+        self
+    }
+
     pub fn insert_input(&mut self, input: TransactionInput, header_hash: HashOutput, mmr_leaf_index: u32) -> &mut Self {
         self.operations.push(WriteOperation::InsertInput {
             header_hash,
             input: Box::new(input),
             mmr_position: mmr_leaf_index,
         });
+        self
+    }
+
+    pub fn update_pruned_hash_set(
+        &mut self,
+        mmr_tree: MmrTree,
+        header_hash: HashOutput,
+        pruned_hash_set: PrunedHashSet,
+    ) -> &mut Self
+    {
+        self.operations.push(WriteOperation::UpdatePrunedHashSet {
+            mmr_tree,
+            header_hash,
+            pruned_hash_set: Box::new(pruned_hash_set),
+        });
+        self
+    }
+
+    pub fn update_kernel_sum(&mut self, header_hash: HashOutput, kernel_sum: Commitment) -> &mut Self {
+        self.operations.push(WriteOperation::UpdateKernelSum {
+            header_hash,
+            kernel_sum,
+        });
+        self
+    }
+
+    pub fn update_utxo_sum(&mut self, header_hash: HashOutput, utxo_sum: Commitment) -> &mut Self {
+        self.operations
+            .push(WriteOperation::UpdateUtxoSum { header_hash, utxo_sum });
+        self
+    }
+
+    pub fn prune_outputs_and_update_horizon(&mut self, output_mmr_positions: Vec<u32>, horizon: u64) -> &mut Self {
+        self.operations.push(WriteOperation::PruneOutputsAndUpdateHorizon {
+            output_positions: output_mmr_positions,
+            horizon,
+        });
+        self
+    }
+
+    pub fn update_deleted(&mut self, header_hash: HashOutput, deleted: Bitmap) -> &mut Self {
+        self.operations
+            .push(WriteOperation::UpdateDeletedBlockAccumulatedData { header_hash, deleted });
         self
     }
 
@@ -182,6 +230,30 @@ impl DbTransaction {
         self
     }
 
+    pub fn set_best_block(&mut self, height: u64, hash: HashOutput, accumulated_difficulty: u128) -> &mut Self {
+        self.operations.push(WriteOperation::SetBestBlock {
+            height,
+            hash,
+            accumulated_difficulty,
+        });
+        self
+    }
+
+    pub fn set_pruning_horizon(&mut self, pruning_horizon: u64) -> &mut Self {
+        self.operations
+            .push(WriteOperation::SetPruningHorizonConfig(pruning_horizon));
+        self
+    }
+
+    pub fn set_pruned_height(&mut self, height: u64, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
+        self.operations.push(WriteOperation::SetPrunedHeight {
+            height,
+            kernel_sum,
+            utxo_sum,
+        });
+        self
+    }
+
     pub(crate) fn operations(&self) -> &[WriteOperation] {
         &self.operations
     }
@@ -202,7 +274,6 @@ impl DbTransaction {
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum WriteOperation {
-    SetMetadata(MetadataKey, MetadataValue),
     InsertOrphanBlock(Arc<Block>),
     InsertChainOrphanBlock(Arc<ChainBlock>),
     InsertHeader {
@@ -226,18 +297,55 @@ pub enum WriteOperation {
         output: Box<TransactionOutput>,
         mmr_position: u32,
     },
+    InsertPrunedOutput {
+        header_hash: HashOutput,
+        output_hash: HashOutput,
+        proof_hash: HashOutput,
+        mmr_position: u32,
+    },
     Delete(DbKey),
     DeleteBlock(HashOutput),
     DeleteOrphanChainTip(HashOutput),
     InsertOrphanChainTip(HashOutput),
     InsertMoneroSeedHeight(Box<String>, u64),
+    UpdatePrunedHashSet {
+        mmr_tree: MmrTree,
+        header_hash: HashOutput,
+        pruned_hash_set: Box<PrunedHashSet>,
+    },
+    UpdateDeletedBlockAccumulatedData {
+        header_hash: HashOutput,
+        deleted: Bitmap,
+    },
+    PruneOutputsAndUpdateHorizon {
+        output_positions: Vec<u32>,
+        horizon: u64,
+    },
+    UpdateKernelSum {
+        header_hash: HashOutput,
+        kernel_sum: Commitment,
+    },
+    UpdateUtxoSum {
+        header_hash: HashOutput,
+        utxo_sum: Commitment,
+    },
+    SetBestBlock {
+        height: u64,
+        hash: HashOutput,
+        accumulated_difficulty: u128,
+    },
+    SetPruningHorizonConfig(u64),
+    SetPrunedHeight {
+        height: u64,
+        kernel_sum: Commitment,
+        utxo_sum: Commitment,
+    },
 }
 
 impl fmt::Display for WriteOperation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use WriteOperation::*;
         match self {
-            SetMetadata(k, v) => write!(f, "SetMetadata({}, {})", k, v),
             InsertOrphanBlock(block) => write!(
                 f,
                 "InsertBlock({}, {})",
@@ -299,59 +407,54 @@ impl fmt::Display for WriteOperation {
             InsertChainOrphanBlock(block) => {
                 write!(f, "InsertChainOrphanBlock({})", block.accumulated_data.hash.to_hex())
             },
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Copy)]
-pub enum MetadataKey {
-    ChainHeight,
-    BestBlock,
-    AccumulatedWork,
-    PruningHorizon,
-    EffectivePrunedHeight,
-    HorizonSyncState,
-}
-
-impl fmt::Display for MetadataKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            MetadataKey::ChainHeight => f.write_str("Current chain height"),
-            MetadataKey::AccumulatedWork => f.write_str("Total accumulated work"),
-            MetadataKey::PruningHorizon => f.write_str("Pruning horizon"),
-            MetadataKey::EffectivePrunedHeight => f.write_str("Effective pruned height"),
-            MetadataKey::BestBlock => f.write_str("Chain tip block hash"),
-            MetadataKey::HorizonSyncState => f.write_str("Database info"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum MetadataValue {
-    ChainHeight(u64),
-    BestBlock(BlockHash),
-    AccumulatedWork(u128),
-    PruningHorizon(u64),
-    EffectivePrunedHeight(u64),
-    HorizonSyncState(InProgressHorizonSyncState),
-}
-
-impl fmt::Display for MetadataValue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            MetadataValue::ChainHeight(h) => write!(f, "Chain height is {}", h),
-            MetadataValue::AccumulatedWork(d) => write!(f, "Total accumulated work is {}", d),
-            MetadataValue::PruningHorizon(h) => write!(f, "Pruning horizon is {}", h),
-            MetadataValue::EffectivePrunedHeight(h) => write!(f, "Effective pruned height is {}", h),
-            MetadataValue::BestBlock(hash) => write!(f, "Chain tip block hash is {}", hash.to_hex()),
-            MetadataValue::HorizonSyncState(state) => write!(f, "Horizon state sync in progress: {}", state),
+            UpdatePrunedHashSet {
+                mmr_tree, header_hash, ..
+            } => write!(
+                f,
+                "Update pruned hash set: {} header: {}",
+                mmr_tree,
+                header_hash.to_hex()
+            ),
+            InsertPrunedOutput {
+                header_hash: _,
+                output_hash: _,
+                proof_hash: _,
+                mmr_position: _,
+            } => write!(f, "Insert pruned output"),
+            UpdateDeletedBlockAccumulatedData {
+                header_hash: _,
+                deleted: _,
+            } => write!(f, "Update deleted data for block"),
+            PruneOutputsAndUpdateHorizon {
+                output_positions,
+                horizon,
+            } => write!(
+                f,
+                "Prune {} outputs and set horizon to {}",
+                output_positions.len(),
+                horizon
+            ),
+            UpdateKernelSum { header_hash, .. } => write!(f, "Update kernel sum for block: {}", header_hash.to_hex()),
+            UpdateUtxoSum { header_hash, .. } => write!(f, "Update utxo sum for block: {}", header_hash.to_hex()),
+            SetBestBlock {
+                height,
+                hash,
+                accumulated_difficulty,
+            } => write!(
+                f,
+                "Update best block to height:{} ({}) with difficulty: {}",
+                height,
+                hash.to_hex(),
+                accumulated_difficulty
+            ),
+            SetPruningHorizonConfig(pruning_horizon) => write!(f, "Set config: pruning horizon to {}", pruning_horizon),
+            SetPrunedHeight { height, .. } => write!(f, "Set pruned height to {}", height),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DbKey {
-    Metadata(MetadataKey),
     BlockHeader(u64),
     BlockHash(BlockHash),
     OrphanBlock(HashOutput),
@@ -360,7 +463,6 @@ pub enum DbKey {
 impl DbKey {
     pub fn to_value_not_found_error(&self) -> ChainStorageError {
         let (entity, field, value) = match self {
-            DbKey::Metadata(key) => ("MetaData".to_string(), key.to_string(), "".to_string()),
             DbKey::BlockHeader(v) => ("BlockHeader".to_string(), "Height".to_string(), v.to_string()),
             DbKey::BlockHash(v) => ("Block".to_string(), "Hash".to_string(), v.to_hex()),
             DbKey::OrphanBlock(v) => ("Orphan".to_string(), "Hash".to_string(), v.to_hex()),
@@ -371,7 +473,6 @@ impl DbKey {
 
 #[derive(Debug)]
 pub enum DbValue {
-    Metadata(MetadataValue),
     BlockHeader(Box<BlockHeader>),
     BlockHash(Box<BlockHeader>),
     OrphanBlock(Box<Block>),
@@ -380,7 +481,6 @@ pub enum DbValue {
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::Metadata(v) => v.fmt(f),
             DbValue::BlockHeader(_) => f.write_str("Block header"),
             DbValue::BlockHash(_) => f.write_str("Block hash"),
             DbValue::OrphanBlock(_) => f.write_str("Orphan block"),
@@ -391,40 +491,9 @@ impl Display for DbValue {
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::Metadata(key) => key.fmt(f),
             DbKey::BlockHeader(v) => f.write_str(&format!("Block header (#{})", v)),
             DbKey::BlockHash(v) => f.write_str(&format!("Block hash (#{})", to_hex(v))),
             DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", to_hex(v))),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy)]
-pub enum MmrTree {
-    Utxo,
-    Kernel,
-    RangeProof,
-}
-
-impl Display for MmrTree {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        match self {
-            MmrTree::RangeProof => f.write_str("Range Proof"),
-            MmrTree::Utxo => f.write_str("UTXO"),
-            MmrTree::Kernel => f.write_str("Kernel"),
-        }
-    }
-}
-
-impl TryFrom<i32> for MmrTree {
-    type Error = String;
-
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
-        match v {
-            0 => Ok(MmrTree::Utxo),
-            1 => Ok(MmrTree::Kernel),
-            2 => Ok(MmrTree::RangeProof),
-            _ => Err("Invalid MmrTree".into()),
         }
     }
 }
