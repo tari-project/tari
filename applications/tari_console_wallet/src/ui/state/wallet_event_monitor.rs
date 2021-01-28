@@ -128,12 +128,8 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
-                                match msg {
-                                    OutputManagerEvent::TxoValidationSuccess(_) => {
-                                        self.trigger_balance_refresh().await;
-                                    },
-                                    // Only the above variants are monitored
-                                    _ => (),
+                                if let OutputManagerEvent::TxoValidationSuccess(_) = msg {
+                                    self.trigger_balance_refresh().await;
                                 }
                             },
                             Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
