@@ -31,7 +31,7 @@ use crate::{
     consensus::ConsensusManager,
     mempool::Mempool,
     proto as shared_protos,
-    proto::generated::base_node as proto,
+    proto::base_node as proto,
 };
 use futures::{channel::mpsc, future, Future, Stream, StreamExt};
 use log::*;

@@ -51,11 +51,11 @@ use tari_core::{
         service::BaseNodeServiceConfig,
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
-    blocks::{BlockHeader, NewBlock},
-    chain_storage::{BlockAddResult, BlockchainDatabaseConfig, DbTransaction},
+    blocks::NewBlock,
+    chain_storage::BlockchainDatabaseConfig,
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::MempoolServiceConfig,
-    proof_of_work::{Difficulty, PowAlgorithm},
+    proof_of_work::PowAlgorithm,
     transactions::{
         helpers::schema_to_transaction,
         tari_amount::{uT, T},
@@ -633,7 +633,7 @@ fn local_get_new_block_template_and_get_new_block() {
         assert_eq!(block_template.header.height, 1);
         assert_eq!(block_template.body.kernels().len(), 2);
 
-        let mut block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
+        let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
         assert_eq!(block.header.height, 1);
         assert_eq!(block.body, block_template.body);
 

@@ -25,7 +25,7 @@ use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, OrNotFound, PrunedOutput},
     iterators::NonOverlappingIntegerPairIter,
     proto,
-    proto::generated::base_node::{
+    proto::base_node::{
         FindChainSplitRequest,
         FindChainSplitResponse,
         SyncBlocksRequest,

@@ -66,12 +66,10 @@ use tari_core::{
     },
     consensus::{ConsensusConstantsBuilder, Network},
     proto::{
-        generated::{
-            base_node as base_node_proto,
-            base_node::{
-                base_node_service_request::Request as BaseNodeRequestProto,
-                base_node_service_response::Response as BaseNodeResponseProto,
-            },
+        base_node as base_node_proto,
+        base_node::{
+            base_node_service_request::Request as BaseNodeRequestProto,
+            base_node_service_response::Response as BaseNodeResponseProto,
         },
         types::TransactionOutput as TransactionOutputProto,
     },

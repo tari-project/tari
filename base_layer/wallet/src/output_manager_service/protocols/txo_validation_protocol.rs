@@ -33,7 +33,7 @@ use std::{cmp, collections::HashMap, convert::TryFrom, fmt, sync::Arc, time::Dur
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
-    proto::generated::{
+    proto::{
         base_node as proto,
         base_node::{
             base_node_service_request::Request as BaseNodeRequestProto,

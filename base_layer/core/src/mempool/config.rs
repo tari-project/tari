@@ -83,7 +83,6 @@ mod test {
         MempoolConfig,
     };
     use config::Config;
-    use std::time::Duration;
     use tari_common::DefaultConfigLoader;
 
     #[test]

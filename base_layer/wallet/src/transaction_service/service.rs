@@ -60,7 +60,7 @@ use tari_comms_dht::outbound::OutboundMessageRequester;
 #[cfg(feature = "test_harness")]
 use tari_core::transactions::{tari_amount::uT, types::BlindingFactor};
 use tari_core::{
-    proto::generated::base_node as base_node_proto,
+    proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
         transaction::Transaction,

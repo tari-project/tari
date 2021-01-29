@@ -81,7 +81,7 @@ mod sync_blocks {
         base_node::BaseNodeSyncService,
         blocks::BlockBuilder,
         chain_storage::{ChainMetadata, DbValue},
-        proto::generated::base_node::SyncBlocksRequest,
+        proto::base_node::SyncBlocksRequest,
         tari_utilities::Hashable,
     };
     use futures::StreamExt;

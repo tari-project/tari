@@ -49,7 +49,7 @@ use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     consensus::ConsensusConstants,
-    proto::generated::base_node as proto,
+    proto::base_node as proto,
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,

@@ -27,6 +27,7 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 pub mod conversions;
-mod generated;
 
-pub use generated::*;
+pub mod tari_rpc {
+    tonic::include_proto!("tari.rpc");
+}

@@ -31,7 +31,7 @@ use tari_core::{
         proto::wallet_response::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletService,
     },
-    proto::generated::{
+    proto::{
         base_node::{TxQueryResponse as TxQueryResponseProto, TxSubmissionResponse as TxSubmissionResponseProto},
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },

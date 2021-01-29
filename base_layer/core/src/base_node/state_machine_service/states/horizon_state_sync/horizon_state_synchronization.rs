@@ -25,7 +25,7 @@ use crate::{
     base_node::{state_machine_service::BaseNodeStateMachine, sync::rpc},
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, HorizonData, MmrTree},
-    proto::generated::base_node::{SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse},
+    proto::base_node::{SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse},
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
         types::{HashDigest, HashOutput, RangeProofService},

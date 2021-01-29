@@ -30,13 +30,11 @@ use crate::base_node_service::{
     handle::BaseNodeServiceHandle,
     service::BaseNodeService,
 };
-
+use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
 use tari_comms_dht::Dht;
-
-use futures::{future, Future, Stream, StreamExt};
-use tari_core::proto::generated::base_node as proto;
+use tari_core::proto::base_node as proto;
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
     domain_message::DomainMessage,
