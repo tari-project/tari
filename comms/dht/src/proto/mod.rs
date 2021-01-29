@@ -31,20 +31,25 @@ use tari_comms::{
 };
 use tari_utilities::{hex::Hex, ByteArray};
 
-#[path = "tari.dht.envelope.rs"]
-pub mod envelope;
+pub mod envelope {
+    tari_comms::outdir_include!("tari.dht.envelope.rs");
+}
 
-#[path = "tari.dht.rs"]
-pub mod dht;
+pub mod dht {
+    tari_comms::outdir_include!("tari.dht.rs");
+}
 
-#[path = "tari.dht.rpc.rs"]
-pub mod rpc;
+pub mod rpc {
+    tari_comms::outdir_include!("tari.dht.rpc.rs");
+}
 
-#[path = "tari.dht.store_forward.rs"]
-pub mod store_forward;
+pub mod store_forward {
+    tari_comms::outdir_include!("tari.dht.store_forward.rs");
+}
 
-#[path = "tari.dht.message_header.rs"]
-pub mod message_header;
+pub mod message_header {
+    tari_comms::outdir_include!("tari.dht.message_header.rs");
+}
 
 //---------------------------------- Network impl --------------------------------------------//
 

@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[path = "tari.comms.envelope.rs"]
-pub(crate) mod envelope;
+pub(crate) mod envelope {
+    outdir_include!("tari.comms.envelope.rs");
+}
 
-#[path = "tari.comms.identity.rs"]
-pub(crate) mod identity;
+pub(crate) mod identity {
+    outdir_include!("tari.comms.identity.rs");
+}
 
-#[path = "tari.comms.rpc.rs"]
-pub(crate) mod rpc;
+pub(crate) mod rpc {
+    outdir_include!("tari.comms.rpc.rs");
+}
