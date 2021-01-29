@@ -27,7 +27,6 @@ use std::{fmt, fmt::Formatter, net::SocketAddr, path::Path};
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
     connectivity::ConnectivityError,
-    multiaddr::{Multiaddr, Protocol},
     peer_manager::NodeId,
     protocol::rpc::RpcError,
     socks,
@@ -147,22 +146,13 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
         "Console wallet transport is set to '{:?}'", config.comms_transport
     );
 
-    let add_to_port = |addr: Multiaddr, n| -> Multiaddr {
-        addr.iter()
-            .map(|p| match p {
-                Protocol::Tcp(port) => Protocol::Tcp(port + n),
-                p => p,
-            })
-            .collect()
-    };
-
     match config.comms_transport.clone() {
         CommsTransport::Tcp {
             listener_address,
             tor_socks_address,
             tor_socks_auth,
         } => TransportType::Tcp {
-            listener_address: add_to_port(listener_address, 1),
+            listener_address,
             tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
                 proxy_address,
                 authentication: tor_socks_auth.map(convert_socks_authentication).unwrap_or_default(),
@@ -206,7 +196,6 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                 },
                 identity: identity.map(Box::new),
                 port_mapping,
-                // TODO: make configurable
                 socks_address_override,
                 socks_auth: socks::Authentication::None,
             })
@@ -220,7 +209,7 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                 proxy_address,
                 authentication: convert_socks_authentication(auth),
             },
-            listener_address: add_to_port(listener_address, 1),
+            listener_address,
         },
     }
 }
