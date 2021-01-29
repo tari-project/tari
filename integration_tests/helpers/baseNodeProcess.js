@@ -31,7 +31,7 @@ class BaseNodeProcess {
         // console.log(`Starting node ${this.name}...`);
         await this.run("cargo",
 
-            ["run", "--release", "--bin", "tari_base_node", "--", "--base-path", ".", "--create-id", "--init"]);
+            ["run", "--bin", "tari_base_node", "--", "--base-path", ".", "--create-id", "--init"]);
     }
 
 
@@ -209,7 +209,7 @@ class BaseNodeProcess {
     }
 
     start() {
-        return this.run("cargo", ["run", "--release", "--bin tari_base_node", "--", "--base-path", "."], true);
+        return this.run("cargo", ["run", "--bin tari_base_node", "--", "--base-path", "."], true);
     }
 
     stop() {

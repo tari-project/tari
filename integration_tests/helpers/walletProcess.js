@@ -17,8 +17,8 @@ class WalletProcess {
         this.grpcPort = await getFreePort(19000, 25000);
         this.nodeFile = "cwalletid.json";
         this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
-           await this.run("cargo",
-                 ["run", "--release", "--bin", "tari_console_wallet", "--", "--base-path", ".", "--create-id", "--init"]);
+           // await this.run("cargo",
+           //       ["run", "--bin", "tari_console_wallet", "--", "--base-path", ".", "--init"]);
     }
 
   ensureNodeInfo() {
@@ -145,7 +145,7 @@ class WalletProcess {
 
     async startNew() {
         await this.init();
-        return this.run("cargo", ["run", "--release", "--bin tari_console_wallet", "--", "--base-path", ".", "--password", "kensentme", "--daemon"]);
+        return this.run("cargo", ["run", "--bin tari_console_wallet", "--", "--base-path", ".","--init", "--password", "kensentme", "--daemon"]);
     }
 
     stop() {

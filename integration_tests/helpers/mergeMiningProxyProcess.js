@@ -66,7 +66,6 @@ class MergeMiningProxyProcess {
             TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
             TARI_MERGE_MINING_PROXY__LOCALNET__WAIT_FOR_INITIAL_SYNC_AT_STARTUP: false,
             TARI_BASE_NODE__LOCALNET__PEER_SEEDS : "5cfcf17f41b01980eb4fa03cec5ea12edbd3783496a2b5dabf99e4bf6410f460::/ip4/10.0.0.50/tcp/1"
-
         }
  return envs;
     }
@@ -112,7 +111,7 @@ class MergeMiningProxyProcess {
 
     async startNew() {
         await this.init();
-        return await this.run("cargo", ["run", "--release", "--bin tari_merge_mining_proxy", "--", "--base-path", ".", "--init"]);
+        return await this.run("cargo", ["run", "--bin tari_merge_mining_proxy", "--", "--base-path", ".", "--init"]);
     }
 
     stop() {

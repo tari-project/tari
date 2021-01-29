@@ -1,8 +1,8 @@
 const { setWorldConstructor, After,BeforeAll } = require("cucumber");
 
-// const BaseNodeClient = require('../helpers/baseNodeClient');
-// const TransactionBuilder = require('../helpers/transactionBuilder');
 const BaseNodeProcess = require('../../helpers/baseNodeProcess');
+const MergeMiningProxyProcess = require('../../helpers/mergeMiningProxyProcess');
+const WalletProcess = require('../../helpers/walletProcess');
 
 class CustomWorld {
     constructor() {
@@ -111,15 +111,28 @@ class CustomWorld {
 
 setWorldConstructor(CustomWorld);
 
-BeforeAll({timeout: 120000}, function(callback) {
+
+BeforeAll({timeout: 1200000}, function(callback) {
     // Ensure the project can compile
     let proc  =new BaseNodeProcess(`compile-tester`);
     console.log("Precompiling node. This can take a while whenever the code changes...");
     proc.startNew().then(function() {
         proc.stop();
-        console.log("Finished check...");
-        callback();
+        let proc2  =new MergeMiningProxyProcess(`compile-tester2`, "127.0.0.1:9999", "127.0.0.1:9998");
+        console.log("Precompiling mmproxy. This can take a while whenever the code changes...");
+        proc2.startNew().then(function() {
+            proc2.stop();
+            let proc3  =new WalletProcess(`compile-tester3`);
+            console.log("Precompiling wallet. This can take a while whenever the code changes...");
+            proc3.startNew().then(function() {
+                proc3.stop();
+                console.log("Finished check...");
+                callback();
+            });
+        });
     });
+
+
 });
 
 After(function () {
