@@ -183,3 +183,10 @@ macro_rules! is_fn {
         }
     };
 }
+
+#[macro_export]
+macro_rules! outdir_include {
+    ($name: expr) => {
+        include!(concat!(env!("OUT_DIR"), "/", $name));
+    };
+}
