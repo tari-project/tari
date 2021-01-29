@@ -70,7 +70,6 @@ pub mod test {
         },
     };
     use chrono::{DateTime, NaiveDate, Utc};
-    use tari_crypto::tari_utilities::hex::Hex;
 
     /// A simple example miner. It starts at nonce = 0 and iterates until it finds a header hash that meets the desired
     /// target block

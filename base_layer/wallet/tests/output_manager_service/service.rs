@@ -40,7 +40,7 @@ use tari_comms::{
 use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
 use tari_core::{
     consensus::{ConsensusConstantsBuilder, Network},
-    proto::generated::{
+    proto::{
         base_node as base_node_proto,
         base_node::{
             base_node_service_request::Request,

@@ -42,10 +42,7 @@ use tari_common_types::{
 };
 use tari_comms::peer_manager::Peer;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
-use tari_core::proto::generated::{
-    base_node as proto,
-    base_node::base_node_service_request::Request as BaseNodeRequestProto,
-};
+use tari_core::proto::{base_node as proto, base_node::base_node_service_request::Request as BaseNodeRequestProto};
 
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel::Receiver;

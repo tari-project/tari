@@ -36,7 +36,7 @@ use crate::{
     blocks::{Block, NewBlock},
     chain_storage::BlockchainBackend,
     proto as shared_protos,
-    proto::generated::{base_node as proto, base_node::base_node_service_request::Request},
+    proto::{base_node as proto, base_node::base_node_service_request::Request},
 };
 use futures::{
     channel::{

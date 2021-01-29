@@ -28,8 +28,8 @@ use crate::{
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
     proto::{
+        base_node as proto,
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
-        generated::base_node as proto,
     },
     tari_utilities::{hex::Hex, Hashable},
     transactions::types::HashOutput,

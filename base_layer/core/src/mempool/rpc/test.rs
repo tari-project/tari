@@ -87,7 +87,7 @@ mod get_tx_state_by_excess_sig {
     use super::*;
     use crate::{
         mempool::{MempoolService, TxStorageResponse},
-        proto::generated::types::Signature,
+        proto::types::Signature,
         tari_utilities::ByteArray,
     };
     use tari_comms::protocol::rpc::RpcStatusCode;
@@ -132,7 +132,7 @@ mod submit_transaction {
     use super::*;
     use crate::{
         mempool::{MempoolService, TxStorageResponse},
-        proto::generated::types::{AggregateBody, BlindingFactor, Transaction},
+        proto::types::{AggregateBody, BlindingFactor, Transaction},
         tari_utilities::ByteArray,
     };
     use tari_comms::protocol::rpc::RpcStatusCode;

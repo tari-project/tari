@@ -23,7 +23,7 @@
 use crate::{
     base_node::comms_interface as ci,
     proof_of_work::PowAlgorithm,
-    proto::generated::{
+    proto::{
         base_node as proto,
         base_node::{
             base_node_service_request::Request as ProtoNodeCommsRequest,

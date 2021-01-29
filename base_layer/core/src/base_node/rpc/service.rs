@@ -24,7 +24,7 @@ use crate::{
     base_node::rpc::BaseNodeWalletService,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     mempool::service::MempoolHandle,
-    proto::generated::{
+    proto::{
         base_node::{TxLocation, TxQueryResponse, TxSubmissionResponse},
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
@@ -32,7 +32,7 @@ use crate::{
 
 use crate::{
     mempool::TxStorageResponse,
-    proto::generated::base_node::TxSubmissionRejectionReason,
+    proto::base_node::TxSubmissionRejectionReason,
     transactions::{transaction::Transaction, types::Signature},
 };
 use std::convert::TryFrom;

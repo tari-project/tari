@@ -60,7 +60,7 @@ use tari_core::{
     chain_storage::ChainBlock,
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     crypto::tari_utilities::Hashable,
-    proto::generated::types::{Signature as SignatureProto, Transaction as TransactionProto},
+    proto::types::{Signature as SignatureProto, Transaction as TransactionProto},
     test_helpers::blockchain::TempDatabase,
     transactions::{
         helpers::schema_to_transaction,

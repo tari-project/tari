@@ -30,7 +30,7 @@ use crate::{
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeWalletRpcService;
 
-use crate::proto::generated::{
+use crate::proto::{
     base_node::{TxQueryResponse, TxSubmissionResponse},
     types::{Signature, Transaction},
 };

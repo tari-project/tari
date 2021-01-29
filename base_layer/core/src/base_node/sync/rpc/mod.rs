@@ -30,7 +30,7 @@ pub use service::BaseNodeSyncRpcService;
 use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto,
-    proto::generated::base_node::{
+    proto::base_node::{
         FindChainSplitRequest,
         FindChainSplitResponse,
         SyncBlocksRequest,

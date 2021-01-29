@@ -43,7 +43,7 @@ use std::sync::Arc;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_core::{
-    proto::generated::base_node as base_node_proto,
+    proto::base_node as base_node_proto,
     transactions::{transaction_protocol::proto, types::CryptoFactories},
 };
 use tari_p2p::{

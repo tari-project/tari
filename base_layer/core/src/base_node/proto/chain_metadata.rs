@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::proto::generated::base_node as proto;
+use crate::proto::base_node as proto;
 use std::{convert::TryFrom, mem};
 use tari_common_types::chain_metadata::ChainMetadata;
 

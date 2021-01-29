@@ -27,7 +27,7 @@ use crate::{
         comms_interface::{BlockEvent, LocalNodeCommsInterface},
     },
     chain_storage::BlockAddResult,
-    proto::generated::base_node as proto,
+    proto::base_node as proto,
 };
 use futures::stream::StreamExt;
 use log::*;
