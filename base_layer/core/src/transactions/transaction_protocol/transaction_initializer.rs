@@ -238,9 +238,8 @@ impl SenderTransactionInitializer {
         })
     }
 
-    fn calculate_total_amount(&self, amount_to_self: &MicroTari) -> MicroTari {
-        let to_others: MicroTari = self.amounts.clone().into_vec().iter().sum();
-        to_others + amount_to_self
+    fn calculate_amount_to_others(&self) -> MicroTari {
+        self.amounts.clone().into_vec().iter().sum()
     }
 
     /// Construct a `SenderTransactionProtocol` instance in and appropriate state. The data stored
@@ -337,15 +336,16 @@ impl SenderTransactionInitializer {
             ids.push(calculate_tx_id::<D>(&public_nonce, i));
         }
 
-        // The fee should be less than the amount. This isn't a protocol requirement, but it's what you want 99.999%
-        // of the time, however, always preventing this will also prevent spending dust in some edge cases.
-        if total_fee > self.calculate_total_amount(&amount_to_self) {
+        // The fee should be less than the amount being sent. This isn't a protocol requirement, but it's what you want
+        // 99.999% of the time, however, always preventing this will also prevent spending dust in some edge
+        // cases.
+        if total_fee > self.calculate_amount_to_others() {
             let ids_clone = ids.to_vec();
             warn!(
                 target: LOG_TARGET,
-                "Fee ({}) is greater than amount ({}) for Transaction (TxId: {}).",
+                "Fee ({}) is greater than amount ({}) being sent for Transaction (TxId: {}).",
                 total_fee,
-                self.calculate_total_amount(&amount_to_self),
+                self.calculate_amount_to_others(),
                 ids_clone[0]
             );
             if self.prevent_fee_gt_amount {
