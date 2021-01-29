@@ -248,7 +248,6 @@ impl ConsensusConstants {
     }
 
     pub fn stibbons() -> Vec<Self> {
-        let difficulty_block_window = 90;
         let mut algos = HashMap::new();
         // seting sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
@@ -263,21 +262,52 @@ impl ConsensusConstants {
             max_difficulty: u64::MAX.into(),
             target_time: 20,
         });
-        vec![ConsensusConstants {
-            effective_from_height: 0,
-            coinbase_lock_height: 60,
-            blockchain_version: 1,
-            future_time_limit: 540,
-            difficulty_block_window,
-            max_block_transaction_weight: 19500,
-            median_timestamp_count: 11,
-            emission_initial: 5_538_846_115 * uT,
-            emission_decay: &EMISSION_DECAY,
-            emission_tail: 100.into(),
-            max_randomx_seed_height: std::u64::MAX,
-            proof_of_work: algos,
-            faucet_value: (5000 * 4000) * T,
-        }]
+        let mut algos2 = HashMap::new();
+        // seting sha3/monero to 40/60 split
+        algos2.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
+            max_target_time: 1800,
+            min_difficulty: 60_000_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 300,
+        });
+        algos2.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 1200,
+            min_difficulty: 60_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 200,
+        });
+        vec![
+            ConsensusConstants {
+                effective_from_height: 0,
+                coinbase_lock_height: 60,
+                blockchain_version: 1,
+                future_time_limit: 540,
+                difficulty_block_window: 90,
+                max_block_transaction_weight: 19500,
+                median_timestamp_count: 11,
+                emission_initial: 5_538_846_115 * uT,
+                emission_decay: &EMISSION_DECAY,
+                emission_tail: 100.into(),
+                max_randomx_seed_height: std::u64::MAX,
+                proof_of_work: algos,
+                faucet_value: (5000 * 4000) * T,
+            },
+            ConsensusConstants {
+                effective_from_height: 1400,
+                coinbase_lock_height: 60,
+                blockchain_version: 1,
+                future_time_limit: 540,
+                difficulty_block_window: 90,
+                max_block_transaction_weight: 19500,
+                median_timestamp_count: 11,
+                emission_initial: 5_538_846_115 * uT,
+                emission_decay: &EMISSION_DECAY,
+                emission_tail: 100.into(),
+                max_randomx_seed_height: std::u64::MAX,
+                proof_of_work: algos2,
+                faucet_value: (5000 * 4000) * T,
+            },
+        ]
     }
 
     pub fn mainnet() -> Vec<Self> {
