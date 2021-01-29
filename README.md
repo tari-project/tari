@@ -346,18 +346,18 @@ was run, the main configuration file will be located in the installation directo
 With the main configuration file, in addition to the settings already present, the following must also be enabled if 
 they are not enabled already:
 
-- For the Tari Base Node and the Tari Console Wallet, under section **`base_node.ridcully`**
+- For the Tari Base Node and the Tari Console Wallet, under section **`base_node.stibbons`**
   ```
-  [base_node.ridcully]
+  [base_node.stibbons]
   transport = "tor"
   allow_test_addresses = false
   grpc_enabled = true
   grpc_base_node_address = "127.0.0.1:18142"
   grpc_console_wallet_address = "127.0.0.1:18143"
   ```
-- For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.ridcully`**
+- For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.stibbons`**
   ```
-  [merge_mining_proxy.ridcully]
+  [merge_mining_proxy.stibbons]
   monerod_url = "http://18.133.55.120:38081"
   proxy_host_address = "127.0.0.1:7878"
   monerod_use_auth = false

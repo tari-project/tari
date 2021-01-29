@@ -167,7 +167,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.mainnet.enable_wallet", true).unwrap();
     cfg.set_default("base_node.mainnet.num_mining_threads", 1).unwrap();
 
-    //---------------------------------- Ridcully Defaults --------------------------------------------//
+    //---------------------------------- Stibbons Defaults --------------------------------------------//
 
     cfg.set_default("base_node.stibbons.db_type", "lmdb").unwrap();
     cfg.set_default("base_node.stibbons.orphan_storage_capacity", 720)

@@ -53,7 +53,7 @@ pub fn get_mainnet_gen_header() -> BlockHeader {
 pub fn get_stibbons_genesis_block() -> ChainBlock {
     // lets get the block
     let mut block = get_stibbons_genesis_block_raw();
-    // Lets load in the ridcully faucet tx's
+    // Lets load in the stibbons faucet tx's
     let mut utxos = Vec::new();
     let file = include_str!("faucets/stibbons_faucet.json");
     // last 2 lines are used for the kernel creation

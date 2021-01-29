@@ -11,7 +11,7 @@ fi
 rm -f "./$1.tar.gz" >/dev/null
 
 tarball_parent=/tmp
-tarball_source=tari_ridcully_testnet
+tarball_source=tari_stibbons_testnet
 tarball_folder=${tarball_parent}/${tarball_source}
 if [ -d "${tarball_folder}" ]
 then

@@ -2955,7 +2955,7 @@ pub unsafe extern "C" fn wallet_create(
                         ..Default::default()
                     }),
                     None,
-                    Network::Ridcully,
+                    Network::Stibbons,
                     None,
                     None,
                     None,

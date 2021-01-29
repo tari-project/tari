@@ -81,7 +81,7 @@ Notes:
 - Execute the `.\start_tari_merge_mining_proxy` shortcut.
 - Execute the `.\start_xmrig` shortcut.
 - Runtime artefacts:
-  - The blockchain will be created in the `.\ridcully` folder.
+  - The blockchain will be created in the `.\stibbons` folder.
   - The wallet will be created in the `.\wallet` folfder.
   - All log files will be created in the `.\log\base_node`, `.\log\wallet` and 
     `.\log\proxy` folders.
@@ -100,7 +100,7 @@ Notes:
 ## Start Fresh
 
 - To delete log files, delete the `.\log` folder.
-- To re-sync the blockchain, delete the `.\ridcully` folder.
+- To re-sync the blockchain, delete the `.\stibbons` folder.
 - To destroy your wallet and loose all your hard-earned tXTR Tari coins, delete 
   the `.\wallet` folder.
 

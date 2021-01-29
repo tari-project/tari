@@ -183,7 +183,7 @@ wget -qO - https://api.ipify.org; echo
 torsocks wget -qO - https://api.ipify.org; echo
 
 DATA_DIR=${1:-"$HOME/.tari"}
-NETWORK=ridcully
+NETWORK=stibbons
 
 banner Installing and setting up your Tari Base Node
 if [ ! -d "$DATA_DIR/$NETWORK" ]; then
