@@ -9,8 +9,8 @@
      if (options.pruningHorizon) {
          res.TARI_BASE_NODE__LOCALNET__PRUNING_HORIZON=options.pruningHorizon;
      }
-         return res;
-     }
+    return res;
+}
 
 function baseEnvs(peerSeeds = [])
 {
@@ -70,8 +70,8 @@ function createEnv(name="config_identity",isWallet=false, nodeFile="newnodeid.js
              TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: `${proxyFullAddress}`,
              TARI_BASE_NODE__LOCALNET__TRANSPORT: "tcp",
          }
-         console.log(name);
-         console.log(configEnvs);
+         //console.log(configEnvs);
+         //console.log(configEnvs);
          var fullEnvs = {...envs,...configEnvs};
          return {...fullEnvs, ...mapEnvs(options || {}) } ;
 }

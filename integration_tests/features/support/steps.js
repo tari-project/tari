@@ -75,7 +75,6 @@ Given('I have {int} base nodes connected to all seed nodes',{timeout: 190*1000},
 
 Given(/I have wallet (.*) connected to all seed nodes/, {timeout: 20*1000}, async function (name) {
     let wallet = new WalletProcess(name);
-    wallet.preInit();
     wallet.setPeerSeeds([this.seedAddresses()]);
     await wallet.startNew();
     this.addWallet(name, wallet);
@@ -244,6 +243,35 @@ Then(/(.*) should have (\d+) peers/, async function (nodeName, peerCount){
     expect(peers.length).to.equal(peerCount+1)
 })
 
+When(/I send (.*) tari from (.*) to one wallet (.*) at fee (.*)/, {timeout: 260*1000}, async function (tariAmount, source, dest, fee) {
+    let sourceWalletClient = this.getWallet(source).getClient();
+    let destWalletClient = this.getWallet(dest).getClient();
+    var destInfo = await destWalletClient.identify();
+    console.log("\n");
+    console.log("Sending " + tariAmount + "uT to `" + destInfo["public_key"] + "`");
+    let success = false;
+    let retries = 1;
+    let retries_limit = 25;
+    while (!success && retries <= retries_limit) {
+        this.lastResult = await sourceWalletClient.transfer({
+            "recipients": [{"address": destInfo["public_key"],
+            "amount": tariAmount,
+            "fee_per_gram": fee,
+            "message": "msg"}]
+        });
+        success = this.lastResult.results[0]["is_success"]
+        if (!success) {
+            let wait_seconds = 10;
+            console.log("  " + this.lastResult.results[0]["failure_message"] + ", trying again after " + wait_seconds +
+                "s (" + retries + " of " + retries_limit + ")");
+            await sleep(wait_seconds * 1000);
+            retries++;
+        }
+    }
+    console.log("  Transaction '" + this.lastResult.results[0]["transaction_id"] + "' is_success(" +
+        this.lastResult.results[0]["is_success"] + ")");
+});
+
 When(/I send (.*) tari from (.*) to (.*),(.*) at fee (.*)/, async function (tariAmount,source,dest,dest2,fee) {
  let wallet = this.getWallet(source);
  let client = wallet.getClient();
@@ -326,5 +354,43 @@ Then(/Batch transfer of (.*) transactions was a success from (.*) to (.*),(.*)/,
    console.log("Number of transactions found is",found,"of",txCount);
    assert(found == txCount);
    console.log("All transactions found");
+});
+
+Then(/Transaction status of last result from (.*) to (.*) is known to both wallets/, {timeout: 2*360*10*1000}, async function (walletA, walletB) {
+    let wallets = [this.getWallet(walletA), this.getWallet(walletB)];
+    let found = [false, false];
+
+    if (this.lastResult.results[0]["is_success"] == false) {
+        console.log("Transaction '" + this.lastResult.results[0]["transaction_id"] + "' failed");
+        expect(this.lastResult.results[0]["is_success"]).to.equal(true);
+    }
+    let tx_id = this.lastResult.results[0]["transaction_id"];
+    console.log("\n");
+    var i, retries, retries_limit;
+    for (i = 0; i < wallets.length; i++) {
+        console.log("Get transaction status from " + wallets[i].name + " for tx_id " + tx_id);
+        retries = 1;
+        retries_limit = 360;
+        while (!found[i] && retries <= retries_limit) {
+            try {
+                let txnDetails = await wallets[i].getClient().getTransactionInfo({
+                    "transaction_ids": [ tx_id.toString() ]
+                });
+                found[i] = true;
+                console.log("  " + wallets[i].name + ": transaction '" + txnDetails.transactions[0]["tx_id"] +
+                    "' has status '" + txnDetails.transactions[0]["status"] + "' and is_cancelled(" +
+                    txnDetails.transactions[0]["is_cancelled"] + ")");
+            } catch (err) {
+                let wait_seconds = 10;
+                console.log("  msg: '" + err.details + "', trying again after " + wait_seconds +
+                    "s (" + retries + " of " + retries_limit + ")");
+                await sleep(wait_seconds * 1000);
+                retries++;
+            }
+        }
+    }
+    console.log("\n");
+
+    expect(found[0] && found[1]).to.equal(true);
 });
 

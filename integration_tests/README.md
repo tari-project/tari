@@ -13,10 +13,12 @@
 - To run all tests:
   
   ```
-  /node_modules/.bin/cucumber-js 
+  npm install
+  ./node_modules/.bin/cucumber-js 
   ```
   or
   ```
+  npm install
   node_modules\.bin\cucumber-js
   ```
 

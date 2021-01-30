@@ -23,7 +23,8 @@ class MergeMiningProxyClient {
                 "reserve_size": 60
             }
         });
-        console.log("Blocktemplate:",res.data.result.blocktemplate_blob);
+        //console.log(res.data);
+        //console.log("Blocktemplate:",res.data.result.blocktemplate_blob);
         return res.data.result;
     }
 
