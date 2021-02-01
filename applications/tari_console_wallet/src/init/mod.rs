@@ -289,8 +289,7 @@ pub async fn init_wallet(
             Arc::new(node_id)
         },
     };
-    // TODO remove after next TestNet
-    transaction_backend.migrate(node_identity.public_key().clone());
+
     let transport_type = setup_wallet_transport_type(&config);
     let transport_type = match transport_type {
         Tor(mut tor_config) => {

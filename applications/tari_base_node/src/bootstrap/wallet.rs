@@ -61,7 +61,7 @@ use tari_wallet::{
         TransactionServiceInitializer,
     },
 };
-use tokio::{runtime, task};
+use tokio::runtime;
 
 const LOG_TARGET: &str = "c::bn::initialization";
 
@@ -94,13 +94,6 @@ impl WalletBootstrapper {
     ) -> Result<TransactionServiceSqliteDatabase, anyhow::Error>
     {
         let transaction_db = TransactionServiceSqliteDatabase::new(conn, None);
-        task::spawn_blocking({
-            let transaction_db = transaction_db.clone();
-            let node_identity = self.node_identity.clone();
-
-            move || transaction_db.migrate(node_identity.public_key().clone())
-        })
-        .await?;
         Ok(transaction_db)
     }
 

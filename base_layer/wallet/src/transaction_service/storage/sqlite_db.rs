@@ -74,12 +74,6 @@ impl TransactionServiceSqliteDatabase {
         }
     }
 
-    // TODO Remove this after the next TestNet
-    pub fn migrate(&self, comms_public_key_migration: CommsPublicKey) {
-        let conn = self.database_connection.acquire_lock();
-        let _ = CompletedTransactionSql::migrate(comms_public_key_migration, &(*conn));
-    }
-
     fn insert(&self, kvp: DbKeyValuePair, conn: MutexGuard<SqliteConnection>) -> Result<(), TransactionStorageError> {
         match kvp {
             DbKeyValuePair::PendingOutboundTransaction(k, v) => {
@@ -1349,42 +1343,6 @@ impl CompletedTransactionSql {
 
         Ok(())
     }
-
-    pub fn migrate(comms_public_key: CommsPublicKey, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
-        let mut txs = completed_transactions::table
-            .filter(completed_transactions::direction.is_null())
-            .load::<CompletedTransactionSql>(conn)?;
-        let public_key_vec = comms_public_key.to_vec();
-
-        for tx in txs.drain(..) {
-            if tx.source_public_key == public_key_vec {
-                tx.update(
-                    UpdateCompletedTransactionSql::from(UpdateCompletedTransaction {
-                        status: None,
-                        timestamp: None,
-                        cancelled: None,
-                        direction: Some(TransactionDirection::Outbound),
-                        send_count: None,
-                        last_send_timestamp: None,
-                    }),
-                    conn,
-                )?;
-            } else {
-                tx.update(
-                    UpdateCompletedTransactionSql::from(UpdateCompletedTransaction {
-                        status: None,
-                        timestamp: None,
-                        cancelled: None,
-                        direction: Some(TransactionDirection::Inbound),
-                        send_count: None,
-                        last_send_timestamp: None,
-                    }),
-                    conn,
-                )?;
-            }
-        }
-        Ok(())
-    }
 }
 
 impl Encryptable<Aes256Gcm> for CompletedTransactionSql {
@@ -1891,80 +1849,6 @@ mod test {
                 &conn,
             )
             .unwrap();
-    }
-
-    #[test]
-    pub fn test_migration() {
-        let db_name = format!("{}.sqlite3", string(8).as_str());
-        let temp_dir = tempdir().unwrap();
-        let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}{}", db_folder, db_name);
-
-        embed_migrations!("./migrations");
-        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
-
-        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
-
-        conn.execute("PRAGMA foreign_keys = ON").unwrap();
-
-        let source_pubkey = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
-
-        let mut completed_tx1 = CompletedTransactionSql::try_from(CompletedTransaction {
-            tx_id: 1,
-            source_public_key: source_pubkey.clone(),
-            destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            amount: MicroTari::from(100),
-            fee: MicroTari::from(100),
-            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default()),
-            status: TransactionStatus::Mined,
-            message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
-            cancelled: false,
-            direction: TransactionDirection::Unknown,
-            coinbase_block_height: None,
-            send_count: 0,
-            last_send_timestamp: None,
-        })
-        .unwrap();
-        completed_tx1.direction = None;
-        completed_tx1.commit(&conn).unwrap();
-
-        let mut completed_tx2 = CompletedTransactionSql::try_from(CompletedTransaction {
-            tx_id: 2,
-            source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            destination_public_key: source_pubkey.clone(),
-            amount: MicroTari::from(100),
-            fee: MicroTari::from(100),
-            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default()),
-            status: TransactionStatus::Mined,
-            message: "Yo!".to_string(),
-            timestamp: Utc::now().naive_utc(),
-            cancelled: false,
-            direction: TransactionDirection::Unknown,
-            coinbase_block_height: None,
-            send_count: 0,
-            last_send_timestamp: None,
-        })
-        .unwrap();
-        completed_tx2.direction = None;
-        completed_tx2.commit(&conn).unwrap();
-
-        let txs = CompletedTransactionSql::index_by_cancelled(&conn, false).unwrap();
-        assert!(txs[0].direction.is_none());
-        assert!(txs[1].direction.is_none());
-
-        CompletedTransactionSql::migrate(source_pubkey, &conn).unwrap();
-
-        let txs = CompletedTransactionSql::index_by_cancelled(&conn, false).unwrap();
-        assert!(txs[0].direction.is_some());
-        assert!(txs[1].direction.is_some());
-        if txs[0].tx_id == 1 {
-            assert_eq!(txs[0].direction, Some(1));
-            assert_eq!(txs[1].direction, Some(0));
-        } else {
-            assert_eq!(txs[0].direction, Some(0));
-            assert_eq!(txs[1].direction, Some(1));
-        }
     }
 
     #[test]
