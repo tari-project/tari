@@ -650,7 +650,7 @@ mod test {
         let a = TestParams::new();
         // Bob's parameters
         let b = TestParams::new();
-        let (utxo, input) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, MicroTari(25000), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         let fee = Fee::calculate(MicroTari(20), 1, 1, 2);
         builder
@@ -660,7 +660,7 @@ mod test {
             .with_private_nonce(a.nonce.clone())
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
-            .with_amount(0, MicroTari(500));
+            .with_amount(0, MicroTari(5000));
         let mut alice = builder.build::<Blake256>(&factories).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
@@ -818,7 +818,7 @@ mod test {
         let a = TestParams::new();
         // Bob's parameters
         let b = TestParams::new();
-        let alice_value = MicroTari(2500);
+        let alice_value = MicroTari(25000);
         let (utxo, input) = make_input(&mut OsRng, alice_value, &factories.commitment);
 
         // Rewind params
@@ -842,7 +842,7 @@ mod test {
             .with_private_nonce(a.nonce.clone())
             .with_rewindable_change_secret(a.change_key.clone(), rewind_data)
             .with_input(utxo.clone(), input)
-            .with_amount(0, MicroTari(500));
+            .with_amount(0, MicroTari(5000));
         let mut alice = builder.build::<Blake256>(&factories).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();

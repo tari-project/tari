@@ -339,7 +339,7 @@ impl SenderTransactionInitializer {
         // The fee should be less than the amount being sent. This isn't a protocol requirement, but it's what you want
         // 99.999% of the time, however, always preventing this will also prevent spending dust in some edge
         // cases.
-        if total_fee > self.calculate_amount_to_others() {
+        if self.amounts.size() > 0 && total_fee > self.calculate_amount_to_others() {
             let ids_clone = ids.to_vec();
             warn!(
                 target: LOG_TARGET,
@@ -595,14 +595,14 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         let (utxo, input) = make_input(&mut OsRng, MicroTari(100_000), &factories.commitment);
-        let output = UnblindedOutput::new(MicroTari(150), p.spend_key, None);
+        let output = UnblindedOutput::new(MicroTari(15000), p.spend_key, None);
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(2);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
-            .with_amount(0, MicroTari(120))
-            .with_amount(1, MicroTari(110))
+            .with_amount(0, MicroTari(1200))
+            .with_amount(1, MicroTari(1100))
             .with_private_nonce(p.nonce)
             .with_input(utxo, input)
             .with_output(output)
