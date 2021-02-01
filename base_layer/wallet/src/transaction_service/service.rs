@@ -54,7 +54,12 @@ use futures::{
 };
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryInto,
+    sync::Arc,
+    time::Duration,
+};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 #[cfg(feature = "test_harness")]
@@ -117,6 +122,7 @@ pub struct TransactionService<
     send_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
     finalized_transaction_senders: HashMap<u64, Sender<(CommsPublicKey, TxId, Transaction)>>,
     receiver_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
+    active_transaction_broadcast_protocols: HashSet<u64>,
     timeout_update_publisher: broadcast::Sender<Duration>,
     base_node_update_publisher: broadcast::Sender<CommsPublicKey>,
     power_mode: PowerMode,
@@ -190,6 +196,7 @@ where
             send_transaction_cancellation_senders: HashMap::new(),
             finalized_transaction_senders: HashMap::new(),
             receiver_transaction_cancellation_senders: HashMap::new(),
+            active_transaction_broadcast_protocols: HashSet::new(),
             timeout_update_publisher,
             base_node_update_publisher,
             power_mode: PowerMode::Normal,
@@ -1220,16 +1227,24 @@ where
         match self.base_node_public_key.clone() {
             None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
             Some(pk) => {
-                let protocol = TransactionBroadcastProtocol::new(
-                    tx_id,
-                    self.resources.clone(),
-                    timeout,
-                    pk,
-                    self.timeout_update_publisher.subscribe(),
-                    self.base_node_update_publisher.subscribe(),
-                );
-                let join_handle = tokio::spawn(protocol.execute());
-                join_handles.push(join_handle);
+                // Check if the protocol has already been started
+                if self.active_transaction_broadcast_protocols.insert(tx_id) {
+                    let protocol = TransactionBroadcastProtocol::new(
+                        tx_id,
+                        self.resources.clone(),
+                        timeout,
+                        pk,
+                        self.timeout_update_publisher.subscribe(),
+                        self.base_node_update_publisher.subscribe(),
+                    );
+                    let join_handle = tokio::spawn(protocol.execute());
+                    join_handles.push(join_handle);
+                } else {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Transaction Broadcast Protocol (TxId: {}) already started", tx_id
+                    );
+                }
             },
         }
 
@@ -1271,8 +1286,11 @@ where
                     target: LOG_TARGET,
                     "Transaction Broadcast Protocol for TxId: {} completed successfully", id
                 );
+                let _ = self.active_transaction_broadcast_protocols.remove(&id);
             },
             Err(TransactionServiceProtocolError { id, error }) => {
+                let _ = self.active_transaction_broadcast_protocols.remove(&id);
+
                 if let TransactionServiceError::Shutdown = error {
                     return;
                 }
