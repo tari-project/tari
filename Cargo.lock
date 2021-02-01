@@ -4170,7 +4170,6 @@ dependencies = [
  "tari_shutdown",
  "tari_storage",
  "tari_test_utils",
- "tari_wallet",
  "tempfile",
  "thiserror",
  "tokio",
