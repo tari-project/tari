@@ -373,6 +373,12 @@ monerod_url = "http://18.133.55.120:38081"
 # Address of the tari_merge_mining_proxy application
 proxy_host_address = "127.0.0.1:7878"
 
+## In sole merged mining, the block solution is usually submitted to the Monero blockchain
+# (monerod) as well as to the Tari blockchain, then this setting should be "true". With pool
+# merged mining, there is no sense in submitting the solution to the Monero blockchain as the
+# pool does that, then this setting should be "false". (default = true).
+proxy_submit_to_origin = true
+
 # If authentication is being used for curl
 monerod_use_auth=false
 
@@ -401,13 +407,13 @@ monerod_password=""
 # Default: value from `base_node.grpc_console_wallet_address`
 #wallet_grpc_address = "127.0.0.1:18143"
 
-# Start mining only when base node is bootstrapped 
+# Start mining only when base node is bootstrapped
 # and current block height is on the tip of network
 # Default: true
 #mine_on_tip_only=true
 
 # Will check tip with node every N seconds and restart mining
-# if height already taken and option `mine_on_tip_only` is set 
+# if height already taken and option `mine_on_tip_only` is set
 # to true
 # Default: 30 seconds
 #validate_tip_timeout_sec=30

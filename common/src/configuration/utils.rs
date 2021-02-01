@@ -262,6 +262,8 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
         .unwrap();
     cfg.set_default("merge_mining_proxy.stibbons.proxy_host_address", "127.0.0.1:7878")
         .unwrap();
+    cfg.set_default("merge_mining_proxy.stibbons.proxy_submit_to_origin", true)
+        .unwrap();
     cfg.set_default("merge_mining_proxy.stibbons.monerod_use_auth", "false")
         .unwrap();
     cfg.set_default("merge_mining_proxy.stibbons.monerod_username", "")
