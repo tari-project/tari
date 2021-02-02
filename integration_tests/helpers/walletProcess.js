@@ -10,6 +10,7 @@ class WalletProcess {
 
     constructor(name, baseNodeAddress, baseNodePort, baseNodeGrpcPort) {
             this.name = name;
+            this.nodeFile = "cwalletid.json";
             this.baseNodeAddress = baseNodeAddress;
             this.baseNodePort = baseNodePort;
             this.baseNodeGrpcPort = baseNodeGrpcPort;
@@ -25,17 +26,8 @@ class WalletProcess {
         this.port = await getFreePort(19000, 25000);
         this.name = `Wallet${this.port}-${this.name}`;
         this.grpcPort = await getFreePort(19000, 25000);
-        this.nodeFile = "cwalletid.json";
         this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
-           //await this.run("cargo",
-                // ["run", "--release", "--bin", "tari_console_wallet", "--", "--base-path", ".", "--create-id", "--init", "--password", "kensentme", "--daemon"]);
     }
-
-    getPubKey() {
-       //will fail since walletid file was removed in another PR
-       return  this.nodeInfo["public_key"];
-    }
-
 
     getGrpcAddress() {
         let address = "127.0.0.1:" + this.grpcPort;
@@ -57,7 +49,7 @@ class WalletProcess {
                 fs.mkdirSync(this.baseDir + "/log", {recursive: true});
             }
 
-           let envs = createEnv("nodeid.json","127.0.0.1",this.grpcPort, this.baseNodeGrpcAddress, this.baseNodeGRPCPort,this.baseNodePort, "127.0.0.1:8080", [], this.peerSeeds)
+           let envs = createEnv(this.name,true, "nodeid.json","127.0.0.1",this.grpcPort, this.port, this.baseNodeGrpcAddress, this.baseNodeGRPCPort,this.baseNodePort, "127.0.0.1:8081", [], this.peerSeeds)
 
             var ps = spawn(cmd, args, {
                 cwd: this.baseDir,

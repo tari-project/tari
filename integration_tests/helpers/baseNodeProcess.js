@@ -90,7 +90,7 @@ class BaseNodeProcess {
                 fs.mkdirSync(this.baseDir + "/log", {recursive: true});
             }
 
-            let envs = createEnv(this.nodeFile,"127.0.0.1", "8080","127.0.0.1",this.grpcPort,this.port,"127.0.0.1:8080",this.options,this.peerSeeds);
+            let envs = createEnv(this.name,false, this.nodeFile,"127.0.0.1", "8082","8081","127.0.0.1",this.grpcPort,this.port,"127.0.0.1:8080",this.options,this.peerSeeds);
 
             var ps = spawn(cmd, args, {
                 cwd: this.baseDir,

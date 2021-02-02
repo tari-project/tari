@@ -14,7 +14,16 @@ class WalletClient {
     }
 
     async getTransactionInfo(args) {
-          return await this.client.getTransactionInfo(args);
+      return await this.client.getTransactionInfo(args);
+    }
+
+    async identify(args) {
+       let info = await this.client.identify(args);
+       return {
+         "public_key": info["public_key"].toString('utf8'),
+         "public_address": info["public_address"],
+         "node_id": info["node_id"].toString('utf8'),
+       };
     }
 }
 

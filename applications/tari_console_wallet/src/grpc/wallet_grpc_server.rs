@@ -6,6 +6,8 @@ use tari_app_grpc::{
         wallet_server,
         GetCoinbaseRequest,
         GetCoinbaseResponse,
+        GetIdentityRequest,
+        GetIdentityResponse,
         GetTransactionInfoRequest,
         GetTransactionInfoResponse,
         GetVersionRequest,
@@ -47,6 +49,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn get_version(&self, _: Request<GetVersionRequest>) -> Result<Response<GetVersionResponse>, Status> {
         Ok(Response::new(GetVersionResponse {
             version: env!("CARGO_PKG_VERSION").to_string(),
+        }))
+    }
+
+    async fn identify(&self, request: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
+        let _request = request.into_inner();
+
+        let identity = self.wallet.comms.node_identity();
+        Ok(Response::new(GetIdentityResponse {
+            public_key: identity.public_key().to_string().as_bytes().to_vec(),
+            public_address: identity.public_address().to_string(),
+            node_id: identity.node_id().to_string().as_bytes().to_vec(),
         }))
     }
 

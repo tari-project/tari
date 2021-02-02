@@ -9,8 +9,8 @@ Feature: Wallet Transfer
     When I merge mine 15 blocks via PROXY
     Then all nodes are at height 15
     # Need to do some waiting so that wallet can check if locks are mined (approx 90 seconds)
-    When I wait 90 seconds
-    And I send 5 tari from Wallet_A to Wallet_B,Wallet_C at fee 100
+    When I wait 120 seconds
+    When I send 50000 tari from Wallet_A to Wallet_B,Wallet_C at fee 100
     And I merge mine 10 blocks via PROXY
     Then all nodes are at height 25
     When I wait 300 seconds
