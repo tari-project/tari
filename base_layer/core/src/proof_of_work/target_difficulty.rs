@@ -20,7 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::proof_of_work::{difficulty::DifficultyAdjustment, lwma_diff::LinearWeightedMovingAverage, Difficulty};
+use crate::{
+    consensus::ConsensusConstants,
+    proof_of_work::{
+        difficulty::DifficultyAdjustment,
+        lwma_diff::LinearWeightedMovingAverage,
+        Difficulty,
+        PowAlgorithm,
+    },
+};
 use std::cmp;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
@@ -87,6 +95,12 @@ impl TargetDifficultyWindow {
     pub fn calculate(&self) -> Difficulty {
         let difficulty = self.lwma.get_difficulty();
         cmp::min(self.max_difficulty, cmp::max(difficulty, self.min_difficulty))
+    }
+
+    pub fn update_consensus_constants(&mut self, constants: &ConsensusConstants, pow_algo: PowAlgorithm) {
+        self.lwma.update_consensus_constants(constants, pow_algo);
+        self.min_difficulty = constants.min_pow_difficulty(pow_algo);
+        self.max_difficulty = constants.max_pow_difficulty(pow_algo);
     }
 }
 

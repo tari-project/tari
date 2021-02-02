@@ -28,6 +28,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct TargetDifficulties {
+    consensus_manager: ConsensusManager,
     monero: TargetDifficultyWindow,
     sha3: TargetDifficultyWindow,
 }
@@ -35,17 +36,36 @@ pub struct TargetDifficulties {
 impl TargetDifficulties {
     pub fn new(consensus_rules: &ConsensusManager, height: u64) -> Self {
         Self {
+            consensus_manager: consensus_rules.clone(),
             monero: consensus_rules.new_target_difficulty(PowAlgorithm::Monero, height),
             sha3: consensus_rules.new_target_difficulty(PowAlgorithm::Sha3, height),
         }
     }
 
     pub fn add_back(&mut self, header: &BlockHeader, target_difficulty: Difficulty) {
+        if self
+            .consensus_manager
+            .consensus_constants(header.height)
+            .effective_from_height() ==
+            header.height
+        {
+            // If this matches we need to update the constants, as on this height a new height is present.
+            self.update_consensus_constants(header.height);
+        }
         self.get_mut(header.pow_algo())
             .add_back(header.timestamp(), target_difficulty);
     }
 
     pub fn add_front(&mut self, header: &BlockHeader, target_difficulty: Difficulty) {
+        if self
+            .consensus_manager
+            .consensus_constants(header.height)
+            .effective_from_height() ==
+            header.height
+        {
+            // If this matches we need to update the constants, as on this height a new height is present.
+            self.update_consensus_constants(header.height);
+        }
         self.get_mut(header.pow_algo())
             .add_front(header.timestamp(), target_difficulty);
     }
@@ -76,5 +96,14 @@ impl TargetDifficulties {
             Blake => unimplemented!(),
             Sha3 => &mut self.sha3,
         }
+    }
+
+    fn update_consensus_constants(&mut self, height: u64) {
+        self.monero.update_consensus_constants(
+            &self.consensus_manager.consensus_constants(height),
+            PowAlgorithm::Monero,
+        );
+        self.sha3
+            .update_consensus_constants(&self.consensus_manager.consensus_constants(height), PowAlgorithm::Sha3);
     }
 }
