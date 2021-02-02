@@ -26,7 +26,7 @@ then
     echo
 else
     # Copy the config file to the XMRig folder
-    cp -f "${config_path}/config_xmrig.json" "${xmrig_folder}/config.json"
+    cp -f "${config_path}/xmrig_config_example_stagenet.json" "${xmrig_folder}/config.json"
     # Run
     echo Spawning XMRig into new terminal..
     gnome-terminal --working-directory="$PWD" -- "${xmrig_folder}/${xmrig_runtime}"

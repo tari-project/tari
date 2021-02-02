@@ -116,7 +116,9 @@ Source: "install_openssl.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "get_openssl_win.ps1"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "get_xmrig_win.ps1"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\common\xmrig_config\config_example.json"; DestDir: "{app}\config"; DestName: "config_xmrig.json"; Flags: ignoreversion
+Source: "..\common\xmrig_config\config_example_stagenet.json"; DestDir: "{app}\config"; DestName: "xmrig_config_example_stagenet.json"; Flags: ignoreversion
+Source: "..\common\xmrig_config\config_example_mainnet.json"; DestDir: "{app}\config"; DestName: "xmrig_config_example_mainnet.json"; Flags: ignoreversion
+Source: "..\common\xmrig_config\config_example_mainnet_self_select.json"; DestDir: "{app}\config"; DestName: "xmrig_config_example_mainnet_self_select.json"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Start {#AllName}"; Filename: "{app}\runtime\{#AllExeName}"; WorkingDir: "{app}"

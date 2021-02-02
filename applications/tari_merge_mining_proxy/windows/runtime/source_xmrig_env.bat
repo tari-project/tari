@@ -32,7 +32,7 @@ if exist "%TARI_XMRIG_DIR%\%my_exe%" (
 )
 
 rem Copy the config file to the XMRig folder
-copy /y /v "%config_path%\config_xmrig.json" "%TARI_XMRIG_DIR%\config.json"
+copy /y /v "%config_path%\xmrig_config_example_stagenet.json" "%TARI_XMRIG_DIR%\config.json"
 
 rem Run
 "%xmrig%"

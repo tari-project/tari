@@ -7,7 +7,8 @@
         {
             "coin": "monero",
             "url": "127.0.0.1:7878",
-            "user": "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt",
+            "user": "888tNkZrPN6JsEgekjMnABU4TBzc2Dt29EPAvkRxbANsAnjyPbb3iQ1YBRk1UXcdRsiKc9dhwMVgN5S9cQUiyoogDavup3H",
+            "pass": "MyWallet",
             "tls": false,
             "daemon": true
         }
