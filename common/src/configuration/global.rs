@@ -108,6 +108,7 @@ pub struct GlobalConfig {
     pub monerod_password: String,
     pub monerod_use_auth: bool,
     pub proxy_host_address: SocketAddr,
+    pub proxy_submit_to_origin: bool,
     pub force_sync_peers: Vec<String>,
     pub wait_for_initial_sync_at_startup: bool,
     pub max_randomx_vms: usize,
@@ -557,6 +558,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_bool(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
+    let key = config_string("merge_mining_proxy", &net_str, "proxy_submit_to_origin");
+    let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or_else(|_| true);
+
     Ok(GlobalConfig {
         network,
         comms_transport,
@@ -614,6 +618,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         wallet_base_node_service_request_max_age,
         prevent_fee_gt_amount,
         proxy_host_address,
+        proxy_submit_to_origin,
         monerod_url,
         monerod_username,
         monerod_password,

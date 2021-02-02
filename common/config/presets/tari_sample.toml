@@ -27,7 +27,7 @@ pruning_horizon = 100
 [merge_mining_proxy.stibbons]
 monerod_url = "http://18.133.55.120:38081"
 proxy_host_address = "127.0.0.1:7878"
+proxy_submit_to_origin = true
 monerod_use_auth=false
 monerod_username=""
 monerod_password=""
-

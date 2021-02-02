@@ -29,6 +29,7 @@ use bytes::BytesMut;
 use futures::{StreamExt, TryFutureExt};
 use hyper::{
     body::Bytes,
+    header::HeaderValue,
     http::{header, response::Parts},
     service::Service,
     Body,
@@ -37,6 +38,7 @@ use hyper::{
     Response,
     StatusCode,
     Uri,
+    Version,
 };
 use jsonrpc::error::StandardError;
 use reqwest::{ResponseBuilderExt, Url};
@@ -75,6 +77,7 @@ pub struct MergeMiningProxyConfig {
     pub grpc_base_node_address: SocketAddr,
     pub grpc_console_wallet_address: SocketAddr,
     pub proxy_host_address: SocketAddr,
+    pub proxy_submit_to_origin: bool,
     pub wait_for_initial_sync_at_startup: bool,
 }
 
@@ -89,6 +92,7 @@ impl From<GlobalConfig> for MergeMiningProxyConfig {
             grpc_base_node_address: config.grpc_base_node_address,
             grpc_console_wallet_address: config.grpc_console_wallet_address,
             proxy_host_address: config.proxy_host_address,
+            proxy_submit_to_origin: config.proxy_submit_to_origin,
             wait_for_initial_sync_at_startup: config.wait_for_initial_sync_at_startup,
         }
     }
@@ -114,6 +118,18 @@ impl MergeMiningProxyService {
     pub async fn check_connections<W: Write>(&self, w: &mut W) -> bool {
         let mut is_success = true;
         let inner = &self.inner;
+
+        if inner.config.proxy_submit_to_origin {
+            let _ = writeln!(
+                w,
+                "Solo mining configuration detected, configured to submit to Monero daemon."
+            );
+        } else {
+            let _ = writeln!(
+                w,
+                "Pooled mining configuration detected, configured to not submit to Monero daemon."
+            );
+        }
 
         let _ = writeln!(w, "Connections:");
 
@@ -606,7 +622,7 @@ impl InnerService {
         );
         let mut builder = self
             .http_client
-            .request(request.method().clone(), monerod_uri)
+            .request(request.method().clone(), monerod_uri.clone())
             .headers(request.headers().clone());
 
         if self.config.monerod_use_auth {
@@ -615,13 +631,29 @@ impl InnerService {
         }
 
         trace!(target: LOG_TARGET, "Sending request {:?}", request.body(),);
-        let resp = builder
+
+        let json_response;
+        if submit_block && !self.config.proxy_submit_to_origin {
+            // Assume it would be accepted
+            let req_id = json["id"].as_i64().unwrap_or_else(|| -1);
+            let accept_response = json::json!({
+               "id": req_id,
+               "jsonrpc": "2.0",
+               "result": "{}",
+               "status": "OK",
+               "untrusted": false
+            });
+            json_response =
+                convert_json_to_hyper_json_response(accept_response, StatusCode::OK, monerod_uri.clone()).await?;
+        } else {
+            let resp = builder
                 // This is a cheap clone of the request body
                 .body(request.body().clone())
                 .send()
                 .await
                 .map_err(MmProxyError::MonerodRequestFailed)?;
-        let json_response = convert_reqwest_response_to_hyper_json_response(resp).await?;
+            json_response = convert_reqwest_response_to_hyper_json_response(resp).await?;
+        }
 
         if submit_block {
             debug!(
@@ -695,6 +727,26 @@ fn standard_rpc_error(err: jsonrpc::error::StandardError, data: Option<json::Val
     ))
     .expect("jsonrpc's serialization implementation is expected to always succeed")
     .into()
+}
+
+async fn convert_json_to_hyper_json_response(
+    resp: json::Value,
+    code: StatusCode,
+    url: Url,
+) -> Result<Response<json::Value>, MmProxyError>
+{
+    let mut builder = Response::builder();
+
+    let headers = builder
+        .headers_mut()
+        .expect("headers_mut errors only when the builder has an error (e.g invalid header value)");
+    headers.append("Content-Type", HeaderValue::from_str("application/json").unwrap());
+
+    builder = builder.version(Version::HTTP_11).status(code).url(url);
+
+    let body = resp;
+    let resp = builder.body(body)?;
+    Ok(resp)
 }
 
 async fn convert_reqwest_response_to_hyper_json_response(
