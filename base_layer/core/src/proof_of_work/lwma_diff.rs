@@ -21,24 +21,22 @@ pub struct LinearWeightedMovingAverage {
     target_difficulties: Vec<(EpochTime, Difficulty)>,
     block_window: usize,
     target_time: u64,
-    initial_difficulty: Difficulty,
     max_block_time: u64,
 }
 
 impl LinearWeightedMovingAverage {
-    pub fn new(block_window: usize, target_time: u64, initial_difficulty: Difficulty, max_block_time: u64) -> Self {
+    pub fn new(block_window: usize, target_time: u64, max_block_time: u64) -> Self {
         Self {
             target_difficulties: Vec::with_capacity(block_window + 1),
             block_window,
             target_time,
-            initial_difficulty,
             max_block_time,
         }
     }
 
-    fn calculate(&self) -> Difficulty {
+    fn calculate(&self) -> Option<Difficulty> {
         if self.target_difficulties.len() <= 1 {
-            return self.initial_difficulty;
+            return None;
         }
 
         // Use the array length rather than block_window to include early cases where the no. of pts < block_window
@@ -99,7 +97,7 @@ impl LinearWeightedMovingAverage {
         }
         let target = target.ceil() as u64; // difficulty difference of 1 should not matter much, but difficulty should never be below 1, ceil(0.9) = 1
         trace!(target: LOG_TARGET, "New target difficulty: {}", target);
-        target.into()
+        Some(target.into())
     }
 
     #[inline]
@@ -151,7 +149,7 @@ impl DifficultyAdjustment for LinearWeightedMovingAverage {
         Ok(())
     }
 
-    fn get_difficulty(&self) -> Difficulty {
+    fn get_difficulty(&self) -> Option<Difficulty> {
         self.calculate()
     }
 }

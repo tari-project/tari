@@ -108,7 +108,7 @@ pub trait DifficultyAdjustment {
     ) -> Result<(), DifficultyAdjustmentError>;
 
     /// Return the calculated target difficulty for the next block.
-    fn get_difficulty(&self) -> Difficulty;
+    fn get_difficulty(&self) -> Option<Difficulty>;
 }
 
 #[cfg(feature = "base_node")]

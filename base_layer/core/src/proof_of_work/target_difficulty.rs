@@ -27,8 +27,6 @@ use tari_crypto::tari_utilities::epoch_time::EpochTime;
 #[derive(Debug, Clone)]
 pub struct TargetDifficultyWindow {
     lwma: LinearWeightedMovingAverage,
-    min_difficulty: Difficulty,
-    max_difficulty: Difficulty,
 }
 
 impl TargetDifficultyWindow {
@@ -37,22 +35,13 @@ impl TargetDifficultyWindow {
     /// # Panics
     ///
     /// Panics if block_window is 0
-    pub(crate) fn new(
-        block_window: usize,
-        target_time: u64,
-        min_difficulty: Difficulty,
-        max_difficulty: Difficulty,
-        max_block_time: u64,
-    ) -> Self
-    {
+    pub(crate) fn new(block_window: usize, target_time: u64, max_block_time: u64) -> Self {
         assert!(
             block_window > 0,
             "TargetDifficulty::new expected block_window to be greater than 0, but 0 was given"
         );
         Self {
-            lwma: LinearWeightedMovingAverage::new(block_window, target_time, min_difficulty, max_block_time),
-            min_difficulty,
-            max_difficulty,
+            lwma: LinearWeightedMovingAverage::new(block_window, target_time, max_block_time),
         }
     }
 
@@ -84,9 +73,8 @@ impl TargetDifficultyWindow {
     }
 
     /// Calculates the target difficulty for the current set of target difficulties.
-    pub fn calculate(&self) -> Difficulty {
-        let difficulty = self.lwma.get_difficulty();
-        cmp::min(self.max_difficulty, cmp::max(difficulty, self.min_difficulty))
+    pub fn calculate(&self, min: Difficulty, max: Difficulty) -> Difficulty {
+        cmp::max(min, cmp::min(max, self.lwma.get_difficulty().unwrap_or(min)))
     }
 }
 
@@ -96,7 +84,7 @@ mod test {
 
     #[test]
     fn it_calculates_the_target_difficulty() {
-        let mut target_difficulties = TargetDifficultyWindow::new(5, 60, 1.into(), 200.into(), 60 * 6);
+        let mut target_difficulties = TargetDifficultyWindow::new(5, 60, 1.into(), 60 * 6);
         let mut time = 60.into();
         target_difficulties.add_back(time, 100.into());
         time += 60.into();

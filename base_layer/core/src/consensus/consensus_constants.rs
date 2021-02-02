@@ -249,18 +249,31 @@ impl ConsensusConstants {
 
     pub fn stibbons() -> Vec<Self> {
         let mut algos = HashMap::new();
-        // seting sha3/monero to 40/60 split
+        // Previously these were incorrectly set to `target_time` of 20 and 30, so
+        // most blocks before 1400 hit the minimum difficulty of 60M and 60k
+        // algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
+        //     max_target_time: 1800,
+        //     min_difficulty: 60_000_000.into(),
+        //     max_difficulty: u64::MAX.into(),
+        //     target_time: 30,
+        // });
+        // algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+        //     max_target_time: 1200,
+        //     min_difficulty: 60_000.into(),
+        //     max_difficulty: u64::MAX.into(),
+        //     target_time: 20,
+        // });
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
-            max_difficulty: u64::MAX.into(),
-            target_time: 30,
+            max_difficulty: 60_000_000.into(),
+            target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
             min_difficulty: 60_000.into(),
-            max_difficulty: u64::MAX.into(),
-            target_time: 20,
+            max_difficulty: 60_000.into(),
+            target_time: 200,
         });
         let mut algos2 = HashMap::new();
         // seting sha3/monero to 40/60 split
