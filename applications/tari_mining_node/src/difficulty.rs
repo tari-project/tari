@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::errors::{err_empty, MinerError};
-use bigint::uint::U256;
 use sha3::{Digest, Sha3_256};
 use tari_app_grpc::tari_rpc::BlockHeader;
+use tari_core::large_ints::U256;
 
 pub type Difficulty = u64;
 
