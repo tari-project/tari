@@ -22,7 +22,7 @@
 
 use std::time::Duration;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct OutputManagerServiceConfig {
     pub base_node_query_timeout: Duration,
     pub max_utxo_query_size: usize,

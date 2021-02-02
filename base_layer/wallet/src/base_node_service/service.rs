@@ -238,9 +238,6 @@ where
                 age <= self.config.request_max_age
             });
 
-        trace!(target: LOG_TARGET, "current requests: {:?}", current_requests);
-        trace!(target: LOG_TARGET, "discarded requests : {:?}", old_requests);
-
         self.requests = current_requests;
 
         // check if base node is offline
@@ -261,8 +258,6 @@ where
             .send_direct(dest_public_key, message)
             .await
             .map_err(BaseNodeServiceError::OutboundError)?;
-
-        debug!(target: LOG_TARGET, "Refresh chain metadata message sent");
 
         Ok(())
     }

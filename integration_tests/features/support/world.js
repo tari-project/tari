@@ -19,6 +19,7 @@ class CustomWorld {
         this.blocks =  {};
         this.transactions = {};
         this.peers = {};
+        this.transactionsMap = new Map();
     }
 
     async createSeedNode(name) {
@@ -106,6 +107,13 @@ class CustomWorld {
     async startNode(name) {
         const node = this.seeds[name] || this.nodes[name];
         await node.start();
+    }
+
+    addTransaction(pubKey, txId) {
+        if (!this.transactionsMap.has(pubKey)) {
+            this.transactionsMap.set(pubKey, [])
+        }
+        this.transactionsMap.get(pubKey).push(txId)
     }
 }
 
