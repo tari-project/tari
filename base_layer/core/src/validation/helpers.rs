@@ -46,12 +46,8 @@ use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::He
 pub const LOG_TARGET: &str = "c::val::helpers";
 
 /// This function tests that the block timestamp is less than the FTL
-pub fn check_timestamp_ftl(
-    block_header: &BlockHeader,
-    consensus_manager: &ConsensusManager,
-) -> Result<(), ValidationError>
-{
-    if block_header.timestamp > consensus_manager.consensus_constants(block_header.height).ftl() {
+pub fn check_timestamp_ftl(block_header: &BlockHeader, constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    if block_header.timestamp > constants.ftl() {
         warn!(
             target: LOG_TARGET,
             "Invalid Future Time Limit on block:{}",
@@ -121,7 +117,7 @@ pub fn check_header_timestamp_greater_than_median(
 /// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
 pub fn check_pow_data<B: BlockchainBackend>(
     block_header: &BlockHeader,
-    rules: &ConsensusManager,
+    constants: &ConsensusConstants,
     db: &B,
 ) -> Result<(), ValidationError>
 {
@@ -131,10 +127,7 @@ pub fn check_pow_data<B: BlockchainBackend>(
             let monero_data =
                 MoneroData::from_header(block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
             let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.key)?;
-            if (seed_height != 0) &&
-                (block_header.height - seed_height >
-                    rules.consensus_constants(block_header.height).max_randomx_seed_height())
-            {
+            if (seed_height != 0) && (block_header.height - seed_height > constants.max_randomx_seed_height()) {
                 return Err(ValidationError::BlockHeaderError(
                     BlockHeaderValidationError::OldSeedHash,
                 ));
@@ -164,6 +157,13 @@ pub fn check_target_difficulty(
         PowAlgorithm::Blake => unimplemented!(),
         PowAlgorithm::Sha3 => sha3_difficulty(block_header),
     };
+    debug!(
+        target: LOG_TARGET,
+        "check_target_difficulty: PoW = {}, achieved = {}, target = {}",
+        block_header.pow_algo(),
+        achieved,
+        target,
+    );
     if achieved < target {
         warn!(
             target: LOG_TARGET,

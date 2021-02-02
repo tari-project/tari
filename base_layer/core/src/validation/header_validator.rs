@@ -42,7 +42,12 @@ impl HeaderValidator {
         block_header: &BlockHeader,
     ) -> Result<(Difficulty, Difficulty), ValidationError>
     {
-        let difficulty_window = fetch_target_difficulty(db, &self.rules, block_header.pow_algo(), block_header.height)?;
+        let difficulty_window = fetch_target_difficulty(
+            db,
+            self.rules.consensus_constants(block_header.height),
+            block_header.pow_algo(),
+            block_header.height,
+        )?;
 
         let target = difficulty_window.calculate();
         Ok((
@@ -92,7 +97,7 @@ impl<B: BlockchainBackend> HeaderValidation<B> for HeaderValidator {
         previous_data: &BlockHeaderAccumulatedData,
     ) -> Result<BlockHeaderAccumulatedDataBuilder, ValidationError>
     {
-        check_timestamp_ftl(&header, &self.rules)?;
+        check_timestamp_ftl(&header, self.rules.consensus_constants(header.height))?;
         let hash = header.hash();
         let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
         trace!(
@@ -106,7 +111,7 @@ impl<B: BlockchainBackend> HeaderValidation<B> for HeaderValidator {
             "BlockHeader validation: Median timestamp is ok for {} ",
             header_id
         );
-        check_pow_data(header, &self.rules, backend)?;
+        check_pow_data(header, self.rules.consensus_constants(header.height), backend)?;
         let (achieved, target) = self.check_achieved_and_target_difficulty(backend, header)?;
         let accum_data = BlockHeaderAccumulatedDataBuilder::default()
             .hash(hash)

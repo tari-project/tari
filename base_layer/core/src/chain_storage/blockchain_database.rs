@@ -41,7 +41,7 @@ use crate::{
         TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
-    consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusManager},
+    consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroData, PowAlgorithm, TargetDifficultyWindow},
     tari_utilities::epoch_time::EpochTime,
     transactions::{
@@ -686,7 +686,12 @@ where B: BlockchainBackend
     ) -> Result<TargetDifficultyWindow, ChainStorageError>
     {
         let db = self.db_read_access()?;
-        fetch_target_difficulty(&*db, &self.consensus_manager, pow_algo, height)
+        fetch_target_difficulty(
+            &*db,
+            self.consensus_manager.consensus_constants(height),
+            pow_algo,
+            height,
+        )
     }
 
     pub fn fetch_target_difficulties(&self, start_hash: HashOutput) -> Result<TargetDifficulties, ChainStorageError> {
@@ -698,7 +703,7 @@ where B: BlockchainBackend
                 value: start_hash.to_hex(),
             })?;
         let start_height = start_header.height;
-        let mut targets = TargetDifficulties::new(&self.consensus_manager, start_height);
+        let mut targets = TargetDifficulties::new(&self.consensus_manager.consensus_constants(start_height));
         let accum_data =
             db.fetch_header_accumulated_data(&start_hash)?
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
@@ -1150,12 +1155,12 @@ fn store_pruning_horizon<T: BlockchainBackend>(db: &mut T, pruning_horizon: u64)
 
 pub fn fetch_target_difficulty<T: BlockchainBackend>(
     db: &T,
-    consensus_manager: &ConsensusManager,
+    constants: &ConsensusConstants,
     pow_algo: PowAlgorithm,
     height: u64,
 ) -> Result<TargetDifficultyWindow, ChainStorageError>
 {
-    let mut target_difficulties = consensus_manager.new_target_difficulty(pow_algo, height);
+    let mut target_difficulties = constants.new_target_difficulty(pow_algo);
     for height in (0..height).rev() {
         // TODO: this can be optimized by retrieving the accumulated data and header at the same time, or even
         // better by retrieving only the epoch and target difficulty in the same lmdb transaction

@@ -370,7 +370,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 header.pow_algo(),
             );
             let height = header.height;
-            chain_headers.push(self.header_validator.validate_and_calculate_metadata(header)?);
+            let chain_header = self.header_validator.validate_and_calculate_metadata(header).await?;
+            chain_headers.push(chain_header);
             debug!(target: LOG_TARGET, "Header #{} is VALID", height,)
         }
 
@@ -464,7 +465,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 );
                 continue;
             }
-            let chain_header = self.header_validator.validate_and_calculate_metadata(header)?;
+            let chain_header = self.header_validator.validate_and_calculate_metadata(header).await?;
             let current_height = chain_header.height();
             self.db
                 .write_transaction()

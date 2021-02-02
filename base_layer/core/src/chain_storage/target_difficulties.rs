@@ -22,7 +22,7 @@
 
 use crate::{
     blocks::BlockHeader,
-    consensus::ConsensusManager,
+    consensus::ConsensusConstants,
     proof_of_work::{Difficulty, PowAlgorithm, TargetDifficultyWindow},
 };
 
@@ -33,10 +33,10 @@ pub struct TargetDifficulties {
 }
 
 impl TargetDifficulties {
-    pub fn new(consensus_rules: &ConsensusManager, height: u64) -> Self {
+    pub fn new(constants: &ConsensusConstants) -> Self {
         Self {
-            monero: consensus_rules.new_target_difficulty(PowAlgorithm::Monero, height),
-            sha3: consensus_rules.new_target_difficulty(PowAlgorithm::Sha3, height),
+            monero: constants.new_target_difficulty(PowAlgorithm::Monero),
+            sha3: constants.new_target_difficulty(PowAlgorithm::Sha3),
         }
     }
 
@@ -56,6 +56,10 @@ impl TargetDifficulties {
 
     pub fn is_full(&self) -> bool {
         self.sha3.is_full() && self.monero.is_full()
+    }
+
+    pub fn block_window(&self) -> usize {
+        self.monero.window_size()
     }
 
     pub fn get(&self, algo: PowAlgorithm) -> &TargetDifficultyWindow {

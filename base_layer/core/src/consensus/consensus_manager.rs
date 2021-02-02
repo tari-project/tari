@@ -39,10 +39,10 @@ use crate::{
         network::Network,
         ConsensusConstants,
     },
-    proof_of_work::{DifficultyAdjustmentError, PowAlgorithm, TargetDifficultyWindow},
+    proof_of_work::DifficultyAdjustmentError,
     transactions::tari_amount::MicroTari,
 };
-use std::{convert::TryFrom, sync::Arc};
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -117,21 +117,6 @@ impl ConsensusManager {
             constants = &c
         }
         constants
-    }
-
-    /// Create a new TargetDifficulty for the given proof of work using constants that are effective from the given
-    /// height
-    pub(crate) fn new_target_difficulty(&self, pow_algo: PowAlgorithm, height: u64) -> TargetDifficultyWindow {
-        let constants = self.consensus_constants(height);
-        let block_window = constants.get_difficulty_block_window();
-
-        TargetDifficultyWindow::new(
-            usize::try_from(block_window).expect("difficulty block window exceeds usize::MAX"),
-            constants.get_diff_target_block_interval(pow_algo),
-            constants.min_pow_difficulty(pow_algo),
-            constants.max_pow_difficulty(pow_algo),
-            constants.get_difficulty_max_block_interval(pow_algo),
-        )
     }
 
     /// Creates a total_coinbase offset containing all fees for the validation from block

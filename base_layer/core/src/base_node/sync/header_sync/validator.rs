@@ -34,7 +34,7 @@ use crate::{
         TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
-    consensus::ConsensusManager,
+    consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
     tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex},
     transactions::types::HashOutput,
@@ -61,6 +61,7 @@ pub struct BlockHeaderSyncValidator<B> {
 #[derive(Debug, Clone)]
 struct State {
     current_height: u64,
+    consensus_constants: ConsensusConstants,
     timestamps: RollingVec<EpochTime>,
     target_difficulties: TargetDifficulties,
     previous_accum: BlockHeaderAccumulatedData,
@@ -100,8 +101,11 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             target_difficulties.get(PowAlgorithm::Sha3).len(),
             target_difficulties.get(PowAlgorithm::Monero).len(),
         );
+
+        let constants = self.consensus_rules.consensus_constants(start_header.height).clone();
         self.state = Some(State {
             current_height: start_header.height,
+            consensus_constants: constants,
             timestamps,
             target_difficulties,
             previous_accum,
@@ -110,7 +114,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         Ok(())
     }
 
-    pub fn validate_and_calculate_metadata(
+    pub async fn validate_and_calculate_metadata(
         &mut self,
         header: BlockHeader,
     ) -> Result<ChainHeader, BlockHeaderSyncError>
@@ -119,12 +123,17 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         if header.height != expected_height {
             return Err(BlockHeaderSyncError::InvalidBlockHeight(expected_height, header.height));
         }
-        check_timestamp_ftl(&header, &self.consensus_rules)?;
+
+        let constants = self.consensus_rules.consensus_constants(header.height).clone();
+        self.reinitialize_state_if_necessary(constants.clone()).await?;
+
+        check_timestamp_ftl(&header, &constants)?;
 
         let state = self.state();
         check_header_timestamp_greater_than_median(&header, &state.timestamps)?;
 
         let target_difficulty = state.target_difficulties.get(header.pow_algo()).calculate();
+
         let achieved = check_target_difficulty(&header, target_difficulty, &self.randomx_factory)?;
         let metadata = BlockHeaderAccumulatedDataBuilder::default()
             .hash(header.hash())
@@ -132,11 +141,10 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             .achieved_difficulty(&state.previous_accum, header.pow_algo(), achieved)
             .total_kernel_offset(&state.previous_accum.total_kernel_offset, &header.total_kernel_offset)
             .build()?;
-        check_pow_data(&header, &self.consensus_rules, &*self.db.inner().db_read_access()?)?;
+        check_pow_data(&header, &constants, &*self.db.inner().db_read_access()?)?;
 
-        // Header is valid, add this header onto the validation state for the next round
         let state = self.state_mut();
-
+        // Header is valid, add this header onto the validation state for the next round
         // Ensure that timestamps are inserted in sorted order
         let maybe_index = state.timestamps.iter().position(|ts| ts >= &header.timestamp());
         match maybe_index {
@@ -188,6 +196,30 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             Ordering::Less => Ok(()),
             Ordering::Equal | Ordering::Greater => Err(BlockHeaderSyncError::WeakerChain),
         }
+    }
+
+    async fn reinitialize_state_if_necessary(
+        &mut self,
+        constants: ConsensusConstants,
+    ) -> Result<(), BlockHeaderSyncError>
+    {
+        if self.is_state_reinitialization_required(&constants) {
+            debug!(
+                target: LOG_TARGET,
+                "State reinitialization required because of a consensus constant change at height {}",
+                constants.effective_from_height()
+            );
+
+            let current_hash = self.state().previous_accum.hash.clone();
+            self.initialize_state(current_hash).await?;
+        }
+
+        Ok(())
+    }
+
+    fn is_state_reinitialization_required(&self, constants: &ConsensusConstants) -> bool {
+        let state = self.state();
+        return state.consensus_constants.effective_from_height() != constants.effective_from_height();
     }
 
     fn state_mut(&mut self) -> &mut State {

@@ -22,11 +22,11 @@
 
 use crate::{
     consensus::{network::Network, KERNEL_WEIGHT, WEIGHT_PER_OUTPUT},
-    proof_of_work::{Difficulty, PowAlgorithm},
+    proof_of_work::{Difficulty, PowAlgorithm, TargetDifficultyWindow},
     transactions::tari_amount::{uT, MicroTari, T},
 };
 use chrono::{DateTime, Duration, Utc};
-use std::{collections::HashMap, ops::Add};
+use std::{collections::HashMap, convert::TryFrom, ops::Add};
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// This is the inner struct used to control all consensus values.
@@ -56,8 +56,7 @@ pub struct ConsensusConstants {
     pub(in crate::consensus) emission_tail: MicroTari,
     /// This is the maximum age a monero merge mined seed can be reused
     max_randomx_seed_height: u64,
-    /// This keeps track of the block split targets and which algo is accepted
-    /// Ideally this should count up to 100. If this does not you will reduce your target time.
+    /// The supported PoW algorithms and their associated constants
     proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>,
     /// This is to keep track of the value inside of the genesis block
     faucet_value: MicroTari,
@@ -175,6 +174,20 @@ impl ConsensusConstants {
             Some(v) => v.max_difficulty,
             _ => 0.into(),
         }
+    }
+
+    /// Create a new TargetDifficulty for the given proof of work using constants that are effective from the given
+    /// height
+    pub(crate) fn new_target_difficulty(&self, pow_algo: PowAlgorithm) -> TargetDifficultyWindow {
+        let block_window = self.get_difficulty_block_window();
+
+        TargetDifficultyWindow::new(
+            usize::try_from(block_window).expect("difficulty block window exceeds usize::MAX"),
+            self.get_diff_target_block_interval(pow_algo),
+            self.min_pow_difficulty(pow_algo),
+            self.max_pow_difficulty(pow_algo),
+            self.get_difficulty_max_block_interval(pow_algo),
+        )
     }
 
     // This is the maximum age a monero merge mined seed can be reused

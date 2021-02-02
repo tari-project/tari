@@ -266,6 +266,7 @@ impl BlockHeaderAccumulatedDataBuilder {
 // TODO: Find a better name and move into `core::blocks` mod
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq)]
 pub struct BlockHeaderAccumulatedData {
+    /// The block hash of the block associated with this data
     pub hash: HashOutput,
     pub total_kernel_offset: BlindingFactor,
     pub achieved_difficulty: Difficulty,

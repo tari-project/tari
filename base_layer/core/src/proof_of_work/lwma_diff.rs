@@ -19,17 +19,17 @@ pub const LOG_TARGET: &str = "c::pow::lwma_diff";
 #[derive(Debug, Clone)]
 pub struct LinearWeightedMovingAverage {
     target_difficulties: Vec<(EpochTime, Difficulty)>,
-    block_window: usize,
+    window_size: usize,
     target_time: u64,
     initial_difficulty: Difficulty,
     max_block_time: u64,
 }
 
 impl LinearWeightedMovingAverage {
-    pub fn new(block_window: usize, target_time: u64, initial_difficulty: Difficulty, max_block_time: u64) -> Self {
+    pub fn new(window_size: usize, target_time: u64, initial_difficulty: Difficulty, max_block_time: u64) -> Self {
         Self {
-            target_difficulties: Vec::with_capacity(block_window + 1),
-            block_window,
+            target_difficulties: Vec::with_capacity(window_size + 1),
+            window_size,
             target_time,
             initial_difficulty,
             max_block_time,
@@ -41,7 +41,7 @@ impl LinearWeightedMovingAverage {
             return self.initial_difficulty;
         }
 
-        // Use the array length rather than block_window to include early cases where the no. of pts < block_window
+        // Use the array length rather than window_size to include early cases where the no. of pts < window_size
         let n = (self.target_difficulties.len() - 1) as u64;
 
         let mut weighted_times: u64 = 0;
@@ -68,7 +68,7 @@ impl LinearWeightedMovingAverage {
             previous_timestamp = this_timestamp;
 
             // Give linearly higher weight to more recent solve times.
-            // Note: This will not overflow for practical values of block_window and solve time.
+            // Note: This will not overflow for practical values of window_size and solve time.
             weighted_times += solve_time * (i + 1) as u64;
         }
         // k is the sum of weights (1+2+..+n) * target_time
@@ -79,7 +79,7 @@ impl LinearWeightedMovingAverage {
             "DiffCalc; t={}; bw={}; n={}; ts[0]={}; ts[n]={}; weighted_ts={}; k={}; diff[0]={}; diff[n]={}; \
              ave_difficulty={}; target={}",
             self.target_time,
-            self.block_window,
+            self.window_size,
             n,
             self.target_difficulties[0].0,
             self.target_difficulties[n as usize].0,
@@ -118,14 +118,14 @@ impl LinearWeightedMovingAverage {
     }
 
     #[inline]
-    pub(super) fn block_window(&self) -> usize {
-        self.block_window
+    pub(super) fn window_size(&self) -> usize {
+        self.window_size
     }
 
     pub fn add_front(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) {
         debug_assert!(
-            self.num_samples() <= self.block_window() + 1,
-            "LinearWeightedMovingAverage: len exceeded block_window"
+            self.num_samples() <= self.window_size() + 1,
+            "LinearWeightedMovingAverage: len exceeded window_size"
         );
         if self.is_at_capacity() {
             self.target_difficulties.pop();
@@ -135,8 +135,8 @@ impl LinearWeightedMovingAverage {
 
     pub fn add_back(&mut self, timestamp: EpochTime, target_difficulty: Difficulty) {
         debug_assert!(
-            self.num_samples() <= self.block_window() + 1,
-            "LinearWeightedMovingAverage: len exceeded block_window"
+            self.num_samples() <= self.window_size() + 1,
+            "LinearWeightedMovingAverage: len exceeded window_size"
         );
         if self.is_at_capacity() {
             self.target_difficulties.remove(0);

@@ -71,7 +71,7 @@ impl TargetDifficultyWindow {
     /// Returns true of the TargetDifficulty has `block_window` data points, otherwise false
     #[inline]
     pub fn is_full(&self) -> bool {
-        self.lwma.num_samples() == self.lwma.block_window() + 1
+        self.lwma.num_samples() == self.lwma.window_size() + 1
     }
 
     pub fn len(&self) -> usize {
@@ -81,6 +81,11 @@ impl TargetDifficultyWindow {
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.lwma.num_samples() == 0
+    }
+
+    #[inline]
+    pub fn window_size(&self) -> usize {
+        self.lwma.window_size()
     }
 
     /// Calculates the target difficulty for the current set of target difficulties.
