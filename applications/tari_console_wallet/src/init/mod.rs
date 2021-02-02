@@ -130,12 +130,11 @@ fn prompt_password(prompt: &str) -> Result<String, ExitCodes> {
 /// Allows the user to change the password of the wallet.
 pub async fn change_password(
     config: &GlobalConfig,
-    node_identity: Option<Arc<NodeIdentity>>,
     arg_password: Option<String>,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), ExitCodes>
 {
-    let mut wallet = init_wallet(config, node_identity, arg_password, None, shutdown_signal).await?;
+    let mut wallet = init_wallet(config, arg_password, None, shutdown_signal).await?;
 
     let passphrase = prompt_password("New wallet password: ")?;
     let confirmed = prompt_password("Confirm new password: ")?;
@@ -213,7 +212,6 @@ pub fn wallet_mode(bootstrap: ConfigBootstrap, boot_mode: WalletBoot) -> WalletM
 /// Setup the app environment and state for use by the UI
 pub async fn init_wallet(
     config: &GlobalConfig,
-    node_identity: Option<Arc<NodeIdentity>>,
     arg_password: Option<String>,
     master_key: Option<PrivateKey>,
     shutdown_signal: ShutdownSignal,
@@ -259,15 +257,6 @@ pub async fn init_wallet(
         target: LOG_TARGET,
         "Databases Initialized. Wallet encrypted? {}.", wallet_encrypted
     );
-    // TODO remove after next TestNet
-    // If we know node_identity is not passed in anymore we dont have to check if we need to write it to db. This
-    // assumes that if its passed in we need to still save it the database.
-    if let Some(mut id_arc) = node_identity {
-        let v = (*Arc::make_mut(&mut id_arc)).clone();
-        wallet_backend
-            .write(WriteOperation::Insert(DbKeyValuePair::Identity(Box::new(v))))
-            .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?;
-    }
     let node_identity = match wallet_backend
         .fetch(&DbKey::Identity)
         .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?
@@ -294,26 +283,12 @@ pub async fn init_wallet(
     let transport_type = setup_wallet_transport_type(&config);
     let transport_type = match transport_type {
         Tor(mut tor_config) => {
-            tor_config.identity = match tor_config.identity {
-                Some(v) => {
-                    // This is temp code and should be removed after testnet
-                    wallet_backend
-                        .write(WriteOperation::Insert(DbKeyValuePair::TorId((*v).clone())))
-                        .map_err(|e| {
-                            ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e))
-                        })?;
-                    std::fs::remove_file(&config.console_wallet_tor_identity_file)
-                        .map_err(|e| ExitCodes::WalletError(format!("Could not delete identity file {}", e)))?;
-                    Some(v)
-                },
-                _ => {
-                    match wallet_backend.fetch(&DbKey::TorId).map_err(|e| {
-                        ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e))
-                    })? {
-                        Some(DbValue::TorId(v)) => Some(Box::new(v)),
-                        _ => None,
-                    }
-                },
+            tor_config.identity = match wallet_backend
+                .fetch(&DbKey::TorId)
+                .map_err(|e| ExitCodes::WalletError(format!("Error creating Wallet database backends. {}", e)))?
+            {
+                Some(DbValue::TorId(v)) => Some(Box::new(v)),
+                _ => None,
             };
             Tor(tor_config)
         },
