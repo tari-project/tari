@@ -260,9 +260,7 @@ where
 
                     if result.is_err() {
                         let _ = self.resources.event_publisher
-                                .send(OutputManagerEvent::Error(
-                                    "Error handling Base Node Response message".to_string(),
-                                ));
+                                .send(Arc::new(OutputManagerEvent::Error("Error handling Base Node Response message".to_string())));
                     }
                 }
                 join_result = txo_validation_handles.select_next_some() => {
@@ -498,7 +496,7 @@ where
                         let _ = self
                             .resources
                             .event_publisher
-                            .send(OutputManagerEvent::TxoValidationFailure(id))
+                            .send(Arc::new(OutputManagerEvent::TxoValidationFailure(id)))
                             .map_err(|e| {
                                 trace!(
                                     target: LOG_TARGET,
