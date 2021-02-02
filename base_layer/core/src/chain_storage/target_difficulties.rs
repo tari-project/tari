@@ -23,87 +23,133 @@
 use crate::{
     blocks::BlockHeader,
     consensus::ConsensusManager,
-    proof_of_work::{Difficulty, PowAlgorithm, TargetDifficultyWindow},
+    proof_of_work::{Difficulty, PowAlgorithm},
+    tari_utilities::epoch_time::EpochTime,
 };
 
 #[derive(Debug, Clone)]
 pub struct TargetDifficulties {
     consensus_manager: ConsensusManager,
-    monero: TargetDifficultyWindow,
-    sha3: TargetDifficultyWindow,
+    target_difficulties_monero: Vec<(EpochTime, Difficulty)>,
+    target_difficulties_sha3: Vec<(EpochTime, Difficulty)>,
 }
 
 impl TargetDifficulties {
-    pub fn new(consensus_rules: &ConsensusManager, height: u64) -> Self {
+    pub fn new(consensus_rules: &ConsensusManager) -> Self {
         Self {
             consensus_manager: consensus_rules.clone(),
-            monero: consensus_rules.new_target_difficulty(PowAlgorithm::Monero, height),
-            sha3: consensus_rules.new_target_difficulty(PowAlgorithm::Sha3, height),
+            target_difficulties_monero: Vec::new(),
+            target_difficulties_sha3: Vec::new(),
         }
     }
 
     pub fn add_back(&mut self, header: &BlockHeader, target_difficulty: Difficulty) {
-        if self
-            .consensus_manager
-            .consensus_constants(header.height)
-            .effective_from_height() ==
-            header.height
-        {
-            // If this matches we need to update the constants, as on this height a new height is present.
-            self.update_consensus_constants(header.height);
+        match header.pow_algo() {
+            PowAlgorithm::Monero => {
+                if self.target_difficulties_monero.len() as u64 >= self.consensus_manager.max_block_window() + 1 {
+                    self.target_difficulties_monero.remove(0);
+                }
+                self.target_difficulties_monero
+                    .push((header.timestamp, target_difficulty));
+            },
+            // TODO: remove
+            PowAlgorithm::Blake => unimplemented!(),
+            PowAlgorithm::Sha3 => {
+                if self.target_difficulties_sha3.len() as u64 >= self.consensus_manager.max_block_window() + 1 {
+                    self.target_difficulties_sha3.remove(0);
+                }
+                self.target_difficulties_sha3
+                    .push((header.timestamp, target_difficulty));
+            },
         }
-        self.get_mut(header.pow_algo())
-            .add_back(header.timestamp(), target_difficulty);
     }
 
     pub fn add_front(&mut self, header: &BlockHeader, target_difficulty: Difficulty) {
-        if self
-            .consensus_manager
-            .consensus_constants(header.height)
-            .effective_from_height() ==
-            header.height
-        {
-            // If this matches we need to update the constants, as on this height a new height is present.
-            self.update_consensus_constants(header.height);
+        match header.pow_algo() {
+            PowAlgorithm::Monero => {
+                if self.target_difficulties_monero.len() as u64 >= self.consensus_manager.max_block_window() + 1 {
+                    self.target_difficulties_monero.pop();
+                }
+                self.target_difficulties_monero
+                    .insert(0, (header.timestamp, target_difficulty));
+            },
+            // TODO: remove
+            PowAlgorithm::Blake => unimplemented!(),
+            PowAlgorithm::Sha3 => {
+                if self.target_difficulties_sha3.len() as u64 >= self.consensus_manager.max_block_window() + 1 {
+                    self.target_difficulties_sha3.pop();
+                }
+                self.target_difficulties_sha3
+                    .insert(0, (header.timestamp, target_difficulty));
+            },
         }
-        self.get_mut(header.pow_algo())
-            .add_front(header.timestamp(), target_difficulty);
     }
 
     pub fn is_algo_full(&self, algo: PowAlgorithm) -> bool {
-        self.get(algo).is_full()
+        match algo {
+            PowAlgorithm::Monero => {
+                self.target_difficulties_monero.len() as u64 == self.consensus_manager.max_block_window() + 1
+            },
+            PowAlgorithm::Blake => unimplemented!(),
+            PowAlgorithm::Sha3 => {
+                self.target_difficulties_sha3.len() as u64 == self.consensus_manager.max_block_window() + 1
+            },
+        }
+    }
+
+    pub fn len(&self, algo: PowAlgorithm) -> usize {
+        match algo {
+            PowAlgorithm::Monero => self.target_difficulties_monero.len(),
+            PowAlgorithm::Blake => unimplemented!(),
+            PowAlgorithm::Sha3 => self.target_difficulties_sha3.len(),
+        }
     }
 
     pub fn is_full(&self) -> bool {
-        self.sha3.is_full() && self.monero.is_full()
+        self.target_difficulties_monero.len() as u64 == self.consensus_manager.max_block_window() + 1 &&
+            self.target_difficulties_sha3.len() as u64 == self.consensus_manager.max_block_window() + 1
     }
 
-    pub fn get(&self, algo: PowAlgorithm) -> &TargetDifficultyWindow {
-        use PowAlgorithm::*;
-        match algo {
-            Monero => &self.monero,
-            // TODO: remove
-            Blake => unimplemented!(),
-            Sha3 => &self.sha3,
-        }
-    }
-
-    fn get_mut(&mut self, algo: PowAlgorithm) -> &mut TargetDifficultyWindow {
-        use PowAlgorithm::*;
-        match algo {
-            Monero => &mut self.monero,
-            // TODO: remove
-            Blake => unimplemented!(),
-            Sha3 => &mut self.sha3,
-        }
-    }
-
-    fn update_consensus_constants(&mut self, height: u64) {
-        self.monero.update_consensus_constants(
-            &self.consensus_manager.consensus_constants(height),
-            PowAlgorithm::Monero,
-        );
-        self.sha3
-            .update_consensus_constants(&self.consensus_manager.consensus_constants(height), PowAlgorithm::Sha3);
+    pub fn calculate(&self, header: &BlockHeader) -> Difficulty {
+        let target_diff_window = match header.pow_algo() {
+            PowAlgorithm::Monero => {
+                let mut window = self
+                    .consensus_manager
+                    .new_target_difficulty(PowAlgorithm::Monero, header.height);
+                let mut counter = self.target_difficulties_monero.len() - 1;
+                for _ in 0..self
+                    .consensus_manager
+                    .consensus_constants(header.height)
+                    .get_difficulty_block_window()
+                {
+                    window.add_back(
+                        self.target_difficulties_monero[counter].0,
+                        self.target_difficulties_monero[counter].1,
+                    );
+                    counter = counter - 1;
+                }
+                window
+            },
+            PowAlgorithm::Blake => unimplemented!(),
+            PowAlgorithm::Sha3 => {
+                let mut window = self
+                    .consensus_manager
+                    .new_target_difficulty(PowAlgorithm::Sha3, header.height);
+                let mut counter = self.target_difficulties_sha3.len() - 1;
+                for _ in 0..self
+                    .consensus_manager
+                    .consensus_constants(header.height)
+                    .get_difficulty_block_window()
+                {
+                    window.add_back(
+                        self.target_difficulties_sha3[counter].0,
+                        self.target_difficulties_sha3[counter].1,
+                    );
+                    counter = counter - 1;
+                }
+                window
+            },
+        };
+        target_diff_window.calculate()
     }
 }

@@ -6,16 +6,12 @@
 // https://github.com/zawy12/difficulty-algorithms/issues/3#issuecomment-442129791
 // https://github.com/zcash/zcash/issues/4021
 
-use crate::{
-    consensus::ConsensusConstants,
-    proof_of_work::{
-        difficulty::{Difficulty, DifficultyAdjustment},
-        error::DifficultyAdjustmentError,
-        PowAlgorithm,
-    },
+use crate::proof_of_work::{
+    difficulty::{Difficulty, DifficultyAdjustment},
+    error::DifficultyAdjustmentError,
 };
 use log::*;
-use std::{cmp, convert::TryFrom};
+use std::cmp;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 pub const LOG_TARGET: &str = "c::pow::lwma_diff";
@@ -146,14 +142,6 @@ impl LinearWeightedMovingAverage {
             self.target_difficulties.remove(0);
         }
         self.target_difficulties.push((timestamp, target_difficulty));
-    }
-
-    pub fn update_consensus_constants(&mut self, constants: &ConsensusConstants, pow_algo: PowAlgorithm) {
-        self.block_window = usize::try_from(constants.get_difficulty_block_window())
-            .expect("difficulty block window exceeds usize::MAX");
-        self.target_time = constants.get_diff_target_block_interval(pow_algo);
-        self.initial_difficulty = constants.min_pow_difficulty(pow_algo);
-        self.max_block_time = constants.get_difficulty_max_block_interval(pow_algo);
     }
 }
 

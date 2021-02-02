@@ -698,7 +698,7 @@ where B: BlockchainBackend
                 value: start_hash.to_hex(),
             })?;
         let start_height = start_header.height;
-        let mut targets = TargetDifficulties::new(&self.consensus_manager, start_height);
+        let mut targets = TargetDifficulties::new(&self.consensus_manager);
         let accum_data =
             db.fetch_header_accumulated_data(&start_hash)?
                 .ok_or_else(|| ChainStorageError::ValueNotFound {

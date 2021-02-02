@@ -119,6 +119,17 @@ impl ConsensusManager {
         constants
     }
 
+    // This finds the max block window time in all the consensus constants
+    pub fn max_block_window(&self) -> u64 {
+        let mut block_window = self.inner.consensus_constants[0].get_difficulty_block_window();
+        for c in self.inner.consensus_constants.iter() {
+            if c.get_difficulty_block_window() > block_window {
+                block_window = c.get_difficulty_block_window();
+            }
+        }
+        block_window
+    }
+
     /// Create a new TargetDifficulty for the given proof of work using constants that are effective from the given
     /// height
     pub(crate) fn new_target_difficulty(&self, pow_algo: PowAlgorithm, height: u64) -> TargetDifficultyWindow {

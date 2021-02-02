@@ -97,8 +97,8 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             target: LOG_TARGET,
             "Setting header validator state ({} timestamp(s), target difficulties: {} SHA3, {} Monero)",
             timestamps.len(),
-            target_difficulties.get(PowAlgorithm::Sha3).len(),
-            target_difficulties.get(PowAlgorithm::Monero).len(),
+            target_difficulties.len(PowAlgorithm::Sha3),
+            target_difficulties.len(PowAlgorithm::Monero),
         );
         self.state = Some(State {
             current_height: start_header.height,
@@ -124,7 +124,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         let state = self.state();
         check_header_timestamp_greater_than_median(&header, &state.timestamps)?;
 
-        let target_difficulty = state.target_difficulties.get(header.pow_algo()).calculate();
+        let target_difficulty = state.target_difficulties.calculate(&header);
         let achieved = check_target_difficulty(&header, target_difficulty, &self.randomx_factory)?;
         let metadata = BlockHeaderAccumulatedDataBuilder::default()
             .hash(header.hash())
