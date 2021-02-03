@@ -885,8 +885,8 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
     runtime
         .block_on(alice_ts.send_transaction(
             bob_node_identity.public_key().clone(),
-            MicroTari::from(500),
-            MicroTari::from(1000),
+            MicroTari::from(5000),
+            MicroTari::from(20),
             "".to_string(),
         ))
         .unwrap();
@@ -1010,8 +1010,8 @@ fn finalize_tx_with_incorrect_pubkey() {
 
     let mut stp = runtime
         .block_on(bob_output_manager.prepare_transaction_to_send(
-            MicroTari::from(500),
-            MicroTari::from(1000),
+            MicroTari::from(5000),
+            MicroTari::from(25),
             None,
             "".to_string(),
         ))
@@ -1134,8 +1134,8 @@ fn finalize_tx_with_missing_output() {
 
     let mut stp = runtime
         .block_on(bob_output_manager.prepare_transaction_to_send(
-            MicroTari::from(500),
-            MicroTari::from(1000),
+            MicroTari::from(5000),
+            MicroTari::from(20),
             None,
             "".to_string(),
         ))
