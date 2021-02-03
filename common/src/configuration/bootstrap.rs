@@ -126,6 +126,9 @@ pub struct ConfigBootstrap {
     /// Force wallet recovery
     #[structopt(long, alias("recover"))]
     pub recovery: bool,
+    /// Wallet notify script
+    #[structopt(long, alias("notify"))]
+    pub wallet_notify: Option<PathBuf>,
 }
 
 impl Default for ConfigBootstrap {
@@ -145,6 +148,7 @@ impl Default for ConfigBootstrap {
             password: None,
             change_password: false,
             recovery: false,
+            wallet_notify: None,
         }
     }
 }

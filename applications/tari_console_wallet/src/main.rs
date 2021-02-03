@@ -10,6 +10,7 @@ use init::{
     boot,
     change_password,
     get_base_node_peer_config,
+    get_notify_script,
     init_wallet,
     start_wallet,
     tari_splash_screen,
@@ -28,6 +29,7 @@ pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 mod automation;
 mod grpc;
 mod init;
+mod notifier;
 mod recovery;
 mod ui;
 mod utils;
@@ -98,15 +100,32 @@ fn main_inner() -> Result<(), ExitCodes> {
     // start wallet
     runtime.block_on(start_wallet(&mut wallet, &base_node))?;
 
+    // optional path to notify script
+    let notify_script = get_notify_script(&bootstrap, &config)?;
+
     debug!(target: LOG_TARGET, "Starting app");
 
     let handle = runtime.handle().clone();
     let result = match wallet_mode(bootstrap, boot_mode) {
-        WalletMode::Tui => tui_mode(handle, config, wallet.clone(), base_node, base_node_config),
+        WalletMode::Tui => tui_mode(
+            handle,
+            config,
+            wallet.clone(),
+            base_node,
+            base_node_config,
+            notify_script,
+        ),
         WalletMode::Grpc => grpc_mode(handle, wallet.clone(), config),
         WalletMode::Script(path) => script_mode(handle, path, wallet.clone(), config),
         WalletMode::Command(command) => command_mode(handle, command, wallet.clone(), config),
-        WalletMode::Recovery => recovery_mode(handle, config, wallet.clone(), base_node, base_node_config),
+        WalletMode::Recovery => recovery_mode(
+            handle,
+            config,
+            wallet.clone(),
+            base_node,
+            base_node_config,
+            notify_script,
+        ),
         WalletMode::Invalid => Err(ExitCodes::InputError(
             "Invalid wallet mode - are you trying too many command options at once?".to_string(),
         )),

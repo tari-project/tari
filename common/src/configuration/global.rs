@@ -112,6 +112,7 @@ pub struct GlobalConfig {
     pub force_sync_peers: Vec<String>,
     pub wait_for_initial_sync_at_startup: bool,
     pub max_randomx_vms: usize,
+    pub console_wallet_notify_file: Option<PathBuf>,
 }
 
 impl GlobalConfig {
@@ -459,6 +460,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let key = "wallet.password";
     let console_wallet_password = optional(cfg.get_str(key))?;
 
+    let key = "wallet.notify";
+    let console_wallet_notify_file = optional(cfg.get_str(key))?.map(PathBuf::from);
+
     let key = "wallet.base_node_service_refresh_interval";
     let wallet_base_node_service_refresh_interval = match cfg.get_int(key) {
         Ok(seconds) => seconds as u64,
@@ -626,6 +630,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         force_sync_peers,
         wait_for_initial_sync_at_startup,
         max_randomx_vms,
+        console_wallet_notify_file,
     })
 }
 

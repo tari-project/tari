@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    notifier::Notifier,
     ui::{
         components::{
             base_node::BaseNode,
@@ -58,6 +59,7 @@ pub struct App<B: Backend> {
     // Ui working state
     pub tabs: TabsContainer<B>,
     pub base_node_status: BaseNode,
+    pub notifier: Notifier,
 }
 
 impl<B: Backend> App<B> {
@@ -67,6 +69,7 @@ impl<B: Backend> App<B> {
         network: Network,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
+        notifier: Notifier,
     ) -> Self
     {
         let app_state = AppState::new(
@@ -91,6 +94,7 @@ impl<B: Backend> App<B> {
             app_state,
             tabs,
             base_node_status,
+            notifier,
         }
     }
 

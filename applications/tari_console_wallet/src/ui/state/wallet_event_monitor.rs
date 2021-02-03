@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ui::state::AppStateInner;
+use crate::{notifier::Notifier, ui::state::AppStateInner};
 use futures::stream::StreamExt;
 use log::*;
 use std::sync::Arc;
@@ -43,7 +43,7 @@ impl WalletEventMonitor {
         Self { app_state_inner }
     }
 
-    pub async fn run(mut self) {
+    pub async fn run(mut self, notifier: Notifier) {
         let mut shutdown_signal = self.app_state_inner.read().await.get_shutdown_signal();
         let mut transaction_service_events = self.app_state_inner.read().await.get_transaction_service_event_stream();
 
@@ -65,12 +65,25 @@ impl WalletEventMonitor {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet event {:?}", msg);
                                 match (*msg).clone() {
+                                    TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        notifier.transaction_received(tx_id);
+                                    },
+                                    TransactionEvent::TransactionMinedUnconfirmed(tx_id, confirmations) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        notifier.transaction_mined_unconfirmed(tx_id, confirmations);
+                                    },
+                                    TransactionEvent::TransactionMined(tx_id) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        notifier.transaction_mined(tx_id);
+                                    },
+                                    TransactionEvent::TransactionCancelled(tx_id) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        notifier.transaction_cancelled(tx_id);
+                                    },
                                     TransactionEvent::ReceivedTransaction(tx_id) |
                                     TransactionEvent::ReceivedTransactionReply(tx_id) |
-                                    TransactionEvent::ReceivedFinalizedTransaction(tx_id) |
-                                    TransactionEvent::TransactionCancelled(tx_id) |
                                     TransactionEvent::TransactionBroadcast(tx_id) |
-                                    TransactionEvent::TransactionMined(tx_id) |
                                     TransactionEvent::TransactionMinedRequestTimedOut(tx_id) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                     },
@@ -78,6 +91,7 @@ impl WalletEventMonitor {
                                     TransactionEvent::TransactionStoreForwardSendResult(tx_id, success) => {
                                         if success {
                                             self.trigger_tx_state_refresh(tx_id).await;
+                                            notifier.transaction_sent(tx_id);
                                         }
                                     },
                                     // Only the above variants trigger state refresh

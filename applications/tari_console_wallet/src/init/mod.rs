@@ -28,7 +28,7 @@ use log::*;
 use rand::rngs::OsRng;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
-use std::{fs, str::FromStr, sync::Arc};
+use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
 use tari_app_utilities::utilities::{setup_wallet_transport_type, ExitCodes};
 use tari_common::{ConfigBootstrap, GlobalConfig, Network};
 use tari_comms::{
@@ -210,7 +210,48 @@ pub fn wallet_mode(bootstrap: ConfigBootstrap, boot_mode: WalletBoot) -> WalletM
     }
 }
 
-/// Setup the app environment and state for use by the UI
+/// Get the notify program script path from config bootstrap or global config if provided
+pub fn get_notify_script(bootstrap: &ConfigBootstrap, config: &GlobalConfig) -> Result<Option<PathBuf>, ExitCodes> {
+    debug!(target: LOG_TARGET, "Checking args and config for notify script.");
+
+    let notify_script = match (&bootstrap.wallet_notify, &config.console_wallet_notify_file) {
+        // command line arg
+        (Some(path), None) => {
+            info!(
+                target: LOG_TARGET,
+                "Notify script set from command line argument: {:#?}", path
+            );
+            Some(path.clone())
+        },
+        // config
+        (None, Some(path)) => {
+            info!(target: LOG_TARGET, "Notify script set from config: {:#?}", path);
+            Some(path.clone())
+        },
+        // both arg and config, log and use the arg
+        (Some(path), Some(_)) => {
+            warn!(
+                target: LOG_TARGET,
+                "Wallet notify script set from both command line argument and config file! Using the command line \
+                 argument: {:?}",
+                path
+            );
+            Some(path.clone())
+        },
+        _ => None,
+    };
+
+    if let Some(path) = &notify_script {
+        if !path.exists() {
+            let error = format!("Wallet notify script does not exist at path: {:#?}", path);
+            return Err(ExitCodes::ConfigError(error));
+        }
+    }
+
+    Ok(notify_script)
+}
+
+/// Set up the app environment and state for use by the UI
 pub async fn init_wallet(
     config: &GlobalConfig,
     arg_password: Option<String>,

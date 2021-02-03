@@ -22,6 +22,7 @@
 use crate::{
     automation::{command_parser::parse_command, commands::command_runner},
     grpc::WalletGrpcServer,
+    notifier::Notifier,
     recovery::wallet_recovery,
     ui::{run, App},
 };
@@ -144,10 +145,13 @@ pub fn tui_mode(
     wallet: WalletSqlite,
     base_node_selected: Peer,
     base_node_config: PeerConfig,
+    notify_script: Option<PathBuf>,
 ) -> Result<(), ExitCodes>
 {
     let grpc = WalletGrpcServer::new(wallet.clone());
     handle.spawn(run_grpc(grpc, node_config.grpc_console_wallet_address));
+
+    let notifier = Notifier::new(notify_script, handle.clone(), wallet.clone());
 
     let app = handle.block_on(App::<CrosstermBackend<Stdout>>::new(
         "Tari Console Wallet".into(),
@@ -155,6 +159,7 @@ pub fn tui_mode(
         node_config.network,
         base_node_selected,
         base_node_config,
+        notifier,
     ));
     handle.enter(|| run(app))?;
 
@@ -172,6 +177,7 @@ pub fn recovery_mode(
     mut wallet: WalletSqlite,
     base_node_selected: Peer,
     base_node_config: PeerConfig,
+    notify_script: Option<PathBuf>,
 ) -> Result<(), ExitCodes>
 {
     println!("Starting recovery...");
@@ -188,7 +194,14 @@ pub fn recovery_mode(
     }
 
     println!("Starting TUI.");
-    tui_mode(handle, config, wallet, base_node_selected, base_node_config)
+    tui_mode(
+        handle,
+        config,
+        wallet,
+        base_node_selected,
+        base_node_config,
+        notify_script,
+    )
 }
 
 pub fn grpc_mode(handle: Handle, wallet: WalletSqlite, node_config: GlobalConfig) -> Result<(), ExitCodes> {
