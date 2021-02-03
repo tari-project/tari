@@ -1,4 +1,6 @@
 var net = require('net');
+const fs = require('fs');
+const readline = require('readline');
 
 var {blake2bInit, blake2bUpdate, blake2bFinal} = require('blakejs');
 
@@ -118,6 +120,38 @@ const getTransactionOutputHash = function(output) {
     return Buffer.from(final);
 }
 
+// This function is not used at the moment; left here as an example
+const parsePubKeyFromNetworkLog = async function (name, logFileName, retries) {
+    let i = 0;
+    if (!fs.existsSync(logFileName) && retries < 1) {
+        sleep(1000);
+    }
+    while (!fs.existsSync(logFileName) && i < retries) {
+        console.log(name + ":  waiting for `" + logFileName + "` to be created.");
+        sleep(1000);
+        i++;
+    }
+    pubKey = "";
+    if (fs.existsSync(logFileName)) {
+        const logFile = readline.createInterface({
+            input: fs.createReadStream(logFileName),
+            output: process.stdout,
+            terminal: false
+        });
+        // Note the async nature of reading the file
+        for await (const line of logFile) {
+            if (line.includes("[comms::node] INFO  Your node's public key is")) {
+                var s1 = line.split("[comms::node] INFO  Your node's public key is");
+                pubKey = s1[1].trim().replace(/'/g,'');
+                return pubKey;
+            }
+        }
+    } else {
+        console.log("  WARN: Could not read " + name + " public key from file, '" + logFileName + "' does not exist.");
+        return pubKey;
+    }
+}
+
 module.exports = {
     getRandomInt,
     sleep,
@@ -126,5 +160,6 @@ module.exports = {
     // portInUse,
     getFreePort,
     getTransactionOutputHash,
-    hexSwitchEndianness
+    hexSwitchEndianness,
+    parsePubKeyFromNetworkLog
 };

@@ -11,13 +11,6 @@ class BaseNodeProcess {
         this.name = name;
         this.nodeFile = nodeFile;
         this.options = options;
-        // this.port = getFreePort(19000, 25000);
-        // this.grpcPort = getFreePort(50000, 51000);
-        // this.name = `Basenode${this.port}-${name}`;
-        // this.nodeFile = nodeFile || "newnode_id.json";
-        // this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddhhMM")}/${this.name}`;
-        // console.log("POrt:", this.port);
-        // console.log("GRPC:", this.grpcPort);
     }
 
 
