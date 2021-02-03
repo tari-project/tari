@@ -8,11 +8,17 @@ db_type = "lmdb"
 enable_mining = false
 peer_seeds = [
     "b60d073e2f2337fdd95a58065e1d0182cca1d36c20ed10b27bc1232bc2836a17::/onion3/ssiz76b33emcerusblo6wba3ejqsub6ihkabjilem6ygoldodf6aenid:18141",
+    # t-tbn-ncal
     "e2cef0473117da34108dd85d4425536b8a1f317478686a6d7a0bbb5c800a747d::/onion3/3eiacmnozk7rcvrx7brhlssnpueqsjdsfbfmq63d2bk7h3vtah35tcyd:18141",
+    # t-tbn-oregon
     "f606c82d23b2a2eda65156cef9efcaf77031d16a681fca99af7c08e98035f21d::/onion3/i7nsgt2p7tkvpnhygnvihpuaqlunbtw3zti3qvi3eur7obkjkwgla4id:18141",
+    # t-tbn-london
     "d23cfeb05674d25c5b970b6bffefdc1e7c2c1f1f9c32fde04688d1b94c81705a::/onion3/obfjpoon2hm4uqerirhp4sf26bvq5ztokxhq274c2fg2uadrsu5drnqd:18141",
+    # t-tbn-stockholm
     "9cedfc16708f857e070e32d9cc1939fd6a57b5945ee97fdc707aa2f034ba6507::/onion3/ryfa3iufgmvwmghyhamkjz5rfygde6kmy7e5jn5oc2n44cpbvey654ad:18141",
+    # t-tbn-seoul
     "50ee725e2c6ca8282ab62bb7aef52a9c4df283ec99e00497a358dbaf4112ff0c::/onion3/yrzdnyayg2jqym7rmeoc3lwixylasokqwkrtqyvutobllz27jdznuoyd:18141",
+    # t-tbn-sydney
     "f0515584db420849a6c149517e4b326616d2d0b346f6f887adbf2c3937a87b5a::/onion3/n4kq54sjyghe4mvopk5gtmep5etblrdpqcx65o44stdb33od3tksmfqd:18141",
     "4a0c44d9132a8275d5ef8a969fb5d6085026b2d440350a3b238dfbbd1c068649::/onion3/fych32gn6yrvscbytm252woulv7o66q3pttirdmt7jlh7uyulcoikfad:18141"
 ]
