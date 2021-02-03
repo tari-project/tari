@@ -2941,9 +2941,6 @@ pub unsafe extern "C" fn wallet_create(
                 (*config).node_identity = Arc::new(ni);
             }
 
-            // TODO remove after next TestNet
-            transaction_backend.migrate((*config).node_identity.public_key().clone());
-
             let shutdown = Shutdown::new();
 
             w = runtime.block_on(Wallet::new(

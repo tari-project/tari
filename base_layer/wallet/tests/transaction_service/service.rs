@@ -533,7 +533,7 @@ fn manage_single_transaction() {
         let mut count = 0;
         loop {
             futures::select! {
-                event = alice_event_stream.select_next_some() => {
+                _event = alice_event_stream.select_next_some() => {
                     count+=1;
                     if count>=2 {
                         break;
@@ -2033,8 +2033,8 @@ fn test_tx_direct_send_behaviour() {
             futures::select! {
                 event = alice_event_stream.select_next_some() => {
                     match &*event.unwrap() {
-                        TransactionEvent::TransactionDirectSendResult(_, result) => if (!result) { direct_count+=1 },
-                        TransactionEvent::TransactionStoreForwardSendResult(_, result) => if (!result) { saf_count+=1},                         _ => (),
+                        TransactionEvent::TransactionDirectSendResult(_, result) => if !result { direct_count+=1 },
+                        TransactionEvent::TransactionStoreForwardSendResult(_, result) => if !result { saf_count+=1},                         _ => (),
                     }
 
                     if direct_count == 1 && saf_count == 1 {
@@ -2076,7 +2076,7 @@ fn test_tx_direct_send_behaviour() {
             futures::select! {
                 event = alice_event_stream.select_next_some() => {
                     match &*event.unwrap() {
-                        TransactionEvent::TransactionDirectSendResult(_, result) => if (!result) { direct_count+=1 },
+                        TransactionEvent::TransactionDirectSendResult(_, result) => if !result { direct_count+=1 },
                         TransactionEvent::TransactionStoreForwardSendResult(_, result) => if *result { saf_count+=1
 },                         _ => (),
                     }

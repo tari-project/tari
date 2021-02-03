@@ -79,11 +79,6 @@ pub struct OutputManagerSqliteDatabase {
 
 impl OutputManagerSqliteDatabase {
     pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Self {
-        {
-            // let check if we have to do migration
-            let conn = database_connection.acquire_lock();
-            let _ = OutputSql::migrate(&(*conn), cipher.clone());
-        }
         Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
@@ -809,47 +804,6 @@ struct OutputSql {
 }
 
 impl OutputSql {
-    // This function is to update the values of hte hash field if its missing, It will check if the hash is missing, add
-    // this and update the field. ToDo remove this post testnet 1
-    fn migrate(conn: &SqliteConnection, cipher: Option<Aes256Gcm>) -> Result<(), OutputManagerStorageError> {
-        // Update Hashes
-        let mut ou_array: Vec<OutputSql> = outputs::table.filter(outputs::hash.is_null()).load(conn)?;
-        if let Some(cipher_inner) = cipher.clone() {
-            for o in ou_array.iter_mut() {
-                o.decrypt(&cipher_inner)
-                    .map_err(|_| OutputManagerStorageError::AeadError("Decryption Error".to_string()))?;
-            }
-        }
-        for output in ou_array {
-            // This should only happen on database migration as the hash will then be empty
-            // TODO remove this as this is temp migration code
-            let ou = DbUnblindedOutput::try_from(output.clone())?;
-            diesel::update(outputs::table.filter(outputs::id.eq(&output.id)))
-                .set(outputs::hash.eq(Some(ou.hash.clone())))
-                .execute(conn)?;
-        }
-
-        // Update public spending keys. Need to do this again in case the node has run the previous migration but not
-        // this one
-        let mut ou_array: Vec<OutputSql> = outputs::table.filter(outputs::commitment.is_null()).load(conn)?;
-        if let Some(cipher_inner) = cipher {
-            for o in ou_array.iter_mut() {
-                o.decrypt(&cipher_inner)
-                    .map_err(|_| OutputManagerStorageError::AeadError("Decryption Error".to_string()))?;
-            }
-        }
-        for output in ou_array {
-            // This should only happen once on database migration.
-            // TODO remove this as this is temp migration code
-            let ou = DbUnblindedOutput::try_from(output.clone())?;
-            diesel::update(outputs::table.filter(outputs::id.eq(&output.id)))
-                .set(outputs::commitment.eq(Some(ou.commitment.clone().to_vec())))
-                .execute(conn)?;
-        }
-
-        Ok(())
-    }
-
     /// Return all outputs
     pub fn index(conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table.load::<OutputSql>(conn)?)
@@ -1007,8 +961,6 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
         );
         let hash = match o.hash {
             None => {
-                // This should only happen if the database didn't migrate yet.
-                // TODO remove this as this is temp migration code
                 let factories = CryptoFactories::default();
                 unblinded_output.as_transaction_output(&factories)?.hash()
             },
@@ -1016,10 +968,6 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
         };
         let commitment = match o.commitment {
             None => {
-                // This should only happen if the database didn't migrate yet. This feels like a repetition of the
-                // instantiation above but these represent two different migrations and by putting this here it will
-                // only occur if the migration has not been performed which should never happen
-                // TODO remove this as this is temp migration code
                 let factories = CryptoFactories::default();
                 factories
                     .commitment
