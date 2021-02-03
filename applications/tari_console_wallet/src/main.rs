@@ -18,13 +18,8 @@ use init::{
 };
 use log::*;
 use recovery::prompt_private_key_from_seed_words;
-use tari_app_utilities::{
-    identity_management::setup_node_identity,
-    initialization::init_configuration,
-    utilities::ExitCodes,
-};
+use tari_app_utilities::{initialization::init_configuration, utilities::ExitCodes};
 use tari_common::configuration::bootstrap::ApplicationType;
-use tari_comms::peer_manager::PeerFeatures;
 use tari_shutdown::Shutdown;
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
@@ -78,54 +73,23 @@ fn main_inner() -> Result<(), ExitCodes> {
         None
     };
 
-    let id_exists = config.console_wallet_identity_file.exists();
-    let create_id = !id_exists || bootstrap.create_id;
-
-    // Load or create the Node identity
-    // TODO remove after test net
-    // If we know wallets dont have a node_id file anymore, we dont have to check to see if we can load one.
-    let node_identity = match setup_node_identity(
-        &config.console_wallet_identity_file,
-        &config.public_address,
-        create_id,
-        PeerFeatures::COMMUNICATION_CLIENT,
-    ) {
-        Ok(v) => Some(v),
-        _ => None,
-    };
-
-    if node_identity.is_none() {
-        warn!(
-            target: LOG_TARGET,
-            "Wallet has no identity, new wallet identity will be created"
-        );
+    if bootstrap.init {
+        info!(target: LOG_TARGET, "Default configuration created. Done.");
     }
 
-    if node_identity.is_some() {
-        // This is for wallets that still have a file with the password in it, we need to remove the file to protect the
-        // sensitive tari_comms private key
-        // TODO remove after test net
-        // If we know files dont exist anymore we dont have to check for a file and delete a file
-        std::fs::remove_file(&config.console_wallet_identity_file)
-            .map_err(|e| ExitCodes::WalletError(format!("Could not delete identity file {}", e)))?;
-    }
+    // get command line password if provided
+    let arg_password = bootstrap.password.clone();
 
     let mut shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
 
     if bootstrap.change_password {
         info!(target: LOG_TARGET, "Change password requested.");
-        return runtime.block_on(change_password(&config, node_identity, arg_password, shutdown_signal));
+        return runtime.block_on(change_password(&config, arg_password, shutdown_signal));
     }
 
     // initialize wallet
-    let mut wallet = runtime.block_on(init_wallet(
-        &config,
-        node_identity,
-        arg_password,
-        master_key,
-        shutdown_signal,
-    ))?;
+    let mut wallet = runtime.block_on(init_wallet(&config, arg_password, master_key, shutdown_signal))?;
 
     // get base node/s
     let base_node_config = runtime.block_on(get_base_node_peer_config(&config, &mut wallet))?;
