@@ -1,5 +1,6 @@
 Feature: Wallet Transfer
 
+  @critical
   Scenario: As a wallet I want to submit multiple transfers
     Given I have a seed node NODE
     And I have wallet Wallet_A connected to all seed nodes

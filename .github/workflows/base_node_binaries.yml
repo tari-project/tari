@@ -29,7 +29,7 @@ jobs:
 #        os: [ubuntu-18.04, ubuntu-20.04, macos-10.15, macos-11.0, windows-2016, windows-2019]
         features: ["safe", "avx2"]
 #        features: ["safe"]
-        target_cpu: ["x86-64", "broadwell", "skylake"]
+        target_cpu: ["x86-64", "broadwell"]
 #        target_cpu: ["x86-64"]
 #        target_release: ["release", "debug"]
         exclude:
@@ -164,6 +164,13 @@ jobs:
         echo "Copying file ${BINFILE} too $(pwd)"
         cp -v "$GITHUB_WORKSPACE/target/release/${TBN_FILENAME}${TBN_EXT}" "./${BINFILE}"
 
+    - name: Prep Ubuntu Tar
+      if: startsWith(matrix.os,'ubuntu')
+      run: |
+        echo "Package ubuntu"
+        cd "$GITHUB_WORKSPACE/buildtools"
+        ./create_ubuntu_install_zip.sh package
+
     - name: Archive and Sign Binaries
       shell: bash
       run: |
@@ -181,7 +188,10 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: ${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}
-        path: '${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*'
+        path: |
+          ${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*
+          ${{ github.workspace }}/buildtools/*.tar.gz
+
 
     - name: Sync dist to S3 - Bash
       continue-on-error: true  # Don't break if s3 upload fails

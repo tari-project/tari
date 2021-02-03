@@ -6,6 +6,8 @@ const {expect} = require('chai');
 const {createEnv} = require("./config");
 const WalletClient = require('./walletClient');
 
+let outputProcess;
+
 class WalletProcess {
 
     constructor(name) {
@@ -56,7 +58,7 @@ class WalletProcess {
             });
 
             ps.stderr.on('data', (data) => {
-                // console.error(`stderr: ${data}`);
+                console.error(`stderr: ${data}`);
                 fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString());
             });
 
@@ -76,7 +78,15 @@ class WalletProcess {
 
     async startNew() {
         await this.init();
-        return await this.run("cargo", ["run", "--release", "--bin tari_console_wallet", "--", "--base-path", ".", "--init", "--create_id", "--password", "kensentme", "--daemon"], true);
+        return await this.run(await this.compile(),  ["--base-path", ".", "--init", "--create_id", "--password", "kensentme", "--daemon"], true);
+    }
+
+    async compile() {
+        if (!outputProcess) {
+            await this.run("cargo", ["build", "--release", "--bin", "tari_console_wallet","-Z", "unstable-options", "--out-dir", __dirname + "/../temp/out"]);
+            outputProcess = __dirname + "/../temp/out/tari_console_wallet";
+        }
+        return outputProcess;
     }
 
     stop() {

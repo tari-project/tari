@@ -21,14 +21,8 @@ commands:
           keys:
             - v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
       - run:
-          name: Cargo fmt
-          command: |
-            TOOLCHAIN=$(cat rust-toolchain)
-            rustup component add --toolchain $TOOLCHAIN rustfmt
-            cargo fmt --all -- --check
-      - run:
           name: Run tests
-          command: cargo test --workspace --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+          command: cargo test --release
       - save_cache:
           paths:
             - /usr/local/cargo/registry
@@ -52,7 +46,7 @@ commands:
             - v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-<<parameters.release>>-{{checksum "Cargo.lock"}}
       - run:
           name: Build
-          command: cargo build --all --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+          command: cargo build --all --all-features <<#parameters.release>>--release<</parameters.release>>
       - run:
           name: Build Wallet
           command: cargo build -p tari_wallet <<#parameters.release>>--release<</parameters.release>>
@@ -90,20 +84,11 @@ commands:
     description: Run cucumber scenarios
     steps:
       - run:
-          name: Pre-build base node
-          command: cargo build --bin tari_base_node
-      - run:
-          name: Pre-build wallet
-          command: cargo build --bin tari_console_wallet
-      - run:
-          name: Pre-build mmproxy
-          command: cargo build --bin tari_merge_mining_proxy
-      - run:
           name: npm install
           command: cd integration_tests && npm install
       - run:
           name: Run cucumber scenarios
-          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --format json:cucumber_output/tests.cucumber --tags @critical
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --format json:cucumber_output/tests.cucumber
       - store_test_results:
           path: integration_tests/cucumber_output
       - store_artifacts:
