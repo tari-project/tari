@@ -84,7 +84,7 @@ mod test {
 
     #[test]
     fn it_calculates_the_target_difficulty() {
-        let mut target_difficulties = TargetDifficultyWindow::new(5, 60, 1.into(), 60 * 6);
+        let mut target_difficulties = TargetDifficultyWindow::new(5, 60, 60 * 6);
         let mut time = 60.into();
         target_difficulties.add_back(time, 100.into());
         time += 60.into();
@@ -94,6 +94,6 @@ mod test {
         time += 60.into();
         target_difficulties.add_back(time, 100.into());
 
-        assert_eq!(target_difficulties.calculate(), 100.into());
+        assert_eq!(target_difficulties.calculate(1.into(), 400.into()), 100.into());
     }
 }

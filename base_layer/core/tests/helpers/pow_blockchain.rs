@@ -111,12 +111,11 @@ pub fn calculate_accumulated_difficulty(
     let mut lwma = LinearWeightedMovingAverage::new(
         consensus_constants.get_difficulty_block_window() as usize,
         consensus_constants.get_diff_target_block_interval(pow_algo),
-        consensus_constants.min_pow_difficulty(pow_algo),
         consensus_constants.get_difficulty_max_block_interval(pow_algo),
     );
     for height in heights {
         let (header, accum) = db.fetch_header_and_accumulated_data(height).unwrap();
         lwma.add(header.timestamp, accum.target_difficulty).unwrap();
     }
-    lwma.get_difficulty()
+    lwma.get_difficulty().unwrap()
 }
