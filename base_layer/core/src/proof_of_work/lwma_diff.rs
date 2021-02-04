@@ -160,8 +160,8 @@ mod test {
 
     #[test]
     fn lwma_zero_len() {
-        let dif = LinearWeightedMovingAverage::new(90, 120, 1.into(), 120 * 6);
-        assert_eq!(dif.get_difficulty(), Difficulty::min());
+        let dif = LinearWeightedMovingAverage::new(90, 120, 120 * 6);
+        assert_eq!(dif.get_difficulty(), None);
     }
 
     #[test]
@@ -170,9 +170,9 @@ mod test {
         // let v = VecDeq::with_capacity(10);
         // assert_eq!(v.capacity(), 11);
         // A Vec was chosen because it ended up being simpler to use
-        let dif = LinearWeightedMovingAverage::new(0, 120, 1.into(), 120 * 6);
+        let dif = LinearWeightedMovingAverage::new(0, 120, 120 * 6);
         assert_eq!(dif.capacity(), 1);
-        let mut dif = LinearWeightedMovingAverage::new(1, 120, 1.into(), 120 * 6);
+        let mut dif = LinearWeightedMovingAverage::new(1, 120, 120 * 6);
         dif.add_front(60.into(), 100.into());
         assert_eq!(dif.capacity(), 2);
         assert_eq!(dif.num_samples(), 1);
@@ -186,7 +186,7 @@ mod test {
 
     #[test]
     fn lwma_negative_solve_times() {
-        let mut dif = LinearWeightedMovingAverage::new(90, 120, 1.into(), 120 * 6);
+        let mut dif = LinearWeightedMovingAverage::new(90, 120, 120 * 6);
         let mut timestamp = 60.into();
         let cum_diff = Difficulty::from(100);
         let _ = dif.add(timestamp, cum_diff);
@@ -201,9 +201,9 @@ mod test {
         // having checks on the block times.
         for _i in 0..60 {
             timestamp = (timestamp.as_u64() - 1).into(); // Only choosing -1 here since we are testing negative solve times and we cannot have 0 time
-            let diff_before = dif.get_difficulty();
+            let diff_before = dif.get_difficulty().unwrap();
             let _ = dif.add(timestamp, cum_diff);
-            let diff_after = dif.get_difficulty();
+            let diff_after = dif.get_difficulty().unwrap();
             // Algo should handle this as 1sec solve time thus increase the difficulty constantly
             assert!(diff_after > diff_before);
         }
@@ -211,12 +211,12 @@ mod test {
 
     #[test]
     fn lwma_limit_difficulty_change() {
-        let mut dif = LinearWeightedMovingAverage::new(5, 60, 1.into(), 60 * 6);
+        let mut dif = LinearWeightedMovingAverage::new(5, 60, 60 * 6);
         let _ = dif.add(60.into(), 100.into());
         let _ = dif.add(10_000_000.into(), 100.into());
-        assert_eq!(dif.get_difficulty(), 17.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 17.into());
         let _ = dif.add(20_000_000.into(), 16.into());
-        assert_eq!(dif.get_difficulty(), 10.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 10.into());
     }
 
     // Data for 5-period moving average
@@ -227,36 +227,36 @@ mod test {
     // Target:     1, 100, 100, 100, 100, 107, 136, 130, 120,  94,  36,  39,  47,  67, 175
     #[test]
     fn lwma_calculate() {
-        let mut dif = LinearWeightedMovingAverage::new(5, 60, 1.into(), 60 * 6);
+        let mut dif = LinearWeightedMovingAverage::new(5, 60, 60 * 6);
         let _ = dif.add(60.into(), 100.into());
-        assert_eq!(dif.get_difficulty(), 1.into());
+        assert_eq!(dif.get_difficulty(), None);
         let _ = dif.add(120.into(), 100.into());
-        assert_eq!(dif.get_difficulty(), 100.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 100.into());
         let _ = dif.add(180.into(), 100.into());
-        assert_eq!(dif.get_difficulty(), 100.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 100.into());
         let _ = dif.add(240.into(), 100.into());
-        assert_eq!(dif.get_difficulty(), 100.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 100.into());
         let _ = dif.add(300.into(), 100.into());
-        assert_eq!(dif.get_difficulty(), 100.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 100.into());
         let _ = dif.add(350.into(), 105.into());
-        assert_eq!(dif.get_difficulty(), 107.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 107.into());
         let _ = dif.add(380.into(), 128.into());
-        assert_eq!(dif.get_difficulty(), 136.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 136.into());
         let _ = dif.add(445.into(), 123.into());
-        assert_eq!(dif.get_difficulty(), 130.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 130.into());
         let _ = dif.add(515.into(), 116.into());
-        assert_eq!(dif.get_difficulty(), 120.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 120.into());
         let _ = dif.add(615.into(), 94.into());
-        assert_eq!(dif.get_difficulty(), 94.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 94.into());
         let _ = dif.add(975.into(), 39.into());
-        assert_eq!(dif.get_difficulty(), 36.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 36.into());
         let _ = dif.add(976.into(), 46.into());
-        assert_eq!(dif.get_difficulty(), 39.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 39.into());
         let _ = dif.add(977.into(), 55.into());
-        assert_eq!(dif.get_difficulty(), 47.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 47.into());
         let _ = dif.add(978.into(), 75.into());
-        assert_eq!(dif.get_difficulty(), 67.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 67.into());
         let _ = dif.add(979.into(), 148.into());
-        assert_eq!(dif.get_difficulty(), 175.into());
+        assert_eq!(dif.get_difficulty().unwrap(), 175.into());
     }
 }
