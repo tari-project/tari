@@ -124,7 +124,11 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         let state = self.state();
         check_header_timestamp_greater_than_median(&header, &state.timestamps)?;
 
-        let target_difficulty = state.target_difficulties.get(header.pow_algo()).calculate();
+        let constants = self.consensus_rules.consensus_constants(header.height);
+        let target_difficulty = state.target_difficulties.get(header.pow_algo()).calculate(
+            constants.min_pow_difficulty(header.pow_algo()),
+            constants.max_pow_difficulty(header.pow_algo()),
+        );
         let achieved = check_target_difficulty(&header, target_difficulty, &self.randomx_factory)?;
         let metadata = BlockHeaderAccumulatedDataBuilder::default()
             .hash(header.hash())

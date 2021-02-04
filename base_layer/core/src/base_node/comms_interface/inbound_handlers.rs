@@ -31,7 +31,7 @@ use crate::{
     },
     blocks::{block_header::BlockHeader, Block, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainBlock},
-    consensus::ConsensusManager,
+    consensus::{ConsensusConstants, ConsensusManager},
     mempool::{async_mempool, Mempool},
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::transaction::TransactionKernel,
@@ -393,7 +393,7 @@ where T: BlockchainBackend + 'static
 
                 let block_template = NewBlockTemplate::from_block(
                     header.into_builder().with_transactions(transactions).build(),
-                    self.get_target_difficulty(pow_algo, height).await?,
+                    self.get_target_difficulty(pow_algo, constants, height).await?,
                     self.consensus_manager.get_block_reward_at(height),
                 );
                 debug!(
@@ -562,6 +562,7 @@ where T: BlockchainBackend + 'static
     async fn get_target_difficulty(
         &self,
         pow_algo: PowAlgorithm,
+        constants: &ConsensusConstants,
         height: u64,
     ) -> Result<Difficulty, CommsInterfaceError>
     {
@@ -573,7 +574,10 @@ where T: BlockchainBackend + 'static
         );
         let target_difficulty = self.blockchain_db.fetch_target_difficulty(pow_algo, height).await?;
 
-        let target = target_difficulty.calculate();
+        let target = target_difficulty.calculate(
+            constants.min_pow_difficulty(pow_algo),
+            constants.max_pow_difficulty(pow_algo),
+        );
         debug!(target: LOG_TARGET, "Target difficulty {} for PoW {}", target, pow_algo);
         Ok(target)
     }

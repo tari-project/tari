@@ -128,8 +128,6 @@ impl ConsensusManager {
         TargetDifficultyWindow::new(
             usize::try_from(block_window).expect("difficulty block window exceeds usize::MAX"),
             constants.get_diff_target_block_interval(pow_algo),
-            constants.min_pow_difficulty(pow_algo),
-            constants.max_pow_difficulty(pow_algo),
             constants.get_difficulty_max_block_interval(pow_algo),
         )
     }
