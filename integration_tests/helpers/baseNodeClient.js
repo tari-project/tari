@@ -43,6 +43,10 @@ class BaseNodeClient {
         })
     }
 
+    getNetworkDifficulties(tip,start,end) {
+            return this.client.getNetworkDifficulty().sendMessage({from_tip: tip, start_height: start, end_height:end});
+        }
+
     getPeers() {
         return this.client.getPeers().sendMessage({}).then(peers=> {
             console.log("Got ", peers.length," peers:");

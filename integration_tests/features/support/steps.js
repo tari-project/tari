@@ -394,3 +394,21 @@ Then(/Transaction status of last result from (.*) to (.*) is known to both walle
     expect(found[0] && found[1]).to.equal(true);
 });
 
+When(/I request the difficulties of a node (.*)/, async function (node) {
+          let client = this.getClient(node);
+          let difficulties = await client.getNetworkDifficulties(2,0,2);
+          this.lastResult = difficulties;
+});
+
+Then('Difficulties are available', function () {
+           console.log(this.lastResult);
+           assert(this.lastResult.length,3);
+           // check genesis block, chain in reverse height order
+           assert(this.lastResult[2]["difficulty"],'1');
+           assert(this.lastResult[2]["estimated_hash_rate"],'0');
+           assert(this.lastResult[2]["height"],'1');
+           assert(this.lastResult[2]["pow_algo"],'0');
+
+});
+
+
