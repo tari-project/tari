@@ -25,7 +25,8 @@ use crate::{
         components::{
             base_node::BaseNode,
             network_tab::NetworkTab,
-            send_receive_tab::SendReceiveTab,
+            receive_tab::ReceiveTab,
+            send_tab::SendTab,
             tabs_container::TabsContainer,
             transactions_tab::TransactionsTab,
             Component,
@@ -78,7 +79,8 @@ impl<B: Backend> App<B> {
 
         let tabs = TabsContainer::<B>::new(title.clone())
             .add("Transactions".into(), Box::new(TransactionsTab::new()))
-            .add("Send/Receive".into(), Box::new(SendReceiveTab::new()))
+            .add("Send".into(), Box::new(SendTab::new()))
+            .add("Receive".into(), Box::new(ReceiveTab::new()))
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)));
 
         let base_node_status = BaseNode::new();
