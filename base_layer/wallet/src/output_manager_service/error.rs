@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::storage::database::DbKey;
+use crate::{base_node_service::error::BaseNodeServiceError, output_manager_service::storage::database::DbKey};
 use diesel::result::Error as DieselError;
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
@@ -90,6 +90,8 @@ pub enum OutputManagerError {
     CoinbaseBuildError(#[from] CoinbaseBuildError),
     #[error("TXO Validation protocol cancelled")]
     Cancellation,
+    #[error("Base NodeService Error: `{0}`")]
+    BaseNodeServiceError(#[from] BaseNodeServiceError),
 }
 
 #[derive(Debug, Error, PartialEq)]

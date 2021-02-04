@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    base_node_service::handle::BaseNodeServiceHandle,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError},
@@ -108,6 +109,7 @@ where TBackend: OutputManagerBackend + 'static
     shutdown_signal: Option<ShutdownSignal>,
     txo_validation_cancellation_publisher: broadcast::Sender<()>,
     txo_validation_cancellation_triggered: bool,
+    base_node_service: BaseNodeServiceHandle,
 }
 
 impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream>
@@ -130,6 +132,7 @@ where
         factories: CryptoFactories,
         consensus_constants: ConsensusConstants,
         shutdown_signal: ShutdownSignal,
+        base_node_service: BaseNodeServiceHandle,
     ) -> Result<OutputManagerService<TBackend, BNResponseStream>, OutputManagerError>
     {
         // Check to see if there is any persisted state, otherwise start fresh
@@ -207,6 +210,7 @@ where
             shutdown_signal: Some(shutdown_signal),
             txo_validation_cancellation_publisher,
             txo_validation_cancellation_triggered: false,
+            base_node_service,
         })
     }
 
@@ -900,9 +904,22 @@ where
             },
             UTXOSelectionStrategy::Largest => uo.into_iter().rev().collect(),
         };
+        trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
+        // Now lets try to filter the UTXOs we cant yet spend.
+        let tip_height: u64 = self
+            .base_node_service
+            .get_connected_base_node_state()
+            .await?
+            .height_of_longest_chain();
+
+        let mut trimmed = 0;
         let mut require_change_output = false;
         for o in uo.iter() {
+            if o.unblinded_output.features.maturity > tip_height {
+                trimmed += 1;
+                continue;
+            }
             utxos.push(o.clone());
             total += o.unblinded_output.value;
             // I am assuming that the only output will be the payment output and change if required
@@ -915,6 +932,14 @@ where
                 require_change_output = true;
                 break;
             }
+        }
+        if trimmed > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "Some UTXOs have not matured yet at height {}, trimmed {} UTXOs",
+                tip_height,
+                trimmed
+            );
         }
 
         if (total != amount + fee_without_change) && (total < amount + fee_with_change) {

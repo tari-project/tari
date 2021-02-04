@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    base_node_service::handle::BaseNodeServiceHandle,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
@@ -141,6 +142,7 @@ where T: OutputManagerBackend + 'static
         context.spawn_when_ready(move |handles| async move {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
+            let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
 
             let service = OutputManagerService::new(
                 config,
@@ -153,6 +155,7 @@ where T: OutputManagerBackend + 'static
                 factories,
                 constants,
                 handles.get_shutdown_signal(),
+                base_node_service_handle,
             )
             .await
             .expect("Could not initialize Output Manager Service")

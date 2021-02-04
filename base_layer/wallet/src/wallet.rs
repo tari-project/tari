@@ -89,7 +89,7 @@ pub struct WalletConfig {
     pub buffer_size: usize,
     pub rate_limit: usize,
     pub network: Network,
-    pub base_node_service_config: Option<BaseNodeServiceConfig>,
+    pub base_node_service_config: BaseNodeServiceConfig,
 }
 
 impl WalletConfig {
@@ -113,7 +113,7 @@ impl WalletConfig {
             buffer_size: buffer_size.unwrap_or_else(|| 1500),
             rate_limit: rate_limit.unwrap_or_else(|| 50),
             network,
-            base_node_service_config,
+            base_node_service_config: base_node_service_config.unwrap_or_default(),
         }
     }
 }
@@ -134,7 +134,7 @@ where
     pub output_manager_service: OutputManagerHandle,
     pub transaction_service: TransactionServiceHandle,
     pub contacts_service: ContactsServiceHandle,
-    pub base_node_service: Option<BaseNodeServiceHandle>,
+    pub base_node_service: BaseNodeServiceHandle,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
     #[cfg(feature = "test_harness")]
@@ -164,6 +164,7 @@ where
         // Persist the Comms Private Key provided to this function
         db.set_comms_secret_key(config.comms_config.node_identity.secret_key().clone())
             .await?;
+        let bn_service_db = db.clone();
         #[cfg(feature = "test_harness")]
         let transaction_backend_handle = transaction_backend.clone();
 
@@ -175,7 +176,7 @@ where
         let node_identity = config.comms_config.node_identity.clone();
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
-        let mut stack = StackBuilder::new(shutdown_signal)
+        let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(config.comms_config, publisher))
             .add_initializer(OutputManagerServiceInitializer::new(
                 config.output_manager_service_config.unwrap_or_default(),
@@ -191,20 +192,12 @@ where
                 node_identity.clone(),
                 factories.clone(),
             ))
-            .add_initializer(ContactsServiceInitializer::new(contacts_backend));
-
-        let mut base_node_service_enabled = false;
-
-        if let Some(base_node_service_config) = config.base_node_service_config {
-            debug!(target: LOG_TARGET, "Base Node Service enabled by config. Initializing.");
-            stack = stack.add_initializer(BaseNodeServiceInitializer::new(
-                base_node_service_config,
+            .add_initializer(ContactsServiceInitializer::new(contacts_backend))
+            .add_initializer(BaseNodeServiceInitializer::new(
+                config.base_node_service_config,
                 peer_message_subscription_factory,
+                bn_service_db,
             ));
-            base_node_service_enabled = true;
-        } else {
-            debug!(target: LOG_TARGET, "Wallet Base Node Service is not enabled.");
-        }
 
         let mut handles = stack.build().await?;
 
@@ -219,11 +212,7 @@ where
         let dht = handles.expect_handle::<Dht>();
         let store_and_forward_requester = dht.store_and_forward_requester();
 
-        let base_node_service_handle = if base_node_service_enabled {
-            Some(handles.expect_handle::<BaseNodeServiceHandle>())
-        } else {
-            None
-        };
+        let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
 
         Ok(Wallet {
             comms,
@@ -287,9 +276,7 @@ where
             .set_base_node_public_key(peer.public_key.clone())
             .await?;
 
-        if let Some(mut base_node_service) = self.base_node_service.clone() {
-            base_node_service.set_base_node_peer(peer).await?;
-        }
+        self.base_node_service.clone().set_base_node_peer(peer).await?;
 
         Ok(())
     }

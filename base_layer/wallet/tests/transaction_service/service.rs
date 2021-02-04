@@ -42,6 +42,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
     message::EnvelopeBody,
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -92,6 +93,7 @@ use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage}
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_wallet::{
+    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
@@ -102,7 +104,11 @@ use tari_wallet::{
         },
         OutputManagerServiceInitializer,
     },
-    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+    storage::{
+        database::WalletDatabase,
+        memory_db::WalletMemoryDatabase,
+        sqlite_utilities::run_migration_and_create_sqlite_connection,
+    },
     transaction_service::{
         config::TransactionServiceConfig,
         handle::{TransactionEvent, TransactionServiceHandle},
@@ -161,6 +167,11 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static, P: AsRef<Path>
         shutdown_signal.clone(),
     ));
 
+    let mut db = WalletDatabase::new(WalletMemoryDatabase::new());
+    let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+
+    runtime.block_on(db.set_chain_meta(meta_data));
+
     let fut = StackBuilder::new(shutdown_signal)
         .add_initializer(RegisterHandle::new(dht))
         .add_initializer(RegisterHandle::new(comms.connectivity()))
@@ -182,6 +193,11 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static, P: AsRef<Path>
             backend,
             comms.node_identity().clone(),
             factories.clone(),
+        ))
+        .add_initializer(BaseNodeServiceInitializer::new(
+            BaseNodeServiceConfig::default(),
+            subscription_factory.clone(),
+            db,
         ))
         .build();
 
@@ -295,6 +311,10 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
 
     let shutdown = Shutdown::new();
 
+    let (sender, _) = reply_channel::unbounded();
+    let (event_publisher_bns, _) = broadcast::channel(100);
+
+    let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig::default(),
@@ -307,6 +327,7 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
             factories.clone(),
             constants,
             shutdown.to_signal(),
+            basenode_service_handle,
         ))
         .unwrap();
 

@@ -49,12 +49,18 @@ use tari_p2p::{
 use tari_service_framework::{ServiceHandles, ServiceInitializerContext, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
+    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         storage::sqlite_db::OutputManagerSqliteDatabase,
         OutputManagerServiceInitializer,
     },
-    storage::{sqlite_utilities, sqlite_utilities::WalletDbConnection},
+    storage::{
+        database::WalletDatabase,
+        memory_db::WalletMemoryDatabase,
+        sqlite_utilities,
+        sqlite_utilities::WalletDbConnection,
+    },
     transaction_service::{
         config::TransactionServiceConfig,
         storage::sqlite_db::TransactionServiceSqliteDatabase,
@@ -117,7 +123,7 @@ impl WalletBootstrapper {
         let comms_config = self.create_comms_config();
         let transport_type = comms_config.transport_type.clone();
 
-        let base_node_peer = self.base_node_peer;
+        let base_node_peer = self.base_node_peer.clone();
 
         let mut handles = StackBuilder::new(self.interrupt_signal)
             .add_initializer(P2pInitializer::new(comms_config, publisher))
@@ -155,12 +161,21 @@ impl WalletBootstrapper {
                     broadcast_send_timeout: config.transaction_broadcast_send_timeout,
                     ..Default::default()
                 },
-                peer_message_subscriptions,
+                peer_message_subscriptions.clone(),
                 transaction_db,
                 self.node_identity.clone(),
                 self.factories,
             ))
+            .add_initializer(BaseNodeServiceInitializer::new(
+                BaseNodeServiceConfig::default(),
+                peer_message_subscriptions,
+                WalletDatabase::new(WalletMemoryDatabase::new()),
+            ))
             .build()
+            .await?;
+        let mut base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
+        base_node_service_handle
+            .set_base_node_peer(self.base_node_peer.clone())
             .await?;
 
         let comms = handles

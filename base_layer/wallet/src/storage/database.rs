@@ -27,6 +27,7 @@ use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::NodeIdentity,
@@ -56,6 +57,7 @@ pub enum DbKey {
     CommsFeatures,
     Identity,
     TorId,
+    BaseNodeChainMeta,
     ClientKey(String),
 }
 
@@ -68,6 +70,7 @@ pub enum DbValue {
     TorId(TorIdentity),
     ClientValue(String),
     ValueCleared,
+    BaseNodeChainMeta(ChainMetadata),
 }
 
 #[derive(Clone)]
@@ -76,6 +79,7 @@ pub enum DbKeyValuePair {
     ClientKeyValue(String, String),
     Identity(Box<NodeIdentity>),
     TorId(TorIdentity),
+    BaseNodeChainMeta(ChainMetadata),
 }
 
 pub enum WriteOperation {
@@ -142,6 +146,31 @@ where T: WalletBackend + 'static
         tokio::task::spawn_blocking(move || db_clone.write(WriteOperation::Insert(DbKeyValuePair::TorId(id))))
             .await
             .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
+    pub async fn get_chain_meta(&self) -> Result<Option<ChainMetadata>, WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::BaseNodeChainMeta) {
+            Ok(None) => Ok(None),
+            Ok(Some(DbValue::BaseNodeChainMeta(k))) => Ok(Some(k)),
+            Ok(Some(other)) => unexpected_result(DbKey::BaseNodeChainMeta, other),
+            Err(e) => log_error(DbKey::BaseNodeChainMeta, e),
+        })
+        .await
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(c)
+    }
+
+    pub async fn set_chain_meta(&self, metadata: ChainMetadata) -> Result<(), WalletStorageError> {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMeta(metadata)))
+        })
+        .await
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
 
@@ -221,6 +250,7 @@ impl Display for DbKey {
             DbKey::Identity => f.write_str(&"NodeIdentity".to_string()),
             DbKey::TorId => f.write_str(&"TorId".to_string()),
             DbKey::ClientKey(k) => f.write_str(&format!("ClientKey: {:?}", k)),
+            DbKey::BaseNodeChainMeta => f.write_str(&"Last seen Chain metadata from base node".to_string()),
         }
     }
 }
@@ -236,6 +266,7 @@ impl Display for DbValue {
             DbValue::CommsAddress(_) => f.write_str(&"Comms Address".to_string()),
             DbValue::TorId(v) => f.write_str(&format!("Tor ID: {}", v)),
             DbValue::Identity(v) => f.write_str(&format!("Node Identity: {}", v)),
+            DbValue::BaseNodeChainMeta(v) => f.write_str(&format!("Last seen Chain metadata from base node:{}", v)),
         }
     }
 }
