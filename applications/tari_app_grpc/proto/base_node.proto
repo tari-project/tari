@@ -85,6 +85,7 @@ message NetworkDifficultyResponse {
     uint64 estimated_hash_rate = 2;
     uint64 height = 3;
     uint64 timestamp = 4;
+    uint64 pow_algo = 5;
 }
 
 // A generic single value response for a specific height
