@@ -455,7 +455,6 @@ where
                     self.db.get_pending_outbound_transactions().await?,
                 ))
             },
-
             TransactionServiceRequest::GetCompletedTransactions => Ok(
                 TransactionServiceResponse::CompletedTransactions(self.db.get_completed_transactions().await?),
             ),
@@ -551,11 +550,13 @@ where
                 )
                 .await
                 .map(|_| TransactionServiceResponse::ProtocolsRestarted),
-
             TransactionServiceRequest::RestartBroadcastProtocols => self
                 .restart_broadcast_protocols(transaction_broadcast_join_handles, coinbase_monitoring_join_handles)
                 .await
                 .map(|_| TransactionServiceResponse::ProtocolsRestarted),
+            TransactionServiceRequest::NumConfirmationsRequired => Ok(
+                TransactionServiceResponse::NumConfirmationsRequired(self.resources.config.num_confirmations_required),
+            ),
         }
     }
 

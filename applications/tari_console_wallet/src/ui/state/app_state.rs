@@ -1,4 +1,5 @@
 use crate::{
+    notifier::Notifier,
     ui::{
         state::wallet_event_monitor::WalletEventMonitor,
         UiContact,
@@ -64,9 +65,9 @@ impl AppState {
         }
     }
 
-    pub async fn start_event_monitor(&self) {
+    pub async fn start_event_monitor(&self, notifier: Notifier) {
         let event_monitor = WalletEventMonitor::new(self.inner.clone());
-        tokio::spawn(event_monitor.run());
+        tokio::spawn(event_monitor.run(notifier));
     }
 
     pub async fn refresh_transaction_state(&mut self) -> Result<(), UiError> {
