@@ -1714,6 +1714,7 @@ where
     ) -> Result<(), TransactionServiceError>
     {
         use crate::{
+            base_node_service::handle::BaseNodeServiceHandle,
             output_manager_service::{
                 config::OutputManagerServiceConfig,
                 error::OutputManagerError,
@@ -1734,6 +1735,10 @@ where
         let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
         let constants = ConsensusConstantsBuilder::new(Network::Stibbons).build();
         let shutdown = Shutdown::new();
+        let (sender, _) = reply_channel::unbounded();
+        let (event_publisher_bns, _) = broadcast::channel(100);
+
+        let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
         let mut fake_oms = OutputManagerService::new(
             OutputManagerServiceConfig::default(),
             OutboundMessageRequester::new(tx),
@@ -1745,6 +1750,7 @@ where
             self.resources.factories.clone(),
             constants,
             shutdown.to_signal(),
+            basenode_service_handle,
         )
         .await?;
 

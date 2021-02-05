@@ -25,10 +25,9 @@ pub mod error;
 pub mod handle;
 pub mod service;
 
-use crate::base_node_service::{
-    config::BaseNodeServiceConfig,
-    handle::BaseNodeServiceHandle,
-    service::BaseNodeService,
+use crate::{
+    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, service::BaseNodeService},
+    storage::database::{WalletBackend, WalletDatabase},
 };
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
@@ -52,16 +51,27 @@ use tokio::sync::broadcast;
 const LOG_TARGET: &str = "wallet::base_node_service";
 const SUBSCRIPTION_LABEL: &str = "Base Node";
 
-pub struct BaseNodeServiceInitializer {
+pub struct BaseNodeServiceInitializer<T>
+where T: WalletBackend + 'static
+{
     config: BaseNodeServiceConfig,
     subscription_factory: Arc<SubscriptionFactory>,
+    db: WalletDatabase<T>,
 }
 
-impl BaseNodeServiceInitializer {
-    pub fn new(config: BaseNodeServiceConfig, subscription_factory: Arc<SubscriptionFactory>) -> Self {
+impl<T> BaseNodeServiceInitializer<T>
+where T: WalletBackend + 'static
+{
+    pub fn new(
+        config: BaseNodeServiceConfig,
+        subscription_factory: Arc<SubscriptionFactory>,
+        db: WalletDatabase<T>,
+    ) -> Self
+    {
         Self {
             config,
             subscription_factory,
+            db,
         }
     }
 
@@ -78,7 +88,9 @@ impl BaseNodeServiceInitializer {
             .filter_map(ok_or_skip_result)
     }
 }
-impl ServiceInitializer for BaseNodeServiceInitializer {
+impl<T> ServiceInitializer for BaseNodeServiceInitializer<T>
+where T: WalletBackend + 'static
+{
     type Future = impl Future<Output = Result<(), ServiceInitializationError>>;
 
     fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
@@ -95,6 +107,7 @@ impl ServiceInitializer for BaseNodeServiceInitializer {
         context.register_handle(basenode_service_handle);
 
         let config = self.config.clone();
+        let db = self.db.clone();
 
         context.spawn_when_ready(move |handles| async move {
             let dht = handles.expect_handle::<Dht>();
@@ -107,6 +120,7 @@ impl ServiceInitializer for BaseNodeServiceInitializer {
                 outbound_messaging,
                 event_publisher,
                 handles.get_shutdown_signal(),
+                db,
             )
             .start();
             futures::pin_mut!(service);

@@ -29,6 +29,7 @@ use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
 };
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
     multiaddr::Multiaddr,
     tor::TorIdentity,
@@ -45,6 +46,7 @@ pub struct InnerDatabase {
     features: u64,
     identity: Option<NodeIdentity>,
     tor_id: Option<TorIdentity>,
+    chain_metadata: Option<ChainMetadata>,
 }
 
 impl InnerDatabase {
@@ -56,6 +58,7 @@ impl InnerDatabase {
             features: 0,
             identity: None,
             tor_id: None,
+            chain_metadata: None,
         }
     }
 }
@@ -93,6 +96,7 @@ impl WalletBackend for WalletMemoryDatabase {
             DbKey::CommsFeatures => Some(DbValue::CommsFeatures(db.features)),
             DbKey::Identity => db.identity.clone().map(DbValue::Identity),
             DbKey::TorId => db.tor_id.clone().map(DbValue::TorId),
+            DbKey::BaseNodeChainMeta => db.chain_metadata.clone().map(DbValue::BaseNodeChainMeta),
         };
 
         Ok(result)
@@ -113,6 +117,9 @@ impl WalletBackend for WalletMemoryDatabase {
                 },
                 DbKeyValuePair::TorId(v) => {
                     db.tor_id = Some(v);
+                },
+                DbKeyValuePair::BaseNodeChainMeta(v) => {
+                    db.chain_metadata = Some(v);
                 },
             },
             WriteOperation::Remove(k) => match k {
@@ -136,6 +143,9 @@ impl WalletBackend for WalletMemoryDatabase {
                     return Err(WalletStorageError::OperationNotSupported);
                 },
                 DbKey::Identity => {
+                    return Err(WalletStorageError::OperationNotSupported);
+                },
+                DbKey::BaseNodeChainMeta => {
                     return Err(WalletStorageError::OperationNotSupported);
                 },
                 DbKey::TorId => {

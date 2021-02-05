@@ -74,6 +74,14 @@ impl BaseNodeServiceHandle {
         self.event_stream_sender.subscribe().fuse()
     }
 
+    pub async fn get_connected_base_node_state(&mut self) -> Result<ChainMetadata, BaseNodeServiceError> {
+        match self.handle.call(BaseNodeServiceRequest::GetChainMetadata).await?? {
+            BaseNodeServiceResponse::ChainMetadata(Some(v)) => Ok(v),
+            BaseNodeServiceResponse::ChainMetadata(None) => Err(BaseNodeServiceError::NoChainMetadata),
+            _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), BaseNodeServiceError> {
         match self
             .handle

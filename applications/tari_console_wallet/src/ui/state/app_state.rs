@@ -535,11 +535,7 @@ impl AppStateInner {
     }
 
     pub fn get_base_node_event_stream(&self) -> Fuse<BaseNodeEventReceiver> {
-        self.wallet
-            .base_node_service
-            .clone()
-            .expect("The wallet base node service was never initialized!")
-            .get_event_stream_fused()
+        self.wallet.base_node_service.clone().get_event_stream_fused()
     }
 
     pub async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), UiError> {

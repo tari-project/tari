@@ -65,6 +65,7 @@ use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_wallet::{
+    base_node_service::handle::BaseNodeServiceHandle,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
@@ -114,6 +115,10 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     let constants = ConsensusConstantsBuilder::new(Network::Ridcully).build();
 
+    let (sender, _) = reply_channel::unbounded();
+    let (event_publisher_bns, _) = broadcast::channel(100);
+
+    let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig {
@@ -130,6 +135,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
             factories.clone(),
             constants,
             shutdown.to_signal(),
+            basenode_service_handle,
         ))
         .unwrap();
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);

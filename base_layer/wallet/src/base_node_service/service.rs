@@ -20,15 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
-
 use super::{
     config::BaseNodeServiceConfig,
     error::BaseNodeServiceError,
     handle::{BaseNodeEvent, BaseNodeEventSender, BaseNodeServiceRequest, BaseNodeServiceResponse},
+};
+use crate::storage::database::WalletDatabase;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
 };
 
 use chrono::{NaiveDateTime, Utc};
@@ -44,6 +44,7 @@ use tari_comms::peer_manager::Peer;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
 use tari_core::proto::{base_node as proto, base_node::base_node_service_request::Request as BaseNodeRequestProto};
 
+use crate::storage::database::WalletBackend;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
@@ -97,7 +98,9 @@ struct RequestMetadata {
 }
 
 /// The wallet base node service is responsible for handling requests to be sent to the connected base node.
-pub struct BaseNodeService<BNResponseStream> {
+pub struct BaseNodeService<BNResponseStream, T>
+where T: WalletBackend + 'static
+{
     config: BaseNodeServiceConfig,
     base_node_response_stream: Option<BNResponseStream>,
     request_stream: Option<Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>>,
@@ -107,10 +110,13 @@ pub struct BaseNodeService<BNResponseStream> {
     shutdown_signal: Option<ShutdownSignal>,
     state: BaseNodeState,
     requests: Vec<RequestMetadata>,
+    db: WalletDatabase<T>,
 }
 
-impl<BNResponseStream> BaseNodeService<BNResponseStream>
-where BNResponseStream: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>
+impl<BNResponseStream, T> BaseNodeService<BNResponseStream, T>
+where
+    T: WalletBackend + 'static,
+    BNResponseStream: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
 {
     pub fn new(
         config: BaseNodeServiceConfig,
@@ -119,6 +125,7 @@ where BNResponseStream: Stream<Item = DomainMessage<proto::BaseNodeServiceRespon
         outbound_messaging: OutboundMessageRequester,
         event_publisher: BaseNodeEventSender,
         shutdown_signal: ShutdownSignal,
+        db: WalletDatabase<T>,
     ) -> Self
     {
         Self {
@@ -131,6 +138,7 @@ where BNResponseStream: Stream<Item = DomainMessage<proto::BaseNodeServiceRespon
             shutdown_signal: Some(shutdown_signal),
             state: Default::default(),
             requests: Default::default(),
+            db,
         }
     }
 
@@ -314,13 +322,13 @@ where BNResponseStream: Stream<Item = DomainMessage<proto::BaseNodeServiceRespon
                 Some(proto::base_node_service_response::Response::ChainMetadata(chain_metadata)) => {
                     trace!(target: LOG_TARGET, "Chain Metadata response {:?}", chain_metadata);
                     info!(target: LOG_TARGET, "Base node latency: {}ms", millis);
+                    let metadata: ChainMetadata = chain_metadata
+                        .try_into()
+                        .map_err(BaseNodeServiceError::InvalidBaseNodeResponse)?;
+                    self.db.set_chain_meta(metadata.clone()).await?;
                     let state = BaseNodeState {
                         is_synced: Some(message.is_synced),
-                        chain_metadata: Some(
-                            chain_metadata
-                                .try_into()
-                                .map_err(BaseNodeServiceError::InvalidBaseNodeResponse)?,
-                        ),
+                        chain_metadata: Some(metadata),
                         updated: Some(now),
                         latency: Some(latency),
                         online: OnlineState::Online,
@@ -385,9 +393,10 @@ where BNResponseStream: Stream<Item = DomainMessage<proto::BaseNodeServiceRespon
                 self.set_base_node_peer(*peer);
                 Ok(BaseNodeServiceResponse::BaseNodePeerSet)
             },
-            BaseNodeServiceRequest::GetChainMetadata => Ok(BaseNodeServiceResponse::ChainMetadata(
-                self.state.chain_metadata.clone(),
-            )),
+            BaseNodeServiceRequest::GetChainMetadata => match self.state.chain_metadata.clone() {
+                Some(v) => Ok(BaseNodeServiceResponse::ChainMetadata(Some(v))),
+                None => Ok(BaseNodeServiceResponse::ChainMetadata(self.db.get_chain_meta().await?)),
+            },
         }
     }
 }

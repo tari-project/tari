@@ -40,6 +40,7 @@ use std::{
     str::{from_utf8, FromStr},
     sync::{Arc, RwLock},
 };
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -307,6 +308,22 @@ impl WalletSqliteDatabase {
             Ok(None)
         }
     }
+
+    fn set_chain_meta(&self, chain: ChainMetadata, conn: &SqliteConnection) -> Result<(), WalletStorageError> {
+        let bytes = bincode::serialize(&chain).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
+        WalletSettingSql::new(DbKey::BaseNodeChainMeta.to_string(), bytes.to_hex()).set(&conn)?;
+        Ok(())
+    }
+
+    fn get_chain_meta(&self, conn: &SqliteConnection) -> Result<Option<ChainMetadata>, WalletStorageError> {
+        if let Some(key_str) = WalletSettingSql::get(DbKey::BaseNodeChainMeta.to_string(), &conn)? {
+            let chain_metadata = bincode::deserialize(&from_hex(&key_str)?)
+                .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
+            Ok(Some(chain_metadata))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 impl WalletBackend for WalletSqliteDatabase {
@@ -350,6 +367,7 @@ impl WalletBackend for WalletSqliteDatabase {
             },
             DbKey::TorId => self.get_tor_id(&conn)?,
             DbKey::CommsFeatures => self.get_comms_features(&conn)?.map(DbValue::CommsFeatures),
+            DbKey::BaseNodeChainMeta => self.get_chain_meta(&conn)?.map(DbValue::BaseNodeChainMeta),
         };
 
         Ok(result)
@@ -367,6 +385,9 @@ impl WalletBackend for WalletSqliteDatabase {
                 },
                 DbKeyValuePair::TorId(node_id) => {
                     self.set_tor_id(node_id, &(*conn))?;
+                },
+                DbKeyValuePair::BaseNodeChainMeta(metadata) => {
+                    self.set_chain_meta(metadata, &(*conn))?;
                 },
                 DbKeyValuePair::ClientKeyValue(k, v) => {
                     // First see if we will overwrite a value so we can return the old value
@@ -402,6 +423,9 @@ impl WalletBackend for WalletSqliteDatabase {
                     return Err(WalletStorageError::OperationNotSupported);
                 },
                 DbKey::CommsAddress => {
+                    return Err(WalletStorageError::OperationNotSupported);
+                },
+                DbKey::BaseNodeChainMeta => {
                     return Err(WalletStorageError::OperationNotSupported);
                 },
                 DbKey::TorId => {

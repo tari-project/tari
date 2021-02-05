@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::error::WalletStorageError;
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
@@ -28,6 +29,8 @@ use thiserror::Error;
 pub enum BaseNodeServiceError {
     #[error("No base node peer set")]
     NoBaseNodePeer,
+    #[error("No chain meta data from peer")]
+    NoChainMetadata,
     #[error("Unexpected API Response")]
     UnexpectedApiResponse,
     #[error("Transport channel error: `{0}`")]
@@ -36,4 +39,6 @@ pub enum BaseNodeServiceError {
     OutboundError(#[from] DhtOutboundError),
     #[error("Received invalid base node response: {0}")]
     InvalidBaseNodeResponse(String),
+    #[error("Wallet storage error: `{0}`")]
+    WalletStorageError(#[from] WalletStorageError),
 }
