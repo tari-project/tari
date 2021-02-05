@@ -64,7 +64,7 @@ function update_version {
     CARGO=$1
     VERSION=$2
     #SCRIPT='s/version\s*=\s*"\d+\.\d+\.\d+"/version = "'"$VERSION"'"/'
-    SCRIPT='s/^version =.*$/version = "'"$VERSION"'"/'
+    SCRIPT='s/^version = "0.*$/version = "'"$VERSION"'"/'
     echo "$SCRIPT" "$CARGO"
     sed -i.bak -e "$SCRIPT" "$CARGO"
     rm $CARGO.bak

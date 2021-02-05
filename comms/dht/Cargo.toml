@@ -1,6 +1,6 @@
 [package]
 name = "tari_comms_dht"
-version = "0.8.1"
+version = "0.8.2"
 authors = ["The Tari Development Community"]
 description = "Tari comms DHT module"
 repository = "https://github.com/tari-project/tari"
