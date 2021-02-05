@@ -66,46 +66,34 @@ impl BlockTemplateRepository {
             hex::encode(hash.as_ref())
         );
         let b = self.blocks.read().await;
-        match b.get(hash.as_ref()).cloned() {
-            Some(item) => Some(item.data),
-            None => None,
-        }
+        b.get(hash.as_ref()).map(|item| item.data.clone())
     }
 
-    pub async fn save<T: AsRef<[u8]>>(&mut self, hash: T, block_template: BlockTemplateData) {
+    pub async fn save(&mut self, hash: Vec<u8>, block_template: BlockTemplateData) {
         trace!(
             target: LOG_TARGET,
             "Saving blocktemplate with merge mining hash: {:?}",
-            hex::encode(hash.as_ref())
+            hex::encode(&hash)
         );
         let mut b = self.blocks.write().await;
         let repository_item = BlockTemplateRepositoryItem::new(block_template);
-        b.insert(Vec::from(hash.as_ref()), repository_item);
+        b.insert(hash, repository_item);
     }
 
     pub async fn remove_outdated(&mut self) {
         trace!(target: LOG_TARGET, "Removing outdated blocktemplates");
         let mut b = self.blocks.write().await;
         let threshold = Utc::now() - Duration::minutes(20);
-        for item in b.clone().iter() {
-            if item.1.datetime() < threshold {
-                trace!(
-                    target: LOG_TARGET,
-                    "Blocktemplate removed with merge mining hash {:?}",
-                    hex::encode(item.0)
-                );
-                b.remove(item.0);
-            }
-        }
+        *b = b.drain().filter(|(_, i)| i.datetime() >= threshold).collect();
     }
 
     pub async fn remove<T: AsRef<[u8]>>(&mut self, hash: T) {
-        let mut b = self.blocks.write().await;
         trace!(
             target: LOG_TARGET,
             "Blocktemplate removed with merge mining hash {:?}",
             hex::encode(hash.as_ref())
         );
+        let mut b = self.blocks.write().await;
         b.remove(hash.as_ref());
     }
 }
