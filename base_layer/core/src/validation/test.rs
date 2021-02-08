@@ -86,7 +86,7 @@ fn header_iter_fetch_in_chunks() {
 // TODO: Fix this test with the new DB structure
 fn chain_balance_validation() {
     // let factories = CryptoFactories::default();
-    // let consensus_manager = ConsensusManagerBuilder::new(Network::Ridcully).build();
+    // let consensus_manager = ConsensusManagerBuilder::new(Network::Stibbons).build();
     // let mut genesis = consensus_manager.get_genesis_block();
     // let faucet_value = 5000 * uT;
     // let (faucet_utxo, faucet_key) = create_utxo(faucet_value, &factories, None);

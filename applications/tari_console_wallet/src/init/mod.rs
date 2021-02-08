@@ -386,6 +386,7 @@ pub async fn init_wallet(
             transaction_routing_mechanism: TransactionRoutingMechanism::from(
                 config.transaction_routing_mechanism.clone(),
             ),
+            num_confirmations_required: config.transaction_num_confirmations_required,
             ..Default::default()
         }),
         Some(OutputManagerServiceConfig {

@@ -87,6 +87,8 @@ console_wallet_db_file = "wallet\\console-wallet.dat"
 # This is the timeout period that will be used to monitor TXO queries to the base node (default = 60). Larger values
 # are needed for wallets with many (>1000) TXOs to be validated.
 base_node_query_timeout = 120
+# This is the number of block confirmations required for a transaction to be considered completely mined and confirmed. (default = 3)
+#transaction_num_confirmations_required = 3
 # This is the timeout period that will be used for base node broadcast monitoring tasks (default = 60)
 #transaction_broadcast_monitoring_timeout = 60
 # This is the timeout period that will be used for chain monitoring tasks (default = 60)

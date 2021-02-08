@@ -3801,6 +3801,84 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
     }
 }
 
+/// Gets the number of mining confirmations required
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `unsigned long long` - Returns the number of confirmations required
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_get_num_confirmations_required(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.transaction_service.get_num_confirmations_required())
+    {
+        Ok(num) => num,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
+}
+
+/// Sets the number of mining confirmations required
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `num` - The number of confirmations to require
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_set_num_confirmations_required(
+    wallet: *mut TariWallet,
+    num: c_ulonglong,
+    error_out: *mut c_int,
+)
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int)
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.transaction_service.set_num_confirmations_required(num))
+    {
+        Ok(()) => (),
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int)
+        },
+    }
+}
+
 /// Get the TariContacts from a TariWallet
 ///
 /// ## Arguments
@@ -5208,7 +5286,7 @@ mod test {
     use tari_key_manager::mnemonic::Mnemonic;
     use tari_wallet::{
         testnet_utils::random_string,
-        transaction_service::storage::models::TransactionStatus,
+        transaction_service::{config::TransactionServiceConfig, storage::models::TransactionStatus},
         util::emoji,
     };
     use tempfile::tempdir;
@@ -5822,6 +5900,24 @@ mod test {
                 .runtime
                 .block_on((*bob_wallet).wallet.db.set_chain_meta(meta_data.clone()))
                 .unwrap();
+
+            // number of confirmations
+            let num_confirmations_required = wallet_get_num_confirmations_required(alice_wallet, error_ptr);
+            assert_eq!(
+                num_confirmations_required,
+                TransactionServiceConfig::default().num_confirmations_required
+            );
+            assert_eq!(error, 0);
+            for number in 1..10 {
+                // set
+                wallet_set_num_confirmations_required(alice_wallet, number, error_ptr);
+                assert_eq!(error, 0);
+                // get
+                let num_confirmations_required = wallet_get_num_confirmations_required(alice_wallet, error_ptr);
+                assert_eq!(num_confirmations_required, number);
+                assert_eq!(error, 0);
+            }
+
             let generated = wallet_test_generate_data(alice_wallet, db_path_alice_str, error_ptr);
             assert_eq!(generated, true);
 

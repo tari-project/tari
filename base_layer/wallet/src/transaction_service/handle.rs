@@ -62,7 +62,8 @@ pub enum TransactionServiceRequest {
     GenerateCoinbaseTransaction(MicroTari, MicroTari, u64),
     RestartTransactionProtocols,
     RestartBroadcastProtocols,
-    NumConfirmationsRequired,
+    GetNumConfirmationsRequired,
+    SetNumConfirmationsRequired(u64),
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
     #[cfg(feature = "test_harness")]
@@ -101,7 +102,8 @@ impl fmt::Display for TransactionServiceRequest {
             },
             Self::RestartTransactionProtocols => f.write_str("RestartTransactionProtocols"),
             Self::RestartBroadcastProtocols => f.write_str("RestartBroadcastProtocols"),
-            Self::NumConfirmationsRequired => f.write_str("NumConfirmationsRequired"),
+            Self::GetNumConfirmationsRequired => f.write_str("GetNumConfirmationsRequired"),
+            Self::SetNumConfirmationsRequired(_) => f.write_str("SetNumConfirmationsRequired"),
             #[cfg(feature = "test_harness")]
             Self::CompletePendingOutboundTransaction(tx) => {
                 f.write_str(&format!("CompletePendingOutboundTransaction ({})", tx.tx_id))
@@ -141,6 +143,7 @@ pub enum TransactionServiceResponse {
     ProtocolsRestarted,
     AnyTransaction(Box<Option<WalletTransaction>>),
     NumConfirmationsRequired(u64),
+    NumConfirmationsSet,
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -434,13 +437,24 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn num_confirmations_required(&mut self) -> Result<u64, TransactionServiceError> {
+    pub async fn get_num_confirmations_required(&mut self) -> Result<u64, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::NumConfirmationsRequired)
+            .call(TransactionServiceRequest::GetNumConfirmationsRequired)
             .await??
         {
             TransactionServiceResponse::NumConfirmationsRequired(confirmations) => Ok(confirmations),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn set_num_confirmations_required(&mut self, number: u64) -> Result<(), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SetNumConfirmationsRequired(number))
+            .await??
+        {
+            TransactionServiceResponse::NumConfirmationsSet => Ok(()),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

@@ -460,6 +460,13 @@ unsigned long long wallet_get_pending_outgoing_balance(struct TariWallet *wallet
 // Get a fee estimate from a TariWallet for a given amount
 unsigned long long wallet_get_fee_estimate(struct TariWallet *wallet, unsigned long long amount, unsigned long long fee_per_gram, unsigned long long num_kernels, unsigned long long num_outputs, int* error_out);
 
+// Get the number of mining confirmations by the wallet transaction service
+unsigned long long wallet_get_num_confirmations_required(struct TariWallet *wallet, int* error_out);
+
+// Set the number of mining confirmations by the wallet transaction service
+void wallet_set_num_confirmations_required(struct TariWallet *wallet, unsigned long long num, int* error_out);
+
+
 // Sends a TariPendingOutboundTransaction
 unsigned long long wallet_send_transaction(struct TariWallet *wallet, struct TariPublicKey *destination, unsigned long long amount, unsigned long long fee_per_gram,const char *message,int* error_out);
 

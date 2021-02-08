@@ -188,7 +188,7 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static, P: AsRef<Path>
             subscription_factory.clone(),
             OutputManagerMemoryDatabase::new(),
             factories.clone(),
-            Network::Ridcully,
+            Network::Stibbons,
         ))
         .add_initializer(TransactionServiceInitializer::new(
             TransactionServiceConfig {
@@ -315,7 +315,7 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
     });
     runtime.block_on(connectivity_mock_state.add_active_connection(connection));
 
-    let constants = ConsensusConstantsBuilder::new(Network::Ridcully).build();
+    let constants = ConsensusConstantsBuilder::new(Network::Stibbons).build();
 
     let shutdown = Shutdown::new();
 
@@ -1498,6 +1498,37 @@ fn test_power_mode_updates() {
     let _ = runtime
         .block_on(rpc_service_state.wait_pop_transaction_query_calls(4, Duration::from_secs(60)))
         .unwrap();
+}
+#[test]
+fn test_set_num_confirmations() {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    let backend = TransactionMemoryDatabase::new();
+
+    let (mut ts, _, _, _, _, _, _, _, _, _shutdown, _, _, _) = setup_transaction_service_no_comms(
+        &mut runtime,
+        factories.clone(),
+        backend,
+        Some(TransactionServiceConfig {
+            broadcast_monitoring_timeout: Duration::from_secs(20),
+            chain_monitoring_timeout: Duration::from_secs(20),
+            ..Default::default()
+        }),
+    );
+
+    let num_confirmations_required = runtime.block_on(ts.get_num_confirmations_required()).unwrap();
+    assert_eq!(
+        num_confirmations_required,
+        TransactionServiceConfig::default().num_confirmations_required
+    );
+
+    for number in 1..10 {
+        runtime.block_on(ts.set_num_confirmations_required(number)).unwrap();
+
+        let num_confirmations_required = runtime.block_on(ts.get_num_confirmations_required()).unwrap();
+        assert_eq!(num_confirmations_required, number);
+    }
 }
 
 #[test]
