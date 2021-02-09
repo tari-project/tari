@@ -22,9 +22,8 @@
 
 use crate::helpers::database::create_orphan_block;
 use tari_core::{
-    blocks::BlockHeader,
     chain_storage::{create_lmdb_database, BlockchainBackend, ChainStorageError, DbKey, DbTransaction, DbValue},
-    consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
+    consensus::{ConsensusManagerBuilder, Network},
     test_helpers::blockchain::create_test_db,
     tx,
 };
@@ -35,7 +34,7 @@ use tari_test_utils::paths::create_temporary_data_path;
 #[test]
 #[ignore = "Required for pruned mode"]
 fn lmdb_insert_contains_delete_and_fetch_utxo() {
-    let db = create_test_db();
+    let _db = create_test_db();
     unimplemented!()
     // let factories = CryptoFactories::default();
     // let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
@@ -61,7 +60,7 @@ fn lmdb_insert_contains_delete_and_fetch_utxo() {
 #[test]
 #[ignore = "Requires pruned mode"]
 fn lmdb_insert_contains_delete_and_fetch_kernel() {
-    let db = create_test_db();
+    let _db = create_test_db();
     unimplemented!();
     // let kernel = create_test_kernel(5.into(), 0);
     // let hash = kernel.hash();
@@ -118,7 +117,7 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
 #[test]
 #[ignore = "Needs to be moved to chain storage"]
 fn lmdb_duplicate_utxo() {
-    let db = create_test_db();
+    let _db = create_test_db();
     unimplemented!("This test should probably be done in chain_storage rather");
     // let factories = CryptoFactories::default();
     // let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
@@ -148,7 +147,7 @@ fn lmdb_duplicate_utxo() {
 #[test]
 #[ignore = "To be completed with pruned mode"]
 fn lmdb_fetch_utxo_rp_nodes_and_count() {
-    let db = create_test_db();
+    let _db = create_test_db();
     // let factories = CryptoFactories::default();
     //
     // let (utxo1, _) = create_utxo(MicroTari(10_000), &factories, None);
@@ -238,7 +237,7 @@ fn lmdb_fetch_utxo_rp_nodes_and_count() {
 #[test]
 #[ignore = "To be completed with pruned mode"]
 fn lmdb_fetch_kernel_nodes_and_count() {
-    let db = create_test_db();
+    let _db = create_test_db();
     // let kernel1 = create_test_kernel(100.into(), 0);
     // let kernel2 = create_test_kernel(200.into(), 1);
     // let kernel3 = create_test_kernel(300.into(), 1);

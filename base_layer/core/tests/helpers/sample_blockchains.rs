@@ -140,6 +140,7 @@ pub fn create_new_blockchain(
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
+        .with_coinbase_lockheight(1)
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
@@ -171,6 +172,7 @@ pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
+        .with_coinbase_lockheight(1)
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)

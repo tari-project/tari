@@ -38,3 +38,5 @@ tempfile = "3.1.0"
 lazy_static = "1.3.0"
 env_logger = "0.7.1"
 tari_key_manager = { version = "^0.8", path = "../key_manager" }
+tari_common_types = { version = "^0.8", path = "../../base_layer/common_types"}
+tokio = { version="0.2.10" }

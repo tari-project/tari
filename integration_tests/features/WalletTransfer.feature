@@ -10,6 +10,8 @@ Feature: Wallet Transfer
     Then all nodes are at height 15
     # Need to do some waiting so that wallet can check if locks are mined (approx 90 seconds)
     When I wait 120 seconds
+    # We need to ensure the coinbase lock heights are gone
+    When I mine 2 blocks on NODE
     When I send 50000 tari from Wallet_A to Wallet_B,Wallet_C at fee 100
     And I merge mine 10 blocks via PROXY
     Then all nodes are at height 25

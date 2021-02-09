@@ -42,6 +42,7 @@ use aes_gcm::{
 use digest::Digest;
 use futures::{FutureExt, StreamExt};
 use std::path::Path;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_core::{
     consensus::Network,
     transactions::{tari_amount::uT, transaction::UnblindedOutput, types::PrivateKey},
@@ -53,7 +54,7 @@ use tari_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::storage::memory_db::OutputManagerMemoryDatabase,
     storage::{
-        database::WalletDatabase,
+        database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
         memory_db::WalletMemoryDatabase,
         sqlite_db::WalletSqliteDatabase,
         sqlite_utilities::{
@@ -144,6 +145,9 @@ async fn create_wallet(
         None,
         None,
     );
+    let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+
+    let _ = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMeta(meta_data)));
 
     let wallet = Wallet::new(
         config,
@@ -674,9 +678,16 @@ async fn test_data_generation() {
 
     let transaction_backend = TransactionMemoryDatabase::new();
 
+    let db = WalletMemoryDatabase::new();
+
+    let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+
+    db.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMeta(meta_data)))
+        .unwrap();
+
     let mut wallet = Wallet::new(
         config,
-        WalletMemoryDatabase::new(),
+        db,
         transaction_backend.clone(),
         OutputManagerMemoryDatabase::new(),
         ContactsServiceMemoryDatabase::new(),

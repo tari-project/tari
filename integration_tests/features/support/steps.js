@@ -128,6 +128,11 @@ When(/I submit transaction (.*) to (.*)/, async  function (txn,  node) {
     expect(this.lastResult.result).to.equal('ACCEPTED');
 });
 
+When(/I submit locked transaction (.*) to (.*)/, async  function (txn,  node) {
+    this.lastResult = await this.getClient(node).submitTransaction(this.transactions[txn]);
+    expect(this.lastResult.result).to.equal('REJECTED');
+});
+
 When(/I spend outputs (.*) via (.*)/, async function (inputs, node) {
     let txInputs = inputs.split(",").map(input  => this.outputs[input]);
     console.log(txInputs);
@@ -143,6 +148,10 @@ When(/I spend outputs (.*) via (.*)/, async function (inputs, node) {
 
 Then(/(.*) is in the mempool/, function (txn) {
     expect(this.lastResult.result).to.equal('ACCEPTED');
+});
+
+Then(/(.*) should not be in the mempool/, function (txn) {
+    expect(this.lastResult.result).to.equal('REJECTED');
 });
 
 When(/I save the tip on (.*) as (.*)/, async function (node, name) {
