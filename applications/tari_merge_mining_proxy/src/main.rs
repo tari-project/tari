@@ -31,7 +31,9 @@
 mod block_template_data;
 mod error;
 mod helpers;
+mod json_rpc;
 mod proxy;
+
 #[cfg(test)]
 mod test;
 
