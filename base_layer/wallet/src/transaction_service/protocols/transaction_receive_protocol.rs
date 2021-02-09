@@ -159,6 +159,7 @@ where TBackend: TransactionBackend + 'static
                 inbound_transaction.clone(),
                 self.resources.outbound_message_service.clone(),
                 self.resources.config.direct_send_timeout,
+                self.resources.config.transaction_routing_mechanism,
             )
             .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, e))?;
@@ -287,6 +288,7 @@ where TBackend: TransactionBackend + 'static
                 inbound_tx.clone(),
                 self.resources.outbound_message_service.clone(),
                 self.resources.config.direct_send_timeout,
+                self.resources.config.transaction_routing_mechanism,
             )
             .await
             {
@@ -337,6 +339,7 @@ where TBackend: TransactionBackend + 'static
                             inbound_tx.clone(),
                             self.resources.outbound_message_service.clone(),
                             self.resources.config.direct_send_timeout,
+                            self.resources.config.transaction_routing_mechanism,
                         )
                         .await {
                             Ok(_) => self.resources

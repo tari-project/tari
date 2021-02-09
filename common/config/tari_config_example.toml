@@ -99,6 +99,10 @@ base_node_query_timeout = 120
 # the transaction amount. Set this value to `false` to allow spending of "dust" UTXOs for small valued
 # transactions (default = true).
 #prevent_fee_gt_amount = false
+# This option specifies the transaction routing mechanism as being directly between wallets, making
+# use of store and forward or using any combination of these.
+# (options: "DirectOnly", "StoreAndForwardOnly", DirectAndStoreAndForward". default: "DirectAndStoreAndForward").
+#transaction_routing_mechanism = "DirectAndStoreAndForward"
 
 # When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
 # for sent transactions.

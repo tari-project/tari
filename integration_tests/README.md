@@ -4,7 +4,10 @@
 
 - Install `Node.js`
 
-- Open terminal in the `tari-project\integration_tests` folder and run `npm install`
+- Open terminal in the `tari-project\integration_tests` folder and run 
+  ```
+  npm install
+  ```
 
 ## Procedure to run
 

@@ -681,6 +681,7 @@ where
                     source_pubkey.clone(),
                     self.resources.outbound_message_service.clone(),
                     self.resources.config.direct_send_timeout,
+                    self.resources.config.transaction_routing_mechanism,
                 ));
             }
 
@@ -948,6 +949,7 @@ where
                     inbound_tx,
                     self.resources.outbound_message_service.clone(),
                     self.resources.config.direct_send_timeout,
+                    self.resources.config.transaction_routing_mechanism,
                 ));
                 if let Err(e) = self.resources.db.increment_send_count(tx_id).await {
                     warn!(

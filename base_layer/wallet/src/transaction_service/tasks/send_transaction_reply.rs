@@ -26,6 +26,7 @@ use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::SendMessag
 use tari_p2p::tari_message::TariMessageType;
 
 use crate::transaction_service::{
+    config::TransactionRoutingMechanism,
     error::TransactionServiceError,
     storage::models::InboundTransaction,
     tasks::wait_on_dial::wait_on_dial,
@@ -38,10 +39,48 @@ use tari_core::transactions::transaction_protocol::proto;
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_transaction_reply";
 
 /// A task to resend a transaction reply message if a repeated Send Transaction is received from a Sender
+/// either directly, via Store-and-forward or both as per config setting.
 pub async fn send_transaction_reply(
     inbound_transaction: InboundTransaction,
     mut outbound_message_service: OutboundMessageRequester,
     direct_send_timeout: Duration,
+    transaction_routing_mechanism: TransactionRoutingMechanism,
+) -> Result<bool, TransactionServiceError>
+{
+    let send_result;
+    let recipient_reply = inbound_transaction.receiver_protocol.get_signed_data()?.clone();
+    let proto_message: proto::RecipientSignedMessage = recipient_reply.into();
+
+    match transaction_routing_mechanism {
+        TransactionRoutingMechanism::DirectOnly | TransactionRoutingMechanism::DirectAndStoreAndForward => {
+            send_result = send_transaction_reply_direct(
+                inbound_transaction,
+                outbound_message_service,
+                direct_send_timeout,
+                transaction_routing_mechanism,
+            )
+            .await?;
+        },
+        TransactionRoutingMechanism::StoreAndForwardOnly => {
+            send_result = send_transaction_reply_store_and_forward(
+                inbound_transaction.tx_id,
+                inbound_transaction.source_public_key,
+                proto_message.clone(),
+                &mut outbound_message_service,
+            )
+            .await?;
+        },
+    };
+
+    Ok(send_result)
+}
+
+/// A task to resend a transaction reply message if a repeated Send Transaction is received from a Sender
+pub async fn send_transaction_reply_direct(
+    inbound_transaction: InboundTransaction,
+    mut outbound_message_service: OutboundMessageRequester,
+    direct_send_timeout: Duration,
+    transaction_routing_mechanism: TransactionRoutingMechanism,
 ) -> Result<bool, TransactionServiceError>
 {
     let recipient_reply = inbound_transaction.receiver_protocol.get_signed_data()?.clone();
@@ -79,35 +118,41 @@ pub async fn send_transaction_reply(
                     tx_id,
                     inbound_transaction.source_public_key,
                 );
-                store_and_forward_send_result = send_transaction_reply_store_and_forward(
-                    tx_id,
-                    inbound_transaction.source_public_key,
-                    proto_message.clone(),
-                    &mut outbound_message_service,
-                )
-                .await?;
+                if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
+                    store_and_forward_send_result = send_transaction_reply_store_and_forward(
+                        tx_id,
+                        inbound_transaction.source_public_key,
+                        proto_message.clone(),
+                        &mut outbound_message_service,
+                    )
+                    .await?;
+                }
             },
             SendMessageResponse::Failed(err) => {
                 warn!(
                     target: LOG_TARGET,
                     "Transaction Reply Send Direct for TxID {} failed: {}", tx_id, err
                 );
-                store_and_forward_send_result = send_transaction_reply_store_and_forward(
-                    tx_id,
-                    inbound_transaction.source_public_key.clone(),
-                    proto_message.clone(),
-                    &mut outbound_message_service,
-                )
-                .await?;
+                if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
+                    store_and_forward_send_result = send_transaction_reply_store_and_forward(
+                        tx_id,
+                        inbound_transaction.source_public_key.clone(),
+                        proto_message.clone(),
+                        &mut outbound_message_service,
+                    )
+                    .await?;
+                }
             },
             SendMessageResponse::PendingDiscovery(rx) => {
-                store_and_forward_send_result = send_transaction_reply_store_and_forward(
-                    tx_id,
-                    inbound_transaction.source_public_key.clone(),
-                    proto_message.clone(),
-                    &mut outbound_message_service,
-                )
-                .await?;
+                if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
+                    store_and_forward_send_result = send_transaction_reply_store_and_forward(
+                        tx_id,
+                        inbound_transaction.source_public_key.clone(),
+                        proto_message.clone(),
+                        &mut outbound_message_service,
+                    )
+                    .await?;
+                }
                 // now wait for discovery to complete
                 match rx.await {
                     Ok(send_msg_response) => {

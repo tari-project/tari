@@ -37,11 +37,9 @@ use tari_core::{
 pub fn deserialize_monero_block_from_hex<T>(data: T) -> Result<Block, MmProxyError>
 where T: AsRef<[u8]> {
     let bytes = hex::decode(data)?;
-    let obj = deserialize::<Block>(&bytes);
-    match obj {
-        Ok(obj) => Ok(obj),
-        Err(_e) => Err(MmProxyError::MissingDataError("blocktemplate blob invalid".to_string())),
-    }
+    let obj = deserialize::<Block>(&bytes)
+        .map_err(|_| MmProxyError::MissingDataError("blocktemplate blob invalid".to_string()))?;
+    Ok(obj)
 }
 
 pub fn serialize_monero_block_to_hex(obj: &Block) -> Result<String, MmProxyError> {

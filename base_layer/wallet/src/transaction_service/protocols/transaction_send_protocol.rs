@@ -27,6 +27,7 @@ use futures::{channel::mpsc::Receiver, FutureExt, StreamExt};
 use log::*;
 
 use crate::transaction_service::{
+    config::TransactionRoutingMechanism,
     error::{TransactionServiceError, TransactionServiceProtocolError},
     handle::TransactionEvent,
     service::TransactionServiceResources,
@@ -453,6 +454,7 @@ where TBackend: TransactionBackend + 'static
             self.dest_pubkey.clone(),
             self.resources.outbound_message_service.clone(),
             self.resources.config.direct_send_timeout,
+            self.resources.config.transaction_routing_mechanism,
         )
         .await
         .map_err(|e| TransactionServiceProtocolError::new(self.id, e))?;
@@ -479,11 +481,37 @@ where TBackend: TransactionBackend + 'static
         Ok(())
     }
 
+    /// Attempt to send the transaction to the recipient either directly, via Store-and-forward or both as per config
+    /// setting. If the selected sending mechanism fail to send the transaction will be cancelled.
+    /// # Argumentswallet_sync_with_base_node
+    /// `msg`: The transaction data message to be sent
+    async fn send_transaction(
+        &mut self,
+        msg: SingleRoundSenderData,
+    ) -> Result<SendResult, TransactionServiceProtocolError>
+    {
+        let mut result = SendResult {
+            direct_send_result: false,
+            store_and_forward_send_result: false,
+        };
+
+        match self.resources.config.transaction_routing_mechanism {
+            TransactionRoutingMechanism::DirectOnly | TransactionRoutingMechanism::DirectAndStoreAndForward => {
+                result = self.send_transaction_direct(msg.clone()).await?;
+            },
+            TransactionRoutingMechanism::StoreAndForwardOnly => {
+                result.store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
+            },
+        };
+
+        Ok(result)
+    }
+
     /// Attempt to send the transaction to the recipient both directly and via Store-and-forward. If both fail to send
     /// the transaction will be cancelled.
     /// # Argumentswallet_sync_with_base_node
     /// `msg`: The transaction data message to be sent
-    async fn send_transaction(
+    async fn send_transaction_direct(
         &mut self,
         msg: SingleRoundSenderData,
     ) -> Result<SendResult, TransactionServiceProtocolError>
@@ -597,6 +625,9 @@ where TBackend: TransactionBackend + 'static
         msg: SingleRoundSenderData,
     ) -> Result<bool, TransactionServiceProtocolError>
     {
+        if self.resources.config.transaction_routing_mechanism == TransactionRoutingMechanism::DirectOnly {
+            return Ok(false);
+        }
         let proto_message = proto::TransactionSenderMessage::single(msg.into());
         match self
             .resources

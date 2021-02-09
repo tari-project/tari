@@ -68,7 +68,7 @@ use tari_wallet::{
         database::{DbKey, DbKeyValuePair, DbValue, WalletBackend, WriteOperation},
         sqlite_utilities::initialize_sqlite_database_backends,
     },
-    transaction_service::config::TransactionServiceConfig,
+    transaction_service::config::{TransactionRoutingMechanism, TransactionServiceConfig},
     wallet::WalletConfig,
     Wallet,
     WalletSqlite,
@@ -383,6 +383,9 @@ pub async fn init_wallet(
             chain_monitoring_timeout: config.transaction_chain_monitoring_timeout,
             direct_send_timeout: config.transaction_direct_send_timeout,
             broadcast_send_timeout: config.transaction_broadcast_send_timeout,
+            transaction_routing_mechanism: TransactionRoutingMechanism::from(
+                config.transaction_routing_mechanism.clone(),
+            ),
             ..Default::default()
         }),
         Some(OutputManagerServiceConfig {

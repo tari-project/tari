@@ -21,7 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::{
     output_manager_service::TxId,
-    transaction_service::{error::TransactionServiceError, tasks::wait_on_dial::wait_on_dial},
+    transaction_service::{
+        config::TransactionRoutingMechanism,
+        error::TransactionServiceError,
+        tasks::wait_on_dial::wait_on_dial,
+    },
 };
 use log::*;
 use std::time::Duration;
@@ -42,6 +46,49 @@ pub async fn send_finalized_transaction_message(
     destination_public_key: CommsPublicKey,
     mut outbound_message_service: OutboundMessageRequester,
     direct_send_timeout: Duration,
+    transaction_routing_mechanism: TransactionRoutingMechanism,
+) -> Result<(), TransactionServiceError>
+{
+    match transaction_routing_mechanism {
+        TransactionRoutingMechanism::DirectOnly | TransactionRoutingMechanism::DirectAndStoreAndForward => {
+            send_finalized_transaction_message_direct(
+                tx_id,
+                transaction,
+                destination_public_key,
+                outbound_message_service,
+                direct_send_timeout,
+                transaction_routing_mechanism,
+            )
+            .await?;
+        },
+        TransactionRoutingMechanism::StoreAndForwardOnly => {
+            let finalized_transaction_message = proto::TransactionFinalizedMessage {
+                tx_id,
+                transaction: Some(transaction.clone().into()),
+            };
+            let store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
+                tx_id,
+                destination_public_key,
+                finalized_transaction_message.clone(),
+                &mut outbound_message_service,
+            )
+            .await?;
+            if !store_and_forward_send_result {
+                return Err(TransactionServiceError::OutboundSendFailure);
+            }
+        },
+    };
+
+    Ok(())
+}
+
+pub async fn send_finalized_transaction_message_direct(
+    tx_id: TxId,
+    transaction: Transaction,
+    destination_public_key: CommsPublicKey,
+    mut outbound_message_service: OutboundMessageRequester,
+    direct_send_timeout: Duration,
+    transaction_routing_mechanism: TransactionRoutingMechanism,
 ) -> Result<(), TransactionServiceError>
 {
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
@@ -81,13 +128,15 @@ pub async fn send_finalized_transaction_message(
                     tx_id,
                     destination_public_key,
                 );
-                store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
-                    tx_id,
-                    destination_public_key,
-                    finalized_transaction_message.clone(),
-                    &mut outbound_message_service,
-                )
-                .await?;
+                if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
+                    store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
+                        tx_id,
+                        destination_public_key,
+                        finalized_transaction_message.clone(),
+                        &mut outbound_message_service,
+                    )
+                    .await?;
+                }
             },
             SendMessageResponse::Failed(err) => {
                 warn!(
@@ -98,22 +147,26 @@ pub async fn send_finalized_transaction_message(
                     target: LOG_TARGET_STRESS,
                     "Finalized Transaction Send Direct for TxID {} failed: {}", tx_id, err
                 );
-                store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
-                    tx_id,
-                    destination_public_key.clone(),
-                    finalized_transaction_message.clone(),
-                    &mut outbound_message_service,
-                )
-                .await?;
+                if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
+                    store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
+                        tx_id,
+                        destination_public_key.clone(),
+                        finalized_transaction_message.clone(),
+                        &mut outbound_message_service,
+                    )
+                    .await?;
+                }
             },
             SendMessageResponse::PendingDiscovery(rx) => {
-                store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
-                    tx_id,
-                    destination_public_key.clone(),
-                    finalized_transaction_message.clone(),
-                    &mut outbound_message_service,
-                )
-                .await?;
+                if transaction_routing_mechanism == TransactionRoutingMechanism::DirectAndStoreAndForward {
+                    store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
+                        tx_id,
+                        destination_public_key.clone(),
+                        finalized_transaction_message.clone(),
+                        &mut outbound_message_service,
+                    )
+                    .await?;
+                }
                 // now wait for discovery to complete
                 match rx.await {
                     Ok(send_msg_response) => {

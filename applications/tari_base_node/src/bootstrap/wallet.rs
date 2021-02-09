@@ -62,7 +62,7 @@ use tari_wallet::{
         sqlite_utilities::WalletDbConnection,
     },
     transaction_service::{
-        config::TransactionServiceConfig,
+        config::{TransactionRoutingMechanism, TransactionServiceConfig},
         storage::sqlite_db::TransactionServiceSqliteDatabase,
         TransactionServiceInitializer,
     },
@@ -159,6 +159,7 @@ impl WalletBootstrapper {
                     chain_monitoring_timeout: config.transaction_chain_monitoring_timeout,
                     direct_send_timeout: config.transaction_direct_send_timeout,
                     broadcast_send_timeout: config.transaction_broadcast_send_timeout,
+                    transaction_routing_mechanism: TransactionRoutingMechanism::from(config.transaction_routing_mechanism.clone()),
                     ..Default::default()
                 },
                 peer_message_subscriptions.clone(),

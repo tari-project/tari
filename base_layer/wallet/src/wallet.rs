@@ -168,7 +168,7 @@ where
         #[cfg(feature = "test_harness")]
         let transaction_backend_handle = transaction_backend.clone();
 
-        let factories = config.factories;
+        let factories = config.clone().factories;
         let (publisher, subscription_factory) =
             pubsub_connector(runtime::Handle::current(), config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
@@ -176,6 +176,24 @@ where
         let node_identity = config.comms_config.node_identity.clone();
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
+        info!(
+            target: LOG_TARGET,
+            "Transaction sending mechanism is {}",
+            config
+                .clone()
+                .transaction_service_config
+                .unwrap_or_default()
+                .transaction_routing_mechanism
+        );
+        trace!(
+            target: LOG_TARGET,
+            "Wallet config: {:?}, {:?}, {:?}, buffer_size: {}, rate_limit: {}",
+            config.base_node_service_config,
+            config.output_manager_service_config,
+            config.transaction_service_config,
+            config.buffer_size,
+            config.rate_limit
+        );
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(config.comms_config, publisher))
             .add_initializer(OutputManagerServiceInitializer::new(

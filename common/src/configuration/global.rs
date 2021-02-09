@@ -96,6 +96,7 @@ pub struct GlobalConfig {
     pub transaction_chain_monitoring_timeout: Duration,
     pub transaction_direct_send_timeout: Duration,
     pub transaction_broadcast_send_timeout: Duration,
+    pub transaction_routing_mechanism: String,
     pub console_wallet_password: Option<String>,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
@@ -441,6 +442,10 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .get_bool(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
+    let key = "wallet.transaction_routing_mechanism";
+    let transaction_routing_mechanism =
+        optional(cfg.get_str(key))?.unwrap_or_else(|| "DirectAndStoreAndForward".to_string());
+
     let key = "wallet.command_send_wait_stage";
     let wallet_command_send_wait_stage = optional(cfg.get_str(key))?.unwrap_or_else(|| "Broadcast".to_string());
 
@@ -614,6 +619,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         transaction_chain_monitoring_timeout,
         transaction_direct_send_timeout,
         transaction_broadcast_send_timeout,
+        transaction_routing_mechanism,
         console_wallet_password,
         wallet_command_send_wait_stage,
         wallet_command_send_wait_timeout,
