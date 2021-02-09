@@ -20,486 +20,565 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transaction_service::{
-    error::{TransactionServiceError, TransactionServiceProtocolError},
-    handle::TransactionEvent,
-    service::TransactionServiceResources,
-    storage::{database::TransactionBackend, models::TransactionStatus},
-};
-use futures::{channel::mpsc::Receiver, FutureExt, StreamExt};
-use log::*;
-use std::{convert::TryFrom, sync::Arc, time::Duration};
-use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::domain_message::OutboundDomainMessage;
-use tari_core::{
-    base_node::proto::{
-        base_node as BaseNodeProto,
-        base_node::{
-            base_node_service_request::Request as BaseNodeRequestProto,
-            base_node_service_response::Response as BaseNodeResponseProto,
+use crate::{
+    output_manager_service::TxId,
+    transaction_service::{
+        error::{TransactionServiceError, TransactionServiceProtocolError},
+        handle::TransactionEvent,
+        service::TransactionServiceResources,
+        storage::{
+            database::TransactionBackend,
+            models::{CompletedTransaction, TransactionStatus},
         },
     },
-    mempool::{
-        proto::mempool as MempoolProto,
-        service::{MempoolResponse, MempoolServiceResponse},
-        TxStorageResponse,
-    },
-    transactions::transaction::TransactionOutput,
 };
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
-use tari_p2p::tari_message::TariMessageType;
+use futures::{FutureExt, StreamExt};
+use log::*;
+use std::{convert::TryFrom, sync::Arc, time::Duration};
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
+use tari_core::{
+    base_node::{
+        proto::wallet_response::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
+        rpc::BaseNodeWalletRpcClient,
+    },
+    transactions::{transaction::Transaction, types::Signature},
+};
 use tokio::{sync::broadcast, time::delay_for};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
-const LOG_TARGET_STRESS: &str = "stress_test::broadcast_protocol";
 
-/// This protocol defines the process of monitoring a mempool and base node to detect when a Completed transaction is
-/// Broadcast to the mempool or potentially Mined
 pub struct TransactionBroadcastProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
-    id: u64,
+    tx_id: TxId,
+    mode: TxBroadcastMode,
     resources: TransactionServiceResources<TBackend>,
     timeout: Duration,
     base_node_public_key: CommsPublicKey,
-    mempool_response_receiver: Option<Receiver<MempoolServiceResponse>>,
-    base_node_response_receiver: Option<Receiver<BaseNodeProto::BaseNodeServiceResponse>>,
     timeout_update_receiver: Option<broadcast::Receiver<Duration>>,
+    base_node_update_receiver: Option<broadcast::Receiver<CommsPublicKey>>,
+    first_rejection: bool,
 }
 
 impl<TBackend> TransactionBroadcastProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
     pub fn new(
-        id: u64,
+        tx_id: TxId,
         resources: TransactionServiceResources<TBackend>,
         timeout: Duration,
         base_node_public_key: CommsPublicKey,
-        mempool_response_receiver: Receiver<MempoolServiceResponse>,
-        base_node_response_receiver: Receiver<BaseNodeProto::BaseNodeServiceResponse>,
         timeout_update_receiver: broadcast::Receiver<Duration>,
+        base_node_update_receiver: broadcast::Receiver<CommsPublicKey>,
     ) -> Self
     {
         Self {
-            id,
+            tx_id,
+            mode: TxBroadcastMode::TransactionSubmission,
             resources,
             timeout,
             base_node_public_key,
-            mempool_response_receiver: Some(mempool_response_receiver),
-            base_node_response_receiver: Some(base_node_response_receiver),
             timeout_update_receiver: Some(timeout_update_receiver),
+            base_node_update_receiver: Some(base_node_update_receiver),
+            first_rejection: false,
         }
     }
 
     /// The task that defines the execution of the protocol.
     pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
-        let mut mempool_response_receiver = self
-            .mempool_response_receiver
-            .take()
-            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?;
-
-        let mut base_node_response_receiver = self
-            .base_node_response_receiver
-            .take()
-            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?;
-
         let mut timeout_update_receiver = self
             .timeout_update_receiver
             .take()
-            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?
+            .ok_or_else(|| {
+                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
+            })?
             .fuse();
 
-        // This is the main loop of the protocol and following the following steps
-        // 1) Check transaction being monitored is still in the Completed state and needs to be monitored
-        // 2) Send a MempoolRequest::SubmitTransaction to Mempool and a Mined? Request to base node
-        // 3) Wait for a either a Mempool response, Base Node response for the correct Id OR a Timeout
-        //      a) A Mempool response for this Id is received >  update the Tx status and end the protocol
-        //      b) A Basenode response for this Id is received showing it is mined > Update Tx status and end protocol
-        //      c) Timeout is reached > Start again
+        let mut base_node_update_receiver = self
+            .base_node_update_receiver
+            .take()
+            .ok_or_else(|| {
+                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidStateError)
+            })?
+            .fuse();
+
+        let mut shutdown = self.resources.shutdown_signal.clone();
+        // Main protocol loop
         loop {
-            let completed_tx = match self.resources.db.get_completed_transaction(self.id).await {
+            let base_node_node_id = NodeId::from_key(&self.base_node_public_key.clone())
+                .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
+            let mut connection: Option<PeerConnection> = None;
+
+            let delay = delay_for(self.resources.config.peer_dial_retry_timeout);
+
+            debug!(
+                target: LOG_TARGET,
+                "Connecting to Base Node (Public Key: {})", self.base_node_public_key,
+            );
+            futures::select! {
+                dial_result = self.resources.connectivity_manager.dial_peer(base_node_node_id.clone()).fuse() => {
+                    match dial_result {
+                        Ok(base_node_connection) => {
+                            connection = Some(base_node_connection);
+                        },
+                        Err(e) => {
+                            info!(target: LOG_TARGET, "Problem connecting to base node: {} for Transaction Broadcast Protocol (TxId: {})", e, self.tx_id);
+                            let _ = self
+                            .resources
+                            .event_publisher
+                            .send(Arc::new(TransactionEvent::TransactionBaseNodeConnectionProblem(
+                                self.tx_id,
+                            )))
+                            .map_err(|e| {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "Error sending event because there are no subscribers: {:?}",
+                                    e
+                                );
+                                e
+                            });
+                        },
+                    }
+                },
+                updated_timeout = timeout_update_receiver.select_next_some() => {
+                    match updated_timeout {
+                        Ok(to) => {
+                            self.timeout = to;
+                             info!(
+                                target: LOG_TARGET,
+                                "Transaction Broadcast protocol (TxId: {}) timeout updated to {:?}", self.tx_id, self.timeout
+                            );
+                        },
+                        Err(e) => {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Transaction Broadcast protocol (TxId: {}) event 'updated_timeout' triggered with error: {:?}",
+                                self.tx_id,
+                                e,
+                            );
+                        }
+                    }
+                },
+                new_base_node = base_node_update_receiver.select_next_some() => {
+                    match new_base_node {
+                        Ok(bn) => {
+                            self.base_node_public_key = bn;
+                             info!(
+                                target: LOG_TARGET,
+                                "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {:?}", self.tx_id, self.base_node_public_key
+                            );
+                            continue;
+                        },
+                        Err(e) => {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Transaction Broadcast protocol (TxId: {}) event 'base_node_update' triggered with error: {:?}",
+                                self.tx_id,
+                                e,
+                            );
+                        }
+                    }
+                }
+                _ = shutdown => {
+                    info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
+                    return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
+                },
+            }
+
+            let base_node_connection = match connection {
+                None => {
+                    futures::select! {
+                        _ = delay.fuse() => {
+                            continue;
+                        },
+                        _ = shutdown => {
+                            info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
+                            return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
+                        },
+                    }
+                },
+                Some(c) => c,
+            };
+
+            let completed_tx = match self.resources.db.get_completed_transaction(self.tx_id).await {
                 Ok(tx) => tx,
                 Err(e) => {
                     error!(
                         target: LOG_TARGET,
                         "Cannot find Completed Transaction (TxId: {}) referred to by this Broadcast protocol: {:?}",
-                        self.id,
+                        self.tx_id,
                         e
                     );
                     return Err(TransactionServiceProtocolError::new(
-                        self.id,
+                        self.tx_id,
                         TransactionServiceError::TransactionDoesNotExistError,
                     ));
                 },
             };
 
-            if completed_tx.status != TransactionStatus::Completed {
+            if !(completed_tx.status == TransactionStatus::Completed ||
+                completed_tx.status == TransactionStatus::Broadcast)
+            {
                 debug!(
                     target: LOG_TARGET,
-                    "Transaction (TxId: {}) no longer in Completed state and will stop being broadcast", self.id
+                    "Transaction (TxId: {}) no longer in Completed state and will stop being broadcast", self.tx_id
                 );
-                return Ok(self.id);
+                return Ok(self.tx_id);
             }
 
-            info!(
-                target: LOG_TARGET,
-                "Attempting to Broadcast Transaction (TxId: {} and Kernel Signature: {}) to Mempool",
-                self.id,
-                completed_tx.transaction.body.kernels()[0]
-                    .excess_sig
-                    .get_signature()
-                    .to_hex()
-            );
-            trace!(target: LOG_TARGET, "{}", completed_tx.transaction);
+            let delay = delay_for(self.timeout);
+            loop {
+                futures::select! {
+                    new_base_node = base_node_update_receiver.select_next_some() => {
+                        match new_base_node {
+                            Ok(bn) => {
+                                self.base_node_public_key = bn;
+                                 info!(
+                                    target: LOG_TARGET,
+                                    "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {:?}", self.tx_id, self.base_node_public_key
+                                );
+                                continue;
+                            },
+                            Err(e) => {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "Transaction Broadcast protocol (TxId: {}) event 'base_node_update' triggered with error: {:?}",
+                                    self.tx_id,
+                                    e,
+                                );
+                            }
+                        }
+                    },
+                    result = self.query_or_submit_transaction(completed_tx.clone(), base_node_connection.clone()).fuse() => {
+                        match self.mode {
+                            TxBroadcastMode::TransactionSubmission => {
+                                if result? {
+                                    self.mode = TxBroadcastMode::TransactionQuery;
+                                    // Wait out the remainder of the delay before proceeding with next loop
+                                    delay.await;
+                                    break;
+                                }
+                            },
+                            TxBroadcastMode::TransactionQuery => {
+                                if result? {
+                                    // We are done!
+                                    self.resources
+                                        .output_manager_service
+                                        .confirm_transaction(
+                                            completed_tx.tx_id,
+                                            completed_tx.transaction.body.inputs().clone(),
+                                            completed_tx.transaction.body.outputs().clone(),
+                                        )
+                                        .await
+                                        .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
 
-            // Send Mempool Request
-            let mempool_request = MempoolProto::MempoolServiceRequest {
-                request_key: completed_tx.tx_id,
-                request: Some(MempoolProto::mempool_service_request::Request::SubmitTransaction(
-                    completed_tx.transaction.clone().into(),
-                )),
-            };
+                                    self.resources
+                                        .db
+                                        .mine_completed_transaction(completed_tx.tx_id)
+                                        .await
+                                        .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
 
-            self.resources
-                .outbound_message_service
-                .send_direct(
-                    self.base_node_public_key.clone(),
-                    OutboundDomainMessage::new(TariMessageType::MempoolRequest, mempool_request.clone()),
-                )
-                .await
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+                                   let _ = self
+                                        .resources
+                                        .event_publisher
+                                        .send(Arc::new(TransactionEvent::TransactionMined(self.tx_id)))
+                                        .map_err(|e| {
+                                            trace!(
+                                                target: LOG_TARGET,
+                                                "Error sending event because there are no subscribers: {:?}",
+                                                e
+                                            );
+                                            e
+                                        });
 
-            // Send Base Node query
-            let mut hashes = Vec::new();
-            for o in completed_tx.transaction.body.outputs() {
-                hashes.push(o.hash());
-            }
-
-            let request = BaseNodeRequestProto::FetchMatchingUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
-            let service_request = BaseNodeProto::BaseNodeServiceRequest {
-                request_key: self.id,
-                request: Some(request),
-            };
-            self.resources
-                .outbound_message_service
-                .send_direct(
-                    self.base_node_public_key.clone(),
-                    OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
-                )
-                .await
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-
-            let mut shutdown = self.resources.shutdown_signal.clone();
-            let mut delay = delay_for(self.timeout).fuse();
-            futures::select! {
-                mempool_response = mempool_response_receiver.select_next_some() => {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Transaction monitoring event 'mempool_response' triggered ({:?})",
-                        mempool_response,
-                    );
-                    if self.handle_mempool_response(mempool_response).await? {
-                        break;
-                    }
-                },
-                base_node_response = base_node_response_receiver.select_next_some() => {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Transaction monitoring event 'base_node_response' triggered ({:?})",
-                        base_node_response,
-                    );
-                    if self.handle_base_node_response(base_node_response).await? {
-                        break;
-                    }
-                },
-                updated_timeout = timeout_update_receiver.select_next_some() => {
-                    if let Ok(to) = updated_timeout {
-                        self.timeout = to;
-                        info!(
-                            target: LOG_TARGET,
-                            "Transaction monitoring event 'updated_timeout' triggered (Id: {}), timeout updated to {:?}", self.id ,self.timeout
-                        );
-                    } else {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Transaction monitoring event 'updated_timeout' triggered (Id: {}) ({:?})",
-                            self.id,
-                            updated_timeout,
-                        );
-                    }
-                },
-                () = delay => {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Transaction monitoring event 'time_out' for Mempool broadcast (Id: {}) ", self.id
-                    );
-                    let _ = self
-                        .resources
-                        .event_publisher
-                        .send(Arc::new(TransactionEvent::MempoolBroadcastTimedOut(self.id)))
-                        .map_err(|e| {
+                                    return Ok(self.tx_id)
+                                } else {
+                                    // Wait out the remainder of the delay before proceeding with next loop
+                                    delay.await;
+                                    break;
+                                }
+                            },
+                        }
+                    },
+                    updated_timeout = timeout_update_receiver.select_next_some() => {
+                        if let Ok(to) = updated_timeout {
+                            self.timeout = to;
+                             info!(
+                                target: LOG_TARGET,
+                                "Transaction Broadcast protocol (TxId: {}) timeout updated to {:?}", self.tx_id, self.timeout
+                            );
+                            break;
+                        } else {
                             trace!(
                                 target: LOG_TARGET,
-                                "Error sending event, usually because there are no subscribers: {:?}",
-                                e
+                                "Transaction Broadcast protocol event 'updated_timeout' triggered (TxId: {}) ({:?})",
+                                self.tx_id,
+                                updated_timeout,
                             );
-                            e
-                        });
-                },
-                 _ = shutdown => {
-                    info!(target: LOG_TARGET, "Transaction Broadcast Protocol (id: {}) shutting down because it received the shutdown signal", self.id);
-                    return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
+                        }
+                    },
+                    _ = shutdown => {
+                        info!(target: LOG_TARGET, "Transaction protocolProtocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
+                        return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
+                    },
                 }
             }
         }
-
-        Ok(self.id)
     }
 
-    async fn handle_mempool_response(
+    /// Attempt to submit the transaction to the base node via RPC.
+    /// # Returns:
+    /// `Ok(true)` => Transaction was successfully submitted to UnconfirmedPool
+    /// `Ok(false)` => There was a problem with the RPC call and this should be retried
+    /// `Err(_)` => The transaction was rejected by the base node and the protocol should end.
+    async fn submit_transaction(
         &mut self,
-        response: MempoolServiceResponse,
+        tx: Transaction,
+        base_node_connection: &mut PeerConnection,
     ) -> Result<bool, TransactionServiceProtocolError>
     {
-        if response.request_key != self.id {
-            trace!(
-                target: LOG_TARGET,
-                "Mempool response key does not match this Broadcast Protocol Id"
-            );
-            return Ok(false);
-        }
+        let mut client = base_node_connection
+            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(self.timeout))
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
 
-        // Handle a receive Mempool Response
-        match response.response {
-            MempoolResponse::Stats(_) => {
-                warn!(target: LOG_TARGET, "Invalid Mempool response variant");
+        let response = match client.submit_transaction(tx.into()).await {
+            Ok(r) => match TxSubmissionResponse::try_from(r) {
+                Ok(r) => r,
+                Err(_) => {
+                    trace!(target: LOG_TARGET, "Could not convert proto TxSubmission Response");
+                    return Ok(false);
+                },
             },
-            MempoolResponse::State(_) => {
-                warn!(target: LOG_TARGET, "Invalid Mempool response variant");
-            },
-            MempoolResponse::TxStorage(ts) => {
-                let completed_tx = match self.resources.db.get_completed_transaction(response.request_key).await {
-                    Ok(tx) => tx,
-                    Err(e) => {
-                        error!(
-                            target: LOG_TARGET,
-                            "Cannot find Completed Transaction (TxId: {}) referred to by this Broadcast protocol: {:?}",
-                            self.id,
-                            e
-                        );
-                        return Err(TransactionServiceProtocolError::new(
-                            self.id,
-                            TransactionServiceError::TransactionDoesNotExistError,
-                        ));
-                    },
-                };
-
-                #[allow(clippy::single_match)]
-                match completed_tx.status {
-                    TransactionStatus::Completed => match ts {
-                        // Getting this response means the Mempool Rejected this transaction so it will be
-                        // cancelled.
-                        TxStorageResponse::NotStored => {
-                            error!(
-                                target: LOG_TARGET,
-                                "Mempool response received for TxId: {:?}. Transaction was Rejected. Cancelling \
-                                 transaction.",
-                                self.id
-                            );
-                            if let Err(e) = self
-                                .resources
-                                .output_manager_service
-                                .cancel_transaction(completed_tx.tx_id)
-                                .await
-                            {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Failed to Cancel outputs for TX_ID: {} after failed sending attempt with error \
-                                     {:?}",
-                                    completed_tx.tx_id,
-                                    e
-                                );
-                            }
-                            if let Err(e) = self.resources.db.cancel_completed_transaction(completed_tx.tx_id).await {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}",
-                                    completed_tx.tx_id,
-                                    e
-                                );
-                            }
-                            let _ = self
-                                .resources
-                                .event_publisher
-                                .send(Arc::new(TransactionEvent::TransactionCancelled(self.id)))
-                                .map_err(|e| {
-                                    trace!(
-                                        target: LOG_TARGET,
-                                        "Error sending event, usually because there are no subscribers: {:?}",
-                                        e
-                                    );
-                                    e
-                                });
-
-                            return Err(TransactionServiceProtocolError::new(
-                                self.id,
-                                TransactionServiceError::MempoolRejection,
-                            ));
-                        },
-                        // Any other variant of this enum means the transaction has been received by the
-                        // base_node and is in one of the various mempools
-                        _ => {
-                            // If this transaction is still in the Completed State it should be upgraded to the
-                            // Broadcast state
-                            info!(
-                                target: LOG_TARGET,
-                                "Completed Transaction (TxId: {} and Kernel Excess Sig: {}) detected as Broadcast to \
-                                 Base Node Mempool in {:?}",
-                                self.id,
-                                completed_tx.transaction.body.kernels()[0]
-                                    .excess_sig
-                                    .get_signature()
-                                    .to_hex(),
-                                ts
-                            );
-                            debug!(
-                                target: LOG_TARGET_STRESS,
-                                "Completed Transaction (TxId: {} and Kernel Excess Sig: {}) detected as Broadcast to \
-                                 Base Node Mempool in {:?}",
-                                self.id,
-                                completed_tx.transaction.body.kernels()[0]
-                                    .excess_sig
-                                    .get_signature()
-                                    .to_hex(),
-                                ts
-                            );
-
-                            self.resources
-                                .db
-                                .broadcast_completed_transaction(self.id)
-                                .await
-                                .map_err(|e| {
-                                    TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
-                                })?;
-                            let _ = self
-                                .resources
-                                .event_publisher
-                                .send(Arc::new(TransactionEvent::TransactionBroadcast(self.id)))
-                                .map_err(|e| {
-                                    trace!(
-                                        target: LOG_TARGET,
-                                        "Error sending event, usually because there are no subscribers: {:?}",
-                                        e
-                                    );
-                                    e
-                                });
-                            return Ok(true);
-                        },
-                    },
-                    _ => (),
-                }
-            },
-        }
-
-        Ok(false)
-    }
-
-    async fn handle_base_node_response(
-        &mut self,
-        response: BaseNodeProto::BaseNodeServiceResponse,
-    ) -> Result<bool, TransactionServiceProtocolError>
-    {
-        if response.request_key != self.id {
-            trace!(
-                target: LOG_TARGET,
-                "Base Node response key does not match this Broadcast Protocol Id"
-            );
-            return Ok(false);
-        }
-
-        let response: Vec<tari_core::transactions::proto::types::TransactionOutput> = match response.response {
-            Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => outputs.outputs,
-            _ => {
+            Err(e) => {
+                info!(
+                    target: LOG_TARGET,
+                    "Submit Transaction RPC Call to Base Node failed: {}", e
+                );
                 return Ok(false);
             },
         };
 
-        let completed_tx = match self.resources.db.get_completed_transaction(self.id).await {
-            Ok(tx) => tx,
-            Err(_) => {
-                error!(
+        if !response.accepted && response.rejection_reason != TxSubmissionRejectionReason::AlreadyMined {
+            error!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) rejected by Base Node for reason: {}", self.tx_id, response.rejection_reason
+            );
+
+            self.cancel_transaction().await;
+
+            let _ = self
+                .resources
+                .event_publisher
+                .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id)))
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event because there are no subscribers: {:?}",
+                        e
+                    );
+                    e
+                });
+
+            let reason = match response.rejection_reason {
+                TxSubmissionRejectionReason::None | TxSubmissionRejectionReason::ValidationFailed => {
+                    TransactionServiceError::MempoolRejectionInvalidTransaction
+                },
+                TxSubmissionRejectionReason::DoubleSpend => TransactionServiceError::MempoolRejectionDoubleSpend,
+                TxSubmissionRejectionReason::Orphan => TransactionServiceError::MempoolRejectionOrphan,
+                TxSubmissionRejectionReason::TimeLocked => TransactionServiceError::MempoolRejectionTimeLocked,
+                _ => TransactionServiceError::UnexpectedBaseNodeResponse,
+            };
+            return Err(TransactionServiceProtocolError::new(self.tx_id, reason));
+        } else if response.rejection_reason == TxSubmissionRejectionReason::AlreadyMined {
+            info!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) is Already Mined according to Base Node.", self.tx_id
+            );
+        } else {
+            info!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) successfully submitted to UnconfirmedPool", self.tx_id
+            );
+            let _ = self
+                .resources
+                .event_publisher
+                .send(Arc::new(TransactionEvent::TransactionBroadcast(self.tx_id)))
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event, usually because there are no subscribers: {:?}",
+                        e
+                    );
+                    e
+                });
+        }
+
+        Ok(true)
+    }
+
+    /// Attempt to query the location of the transaction from the base node via RPC.
+    /// # Returns:
+    /// `Ok(true)` => Transaction was successfully mined and confirmed
+    /// `Ok(false)` => There was a problem with the RPC call or the transaction is not mined but still in the mempool
+    /// and this should be retried `Err(_)` => The transaction was rejected by the base node and the protocol should
+    /// end.
+    async fn transaction_query(
+        &mut self,
+        signature: Signature,
+        base_node_connection: &mut PeerConnection,
+    ) -> Result<bool, TransactionServiceProtocolError>
+    {
+        let mut client = base_node_connection
+            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(self.timeout))
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
+
+        let response = match client.transaction_query(signature.into()).await {
+            Ok(r) => match TxQueryResponse::try_from(r) {
+                Ok(r) => r,
+                Err(_) => {
+                    trace!(target: LOG_TARGET, "Could not convert proto TxQueryResponse");
+                    return Ok(false);
+                },
+            },
+            Err(e) => {
+                info!(
                     target: LOG_TARGET,
-                    "Cannot find Completed Transaction (TxId: {}) referred to by this Broadcast protocol", self.id
+                    "Transaction Query RPC Call to Base Node failed: {}", e
                 );
-                return Err(TransactionServiceProtocolError::new(
-                    self.id,
-                    TransactionServiceError::TransactionDoesNotExistError,
-                ));
+                return Ok(false);
             },
         };
 
-        if !response.is_empty() &&
-            (completed_tx.status == TransactionStatus::Broadcast ||
-                completed_tx.status == TransactionStatus::Completed)
-        {
-            let mut check = true;
-
-            for output in response.iter() {
-                let transaction_output = TransactionOutput::try_from(output.clone()).map_err(|_| {
-                    TransactionServiceProtocolError::new(
-                        self.id,
-                        TransactionServiceError::ConversionError("Could not convert Transaction Output".to_string()),
-                    )
-                })?;
-
-                check = check &&
-                    completed_tx
-                        .transaction
-                        .body
-                        .outputs()
-                        .iter()
-                        .any(|item| item == &transaction_output);
+        // Mined?
+        if response.location == TxLocation::Mined {
+            if response.confirmations >= self.resources.config.num_confirmations_required as u64 {
+                info!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) detected as mined and CONFIRMED with {} confirmations",
+                    self.tx_id,
+                    response.confirmations
+                );
+                return Ok(true);
             }
-            // If all outputs are present then mark this transaction as mined.
-            if check && !response.is_empty() {
-                self.resources
-                    .output_manager_service
-                    .confirm_transaction(
-                        self.id,
-                        completed_tx.transaction.body.inputs().clone(),
-                        completed_tx.transaction.body.outputs().clone(),
-                    )
-                    .await
-                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-
-                self.resources
-                    .db
-                    .mine_completed_transaction(self.id)
-                    .await
-                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+            info!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) detected as mined but UNCONFIRMED with {} confirmations",
+                self.tx_id,
+                response.confirmations
+            );
+            let _ = self
+                .resources
+                .event_publisher
+                .send(Arc::new(TransactionEvent::TransactionMinedUnconfirmed(
+                    self.tx_id,
+                    response.confirmations,
+                )))
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event because there are no subscribers: {:?}",
+                        e
+                    );
+                    e
+                });
+        } else if response.location != TxLocation::InMempool {
+            if !self.first_rejection {
+                info!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) not found in mempool, attempting to resubmit transaction", self.tx_id
+                );
+                self.mode = TxBroadcastMode::TransactionSubmission;
+                self.first_rejection = true;
+            } else {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) has been rejected by the mempool after second submission attempt, \
+                     cancelling transaction",
+                    self.tx_id
+                );
+                self.cancel_transaction().await;
 
                 let _ = self
                     .resources
                     .event_publisher
-                    .send(Arc::new(TransactionEvent::TransactionMined(self.id)))
+                    .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id)))
                     .map_err(|e| {
                         trace!(
                             target: LOG_TARGET,
-                            "Error sending event, usually because there are no subscribers: {:?}",
+                            "Error sending event because there are no subscribers: {:?}",
                             e
                         );
                         e
                     });
-
-                info!(
-                    target: LOG_TARGET,
-                    "Transaction (TxId: {:?}) detected as mined on the Base Layer", self.id
-                );
-
-                return Ok(true);
+                return Err(TransactionServiceProtocolError::new(
+                    self.tx_id,
+                    TransactionServiceError::MempoolRejection,
+                ));
             }
+        } else {
+            info!(
+                target: LOG_TARGET,
+                "Transaction (TxId: {}) found in mempool.", self.tx_id
+            );
         }
 
         Ok(false)
     }
+
+    async fn query_or_submit_transaction(
+        &mut self,
+        completed_transaction: CompletedTransaction,
+        mut base_node_connection: PeerConnection,
+    ) -> Result<bool, TransactionServiceProtocolError>
+    {
+        if self.mode == TxBroadcastMode::TransactionSubmission {
+            info!(
+                target: LOG_TARGET,
+                "Submitting Transaction (TxId: {}) to Base Node", self.tx_id
+            );
+            self.submit_transaction(completed_transaction.transaction, &mut base_node_connection)
+                .await
+        } else {
+            info!(
+                target: LOG_TARGET,
+                "Querying Transaction (TxId: {}) status on Base Node", self.tx_id
+            );
+            let signature = completed_transaction
+                .transaction
+                .first_kernel_excess_sig()
+                .ok_or_else(|| {
+                    TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidTransaction)
+                })?;
+            self.transaction_query(signature.clone(), &mut base_node_connection)
+                .await
+        }
+    }
+
+    async fn cancel_transaction(&mut self) {
+        if let Err(e) = self
+            .resources
+            .output_manager_service
+            .cancel_transaction(self.tx_id)
+            .await
+        {
+            warn!(
+                target: LOG_TARGET,
+                "Failed to Cancel outputs for TxId: {} after failed sending attempt with error {:?}", self.tx_id, e
+            );
+        }
+        if let Err(e) = self.resources.db.cancel_completed_transaction(self.tx_id).await {
+            warn!(
+                target: LOG_TARGET,
+                "Failed to Cancel TxId: {} after failed sending attempt with error {:?}", self.tx_id, e
+            );
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum TxBroadcastMode {
+    TransactionSubmission,
+    TransactionQuery,
 }

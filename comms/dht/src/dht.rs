@@ -291,7 +291,11 @@ impl Dht {
                 "Inbound [{}]",
                 self.node_identity.node_id().short_str()
             )))
-            .layer(inbound::DecryptionLayer::new(Arc::clone(&self.node_identity)))
+            .layer(inbound::DecryptionLayer::new(
+                self.config.clone(),
+                self.node_identity.clone(),
+                self.connectivity.clone(),
+            ))
             .layer(store_forward::StoreLayer::new(
                 self.config.clone(),
                 Arc::clone(&self.peer_manager),

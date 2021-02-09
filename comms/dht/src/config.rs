@@ -102,6 +102,9 @@ pub struct DhtConfig {
     pub network: Network,
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
+    pub short_ban_duration: Duration,
+    /// This allows the use of test addresses in the network.
+    pub allow_test_addresses: bool,
 }
 
 impl DhtConfig {
@@ -127,6 +130,7 @@ impl DhtConfig {
                 enabled: false,
                 ..Default::default()
             },
+            allow_test_addresses: true,
             ..Default::default()
         }
     }
@@ -158,6 +162,8 @@ impl Default for DhtConfig {
             join_cooldown_interval: Duration::from_secs(10 * 60),
             network: Network::TestNet,
             network_discovery: Default::default(),
+            short_ban_duration: Duration::from_secs(30 * 60),
+            allow_test_addresses: false,
         }
     }
 }

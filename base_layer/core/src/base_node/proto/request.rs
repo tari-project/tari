@@ -20,17 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::base_node::{
-    base_node_service_request::Request as ProtoNodeCommsRequest,
-    BlockHeights,
-    FetchHeadersAfter as ProtoFetchHeadersAfter,
-    FetchMatchingMmrNodes as ProtoFetchMmrNodes,
-    FetchMmrNodeCount as ProtoFetchMmrNodeCount,
-    HashOutputs,
-};
 use crate::{
     base_node::comms_interface as ci,
     proof_of_work::PowAlgorithm,
+    proto::{
+        base_node as proto,
+        base_node::{
+            base_node_service_request::Request as ProtoNodeCommsRequest,
+            BlockHeights,
+            FetchHeadersAfter as ProtoFetchHeadersAfter,
+            HashOutputs,
+        },
+    },
     transactions::types::{Commitment, HashOutput, Signature},
 };
 use std::convert::{From, TryFrom, TryInto};
@@ -80,14 +81,8 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
                 ci::NodeCommsRequest::GetNewBlockTemplate(PowAlgorithm::try_from(pow_algo)?)
             },
             GetNewBlock(block_template) => ci::NodeCommsRequest::GetNewBlock(block_template.try_into()?),
-            FetchMmrNodeCount(request) => {
-                ci::NodeCommsRequest::FetchMmrNodeCount(request.tree.try_into()?, request.height)
-            },
-            FetchMatchingMmrNodes(request) => ci::NodeCommsRequest::FetchMatchingMmrNodes(
-                request.tree.try_into()?,
-                request.pos,
-                request.count,
-                request.hist_height,
+            FetchKernelByExcessSig(sig) => ci::NodeCommsRequest::FetchKernelByExcessSig(
+                Signature::try_from(sig).map_err(|err: ByteArrayError| err.to_string())?,
             ),
         };
         Ok(request)
@@ -111,30 +106,19 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             FetchBlocksWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchBlocksWithHashes(block_hashes.into()),
             FetchBlocksWithKernels(signatures) => {
                 let sigs = signatures.into_iter().map(Into::into).collect();
-                ProtoNodeCommsRequest::FetchBlocksWithKernels(super::base_node::Signatures { sigs })
+                ProtoNodeCommsRequest::FetchBlocksWithKernels(proto::Signatures { sigs })
             },
             FetchBlocksWithStxos(commitments) => {
                 let commits = commitments.into_iter().map(Into::into).collect();
-                ProtoNodeCommsRequest::FetchBlocksWithStxos(super::base_node::Commitments { commitments: commits })
+                ProtoNodeCommsRequest::FetchBlocksWithStxos(proto::Commitments { commitments: commits })
             },
             FetchBlocksWithUtxos(commitments) => {
                 let commits = commitments.into_iter().map(Into::into).collect();
-                ProtoNodeCommsRequest::FetchBlocksWithUtxos(super::base_node::Commitments { commitments: commits })
+                ProtoNodeCommsRequest::FetchBlocksWithUtxos(proto::Commitments { commitments: commits })
             },
             GetNewBlockTemplate(pow_algo) => ProtoNodeCommsRequest::GetNewBlockTemplate(pow_algo as u64),
             GetNewBlock(block_template) => ProtoNodeCommsRequest::GetNewBlock(block_template.into()),
-            FetchMmrNodeCount(tree, height) => ProtoNodeCommsRequest::FetchMmrNodeCount(ProtoFetchMmrNodeCount {
-                tree: tree as i32,
-                height,
-            }),
-            FetchMatchingMmrNodes(tree, pos, count, hist_height) => {
-                ProtoNodeCommsRequest::FetchMatchingMmrNodes(ProtoFetchMmrNodes {
-                    tree: tree as i32,
-                    pos,
-                    count,
-                    hist_height,
-                })
-            },
+            FetchKernelByExcessSig(signature) => ProtoNodeCommsRequest::FetchKernelByExcessSig(signature.into()),
         }
     }
 }

@@ -56,20 +56,22 @@
 //! Reject all new requests with a `Shutdown` message, complete current validations / tasks, flush all state if
 //! required, and then shutdown.
 
-mod block_sync;
-pub use block_sync::{BestChainMetadataBlockSync, BlockSyncConfig, BlockSyncInfo, BlockSyncStrategy};
-
 mod events_and_states;
-pub use events_and_states::{BaseNodeState, StateEvent, StateInfo, StatusInfo, SyncStatus};
+pub use events_and_states::{BaseNodeState, BlockSyncInfo, StateEvent, StateInfo, StatusInfo, SyncStatus};
 
-mod forward_block_sync;
-pub use forward_block_sync::ForwardBlockSyncInfo;
+mod block_sync;
+pub use block_sync::BlockSync;
+
+// TODO: Clean up helpers
+pub(crate) mod helpers;
+pub use helpers::SyncPeerConfig;
 
 mod header_sync;
 pub use header_sync::HeaderSync;
 
-mod helpers;
-pub use helpers::SyncPeerConfig;
+// TODO: Consolidate with header sync
+// mod horizon_header_sync;
+// pub use horizon_header_sync::HorizonHeaderSync;
 
 mod horizon_state_sync;
 pub use horizon_state_sync::{HorizonStateSync, HorizonSyncConfig};
@@ -82,9 +84,6 @@ pub use shutdown_state::Shutdown;
 
 mod starting_state;
 pub use starting_state::Starting;
-
-mod sync_peers;
-pub use sync_peers::{SyncPeer, SyncPeers};
 
 mod waiting;
 pub use waiting::Waiting;

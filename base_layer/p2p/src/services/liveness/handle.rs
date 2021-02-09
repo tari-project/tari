@@ -63,7 +63,8 @@ pub enum LivenessEvent {
     /// A pong was received. The latency to the peer (if available) and the metadata contained
     /// within the received pong message are included as part of the event
     ReceivedPong(Box<PingPongEvent>),
-    BroadcastedNeighbourPings(usize),
+    /// A round of pings was broadcast to random and monitored peers
+    PingRoundBroadcast(usize),
 }
 
 /// Represents a ping or pong event

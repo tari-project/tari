@@ -23,14 +23,100 @@ syntax = "proto3";
 
 package tari.rpc;
 
-import "types.proto";
-import "google/protobuf/wrappers.proto";
 import "google/protobuf/timestamp.proto";
+import "types.proto";
 
 // The gRPC interface for interacting with the wallet.
 service Wallet {
+    // This returns the current version
+    rpc GetVersion (GetVersionRequest) returns (GetVersionResponse);
+    // This returns the identity information
+    rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
     // This returns a coinbase transaction
     rpc GetCoinbase (GetCoinbaseRequest) returns (GetCoinbaseResponse);
+    // Send Tari to a number of recipients
+    rpc Transfer (TransferRequest)  returns (TransferResponse);
+    // Returns the transaction details for the given transaction IDs
+    rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
+}
+
+message GetVersionRequest { }
+
+message GetIdentityRequest { }
+
+message GetIdentityResponse {
+    bytes public_key = 1;
+    string public_address = 2;
+    bytes node_id = 3;
+}
+
+message GetVersionResponse {
+    string version = 1;
+}
+
+message TransferRequest {
+    repeated PaymentRecipient recipients = 1;
+}
+
+message PaymentRecipient {
+    string address = 1;
+    uint64 amount = 2;
+    uint64 fee_per_gram = 3;
+    string message = 4;
+}
+
+message TransferResponse {
+  repeated TransferResult results = 1;
+}
+
+message TransferResult {
+    string address = 1;
+    uint64 transaction_id = 2;
+    bool is_success = 3;
+    string failure_message = 4;
+}
+
+message GetTransactionInfoRequest {
+    repeated uint64 transaction_ids = 1;
+}
+
+message GetTransactionInfoResponse {
+    repeated TransactionInfo transactions = 1;
+}
+
+message TransactionInfo {
+    uint64 tx_id = 1;
+    bytes source_pk = 2;
+    bytes dest_pk = 3;
+    TransactionStatus status = 4;
+    TransactionDirection direction = 5;
+    uint64 amount = 6;
+    uint64 fee = 7;
+    bool is_cancelled = 8;
+    bytes excess_sig = 9;
+    google.protobuf.Timestamp timestamp = 10;
+    string message = 11;
+}
+
+enum TransactionDirection {
+    TRANSACTION_DIRECTION_UNKNOWN = 0;
+    TRANSACTION_DIRECTION_INBOUND = 1;
+    TRANSACTION_DIRECTION_OUTBOUND = 2;
+}
+
+enum TransactionStatus {
+    // This transaction has been completed between the parties but has not been broadcast to the base layer network.
+    TRANSACTION_STATUS_COMPLETED = 0;
+    // This transaction has been broadcast to the base layer network and is currently in one or more base node mempools.
+    TRANSACTION_STATUS_BROADCAST = 1;
+    // This transaction has been mined and included in a block.
+    TRANSACTION_STATUS_MINED = 2;
+    // This transaction was generated as part of importing a spendable UTXO
+    TRANSACTION_STATUS_IMPORTED = 3;
+    // This transaction is still being negotiated by the parties
+    TRANSACTION_STATUS_PENDING = 4;
+    // This is a created Coinbase Transaction
+    TRANSACTION_STATUS_COINBASE = 5;
 }
 
 message GetCoinbaseRequest {

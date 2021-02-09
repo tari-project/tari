@@ -1,19 +1,20 @@
 [package]
 name = "tari_console_wallet"
-version = "0.6.0"
+version = "0.8.2"
 authors = ["Philip Robinson <simian@tari.com>"]
 edition = "2018"
 
 [dependencies]
-tari_wallet = { version = "^0.2", path = "../../base_layer/wallet" }
-tari_crypto = { version = "^0.8" }
-tari_common = { version= "^0.2", path = "../../common" }
+tari_wallet = {  path = "../../base_layer/wallet" }
+tari_crypto = "^0.8"
+tari_common = {  path = "../../common" }
 tari_app_utilities = { path = "../tari_app_utilities"}
-tari_comms = { version = "^0.2", path = "../../comms"}
-tari_comms_dht = { version = "^0.2", path = "../../comms/dht"}
-tari_p2p = { version= "^0.2", path = "../../base_layer/p2p" }
+tari_comms = {  path = "../../comms"}
+tari_comms_dht = {  path = "../../comms/dht"}
+tari_p2p = {  path = "../../base_layer/p2p" }
 tari_app_grpc = {  path = "../tari_app_grpc" }
-tari_shutdown = { version= "^0.2", path = "../../infrastructure/shutdown" }
+tari_shutdown = {  path = "../../infrastructure/shutdown" }
+tari_key_manager = { version = "^0.2" }
 
 chrono = { version = "0.4.6", features = ["serde"]}
 chrono-english = "0.1"
@@ -21,13 +22,14 @@ futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}
 crossterm = { version = "0.17"}
 rand = "0.7.2"
 unicode-width = "0.1"
-lazy_static = "1.4.0"
 unicode-segmentation = "1.6.0"
 log = { version = "0.4.8", features = ["std"] }
 structopt = { version = "0.3.13", default_features = false }
 config = { version = "0.9.3" }
 qrcode = { version = "0.12" }
 dirs-next = "1.0.2"
+rpassword = "5.0"
+rustyline = "6.0"
 strum = "^0.19"
 strum_macros = "^0.19"
 time = "0.1.38"
@@ -37,11 +39,11 @@ tonic = "0.2"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
-version = "^0.2"
+version = "^0.8"
 default-features = false
 features = ["transactions", "mempool_proto", "base_node_proto"]
 
 [dependencies.tui]
-version = "0.12"
+version = "^0.12"
 default-features = false
 features = ["crossterm"]

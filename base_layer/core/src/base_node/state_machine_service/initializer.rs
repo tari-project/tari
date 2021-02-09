@@ -26,19 +26,20 @@ use crate::{
         state_machine_service::{
             handle::StateMachineHandle,
             state_machine::{BaseNodeStateMachine, BaseNodeStateMachineConfig},
-            states::{BlockSyncConfig, BlockSyncStrategy, StatusInfo},
+            states::StatusInfo,
         },
+        sync::SyncValidators,
         LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
-        SyncValidators,
     },
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
+    proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
     transactions::types::CryptoFactories,
 };
 use futures::{future, Future};
 use log::*;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_service_framework::{ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
@@ -46,33 +47,27 @@ use tokio::sync::{broadcast, watch};
 const LOG_TARGET: &str = "c::bn::state_machine_service::initializer";
 
 pub struct BaseNodeStateMachineInitializer<B> {
-    db: BlockchainDatabase<B>,
+    db: AsyncBlockchainDb<B>,
+    config: BaseNodeStateMachineConfig,
     rules: ConsensusManager,
     factories: CryptoFactories,
-    sync_strategy: BlockSyncStrategy,
-    orphan_db_clean_out_threshold: usize,
-    fetch_blocks_timeout: Duration,
 }
 
 impl<B> BaseNodeStateMachineInitializer<B>
 where B: BlockchainBackend + 'static
 {
     pub fn new(
-        db: BlockchainDatabase<B>,
+        db: AsyncBlockchainDb<B>,
+        config: BaseNodeStateMachineConfig,
         rules: ConsensusManager,
         factories: CryptoFactories,
-        sync_strategy: BlockSyncStrategy,
-        orphan_db_clean_out_threshold: usize,
-        fetch_blocks_timeout: Duration,
     ) -> Self
     {
         Self {
             db,
+            config,
             rules,
             factories,
-            sync_strategy,
-            orphan_db_clean_out_threshold,
-            fetch_blocks_timeout,
         }
     }
 }
@@ -84,7 +79,7 @@ where B: BlockchainBackend + 'static
 
     fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
         trace!(target: LOG_TARGET, "init of base_node");
-        let (state_event_publisher, _) = broadcast::channel(10);
+        let (state_event_publisher, _) = broadcast::channel(500);
         let (status_event_sender, status_event_receiver) = watch::channel(StatusInfo::new());
 
         let handle = StateMachineHandle::new(
@@ -95,45 +90,34 @@ where B: BlockchainBackend + 'static
         context.register_handle(handle);
 
         let factories = self.factories.clone();
-        let sync_strategy = self.sync_strategy;
         let rules = self.rules.clone();
         let db = self.db.clone();
-        let orphan_db_clean_out_threshold = self.orphan_db_clean_out_threshold;
-        let fetch_blocks_timeout = self.fetch_blocks_timeout;
+        let config = self.config.clone();
+
         context.spawn_when_ready(move |handles| async move {
             let outbound_interface = handles.expect_handle::<OutboundNodeCommsInterface>();
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
             let node_local_interface = handles.expect_handle::<LocalNodeCommsInterface>();
-            let connectivity_requester = handles.expect_handle::<ConnectivityRequester>();
+            let connectivity = handles.expect_handle::<ConnectivityRequester>();
             let peer_manager = handles.expect_handle::<Arc<PeerManager>>();
 
-            let mut state_machine_config = BaseNodeStateMachineConfig {
-                block_sync_config: BlockSyncConfig {
-                    orphan_db_clean_out_threshold,
-                    fetch_blocks_timeout,
-                    ..Default::default()
-                },
-                ..Default::default()
-            };
-            state_machine_config.block_sync_config.sync_strategy = sync_strategy;
+            let sync_validators = SyncValidators::full_consensus(rules.clone(), factories);
+            let max_randomx_vms = config.max_randomx_vms;
 
-            // TODO: This should move to checking each time
-            state_machine_config.horizon_sync_config.horizon_sync_height_offset =
-                rules.consensus_constants(0).coinbase_lock_height() + 50;
-
-            let sync_validators = SyncValidators::full_consensus(db.clone(), rules.clone(), factories.clone());
             let node = BaseNodeStateMachine::new(
-                &db,
-                &node_local_interface,
-                &outbound_interface,
-                connectivity_requester,
+                db,
+                node_local_interface,
+                outbound_interface,
+                connectivity,
                 peer_manager,
                 chain_metadata_service.get_event_stream(),
-                state_machine_config,
+                config,
                 sync_validators,
-                handles.get_shutdown_signal(),
                 status_event_sender,
                 state_event_publisher,
+                RandomXFactory::new(RandomXConfig::default(), max_randomx_vms),
+                rules,
+                handles.get_shutdown_signal(),
             );
 
             node.run().await;

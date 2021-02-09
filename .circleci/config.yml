@@ -1,7 +1,7 @@
 version: 2.1
 
 defaults:
-  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2020-06-10
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2020-08-13
 
 commands:
   test:
@@ -53,6 +53,9 @@ commands:
       - run:
           name: Build
           command: cargo build --all --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+      - run:
+          name: Build Wallet
+          command: cargo build -p tari_wallet <<#parameters.release>>--release<</parameters.release>>
       - save_cache:
           paths:
             - /usr/local/cargo/registry
@@ -83,7 +86,28 @@ commands:
             - /usr/local/cargo/registry
             - target
           key: v6-cargo-cache-{{arch}}-{{checksum "rust-version"}}-{{checksum "Cargo.lock"}}
-
+  cucumber-js:
+    description: Run cucumber scenarios
+    steps:
+      - run:
+          name: Pre-build base node
+          command: cargo build --bin tari_base_node
+      - run:
+          name: Pre-build wallet
+          command: cargo build --bin tari_console_wallet
+      - run:
+          name: Pre-build mmproxy
+          command: cargo build --bin tari_merge_mining_proxy
+      - run:
+          name: npm install
+          command: cd integration_tests && npm install
+      - run:
+          name: Run cucumber scenarios
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --format json:cucumber_output/tests.cucumber --tags @critical
+      - store_test_results:
+          path: integration_tests/cucumber_output
+      - store_artifacts:
+          path: integration_tests/cucumber_output
 
 jobs:
   test-docs:
@@ -94,8 +118,7 @@ jobs:
       - run:
           name: RFC documentation
           command: |
-            # Workaround for bug https://github.com/rust-lang-nursery/mdBook/issues/855
-            (test -x /usr/local/cargo/bin/mdbook || cargo install --git "https://github.com/integer32llc/mdBook" --rev "d7c7d910057d22180a8eaffee9e17fa983652b64" mdbook)
+            cargo install mdbook --version 0.4.5 --force
             cd RFC && mdbook test && mdbook build
 
       - persist_to_workspace:
@@ -110,6 +133,14 @@ jobs:
       - checkout
       - test:
           release: true
+
+  run-integration-tests:
+    docker:
+      - image: *rust_image
+    resource_class: medium
+    steps:
+      - checkout
+      - cucumber-js
 
   build-tari-release:
     docker:
@@ -174,6 +205,10 @@ workflows:
   version: 2
   workflow:
     jobs:
+      - run-integration-tests:
+          filters:
+            branches:
+              ignore: gh-pages
       - test-docs:
           filters:
             branches:

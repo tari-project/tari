@@ -135,6 +135,7 @@ impl ProtocolExtensionContext {
         self
     }
 
+    /// Register a signal that triggers once the task is complete.
     pub fn register_complete_signal(&mut self, signal: ShutdownSignal) -> &mut Self {
         self.complete_signals.push(signal);
         self

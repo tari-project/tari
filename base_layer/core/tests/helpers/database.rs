@@ -20,29 +20,39 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crate::helpers::block_builders::create_coinbase;
 use tari_core::{
-    blocks::{Block, BlockHeader},
-    chain_storage::{BlockchainDatabase, MemoryDatabase, Validators},
+    blocks::{Block, BlockHeader, NewBlockTemplate},
     consensus::ConsensusManager,
-    transactions::transaction::Transaction,
-    validation::mocks::MockValidator,
+    transactions::{tari_amount::MicroTari, transaction::Transaction, types::CryptoFactories},
 };
-use tari_wallet::types::HashDigest;
 
-pub fn create_mem_db(consensus_manager: &ConsensusManager) -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
-    let db = MemoryDatabase::<HashDigest>::default();
-    BlockchainDatabase::new(db, consensus_manager, validators, Default::default(), false).unwrap()
-}
+// use tari_test_utils::paths::create_temporary_data_path;
 
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
 pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, consensus: &ConsensusManager) -> Block {
-    create_block(
-        consensus.consensus_constants(block_height).blockchain_version(),
-        block_height,
-        transactions,
-    )
+    let mut coinbase_value = consensus.emission_schedule().block_reward(block_height);
+    let lock_height = consensus.consensus_constants(block_height).coinbase_lock_height();
+    coinbase_value += transactions
+        .iter()
+        .fold(MicroTari(0), |acc, x| acc + x.body.get_total_fee());
+    let (coinbase_utxo, coinbase_kernel, _coinbase_output) =
+        create_coinbase(&CryptoFactories::default(), coinbase_value, block_height + lock_height);
+    let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version());
+    header.prev_hash = Vec::from([1u8; 32]); // Random
+    header.height = block_height;
+
+    let template = NewBlockTemplate::from_block(
+        header
+            .into_builder()
+            .with_transactions(transactions)
+            .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
+            .build(),
+        1.into(),
+        coinbase_value,
+    );
+    Block::new(template.header.into(), template.body)
 }
 
 pub fn create_block(block_version: u16, block_height: u64, transactions: Vec<Transaction>) -> Block {

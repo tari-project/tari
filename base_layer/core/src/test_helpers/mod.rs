@@ -24,17 +24,17 @@
 //! integration test folder.
 
 pub mod blockchain;
-mod mock_backend;
 
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, MemoryDatabase, Validators},
     consensus::ConsensusManager,
-    transactions::{transaction::Transaction, types::HashDigest},
-    validation::mocks::MockValidator,
+    transactions::transaction::Transaction,
 };
 
-pub use mock_backend::MockBackend;
+use crate::{
+    consensus::{ConsensusManagerBuilder, Network},
+    transactions::{types::CryptoFactories, CoinbaseBuilder},
+};
 use rand::{distributions::Alphanumeric, Rng};
 use std::{iter, path::Path, sync::Arc};
 use tari_comms::PeerManager;
@@ -53,20 +53,19 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
 pub fn create_block(block_version: u16, block_height: u64, transactions: Vec<Transaction>) -> Block {
     let mut header = BlockHeader::new(block_version);
     header.height = block_height;
-    header.into_builder().with_transactions(transactions).build()
-}
-
-pub fn create_mem_db(consensus_manager: &ConsensusManager) -> BlockchainDatabase<MemoryDatabase<HashDigest>> {
-    let validators = Validators::new(MockValidator::new(true), MockValidator::new(true));
-    let db = MemoryDatabase::<HashDigest>::default();
-    BlockchainDatabase::new(
-        db,
-        consensus_manager,
-        validators,
-        BlockchainDatabaseConfig::default(),
-        false,
-    )
-    .unwrap()
+    if transactions.is_empty() {
+        let constants = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let coinbase = CoinbaseBuilder::new(CryptoFactories::default())
+            .with_block_height(block_height)
+            .with_fees(0.into())
+            .with_nonce(0.into())
+            .with_spend_key(block_height.into())
+            .build_with_reward(constants.consensus_constants(block_height), 1.into())
+            .unwrap();
+        header.into_builder().with_transactions(vec![coinbase.0]).build()
+    } else {
+        header.into_builder().with_transactions(transactions).build()
+    }
 }
 
 pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {

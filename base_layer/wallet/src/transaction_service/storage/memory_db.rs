@@ -45,6 +45,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 use tari_comms::types::CommsPublicKey;
+use tari_core::transactions::tari_amount::MicroTari;
 
 #[derive(Default)]
 struct InnerDatabase {
@@ -483,6 +484,26 @@ impl TransactionBackend for TransactionMemoryDatabase {
         }
 
         Ok(())
+    }
+
+    fn find_coinbase_transaction_at_block_height(
+        &self,
+        block_height: u64,
+        amount: MicroTari,
+    ) -> Result<Option<CompletedTransaction>, TransactionStorageError>
+    {
+        let db = acquire_read_lock!(self.db);
+
+        for (_, tx) in db.completed_transactions.iter() {
+            if tx.status == TransactionStatus::Coinbase &&
+                tx.coinbase_block_height == Some(block_height) &&
+                tx.amount == amount
+            {
+                return Ok(Some(tx.clone()));
+            }
+        }
+
+        Ok(None)
     }
 
     fn increment_send_count(&self, tx_id: u64) -> Result<(), TransactionStorageError> {

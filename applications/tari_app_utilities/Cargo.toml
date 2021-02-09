@@ -1,16 +1,17 @@
 [package]
 name = "tari_app_utilities"
-version = "0.6.0"
+version = "0.8.2"
 authors = ["Philip Robinson <simian@tari.com>"]
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.2", path = "../../comms"}
-tari_crypto = { version = "^0.8" }
-tari_common = { version= "^0.2", path = "../../common" }
-tari_p2p = { version= "^0.2", path = "../../base_layer/p2p" }
+tari_comms = { path = "../../comms"}
+tari_crypto = "^0.8"
+tari_common = { path = "../../common" }
+tari_p2p = { path = "../../base_layer/p2p" }
 tari_wallet = { path = "../../base_layer/wallet" }
 
+config = { version = "0.9.3" }
 futures = { version = "^0.3.1", default-features = false, features = ["alloc"]}
 qrcode = { version = "0.12" }
 dirs-next = "1.0.2"
@@ -18,12 +19,14 @@ serde_json = "1.0"
 log = { version = "0.4.8", features = ["std"] }
 rand = "0.7.2"
 tokio = { version="0.2.10", features = ["signal"] }
+structopt = { version = "0.3.13", default_features = false }
 strum = "^0.19"
 strum_macros = "^0.19"
 thiserror = "^1.0.20"
+tonic = "0.2"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
-version = "^0.2"
+version = "^0.8"
 default-features = false
 features = ["transactions"]

@@ -217,7 +217,7 @@ async fn timeout() {
     let (socket, _, _, _shutdown) = setup(SlowGreetingService::new(delay.clone())).await;
     let framed = framing::canonical(socket, 1024);
     let mut client = GreetingClient::builder()
-        .with_deadline(Duration::from_millis(100))
+        .with_deadline(Duration::from_secs(1))
         .with_deadline_grace_period(Duration::from_secs(1))
         .connect(framed)
         .await

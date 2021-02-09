@@ -106,9 +106,12 @@ impl DhtConnectivity {
 
     /// Spawn a DhtConnectivity actor. This will immediately subscribe to the connection manager event stream to
     /// prevent unexpected missed events.
-    pub fn spawn(self) -> JoinHandle<Result<(), DhtConnectivityError>> {
+    pub fn spawn(mut self) -> JoinHandle<Result<(), DhtConnectivityError>> {
+        // Listen to events as early as possible
         let connectivity_events = self.connectivity.get_event_subscription();
         task::spawn(async move {
+            debug!(target: LOG_TARGET, "Waiting for connectivity manager to start");
+            let _ = self.connectivity.wait_started().await;
             match self.run(connectivity_events).await {
                 Ok(_) => Ok(()),
                 Err(err) => {
@@ -126,6 +129,7 @@ impl DhtConnectivity {
             .take()
             .expect("DhtConnectivity initialized without a shutdown_signal");
 
+        debug!(target: LOG_TARGET, "DHT connectivity starting");
         self.refresh_neighbour_pool().await?;
 
         let mut ticker = time::interval(self.config.connectivity_update_interval).fuse();

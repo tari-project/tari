@@ -22,7 +22,8 @@
 
 use crate::{
     blocks::{new_blockheader_template::NewBlockHeaderTemplate, Block},
-    transactions::aggregated_body::AggregateBody,
+    proof_of_work::Difficulty,
+    transactions::{aggregated_body::AggregateBody, tari_amount::MicroTari},
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -33,14 +34,21 @@ use std::fmt::{Display, Formatter};
 pub struct NewBlockTemplate {
     pub header: NewBlockHeaderTemplate,
     pub body: AggregateBody,
+    pub target_difficulty: Difficulty,
+    pub reward: MicroTari,
+    pub total_fees: MicroTari,
 }
 
-impl From<Block> for NewBlockTemplate {
-    fn from(block: Block) -> Self {
+impl NewBlockTemplate {
+    pub fn from_block(block: Block, target_difficulty: Difficulty, reward: MicroTari) -> Self {
         let Block { header, body } = block;
+        let total_fees = body.get_total_fee();
         Self {
-            header: header.into(),
+            header: NewBlockHeaderTemplate::from_header(header),
             body,
+            target_difficulty,
+            reward,
+            total_fees,
         }
     }
 }
@@ -51,6 +59,10 @@ impl Display for NewBlockTemplate {
         fmt.write_str("--- Header ---\n")?;
         fmt.write_str(&format!("{}\n", self.header))?;
         fmt.write_str("---  Body  ---\n")?;
-        fmt.write_str(&format!("{}\n", self.body))
+        fmt.write_str(&format!("{}\n", self.body))?;
+        fmt.write_str(&format!(
+            "Target difficulty: {}\nReward: {}\nTotal fees: {}\n",
+            self.target_difficulty, self.reward, self.total_fees
+        ))
     }
 }

@@ -71,7 +71,7 @@
 //! args.init_dirs(ApplicationType::BaseNode);
 //! let config = args.load_configuration().unwrap();
 //! let global = GlobalConfig::convert_from(config).unwrap();
-//! assert_eq!(global.network, Network::Ridcully);
+//! assert_eq!(global.network, Network::Stibbons);
 //! assert!(global.max_threads.is_none());
 //! # std::fs::remove_dir_all(temp_dir).unwrap();
 //! ```
@@ -92,9 +92,10 @@ pub use configuration::{
 };
 pub use logging::initialize_logging;
 
-pub const DEFAULT_CONFIG: &str = "config.toml";
-pub const DEFAULT_BASE_NODE_LOG_CONFIG: &str = "log4rs-sample-base-node.yml";
-pub const DEFAULT_WALLET_LOG_CONFIG: &str = "log4rs-sample-wallet.yml";
-pub const DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG: &str = "log4rs-sample-proxy.yml";
+pub const DEFAULT_CONFIG: &str = "config/config.toml";
+pub const DEFAULT_BASE_NODE_LOG_CONFIG: &str = "config/log4rs_base_node.yml";
+pub const DEFAULT_WALLET_LOG_CONFIG: &str = "config/log4rs_console_wallet.yml";
+pub const DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG: &str = "config/log4rs_merge_mining_proxy.yml";
+pub const DEFAULT_MINING_NODE_LOG_CONFIG: &str = "config/log4rs_mining_node.yml";
 
 pub(crate) const LOG_TARGET: &str = "common::config";

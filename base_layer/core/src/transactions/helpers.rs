@@ -249,9 +249,10 @@ pub fn create_tx(
     let mut unblinded_inputs = Vec::with_capacity(input_count as usize);
     let mut unblinded_outputs = Vec::with_capacity(output_count as usize);
     let amount_per_input = amount / input_count;
-    for _ in 0..input_count - 1 {
+    for i in 0..input_count - 1 {
         let (utxo, input) = create_test_input(amount_per_input, input_maturity, &factories.commitment);
-        unblinded_inputs.push(input.clone());
+        let size = i + 1;
+        unblinded_inputs.resize(size as usize, input.clone());
         stx_builder.with_input(utxo, input);
     }
     let amount_for_last_input = amount - amount_per_input * (input_count - 1);
@@ -314,11 +315,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
 
     let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
     let change = stx_protocol.get_change_amount().unwrap();
-    let change_output = UnblindedOutput {
-        value: change,
-        spending_key: test_params.change_key.clone(),
-        features: schema.features,
-    };
+    let change_output = UnblindedOutput::new(change, test_params.change_key.clone(), Some(schema.features));
     outputs.push(change_output);
     match stx_protocol.finalize(KernelFeatures::empty(), &factories) {
         Ok(_) => (),

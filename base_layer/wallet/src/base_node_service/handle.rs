@@ -24,7 +24,8 @@ use super::{error::BaseNodeServiceError, service::BaseNodeState};
 use futures::{stream::Fuse, StreamExt};
 use std::sync::Arc;
 use tari_comms::peer_manager::Peer;
-use tari_core::chain_storage::ChainMetadata;
+
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
@@ -46,6 +47,7 @@ pub enum BaseNodeServiceResponse {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BaseNodeEvent {
     BaseNodeState(BaseNodeState),
+    BaseNodePeerSet(Box<Peer>),
 }
 
 /// The Base Node Service Handle is a struct that contains the interfaces used to communicate with a running
@@ -72,7 +74,15 @@ impl BaseNodeServiceHandle {
         self.event_stream_sender.subscribe().fuse()
     }
 
-    pub async fn set_service_peer(&mut self, peer: Peer) -> Result<(), BaseNodeServiceError> {
+    pub async fn get_connected_base_node_state(&mut self) -> Result<ChainMetadata, BaseNodeServiceError> {
+        match self.handle.call(BaseNodeServiceRequest::GetChainMetadata).await?? {
+            BaseNodeServiceResponse::ChainMetadata(Some(v)) => Ok(v),
+            BaseNodeServiceResponse::ChainMetadata(None) => Err(BaseNodeServiceError::NoChainMetadata),
+            _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn set_base_node_peer(&mut self, peer: Peer) -> Result<(), BaseNodeServiceError> {
         match self
             .handle
             .call(BaseNodeServiceRequest::SetBaseNodePeer(Box::new(peer)))

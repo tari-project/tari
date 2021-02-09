@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub use crate::proto::generated::transaction_protocol as protocol;
+pub use crate::proto::transaction_protocol as protocol;
 
 pub mod recipient_signed_message;
 pub mod transaction_metadata;

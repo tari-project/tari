@@ -392,7 +392,7 @@ where
         // Check if we know the peer and if it is banned
         let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;
 
-        let peer_node_id = common::validate_and_add_peer_from_peer_identity(
+        let (peer_node_id, their_supported_protocols) = common::validate_and_add_peer_from_peer_identity(
             &peer_manager,
             known_peer,
             authenticated_public_key,
@@ -422,6 +422,7 @@ where
             CONNECTION_DIRECTION,
             conn_man_notifier,
             our_supported_protocols,
+            their_supported_protocols,
         )
     }
 
@@ -461,7 +462,7 @@ where
                         },
                         // Inflight dial was cancelled
                         (state, Err(ConnectionManagerError::DialCancelled)) => break (state, Err(ConnectionManagerError::DialCancelled)),
-                        (mut state, Err(err)) => {
+                        (state, Err(_err)) => {
                             if state.num_attempts() >= max_attempts {
                                 break (state, Err(ConnectionManagerError::ConnectFailedMaximumAttemptsReached));
                             }
@@ -493,7 +494,7 @@ where
         Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
     )
     {
-        let mut addr_iter = dial_state.peer.addresses.address_iter();
+        let mut addr_iter = dial_state.peer.addresses.iter();
         let cancel_signal = dial_state.get_cancel_signal();
         loop {
             let result = match addr_iter.next() {

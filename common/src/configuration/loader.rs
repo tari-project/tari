@@ -27,7 +27,7 @@
 //! struct should implements [`Deserialize`][serde::Deserialize] and [`NetworkConfigPath`] traits.
 //!
 //! [`ConfigLoader::load_from`] logic will include automated overloading of parameters from [application.{network}]
-//! subsection, where network is specified in `application.use_network` parameter.
+//! subsection, where network is specified in `application.network` parameter.
 //!
 //! [`ConfigPath`] allows to customize overloading logic event further and [`DefaultConfigLoader`] trait accounts
 //! for struct [`Default`]s when loading values.
@@ -49,7 +49,7 @@
 //! }
 //!
 //! # let mut config = Config::new();
-//! config.set("my_node.use_network", "rincewind");
+//! config.set("my_node.network", "rincewind");
 //! config.set("my_node.rincewind.welcome_message", "nice to see you at unseen");
 //! let my_config = <MyNodeConfig as ConfigLoader>::load_from(&config).unwrap();
 //! assert_eq!(my_config.welcome_message, "nice to see you at unseen");
@@ -100,17 +100,17 @@ pub trait ConfigPath {
 
 /// Load struct from config's main section and network subsection override
 ///
-/// Network subsection will be chosen based on `use_network` key value
+/// Network subsection will be chosen based on `network` key value
 /// from the main section defined in this trait.
 ///
 /// Wrong network value will result in Error
 pub trait NetworkConfigPath {
     /// Main configuration section
     fn main_key_prefix() -> &'static str;
-    /// Path for `use_network` key in config
+    /// Path for `network` key in config
     fn network_config_key() -> String {
         let main = <Self as NetworkConfigPath>::main_key_prefix();
-        format!("{}.use_network", main)
+        format!("{}.network", main)
     }
 }
 impl<C: NetworkConfigPath> ConfigPath for C {
@@ -127,12 +127,12 @@ impl<C: NetworkConfigPath> ConfigPath for C {
     }
 
     /// Loads the desired subsection from the config file into the provided `config` and merges the results. The
-    /// subsection that is selected for merging is determined by the value of the `use_network` sub key of the "main"
+    /// subsection that is selected for merging is determined by the value of the `network` sub key of the "main"
     /// section. For example, if a TOML configuration file contains the following:
     ///
     /// ```toml
     /// [SectionA]
-    ///   use_network=foo  
+    ///   network=foo  
     ///   subkey=1
     /// [SectionA.foo]
     ///   subkey=2
@@ -140,8 +140,8 @@ impl<C: NetworkConfigPath> ConfigPath for C {
     ///   subkey=3
     /// ```
     ///
-    /// the result after calling `merge_config` would have the struct's `subkey` value set to 2. If `use_network`
-    /// were omitted, `subkey` would be 1, and if `use_network` were set to `baz`, `subkey` would be 3.
+    /// the result after calling `merge_config` would have the struct's `subkey` value set to 2. If `network`
+    /// were omitted, `subkey` would be 1, and if `network` were set to `baz`, `subkey` would be 3.
     fn overload_key_prefix(config: &Config) -> Result<Option<String>, ConfigurationError> {
         let network_key = Self::network_config_key();
         let network_val: Option<String> = config.get_str(network_key.as_str()).ok();
@@ -187,7 +187,7 @@ impl<C: NetworkConfigPath> ConfigPath for C {
 /// assert_eq!(my_config.goodbye_message, "see you later".to_string());
 /// assert_eq!(my_config.welcome_message, welcome());
 /// // Overloading from network subsection as we use NetworkConfigPath
-/// config.set("my_node.use_network", "mainnet");
+/// config.set("my_node.network", "mainnet");
 /// let my_config = <MyNodeConfig as ConfigLoader>::load_from(&config).unwrap();
 /// assert_eq!(my_config.goodbye_message, "see you soon".to_string());
 /// ```
@@ -359,7 +359,7 @@ mod test {
         config.set("crypto.mainnet.monero", "isnottaritoo")?;
         config.set("crypto.mainnet.bitcoin", "isnottaritoo")?;
         let crypto = <SuperTari as DefaultConfigLoader>::load_from(&config)?;
-        // no use_network value
+        // no network value
         // [X] crypto.mainnet, [X] crypto = "isnottari", [X] Default
         assert_eq!(crypto.within.monero, "isnottari");
         // [ ] crypto.mainnet, [ ] crypto, [X] Default = "isprivate"
@@ -372,8 +372,8 @@ mod test {
         // [ ] crypto.mainnet, [X] crypto = "istari", [X] Default
         assert_eq!(crypto.over.monero, "istari");
 
-        config.set("crypto.use_network", "mainnet")?;
-        // use_network = mainnet
+        config.set("crypto.network", "mainnet")?;
+        // network = mainnet
         let crypto = <SuperTari as DefaultConfigLoader>::load_from(&config)?;
         // [X] crypto.mainnet = "isnottaritoo", [X] crypto, [X] Default
         assert_eq!(crypto.within.monero, "isnottaritoo");
@@ -382,7 +382,7 @@ mod test {
         // [ ] crypto.mainnet, [X] crypto = "istari", [X] Default
         assert_eq!(crypto.over.monero, "istari");
 
-        config.set("crypto.use_network", "wrong_network")?;
+        config.set("crypto.network", "wrong_network")?;
         assert!(<SuperTari as DefaultConfigLoader>::load_from(&config).is_err());
 
         Ok(())
@@ -392,7 +392,7 @@ mod test {
     fn network_config_loader() -> anyhow::Result<()> {
         let mut config = Config::new();
 
-        // no use_network value
+        // no network value
         config.set("crypto.monero", "isnottari")?;
         config.set("crypto.mainnet.bitcoin", "isnottaritoo")?;
         // [X] crypto.monero [X] crypto.bitcoin(serde) [ ] crypto.over.monero
@@ -403,8 +403,8 @@ mod test {
         config.set("crypto.mainnet.over.monero", "istari")?;
         assert!(<SuperTari as ConfigLoader>::load_from(&config).is_err());
 
-        // use_network = mainnet
-        config.set("crypto.use_network", "mainnet")?;
+        // network = mainnet
+        config.set("crypto.network", "mainnet")?;
         let crypto = <SuperTari as ConfigLoader>::load_from(&config)?;
         // [X] crypto.mainnet = "isnottaritoo", [X] crypto, [X] Default
         assert_eq!(crypto.within.monero, "isnottaritoo");
@@ -414,7 +414,7 @@ mod test {
         assert_eq!(crypto.over.monero, "istari");
 
         let mut config = Config::new();
-        // no use_network value
+        // no network value
         config.set("crypto.monero", "isnottari")?;
         config.set("crypto.over.monero", "istari")?;
         let crypto = <SuperTari as ConfigLoader>::load_from(&config)?;
@@ -465,7 +465,7 @@ mod test {
     fn config_loaders() -> anyhow::Result<()> {
         let mut config = Config::new();
 
-        // no use_network value
+        // no network value
         // [ ] one.param1(default) [X] one.param1(default) [ ] one.param2 [X] one.param2(serde)
         assert!(<OneConfig as ConfigLoader>::load_from(&config).is_err());
         // [ ] one.param1(default) [X] one.param1(default) [ ] one.param2 [X] one.param2(default)

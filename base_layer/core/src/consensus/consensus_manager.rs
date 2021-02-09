@@ -27,23 +27,22 @@ use crate::{
             get_mainnet_genesis_block,
             get_ridcully_block_hash,
             get_ridcully_genesis_block,
-            get_rincewind_block_hash,
-            get_rincewind_genesis_block,
+            get_stibbons_block_hash,
+            get_stibbons_genesis_block,
         },
         Block,
     },
-    chain_storage::ChainStorageError,
+    chain_storage::{ChainBlock, ChainStorageError},
     consensus::{
         chain_strength_comparer::{strongest_chain, ChainStrengthComparer},
         emission::{Emission, EmissionSchedule},
         network::Network,
         ConsensusConstants,
     },
-    proof_of_work::DifficultyAdjustmentError,
+    proof_of_work::{DifficultyAdjustmentError, PowAlgorithm, TargetDifficultyWindow},
     transactions::tari_amount::MicroTari,
 };
-use std::sync::Arc;
-use tari_crypto::tari_utilities::hash::Hashable;
+use std::{convert::TryFrom, sync::Arc};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -67,28 +66,28 @@ pub struct ConsensusManager {
 }
 
 impl ConsensusManager {
+    pub fn builder(network: Network) -> ConsensusManagerBuilder {
+        ConsensusManagerBuilder::new(network)
+    }
+
     /// Returns the genesis block for the selected network.
-    pub fn get_genesis_block(&self) -> Block {
+    pub fn get_genesis_block(&self) -> ChainBlock {
         match self.inner.network {
             Network::MainNet => get_mainnet_genesis_block(),
-            Network::Rincewind => get_rincewind_genesis_block(),
             Network::Ridcully => get_ridcully_genesis_block(),
-            Network::LocalNet => self.inner.gen_block.clone().unwrap_or_else(get_rincewind_genesis_block),
+            Network::Stibbons => get_stibbons_genesis_block(),
+            Network::LocalNet => self.inner.gen_block.clone().unwrap_or_else(get_stibbons_genesis_block),
         }
     }
 
     /// Returns the genesis block hash for the selected network.
+    #[deprecated]
     pub fn get_genesis_block_hash(&self) -> Vec<u8> {
         match self.inner.network {
             Network::MainNet => get_mainnet_block_hash(),
-            Network::Rincewind => get_rincewind_block_hash(),
             Network::Ridcully => get_ridcully_block_hash(),
-            Network::LocalNet => self
-                .inner
-                .gen_block
-                .clone()
-                .unwrap_or_else(get_rincewind_genesis_block)
-                .hash(),
+            Network::Stibbons => get_stibbons_block_hash(),
+            Network::LocalNet => get_ridcully_block_hash(),
         }
     }
 
@@ -99,14 +98,16 @@ impl ConsensusManager {
         &self.inner.emission
     }
 
-    // Get a pointer to the emission schedule
-    /// The height provided here, decides the emission curve to use. It swaps to the integer curve upon reaching
-    /// 1_000_000_000
-    pub fn get_emission_reward_at(&self, height: u64) -> MicroTari {
+    pub fn get_block_reward_at(&self, height: u64) -> MicroTari {
+        self.emission_schedule().block_reward(height)
+    }
+
+    // Get the emission reward at height
+    pub fn get_total_emission_at(&self, height: u64) -> MicroTari {
         self.inner.emission.supply_at_block(height)
     }
 
-    /// Get a pointer to the consensus constants
+    /// Get a reference to consensus constants that are effective from the given height
     pub fn consensus_constants(&self, height: u64) -> &ConsensusConstants {
         let mut constants = &self.inner.consensus_constants[0];
         for c in self.inner.consensus_constants.iter() {
@@ -116,6 +117,19 @@ impl ConsensusManager {
             constants = &c
         }
         constants
+    }
+
+    /// Create a new TargetDifficulty for the given proof of work using constants that are effective from the given
+    /// height
+    pub(crate) fn new_target_difficulty(&self, pow_algo: PowAlgorithm, height: u64) -> TargetDifficultyWindow {
+        let constants = self.consensus_constants(height);
+        let block_window = constants.get_difficulty_block_window();
+
+        TargetDifficultyWindow::new(
+            usize::try_from(block_window).expect("difficulty block window exceeds usize::MAX"),
+            constants.get_diff_target_block_interval(pow_algo),
+            constants.get_difficulty_max_block_interval(pow_algo),
+        )
     }
 
     /// Creates a total_coinbase offset containing all fees for the validation from block
@@ -144,7 +158,7 @@ struct ConsensusManagerInner {
     /// The configuration for the emission schedule for integer only.
     pub emission: EmissionSchedule,
     /// This allows the user to set a custom Genesis block
-    pub gen_block: Option<Block>,
+    pub gen_block: Option<ChainBlock>,
     /// The comparer used to determine which chain is stronger for reorgs.
     pub chain_strength_comparer: Box<dyn ChainStrengthComparer + Send + Sync>,
 }
@@ -153,7 +167,7 @@ struct ConsensusManagerInner {
 pub struct ConsensusManagerBuilder {
     consensus_constants: Vec<ConsensusConstants>,
     network: Network,
-    gen_block: Option<Block>,
+    gen_block: Option<ChainBlock>,
     chain_strength_comparer: Option<Box<dyn ChainStrengthComparer + Send + Sync>>,
 }
 
@@ -175,7 +189,7 @@ impl ConsensusManagerBuilder {
     }
 
     /// Adds in a custom block to be used. This will be overwritten if the network is anything else than localnet
-    pub fn with_block(mut self, block: Block) -> Self {
+    pub fn with_block(mut self, block: ChainBlock) -> Self {
         self.gen_block = Some(block);
         self
     }

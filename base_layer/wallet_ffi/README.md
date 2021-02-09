@@ -22,6 +22,7 @@ brew install cmake
 brew install autoconf
 brew install automake
 brew install libtool
+brew install openssl@1.1
 ```
 
 ## iOS Dependencies
@@ -39,7 +40,7 @@ and follow the prompts.
 
 For Catalina, if you get compilation errors such as these:
 
-    xcrun: error: SDK "iphoneos" cannot be located 
+    xcrun: error: SDK "iphoneos" cannot be located
     xcrun: error: unable to lookup item 'Path' in SDK 'iphoneos'
 
 Switch the XCode app defaults with:
@@ -47,6 +48,45 @@ Switch the XCode app defaults with:
     sudo xcode-select --switch /Applications/Xcode.app
 
 **Note:** If this command fails, XCode was not found and needs to be installed/re-installed.
+
+For Big Sur, currently it seems only thin libraries for openssl are being distributed via brew (instead of fat ones),
+should you run into linker errors in the logs:
+```Shell Script
+git clone https://github.com/StriderDM/OpenSSL-for-iPhone.git
+cd OpenSSL-for-iPhone
+git checkout shared_lib_and_mobile_optimizations
+./build-libssl.sh --version=1.1.1h
+```
+
+After the script finishes building the libraries, copy the following:
+```
+./bin/iPhoneOS14.3-arm64.sdk/lib/libcrypto.1.1.dylib
+./bin/iPhoneOS14.3-arm64.sdk/lib/libcrypto.dylib
+./bin/iPhoneOS14.3-arm64.sdk/lib/libssl.1.1.dylib
+./bin/iPhoneOS14.3-arm64.sdk/lib/libssl.dylib
+
+```
+
+To:
+```
+~/.rustup/toolchains/nightly-x86_64-apple-darwin/lib/rustlib/aarch64-apple-ios/lib
+```
+
+And the following:
+```
+./bin/iPhoneSimulator14.3-x86_64.sdk/lib/libcrypto.1.1.dylib
+./bin/iPhoneSimulator14.3-x86_64.sdk/lib/libcrypto.dylib
+./bin/iPhoneSimulator14.3-x86_64.sdk/lib/libssl.1.1.dylib
+./bin/iPhoneSimulator14.3-x86_64.sdk/lib/libssl.dylib
+```
+
+To:
+```
+~/.rustup/toolchains/nightly-x86_64-apple-darwin/lib/rustlib/x86_64-apple-ios/lib
+```
+
+Note: This is purely to resolve linker issues during the library build (prior to trying to include it in the iOS
+wallet). This dependency is already included in the dependencies to be built for the iOS wallet.
 
 ## Android Dependencies
 
@@ -102,7 +142,7 @@ rustup target add x86_64-linux-android aarch64-linux-android armv7-linux-android
 
 ## Build Configuration
 
-To configure the build, ```cd``` to the Tari repository and then 
+To configure the build, ```cd``` to the Tari repository and then
 ```Shell Script
 cd base_layer/wallet_ffi
 open build.sample.config
@@ -115,7 +155,7 @@ BUILD_IOS=1
 CARGO_CLEAN=1
 SQLITE_SOURCE=https://www.sqlite.org/snapshot/sqlite-snapshot-201911192122.tar.gz
 NDK_PATH=$HOME/android-ndk-r20
-PKG_PATH=
+PKG_PATH=/usr/local/opt/openssl@1.1/lib/pkgconfig
 ANDROID_WALLET_PATH=$HOME/wallet-android
 IOS_WALLET_PATH=$HOME/wallet-ios
 TARI_REPO_PATH=$HOME/tari-main
@@ -128,26 +168,16 @@ The following changes need to be made to the file
 1. ```TARI_REPO_PATH``` needs to be changed to the path of the Tari repository (Optional - defaults to current repo)
 1. ```BUILD_ANDROID``` can be set to ```0``` to disable Android library build
 1. ```BUILD_IOS``` can be set to ```0``` to disable iOS library build
+1. ```PKG_PATH``` needs to be changed to OpenSSL 1.1 pkgconfig path (only necessary for iOS build)
 
 Save the file and rename it to ```build.config```
 
 ## Building the Libraries
 
-To build the libraries, ```cd``` to the Tari repository and then 
+To build the libraries, ```cd``` to the Tari repository and then
 ```Shell Script
 cd base_layer/wallet_ffi
 sh mobile_build.sh
 ```
 
-The relevant libraries will then be built and placed in the appropriate directories of the Wallet-iOS and Wallet-Android repositories. 
-
-# Setup (Windows)
-
-## Test
-
-1. Download SQL Lite (https://www.sqlite.org/index.html - 64bit) and unzip
-2. `sqlite3.dll` must be accessible via the session path
-
-## Build
-
-ToDo -  Android only
+The relevant libraries will then be built and placed in the appropriate directories of the Wallet-iOS and Wallet-Android repositories.

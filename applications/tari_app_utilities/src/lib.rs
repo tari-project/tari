@@ -21,4 +21,5 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod identity_management;
+pub mod initialization;
 pub mod utilities;

@@ -80,7 +80,7 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
         Vec::<Multiaddr>::new().into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
-        &[],
+        Default::default(),
         Default::default(),
     );
     DomainMessage {

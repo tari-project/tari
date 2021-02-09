@@ -12,10 +12,7 @@ message ProofOfWork {
     // 0 = Monero
     // 1 = Blake
     uint64 pow_algo = 1;
-    uint64 accumulated_monero_difficulty = 2;
-    uint64 accumulated_blake_difficulty = 3;
     bytes pow_data = 4;
-    uint64 target_difficulty = 5;
 }
 
 // The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
@@ -43,6 +40,10 @@ message BlockHeader {
     uint64 nonce = 10;
     // Proof of work metadata
     ProofOfWork pow = 11;
+    // The size of the kernel MMR
+    uint64 kernel_mmr_size = 12;
+    // The size of the output MMR
+    uint64 output_mmr_size = 13;
 }
 
 // A Tari block. Blocks are linked together into a blockchain.
@@ -63,12 +64,24 @@ message HistoricalBlock {
     // The number of blocks that have been mined since this block, including this one. The current tip will have one
     // confirmation.
     uint64 confirmations = 1;
-    // An array of commitments of the outputs from this block that have subsequently been spent.
-    repeated tari.types.Commitment spent_commitments = 2;
     // The underlying block
     Block block = 3;
+    BlockHeaderAccumulatedData accumulated_data = 4;
+    repeated bytes pruned_output_hashes = 5;
+    repeated bytes pruned_proof_hashes = 6;
+    uint64 pruned_input_count = 7;
 }
 
+
+message BlockHeaderAccumulatedData {
+    uint64 achieved_difficulty = 1;
+    uint64 accumulated_monero_difficulty = 2;
+    uint64 accumulated_blake_difficulty = 3;
+    uint64 target_difficulty = 4;
+    bytes total_kernel_offset = 5;
+    bytes hash = 6;
+    bytes total_accumulated_difficulty = 7;
+}
 
 // The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for the block that the Base Node is able to complete on behalf of a Miner.
 message NewBlockHeaderTemplate {
@@ -83,10 +96,14 @@ message NewBlockHeaderTemplate {
     bytes total_kernel_offset = 4;
     // Proof of work metadata
     ProofOfWork pow = 5;
+
 }
 
 // The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as a final step the Base node to add the MMR roots to the header.
 message NewBlockTemplate {
     NewBlockHeaderTemplate header = 1;
     tari.types.AggregateBody body = 2;
+    uint64 target_difficulty = 3;
+    uint64 reward = 4;
+    uint64 total_fees  = 5;
 }

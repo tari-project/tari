@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::state_machine_service::states::{BlockSyncStrategy, HeaderSync, HorizonStateSync, StateEvent};
+use crate::base_node::state_machine_service::states::{BlockSync, HeaderSync, HorizonStateSync, StateEvent};
 use log::info;
 use std::time::Duration;
 use tokio::time::delay_for;
@@ -54,19 +54,18 @@ impl Default for Waiting {
     /// A default timeout of 1 minute applies
     fn default() -> Self {
         Self {
-            timeout: Duration::from_secs(60),
+            timeout: Duration::from_secs(30),
         }
     }
 }
 
 /// Moving from state BlockSyncStrategy -> Waiting.
-impl From<BlockSyncStrategy> for Waiting {
-    fn from(_: BlockSyncStrategy) -> Self {
+impl From<BlockSync> for Waiting {
+    fn from(_: BlockSync) -> Self {
         Default::default()
     }
 }
 
-/// Moving from state HorizonStateSync -> Waiting. A timeout of 1 minute applies
 impl From<HeaderSync> for Waiting {
     fn from(_: HeaderSync) -> Self {
         Default::default()

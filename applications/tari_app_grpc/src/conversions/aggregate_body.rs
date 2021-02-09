@@ -23,7 +23,7 @@
 use std::convert::TryFrom;
 use tari_core::{proto::utils::try_convert_all, transactions::aggregated_body::AggregateBody};
 
-use crate::generated::tari_rpc as grpc;
+use crate::tari_rpc as grpc;
 
 impl From<AggregateBody> for grpc::AggregateBody {
     fn from(source: AggregateBody) -> Self {

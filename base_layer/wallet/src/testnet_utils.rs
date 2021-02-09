@@ -145,9 +145,13 @@ pub async fn create_wallet(
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
+        dns_seeds: Default::default(),
+        dns_seeds_name_server: "1.1.1.1:53".parse().unwrap(),
+        dns_seeds_use_dnssec: false,
+        peer_seeds: Default::default(),
     };
 
-    let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind, None);
+    let config = WalletConfig::new(comms_config, factories, None, None, Network::Stibbons, None, None, None);
 
     Wallet::new(
         config,
@@ -478,14 +482,11 @@ pub async fn generate_wallet_test_data<
     loop {
         futures::select! {
             event = wallet_event_stream.select_next_some() => {
-                match &*event.unwrap() {
-                    TransactionEvent::TransactionDirectSendResult(_,_) => {
-                        count+=1;
-                        if count >= 10 {
-                            break;
-                        }
-                    },
-                    _ => (),
+                if let TransactionEvent::TransactionDirectSendResult(_,_) = &*event.unwrap() {
+                    count+=1;
+                    if count >= 10 {
+                        break;
+                    }
                 }
             },
             () = delay => {
@@ -584,14 +585,11 @@ pub async fn generate_wallet_test_data<
     loop {
         futures::select! {
             event = wallet_event_stream.select_next_some() => {
-                match &*event.unwrap() {
-                    TransactionEvent::ReceivedFinalizedTransaction(_) => {
-                        count+=1;
-                        if count >= 5 {
-                            break;
-                        }
-                    },
-                    _ => (),
+                if let TransactionEvent::ReceivedFinalizedTransaction(_) = &*event.unwrap() {
+                    count+=1;
+                    if count >= 5 {
+                        break;
+                    }
                 }
             },
             () = delay => {

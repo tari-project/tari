@@ -19,16 +19,81 @@
 //   SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 //! # Horizon state sync
 //!
 //! Horizon state synchronisation module for pruned mode.
 
+// TODO: Move the horizon synchronizer to the `sync` module
+
 mod config;
+
 pub use self::config::HorizonSyncConfig;
 
 mod error;
+
 pub use error::HorizonSyncError;
 
-mod state_sync;
-pub use state_sync::HorizonStateSync;
+mod horizon_state_synchronization;
+
+use horizon_state_synchronization::HorizonStateSynchronization;
+
+use super::{BlockSyncInfo, StateEvent, StateInfo};
+use crate::{base_node::BaseNodeStateMachine, chain_storage::BlockchainBackend, transactions::types::CryptoFactories};
+use log::*;
+use tari_comms::PeerConnection;
+
+const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
+
+#[derive(Clone, Debug)]
+pub struct HorizonStateSync {
+    sync_peer: PeerConnection,
+}
+
+impl HorizonStateSync {
+    pub fn with_peer(sync_peer: PeerConnection) -> Self {
+        Self { sync_peer }
+    }
+
+    pub async fn next_event<B: BlockchainBackend + 'static>(
+        &mut self,
+        shared: &mut BaseNodeStateMachine<B>,
+    ) -> StateEvent
+    {
+        let local_metadata = match shared.db.get_chain_metadata().await {
+            Ok(m) => m,
+            Err(err) => return StateEvent::FatalError(err.to_string()),
+        };
+        if local_metadata.height_of_longest_chain() > 0 &&
+            local_metadata.height_of_longest_chain() >= local_metadata.pruned_height()
+        {
+            return StateEvent::HorizonStateSynchronized;
+        }
+        let sync_height = match shared.db.fetch_last_header().await {
+            Ok(h) => h.height.saturating_sub(local_metadata.pruning_horizon()),
+            Err(err) => return StateEvent::FatalError(err.to_string()),
+        };
+
+        if local_metadata.height_of_longest_chain() > sync_height {
+            return StateEvent::HorizonStateSynchronized;
+        }
+        shared.set_state_info(StateInfo::HorizonSync(BlockSyncInfo::new(
+            sync_height,
+            local_metadata.height_of_longest_chain(),
+            vec![self.sync_peer.peer_node_id().clone()],
+        )));
+
+        let prover = CryptoFactories::default().range_proof;
+        let mut horizon_header_sync =
+            HorizonStateSynchronization::new(shared, self.sync_peer.clone(), sync_height, prover.as_ref());
+        match horizon_header_sync.synchronize().await {
+            Ok(()) => {
+                info!(target: LOG_TARGET, "Horizon state has synchronised.");
+                StateEvent::HorizonStateSynchronized
+            },
+            Err(err) => {
+                warn!(target: LOG_TARGET, "Synchronizing horizon state has failed. {}", err);
+                StateEvent::HorizonStateSyncFailure
+            },
+        }
+    }
+}

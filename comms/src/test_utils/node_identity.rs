@@ -51,6 +51,6 @@ pub fn ordered_node_identities_by_distance(
 ) -> Vec<Arc<NodeIdentity>>
 {
     let mut ids = build_many_node_identities(n, features);
-    ids.sort_unstable_by(|a, b| a.node_id().distance(node_id).cmp(&b.node_id().distance(node_id)));
+    ids.sort_unstable_by_key(|a| a.node_id().distance(node_id));
     ids
 }

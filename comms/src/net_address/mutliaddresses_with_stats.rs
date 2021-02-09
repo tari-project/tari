@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{ops::Index, time::Duration};
 
 /// This struct is used to store a set of different net addresses such as IPv4, IPv6, Tor or I2P for a single peer.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default, Eq)]
 pub struct MultiaddressesWithStats {
     pub addresses: Vec<MutliaddrWithStats>,
     last_attempted: Option<DateTime<Utc>>,
@@ -88,7 +88,7 @@ impl MultiaddressesWithStats {
 
     /// Returns an iterator of addresses ordered from 'best' to 'worst' according to heuristics such as failed
     /// connections and latency.
-    pub fn address_iter(&self) -> impl Iterator<Item = &Multiaddr> {
+    pub fn iter(&self) -> impl Iterator<Item = &Multiaddr> {
         self.addresses.iter().map(|addr| &addr.address)
     }
 
@@ -293,17 +293,17 @@ mod test {
         net_addresses.add_net_address(&net_address2);
         net_addresses.add_net_address(&net_address3);
 
-        let priority_address = net_addresses.address_iter().next().unwrap();
+        let priority_address = net_addresses.iter().next().unwrap();
         assert_eq!(priority_address, &net_address1);
 
         assert!(net_addresses.update_latency(&net_address1, Duration::from_millis(250)));
         assert!(net_addresses.update_latency(&net_address2, Duration::from_millis(50)));
         assert!(net_addresses.update_latency(&net_address3, Duration::from_millis(100)));
-        let priority_address = net_addresses.address_iter().next().unwrap();
+        let priority_address = net_addresses.iter().next().unwrap();
         assert_eq!(priority_address, &net_address2);
 
         assert!(net_addresses.mark_failed_connection_attempt(&net_address2));
-        let priority_address = net_addresses.address_iter().next().unwrap();
+        let priority_address = net_addresses.iter().next().unwrap();
         assert_eq!(priority_address, &net_address3);
     }
 

@@ -24,7 +24,7 @@
 //! This CallbackHandler will monitor event streams from the various wallet services and on relevant events will call
 //! the assigned callbacks to provide asynchronous feedback to the client application that an event has occured
 //!
-//! ## Callbacks  
+//! ## Callbacks
 //! `callback_received_transaction` - This will be called when an inbound transaction is received from an external
 //! wallet
 //!
@@ -213,50 +213,46 @@ where TBackend: TransactionBackend + 'static
                                 TransactionEvent::TransactionMined(tx_id) => {
                                     self.receive_transaction_mined_event(tx_id).await;
                                 },
-                                /// Only the above variants are mapped to callbacks
+                                // Only the above variants are mapped to callbacks
                                 _ => (),
                             }
                         },
-                        Err(e) => error!(target: LOG_TARGET, "Error reading from Transaction Service event broadcast channel"),
+                        Err(_e) => error!(target: LOG_TARGET, "Error reading from Transaction Service event broadcast channel"),
                     }
                 },
                 result = self.output_manager_service_event_stream.select_next_some() => {
                     match result {
                         Ok(msg) => {
                             trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
-                            match msg {
+                            match (*msg).clone() {
                                 OutputManagerEvent::TxoValidationSuccess(request_key) => {
                                     self.receive_sync_process_result(request_key, true);
                                 },
                                 OutputManagerEvent::TxoValidationTimedOut(request_key) => {
                                     self.receive_sync_process_result(request_key, false);
-                                }
+                                },
                                 OutputManagerEvent::TxoValidationFailure(request_key) => {
                                     self.receive_sync_process_result(request_key, false);
-                                }
+                                },
                                 OutputManagerEvent::TxoValidationAborted(request_key) => {
                                     self.receive_sync_process_result(request_key, false);
-                                }
-                                /// Only the above variants are mapped to callbacks
+                                },
+                                // Only the above variants are mapped to callbacks
                                 _ => (),
                             }
                         },
-                        Err(e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
+                        Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
                     }
                 },
                 result = self.dht_event_stream.select_next_some() => {
                     match result {
                         Ok(msg) => {
                             trace!(target: LOG_TARGET, "DHT Callback Handler event {:?}", msg);
-                            match *msg {
-                                DhtEvent::StoreAndForwardMessagesReceived => {
-                                    self.saf_messages_received_event();
-                                },
-                                /// Only the above variants are mapped to callbacks
-                                _ => (),
+                            if let DhtEvent::StoreAndForwardMessagesReceived = *msg {
+                                self.saf_messages_received_event();
                             }
                         },
-                        Err(e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
+                        Err(_e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
                     }
                 }
                 complete => {
@@ -711,9 +707,11 @@ mod test {
             .send(Arc::new(TransactionEvent::TransactionCancelled(5u64)))
             .unwrap();
 
-        oms_sender.send(OutputManagerEvent::TxoValidationSuccess(1u64)).unwrap();
         oms_sender
-            .send(OutputManagerEvent::TxoValidationTimedOut(1u64))
+            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1u64)))
+            .unwrap();
+        oms_sender
+            .send(Arc::new(OutputManagerEvent::TxoValidationTimedOut(1u64)))
             .unwrap();
         dht_sender
             .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))

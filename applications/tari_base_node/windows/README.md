@@ -9,6 +9,7 @@ before running `tari_base_node.exe`, `tari_console_wallet.exe` and
 The `tari_base_node` executable has the following dependencies, which can be 
 installed automatically if selected:
 - SQLite
+- OpenSSL
 - Tor Services
 - Redistributable for Microsoft Visual Studio 2019 
 - XMRig
@@ -33,23 +34,29 @@ Notes:
   |   start_tari_base_node.lnk
   |   start_tari_console_wallet.lnk
   |   start_tari_merge_mining_proxy.lnk
+  |   start_xmrig.lnk
   |   start_tor.lnk
   |   unins000.dat
   |   unins000.exe
   |---config
-  |       windows.toml
+  |       config.toml
   |---runtime
+          get_openssl_win.ps1
+          get_xmrig_win.ps1
+          install_openssl.bat
           install_sqlite.bat
           install_tor_services.bat
           install_vs2019_redist.bat
           install_xmrig.bat
-          run_the_base_node.bat
-          run_the_console_wallet.bat
-          run_the_merge_mining_proxy.bat
+          source_base_node_env.bat
+          source_console_wallet_env.bat
+          source_merge_mining_proxy_env.bat
+          source_xmrig_env.bat
           start_tari_base_node.bat
           start_tari_console_wallet.bat
           start_tari_merge_mining_proxy.bat
           start_tor.bat
+          start_xmrig.bat
           tari_base_node.exe
           tari_console_wallet.exe
           tari_merge_mining_proxy.exe
@@ -57,6 +64,7 @@ Notes:
   - The following environment variables are created with a default installation:
     - `TARI_TOR_SERVICES_DIR = %USERPROFILE%\.tor_services\Tor`
     - `TARI_SQLITE_DIR       = %USERPROFILE%\.sqlite`
+    - `TARI_XMRIG_DIR        = %USERPROFILE%\.xmrig`
 
 ## Runtime
 
@@ -66,16 +74,19 @@ Notes:
 - Execute the `.\start_tari_console_wallet` shortcut; this will also start the 
   Tor services that needs to be running before the base node can run (do not 
   close the Tor console).
-- The Tor console will output `[notice] Bootstrapped 100% (done): Done` 
+  
+  **Note**: The Tor console will output `[notice] Bootstrapped 100% (done): Done` 
   when the Tor services have fully started.
+  
 - Execute the `.\start_tari_merge_mining_proxy` shortcut.
+- Execute the `.\start_xmrig` shortcut.
 - Runtime artefacts:
-  - The blockchain will be created in the `.\ridcully` folder.
+  - The blockchain will be created in the `.\stibbons` folder.
   - The wallet will be created in the `.\wallet` folfder.
   - All log files will be created in the `.\log\base_node`, `.\log\wallet` and 
     `.\log\proxy` folders.
   - The following configuration files will be created in the `.\config` folder if 
-    the default runtime configuration `..\..\common\config\presets\windows.toml` 
+    the default runtime configuration `..\..\common\config\presets\config.toml` 
     was used:
     - `node_id.json`
     - `wallet_id.json`
@@ -89,7 +100,7 @@ Notes:
 ## Start Fresh
 
 - To delete log files, delete the `.\log` folder.
-- To re-sync the blockchain, delete the `.\ridcully` folder.
+- To re-sync the blockchain, delete the `.\stibbons` folder.
 - To destroy your wallet and loose all your hard-earned tXTR Tari coins, delete 
   the `.\wallet` folder.
 
@@ -113,6 +124,17 @@ Notes:
     
   - Ensure folder containing `sqlite3.dll`, is in the user or system path 
     environment variable (hint: type `path` in a command console to verify).
+
+- OpenSSL:
+  - Download full version of the 64bit Precompiled Binaries for Windows for
+    [OpenSSL](https://slproweb.com/products/Win32OpenSSL.html)
+  - Install using all the default prompts
+  
+    **Note**: It is important that the dlls are available in the path. To test:
+    ```
+    where libcrypto-1_1-x64.dll
+    where libssl-1_1-x64.dll
+    ``` 
 
 - Tor Services
   - Donwload 
@@ -163,7 +185,7 @@ Notes:
     `tari_base_node.exe` is in the path.
 
 - Tari Base Node Runtime Configuration File
-  - Copy  `..\..\common\config\presets\windows.toml` to `.\config`
+  - Copy  `..\..\common\config\presets\config.toml` to `.\config`
 
 ### Build the Tari Console Wallet
 
@@ -180,7 +202,7 @@ Notes:
     `tari_console_wallet.exe` is in the path.
 
 - Tari console Wallet Runtime Configuration File
-  - Copy  `..\..\common\config\presets\windows.toml` to `.\config`
+  - Copy  `..\..\common\config\presets\config.toml` to `.\config`
 
 ### Build the Tari Merge Mining Proxy
 
@@ -197,5 +219,5 @@ Notes:
     `tari_merge_mining_proxy.exe` is in the path.
 
 - Tari Base Node Runtime Configuration File
-  - Copy  `..\..\common\config\presets\windows.toml` to `.\config`
+  - Copy  `..\..\common\config\presets\config.toml` to `.\config`
  

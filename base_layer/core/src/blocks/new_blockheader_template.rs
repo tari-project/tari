@@ -21,15 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{
-        blockheader::{hash_serializer, BlockHeader},
-        BlockHash,
-    },
+    blocks::block_header::{hash_serializer, BlockHeader},
     proof_of_work::ProofOfWork,
     transactions::types::BlindingFactor,
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
+use tari_common_types::types::BlockHash;
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for
@@ -50,8 +48,8 @@ pub struct NewBlockHeaderTemplate {
     pub pow: ProofOfWork,
 }
 
-impl From<BlockHeader> for NewBlockHeaderTemplate {
-    fn from(header: BlockHeader) -> Self {
+impl NewBlockHeaderTemplate {
+    pub(crate) fn from_header(header: BlockHeader) -> Self {
         Self {
             version: header.version,
             height: header.height,

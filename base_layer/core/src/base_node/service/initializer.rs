@@ -23,18 +23,15 @@
 use crate::{
     base_node::{
         comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
-        proto,
-        service::{
-            blockchain_state::BlockchainStateServiceInitializer,
-            service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
-        },
+        service::service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
         StateMachineHandle,
     },
     blocks::NewBlock,
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
     mempool::Mempool,
     proto as shared_protos,
+    proto::base_node as proto,
 };
 use futures::{channel::mpsc, future, Future, Stream, StreamExt};
 use log::*;
@@ -60,7 +57,7 @@ const SUBSCRIPTION_LABEL: &str = "Base Node";
 /// Initializer for the Base Node service handle and service future.
 pub struct BaseNodeServiceInitializer<T> {
     inbound_message_subscription_factory: Arc<SubscriptionFactory>,
-    blockchain_db: BlockchainDatabase<T>,
+    blockchain_db: AsyncBlockchainDb<T>,
     mempool: Mempool,
     consensus_manager: ConsensusManager,
     config: BaseNodeServiceConfig,
@@ -72,7 +69,7 @@ where T: BlockchainBackend
     /// Create a new BaseNodeServiceInitializer from the inbound message subscriber.
     pub fn new(
         inbound_message_subscription_factory: Arc<SubscriptionFactory>,
-        blockchain_db: BlockchainDatabase<T>,
+        blockchain_db: AsyncBlockchainDb<T>,
         mempool: Mempool,
         consensus_manager: ConsensusManager,
         config: BaseNodeServiceConfig,
@@ -179,7 +176,7 @@ where T: BlockchainBackend + 'static
         context.register_handle(outbound_nci);
         context.register_handle(local_nci);
 
-        context.clone().spawn_when_ready(move |handles| async move {
+        context.spawn_when_ready(move |handles| async move {
             let dht = handles.expect_handle::<Dht>();
             let outbound_message_service = dht.outbound_requester();
 
@@ -201,10 +198,6 @@ where T: BlockchainBackend + 'static
             info!(target: LOG_TARGET, "Base Node Service shutdown");
         });
 
-        // TODO: Do a base node service cleanup once the dust has settled. The new service uses it's own initializer to
-        //       keep it isolated from existing code that needs to be cleaned up. Since this can be considered a "child"
-        //       service of the base node, the base node service initializer could bring other smaller services together
-        //       and wrap that in a handle.
-        BlockchainStateServiceInitializer::new(self.blockchain_db.clone()).initialize(context)
+        future::ready(Ok(()))
     }
 }

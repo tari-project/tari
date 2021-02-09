@@ -99,7 +99,7 @@ async fn run() -> Result<(), Error> {
             vec![node_identity2.public_address()].into(),
             Default::default(),
             PeerFeatures::COMMUNICATION_CLIENT,
-            &[],
+            Default::default(),
             Default::default(),
         ))
         .await?;
@@ -244,7 +244,7 @@ async fn start_ping_ponger(
                 id.parse::<u64>()
                     .ok()
                     .and_then(|id_num| inflight_pings.remove(&id_num))
-                    .and_then(|ts| Some((Utc::now().naive_utc().signed_duration_since(ts)).num_milliseconds()))
+                    .map(|ts| (Utc::now().naive_utc().signed_duration_since(ts)).num_milliseconds())
                     .and_then(|latency| {
                         println!("Latency: {}ms", latency);
                         Some(latency)

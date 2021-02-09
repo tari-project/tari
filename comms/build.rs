@@ -23,7 +23,6 @@
 fn main() {
     tari_common::protobuf_build::ProtoCompiler::new()
         .proto_paths(&["src/proto"])
-        .out_dir("src/proto")
         .emit_rerun_if_changed_directives()
         .compile()
         .unwrap();

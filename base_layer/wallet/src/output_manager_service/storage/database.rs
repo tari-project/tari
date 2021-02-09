@@ -363,11 +363,7 @@ where T: OutputManagerBackend + 'static
     {
         let db_clone = self.db.clone();
         let output = DbUnblindedOutput::from_unblinded_output(
-            UnblindedOutput {
-                value: amount,
-                spending_key: spending_key.clone(),
-                features: output_features,
-            },
+            UnblindedOutput::new(amount, spending_key.clone(), Some(output_features)),
             factory,
         )?;
         tokio::task::spawn_blocking(move || {

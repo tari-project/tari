@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{blockheader::BlockHeader, Block, NewBlockTemplate},
-    chain_storage::{ChainMetadata, HistoricalBlock},
+    blocks::{block_header::BlockHeader, Block, NewBlockTemplate},
+    chain_storage::HistoricalBlock,
     proof_of_work::Difficulty,
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
@@ -31,6 +31,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
+use tari_common_types::chain_metadata::ChainMetadata;
 
 /// API Response enum
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -48,7 +49,6 @@ pub enum NodeCommsResponse {
     },
     TargetDifficulty(Difficulty),
     FetchHeadersAfterResponse(Vec<BlockHeader>),
-    MmrNodeCount(u32),
     MmrNodes(Vec<HashOutput>, Vec<u8>),
 }
 
@@ -74,7 +74,6 @@ impl Display for NodeCommsResponse {
             ),
             TargetDifficulty(_) => write!(f, "TargetDifficulty"),
             FetchHeadersAfterResponse(_) => write!(f, "FetchHeadersAfterResponse"),
-            MmrNodeCount(_) => write!(f, "MmrNodeCount"),
             MmrNodes(_, _) => write!(f, "MmrNodes"),
         }
     }

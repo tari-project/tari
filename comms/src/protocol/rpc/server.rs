@@ -378,33 +378,47 @@ where
 
         match service_result {
             Ok(body) => {
-                let mut body = body.into_message();
-                while let Some(r) = body.next().await {
-                    let resp = match r {
-                        Ok(msg) => {
-                            let mut flags = RpcMessageFlags::empty();
-                            if msg.is_finished() {
-                                flags |= RpcMessageFlags::FIN;
-                            }
-                            proto::rpc::RpcResponse {
-                                request_id,
-                                status: RpcStatus::ok().as_code(),
-                                flags: flags.bits().into(),
-                                message: msg.into(),
-                            }
-                        },
-                        Err(err) => {
-                            debug!(target: LOG_TARGET, "Body contained an error: {}", err);
-                            proto::rpc::RpcResponse {
-                                request_id,
-                                status: err.as_code(),
-                                flags: RpcMessageFlags::FIN.bits().into(),
-                                message: err.details().as_bytes().to_vec(),
-                            }
-                        },
-                    };
+                let mut message = body.into_message();
+                loop {
+                    match time::timeout(deadline, message.next()).await {
+                        Ok(Some(msg)) => {
+                            let resp = match msg {
+                                Ok(msg) => {
+                                    trace!(target: LOG_TARGET, "Sending body len = {}", msg.len());
+                                    let mut flags = RpcMessageFlags::empty();
+                                    if msg.is_finished() {
+                                        flags |= RpcMessageFlags::FIN;
+                                    }
+                                    proto::rpc::RpcResponse {
+                                        request_id,
+                                        status: RpcStatus::ok().as_code(),
+                                        flags: flags.bits().into(),
+                                        message: msg.into(),
+                                    }
+                                },
+                                Err(err) => {
+                                    debug!(target: LOG_TARGET, "Body contained an error: {}", err);
+                                    proto::rpc::RpcResponse {
+                                        request_id,
+                                        status: err.as_code(),
+                                        flags: RpcMessageFlags::FIN.bits().into(),
+                                        message: err.details().as_bytes().to_vec(),
+                                    }
+                                },
+                            };
 
-                    sink.send(resp.to_encoded_bytes().into()).await?;
+                            sink.send(resp.to_encoded_bytes().into()).await?;
+                        },
+                        Ok(None) => break,
+                        Err(_) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Failed to return result within client deadline ({:.0?})", deadline
+                            );
+
+                            break;
+                        },
+                    }
                 }
             },
             Err(err) => {

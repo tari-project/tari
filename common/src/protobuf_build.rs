@@ -10,7 +10,7 @@ use std::{
 };
 
 /// Runs rustfmt on the generated files - this is lifted from tonic-build
-fn fmt<P>(out_dir: P)
+fn rustfmt<P>(out_dir: P)
 where P: AsRef<Path> + Display {
     let dir = walk_files(&out_dir.as_ref().to_path_buf(), "rs");
 
@@ -58,6 +58,7 @@ pub struct ProtoCompiler {
     proto_paths: Vec<PathBuf>,
     include_paths: Vec<PathBuf>,
     emit_rerun_if_changed_directives: bool,
+    do_rustfmt: bool,
 }
 
 impl ProtoCompiler {
@@ -69,6 +70,7 @@ impl ProtoCompiler {
             proto_paths: Vec::new(),
             include_paths: Vec::new(),
             emit_rerun_if_changed_directives: false,
+            do_rustfmt: false,
         }
     }
 
@@ -85,6 +87,11 @@ impl ProtoCompiler {
 
     pub fn add_field_attribute(&mut self, path: &'static str, attr: &'static str) -> &mut Self {
         self.field_attributes.insert(path, attr);
+        self
+    }
+
+    pub fn perform_rustfmt(&mut self) -> &mut Self {
+        self.do_rustfmt = true;
         self
     }
 
@@ -167,7 +174,9 @@ impl ProtoCompiler {
             format!("{}", err)
         })?;
 
-        fmt(tmp_out_dir.to_str().expect("out_dir must be utf8"));
+        if self.do_rustfmt {
+            rustfmt(tmp_out_dir.to_str().expect("out_dir must be utf8"));
+        }
 
         self.compare_and_move(&tmp_out_dir, &out_dir);
 

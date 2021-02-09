@@ -35,8 +35,8 @@ use std::{convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
-    base_node::proto::{
-        base_node as BaseNodeProto,
+    proto::{
+        base_node as proto,
         base_node::{
             base_node_service_request::Request as BaseNodeRequestProto,
             base_node_service_response::Response as BaseNodeResponseProto,
@@ -61,7 +61,7 @@ where TBackend: TransactionBackend + 'static
     resources: TransactionServiceResources<TBackend>,
     timeout: Duration,
     base_node_public_key: CommsPublicKey,
-    base_node_response_receiver: Option<Receiver<BaseNodeProto::BaseNodeServiceResponse>>,
+    base_node_response_receiver: Option<Receiver<proto::BaseNodeServiceResponse>>,
     timeout_update_receiver: Option<broadcast::Receiver<Duration>>,
 }
 
@@ -76,7 +76,7 @@ where TBackend: TransactionBackend + 'static
         resources: TransactionServiceResources<TBackend>,
         timeout: Duration,
         base_node_public_key: CommsPublicKey,
-        base_node_response_receiver: Receiver<BaseNodeProto::BaseNodeServiceResponse>,
+        base_node_response_receiver: Receiver<proto::BaseNodeServiceResponse>,
         timeout_update_receiver: broadcast::Receiver<Duration>,
     ) -> Self
     {
@@ -163,7 +163,7 @@ where TBackend: TransactionBackend + 'static
 
             // Send Base Node GetChainMetadata query
             let request = BaseNodeRequestProto::GetChainMetadata(true);
-            let service_request = BaseNodeProto::BaseNodeServiceRequest {
+            let service_request = proto::BaseNodeServiceRequest {
                 request_key: self.id,
                 request: Some(request),
             };
@@ -176,8 +176,8 @@ where TBackend: TransactionBackend + 'static
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-            let request = BaseNodeRequestProto::FetchMatchingUtxos(BaseNodeProto::HashOutputs { outputs: hashes });
-            let service_request = BaseNodeProto::BaseNodeServiceRequest {
+            let request = BaseNodeRequestProto::FetchMatchingUtxos(proto::HashOutputs { outputs: hashes });
+            let service_request = proto::BaseNodeServiceRequest {
                 request_key: self.id,
                 request: Some(request),
             };
@@ -321,10 +321,10 @@ where TBackend: TransactionBackend + 'static
     async fn handle_base_node_response(
         &mut self,
         tx_id: TxId,
-        response: BaseNodeProto::BaseNodeServiceResponse,
+        response: proto::BaseNodeServiceResponse,
     ) -> Result<BaseNodeResponseType, TransactionServiceProtocolError>
     {
-        let mut returned_ouputs: Vec<tari_core::transactions::proto::types::TransactionOutput> = Vec::new();
+        let mut returned_ouputs: Vec<tari_core::proto::types::TransactionOutput> = Vec::new();
         match response.response {
             Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => returned_ouputs = outputs.outputs,
             Some(BaseNodeResponseProto::ChainMetadata(metadata)) => {

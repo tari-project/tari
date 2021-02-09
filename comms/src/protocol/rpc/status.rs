@@ -91,7 +91,7 @@ impl RpcStatus {
     pub fn log_internal_error<'a, E: std::error::Error + 'a>(target: &'a str) -> impl Fn(E) -> Self + 'a {
         move |err| {
             log::error!(target: target, "Internal error: {}", err);
-            Self::general_default()
+            Self::general(err.to_string())
         }
     }
 
@@ -129,7 +129,7 @@ impl From<RpcError> for RpcStatus {
             RpcError::RequestFailed(status) => status,
             err => {
                 error!(target: LOG_TARGET, "Internal error: {}", err);
-                Self::general_default()
+                Self::general(err.to_string())
             },
         }
     }
@@ -181,6 +181,10 @@ pub enum RpcStatusCode {
 impl RpcStatusCode {
     pub fn is_ok(self) -> bool {
         self == Self::Ok
+    }
+
+    pub fn is_not_found(self) -> bool {
+        self == Self::NotFound
     }
 }
 

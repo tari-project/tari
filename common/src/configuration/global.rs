@@ -50,6 +50,7 @@ const DB_RESIZE_MIN_MB: i64 = 10;
 pub struct GlobalConfig {
     pub network: Network,
     pub comms_transport: CommsTransport,
+    pub allow_test_addresses: bool,
     pub listnener_liveness_max_sessions: usize,
     pub listener_liveness_allowlist_cidrs: Vec<String>,
     pub data_dir: PathBuf,
@@ -67,8 +68,10 @@ pub struct GlobalConfig {
     pub grpc_base_node_address: SocketAddr,
     pub grpc_console_wallet_address: SocketAddr,
     pub peer_seeds: Vec<String>,
+    pub dns_seeds: Vec<String>,
+    pub dns_seeds_name_server: SocketAddr,
+    pub dns_seeds_use_dnssec: bool,
     pub peer_db_path: PathBuf,
-    pub block_sync_strategy: String,
     pub enable_mining: bool,
     pub enable_wallet: bool,
     pub num_mining_threads: usize,
@@ -93,9 +96,10 @@ pub struct GlobalConfig {
     pub transaction_chain_monitoring_timeout: Duration,
     pub transaction_direct_send_timeout: Duration,
     pub transaction_broadcast_send_timeout: Duration,
+    pub console_wallet_password: Option<String>,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
-    pub wallet_base_node_service_peer: String,
+    pub wallet_base_node_service_peers: Vec<String>,
     pub wallet_base_node_service_refresh_interval: u64,
     pub wallet_base_node_service_request_max_age: u64,
     pub prevent_fee_gt_amount: bool,
@@ -104,6 +108,11 @@ pub struct GlobalConfig {
     pub monerod_password: String,
     pub monerod_use_auth: bool,
     pub proxy_host_address: SocketAddr,
+    pub proxy_submit_to_origin: bool,
+    pub force_sync_peers: Vec<String>,
+    pub wait_for_initial_sync_at_startup: bool,
+    pub max_randomx_vms: usize,
+    pub console_wallet_notify_file: Option<PathBuf>,
 }
 
 impl GlobalConfig {
@@ -233,6 +242,12 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let max_threads =
         optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
+    // Max RandomX VMs
+    let key = config_string("base_node", &net_str, "max_randomx_vms");
+    let max_randomx_vms = optional(cfg.get_int(&key).map(|n| n as usize))
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .unwrap_or(2) as usize;
+
     // Base node identity path
     let key = config_string("base_node", &net_str, "base_node_identity_file");
     let base_node_identity_file = cfg
@@ -276,6 +291,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     // Transport
     let comms_transport = network_transport_config(&cfg, &net_str)?;
 
+    let key = config_string("base_node", &net_str, "allow_test_addresses");
+    let allow_test_addresses = cfg
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
     // Public address
     let key = config_string("base_node", &net_str, "public_address");
     let public_address = cfg
@@ -290,7 +310,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let key = config_string("base_node", &net_str, "grpc_enabled");
     let grpc_enabled = cfg
         .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     let key = config_string("base_node", &net_str, "grpc_base_node_address");
     let grpc_base_node_address = cfg
@@ -310,7 +330,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
 
-    // Peer seeds
+    // Peer and DNS seeds
     let key = config_string("base_node", &net_str, "peer_seeds");
     // Peer seeds can be an array or a comma separated list (e.g. in an ENVVAR)
     let peer_seeds = match cfg.get_array(&key) {
@@ -321,32 +341,56 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         },
     };
 
+    let key = config_string("base_node", &net_str, "dns_seeds_name_server");
+    let dns_seeds_name_server = cfg
+        .get_str(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        .and_then(|s| {
+            s.parse::<SocketAddr>()
+                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        })?;
+
+    let key = config_string("base_node", &net_str, "dns_seeds_use_dnssec");
+    let dns_seeds_use_dnssec = cfg
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
+    let key = config_string("base_node", &net_str, "dns_seeds");
+    let dns_seeds = optional(cfg.get_array(&key))?
+        .unwrap_or_default()
+        .into_iter()
+        .map(|v| v.into_str().unwrap())
+        .collect::<Vec<_>>();
+
     // Peer DB path
     let peer_db_path = data_dir.join("peer_db");
     let wallet_peer_db_path = data_dir.join("wallet_peer_db");
     let console_wallet_peer_db_path = data_dir.join("console_wallet_peer_db");
 
-    let key = config_string("base_node", &net_str, "block_sync_strategy");
-    let block_sync_strategy = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-
     // set base node mining
     let key = config_string("base_node", &net_str, "enable_mining");
     let enable_mining = cfg
         .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     // set base node wallet
     let key = config_string("base_node", &net_str, "enable_wallet");
     let enable_wallet = cfg
         .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     let key = config_string("base_node", &net_str, "num_mining_threads");
     let num_mining_threads = cfg
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+
+    // block sync
+    let key = config_string("base_node", &net_str, "force_sync_peers");
+    let force_sync_peers = optional(
+        cfg.get_array(&key)
+            .map(|values| values.into_iter().map(|v| v.into_str().unwrap()).collect()),
+    )?
+    .unwrap_or_default();
 
     // set wallet_db_file
     let key = "wallet.wallet_db_file".to_string();
@@ -395,27 +439,29 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let key = "wallet.prevent_fee_gt_amount";
     let prevent_fee_gt_amount = cfg
         .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as bool;
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
 
     let key = "wallet.command_send_wait_stage";
-    let wallet_command_send_wait_stage = match cfg.get_str(key) {
-        Ok(stage) => stage,
-        Err(ConfigError::NotFound(_)) => "Broadcast".to_string(),
-        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
-    };
+    let wallet_command_send_wait_stage = optional(cfg.get_str(key))?.unwrap_or_else(|| "Broadcast".to_string());
 
     let key = "wallet.command_send_wait_timeout";
-    let wallet_command_send_wait_timeout = match cfg.get_int(key) {
-        Ok(timeout) => timeout as u64,
-        Err(ConfigError::NotFound(_)) => 300,
-        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+    let wallet_command_send_wait_timeout = optional(cfg.get_int(key))?.map(|i| i as u64).unwrap_or(300);
+
+    let key = "wallet.base_node_service_peers";
+    // Wallet base node service peers can be an array or a comma separated list (e.g. in an ENVVAR)
+    let wallet_base_node_service_peers = match cfg.get_array(&key) {
+        Ok(peers) => peers.into_iter().map(|v| v.into_str().unwrap()).collect(),
+        Err(..) => match cfg.get_str(&key) {
+            Ok(s) => s.split(',').map(|v| v.to_string()).collect(),
+            Err(err) => return Err(ConfigurationError::new(&key, &err.to_string())),
+        },
     };
 
-    let key = "wallet.base_node_service_peer";
-    let wallet_base_node_service_peer = match cfg.get_str(key) {
-        Ok(peer) => peer,
-        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
-    };
+    let key = "wallet.password";
+    let console_wallet_password = optional(cfg.get_str(key))?;
+
+    let key = "wallet.notify";
+    let console_wallet_notify_file = optional(cfg.get_str(key))?.map(PathBuf::from);
 
     let key = "wallet.base_node_service_refresh_interval";
     let wallet_base_node_service_refresh_interval = match cfg.get_int(key) {
@@ -511,9 +557,18 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
                 .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
         })?;
 
+    let key = config_string("merge_mining_proxy", &net_str, "wait_for_initial_sync_at_startup");
+    let wait_for_initial_sync_at_startup = cfg
+        .get_bool(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+
+    let key = config_string("merge_mining_proxy", &net_str, "proxy_submit_to_origin");
+    let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or_else(|_| true);
+
     Ok(GlobalConfig {
         network,
         comms_transport,
+        allow_test_addresses,
         listnener_liveness_max_sessions: liveness_max_sessions,
         listener_liveness_allowlist_cidrs: liveness_allowlist_cidrs,
         data_dir,
@@ -531,8 +586,10 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         grpc_base_node_address,
         grpc_console_wallet_address,
         peer_seeds,
+        dns_seeds,
+        dns_seeds_name_server,
+        dns_seeds_use_dnssec,
         peer_db_path,
-        block_sync_strategy,
         enable_mining,
         enable_wallet,
         num_mining_threads,
@@ -557,17 +614,23 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         transaction_chain_monitoring_timeout,
         transaction_direct_send_timeout,
         transaction_broadcast_send_timeout,
+        console_wallet_password,
         wallet_command_send_wait_stage,
         wallet_command_send_wait_timeout,
-        wallet_base_node_service_peer,
+        wallet_base_node_service_peers,
         wallet_base_node_service_refresh_interval,
         wallet_base_node_service_request_max_age,
         prevent_fee_gt_amount,
         proxy_host_address,
+        proxy_submit_to_origin,
         monerod_url,
         monerod_username,
         monerod_password,
         monerod_use_auth,
+        force_sync_peers,
+        wait_for_initial_sync_at_startup,
+        max_randomx_vms,
+        console_wallet_notify_file,
     })
 }
 
@@ -682,6 +745,7 @@ pub enum Network {
     Rincewind,
     LocalNet,
     Ridcully,
+    Stibbons,
 }
 
 impl FromStr for Network {
@@ -691,6 +755,7 @@ impl FromStr for Network {
         match value.to_lowercase().as_str() {
             "rincewind" => Ok(Self::Rincewind),
             "ridcully" => Ok(Self::Ridcully),
+            "stibbons" => Ok(Self::Stibbons),
             "mainnet" => Ok(Self::MainNet),
             "localnet" => Ok(Self::LocalNet),
             invalid => Err(ConfigurationError::new(
@@ -707,6 +772,7 @@ impl Display for Network {
             Self::MainNet => "mainnet",
             Self::Rincewind => "rincewind",
             Self::Ridcully => "ridcully",
+            Self::Stibbons => "stibbons",
             Self::LocalNet => "localnet",
         };
         f.write_str(msg)

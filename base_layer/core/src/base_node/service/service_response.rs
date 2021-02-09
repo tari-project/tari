@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node::{comms_interface::NodeCommsResponse, RequestKey};
+use crate::base_node::comms_interface::NodeCommsResponse;
 use serde::{Deserialize, Serialize};
+use tari_common_types::waiting_requests::RequestKey;
 
 /// Response type for a received BaseNodeService requests
 #[derive(Debug, Serialize, Deserialize)]

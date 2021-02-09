@@ -65,7 +65,7 @@ pub struct PeerV3 {
     pub added_at: NaiveDateTime,
     pub user_agent: String,
 }
-/// This migration is to the metadata field
+/// This migration is to add the metadata field
 pub struct MigrationV3;
 
 impl Migration<LMDBDatabase> for MigrationV3 {

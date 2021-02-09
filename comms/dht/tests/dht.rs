@@ -25,6 +25,7 @@ use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
 use tari_comms::{
     backoff::ConstantBackoff,
+    connectivity::ConnectivityEvent,
     message::MessageExt,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures},
     pipeline,
@@ -56,6 +57,7 @@ use tari_test_utils::{
     collect_stream,
     paths::create_temporary_data_path,
     random,
+    streams,
     unpack_enum,
 };
 use tokio::{sync::broadcast, time};
@@ -513,7 +515,7 @@ async fn dht_propagate_dedup() {
     // Check the message flow BEFORE deduping
     let received = filter_received(collect_stream!(node_A_messaging, timeout = Duration::from_secs(20)));
     // Expected race condition: If A->(B|C)->(C|B) before A->(C|B) then (C|B)->A
-    if received.len() > 0 {
+    if !received.is_empty() {
         assert_eq!(count_messages_received(&received, &[&node_B_id, &node_C_id]), 1);
     }
 
@@ -532,6 +534,99 @@ async fn dht_propagate_dedup() {
     assert_eq!(count_messages_received(&received, &[&node_C_id]), 1);
 }
 
+#[tokio_macros::test]
+#[allow(non_snake_case)]
+async fn dht_propagate_message_contents_not_malleable_ban() {
+    let node_C = make_node(PeerFeatures::COMMUNICATION_NODE, None).await;
+    // Node B knows about Node C
+    let mut node_B = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_C.to_peer())).await;
+    // Node A knows about Node B
+    let node_A = make_node(PeerFeatures::COMMUNICATION_NODE, Some(node_B.to_peer())).await;
+    node_A.comms.peer_manager().add_peer(node_C.to_peer()).await.unwrap();
+    log::info!(
+        "NodeA = {}, NodeB = {}",
+        node_A.node_identity().node_id().short_str(),
+        node_B.node_identity().node_id().short_str(),
+    );
+
+    // Connect the peers that should be connected
+    node_A
+        .comms
+        .connection_manager()
+        .dial_peer(node_B.node_identity().node_id().clone())
+        .await
+        .unwrap();
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    struct Person {
+        #[prost(string, tag = "1")]
+        name: String,
+        #[prost(uint32, tag = "2")]
+        age: u32,
+    }
+
+    let out_msg = Person {
+        name: "John Conway".into(),
+        age: 82,
+    };
+    node_A
+        .dht
+        .outbound_requester()
+        .send_message_no_header(
+            SendMessageParams::new()
+                .direct_node_id(node_B.node_identity().node_id().clone())
+                .with_destination(node_A.node_identity().node_id().clone().into())
+                .with_encryption(OutboundEncryption::ClearText)
+                .force_origin()
+                .finish(),
+            out_msg,
+        )
+        .await
+        .unwrap();
+
+    let msg = node_B.next_inbound_message(Duration::from_secs(10)).await.unwrap();
+
+    let mut bytes = msg.decryption_result.unwrap().to_encoded_bytes();
+    // Change the message
+    bytes.push(0x42);
+
+    let mut connectivity_events = node_C.comms.connectivity().get_event_subscription();
+
+    // Propagate the changed message (to node C)
+    node_B
+        .dht
+        .outbound_requester()
+        .send_raw(
+            SendMessageParams::new()
+                .propagate(node_B.node_identity().node_id().clone().into(), vec![msg
+                    .source_peer
+                    .node_id
+                    .clone()])
+                .with_dht_header(msg.dht_header)
+                .finish(),
+            bytes,
+        )
+        .await
+        .unwrap();
+    let node_B_node_id = node_B.node_identity().node_id().clone();
+
+    // Node C should ban node B
+    let banned_node_id = streams::assert_in_stream(
+        &mut connectivity_events,
+        |r| match &*r.unwrap() {
+            ConnectivityEvent::PeerBanned(node_id) => Some(node_id.clone()),
+            _ => None,
+        },
+        Duration::from_secs(10),
+    )
+    .await;
+    assert_eq!(banned_node_id, node_B_node_id);
+
+    node_A.shutdown().await;
+    node_B.shutdown().await;
+    node_C.shutdown().await;
+}
+
 fn filter_received(
     events: Vec<Result<Arc<MessagingEvent>, tokio::sync::broadcast::RecvError>>,
 ) -> Vec<Arc<MessagingEvent>> {
@@ -547,10 +642,10 @@ fn filter_received(
 
 fn count_messages_received(events: &[Arc<MessagingEvent>], node_ids: &[&NodeId]) -> usize {
     events
-        .into_iter()
+        .iter()
         .filter(|event| {
             unpack_enum!(MessagingEvent::MessageReceived(recv_node_id, _tag) = &***event);
-            node_ids.into_iter().any(|n| &*recv_node_id == *n)
+            node_ids.iter().any(|n| &*recv_node_id == *n)
         })
         .count()
 }

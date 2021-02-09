@@ -119,7 +119,7 @@ async fn main() {
                 seed_identities
                     .iter()
                     .filter(|s| s.node_id() != seed_identities[i].node_id())
-                    .map(|n| n.clone())
+                    .cloned()
                     .collect(),
                 messaging_events_tx.clone(),
                 NUM_NEIGHBOURING_NODES,

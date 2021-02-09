@@ -16,20 +16,20 @@ sudo apt-get install git
 sudo apt update && sudo apt install build-essential cmake pkg-config libboost-all-dev libssl-dev libzmq3-dev libunbound-dev libsodium-dev libunwind8-dev liblzma-dev libreadline6-dev libldns-dev libexpat1-dev doxygen graphviz libpgm-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler libudev-dev
 git clone https://github.com/monero-project/monero.git
 cd monero
-git checkout release-v0.16
-git git submodule init --force && git submodule update
+git checkout release-v0.17
+git submodule init && git submodule update --force
 make release
 ```
-2. Rename release-v0.16 folder to master. The onion-monero-block-explorer looks for a master build path and will not configure correctly without it.
+2. Copy release-v0.17 folder and rename the copy to master (`cp -R release-0.17 master`). The onion-monero-block-explorer looks for a master build path and will not configure correctly without it.
 
-3. Enable huges pages. This is necessary for randomx validation)
+3. Enable huges pages. (This is necessary for randomx validation)
 ```
 sudo bash -c "echo vm.nr_hugepages=$(nproc) >> /etc/sysctl.conf"
 ```
 
 4. Run MoneroD from the bin folder
 ```
-./monerod --detach --stagenet --confirm-external-bind --rpc-bind-ip put.your.ip.here --add-exclusive-node 192.110.100.146
+./monerod --detach --stagenet --confirm-external-bind --rpc-bind-ip put.your.ip.here --hide-my-port --log-level 1
 tail -f ~/.bitmonero/stagenet/bitmonero.log
 ```
 
@@ -37,23 +37,21 @@ tail -f ~/.bitmonero/stagenet/bitmonero.log
 
 6. Run Monero CLI Wallet from the bin folder
 ```
-monero-wallet-cli --stagenet
+./monero-wallet-cli --stagenet
 ```
 
-```
-
-7. Create a new wallet thorugh the cli.
+7. Create a new wallet thorugh the cli, do not enable mining when prompted.
 
 8. Set it to point to your local instance of MoneroD
 ```
 set_daemon put.your.ip.here
 ```
 
-9. Make a note of your wallet address and close the wallet.
+9. Make a note of your wallet address (using the `address` command) and then `exit` the wallet.
 
 10. Run Monero-Wallet-RPC from the bin folder
 ```
-./monero-wallet-rpc --stagenet --confirm-external-bind --rpc-bind-port 38084 --daemon-host put.your.ip.here --wallet-file {path_to_created_wallet} --prompt-for-password
+./monero-wallet-rpc --detach --stagenet --confirm-external-bind --rpc-bind-port 38084 --daemon-host put.your.ip.here --wallet-file /path/to/created/wallet --password put_your_wallet_password_here
 ```
 
 ### Monero Pool
@@ -61,8 +59,19 @@ set_daemon put.your.ip.here
 1. Run the following in a terminal
 ```
 sudo apt-get install liblmdb-dev libevent-dev libjson-c-dev uuid-dev
-export MONERO_ROOT=/path/to/cloned/monero
+export MONERO_ROOT=/path/to/cloned/monero/repository/root
 make release
+```
+
+Note:
+If you encounter build errors for the pool that complains about `CONF_Modules_Unload`, then either SSL is missing or you
+need to upgrade your existing SSL with the below:
+```
+wget https://www.openssl.org/source/openssl-1.1.1h.tar.gz
+tar -zxf openssl-1.1.1h.tar.gz && cd openssl-1.1.1h
+./config
+sudo make install
+sudo ln -s /usr/local/bin/openssl /usr/bin/openssl
 ```
 
 2 Update the `pool.conf` configuration
@@ -81,25 +90,25 @@ wallet-rpc-port = 38084
 
 2. Run the following in a terminal
 ```
-./monero-pool --stagenet
+./monero-pool --forked
 ```
 
 ### Onion Monero Blockchain Explorer
 
 1. Run the following in a terminal
 ```
-sudo apt-get install libcurl4-openssl-dev
+sudo apt-get install build-essential cmake libcurl4-openssl-dev
 sudo apt install curl
 git clone https://github.com/moneroexamples/onion-monero-blockchain-explorer.git
 cd onion-monero-blockchain-explorer
 mkdir build && cd build
-cmake .. -DMONERO_DIR=/path/to/cloned/monero
+cmake .. -DMONERO_DIR=/path/to/cloned/monero/repository/root
 make
 ```
 
 2. Run the explorer
 ```
-./xmrblocks -s -b /path/to/monero/stagenet/lmdb/ -d put.your.ip.here --enable-randomx --enable-pusher --enable-emission-monitor --staenet-url 0.0.0.0:8081
+./xmrblocks -s -b /path/to/monero/stagenet/lmdb/ -d put.your.ip.here --enable-randomx --enable-pusher --enable-emission-monitor --stagenet-url 0.0.0.0:8081
 ```
 
 ### XMRig

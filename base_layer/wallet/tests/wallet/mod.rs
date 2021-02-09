@@ -47,7 +47,7 @@ use tari_core::{
     transactions::{tari_amount::uT, transaction::UnblindedOutput, types::PrivateKey},
 };
 use tari_crypto::common::Blake256;
-use tari_p2p::transport::TransportType;
+use tari_p2p::{transport::TransportType, DEFAULT_DNS_SEED_RESOLVER};
 use tari_wallet::{
     contacts_service::storage::{database::Contact, memory_db::ContactsServiceMemoryDatabase},
     error::{WalletError, WalletStorageError},
@@ -81,7 +81,7 @@ fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
         net_address.into(),
         PeerFlags::empty(),
         PeerFeatures::COMMUNICATION_NODE,
-        &[],
+        Default::default(),
         Default::default(),
     )
 }
@@ -114,6 +114,10 @@ async fn create_wallet(
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
+        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        peer_seeds: Default::default(),
+        dns_seeds: Default::default(),
+        dns_seeds_use_dnssec: false,
     };
 
     let sql_database_path = comms_config
@@ -134,7 +138,10 @@ async fn create_wallet(
         comms_config,
         factories,
         Some(transaction_service_config),
-        Network::Rincewind,
+        None,
+        Network::Ridcully,
+        None,
+        None,
         None,
     );
 
@@ -296,7 +303,7 @@ async fn test_wallet() {
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
 
-    if let Err(WalletStorageError::InvalidEncryptionCipher) = WalletSqliteDatabase::new(connection.clone(), None) {
+    if let Err(WalletStorageError::NoPasswordError) = WalletSqliteDatabase::new(connection.clone(), None) {
         assert!(true);
     } else {
         assert!(
@@ -313,7 +320,7 @@ async fn test_wallet() {
     let result = WalletSqliteDatabase::new(connection.clone(), Some(cipher));
 
     if let Err(WalletStorageError::AeadError(s)) = result {
-        assert_eq!(s, "Decryption Error".to_string());
+        assert_eq!(s, "Decryption Error:aead::Error".to_string());
     } else {
         assert!(
             false,
@@ -578,8 +585,21 @@ async fn test_import_utxo() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
+        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        peer_seeds: Default::default(),
+        dns_seeds: Default::default(),
+        dns_seeds_use_dnssec: false,
     };
-    let config = WalletConfig::new(comms_config, factories.clone(), None, Network::Rincewind, None);
+    let config = WalletConfig::new(
+        comms_config,
+        factories.clone(),
+        None,
+        None,
+        Network::Ridcully,
+        None,
+        None,
+        None,
+    );
     let mut alice_wallet = Wallet::new(
         config,
         WalletMemoryDatabase::new(),
@@ -644,9 +664,13 @@ async fn test_data_generation() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
+        dns_seeds_name_server: DEFAULT_DNS_SEED_RESOLVER.parse().unwrap(),
+        peer_seeds: Default::default(),
+        dns_seeds: Default::default(),
+        dns_seeds_use_dnssec: false,
     };
 
-    let config = WalletConfig::new(comms_config, factories, None, Network::Rincewind, None);
+    let config = WalletConfig::new(comms_config, factories, None, None, Network::Ridcully, None, None, None);
 
     let transaction_backend = TransactionMemoryDatabase::new();
 

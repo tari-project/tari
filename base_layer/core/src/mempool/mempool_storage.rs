@@ -24,9 +24,6 @@ use crate::{
     blocks::Block,
     mempool::{
         error::MempoolError,
-        mempool::MempoolValidators,
-        orphan_pool::OrphanPool,
-        pending_pool::PendingPool,
         reorg_pool::ReorgPool,
         unconfirmed_pool::UnconfirmedPool,
         MempoolConfig,
@@ -35,7 +32,7 @@ use crate::{
         TxStorageResponse,
     },
     transactions::{transaction::Transaction, types::Signature},
-    validation::{ValidationError, Validator},
+    validation::{MempoolTransactionValidation, ValidationError},
 };
 use log::*;
 use std::sync::Arc;
@@ -48,22 +45,17 @@ pub const LOG_TARGET: &str = "c::mp::mempool";
 /// that have recently been included in a block.
 pub struct MempoolStorage {
     unconfirmed_pool: UnconfirmedPool,
-    orphan_pool: OrphanPool,
-    pending_pool: PendingPool,
     reorg_pool: ReorgPool,
-    validator: Arc<Validator<Transaction>>,
+    validator: Arc<dyn MempoolTransactionValidation>,
 }
 
 impl MempoolStorage {
     /// Create a new Mempool with an UnconfirmedPool, OrphanPool, PendingPool and ReOrgPool.
-    pub fn new(config: MempoolConfig, validators: MempoolValidators) -> Self {
-        let (mempool_validator, orphan_validator) = validators.into_validators();
+    pub fn new(config: MempoolConfig, validators: Arc<dyn MempoolTransactionValidation>) -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool),
-            orphan_pool: OrphanPool::new(config.orphan_pool, orphan_validator),
-            pending_pool: PendingPool::new(config.pending_pool),
             reorg_pool: ReorgPool::new(config.reorg_pool),
-            validator: Arc::new(mempool_validator),
+            validator: validators,
         }
     }
 
@@ -86,18 +78,21 @@ impl MempoolStorage {
                 Ok(TxStorageResponse::UnconfirmedPool)
             },
             Err(ValidationError::UnknownInputs) => {
-                self.orphan_pool.insert(tx)?;
-                Ok(TxStorageResponse::OrphanPool)
+                warn!(target: LOG_TARGET, "Validation failed due to unknown inputs");
+                Ok(TxStorageResponse::NotStoredOrphan)
             },
             Err(ValidationError::ContainsSTxO) => {
-                self.reorg_pool.insert(tx)?;
-                Ok(TxStorageResponse::ReorgPool)
+                warn!(target: LOG_TARGET, "Validation failed due to already spent output");
+                Ok(TxStorageResponse::NotStoredAlreadySpent)
             },
             Err(ValidationError::MaturityError) => {
-                self.pending_pool.insert(tx)?;
-                Ok(TxStorageResponse::PendingPool)
+                warn!(target: LOG_TARGET, "Validation failed due to maturity error");
+                Ok(TxStorageResponse::NotStoredTimeLocked)
             },
-            _ => Ok(TxStorageResponse::NotStored),
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Validation failed due to error:{}", e);
+                Ok(TxStorageResponse::NotStored)
+            },
         }
     }
 
@@ -117,19 +112,6 @@ impl MempoolStorage {
             self.unconfirmed_pool
                 .remove_published_and_discard_double_spends(&published_block),
         )?;
-
-        // Move txs with valid input UTXOs and expired time-locks to UnconfirmedPool and discard double spends
-        self.unconfirmed_pool.insert_txs(
-            self.pending_pool
-                .remove_unlocked_and_discard_double_spends(&published_block)?,
-        )?;
-
-        // Move txs with recently expired time-locks that have input UTXOs that have recently become valid to the
-        // UnconfirmedPool
-        let (txs, time_locked_txs) = self.orphan_pool.scan_for_and_remove_unorphaned_txs()?;
-        self.unconfirmed_pool.insert_txs(txs)?;
-        // Move Time-locked txs that have input UTXOs that have recently become valid to PendingPool.
-        self.pending_pool.insert_txs(time_locked_txs)?;
 
         Ok(())
     }
@@ -186,8 +168,7 @@ impl MempoolStorage {
                     previous_tip_height,
                     new_tip_height,
                 );
-                self.pending_pool
-                    .insert_txs(self.unconfirmed_pool.remove_timelocked(new_tip_height))?;
+                self.unconfirmed_pool.remove_timelocked(new_tip_height);
             } else {
                 debug!(
                     target: LOG_TARGET,
@@ -205,9 +186,7 @@ impl MempoolStorage {
     /// Returns all unconfirmed transaction stored in the Mempool, except the transactions stored in the ReOrgPool.
     // TODO: Investigate returning an iterator rather than a large vector of transactions
     pub fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, MempoolError> {
-        let mut txs = self.unconfirmed_pool.snapshot();
-        txs.append(&mut self.orphan_pool.snapshot()?);
-        txs.append(&mut self.pending_pool.snapshot());
+        let txs = self.unconfirmed_pool.snapshot();
         Ok(txs)
     }
 
@@ -221,10 +200,6 @@ impl MempoolStorage {
     pub fn has_tx_with_excess_sig(&self, excess_sig: Signature) -> Result<TxStorageResponse, MempoolError> {
         if self.unconfirmed_pool.has_tx_with_excess_sig(&excess_sig) {
             Ok(TxStorageResponse::UnconfirmedPool)
-        } else if self.orphan_pool.has_tx_with_excess_sig(&excess_sig)? {
-            Ok(TxStorageResponse::OrphanPool)
-        } else if self.pending_pool.has_tx_with_excess_sig(&excess_sig) {
-            Ok(TxStorageResponse::PendingPool)
         } else if self.reorg_pool.has_tx_with_excess_sig(&excess_sig)? {
             Ok(TxStorageResponse::ReorgPool)
         } else {
@@ -234,15 +209,12 @@ impl MempoolStorage {
 
     // Returns the total number of transactions in the Mempool.
     fn len(&self) -> Result<usize, MempoolError> {
-        Ok(self.unconfirmed_pool.len() + self.orphan_pool.len()? + self.pending_pool.len() + self.reorg_pool.len()?)
+        Ok(self.unconfirmed_pool.len() + self.reorg_pool.len()?)
     }
 
     // Returns the total weight of all transactions stored in the Mempool.
     fn calculate_weight(&self) -> Result<u64, MempoolError> {
-        Ok(self.unconfirmed_pool.calculate_weight() +
-            self.orphan_pool.calculate_weight()? +
-            self.pending_pool.calculate_weight() +
-            self.reorg_pool.calculate_weight()?)
+        Ok(self.unconfirmed_pool.calculate_weight() + self.reorg_pool.calculate_weight()?)
     }
 
     /// Gathers and returns the stats of the Mempool.
@@ -250,9 +222,7 @@ impl MempoolStorage {
         Ok(StatsResponse {
             total_txs: self.len()?,
             unconfirmed_txs: self.unconfirmed_pool.len(),
-            orphan_txs: self.orphan_pool.len()?,
-            timelocked_txs: self.pending_pool.len(),
-            published_txs: self.reorg_pool.len()?,
+            reorg_txs: self.reorg_pool.len()?,
             total_weight: self.calculate_weight()?,
         })
     }
@@ -265,18 +235,6 @@ impl MempoolStorage {
             .iter()
             .map(|tx| tx.body.kernels()[0].excess_sig.clone())
             .collect::<Vec<_>>();
-        let orphan_pool = self
-            .orphan_pool
-            .snapshot()?
-            .iter()
-            .map(|tx| tx.body.kernels()[0].excess_sig.clone())
-            .collect::<Vec<_>>();
-        let pending_pool = self
-            .pending_pool
-            .snapshot()
-            .iter()
-            .map(|tx| tx.body.kernels()[0].excess_sig.clone())
-            .collect::<Vec<_>>();
         let reorg_pool = self
             .reorg_pool
             .snapshot()?
@@ -285,8 +243,6 @@ impl MempoolStorage {
             .collect::<Vec<_>>();
         Ok(StateResponse {
             unconfirmed_pool,
-            orphan_pool,
-            pending_pool,
             reorg_pool,
         })
     }

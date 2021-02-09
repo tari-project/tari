@@ -87,38 +87,32 @@
 #[macro_use]
 mod table;
 
-/// Base node bootstrap code
 mod bootstrap;
-/// Utilities and helpers for building the base node instance
 mod builder;
-/// The command line interface definition and configuration
 mod cli;
-/// Application-specific constants
+mod command_handler;
 mod grpc;
-/// Miner lib Todo hide behind feature flag
 mod miner;
-/// Parser module used to control user commands
 mod parser;
-/// Misc. long running base node tasks
-mod tasks;
-/// Utility functions
-mod utils;
-// recovery mode
 mod recovery;
+mod tasks;
+mod utils;
 
-use futures::FutureExt;
+use crate::command_handler::CommandHandler;
+use futures::{pin_mut, FutureExt};
 use log::*;
 use parser::Parser;
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
-use std::net::SocketAddr;
-use structopt::StructOpt;
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tari_app_utilities::{
     identity_management::setup_node_identity,
+    initialization::init_configuration,
     utilities::{setup_runtime, ExitCodes},
 };
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
+use tari_common::configuration::bootstrap::ApplicationType;
 use tari_comms::peer_manager::PeerFeatures;
 use tari_shutdown::{Shutdown, ShutdownSignal};
+use tokio::{task, time};
 use tonic::transport::Server;
 
 pub const LOG_TARGET: &str = "base_node::app";
@@ -133,23 +127,12 @@ fn main() {
 
 /// Sets up the base node and runs the cli_loop
 fn main_inner() -> Result<(), ExitCodes> {
-    // Parse and validate command-line arguments
-    let mut bootstrap = ConfigBootstrap::from_args();
+    let (bootstrap, mut node_config, _) = init_configuration(ApplicationType::BaseNode)?;
 
-    // Check and initialize configuration files
-    bootstrap.init_dirs(ApplicationType::BaseNode)?;
-
-    // Load and apply configuration file
-    let cfg = bootstrap.load_configuration()?;
-
-    // Initialise the logger
-    bootstrap.initialize_logging()?;
-
-    // Populate the configuration struct
-    let node_config = GlobalConfig::convert_from(cfg).map_err(|err| {
-        error!(target: LOG_TARGET, "The configuration file has an error. {}", err);
-        ExitCodes::ConfigError(format!("The configuration file has an error. {}", err))
-    })?;
+    // enable-mining argument takes precedence over config setting
+    if bootstrap.enable_mining {
+        node_config.enable_mining = true;
+    }
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
 
@@ -219,7 +202,10 @@ fn main_inner() -> Result<(), ExitCodes> {
         let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::new(
             rt.handle().clone(),
             ctx.local_node(),
+            ctx.local_mempool(),
             node_config.clone(),
+            ctx.state_machine(),
+            ctx.base_node_comms().peer_manager(),
         );
 
         rt.spawn(run_grpc(grpc, node_config.grpc_base_node_address, shutdown.to_signal()));
@@ -227,8 +213,9 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     // Run, node, run!
     let base_node_handle;
+    let command_handler = Arc::new(CommandHandler::new(rt.handle().clone(), &ctx, &node_config));
     if !bootstrap.daemon_mode {
-        let parser = Parser::new(rt.handle().clone(), &ctx, &node_config);
+        let parser = Parser::new(command_handler.clone());
         cli::print_banner(parser.get_commands(), 3);
         base_node_handle = rt.spawn(ctx.run());
 
@@ -237,7 +224,7 @@ fn main_inner() -> Result<(), ExitCodes> {
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
 
-        cli_loop(Some(parser), shutdown);
+        rt.spawn(cli_loop(parser, command_handler, shutdown));
     } else {
         println!("Node has been successfully configured and initialized in daemon mode.");
         base_node_handle = rt.spawn(ctx.run());
@@ -266,10 +253,42 @@ async fn run_grpc(
     Server::builder()
         .add_service(tari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc))
         .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
-        .await?;
+        .await
+        .map_err(|err| {
+            error!(target: LOG_TARGET, "GRPC encountered an  error:{}", err);
+            err
+        })?;
 
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
+}
+
+async fn read_command(mut rustyline: Editor<Parser>) -> Result<(String, Editor<Parser>), String> {
+    task::spawn(async {
+        let readline = rustyline.readline(">> ");
+
+        match readline {
+            Ok(line) => {
+                rustyline.add_history_entry(line.as_str());
+                Ok((line, rustyline))
+            },
+            Err(ReadlineError::Interrupted) => {
+                // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
+                println!("The node is shutting down because Ctrl+C was received...");
+                info!(
+                    target: LOG_TARGET,
+                    "Termination signal received from user. Shutting node down."
+                );
+                Err("Node is shutting down".to_string())
+            },
+            Err(err) => {
+                println!("Error: {:?}", err);
+                Err(err.to_string())
+            },
+        }
+    })
+    .await
+    .expect("Could not spawn rustyline task")
 }
 
 /// Runs the Base Node
@@ -279,7 +298,7 @@ async fn run_grpc(
 ///
 /// ## Returns
 /// Doesn't return anything
-fn cli_loop(parser: Option<Parser>, mut shutdown: Shutdown) {
+async fn cli_loop(parser: Parser, command_handler: Arc<CommandHandler>, mut shutdown: Shutdown) {
     let cli_config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
@@ -287,66 +306,35 @@ fn cli_loop(parser: Option<Parser>, mut shutdown: Shutdown) {
         .output_stream(OutputStreamType::Stdout)
         .build();
     let mut rustyline = Editor::with_config(cli_config);
-    match parser {
-        Some(parser) => {
-            rustyline.set_helper(Some(parser));
-            loop {
-                let readline = rustyline.readline(">> ");
-                match readline {
-                    Ok(line) => {
-                        rustyline.add_history_entry(line.as_str());
-                        if let Some(p) = rustyline.helper_mut().as_deref_mut() {
-                            p.handle_command(&line, &mut shutdown)
+    rustyline.set_helper(Some(parser));
+    let read_command_fut = read_command(rustyline).fuse();
+    pin_mut!(read_command_fut);
+    let mut shutdown_signal = shutdown.to_signal();
+    loop {
+        let mut delay = time::delay_for(Duration::from_secs(30)).fuse();
+        futures::select! {
+                res = read_command_fut => {
+                    match res {
+                        Ok((line, mut rustyline)) => {
+                            if let Some(p) = rustyline.helper_mut().as_deref_mut() {
+                                p.handle_command(line.as_str(), &mut shutdown)
+                            }
+                            read_command_fut.set(read_command(rustyline).fuse());
+                        },
+                        Err(err) => {
+                            // This happens when the node is shutting down.
+                            debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
+                            break;
                         }
-                    },
-                    Err(ReadlineError::Interrupted) => {
-                        // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
-                        println!("The node is shutting down because Ctrl+C was received...");
-                        info!(
-                            target: LOG_TARGET,
-                            "Termination signal received from user. Shutting node down."
-                        );
-                        if shutdown.trigger().is_err() {
-                            error!(target: LOG_TARGET, "Shutdown signal failed to trigger");
-                        };
-                        break;
-                    },
-                    Err(err) => {
-                        println!("Error: {:?}", err);
-                        break;
-                    },
-                }
-                if shutdown.is_triggered() {
+                    }
+                },
+                () = delay => {
+                       command_handler.status();
+                       print!(">> ")
+               },
+                _ = shutdown_signal => {
                     break;
-                };
-            }
-        },
-        None => {
-            loop {
-                let readline = rustyline.readline("");
-                match readline {
-                    Ok(_) => {},
-                    Err(ReadlineError::Interrupted) => {
-                        // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
-                        println!("The node is shutting down because Ctrl+C was received...");
-                        info!(
-                            target: LOG_TARGET,
-                            "Termination signal received from user. Shutting node down."
-                        );
-                        if shutdown.trigger().is_err() {
-                            error!(target: LOG_TARGET, "Shutdown signal failed to trigger");
-                        };
-                        break;
-                    },
-                    Err(err) => {
-                        println!("Error: {:?}", err);
-                        break;
-                    },
                 }
-                if shutdown.is_triggered() {
-                    break;
-                };
-            }
-        },
+        }
     }
 }

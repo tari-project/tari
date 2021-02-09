@@ -53,7 +53,7 @@ impl StateMachineHandle {
         self.state_change_event_subscriber.subscribe()
     }
 
-    /// This clones the receiver end of the channel and gives out a copy to the caller
+    /// This clones the receiver end of the channel and gives out a copy to the caller.
     /// This allows multiple subscribers to this channel by only keeping one channel and cloning the receiver for every
     /// caller.
     pub fn get_status_info_watch(&self) -> watch::Receiver<StatusInfo> {

@@ -58,9 +58,13 @@ where
     B: ArrayLike<Value = Hash>,
 {
     /// Create a new mutable MMR using the backend provided
-    pub fn new(mmr_backend: B, deleted: Bitmap) -> MutableMmr<D, B> {
+    pub fn new(mmr_backend: B, deleted: Bitmap) -> Result<MutableMmr<D, B>, MerkleMountainRangeError> {
         let mmr = MerkleMountainRange::new(mmr_backend);
-        MutableMmr { mmr, deleted, size: 0 }
+        Ok(MutableMmr {
+            size: mmr.get_leaf_count()? as u32,
+            mmr,
+            deleted,
+        })
     }
 
     /// Clear the MutableMmr and assign the MMR state from the set of leaf_hashes and deleted nodes given in `state`.
@@ -140,13 +144,11 @@ where
     /// Push a new element into the MMR. Computes new related peaks at the same time if applicable.
     /// Returns the new number of leaf nodes (regardless of deleted state) in the mutable MMR
     pub fn push(&mut self, hash: Hash) -> Result<usize, MerkleMountainRangeError> {
-        if self.size == std::u32::MAX {
+        if self.size == u32::MAX {
             return Err(MerkleMountainRangeError::MaximumSizeReached);
         }
-        let result = self.mmr.push(hash);
-        if result.is_ok() {
-            self.size += 1;
-        }
+        self.mmr.push(hash)?;
+        self.size += 1;
         Ok(self.size as usize)
     }
 
@@ -154,37 +156,26 @@ where
     /// in a tight loop and want to eke out some extra performance by delaying the bitmap compression until after the
     /// batch deletion.
     ///
-    /// Note that this function doesn't actually
-    /// delete anything (the underlying MMR structure is immutable), but marks the leaf node as deleted. Once a leaf
-    /// node has been marked for deletion:
+    /// Note that this function doesn't actually delete anything (the underlying MMR structure is immutable), but marks
+    /// the leaf node as deleted. Once a leaf node has been marked for deletion:
     /// * `get_leaf_hash(n)` will return None,
     /// * `len()` will not count this node anymore
     ///
+    /// **NB**: You should call compress before calling `get_merkle_root()`. If you don't, the merkle root will be
+    /// incorrect.
+    ///
     /// # Parameters
     /// * `leaf_node_index`: The index of the leaf node to mark for deletion, zero-based.
-    /// * `compress`: Indicates whether the roaring bitmap should be compressed after marking the node for deletion.
-    /// **NB**: You should set this to true unless you are in a loop and deleting multiple nodes, and you **must** set
-    /// this to true if you are about to call `get_merkle_root()`. If you don't, the merkle root will be incorrect.
     ///
     /// # Return
     /// The function returns true if a node was actually marked for deletion. If the index is out of bounds, or was
     /// already deleted, the function returns false.
-    pub fn delete_and_compress(&mut self, leaf_index: u32, compress: bool) -> bool {
+    pub fn delete(&mut self, leaf_index: u32) -> bool {
         if (leaf_index >= self.size) || self.deleted.contains(leaf_index) {
             return false;
         }
         self.deleted.add(leaf_index);
-        // The serialization is different in compressed vs. uncompressed form, but the merkle root must be 100%
-        // deterministic based on input, so just be consistent an use the compressed form all the time.
-        if compress {
-            self.compress();
-        }
         true
-    }
-
-    /// Mark a node for completion, and compress the roaring bitmap. See [delete_and_compress] for details.
-    pub fn delete(&mut self, leaf_index: u32) -> bool {
-        self.delete_and_compress(leaf_index, true)
     }
 
     /// Compress the roaring bitmap mapping deleted nodes. You never have to call this method unless you have been

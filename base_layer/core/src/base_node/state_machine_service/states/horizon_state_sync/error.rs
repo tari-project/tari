@@ -21,28 +21,26 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::block_sync::BlockSyncError},
+    base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::helpers::BaseNodeRequestError},
     chain_storage::{ChainStorageError, MmrTree},
     transactions::transaction::TransactionError,
     validation::ValidationError,
 };
+use tari_comms::protocol::rpc::{RpcError, RpcStatus};
+use tari_mmr::error::MerkleMountainRangeError;
 use thiserror::Error;
 use tokio::task;
 
 #[derive(Debug, Error)]
 pub enum HorizonSyncError {
-    #[error("Peer sent an empty response")]
-    EmptyResponse,
-    #[error("Peer sent an invalid response")]
-    IncorrectResponse,
-    #[error("Exceeded maximum sync attempts")]
-    MaxSyncAttemptsReached,
+    #[error("Peer sent an invalid response: {0}")]
+    IncorrectResponse(String),
+    // #[error("Exceeded maximum sync attempts")]
+    // MaxSyncAttemptsReached,
     #[error("Chain storage error: {0}")]
     ChainStorageError(#[from] ChainStorageError),
     #[error("Comms interface error: {0}")]
     CommsInterfaceError(#[from] CommsInterfaceError),
-    #[error("Block sync error: {0}")]
-    BlockSyncError(#[from] BlockSyncError),
     #[error("Final state validation failed: {0}")]
     FinalStateValidationFailed(ValidationError),
     #[error("Join error: {0}")]
@@ -51,14 +49,16 @@ pub enum HorizonSyncError {
     InvalidKernelSignature(TransactionError),
     #[error("Validation failed for {0} MMR")]
     InvalidMmrRoot(MmrTree),
-}
-
-impl HorizonSyncError {
-    pub fn is_recoverable(&self) -> bool {
-        use HorizonSyncError::*;
-        match self {
-            FinalStateValidationFailed(_) | InvalidMmrRoot(_) => false,
-            _ => true,
-        }
-    }
+    #[error("Invalid range proof for output:{0} : {1}")]
+    InvalidRangeProof(String, String),
+    #[error("Base node request error: {0}")]
+    BaseNodeRequestError(#[from] BaseNodeRequestError),
+    #[error("RPC error: {0}")]
+    RpcError(#[from] RpcError),
+    #[error("RPC status: {0}")]
+    RpcStatus(#[from] RpcStatus),
+    #[error("Could not convert data:{0}")]
+    ConversionError(String),
+    #[error("MerkleMountainRangeError: {0}")]
+    MerkleMountainRangeError(#[from] MerkleMountainRangeError),
 }

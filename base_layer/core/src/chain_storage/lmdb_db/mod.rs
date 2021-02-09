@@ -23,19 +23,54 @@
 mod lmdb;
 #[allow(clippy::module_inception)]
 mod lmdb_db;
-pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, remove_lmdb_database, LMDBDatabase};
 
-mod lmdb_vec;
-pub use lmdb_vec::{LMDBVec, LMDBVecError};
+use crate::transactions::{
+    transaction::{TransactionInput, TransactionKernel, TransactionOutput},
+    types::HashOutput,
+};
+pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
+use serde::{Deserialize, Serialize};
 
 pub const LMDB_DB_METADATA: &str = "metadata";
 pub const LMDB_DB_HEADERS: &str = "headers";
+pub const LMDB_DB_HEADER_ACCUMULATED_DATA: &str = "header_accumulated_data";
+pub const LMDB_DB_BLOCK_ACCUMULATED_DATA: &str = "mmr_peak_data";
 pub const LMDB_DB_BLOCK_HASHES: &str = "block_hashes";
 pub const LMDB_DB_UTXOS: &str = "utxos";
+pub const LMDB_DB_INPUTS: &str = "inputs";
 pub const LMDB_DB_TXOS_HASH_TO_INDEX: &str = "txos_hash_to_index";
-pub const LMDB_DB_STXOS: &str = "stxos";
 pub const LMDB_DB_KERNELS: &str = "kernels";
+pub const LMDB_DB_KERNEL_EXCESS_INDEX: &str = "kernel_excess_index";
+pub const LMDB_DB_KERNEL_EXCESS_SIG_INDEX: &str = "kernel_excess_sig_index";
+pub const LMDB_DB_KERNEL_MMR_SIZE_INDEX: &str = "kernel_mmr_size_index";
+pub const LMDB_DB_UTXO_MMR_SIZE_INDEX: &str = "utxo_mmr_size_index";
 pub const LMDB_DB_ORPHANS: &str = "orphans";
-pub const LMDB_DB_UTXO_MMR_CP_BACKEND: &str = "utxo_mmr_cp_backend";
-pub const LMDB_DB_KERNEL_MMR_CP_BACKEND: &str = "kernel_mmr_cp_backend";
-pub const LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND: &str = "range_proof_mmr_cp_backend";
+pub const LMDB_DB_MONERO_SEED_HEIGHT: &str = "monero_seed_height";
+pub const LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA: &str = "orphan_accumulated_data";
+pub const LMDB_DB_ORPHAN_CHAIN_TIPS: &str = "orphan_chain_tips";
+pub const LMDB_DB_ORPHAN_PARENT_MAP_INDEX: &str = "orphan_parent_map_index";
+
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) struct TransactionOutputRowData {
+    pub output: Option<TransactionOutput>,
+    pub header_hash: HashOutput,
+    pub mmr_position: u32,
+    pub hash: HashOutput,
+    pub range_proof_hash: HashOutput,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) struct TransactionInputRowData {
+    pub input: TransactionInput,
+    pub header_hash: HashOutput,
+    pub mmr_position: u32,
+    pub hash: HashOutput,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub(crate) struct TransactionKernelRowData {
+    pub kernel: TransactionKernel,
+    pub header_hash: HashOutput,
+    pub mmr_position: u32,
+    pub hash: HashOutput,
+}

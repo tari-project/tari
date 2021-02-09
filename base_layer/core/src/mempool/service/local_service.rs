@@ -20,11 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{
-    service::{MempoolRequest, MempoolResponse, MempoolServiceError},
-    MempoolStateEvent,
-    StateResponse,
-    StatsResponse,
+use crate::{
+    mempool::{
+        service::{MempoolRequest, MempoolResponse, MempoolServiceError},
+        MempoolStateEvent,
+        StateResponse,
+        StatsResponse,
+        TxStorageResponse,
+    },
+    transactions::transaction::Transaction,
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
@@ -80,6 +84,21 @@ impl LocalMempoolService {
             _ => Err(MempoolServiceError::UnexpectedApiResponse),
         }
     }
+
+    pub async fn submit_transaction(
+        &mut self,
+        transaction: Transaction,
+    ) -> Result<TxStorageResponse, MempoolServiceError>
+    {
+        match self
+            .request_sender
+            .call(MempoolRequest::SubmitTransaction(transaction))
+            .await??
+        {
+            MempoolResponse::TxStorage(s) => Ok(s),
+            _ => Err(MempoolServiceError::UnexpectedApiResponse),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -99,9 +118,7 @@ mod test {
         StatsResponse {
             total_txs: 10,
             unconfirmed_txs: 3,
-            orphan_txs: 1,
-            timelocked_txs: 2,
-            published_txs: 4,
+            reorg_txs: 4,
             total_weight: 1000,
         }
     }

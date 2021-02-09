@@ -40,12 +40,10 @@ use crate::{
 use futures::{future, Future, Stream, StreamExt};
 use log::*;
 use std::sync::Arc;
-use tari_comms::peer_manager::NodeIdentity;
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_core::{
-    base_node::proto::base_node as BaseNodeProto,
-    consensus::{ConsensusConstantsBuilder, Network},
-    mempool::proto::mempool as MempoolProto,
+    proto::base_node as base_node_proto,
     transactions::{transaction_protocol::proto, types::CryptoFactories},
 };
 use tari_p2p::{
@@ -73,7 +71,6 @@ where T: TransactionBackend
     backend: Option<T>,
     node_identity: Arc<NodeIdentity>,
     factories: CryptoFactories,
-    network: Network,
 }
 
 impl<T> TransactionServiceInitializer<T>
@@ -85,7 +82,6 @@ where T: TransactionBackend
         backend: T,
         node_identity: Arc<NodeIdentity>,
         factories: CryptoFactories,
-        network: Network,
     ) -> Self
     {
         Self {
@@ -94,7 +90,6 @@ where T: TransactionBackend
             backend: Some(backend),
             node_identity,
             factories,
-            network,
         }
     }
 
@@ -138,20 +133,7 @@ where T: TransactionBackend
             .filter_map(ok_or_skip_result)
     }
 
-    fn mempool_response_stream(&self) -> impl Stream<Item = DomainMessage<MempoolProto::MempoolServiceResponse>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::MempoolResponse
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::MempoolResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<MempoolProto::MempoolServiceResponse>)
-            .filter_map(ok_or_skip_result)
-    }
-
-    fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>> {
+    fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<base_node_proto::BaseNodeServiceResponse>> {
         trace!(
             target: LOG_TARGET,
             "Subscription '{}' for topic '{:?}' created.",
@@ -160,7 +142,7 @@ where T: TransactionBackend
         );
         self.subscription_factory
             .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<BaseNodeProto::BaseNodeServiceResponse>)
+            .map(map_decode::<base_node_proto::BaseNodeServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
 
@@ -188,7 +170,6 @@ where T: TransactionBackend + 'static
         let transaction_stream = self.transaction_stream();
         let transaction_reply_stream = self.transaction_reply_stream();
         let transaction_finalized_stream = self.transaction_finalized_stream();
-        let mempool_response_stream = self.mempool_response_stream();
         let base_node_response_stream = self.base_node_response_stream();
         let transaction_cancelled_stream = self.transaction_cancelled_stream();
 
@@ -207,10 +188,11 @@ where T: TransactionBackend + 'static
         let node_identity = self.node_identity.clone();
         let factories = self.factories.clone();
         let config = self.config.clone();
-        let constants = ConsensusConstantsBuilder::new(self.network).build();
+
         context.spawn_when_ready(move |handles| async move {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let output_manager_service = handles.expect_handle::<OutputManagerHandle>();
+            let connectivity_manager = handles.expect_handle::<ConnectivityRequester>();
 
             let service = TransactionService::new(
                 config,
@@ -219,15 +201,14 @@ where T: TransactionBackend + 'static
                 transaction_stream,
                 transaction_reply_stream,
                 transaction_finalized_stream,
-                mempool_response_stream,
                 base_node_response_stream,
                 transaction_cancelled_stream,
                 output_manager_service,
                 outbound_message_service,
+                connectivity_manager,
                 publisher,
                 node_identity,
                 factories,
-                constants,
                 handles.get_shutdown_signal(),
             )
             .start();

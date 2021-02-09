@@ -134,7 +134,7 @@ pub fn make_dht_inbound_message(
             Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
-            &[],
+            Default::default(),
             Default::default(),
         )),
         envelope.body,

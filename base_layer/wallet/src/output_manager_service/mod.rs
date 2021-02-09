@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    base_node_service::handle::BaseNodeServiceHandle,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
@@ -34,8 +35,8 @@ use log::*;
 use std::sync::Arc;
 use tari_comms_dht::Dht;
 use tari_core::{
-    base_node::proto::base_node as BaseNodeProto,
     consensus::{ConsensusConstantsBuilder, Network},
+    proto::base_node as proto,
     transactions::types::CryptoFactories,
 };
 use tari_p2p::{
@@ -95,7 +96,7 @@ where T: OutputManagerBackend + 'static
         }
     }
 
-    fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>> {
+    fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>> {
         trace!(
             target: LOG_TARGET,
             "Subscription '{}' for topic '{:?}' created.",
@@ -104,7 +105,7 @@ where T: OutputManagerBackend + 'static
         );
         self.subscription_factory
             .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<BaseNodeProto::BaseNodeServiceResponse>)
+            .map(map_decode::<proto::BaseNodeServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
 }
@@ -141,6 +142,7 @@ where T: OutputManagerBackend + 'static
         context.spawn_when_ready(move |handles| async move {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
+            let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
 
             let service = OutputManagerService::new(
                 config,
@@ -151,8 +153,9 @@ where T: OutputManagerBackend + 'static
                 OutputManagerDatabase::new(backend),
                 publisher,
                 factories,
-                constants.coinbase_lock_height(),
+                constants,
                 handles.get_shutdown_signal(),
+                base_node_service_handle,
             )
             .await
             .expect("Could not initialize Output Manager Service")

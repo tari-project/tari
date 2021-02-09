@@ -22,17 +22,15 @@
 
 use crate::tari_rpc as grpc;
 use std::convert::TryFrom;
-use tari_core::proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork};
+use tari_core::proof_of_work::{PowAlgorithm, ProofOfWork};
 
 impl TryFrom<grpc::ProofOfWork> for ProofOfWork {
     type Error = String;
 
+    #[allow(deprecated)]
     fn try_from(pow: grpc::ProofOfWork) -> Result<Self, Self::Error> {
         Ok(Self {
             pow_algo: PowAlgorithm::try_from(pow.pow_algo)?,
-            accumulated_monero_difficulty: Difficulty::from(pow.accumulated_monero_difficulty),
-            accumulated_blake_difficulty: Difficulty::from(pow.accumulated_blake_difficulty),
-            target_difficulty: Difficulty::from(pow.target_difficulty),
             pow_data: pow.pow_data,
         })
     }

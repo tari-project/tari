@@ -22,7 +22,7 @@
 //
 
 use crate::helpers::{
-    block_builders::{chain_block, find_header_with_achieved_difficulty},
+    block_builders::{chain_block_with_new_coinbase, find_header_with_achieved_difficulty},
     block_proxy::BlockProxy,
     sample_blockchains::create_new_blockchain,
     test_block_builder::{TestBlockBuilder, TestBlockBuilderInner},
@@ -31,16 +31,17 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{collections::HashMap, sync::Arc};
 use tari_core::{
-    chain_storage::{BlockAddResult, BlockchainDatabase, MemoryDatabase},
+    chain_storage::{BlockAddResult, BlockchainDatabase},
     consensus::{ConsensusManager, Network},
-    transactions::types::HashDigest,
+    test_helpers::blockchain::TempDatabase,
+    transactions::types::CryptoFactories,
 };
 use tari_crypto::tari_utilities::Hashable;
 
 const LOG_TARGET: &str = "tari_core::tests::helpers::test_blockchain";
 
 pub struct TestBlockchain {
-    store: BlockchainDatabase<MemoryDatabase<HashDigest>>,
+    store: BlockchainDatabase<TempDatabase>,
     blocks: HashMap<String, BlockProxy>,
     hash_to_block: HashMap<Vec<u8>, String>,
     consensus_manager: ConsensusManager,
@@ -55,7 +56,7 @@ impl TestBlockchain {
         let mut blocks = HashMap::new();
         let genesis_block = b.pop().unwrap();
         let mut hash_to_block = HashMap::new();
-        hash_to_block.insert(genesis_block.hash(), name.clone());
+        hash_to_block.insert(genesis_block.hash().clone(), name.clone());
         blocks.insert(name.clone(), BlockProxy::new(name, genesis_block));
 
         Self {
@@ -70,31 +71,31 @@ impl TestBlockchain {
         debug!(target: LOG_TARGET, "Adding block '{}' to test block chain", block.name);
         let prev_block = self.blocks.get(&block.child_of.unwrap());
         let prev_block = prev_block.map(|b| &b.block).unwrap();
-        let template = chain_block(prev_block, vec![], &self.consensus_manager);
+        let template =
+            chain_block_with_new_coinbase(prev_block, vec![], &self.consensus_manager, &CryptoFactories::default()).0;
 
-        let mut new_block = self.store.calculate_mmr_roots(template).unwrap();
+        let mut new_block = self.store.prepare_block_merkle_roots(template).unwrap();
         new_block.header.nonce = OsRng.next_u64();
         find_header_with_achieved_difficulty(&mut new_block.header, block.difficulty.unwrap_or(1).into());
 
-        self.hash_to_block.insert(new_block.hash(), block.name.clone());
-        self.blocks.insert(
-            block.name.clone(),
-            BlockProxy::new(block.name.to_string(), new_block.clone()),
-        );
+        let res = self.store.add_block(Arc::new(new_block)).unwrap();
+        if let BlockAddResult::Ok(ref b) = res {
+            self.hash_to_block.insert(b.hash().clone(), block.name.clone());
+            self.blocks.insert(
+                block.name.clone(),
+                BlockProxy::new(block.name.to_string(), b.as_ref().clone()),
+            );
+        }
 
-        self.store.add_block(Arc::new(new_block)).unwrap()
+        res
     }
 
     pub fn builder(&mut self) -> TestBlockBuilder {
         TestBlockBuilder {}
     }
 
-    pub fn orphan_pool(&self) -> Vec<&BlockProxy> {
-        let mut orphans = vec![];
-        for o in self.store.fetch_all_orphans().unwrap() {
-            orphans.push(self.get_block_by_hash(&o.hash()).unwrap());
-        }
-        orphans
+    pub fn orphan_count(&self) -> usize {
+        self.store.orphan_count().unwrap()
     }
 
     pub fn tip(&self) -> &BlockProxy {
@@ -113,11 +114,11 @@ impl TestBlockchain {
 
     pub fn chain(&self) -> Vec<&str> {
         let mut result = vec![];
-        let mut tip = self.store.fetch_tip_header().unwrap();
+        let mut tip = self.store.fetch_tip_header().unwrap().header;
 
         while tip.height > 0 {
             result.push(self.get_block_by_hash(&tip.hash()).unwrap().name.as_str());
-            tip = self.store.fetch_header_by_block_hash(tip.prev_hash).unwrap();
+            tip = self.store.fetch_header_by_block_hash(tip.prev_hash).unwrap().unwrap();
         }
         result.push(self.get_block_by_hash(&tip.hash()).unwrap().name.as_str());
 

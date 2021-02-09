@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    chain_storage::{lmdb_db::LMDBVecError, MmrTree},
-    proof_of_work::PowError,
-    validation::ValidationError,
-};
+use crate::{chain_storage::MmrTree, proof_of_work::PowError, validation::ValidationError};
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
@@ -54,8 +50,16 @@ pub enum ChainStorageError {
     CriticalError(String),
     #[error("Cannot return data for requests older than the current pruning horizon")]
     BeyondPruningHorizon,
+    #[error("Could not insert {table}: {error}")]
+    InsertError { table: &'static str, error: String },
     #[error("An invalid query was attempted: {0}")]
     InvalidQuery(String),
+    #[error("Invalid argument `{arg}` in `{func}`: {message}")]
+    InvalidArguments {
+        func: &'static str,
+        arg: &'static str,
+        message: String,
+    },
     #[error("The requested {entity} was not found via {field}:{value} in the database")]
     ValueNotFound {
         entity: String,
@@ -105,16 +109,7 @@ pub enum ChainStorageError {
 
 impl ChainStorageError {
     pub fn is_value_not_found(&self) -> bool {
-        match self {
-            ChainStorageError::ValueNotFound { .. } => true,
-            _ => false,
-        }
-    }
-}
-
-impl From<LMDBVecError> for ChainStorageError {
-    fn from(err: LMDBVecError) -> Self {
-        Self::AccessError(err.to_string())
+        matches!(self, ChainStorageError::ValueNotFound { .. })
     }
 }
 
@@ -130,6 +125,40 @@ impl From<lmdb_zero::Error> for ChainStorageError {
         match err {
             Code(c) if c == lmdb_zero::error::NOTFOUND => ChainStorageError::LmdbValueNotFound(err),
             _ => ChainStorageError::AccessError(err.to_string()),
+        }
+    }
+}
+
+pub trait Optional<U> {
+    fn optional(self) -> Result<Option<U>, ChainStorageError>;
+}
+
+impl<U> Optional<U> for Result<U, ChainStorageError> {
+    fn optional(self) -> Result<Option<U>, ChainStorageError> {
+        match self {
+            Ok(item) => Ok(Some(item)),
+            Err(err) if err.is_value_not_found() => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+}
+
+pub trait OrNotFound<U> {
+    fn or_not_found(self, entity: &str, field: &str, value: String) -> Result<U, ChainStorageError>;
+}
+
+impl<U> OrNotFound<U> for Result<Option<U>, ChainStorageError> {
+    fn or_not_found(self, entity: &str, field: &str, value: String) -> Result<U, ChainStorageError> {
+        match self {
+            Ok(inner) => match inner {
+                None => Err(ChainStorageError::ValueNotFound {
+                    entity: entity.to_string(),
+                    field: field.to_string(),
+                    value,
+                }),
+                Some(v) => Ok(v),
+            },
+            Err(err) => Err(err),
         }
     }
 }

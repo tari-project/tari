@@ -20,16 +20,38 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{StatefulValidation, Validation};
-use crate::{chain_storage::BlockchainBackend, validation::error::ValidationError};
+use crate::{
+    blocks::{Block, BlockHeader},
+    chain_storage::{BlockHeaderAccumulatedData, BlockHeaderAccumulatedDataBuilder, BlockchainBackend, ChainBlock},
+    proof_of_work::sha3_difficulty,
+    transactions::{transaction::Transaction, types::Commitment},
+    validation::{
+        error::ValidationError,
+        CandidateBlockBodyValidation,
+        FinalHorizonStateValidation,
+        HeaderValidation,
+        MempoolTransactionValidation,
+        OrphanValidation,
+        PostOrphanBodyValidation,
+    },
+};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use tari_crypto::tari_utilities::Hashable;
 
 #[derive(Clone)]
 pub struct MockValidator {
     is_valid: Arc<AtomicBool>,
+}
+
+pub struct SharedFlag(Arc<AtomicBool>);
+
+impl SharedFlag {
+    pub fn set(&self, v: bool) {
+        self.0.store(v, Ordering::SeqCst);
+    }
 }
 
 impl MockValidator {
@@ -39,13 +61,13 @@ impl MockValidator {
         }
     }
 
-    pub fn shared_flag(&self) -> Arc<AtomicBool> {
-        self.is_valid.clone()
+    pub fn shared_flag(&self) -> SharedFlag {
+        SharedFlag(self.is_valid.clone())
     }
 }
 
-impl<T, B: BlockchainBackend> StatefulValidation<T, B> for MockValidator {
-    fn validate(&self, _item: &T, _db: &B) -> Result<(), ValidationError> {
+impl<B: BlockchainBackend> CandidateBlockBodyValidation<B> for MockValidator {
+    fn validate_body(&self, _item: &ChainBlock, _db: &B) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
@@ -56,8 +78,8 @@ impl<T, B: BlockchainBackend> StatefulValidation<T, B> for MockValidator {
     }
 }
 
-impl<T> Validation<T> for MockValidator {
-    fn validate(&self, _item: &T) -> Result<(), ValidationError> {
+impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for MockValidator {
+    fn validate_body_for_valid_orphan(&self, _item: &ChainBlock, _db: &B) -> Result<(), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
@@ -68,19 +90,74 @@ impl<T> Validation<T> for MockValidator {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use crate::validation::{mocks::MockValidator, Validation};
-
-    #[test]
-    fn mock_is_valid() {
-        let validator = MockValidator::new(true);
-        assert!(<MockValidator as Validation<_>>::validate(&validator, &()).is_ok());
+impl OrphanValidation for MockValidator {
+    fn validate(&self, _item: &Block) -> Result<(), ValidationError> {
+        if self.is_valid.load(Ordering::SeqCst) {
+            Ok(())
+        } else {
+            Err(ValidationError::custom_error(
+                "This mock validator always returns an error",
+            ))
+        }
     }
+}
 
-    #[test]
-    fn mock_is_invalid() {
-        let validator = MockValidator::new(false);
-        assert!(<MockValidator as Validation<_>>::validate(&validator, &()).is_err());
+impl<B: BlockchainBackend> HeaderValidation<B> for MockValidator {
+    fn validate(
+        &self,
+        _db: &B,
+        header: &BlockHeader,
+        previous_data: &BlockHeaderAccumulatedData,
+    ) -> Result<BlockHeaderAccumulatedDataBuilder, ValidationError>
+    {
+        if self.is_valid.load(Ordering::SeqCst) {
+            let achieved = sha3_difficulty(header);
+            let accum_data = BlockHeaderAccumulatedDataBuilder::default()
+                .hash(header.hash())
+                .target_difficulty(1.into())
+                .achieved_difficulty(previous_data, header.pow_algo(), achieved)
+                .total_kernel_offset(&previous_data.total_kernel_offset, &header.total_kernel_offset);
+
+            Ok(accum_data)
+        } else {
+            Err(ValidationError::custom_error(
+                "This mock validator always returns an error",
+            ))
+        }
+    }
+    // fn validate(&self, header: &BlockHeader, previous_header: &BlockHeader, previous_data:
+    // &BlockHeaderAccumulatedData) -> Result<BlockHeaderAccumulatedDataBuilder, ValidationError> {
+    //     unimplemented!()
+    // }
+}
+
+impl MempoolTransactionValidation for MockValidator {
+    fn validate(&self, _transaction: &Transaction) -> Result<(), ValidationError> {
+        if self.is_valid.load(Ordering::SeqCst) {
+            Ok(())
+        } else {
+            Err(ValidationError::custom_error(
+                "This mock validator always returns an error",
+            ))
+        }
+    }
+}
+
+impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for MockValidator {
+    fn validate(
+        &self,
+        _height: u64,
+        _total_utxo_sum: &Commitment,
+        _total_kernel_sum: &Commitment,
+        _backend: &B,
+    ) -> Result<(), ValidationError>
+    {
+        if self.is_valid.load(Ordering::SeqCst) {
+            Ok(())
+        } else {
+            Err(ValidationError::custom_error(
+                "This mock validator always returns an error",
+            ))
+        }
     }
 }

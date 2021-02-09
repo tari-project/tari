@@ -20,12 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node::RequestKey,
-    transactions::{transaction::Transaction, types::Signature},
-};
+use crate::transactions::{transaction::Transaction, types::Signature};
 use core::fmt::{Display, Error, Formatter};
 use serde::{Deserialize, Serialize};
+use tari_common_types::waiting_requests::RequestKey;
 use tari_crypto::tari_utilities::hex::Hex;
 
 /// API Request enum for Mempool requests.

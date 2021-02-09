@@ -21,47 +21,84 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::blockheader::{BlockHeader, BlockHeaderValidationError},
-    chain_storage::{fetch_headers, BlockchainBackend},
-    consensus::ConsensusManager,
-    proof_of_work::{get_target_difficulty, monero_rx::MoneroData, PowAlgorithm, PowError},
+    blocks::{
+        block_header::{BlockHeader, BlockHeaderValidationError},
+        Block,
+        BlockValidationError,
+    },
+    chain_storage::BlockchainBackend,
+    consensus::{ConsensusConstants, ConsensusManager},
+    proof_of_work::{
+        monero_difficulty,
+        monero_rx::MoneroData,
+        randomx_factory::RandomXFactory,
+        sha3_difficulty,
+        Difficulty,
+        PowAlgorithm,
+        PowError,
+    },
+    transactions::types::CryptoFactories,
     validation::ValidationError,
 };
 use log::*;
-use tari_crypto::tari_utilities::hash::Hashable;
-pub const LOG_TARGET: &str = "c::val::helpers";
-use crate::{
-    chain_storage::{DbKey, MmrTree},
-    proof_of_work::get_median_timestamp,
-    transactions::types::HashOutput,
-};
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_crypto::tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 
-/// This function tests that the block timestamp is greater than the median timestamp at the specified height.
-pub fn check_median_timestamp<B: BlockchainBackend>(
-    db: &B,
+pub const LOG_TARGET: &str = "c::val::helpers";
+
+/// This function tests that the block timestamp is less than the FTL
+pub fn check_timestamp_ftl(
     block_header: &BlockHeader,
-    height: u64,
-    rules: ConsensusManager,
+    consensus_manager: &ConsensusManager,
 ) -> Result<(), ValidationError>
 {
-    if block_header.height == 0 || rules.get_genesis_block_hash() == block_header.hash() {
-        return Ok(()); // Its the genesis block, so we dont have to check median
+    if block_header.timestamp > consensus_manager.consensus_constants(block_header.height).ftl() {
+        warn!(
+            target: LOG_TARGET,
+            "Invalid Future Time Limit on block:{}",
+            block_header.hash().to_hex()
+        );
+        return Err(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::InvalidTimestampFutureTimeLimit,
+        ));
     }
-    let min_height = height.saturating_sub(
-        rules
-            .consensus_constants(block_header.height)
-            .get_median_timestamp_count() as u64,
-    );
-    let timestamps = fetch_headers(db, min_height, height)?
-        .iter()
-        .map(|h| h.timestamp)
-        .collect::<Vec<_>>();
-    let median_timestamp = get_median_timestamp(timestamps).ok_or_else(|| {
-        error!(target: LOG_TARGET, "Validation could not get median timestamp");
-        ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestamp)
-    })?;
+    Ok(())
+}
 
+/// Returns the median timestamp for the provided timestamps.
+pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
+    assert_eq!(
+        timestamps.is_empty(),
+        false,
+        "calc_median_timestamp: timestamps cannot be empty"
+    );
+    trace!(
+        target: LOG_TARGET,
+        "Calculate the median timestamp from {} timestamps",
+        timestamps.len()
+    );
+
+    let mid_index = timestamps.len() / 2;
+    let median_timestamp = if timestamps.len() % 2 == 0 {
+        (timestamps[mid_index - 1] + timestamps[mid_index]) / 2
+    } else {
+        timestamps[mid_index]
+    };
+    trace!(target: LOG_TARGET, "Median timestamp:{}", median_timestamp);
+    median_timestamp
+}
+
+pub fn check_header_timestamp_greater_than_median(
+    block_header: &BlockHeader,
+    timestamps: &[EpochTime],
+) -> Result<(), ValidationError>
+{
+    if timestamps.is_empty() {
+        return Err(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::InvalidTimestamp("The timestamp is empty".to_string()),
+        ));
+    }
+
+    let median_timestamp = calc_median_timestamp(timestamps);
     if block_header.timestamp < median_timestamp {
         warn!(
             target: LOG_TARGET,
@@ -71,69 +108,62 @@ pub fn check_median_timestamp<B: BlockchainBackend>(
             block_header.hash().to_hex()
         );
         return Err(ValidationError::BlockHeaderError(
-            BlockHeaderValidationError::InvalidTimestamp,
+            BlockHeaderValidationError::InvalidTimestamp(format!(
+                "The timestamp `{}` was less than the median timestamp `{}`",
+                block_header.timestamp, median_timestamp
+            )),
         ));
     }
+
     Ok(())
 }
 
-/// Calculates the achieved and target difficulties at the specified height and compares them.
-pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
-    db: &B,
+/// Check the PoW data in the BlockHeader. This currently only applies to blocks merged mined with Monero.
+pub fn check_pow_data<B: BlockchainBackend>(
     block_header: &BlockHeader,
-    height: u64,
-    rules: ConsensusManager,
+    rules: &ConsensusManager,
+    db: &B,
 ) -> Result<(), ValidationError>
 {
-    let pow_algo = block_header.pow.pow_algo;
-    // Monero has extra data to check.
-    if pow_algo == PowAlgorithm::Monero {
-        MoneroData::new(&block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
-        // TODO: We need some way of getting the seed height and or count.
-        // Current proposals are to either store the height of first seed use, or count the seed use.
-        let seed_height = 0;
-        if (seed_height != 0) &&
-            (block_header.height - seed_height >
-                rules.consensus_constants(block_header.height).max_randomx_seed_height())
-        {
-            return Err(ValidationError::BlockHeaderError(
-                BlockHeaderValidationError::OldSeedHash,
-            ));
-        }
+    use PowAlgorithm::*;
+    match block_header.pow.pow_algo {
+        Monero => {
+            let monero_data =
+                MoneroData::from_header(block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
+            let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.key)?;
+            if (seed_height != 0) &&
+                (block_header.height - seed_height >
+                    rules.consensus_constants(block_header.height).max_randomx_seed_height())
+            {
+                return Err(ValidationError::BlockHeaderError(
+                    BlockHeaderValidationError::OldSeedHash,
+                ));
+            }
+
+            Ok(())
+        },
+        Blake | Sha3 => {
+            if !block_header.pow.pow_data.is_empty() {
+                return Err(ValidationError::CustomError(
+                    "Proof of work data must be empty for Sha3 blocks".to_string(),
+                ));
+            }
+            Ok(())
+        },
     }
-    let achieved = block_header.achieved_difficulty()?;
-    // This tests the target diff.
-    let target = if block_header.height > 0 || rules.get_genesis_block_hash() != block_header.hash() {
-        let constants = rules.consensus_constants(block_header.height);
-        let block_window = constants.get_difficulty_block_window() as usize;
-        let target_difficulties = db.fetch_target_difficulties(pow_algo, height, block_window)?;
-        get_target_difficulty(
-            target_difficulties,
-            block_window,
-            constants.get_diff_target_block_interval(pow_algo),
-            constants.min_pow_difficulty(pow_algo),
-            constants.max_pow_difficulty(pow_algo),
-            constants.get_difficulty_max_block_interval(pow_algo),
-        )
-        .map_err(|e| {
-            error!(target: LOG_TARGET, "Validation could not get target difficulty: {}", e);
-            ValidationError::BlockHeaderError(BlockHeaderValidationError::ProofOfWorkError(
-                PowError::InvalidProofOfWork,
-            ))
-        })?
-    } else {
-        1.into()
+}
+
+pub fn check_target_difficulty(
+    block_header: &BlockHeader,
+    target: Difficulty,
+    randomx_factory: &RandomXFactory,
+) -> Result<Difficulty, ValidationError>
+{
+    let achieved = match block_header.pow_algo() {
+        PowAlgorithm::Monero => monero_difficulty(block_header, randomx_factory)?,
+        PowAlgorithm::Blake => unimplemented!(),
+        PowAlgorithm::Sha3 => sha3_difficulty(block_header),
     };
-    if block_header.pow.target_difficulty != target {
-        warn!(
-            target: LOG_TARGET,
-            "Recorded header target difficulty {} was incorrect: {}", block_header.pow.target_difficulty, target
-        );
-        return Err(ValidationError::BlockHeaderError(
-            BlockHeaderValidationError::ProofOfWorkError(PowError::InvalidTargetDifficulty),
-        ));
-    }
-    // Now lets compare the achieved and target.
     if achieved < target {
         warn!(
             target: LOG_TARGET,
@@ -146,22 +176,173 @@ pub fn check_achieved_and_target_difficulty<B: BlockchainBackend>(
             BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyTooLow { achieved, target }),
         ));
     }
-    Ok(())
+
+    Ok(achieved)
 }
 
-pub fn is_stxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ValidationError> {
-    // Check if the UTXO MMR contains the specified deleted UTXO hash, the backend stxo_db is not used for this task as
-    // archival nodes and pruning nodes might have different STXOs in their stxo_db as horizon state STXOs are
-    // discarded by pruned nodes.
-    match db.fetch_mmr_leaf_index(MmrTree::Utxo, &hash)? {
-        Some(leaf_index) => {
-            let (_, deleted) = db.fetch_mmr_node(MmrTree::Utxo, leaf_index, None)?;
-            Ok(deleted)
-        },
-        None => Ok(false),
+pub fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
+    // The genesis block has a larger weight than other blocks may have so we have to exclude it here
+    let block_weight = block.body.calculate_weight();
+    if block_weight <= consensus_constants.get_max_block_transaction_weight() || block.header.height == 0 {
+        trace!(
+            target: LOG_TARGET,
+            "SV - Block contents for block #{} : {}; weight {}.",
+            block.header.height,
+            block.body.to_counts_string(),
+            block_weight,
+        );
+
+        Ok(())
+    } else {
+        Err(BlockValidationError::BlockTooLarge).map_err(ValidationError::from)
     }
 }
 
-pub fn is_utxo<T: BlockchainBackend>(db: &T, hash: HashOutput) -> Result<bool, ValidationError> {
-    db.contains(&DbKey::UnspentOutput(hash)).map_err(Into::into)
+pub fn check_accounting_balance(
+    block: &Block,
+    rules: &ConsensusManager,
+    factories: &CryptoFactories,
+) -> Result<(), ValidationError>
+{
+    if block.header.height == 0 {
+        // Gen block does not need to be checked for this.
+        return Ok(());
+    }
+    let offset = &block.header.total_kernel_offset;
+    let total_coinbase = rules.calculate_coinbase_and_fees(block);
+    block
+        .body
+        .validate_internal_consistency(&offset, total_coinbase, factories)
+        .map_err(|err| {
+            warn!(
+                target: LOG_TARGET,
+                "Internal validation failed on block:{}:{}",
+                block.hash().to_hex(),
+                err
+            );
+            ValidationError::TransactionError(err)
+        })
+}
+
+pub fn check_coinbase_output(
+    block: &Block,
+    rules: &ConsensusManager,
+    factories: &CryptoFactories,
+) -> Result<(), ValidationError>
+{
+    let total_coinbase = rules.calculate_coinbase_and_fees(block);
+    block
+        .check_coinbase_output(
+            total_coinbase,
+            rules.consensus_constants(block.header.height),
+            factories,
+        )
+        .map_err(ValidationError::from)
+}
+
+pub fn check_cut_through(block: &Block) -> Result<(), ValidationError> {
+    trace!(
+        target: LOG_TARGET,
+        "Checking cut through on block with hash {}",
+        block.hash().to_hex()
+    );
+    if !block.body.check_cut_through() {
+        warn!(
+            target: LOG_TARGET,
+            "Block validation for {} failed: block no cut through",
+            block.hash().to_hex()
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::NoCutThrough));
+    }
+    Ok(())
+}
+
+pub fn is_all_unique_and_sorted<I: AsRef<[T]>, T: PartialOrd>(items: I) -> bool {
+    let items = items.as_ref();
+    if items.is_empty() {
+        return true;
+    }
+
+    let mut prev_item = &items[0];
+    for item in items.iter().skip(1) {
+        if item <= prev_item {
+            return false;
+        }
+        prev_item = &item;
+    }
+
+    true
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[cfg(test)]
+    mod is_all_unique_and_sorted {
+        use super::*;
+
+        #[test]
+        fn it_returns_true_when_nothing_to_compare() {
+            assert_eq!(is_all_unique_and_sorted::<_, usize>(&[]), true);
+            assert_eq!(is_all_unique_and_sorted(&[1]), true);
+        }
+        #[test]
+        fn it_returns_true_when_unique_and_sorted() {
+            let v = [1, 2, 3, 4, 5];
+            assert_eq!(is_all_unique_and_sorted(&v), true);
+        }
+
+        #[test]
+        fn it_returns_false_when_unsorted() {
+            let v = [2, 1, 3, 4, 5];
+            assert_eq!(is_all_unique_and_sorted(&v), false);
+        }
+        #[test]
+        fn it_returns_false_when_duplicate() {
+            let v = [1, 2, 3, 4, 4];
+            assert_eq!(is_all_unique_and_sorted(&v), false);
+        }
+        #[test]
+        fn it_returns_false_when_duplicate_and_unsorted() {
+            let v = [4, 2, 3, 0, 4];
+            assert_eq!(is_all_unique_and_sorted(&v), false);
+        }
+    }
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+
+        mod check_median_timestamp {
+            use super::*;
+
+            #[test]
+            #[should_panic]
+            fn it_panics_if_empty() {
+                calc_median_timestamp(&[]);
+            }
+
+            #[test]
+            fn it_calculates_the_correct_median_timestamp() {
+                let median_timestamp = calc_median_timestamp(&[0.into()]);
+                assert_eq!(median_timestamp, 0.into());
+
+                let median_timestamp = calc_median_timestamp(&[123.into()]);
+                assert_eq!(median_timestamp, 123.into());
+
+                let median_timestamp = calc_median_timestamp(&[2.into(), 4.into()]);
+                assert_eq!(median_timestamp, 3.into());
+
+                let median_timestamp = calc_median_timestamp(&[0.into(), 100.into(), 0.into()]);
+                assert_eq!(median_timestamp, 100.into());
+
+                let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into()]);
+                assert_eq!(median_timestamp, 2.into());
+
+                let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into(), 5.into()]);
+                assert_eq!(median_timestamp, 3.into());
+            }
+        }
+    }
 }

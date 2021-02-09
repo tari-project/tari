@@ -28,7 +28,7 @@ mod test;
 
 use crate::{
     mempool::service::MempoolHandle,
-    proto::generated::{
+    proto::{
         mempool::{StateResponse, StatsResponse, TxStorage},
         types::{Signature, Transaction},
     },

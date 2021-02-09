@@ -25,15 +25,18 @@ use crate::output_manager_service::{
     protocols::txo_validation_protocol::{TxoValidationRetry, TxoValidationType},
     service::Balance,
     storage::database::PendingTransactionOutputs,
+    TxId,
 };
 use aes_gcm::Aes256Gcm;
 use futures::{stream::Fuse, StreamExt};
-use std::{collections::HashMap, fmt, time::Duration};
+use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{Transaction, TransactionInput, TransactionOutput, UnblindedOutput},
-    types::PrivateKey,
+    transaction_protocol::sender::TransactionSenderMessage,
+    types::PublicKey,
+    ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
 use tari_service_framework::reply_channel::SenderService;
@@ -44,8 +47,8 @@ use tower::Service;
 pub enum OutputManagerRequest {
     GetBalance,
     AddOutput(UnblindedOutput),
-    GetRecipientKey((u64, MicroTari)),
-    GetCoinbaseKey((u64, MicroTari, u64)),
+    GetRecipientTransaction(TransactionSenderMessage),
+    GetCoinbaseTransaction((u64, MicroTari, MicroTari, u64)),
     ConfirmPendingTransaction(u64),
     ConfirmTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
     PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String)),
@@ -61,6 +64,9 @@ pub enum OutputManagerRequest {
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
+    GetPublicRewindKeys,
+    FeeEstimate((MicroTari, MicroTari, u64, u64)),
+    RewindOutputs(Vec<TransactionOutput>),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -68,7 +74,7 @@ impl fmt::Display for OutputManagerRequest {
         match self {
             Self::GetBalance => f.write_str("GetBalance"),
             Self::AddOutput(v) => f.write_str(&format!("AddOutput ({})", v.value)),
-            Self::GetRecipientKey(v) => f.write_str(&format!("GetRecipientKey ({})", v.0)),
+            Self::GetRecipientTransaction(_) => f.write_str("GetRecipientTransaction"),
             Self::ConfirmTransaction(v) => f.write_str(&format!("ConfirmTransaction ({})", v.0)),
             Self::ConfirmPendingTransaction(v) => f.write_str(&format!("ConfirmPendingTransaction ({})", v)),
             Self::PrepareToSendTransaction((_, _, _, msg)) => {
@@ -84,19 +90,23 @@ impl fmt::Display for OutputManagerRequest {
             Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
             Self::ValidateUtxos(validation_type, retry) => f.write_str(&format!("{} ({:?})", validation_type, retry)),
             Self::CreateCoinSplit(v) => f.write_str(&format!("CreateCoinSplit ({})", v.0)),
-            OutputManagerRequest::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
-            OutputManagerRequest::RemoveEncryption => f.write_str("RemoveEncryption"),
-            OutputManagerRequest::GetCoinbaseKey(v) => f.write_str(&format!("GetCoinbaseKey ({})", v.0)),
+            Self::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
+            Self::RemoveEncryption => f.write_str("RemoveEncryption"),
+            Self::GetCoinbaseTransaction(_) => f.write_str("GetCoinbaseTransaction"),
+            Self::GetPublicRewindKeys => f.write_str("GetPublicRewindKeys"),
+            Self::FeeEstimate(_) => f.write_str("FeeEstimate"),
+            Self::RewindOutputs(_) => f.write_str("RewindAndImportOutputs"),
         }
     }
 }
 
 /// API Reply enum
+#[derive(Debug, Clone)]
 pub enum OutputManagerResponse {
     Balance(Balance),
     OutputAdded,
-    RecipientKeyGenerated(PrivateKey),
-    CoinbaseKeyGenerated(PrivateKey),
+    RecipientTransactionGenerated(ReceiverTransactionProtocol),
+    CoinbaseTransaction(Transaction),
     OutputConfirmed,
     PendingTransactionConfirmed,
     TransactionConfirmed,
@@ -113,10 +123,13 @@ pub enum OutputManagerResponse {
     Transaction((u64, Transaction, MicroTari, MicroTari)),
     EncryptionApplied,
     EncryptionRemoved,
+    PublicRewindKeys(Box<PublicRewindKeys>),
+    FeeEstimate(MicroTari),
+    RewindOutputs(Vec<UnblindedOutput>),
 }
 
-pub type OutputManagerEventSender = broadcast::Sender<OutputManagerEvent>;
-pub type OutputManagerEventReceiver = broadcast::Receiver<OutputManagerEvent>;
+pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
+pub type OutputManagerEventReceiver = broadcast::Receiver<Arc<OutputManagerEvent>>;
 
 /// Events that can be published on the Text Message Service Event Stream
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -125,7 +138,14 @@ pub enum OutputManagerEvent {
     TxoValidationSuccess(u64),
     TxoValidationFailure(u64),
     TxoValidationAborted(u64),
+    TxoValidationDelayed(u64),
     Error(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct PublicRewindKeys {
+    pub rewind_public_key: PublicKey,
+    pub rewind_blinding_public_key: PublicKey,
 }
 
 #[derive(Clone)]
@@ -164,35 +184,40 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_recipient_spending_key(
+    pub async fn get_recipient_transaction(
         &mut self,
-        tx_id: u64,
-        amount: MicroTari,
-    ) -> Result<PrivateKey, OutputManagerError>
+        sender_message: TransactionSenderMessage,
+    ) -> Result<ReceiverTransactionProtocol, OutputManagerError>
     {
         match self
             .handle
-            .call(OutputManagerRequest::GetRecipientKey((tx_id, amount)))
+            .call(OutputManagerRequest::GetRecipientTransaction(sender_message))
             .await??
         {
-            OutputManagerResponse::RecipientKeyGenerated(k) => Ok(k),
+            OutputManagerResponse::RecipientTransactionGenerated(rtp) => Ok(rtp),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
 
-    pub async fn get_coinbase_spending_key(
+    pub async fn get_coinbase_transaction(
         &mut self,
-        tx_id: u64,
-        amount: MicroTari,
+        tx_id: TxId,
+        reward: MicroTari,
+        fees: MicroTari,
         block_height: u64,
-    ) -> Result<PrivateKey, OutputManagerError>
+    ) -> Result<Transaction, OutputManagerError>
     {
         match self
             .handle
-            .call(OutputManagerRequest::GetCoinbaseKey((tx_id, amount, block_height)))
+            .call(OutputManagerRequest::GetCoinbaseTransaction((
+                tx_id,
+                reward,
+                fees,
+                block_height,
+            )))
             .await??
         {
-            OutputManagerResponse::CoinbaseKeyGenerated(k) => Ok(k),
+            OutputManagerResponse::CoinbaseTransaction(tx) => Ok(tx),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -216,6 +241,31 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::TransactionToSend(stp) => Ok(stp),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Get a fee estimate for an amount of MicroTari, at a specified fee per gram and given number of kernels and
+    /// outputs.
+    pub async fn fee_estimate(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        num_kernels: u64,
+        num_outputs: u64,
+    ) -> Result<MicroTari, OutputManagerError>
+    {
+        match self
+            .handle
+            .call(OutputManagerRequest::FeeEstimate((
+                amount,
+                fee_per_gram,
+                num_kernels,
+                num_outputs,
+            )))
+            .await??
+        {
+            OutputManagerResponse::FeeEstimate(fee) => Ok(fee),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -311,6 +361,13 @@ impl OutputManagerHandle {
         }
     }
 
+    pub async fn get_rewind_public_keys(&mut self) -> Result<PublicRewindKeys, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::GetPublicRewindKeys).await?? {
+            OutputManagerResponse::PublicRewindKeys(rk) => Ok(*rk),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn set_base_node_public_key(&mut self, public_key: CommsPublicKey) -> Result<(), OutputManagerError> {
         match self
             .handle
@@ -375,6 +432,17 @@ impl OutputManagerHandle {
     pub async fn remove_encryption(&mut self) -> Result<(), OutputManagerError> {
         match self.handle.call(OutputManagerRequest::RemoveEncryption).await?? {
             OutputManagerResponse::EncryptionRemoved => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn rewind_outputs(
+        &mut self,
+        outputs: Vec<TransactionOutput>,
+    ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
+    {
+        match self.handle.call(OutputManagerRequest::RewindOutputs(outputs)).await?? {
+            OutputManagerResponse::RewindOutputs(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

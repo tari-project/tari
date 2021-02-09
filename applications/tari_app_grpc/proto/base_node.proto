@@ -22,8 +22,6 @@
 syntax = "proto3";
 
 
-import "google/protobuf/wrappers.proto";
-import "google/protobuf/timestamp.proto";
 import "types.proto";
 
 package tari.rpc;
@@ -52,26 +50,34 @@ service BaseNode {
     rpc GetNewBlockTemplate(PowAlgo) returns (NewBlockTemplateResponse);
     // Construct a new block from a provided template
     rpc GetNewBlock(NewBlockTemplate) returns (GetNewBlockResult);
-    // Submit a new block for propogation
+    // Submit a new block for propagation
     rpc SubmitBlock(Block) returns (Empty);
+    // Submit a transaction for propagation
+    rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
+    // Get the base node sync information
+    rpc GetSyncInfo(Empty) returns (SyncInfoResponse);
     // Get the base node tip information
     rpc GetTipInfo(Empty) returns (TipInfoResponse);
     // Search for blocks containing the specified kernels
     rpc SearchKernels(SearchKernelsRequest) returns (stream HistoricalBlock);
+    // Fetch any utxos that exist in the main chain
+    rpc FetchMatchingUtxos(FetchMatchingUtxosRequest) returns (stream FetchMatchingUtxosResponse);
+
+    // get all peers from the base node
+    rpc GetPeers(GetPeersRequest) returns (stream GetPeersResponse);
 }
 
 /// return type of GetTipInfo
 message TipInfoResponse{
     MetaData metadata = 1;
+    bool initial_sync_achieved = 2;
 }
 /// return type of GetNewBlockTemplate
 message NewBlockTemplateResponse{
     NewBlockTemplate new_block_template = 1;
-    uint64 block_reward = 2;
+    bool initial_sync_achieved = 3;
+    MinerData miner_data = 4;
 }
-
-/// An Empty placeholder for endpoints without request parameters
-message Empty {}
 
 // Network difficulty response
 message NetworkDifficultyResponse {
@@ -79,6 +85,7 @@ message NetworkDifficultyResponse {
     uint64 estimated_hash_rate = 2;
     uint64 height = 3;
     uint64 timestamp = 4;
+    uint64 pow_algo = 5;
 }
 
 // A generic single value response for a specific height
@@ -142,6 +149,7 @@ message CalcTimingResponse {
     uint64 min = 2;
     double avg = 3;
 }
+
 // The request used for querying headers from the base node. The parameters `from_height` and `num_headers` can be used
 // to page through the current best chain.
 message ListHeadersRequest {
@@ -170,23 +178,27 @@ message GetBlocksResponse {
     repeated HistoricalBlock blocks = 1;
 }
 
-
 enum Sorting {
     SORTING_DESC = 0;
     SORTING_ASC = 1;
 }
 
-
 message MetaData {
-        // The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
-        uint64 height_of_longest_chain = 1;
-        // The block hash of the current tip of the longest valid chain, or `None` for an empty chain
-        bytes best_block = 2;
-        // The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
-        // tracked (i.e. the database is in full archival mode).
-        uint64 pruning_horizon = 4;
-        // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
-        bytes accumulated_difficulty = 5;
+    // The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
+    uint64 height_of_longest_chain = 1;
+    // The block hash of the current tip of the longest valid chain, or `None` for an empty chain
+    bytes best_block = 2;
+    // The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
+    // tracked (i.e. the database is in full archival mode).
+    uint64 pruning_horizon = 4;
+    // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
+    bytes accumulated_difficulty = 5;
+}
+
+message SyncInfoResponse {
+        uint64 tip_height = 1;
+        uint64 local_height = 2;
+        repeated bytes peer_node_id = 3;
 }
 
 // This is the message that is returned for a miner after it asks for a new block.
@@ -195,8 +207,7 @@ message GetNewBlockResult{
     bytes block_hash = 1;
     // This is the completed block
     Block block = 2;
-    // This is the merge_mining hash of the completed block.
-    MinerData miner_data = 3;
+    bytes merge_mining_hash =3;
 }
 
 // This is mining data for the miner asking for a new block
@@ -204,10 +215,43 @@ message MinerData{
     PowAlgo algo = 1;
     uint64 target_difficulty = 2;
     uint64 reward = 3;
-    bytes merge_mining_hash =4;
+//    bytes merge_mining_hash =4;
+    uint64 total_fees = 5;
 }
 
 // This is the request type for the Search Kernels rpc
 message SearchKernelsRequest{
     repeated Signature signatures = 1;
+}
+
+message FetchMatchingUtxosRequest {
+    repeated bytes hashes = 1;
+}
+
+message FetchMatchingUtxosResponse {
+    TransactionOutput output = 1;
+}
+
+// This is the request type of the get all peers rpc call
+message GetPeersResponse{
+    Peer peer = 1;
+}
+
+message GetPeersRequest{}
+
+message SubmitTransactionRequest {
+    Transaction transaction  = 1;
+}
+
+message SubmitTransactionResponse {
+    SubmitTransactionResult result =1;
+}
+
+enum SubmitTransactionResult {
+    NONE = 0;
+    ACCEPTED = 1;
+    NOT_PROCESSABLE_AT_THIS_TIME = 2;
+    ALREADY_MINED =  3;
+    REJECTED = 4;
+
 }

@@ -26,18 +26,18 @@ use log::*;
 use std::{fmt, fmt::Formatter, net::SocketAddr, path::Path};
 use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_comms::{
-    multiaddr::{Multiaddr, Protocol},
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+    connectivity::ConnectivityError,
+    peer_manager::NodeId,
+    protocol::rpc::RpcError,
     socks,
     tor,
     tor::TorIdentity,
     transports::SocksConfig,
     types::CommsPublicKey,
 };
-use tari_core::transactions::types::PublicKey;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_core::tari_utilities::hex::Hex;
 use tari_p2p::transport::{TorConfig, TransportType};
-use tari_wallet::util::emoji::EmojiId;
+use tari_wallet::{error::WalletError, output_manager_service::error::OutputManagerError, util::emoji::EmojiId};
 use tokio::{runtime, runtime::Runtime};
 
 pub const LOG_TARGET: &str = "tari::application";
@@ -52,6 +52,10 @@ pub enum ExitCodes {
     GrpcError(String),
     InputError(String),
     CommandError(String),
+    IOError(String),
+    RecoveryError(String),
+    NetworkError(String),
+    ConversionError(String),
 }
 
 impl ExitCodes {
@@ -64,6 +68,10 @@ impl ExitCodes {
             Self::GrpcError(_) => 105,
             Self::InputError(_) => 106,
             Self::CommandError(_) => 107,
+            Self::IOError(_) => 108,
+            Self::RecoveryError(_) => 109,
+            Self::NetworkError(_) => 110,
+            Self::ConversionError(_) => 111,
         }
     }
 }
@@ -75,6 +83,40 @@ impl From<tari_common::ConfigError> for ExitCodes {
     }
 }
 
+impl From<WalletError> for ExitCodes {
+    fn from(err: WalletError) -> Self {
+        error!(target: LOG_TARGET, "{}", err);
+        Self::WalletError(err.to_string())
+    }
+}
+
+impl From<OutputManagerError> for ExitCodes {
+    fn from(err: OutputManagerError) -> Self {
+        error!(target: LOG_TARGET, "{}", err);
+        Self::WalletError(err.to_string())
+    }
+}
+
+impl From<ConnectivityError> for ExitCodes {
+    fn from(err: ConnectivityError) -> Self {
+        error!(target: LOG_TARGET, "{}", err);
+        Self::NetworkError(err.to_string())
+    }
+}
+
+impl From<RpcError> for ExitCodes {
+    fn from(err: RpcError) -> Self {
+        error!(target: LOG_TARGET, "{}", err);
+        Self::NetworkError(err.to_string())
+    }
+}
+
+impl ExitCodes {
+    pub fn grpc<M: std::fmt::Display>(err: M) -> Self {
+        ExitCodes::GrpcError(format!("GRPC connection error: {}", err))
+    }
+}
+
 impl fmt::Display for ExitCodes {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -83,13 +125,17 @@ impl fmt::Display for ExitCodes {
             ExitCodes::GrpcError(e) => write!(f, "GRPC Error ({}): {}", self.as_i32(), e),
             ExitCodes::InputError(e) => write!(f, "Input Error ({}): {}", self.as_i32(), e),
             ExitCodes::CommandError(e) => write!(f, "Command Error ({}): {}", self.as_i32(), e),
+            ExitCodes::IOError(e) => write!(f, "IO Error ({}): {}", self.as_i32(), e),
+            ExitCodes::RecoveryError(e) => write!(f, "Recovery Error ({}): {}", self.as_i32(), e),
+            ExitCodes::NetworkError(e) => write!(f, "Network Error ({}): {}", self.as_i32(), e),
+            ExitCodes::ConversionError(e) => write!(f, "Conversion Error ({}): {}", self.as_i32(), e),
             _ => write!(f, "{}", self.as_i32()),
         }
     }
 }
 
 /// Creates a transport type for the console wallet using the provided configuration
-/// ## Paramters
+/// ## Parameters
 /// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
 ///
 /// ##Returns
@@ -100,22 +146,13 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
         "Console wallet transport is set to '{:?}'", config.comms_transport
     );
 
-    let add_to_port = |addr: Multiaddr, n| -> Multiaddr {
-        addr.iter()
-            .map(|p| match p {
-                Protocol::Tcp(port) => Protocol::Tcp(port + n),
-                p => p,
-            })
-            .collect()
-    };
-
     match config.comms_transport.clone() {
         CommsTransport::Tcp {
             listener_address,
             tor_socks_address,
             tor_socks_auth,
         } => TransportType::Tcp {
-            listener_address: add_to_port(listener_address, 1),
+            listener_address,
             tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
                 proxy_address,
                 authentication: tor_socks_auth.map(convert_socks_authentication).unwrap_or_default(),
@@ -159,7 +196,6 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                 },
                 identity: identity.map(Box::new),
                 port_mapping,
-                // TODO: make configurable
                 socks_address_override,
                 socks_auth: socks::Authentication::None,
             })
@@ -173,7 +209,7 @@ pub fn setup_wallet_transport_type(config: &GlobalConfig) -> TransportType {
                 proxy_address,
                 authentication: convert_socks_authentication(auth),
             },
-            listener_address: add_to_port(listener_address, 1),
+            listener_address,
         },
     }
 }
@@ -225,71 +261,6 @@ pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
         .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
 }
 
-/// Parses the seed peers from a delimited string into a list of peers
-/// ## Parameters
-/// `seeds` - A string of peers delimited by '::'
-///
-/// ## Returns
-/// A list of peers, peers which do not have a valid public key are excluded
-pub fn parse_peer_seeds(seeds: &[String]) -> Vec<Peer> {
-    info!("Parsing {} peers", seeds.len());
-    let mut result = Vec::with_capacity(seeds.len());
-    for s in seeds {
-        let parts: Vec<&str> = s.split("::").map(|s| s.trim()).collect();
-        if parts.len() != 2 {
-            warn!(target: LOG_TARGET, "Invalid peer seed: {}", s);
-            continue;
-        }
-        let pub_key = match PublicKey::from_hex(parts[0]) {
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "{} is not a valid peer seed. The public key is incorrect. {}",
-                    s,
-                    e.to_string()
-                );
-                continue;
-            },
-            Ok(p) => p,
-        };
-        let addr = match parts[1].parse::<Multiaddr>() {
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "{} is not a valid peer seed. The address is incorrect. {}",
-                    s,
-                    e.to_string()
-                );
-                continue;
-            },
-            Ok(a) => a,
-        };
-        let node_id = match NodeId::from_key(&pub_key) {
-            Err(e) => {
-                warn!(
-                    target: LOG_TARGET,
-                    "{} is not a valid peer seed. A node id couldn't be derived from the public key. {}",
-                    s,
-                    e.to_string()
-                );
-                continue;
-            },
-            Ok(id) => id,
-        };
-        let peer = Peer::new(
-            pub_key,
-            node_id,
-            addr.into(),
-            PeerFlags::default(),
-            PeerFeatures::COMMUNICATION_NODE,
-            &[],
-            Default::default(),
-        );
-        result.push(peer);
-    }
-    result
-}
-
 /// Returns a CommsPublicKey from either a emoji id or a public key
 pub fn parse_emoji_id_or_public_key(key: &str) -> Option<CommsPublicKey> {
     EmojiId::str_to_pubkey(&key.trim().replace('|', ""))
@@ -302,4 +273,11 @@ pub fn parse_emoji_id_or_public_key_or_node_id(key: &str) -> Option<Either<Comms
     parse_emoji_id_or_public_key(key)
         .map(Either::Left)
         .or_else(|| NodeId::from_hex(key).ok().map(Either::Right))
+}
+
+pub fn either_to_node_id(either: Either<CommsPublicKey, NodeId>) -> NodeId {
+    match either {
+        Either::Left(pk) => NodeId::from_public_key(&pk),
+        Either::Right(n) => n,
+    }
 }

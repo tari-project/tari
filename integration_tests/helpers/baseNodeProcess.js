@@ -1,37 +1,48 @@
 const {spawnSync, spawn, execSync} = require('child_process');
 const {expect} = require('chai');
-var fs = require('fs');
+const fs = require('fs');
 const BaseNodeClient = require("./baseNodeClient");
-const {sleep, getRandomInt} = require("./util");
+const {getFreePort} = require("./util");
+const dateFormat = require('dateformat');
+const {createEnv} = require("./config");
 
 class BaseNodeProcess {
-    constructor(name, nodeFile) {
-        this.port = getRandomInt(19000, 20000);
-        this.grpcPort = getRandomInt(50000, 51000);
-        this.name = name || "Basenode" + this.port;
-        this.nodeFile = nodeFile || "newnode_id.json";
-
-        this.baseDir = "./temp/base_nodes/" + this.name;
-        console.log("POrt:", this.port);
-        console.log("GRPC:", this.grpcPort);
+    constructor(name, options, nodeFile) {
+        this.name = name;
+        this.nodeFile = nodeFile;
+        this.options = options;
     }
 
 
-    init() {
-        return this.runSync("cargo",
+    async init() {
+        this.port = await getFreePort(19000, 25000);
+        this.grpcPort = await getFreePort(19000, 25000);
+        this.name = `Basenode${this.port}-${this.name}`;
+        this.nodeFile = this.nodeFile || "nodeid.json";
+        this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
+        await this.run("cargo",["run", "--release", "--bin", "tari_base_node", "--", "--base-path", ".", "--init", "--create-id"]);
+        // console.log("POrt:", this.port);
+        // console.log("GRPC:", this.grpcPort);
+        // console.log(`Starting node ${this.name}...`);
 
-            ["run", "--release", "--bin", "tari_base_node", "--", "--base-path", ".", "--create-id", "--init"]);
     }
 
 
     ensureNodeInfo() {
+        while (true) {
+            if (fs.existsSync(this.baseDir + "/" + this.nodeFile)) {
+                break;
+            }
+        }
+
         this.nodeInfo = JSON.parse(fs.readFileSync(this.baseDir + "/" + this.nodeFile, 'utf8'));
+
     }
 
     peerAddress() {
         this.ensureNodeInfo();
         const addr = this.nodeInfo.public_key + "::" + this.nodeInfo.public_address;
-        console.log("Peer:", addr);
+        // console.log("Peer:", addr);
         return addr;
     }
 
@@ -39,95 +50,77 @@ class BaseNodeProcess {
         this.peerSeeds = addresses.join(",");
     }
 
-
-    createEnvs() {
-        let envs = {
-
-            TARI_BASE_NODE__NETWORK: "localnet",
-            TARI_BASE_NODE__LOCALNET__DATA_DIR: "localnet",
-            TARI_BASE_NODE__LOCALNET__DB_TYPE: "lmdb",
-            TARI_BASE_NODE__LOCALNET__ORPHAN_STORAGE_CAPACITY: "10",
-            TARI_BASE_NODE__LOCALNET__PRUNING_HORIZON: "0",
-            TARI_BASE_NODE__LOCALNET__PRUNED_MODE_CLEANUP_INTERVAL: "10000",
-            TARI_BASE_NODE__LOCALNET__CORE_THREADS: "10",
-            TARI_BASE_NODE__LOCALNET__MAX_THREADS: "512",
-            TARI_BASE_NODE__LOCALNET__IDENTITY_FILE: this.nodeFile,
-            TARI_BASE_NODE__LOCALNET__TOR_IDENTITY_FILE: "node_tor_id.json",
-            TARI_BASE_NODE__LOCALNET__WALLET_IDENTITY_FILE: "walletid.json",
-            TARI_BASE_NODE__LOCALNET__WALLET_TOR_IDENTITY_FILE: "wallet_tor_id.json",
-            TARI_BASE_NODE__LOCALNET__TRANSPORT: "tcp",
-            TARI_BASE_NODE__LOCALNET__TCP_LISTENER_ADDRESS: "/ip4/0.0.0.0/tcp/" + this.port,
-            TARI_BASE_NODE__LOCALNET__ALLOW_TEST_ADDRESSES: 'true',
-            TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS: "/ip4/10.0.0.104/tcp/" + this.port,
-            TARI_BASE_NODE__LOCALNET__GRPC_ENABLED: "true",
-            TARI_BASE_NODE__LOCALNET__ENABLE_WALLET: true,
-            TARI_BASE_NODE__LOCALNET__GRPC_ADDRESS: "127.0.0.1:" + this.grpcPort,
-            TARI_BASE_NODE__LOCALNET__BLOCK_SYNC_STRATEGY: "ViaBestChainMetadata",
-            TARI_BASE_NODE__LOCALNET__ENABLE_MINING: "false",
-            TARI_BASE_NODE__LOCALNET__NUM_MINING_THREADS: "1",
-            TARI_BASE_NODE__LOCALNET__ORPHAN_DB_CLEAN_OUT_THRESHOLD: "0",
-            TARI_BASE_NODE__LOCALNET__GRPC_WALLET_ADDRESS: "127.0.0.1:5999",
-            TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_URL: "aasdf",
-            TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USE_AUTH: "false",
-            TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USERNAME: "asdf",
-            TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_PASSWORD: "asdf",
-            TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: "127.0.0.1:50071"
-        };
-
-        if (this.peerSeeds) {
-            envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = this.peerSeeds;
-        }
-        return envs;
+    getGrpcAddress() {
+        let address = "127.0.0.1:" + this.grpcPort;
+        console.log("Base Node GRPC Address:",address);
+        return address;
     }
 
 
-    runSync(cmd, args) {
+    //
+    // runSync(cmd, args) {
+    //
+    //     if (!fs.existsSync(this.baseDir)) {
+    //         fs.mkdirSync(this.baseDir, {recursive: true});
+    //     }
+    //     var ps = spawnSync(cmd, args, {
+    //         cwd: this.baseDir,
+    //         shell: true,
+    //         env: {...process.env, ...this.createEnvs()}
+    //     });
+    //
+    //     expect(ps.error).to.be.an('undefined');
+    //
+    //     this.ps = ps;
+    //     return ps;
+    //
+    // }
 
-        if (!fs.existsSync(this.baseDir)) {
-            fs.mkdirSync(this.baseDir, {recursive: true});
-        }
-        var ps = spawnSync(cmd, args, {
-            cwd: this.baseDir,
-            shell: true,
-            env: {...process.env, ...this.createEnvs()}
+    run(cmd, args, saveFile) {
+        return new Promise((resolve, reject) => {
+            if (!fs.existsSync(this.baseDir)) {
+                fs.mkdirSync(this.baseDir, {recursive: true});
+                fs.mkdirSync(this.baseDir + "/log", {recursive: true});
+            }
+
+            let envs = createEnv(this.name,false, this.nodeFile,"127.0.0.1", "8082","8081","127.0.0.1",this.grpcPort,this.port,"127.0.0.1:8080",this.options,this.peerSeeds);
+
+            var ps = spawn(cmd, args, {
+                cwd: this.baseDir,
+                shell: true,
+                env: {...process.env, ...envs}
+            });
+
+            ps.stdout.on('data', (data) => {
+                //console.log(`stdout: ${data}`);
+                fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
+                if (data.toString().match(/Copyright 2019-2020. The Tari Development Community/)) {
+                    resolve(ps);
+                }
+            });
+
+            ps.stderr.on('data', (data) => {
+                // console.error(`stderr: ${data}`);
+                fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString());
+            });
+
+            ps.on('close', (code) => {
+                if (code) {
+                    console.log(`child process exited with code ${code}`);
+                    reject(`child process exited with code ${code}`);
+                } else {
+                    resolve(ps);
+                }
+            });
+
+            expect(ps.error).to.be.an('undefined');
+            this.ps = ps;
         });
-
-        expect(ps.error).to.be.an('undefined');
-
-        return ps;
-
-    }
-
-    run(cmd, args) {
-        if (!fs.existsSync(this.baseDir)) {
-            fs.mkdirSync(this.baseDir, {recursive: true});
-        }
-        var ps = spawn(cmd, args, {
-            cwd: this.baseDir,
-            shell: true,
-            env: {...process.env, ...this.createEnvs()}
-        });
-
-        ps.stdout.on('data', (data) => {
-            //console.log(`stdout: ${data}`);
-        });
-
-        ps.stderr.on('data', (data) => {
-            console.error(`stderr: ${data}`);
-        });
-
-        ps.on('close', (code) => {
-            console.log(`child process exited with code ${code}`);
-        });
-
-        expect(ps.error).to.be.an('undefined');
-        return ps;
-
     }
 
     async startNew() {
         await this.init();
-        return this.start();
+        return await this.start();
     }
 
     async startAndConnect() {
@@ -135,10 +128,12 @@ class BaseNodeProcess {
         return this.createGrpcClient();
     }
 
-    async start() {
-        var ps = this.run("cargo", ["run", "--release", "--bin tari_base_node", "--", "--base-path", "."]);
-        await sleep(6000);
-        return ps;
+    async start () {
+        return await this.run("cargo",["run", "--release", "--bin", "tari_base_node", "--", "--base-path", "."]);
+    }
+
+    stop() {
+        this.ps.kill("SIGINT");
     }
 
     createGrpcClient() {

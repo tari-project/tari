@@ -102,6 +102,12 @@ pub enum TransactionSenderMessage {
     Multiple,
 }
 
+impl TransactionSenderMessage {
+    pub fn new_single_round_message(single_round_data: SingleRoundSenderData) -> Self {
+        Self::Single(Box::new(single_round_data))
+    }
+}
+
 //----------------------------------------  Sender State Protocol ----------------------------------------------------//
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SenderTransactionProtocol {
@@ -117,34 +123,22 @@ impl SenderTransactionProtocol {
 
     /// Convenience method to check whether we're receiving recipient data
     pub fn is_collecting_single_signature(&self) -> bool {
-        match &self.state {
-            SenderState::CollectingSingleSignature(_) => true,
-            _ => false,
-        }
+        matches!(&self.state, SenderState::CollectingSingleSignature(_))
     }
 
     /// Convenience method to check whether we're ready to send a message to a single recipient
     pub fn is_single_round_message_ready(&self) -> bool {
-        match &self.state {
-            SenderState::SingleRoundMessageReady(_) => true,
-            _ => false,
-        }
+        matches!(&self.state, SenderState::SingleRoundMessageReady(_))
     }
 
     /// Method to determine if we are in the SenderState::Finalizing state
     pub fn is_finalizing(&self) -> bool {
-        match &self.state {
-            SenderState::Finalizing(_) => true,
-            _ => false,
-        }
+        matches!(&self.state, SenderState::Finalizing(_))
     }
 
     /// Method to determine if we are in the SenderState::FinalizedTransaction state
     pub fn is_finalized(&self) -> bool {
-        match &self.state {
-            SenderState::FinalizedTransaction(_) => true,
-            _ => false,
-        }
+        matches!(&self.state, SenderState::FinalizedTransaction(_))
     }
 
     pub fn get_transaction(&self) -> Result<&Transaction, TPE> {
@@ -166,10 +160,7 @@ impl SenderTransactionProtocol {
 
     /// Method to determine if the transaction protocol has failed
     pub fn is_failed(&self) -> bool {
-        match &self.state {
-            SenderState::Failed(_) => true,
-            _ => false,
-        }
+        matches!(&self.state, SenderState::Failed(_))
     }
 
     /// Method to return the error behind a failure, if one has occurred
@@ -556,12 +547,17 @@ mod test {
         transaction_protocol::{
             sender::SenderTransactionProtocol,
             single_receiver::SingleReceiverTransactionProtocol,
+            RewindData,
             TransactionProtocolError,
         },
-        types::CryptoFactories,
+        types::{CryptoFactories, PrivateKey, PublicKey},
     };
     use rand::rngs::OsRng;
-    use tari_crypto::{common::Blake256, tari_utilities::hex::Hex};
+    use tari_crypto::{
+        common::Blake256,
+        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+        tari_utilities::hex::Hex,
+    };
 
     #[test]
     fn zero_recipients() {
@@ -624,6 +620,7 @@ mod test {
             b.spend_key,
             OutputFeatures::default(),
             &factories,
+            None,
         )
         .unwrap();
         // Alice gets message back, deserializes it, etc
@@ -653,7 +650,7 @@ mod test {
         let a = TestParams::new();
         // Bob's parameters
         let b = TestParams::new();
-        let (utxo, input) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
+        let (utxo, input) = make_input(&mut OsRng, MicroTari(25000), &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1);
         let fee = Fee::calculate(MicroTari(20), 1, 1, 2);
         builder
@@ -663,7 +660,7 @@ mod test {
             .with_private_nonce(a.nonce.clone())
             .with_change_secret(a.change_key.clone())
             .with_input(utxo.clone(), input)
-            .with_amount(0, MicroTari(500));
+            .with_amount(0, MicroTari(5000));
         let mut alice = builder.build::<Blake256>(&factories).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
@@ -689,6 +686,7 @@ mod test {
             b.spend_key,
             OutputFeatures::default(),
             &factories,
+            None,
         )
         .unwrap();
         println!(
@@ -749,6 +747,7 @@ mod test {
             b.spend_key,
             OutputFeatures::default(),
             &factories,
+            None,
         )
         .unwrap();
         // Alice gets message back, deserializes it, etc
@@ -810,5 +809,118 @@ mod test {
             Ok(_) => assert!(true),
             Err(e) => panic!("Unexpected error: {:?}", e),
         };
+    }
+
+    #[test]
+    fn single_recipient_with_rewindable_change_and_receiver_outputs() {
+        let factories = CryptoFactories::default();
+        // Alice's parameters
+        let a = TestParams::new();
+        // Bob's parameters
+        let b = TestParams::new();
+        let alice_value = MicroTari(25000);
+        let (utxo, input) = make_input(&mut OsRng, alice_value, &factories.commitment);
+
+        // Rewind params
+        let rewind_key = PrivateKey::random(&mut OsRng);
+        let rewind_blinding_key = PrivateKey::random(&mut OsRng);
+        let rewind_public_key = PublicKey::from_secret_key(&rewind_key);
+        let rewind_blinding_public_key = PublicKey::from_secret_key(&rewind_blinding_key);
+        let proof_message = b"alice__12345678910111";
+
+        let rewind_data = RewindData {
+            rewind_key: rewind_key.clone(),
+            rewind_blinding_key: rewind_blinding_key.clone(),
+            proof_message: proof_message.clone(),
+        };
+
+        let mut builder = SenderTransactionProtocol::builder(1);
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroTari(20))
+            .with_offset(a.offset.clone())
+            .with_private_nonce(a.nonce.clone())
+            .with_rewindable_change_secret(a.change_key.clone(), rewind_data)
+            .with_input(utxo.clone(), input)
+            .with_amount(0, MicroTari(5000));
+        let mut alice = builder.build::<Blake256>(&factories).unwrap();
+        assert!(alice.is_single_round_message_ready());
+        let msg = alice.build_single_round_message().unwrap();
+
+        let change = alice_value - msg.amount - msg.metadata.fee;
+
+        println!(
+            "amount: {}, fee: {},  Public Excess: {}, Nonce: {}, Change: {}",
+            msg.amount,
+            msg.metadata.fee,
+            msg.public_excess.to_hex(),
+            msg.public_nonce.to_hex(),
+            change
+        );
+
+        // Send message down the wire....and wait for response
+        assert!(alice.is_collecting_single_signature());
+
+        // Receiver gets message, deserializes it etc, and creates his response
+        let bob_info = SingleReceiverTransactionProtocol::create(
+            &msg,
+            b.nonce,
+            b.spend_key,
+            OutputFeatures::default(),
+            &factories,
+            None,
+        )
+        .unwrap();
+
+        // Alice gets message back, deserializes it, etc
+        alice
+            .add_single_recipient_info(bob_info.clone(), &factories.range_proof)
+            .unwrap();
+        // Transaction should be complete
+        assert!(alice.is_finalizing());
+        match alice.finalize(KernelFeatures::empty(), &factories) {
+            Ok(_0) => (),
+            Err(e) => panic!("{:?}", e),
+        };
+
+        assert!(alice.is_finalized());
+        let tx = alice.get_transaction().unwrap();
+        assert_eq!(tx.body.outputs().len(), 2);
+
+        match tx.body.outputs()[0].rewind_range_proof_value_only(
+            &factories.range_proof,
+            &rewind_public_key,
+            &rewind_blinding_public_key,
+        ) {
+            Ok(rr) => {
+                assert_eq!(rr.committed_value, change);
+                assert_eq!(&rr.proof_message, proof_message);
+                let full_rewind_result = tx.body.outputs()[0]
+                    .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
+                    .unwrap();
+
+                assert_eq!(full_rewind_result.committed_value, change);
+                assert_eq!(&full_rewind_result.proof_message, proof_message);
+                assert_eq!(full_rewind_result.blinding_factor, a.change_key);
+            },
+            Err(_) => {
+                let rr = tx.body.outputs()[1]
+                    .rewind_range_proof_value_only(
+                        &factories.range_proof,
+                        &rewind_public_key,
+                        &rewind_blinding_public_key,
+                    )
+                    .expect("If the first output isn't alice's then the second must be");
+                assert_eq!(rr.committed_value, change);
+                assert_eq!(&rr.proof_message, proof_message);
+                let full_rewind_result = tx.body.outputs()[1]
+                    .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
+                    .unwrap();
+
+                assert_eq!(full_rewind_result.committed_value, change);
+                assert_eq!(&full_rewind_result.proof_message, proof_message);
+                assert_eq!(full_rewind_result.blinding_factor, a.change_key);
+            },
+        }
     }
 }

@@ -29,8 +29,7 @@ use crate::{
     MutableMmr,
 };
 use digest::Digest;
-use serde::export::PhantomData;
-use std::convert::TryFrom;
+use std::{convert::TryFrom, marker::PhantomData};
 
 pub type PrunedMmr<D> = MerkleMountainRange<D, PrunedHashSet>;
 pub type PrunedMutableMmr<D> = MutableMmr<D, PrunedHashSet>;
@@ -95,6 +94,7 @@ where
     for index in deletions {
         pruned_mmr.delete(index);
     }
+    pruned_mmr.compress();
     Ok(pruned_mmr.get_merkle_root()?)
 }
 

@@ -71,9 +71,8 @@ pub fn key_value(line: &str) -> Result<(Cow<'_, str>, Vec<Cow<'_, str>>), ParseE
     let (rest, identifier) = take_while1(|ch| ch != '=')(line)?;
     let (rest, _) = chr('=')(rest)?;
 
-    let lines = rest.split('\n').collect::<Vec<_>>();
+    let lines = rest.split('\n');
     let parts = lines
-        .into_iter()
         .filter(|s| !s.is_empty())
         .map(|line| {
             // TODO: this doesnt correctly handle responses with inner quotes i.e "Hello\" world"

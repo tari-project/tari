@@ -42,7 +42,7 @@ impl<'a> Initializing<'a> {
         debug!(target: LOG_TARGET, "Waiting for this node to come online...");
         while let Err(err) = connectivity.wait_for_connectivity(Duration::from_secs(10)).await {
             match err {
-                ConnectivityError::OnlineWaitTimeout => {
+                ConnectivityError::OnlineWaitTimeout(_) => {
                     debug!(target: LOG_TARGET, "Still waiting for this node to come online...");
                 },
                 _ => {

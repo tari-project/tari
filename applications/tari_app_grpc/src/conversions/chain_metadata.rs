@@ -21,15 +21,15 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::tari_rpc as grpc;
-use tari_core::chain_storage::ChainMetadata;
+use tari_common_types::chain_metadata::ChainMetadata;
 
 impl From<ChainMetadata> for grpc::MetaData {
     fn from(meta: ChainMetadata) -> Self {
-        let diff = meta.accumulated_difficulty.unwrap_or_else(|| 0);
+        let diff = meta.accumulated_difficulty();
         Self {
-            height_of_longest_chain: meta.height_of_longest_chain.unwrap_or(0),
-            best_block: meta.best_block.unwrap_or_default(),
-            pruning_horizon: meta.pruning_horizon,
+            height_of_longest_chain: meta.height_of_longest_chain(),
+            best_block: meta.best_block().clone(),
+            pruning_horizon: meta.pruning_horizon(),
             accumulated_difficulty: diff.to_be_bytes().to_vec(),
         }
     }

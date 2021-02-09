@@ -1,13 +1,15 @@
 @echo off
 
 rem Control variables
-rem - XMRig {Note: `powershell` cannot `expand-archive` to `C:\Program Files (x86)`}
-rem   - Download 'XMRig' at https://github.com/xmrig/xmrig/releases/`
+rem - XMRig latest {Note: `powershell` cannot `expand-archive` to `C:\Program Files (x86)`}
+rem   - Download `XMRig` at `https://github.com/xmrig/xmrig/releases/`
 
 set xmrig_zip=xmrig-win64.zip
 set xmrig_folder=%USERPROFILE%\.xmrig
 set xmrig_runtime=xmrig.exe
-set xmrig_repo=https://api.github.com/repos/xmrig/xmrig/releases/latest
+rem TODO: Standardize on version 6.6.2 for now as later version(s) has a breaking interface change with the merge mining proxy
+rem set xmrig_repo=https://api.github.com/repos/xmrig/xmrig/releases/latest
+set xmrig_repo=https://api.github.com/repos/xmrig/xmrig/releases
 
 echo Downloading and installing XMRig...
 echo.
@@ -19,7 +21,7 @@ goto END:
 :INSTALL_XMRIG
 rem Download and install
 del /f "%TEMP%\%xmrig_zip%" 2>null
-powershell "Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process; .\get-xmrig-win.ps1"
+powershell "Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process; .\get_xmrig_win.ps1"
 powershell Expand-Archive -Force -LiteralPath "%TEMP%\%xmrig_zip%" -DestinationPath '%xmrig_folder%'
 powershell "Get-Childitem -File -Recurse '%xmrig_folder%\' | Move-Item  -Force -Destination '%xmrig_folder%'"
 powershell "Get-Childitem -Directory $env:USERPROFILE\.xmrig | Remove-item -Force"

@@ -20,31 +20,47 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::validation::{and_then::AndThenValidator, error::ValidationError};
+use crate::{
+    blocks::{Block, BlockHeader},
+    chain_storage::{BlockHeaderAccumulatedData, BlockHeaderAccumulatedDataBuilder, BlockchainBackend, ChainBlock},
+    transactions::{transaction::Transaction, types::Commitment},
+    validation::error::ValidationError,
+};
 
-pub type StatefulValidator<T, B> = Box<dyn StatefulValidation<T, B>>;
-pub type Validator<T> = Box<dyn Validation<T>>;
-
-/// The "stateful" version of the `Validation` trait. This trait allows extra context to be passed through to the
-/// validate function. Typically this will be an implementation of the `BlockchainBackend` trait.
-pub trait StatefulValidation<T, B>: Send + Sync {
-    /// General validation code that can run independent of external state
-    fn validate(&self, item: &T, db: &B) -> Result<(), ValidationError>;
+/// A validator that determines if a block body is valid, assuming that the header has already been
+/// validated
+pub trait CandidateBlockBodyValidation<B: BlockchainBackend>: Send + Sync {
+    fn validate_body(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError>;
 }
 
-/// The core validation trait.
-/// Multiple validators can be chained together by using the `and_then` combinator.
-pub trait Validation<T>: Send + Sync {
-    /// General validation code that can run independent of external state
-    fn validate(&self, item: &T) -> Result<(), ValidationError>;
+/// A validator that validates a body after it has been determined to be a valid orphan
+pub trait PostOrphanBodyValidation<B>: Send + Sync {
+    fn validate_body_for_valid_orphan(&self, block: &ChainBlock, backend: &B) -> Result<(), ValidationError>;
 }
 
-pub trait ValidationExt<T>: Validation<T> {
-    /// Creates a new validator that performs this validation followed by another. If the first validation fails, the
-    /// second one is not run.
-    fn and_then<V: Validation<T>>(self, other: V) -> AndThenValidator<Self, V>
-    where Self: Sized {
-        AndThenValidator::new(self, other)
-    }
+pub trait MempoolTransactionValidation: Send + Sync {
+    fn validate(&self, transaction: &Transaction) -> Result<(), ValidationError>;
 }
-impl<T, U> ValidationExt<T> for U where U: Validation<T> {}
+
+pub trait OrphanValidation: Send + Sync {
+    fn validate(&self, item: &Block) -> Result<(), ValidationError>;
+}
+
+pub trait HeaderValidation<B: BlockchainBackend>: Send + Sync {
+    fn validate(
+        &self,
+        db: &B,
+        header: &BlockHeader,
+        previous_data: &BlockHeaderAccumulatedData,
+    ) -> Result<BlockHeaderAccumulatedDataBuilder, ValidationError>;
+}
+
+pub trait FinalHorizonStateValidation<B>: Send + Sync {
+    fn validate(
+        &self,
+        height: u64,
+        total_utxo_sum: &Commitment,
+        total_kernel_sum: &Commitment,
+        backend: &B,
+    ) -> Result<(), ValidationError>;
+}

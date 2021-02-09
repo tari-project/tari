@@ -195,7 +195,7 @@ where
 
     async fn send_ping(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
         let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
-        self.state.add_inflight_ping(msg.nonce, &node_id);
+        self.state.add_inflight_ping(msg.nonce, node_id.clone());
         debug!(target: LOG_TARGET, "Sending ping to peer '{}'", node_id.short_str(),);
 
         self.outbound_messaging
@@ -249,7 +249,11 @@ where
                 self.config.num_peers_per_round,
                 Default::default(),
             ))
-            .await?;
+            .await?
+            .into_iter()
+            .map(|c| c.peer_node_id().clone())
+            .chain(self.config.monitored_peers.clone())
+            .collect::<Vec<_>>();
 
         if selected_peers.is_empty() {
             warn!(
@@ -261,18 +265,15 @@ where
         let len_peers = selected_peers.len();
         debug!(target: LOG_TARGET, "Sending liveness ping to {} peer(s)", len_peers);
 
-        for conn in selected_peers {
+        for peer in selected_peers {
             let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
-            self.state.add_inflight_ping(msg.nonce, conn.peer_node_id());
+            self.state.add_inflight_ping(msg.nonce, peer.clone());
             self.outbound_messaging
-                .send_direct_node_id(
-                    conn.peer_node_id().clone(),
-                    OutboundDomainMessage::new(TariMessageType::PingPong, msg),
-                )
+                .send_direct_node_id(peer, OutboundDomainMessage::new(TariMessageType::PingPong, msg))
                 .await?;
         }
 
-        self.publish_event(LivenessEvent::BroadcastedNeighbourPings(len_peers));
+        self.publish_event(LivenessEvent::PingRoundBroadcast(len_peers));
 
         Ok(())
     }
@@ -325,7 +326,7 @@ mod test {
 
     #[tokio_macros::test_basic]
     async fn get_ping_pong_count() {
-        let state = LivenessState::new();
+        let mut state = LivenessState::new();
         state.inc_pings_received();
         state.inc_pongs_received();
         state.inc_pongs_received();
@@ -420,7 +421,7 @@ mod test {
             Vec::<Multiaddr>::new().into(),
             PeerFlags::empty(),
             PeerFeatures::COMMUNICATION_NODE,
-            &[],
+            Default::default(),
             Default::default(),
         );
         DomainMessage {
@@ -489,7 +490,7 @@ mod test {
         metadata.insert(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
         let msg = create_dummy_message(PingPongMessage::pong_with_metadata(123, metadata.clone()));
 
-        state.add_inflight_ping(msg.inner.nonce, &msg.source_peer.node_id);
+        state.add_inflight_ping(msg.inner.nonce, msg.source_peer.node_id.clone());
         // A stream which emits an inflight pong message and an unexpected one
         let malicious_msg = create_dummy_message(PingPongMessage::pong_with_metadata(321, metadata));
         let pingpong_stream = stream::iter(vec![msg, malicious_msg]);

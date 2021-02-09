@@ -75,7 +75,7 @@ pub async fn network_graph_snapshot(
     let mut node_indices = HashMap::new();
 
     for node in seed_nodes.iter().chain(network.iter()) {
-        let node_id = node.as_ref().comms.node_identity().node_id().clone();
+        let node_id = node.comms.node_identity().node_id().clone();
         let index: NodeIndex<petgraph::stable_graph::DefaultIx> = graph.add_node(node_id.clone());
         node_indices.insert(node_id.clone(), index);
     }
@@ -83,10 +83,9 @@ pub async fn network_graph_snapshot(
     let mut neighbour_graph = graph.clone();
 
     for node in seed_nodes.iter().chain(network.iter()) {
-        let node_id = node.as_ref().comms.node_identity().node_id().clone();
+        let node_id = node.comms.node_identity().node_id().clone();
 
         let connected_peers = node
-            .as_ref()
             .comms
             .connectivity()
             .select_connections(ConnectivitySelection::all_nodes(vec![]))
@@ -108,7 +107,6 @@ pub async fn network_graph_snapshot(
         }
         if let Some(n) = num_neighbours {
             let connected_neighbours = node
-                .as_ref()
                 .comms
                 .connectivity()
                 .select_connections(ConnectivitySelection::closest_to(node_id.clone(), n, vec![]))
@@ -148,7 +146,7 @@ pub async fn network_graph_snapshot(
     file.write_all(Dot::new(&graph).to_string().as_bytes())
         .expect("Could not write dot file");
 
-    if let Some(_) = num_neighbours {
+    if num_neighbours.is_some() {
         let tmp_file_path_neighbours = tmp_file_path.join(format!("neighbours-{:03}.dot", frame_num));
         let mut file = File::create(tmp_file_path_neighbours).expect("Could not create dot file");
         file.write_all(Dot::new(&neighbour_graph).to_string().as_bytes())

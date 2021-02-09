@@ -20,20 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ui::{
-    components::{
-        base_node::BaseNode,
-        network_tab::NetworkTab,
-        send_receive_tab::SendReceiveTab,
-        tabs_container::TabsContainer,
-        transactions_tab::TransactionsTab,
-        Component,
+use crate::{
+    notifier::Notifier,
+    ui::{
+        components::{
+            base_node::BaseNode,
+            network_tab::NetworkTab,
+            receive_tab::ReceiveTab,
+            send_tab::SendTab,
+            tabs_container::TabsContainer,
+            transactions_tab::TransactionsTab,
+            Component,
+        },
+        state::AppState,
+        MAX_WIDTH,
     },
-    state::AppState,
-    MAX_WIDTH,
+    wallet_modes::PeerConfig,
 };
 use tari_common::Network;
-use tari_comms::{peer_manager::Peer, NodeIdentity};
+use tari_comms::peer_manager::Peer;
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
 use tui::{
@@ -43,6 +48,8 @@ use tui::{
 };
 
 pub const LOG_TARGET: &str = "wallet::ui::app";
+pub const CUSTOM_BASE_NODE_PUBLIC_KEY_KEY: &str = "console_wallet_custom_base_node_public_key";
+pub const CUSTOM_BASE_NODE_ADDRESS_KEY: &str = "console_wallet_custom_base_node_address";
 
 pub struct App<B: Backend> {
     pub title: String,
@@ -52,36 +59,42 @@ pub struct App<B: Backend> {
     // Ui working state
     pub tabs: TabsContainer<B>,
     pub base_node_status: BaseNode,
+    pub notifier: Notifier,
 }
 
 impl<B: Backend> App<B> {
-    pub fn new(
+    pub async fn new(
         title: String,
-        node_identity: &NodeIdentity,
         wallet: WalletSqlite,
         network: Network,
-        base_node: Peer,
+        base_node_selected: Peer,
+        base_node_config: PeerConfig,
+        notifier: Notifier,
     ) -> Self
     {
-        // TODO: It's probably better to read the node_identity from the wallet, but that requires
-        // taking a read lock and making this method async, which adds some read/write cycles,
-        // so it's easier to just ask for it right now
-        let app_state = AppState::new(&node_identity, network, wallet, base_node);
+        let app_state = AppState::new(
+            wallet.comms.node_identity().as_ref(),
+            network,
+            wallet,
+            base_node_selected.clone(),
+            base_node_config,
+        );
 
         let tabs = TabsContainer::<B>::new(title.clone())
             .add("Transactions".into(), Box::new(TransactionsTab::new()))
-            .add("Send/Receive".into(), Box::new(SendReceiveTab::new()))
-            .add("Network".into(), Box::new(NetworkTab::new()));
+            .add("Send".into(), Box::new(SendTab::new()))
+            .add("Receive".into(), Box::new(ReceiveTab::new()))
+            .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)));
 
         let base_node_status = BaseNode::new();
 
         Self {
             title,
-
             should_quit: false,
             app_state,
             tabs,
             base_node_status,
+            notifier,
         }
     }
 
@@ -112,14 +125,10 @@ impl<B: Backend> App<B> {
     }
 
     pub fn on_right(&mut self) {
-        // This currently doesn't need app_state, but is async
-        // to match others
         self.tabs.next();
     }
 
     pub fn on_left(&mut self) {
-        // This currently doesn't need app_state, but is async
-        // to match others
         self.tabs.previous();
     }
 

@@ -25,15 +25,17 @@ use crate::{
     base_node::{
         chain_metadata_service::handle::{ChainMetadataEvent, PeerChainMetadata},
         comms_interface::{BlockEvent, LocalNodeCommsInterface},
-        proto,
     },
-    chain_storage::{BlockAddResult, ChainMetadata},
+    chain_storage::BlockAddResult,
+    proto::base_node as proto,
 };
 use futures::stream::StreamExt;
 use log::*;
+use num_format::{Locale, ToFormattedString};
 use prost::Message;
-use std::{sync::Arc, time::Instant};
+use std::{convert::TryFrom, sync::Arc, time::Instant};
 use tari_common::log_if_error;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     message::MessageExt,
@@ -130,7 +132,7 @@ impl ChainMetadataService {
                 if let Some(pos) = self.peer_chain_metadata.iter().position(|p| &p.node_id == node_id) {
                     debug!(
                         target: LOG_TARGET,
-                        "Removing banned peer `{}` from chain metadata list ", node_id
+                        "Removing disconnected/banned peer `{}` from chain metadata list ", node_id
                     );
                     self.peer_chain_metadata.remove(pos);
                 }
@@ -142,7 +144,7 @@ impl ChainMetadataService {
     /// Handle BlockEvents
     async fn handle_block_event(&mut self, event: &BlockEvent) -> Result<(), ChainMetadataSyncError> {
         match event {
-            BlockEvent::ValidBlockAdded(_, BlockAddResult::Ok, _) |
+            BlockEvent::ValidBlockAdded(_, BlockAddResult::Ok(_), _) |
             BlockEvent::ValidBlockAdded(_, BlockAddResult::ChainReorg(_, _), _) |
             BlockEvent::BlockSyncComplete(_) => {
                 self.update_liveness_chain_metadata().await?;
@@ -189,7 +191,7 @@ impl ChainMetadataService {
                 }
             },
             // New ping round has begun
-            LivenessEvent::BroadcastedNeighbourPings(num_peers) => {
+            LivenessEvent::PingRoundBroadcast(num_peers) => {
                 debug!(
                     target: LOG_TARGET,
                     "New chain metadata round sent to {} peer(s)", num_peers
@@ -241,12 +243,15 @@ impl ChainMetadataService {
     ) -> Result<(), ChainMetadataSyncError>
     {
         if let Some(chain_metadata_bytes) = metadata.get(MetadataKey::ChainMetadata) {
-            let chain_metadata: ChainMetadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
+            let chain_metadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?;
+            let chain_metadata = ChainMetadata::try_from(chain_metadata)
+                .map_err(|err| ChainMetadataSyncError::ReceivedInvalidChainMetadata(node_id.clone(), err))?;
             debug!(
                 target: LOG_TARGET,
-                "Received chain metadata from NodeId '{}' #{}",
+                "Received chain metadata from NodeId '{}' #{}, Acc_diff {}",
                 node_id,
-                chain_metadata.height_of_longest_chain.unwrap_or(0)
+                chain_metadata.height_of_longest_chain(),
+                chain_metadata.accumulated_difficulty().to_formatted_string(&Locale::en),
             );
 
             if let Some(pos) = self
@@ -273,12 +278,14 @@ impl ChainMetadataService {
             .get(MetadataKey::ChainMetadata)
             .ok_or_else(|| ChainMetadataSyncError::NoChainMetadata)?;
 
-        let chain_metadata: ChainMetadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?.into();
+        let chain_metadata = ChainMetadata::try_from(proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?)
+            .map_err(|err| ChainMetadataSyncError::ReceivedInvalidChainMetadata(node_id.clone(), err))?;
         debug!(
             target: LOG_TARGET,
-            "Received chain metadata from NodeId '{}' #{}",
+            "Received chain metadata from NodeId '{}' #{}, Acc_diff {}",
             node_id,
-            chain_metadata.height_of_longest_chain.unwrap_or(0)
+            chain_metadata.height_of_longest_chain(),
+            chain_metadata.accumulated_difficulty().to_formatted_string(&Locale::en),
         );
 
         if let Some(pos) = self
@@ -414,8 +421,8 @@ mod test {
         let metadata = service.peer_chain_metadata.remove(0);
         assert_eq!(metadata.node_id, node_id);
         assert_eq!(
-            metadata.chain_metadata.height_of_longest_chain,
-            proto_chain_metadata.height_of_longest_chain
+            metadata.chain_metadata.height_of_longest_chain(),
+            proto_chain_metadata.height_of_longest_chain.unwrap()
         );
     }
 

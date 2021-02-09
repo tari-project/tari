@@ -23,7 +23,8 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 use crate::{
-    blocks::{BlockHash, BlockHeader},
+    blocks::BlockHeader,
+    chain_storage::MmrTree,
     consensus::ConsensusConstants,
     proof_of_work::ProofOfWork,
     tari_utilities::hex::Hex,
@@ -37,6 +38,7 @@ use crate::{
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+use tari_common_types::types::BlockHash;
 use tari_crypto::tari_utilities::Hashable;
 use thiserror::Error;
 
@@ -48,6 +50,12 @@ pub enum BlockValidationError {
     InvalidInput,
     #[error("Mismatched MMR roots")]
     MismatchedMmrRoots,
+    #[error("MMR size for {mmr_tree} does not match. Expected: {expected}, received: {actual}")]
+    MismatchedMmrSize {
+        mmr_tree: MmrTree,
+        expected: u64,
+        actual: u64,
+    },
     #[error("The block contains transactions that should have been cut through.")]
     NoCutThrough,
     #[error("The block weight is above the maximum")]
@@ -62,6 +70,10 @@ pub struct Block {
 }
 
 impl Block {
+    pub fn new(header: BlockHeader, body: AggregateBody) -> Self {
+        Self { header, body }
+    }
+
     /// This function will calculate the total fees contained in a block
     pub fn calculate_fees(&self) -> MicroTari {
         self.body.kernels().iter().fold(0.into(), |sum, x| sum + x.fee)
@@ -93,7 +105,7 @@ impl Block {
         Ok(())
     }
 
-    /// This function will check all stxo to ensure that feature flags where followed
+    /// Checks that all STXO rules (maturity etc) are followed
     pub fn check_stxo_rules(&self) -> Result<(), BlockValidationError> {
         self.body.check_stxo_rules(self.header.height)?;
         Ok(())
@@ -177,7 +189,9 @@ impl BlockBuilder {
         for tx in iter {
             let (inputs, outputs, kernels) = tx.body.dissolve();
             self = self.add_inputs(inputs);
+            self.header.output_mmr_size += outputs.len() as u64;
             self = self.add_outputs(outputs);
+            self.header.kernel_mmr_size += kernels.len() as u64;
             self = self.add_kernels(kernels);
             self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
         }
@@ -188,7 +202,9 @@ impl BlockBuilder {
     pub fn add_transaction(mut self, tx: Transaction) -> Self {
         let (inputs, outputs, kernels) = tx.body.dissolve();
         self = self.add_inputs(inputs);
+        self.header.output_mmr_size += outputs.len() as u64;
         self = self.add_outputs(outputs);
+        self.header.kernel_mmr_size += kernels.len() as u64;
         self = self.add_kernels(kernels);
         self.header.total_kernel_offset = &self.header.total_kernel_offset + &tx.offset;
         self

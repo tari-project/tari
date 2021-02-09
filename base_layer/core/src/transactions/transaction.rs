@@ -26,13 +26,15 @@
 use crate::transactions::{
     aggregated_body::AggregateBody,
     tari_amount::{uT, MicroTari},
-    transaction_protocol::{build_challenge, TransactionMetadata},
+    transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
     types::{
         BlindingFactor,
         Commitment,
         CommitmentFactory,
         CryptoFactories,
         HashDigest,
+        PrivateKey,
+        PublicKey,
         RangeProof,
         RangeProofService,
         Signature,
@@ -49,7 +51,13 @@ use std::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    range_proof::{RangeProofError, RangeProofService as RangeProofServiceTrait},
+    range_proof::{
+        FullRewindResult as CryptoFullRewindResult,
+        RangeProofError,
+        RangeProofService as RangeProofServiceTrait,
+        RewindResult as CryptoRewindResult,
+        REWIND_USER_MESSAGE_LENGTH,
+    },
     tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
 };
 use thiserror::Error;
@@ -168,8 +176,10 @@ pub enum TransactionError {
     InvalidCoinbase,
     #[error("Invalid coinbase maturity in body")]
     InvalidCoinbaseMaturity,
-    #[error("Error more than one coinbase in body")]
-    InvalidCoinbaseCount,
+    #[error("More than one coinbase in body")]
+    MoreThanOneCoinbase,
+    #[error("No coinbase in body")]
+    NoCoinbase,
     #[error("Input maturity not reached")]
     InputMaturity,
 }
@@ -212,6 +222,39 @@ impl UnblindedOutput {
                     .construct_proof(&self.spending_key, self.value.into())?,
             )
             .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
+        };
+        // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
+        if !output.verify_range_proof(&factories.range_proof)? {
+            return Err(TransactionError::ValidationError(
+                "Range proof could not be verified".into(),
+            ));
+        }
+        Ok(output)
+    }
+
+    pub fn as_rewindable_transaction_output(
+        &self,
+        factories: &CryptoFactories,
+        rewind_data: &RewindData,
+    ) -> Result<TransactionOutput, TransactionError>
+    {
+        let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
+
+        let proof_bytes = factories.range_proof.construct_proof_with_rewind_key(
+            &self.spending_key,
+            self.value.into(),
+            &rewind_data.rewind_key,
+            &rewind_data.rewind_blinding_key,
+            &rewind_data.proof_message,
+        )?;
+
+        let proof = RangeProof::from_bytes(&proof_bytes)
+            .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?;
+
+        let output = TransactionOutput {
+            features: self.features.clone(),
+            commitment,
+            proof,
         };
         // A range proof can be constructed for an invalid value so we should confirm that the proof can be verified.
         if !output.verify_range_proof(&factories.range_proof)? {
@@ -351,11 +394,43 @@ impl TransactionOutput {
 
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<bool, TransactionError> {
-        Ok(prover.verify(&self.proof.to_vec(), &self.commitment))
+        Ok(prover.verify(&self.proof.0, &self.commitment))
+    }
+
+    /// Attempt to rewind the range proof to reveal the proof message and committed value
+    pub fn rewind_range_proof_value_only(
+        &self,
+        prover: &RangeProofService,
+        rewind_public_key: &PublicKey,
+        rewind_blinding_public_key: &PublicKey,
+    ) -> Result<RewindResult, TransactionError>
+    {
+        Ok(prover
+            .rewind_proof_value_only(
+                &self.proof.0,
+                &&self.commitment,
+                rewind_public_key,
+                rewind_blinding_public_key,
+            )?
+            .into())
+    }
+
+    /// Attempt to fully rewind the range proof to reveal the proof message, committed value and blinding factor
+    pub fn full_rewind_range_proof(
+        &self,
+        prover: &RangeProofService,
+        rewind_key: &PrivateKey,
+        rewind_blinding_key: &PrivateKey,
+    ) -> Result<FullRewindResult, TransactionError>
+    {
+        Ok(prover
+            .rewind_proof_commitment_data(&self.proof.0, &&self.commitment, rewind_key, rewind_blinding_key)?
+            .into())
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.
     /// This will ignore the output rangeproof
+    #[inline]
     pub fn is_equal_to(&self, output: &TransactionInput) -> bool {
         self.commitment == output.commitment && self.features == output.features
     }
@@ -405,6 +480,67 @@ impl Display for TransactionOutput {
         ))
     }
 }
+
+/// A wrapper struct to hold the result of a successful range proof rewinding to reveal the committed value and proof
+/// message
+#[derive(Debug, PartialEq)]
+pub struct RewindResult {
+    pub committed_value: MicroTari,
+    pub proof_message: [u8; REWIND_USER_MESSAGE_LENGTH],
+}
+
+impl RewindResult {
+    pub fn new(committed_value: MicroTari, proof_message: [u8; REWIND_USER_MESSAGE_LENGTH]) -> Self {
+        Self {
+            committed_value,
+            proof_message,
+        }
+    }
+}
+
+impl From<CryptoRewindResult> for RewindResult {
+    fn from(crr: CryptoRewindResult) -> Self {
+        Self {
+            committed_value: crr.committed_value.into(),
+            proof_message: crr.proof_message,
+        }
+    }
+}
+
+/// A wrapper struct to hold the result of a successful range proof full rewinding to reveal the committed value, proof
+/// message and blinding factor
+#[derive(Debug, PartialEq)]
+pub struct FullRewindResult {
+    pub committed_value: MicroTari,
+    pub proof_message: [u8; REWIND_USER_MESSAGE_LENGTH],
+    pub blinding_factor: BlindingFactor,
+}
+
+impl FullRewindResult {
+    pub fn new(
+        committed_value: MicroTari,
+        proof_message: [u8; REWIND_USER_MESSAGE_LENGTH],
+        blinding_factor: BlindingFactor,
+    ) -> Self
+    {
+        Self {
+            committed_value,
+            proof_message,
+            blinding_factor,
+        }
+    }
+}
+
+impl From<CryptoFullRewindResult<BlindingFactor>> for FullRewindResult {
+    fn from(crr: CryptoFullRewindResult<BlindingFactor>) -> Self {
+        Self {
+            committed_value: crr.committed_value.into(),
+            proof_message: crr.proof_message,
+            blinding_factor: crr.blinding_factor,
+        }
+    }
+}
+
 //----------------------------------------   Transaction Kernel   ----------------------------------------------------//
 
 /// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
@@ -778,7 +914,10 @@ mod test {
         txn_schema,
     };
     use rand::{self, rngs::OsRng};
-    use tari_crypto::{keys::SecretKey as SecretKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
+    use tari_crypto::{
+        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+        ristretto::pedersen::PedersenCommitmentFactory,
+    };
 
     #[test]
     fn unblinded_input() {
@@ -937,22 +1076,85 @@ mod test {
         assert_eq!(tx3.body.outputs().len(), 5);
         assert_eq!(tx3.body.kernels().len(), 2);
         // check that cut-though has not been applied
-        assert!(!tx3.body.cut_through_check());
+        assert!(!tx3.body.check_cut_through());
 
         // apply cut-through
         tx3.body.do_cut_through();
 
         // check that cut-through has been applied.
-        assert!(tx.body.cut_through_check());
+        assert!(tx.body.check_cut_through());
         assert!(tx.validate_internal_consistency(&factories, None).is_ok());
         assert_eq!(tx.body.inputs().len(), 2);
         assert_eq!(tx.body.outputs().len(), 4);
         assert_eq!(tx.body.kernels().len(), 2);
 
-        assert!(tx3.body.cut_through_check());
+        assert!(tx3.body.check_cut_through());
         assert!(tx3.validate_internal_consistency(&factories, None).is_ok());
         assert_eq!(tx3.body.inputs().len(), 2);
         assert_eq!(tx3.body.outputs().len(), 4);
         assert_eq!(tx3.body.kernels().len(), 2);
+    }
+
+    #[test]
+    fn test_output_rewinding() {
+        let factories = CryptoFactories::new(32);
+        let k = BlindingFactor::random(&mut OsRng);
+        let v = MicroTari::from(42);
+        let rewind_key = PrivateKey::random(&mut OsRng);
+        let rewind_blinding_key = PrivateKey::random(&mut OsRng);
+        let random_key = PrivateKey::random(&mut OsRng);
+        let rewind_public_key = PublicKey::from_secret_key(&rewind_key);
+        let rewind_blinding_public_key = PublicKey::from_secret_key(&rewind_blinding_key);
+        let public_random_key = PublicKey::from_secret_key(&random_key);
+        let proof_message = b"testing12345678910111";
+
+        let rewind_data = RewindData {
+            rewind_key: rewind_key.clone(),
+            rewind_blinding_key: rewind_blinding_key.clone(),
+            proof_message: proof_message.clone(),
+        };
+
+        let unblinded_output = UnblindedOutput::new(v, k.clone(), None);
+
+        let output = unblinded_output
+            .as_rewindable_transaction_output(&factories, &rewind_data)
+            .unwrap();
+
+        assert_eq!(
+            output.rewind_range_proof_value_only(
+                &factories.range_proof,
+                &public_random_key,
+                &rewind_blinding_public_key
+            ),
+            Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind))
+        );
+        assert_eq!(
+            output.rewind_range_proof_value_only(&factories.range_proof, &rewind_public_key, &public_random_key),
+            Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind))
+        );
+
+        let rewind_result = output
+            .rewind_range_proof_value_only(&factories.range_proof, &rewind_public_key, &rewind_blinding_public_key)
+            .unwrap();
+
+        assert_eq!(rewind_result.committed_value, v);
+        assert_eq!(&rewind_result.proof_message, proof_message);
+
+        assert_eq!(
+            output.full_rewind_range_proof(&factories.range_proof, &random_key, &rewind_blinding_key),
+            Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind))
+        );
+        assert_eq!(
+            output.full_rewind_range_proof(&factories.range_proof, &rewind_key, &random_key),
+            Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind))
+        );
+
+        let full_rewind_result = output
+            .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
+            .unwrap();
+
+        assert_eq!(full_rewind_result.committed_value, v);
+        assert_eq!(&full_rewind_result.proof_message, proof_message);
+        assert_eq!(full_rewind_result.blinding_factor, k);
     }
 }

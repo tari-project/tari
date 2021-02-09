@@ -23,13 +23,10 @@
 use crate::{
     base_node::{
         comms_interface::{BlockEvent, BlockEventReceiver},
-        generate_request_key,
-        RequestKey,
         StateMachineHandle,
-        WaitingRequests,
     },
     mempool::{
-        proto,
+        proto as mempool_proto,
         service::{
             error::MempoolServiceError,
             inbound_handlers::MempoolInboundHandlers,
@@ -38,7 +35,8 @@ use crate::{
         },
         MempoolServiceConfig,
     },
-    transactions::{proto::types::Transaction as ProtoTransaction, transaction::Transaction},
+    proto,
+    transactions::transaction::Transaction,
 };
 use futures::{
     channel::{mpsc, oneshot::Sender as OneshotSender},
@@ -50,6 +48,7 @@ use futures::{
 use log::*;
 use rand::rngs::OsRng;
 use std::{convert::TryInto, sync::Arc, time::Duration};
+use tari_common_types::waiting_requests::{generate_request_key, RequestKey, WaitingRequests};
 use tari_comms::peer_manager::NodeId;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -113,8 +112,8 @@ impl MempoolService {
     ) -> Result<(), MempoolServiceError>
     where
         SOutReq: Stream<Item = RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>>,
-        SInReq: Stream<Item = DomainMessage<proto::MempoolServiceRequest>>,
-        SInRes: Stream<Item = DomainMessage<proto::MempoolServiceResponse>>,
+        SInReq: Stream<Item = DomainMessage<mempool_proto::MempoolServiceRequest>>,
+        SInRes: Stream<Item = DomainMessage<mempool_proto::MempoolServiceResponse>>,
         STxIn: Stream<Item = DomainMessage<Transaction>>,
         SLocalReq: Stream<Item = RequestContext<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>>,
     {
@@ -238,7 +237,7 @@ impl MempoolService {
         });
     }
 
-    fn spawn_handle_incoming_request(&self, domain_msg: DomainMessage<proto::mempool::MempoolServiceRequest>) {
+    fn spawn_handle_incoming_request(&self, domain_msg: DomainMessage<mempool_proto::MempoolServiceRequest>) {
         let inbound_handlers = self.inbound_handlers.clone();
         let outbound_message_service = self.outbound_message_service.clone();
         task::spawn(async move {
@@ -250,7 +249,7 @@ impl MempoolService {
         });
     }
 
-    fn spawn_handle_incoming_response(&self, domain_msg: DomainMessage<proto::mempool::MempoolServiceResponse>) {
+    fn spawn_handle_incoming_response(&self, domain_msg: DomainMessage<mempool_proto::MempoolServiceResponse>) {
         let waiting_requests = self.waiting_requests.clone();
         task::spawn(async move {
             let result = handle_incoming_response(waiting_requests, domain_msg.into_inner()).await;
@@ -309,9 +308,9 @@ impl MempoolService {
     }
 
     fn spawn_handle_block_event(&self, block_event: Arc<BlockEvent>) {
-        let inbound_handlers = self.inbound_handlers.clone();
+        let mut inbound_handlers = self.inbound_handlers.clone();
         task::spawn(async move {
-            let result = handle_block_event(inbound_handlers, &block_event).await;
+            let result = inbound_handlers.handle_block_event(&block_event).await;
             if let Err(e) = result {
                 error!(target: LOG_TARGET, "Failed to handle base node block event: {:?}", e);
             }
@@ -333,12 +332,12 @@ impl MempoolService {
 async fn handle_incoming_request(
     mut inbound_handlers: MempoolInboundHandlers,
     mut outbound_message_service: OutboundMessageRequester,
-    domain_request_msg: DomainMessage<proto::MempoolServiceRequest>,
+    domain_request_msg: DomainMessage<mempool_proto::MempoolServiceRequest>,
 ) -> Result<(), MempoolServiceError>
 {
     let (origin_public_key, inner_msg) = domain_request_msg.into_origin_and_inner();
 
-    // Convert proto::MempoolServiceRequest to a MempoolServiceRequest
+    // Convert mempool_proto::MempoolServiceRequest to a MempoolServiceRequest
     let request = inner_msg
         .request
         .ok_or_else(|| MempoolServiceError::InvalidRequest("Received invalid mempool service request".to_string()))?;
@@ -347,7 +346,7 @@ async fn handle_incoming_request(
         .handle_request(request.try_into().map_err(MempoolServiceError::InvalidRequest)?)
         .await?;
 
-    let message = proto::MempoolServiceResponse {
+    let message = mempool_proto::MempoolServiceResponse {
         request_key: inner_msg.request_key,
         response: Some(response.into()),
     };
@@ -364,10 +363,10 @@ async fn handle_incoming_request(
 
 async fn handle_incoming_response(
     waiting_requests: WaitingRequests<Result<MempoolResponse, MempoolServiceError>>,
-    incoming_response: proto::MempoolServiceResponse,
+    incoming_response: mempool_proto::MempoolServiceResponse,
 ) -> Result<(), MempoolServiceError>
 {
-    let proto::MempoolServiceResponse { request_key, response } = incoming_response;
+    let mempool_proto::MempoolServiceResponse { request_key, response } = incoming_response;
     let response: MempoolResponse = response
         .and_then(|r| r.try_into().ok())
         .ok_or_else(|| MempoolServiceError::InvalidResponse("Received an invalid mempool response".to_string()))?;
@@ -402,7 +401,7 @@ async fn handle_outbound_request(
 ) -> Result<(), MempoolServiceError>
 {
     let request_key = generate_request_key(&mut OsRng);
-    let service_request = proto::MempoolServiceRequest {
+    let service_request = mempool_proto::MempoolServiceRequest {
         request_key,
         request: Some(request.into()),
     };
@@ -504,7 +503,7 @@ async fn handle_outbound_tx(
             NodeDestination::Unknown,
             OutboundEncryption::ClearText,
             exclude_peers,
-            OutboundDomainMessage::new(TariMessageType::NewTransaction, ProtoTransaction::from(tx)),
+            OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(tx)),
         )
         .await;
 
@@ -513,15 +512,6 @@ async fn handle_outbound_tx(
         return Err(MempoolServiceError::OutboundMessageService(e.to_string()));
     }
 
-    Ok(())
-}
-
-async fn handle_block_event(
-    mut inbound_handlers: MempoolInboundHandlers,
-    block_event: &BlockEvent,
-) -> Result<(), MempoolServiceError>
-{
-    inbound_handlers.handle_block_event(block_event).await?;
     Ok(())
 }
 

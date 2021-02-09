@@ -22,14 +22,17 @@
 use crate::{
     automation::{command_parser::parse_command, commands::command_runner},
     grpc::WalletGrpcServer,
+    notifier::Notifier,
+    recovery::wallet_recovery,
     ui::{run, App},
 };
 
 use log::*;
-use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
+use rand::{rngs::OsRng, seq::SliceRandom};
+use std::{fs, fs::remove_file, io::Stdout, net::SocketAddr, path::PathBuf};
 use tari_app_utilities::utilities::ExitCodes;
 use tari_common::GlobalConfig;
-use tari_comms::{peer_manager::Peer, NodeIdentity};
+use tari_comms::peer_manager::Peer;
 
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
@@ -44,7 +47,53 @@ pub enum WalletMode {
     Grpc,
     Script(PathBuf),
     Command(String),
+    Recovery,
     Invalid,
+}
+
+#[derive(Debug, Clone)]
+pub struct PeerConfig {
+    pub base_node_custom: Option<Peer>,
+    pub base_node_peers: Vec<Peer>,
+    pub peer_seeds: Vec<Peer>,
+}
+
+impl PeerConfig {
+    /// Create a new PeerConfig
+    pub fn new(base_node_custom: Option<Peer>, base_node_peers: Vec<Peer>, peer_seeds: Vec<Peer>) -> Self {
+        Self {
+            base_node_custom,
+            base_node_peers,
+            peer_seeds,
+        }
+    }
+
+    /// Get the prioritised base node peer from the PeerConfig.
+    /// 1. Custom Base Node
+    /// 2. First configured Base Node Peer
+    /// 3. Random configured Peer Seed
+    pub fn get_base_node_peer(&self) -> Result<Peer, ExitCodes> {
+        if let Some(base_node) = self.base_node_custom.clone() {
+            Ok(base_node)
+        } else if !self.base_node_peers.is_empty() {
+            Ok(self
+                .base_node_peers
+                .first()
+                .ok_or_else(|| ExitCodes::ConfigError("Configured base node peer has no address!".to_string()))?
+                .clone())
+        } else if !self.peer_seeds.is_empty() {
+            // pick a random peer seed
+            Ok(self
+                .peer_seeds
+                .choose(&mut OsRng)
+                .ok_or_else(|| ExitCodes::ConfigError("Peer seeds was empty.".to_string()))?
+                .clone())
+        } else {
+            Err(ExitCodes::ConfigError(
+                "No peer seeds or base node peer defined in config!".to_string(),
+            ))
+        }
+    }
 }
 
 pub fn command_mode(
@@ -93,21 +142,25 @@ pub fn script_mode(handle: Handle, path: PathBuf, wallet: WalletSqlite, config: 
 pub fn tui_mode(
     handle: Handle,
     node_config: GlobalConfig,
-    node_identity: NodeIdentity,
     wallet: WalletSqlite,
-    base_node: Peer,
+    base_node_selected: Peer,
+    base_node_config: PeerConfig,
+    notify_script: Option<PathBuf>,
 ) -> Result<(), ExitCodes>
 {
     let grpc = WalletGrpcServer::new(wallet.clone());
     handle.spawn(run_grpc(grpc, node_config.grpc_console_wallet_address));
 
-    let app = App::<CrosstermBackend<Stdout>>::new(
+    let notifier = Notifier::new(notify_script, handle.clone(), wallet.clone());
+
+    let app = handle.block_on(App::<CrosstermBackend<Stdout>>::new(
         "Tari Console Wallet".into(),
-        &node_identity,
         wallet,
         node_config.network,
-        base_node,
-    );
+        base_node_selected,
+        base_node_config,
+        notifier,
+    ));
     handle.enter(|| run(app))?;
 
     info!(
@@ -116,6 +169,39 @@ pub fn tui_mode(
     );
 
     Ok(())
+}
+
+pub fn recovery_mode(
+    handle: Handle,
+    config: GlobalConfig,
+    mut wallet: WalletSqlite,
+    base_node_selected: Peer,
+    base_node_config: PeerConfig,
+    notify_script: Option<PathBuf>,
+) -> Result<(), ExitCodes>
+{
+    println!("Starting recovery...");
+    match handle.block_on(wallet_recovery(&mut wallet, &base_node_selected)) {
+        Ok(_) => println!("Wallet recovered!"),
+        Err(e) => {
+            error!(target: LOG_TARGET, "Recovery failed: {}", e);
+            println!("Recovery failed.");
+            // remove the wallet file
+            remove_file(config.console_wallet_db_file).map_err(|e| ExitCodes::IOError(e.to_string()))?;
+
+            return Err(e);
+        },
+    }
+
+    println!("Starting TUI.");
+    tui_mode(
+        handle,
+        config,
+        wallet,
+        base_node_selected,
+        base_node_config,
+        notify_script,
+    )
 }
 
 pub fn grpc_mode(handle: Handle, wallet: WalletSqlite, node_config: GlobalConfig) -> Result<(), ExitCodes> {

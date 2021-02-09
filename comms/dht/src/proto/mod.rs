@@ -31,43 +31,39 @@ use tari_comms::{
 };
 use tari_utilities::{hex::Hex, ByteArray};
 
-#[path = "tari.dht.envelope.rs"]
-pub mod envelope;
+pub mod envelope {
+    tari_comms::outdir_include!("tari.dht.envelope.rs");
+}
 
-#[path = "tari.dht.rs"]
-pub mod dht;
+pub mod dht {
+    tari_comms::outdir_include!("tari.dht.rs");
+}
 
-#[path = "tari.dht.rpc.rs"]
-pub mod rpc;
+pub mod rpc {
+    tari_comms::outdir_include!("tari.dht.rpc.rs");
+}
 
-#[path = "tari.dht.store_forward.rs"]
-pub mod store_forward;
+pub mod store_forward {
+    tari_comms::outdir_include!("tari.dht.store_forward.rs");
+}
 
-#[path = "tari.dht.message_header.rs"]
-pub mod message_header;
+pub mod message_header {
+    tari_comms::outdir_include!("tari.dht.message_header.rs");
+}
 
 //---------------------------------- Network impl --------------------------------------------//
 
 impl envelope::Network {
     pub fn is_mainnet(self) -> bool {
-        match self {
-            Network::MainNet => true,
-            _ => false,
-        }
+        matches!(self, Network::MainNet)
     }
 
     pub fn is_testnet(self) -> bool {
-        match self {
-            Network::TestNet => true,
-            _ => false,
-        }
+        matches!(self, Network::TestNet)
     }
 
     pub fn is_localtest(self) -> bool {
-        match self {
-            Network::LocalTest => true,
-            _ => false,
-        }
+        matches!(self, Network::LocalTest)
     }
 }
 
@@ -132,7 +128,7 @@ impl TryInto<Peer> for rpc::Peer {
             addresses.into(),
             PeerFlags::NONE,
             PeerFeatures::from_bits_truncate(self.peer_features),
-            &[],
+            Default::default(),
             "".to_string(),
         ))
     }

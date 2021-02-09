@@ -78,10 +78,7 @@ impl Display for State {
 
 impl State {
     pub fn is_shutdown(&self) -> bool {
-        match self {
-            State::Shutdown => true,
-            _ => false,
-        }
+        matches!(self, State::Shutdown)
     }
 }
 

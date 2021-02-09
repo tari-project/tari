@@ -33,7 +33,7 @@ use crate::{
             TransactionBuilder,
             UnblindedOutput,
         },
-        transaction_protocol::{build_challenge, TransactionMetadata},
+        transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
         types::{BlindingFactor, CryptoFactories, PrivateKey, PublicKey, Signature},
     },
 };
@@ -62,6 +62,7 @@ pub struct CoinbaseBuilder {
     fees: Option<MicroTari>,
     spend_key: Option<PrivateKey>,
     private_nonce: Option<PrivateKey>,
+    rewind_data: Option<RewindData>,
 }
 
 impl CoinbaseBuilder {
@@ -74,6 +75,7 @@ impl CoinbaseBuilder {
             fees: None,
             spend_key: None,
             private_nonce: None,
+            rewind_data: None,
         }
     }
 
@@ -98,6 +100,12 @@ impl CoinbaseBuilder {
     /// The nonce to be used for this transaction. This will usually be provided by a miner's wallet instance.
     pub fn with_nonce(mut self, nonce: PrivateKey) -> Self {
         self.private_nonce = Some(nonce);
+        self
+    }
+
+    /// Add the rewind data needed to make this coinbase output rewindable
+    pub fn with_rewind_data(mut self, rewind_data: RewindData) -> Self {
+        self.rewind_data = Some(rewind_data);
         self
     }
 
@@ -151,9 +159,15 @@ impl CoinbaseBuilder {
         let sig = Signature::sign(key.clone(), nonce, &challenge)
             .map_err(|_| CoinbaseBuildError::BuildError("Challenge could not be represented as a scalar".into()))?;
         let unblinded_output = UnblindedOutput::new(total_reward, key, Some(output_features));
-        let output = unblinded_output
-            .as_transaction_output(&self.factories)
-            .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
+        let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
+            unblinded_output
+                .as_rewindable_transaction_output(&self.factories, rewind_data)
+                .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?
+        } else {
+            unblinded_output
+                .as_transaction_output(&self.factories)
+                .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?
+        };
         let kernel = KernelBuilder::new()
             .with_fee(0 * uT)
             .with_features(kernel_features)
@@ -185,11 +199,13 @@ mod test {
             helpers::TestParams,
             tari_amount::uT,
             transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError, UnblindedOutput},
-            types::{BlindingFactor, CryptoFactories},
+            transaction_protocol::RewindData,
+            types::{BlindingFactor, CryptoFactories, PrivateKey},
             CoinbaseBuilder,
         },
     };
-    use tari_crypto::commitment::HomomorphicCommitmentFactory;
+    use rand::rngs::OsRng;
+    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
 
     fn get_builder() -> (CoinbaseBuilder, ConsensusManager, CryptoFactories) {
         let network = Network::LocalNet;
@@ -264,6 +280,39 @@ mod test {
             ),
             Ok(())
         );
+    }
+
+    #[test]
+    fn valid_coinbase_with_rewindable_output() {
+        let rewind_key = PrivateKey::random(&mut OsRng);
+        let rewind_blinding_key = PrivateKey::random(&mut OsRng);
+        let proof_message = b"alice__12345678910111";
+
+        let rewind_data = RewindData {
+            rewind_key: rewind_key.clone(),
+            rewind_blinding_key: rewind_blinding_key.clone(),
+            proof_message: proof_message.clone(),
+        };
+
+        let p = TestParams::new();
+        let (builder, rules, factories) = get_builder();
+        let builder = builder
+            .with_block_height(42)
+            .with_fees(145 * uT)
+            .with_nonce(p.nonce.clone())
+            .with_spend_key(p.spend_key.clone())
+            .with_rewind_data(rewind_data.clone());
+        let (tx, _unblinded_output) = builder
+            .build(rules.consensus_constants(42), rules.emission_schedule())
+            .unwrap();
+        let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
+
+        let rewind_result = tx.body.outputs()[0]
+            .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
+            .unwrap();
+        assert_eq!(rewind_result.committed_value, block_reward);
+        assert_eq!(&rewind_result.proof_message, proof_message);
+        assert_eq!(rewind_result.blinding_factor, p.spend_key);
     }
 
     #[test]
@@ -407,7 +456,7 @@ mod test {
                 &factories,
                 42
             ),
-            Err(TransactionError::InvalidCoinbaseCount)
+            Err(TransactionError::MoreThanOneCoinbase)
         );
         // test catches that coinbase count on the kernel is wrong
         assert_eq!(
@@ -417,7 +466,7 @@ mod test {
                 &factories,
                 42
             ),
-            Err(TransactionError::InvalidCoinbaseCount)
+            Err(TransactionError::MoreThanOneCoinbase)
         );
         // testing that "block" is still valid
         assert_eq!(

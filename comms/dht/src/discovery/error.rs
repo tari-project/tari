@@ -54,10 +54,7 @@ pub enum DhtDiscoveryError {
 impl DhtDiscoveryError {
     /// Returns true if this error is a `DiscoveryTimeout`, otherwise false
     pub fn is_timeout(&self) -> bool {
-        match self {
-            DhtDiscoveryError::DiscoveryTimeout => true,
-            _ => false,
-        }
+        matches!(self, DhtDiscoveryError::DiscoveryTimeout)
     }
 }
 

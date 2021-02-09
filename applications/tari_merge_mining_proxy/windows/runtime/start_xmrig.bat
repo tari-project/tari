@@ -18,7 +18,7 @@ echo my_exe_path = %my_exe_path%
 echo.
 echo Run XMRig
 echo ---------
-call "%my_exe_path%\run_xmrig.bat"
+call "%my_exe_path%\source_xmrig_env.bat"
 
 goto END:
 

@@ -29,6 +29,11 @@ fi
 
 function update_versions {
     packages=${@:-'
+      infrastructure/derive
+   infrastructure/shutdown
+   infrastructure/storage
+   infrastructure/test_utils
+   base_layer/common_types
    base_layer/core
    base_layer/key_manager
    base_layer/mmr
@@ -38,6 +43,14 @@ function update_versions {
    common
    comms
    comms/dht
+   comms/rpc_macros
+   applications/tari_base_node
+   applications/tari_app_grpc
+   applications/tari_app_utilities
+   applications/tari_console_wallet
+   applications/tari_merge_mining_proxy
+   applications/tari_mining_node
+   applications/test_faucet
 '}
 
   p_arr=($packages)
@@ -51,7 +64,7 @@ function update_version {
     CARGO=$1
     VERSION=$2
     #SCRIPT='s/version\s*=\s*"\d+\.\d+\.\d+"/version = "'"$VERSION"'"/'
-    SCRIPT='s/^version =.*$/version = "'"$VERSION"'"/'
+    SCRIPT='s/^version = "0.*$/version = "'"$VERSION"'"/'
     echo "$SCRIPT" "$CARGO"
     sed -i.bak -e "$SCRIPT" "$CARGO"
     rm $CARGO.bak

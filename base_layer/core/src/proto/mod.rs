@@ -20,8 +20,30 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub(crate) mod generated;
-pub use generated::core;
+//! Imports of code generated from protobuf files
+
+mod transaction;
+mod types_impls;
+
+pub mod base_node {
+    include!(concat!(env!("OUT_DIR"), "/tari.base_node.rs"));
+}
+
+pub mod core {
+    include!(concat!(env!("OUT_DIR"), "/tari.core.rs"));
+}
+
+pub mod mempool {
+    include!(concat!(env!("OUT_DIR"), "/tari.mempool.rs"));
+}
+
+pub mod transaction_protocol {
+    include!(concat!(env!("OUT_DIR"), "/tari.transaction_protocol.rs"));
+}
+
+pub mod types {
+    include!(concat!(env!("OUT_DIR"), "/tari.types.rs"));
+}
 
 #[cfg(feature = "base_node")]
 mod block;

@@ -281,8 +281,8 @@ async fn online_then_offline() {
     streams::assert_in_stream(
         &mut event_stream,
         |item| match &*item.unwrap() {
-            ConnectivityEvent::ConnectivityStateDegraded(2) => true,
-            _ => false,
+            ConnectivityEvent::ConnectivityStateDegraded(2) => Some(()),
+            _ => None,
         },
         Duration::from_secs(10),
     )
@@ -304,8 +304,8 @@ async fn online_then_offline() {
     streams::assert_in_stream(
         &mut event_stream,
         |item| match &*item.unwrap() {
-            ConnectivityEvent::ConnectivityStateOffline => true,
-            _ => false,
+            ConnectivityEvent::ConnectivityStateOffline => Some(()),
+            _ => None,
         },
         Duration::from_secs(10),
     )
@@ -334,7 +334,7 @@ async fn ban_peer() {
     assert!(conn.is_some());
 
     connectivity
-        .ban_peer(peer.node_id.clone(), Duration::from_secs(3600), "".to_string())
+        .ban_peer_until(peer.node_id.clone(), Duration::from_secs(3600), "".to_string())
         .await
         .unwrap();
 

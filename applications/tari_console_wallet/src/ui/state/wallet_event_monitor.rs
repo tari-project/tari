@@ -20,14 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ui::state::AppStateInner;
+use crate::{notifier::Notifier, ui::state::AppStateInner};
 use futures::stream::StreamExt;
 use log::*;
 use std::sync::Arc;
-use tari_comms::connectivity::ConnectivityEvent;
+use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
-    output_manager_service::TxId,
+    output_manager_service::{handle::OutputManagerEvent, TxId},
     transaction_service::handle::TransactionEvent,
 };
 use tokio::sync::RwLock;
@@ -43,10 +43,15 @@ impl WalletEventMonitor {
         Self { app_state_inner }
     }
 
-    pub async fn run(mut self) {
+    pub async fn run(mut self, notifier: Notifier) {
         let mut shutdown_signal = self.app_state_inner.read().await.get_shutdown_signal();
-
         let mut transaction_service_events = self.app_state_inner.read().await.get_transaction_service_event_stream();
+
+        let mut output_manager_service_events = self
+            .app_state_inner
+            .read()
+            .await
+            .get_output_manager_service_event_stream();
 
         let mut connectivity_events = self.app_state_inner.read().await.get_connectivity_event_stream();
 
@@ -60,21 +65,36 @@ impl WalletEventMonitor {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet event {:?}", msg);
                                 match (*msg).clone() {
+                                    TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        notifier.transaction_received(tx_id);
+                                    },
+                                    TransactionEvent::TransactionMinedUnconfirmed(tx_id, confirmations) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        notifier.transaction_mined_unconfirmed(tx_id, confirmations);
+                                    },
+                                    TransactionEvent::TransactionMined(tx_id) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        notifier.transaction_mined(tx_id);
+                                    },
+                                    TransactionEvent::TransactionCancelled(tx_id) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        notifier.transaction_cancelled(tx_id);
+                                    },
                                     TransactionEvent::ReceivedTransaction(tx_id) |
                                     TransactionEvent::ReceivedTransactionReply(tx_id) |
-                                    TransactionEvent::ReceivedFinalizedTransaction(tx_id) |
-                                    TransactionEvent::TransactionCancelled(tx_id) |
                                     TransactionEvent::TransactionBroadcast(tx_id) |
-                                    TransactionEvent::TransactionMined(tx_id) => {
+                                    TransactionEvent::TransactionMinedRequestTimedOut(tx_id) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                     },
                                     TransactionEvent::TransactionDirectSendResult(tx_id, success) |
                                     TransactionEvent::TransactionStoreForwardSendResult(tx_id, success) => {
                                         if success {
                                             self.trigger_tx_state_refresh(tx_id).await;
+                                            notifier.transaction_sent(tx_id);
                                         }
                                     },
-                                    /// Only the above variants trigger state refresh
+                                    // Only the above variants trigger state refresh
                                     _ => (),
                                 }
                             },
@@ -94,7 +114,7 @@ impl WalletEventMonitor {
                                     ConnectivityEvent::PeerConnectionWillClose(_, _) => {
                                     self.trigger_peer_state_refresh().await;
                                     },
-                                    /// Only the above variants trigger state refresh
+                                    // Only the above variants trigger state refresh
                                     _ => (),
                                 }
                             },
@@ -109,11 +129,25 @@ impl WalletEventMonitor {
                                     BaseNodeEvent::BaseNodeState(state) => {
                                         self.trigger_base_node_state_refresh(state).await;
                                     }
+                                    BaseNodeEvent::BaseNodePeerSet(peer) => {
+                                        self.trigger_base_node_peer_refresh(*peer).await;
+                                    }
                                 }
                             },
                             Err(_) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel"),
                         }
                     },
+                    result = output_manager_service_events.select_next_some() => {
+                        match result {
+                            Ok(msg) => {
+                                trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
+                                if let OutputManagerEvent::TxoValidationSuccess(_) = *msg.clone() {
+                                        self.trigger_balance_refresh().await;
+                                }
+                            },
+                            Err(_e) => error!(target: LOG_TARGET, "Error reading from Output Manager Service event broadcast channel"),
+                        }
+                },
                     complete => {
                         info!(target: LOG_TARGET, "Wallet Event Monitor is exiting because all tasks have completed");
                         break;
@@ -146,6 +180,22 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.refresh_base_node_state(state).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+        }
+    }
+
+    async fn trigger_base_node_peer_refresh(&mut self, peer: Peer) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_base_node_peer(peer).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+        }
+    }
+
+    async fn trigger_balance_refresh(&mut self) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_balance().await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
     }

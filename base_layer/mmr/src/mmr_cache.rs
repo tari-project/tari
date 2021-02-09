@@ -84,7 +84,7 @@ where
         config: MmrCacheConfig,
     ) -> Result<MmrCache<D, BaseBackend, CpBackend>, MerkleMountainRangeError>
     {
-        let base_mmr = MutableMmr::new(base_mmr, Bitmap::create());
+        let base_mmr = MutableMmr::new(base_mmr, Bitmap::create())?;
         let curr_mmr = prune_mutable_mmr::<D, _>(&base_mmr)?;
         let mut mmr_cache = MmrCache {
             base_cp_index: 0,

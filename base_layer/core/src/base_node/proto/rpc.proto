@@ -1,6 +1,8 @@
 syntax = "proto3";
 
+import "transaction.proto";
 import "block.proto";
+import "mmr_tree.proto";
 
 package tari.base_node;
 
@@ -8,8 +10,14 @@ package tari.base_node;
 message SyncBlocksRequest {
   // Start sending from this hash (exclusive)
   bytes start_hash = 1;
-  // Number of blocks to send. If this is zero (empty) the peer SHOULD send to their tip height
-  uint64 count = 2;
+  // The hash of the last block that should be synced
+  bytes end_hash = 2;
+}
+
+// Response that contains the full body of a block
+message BlockBodyResponse {
+  bytes hash = 1;
+  tari.types.AggregateBody body = 2;
 }
 
 // Request message used to initiate a sync
@@ -20,14 +28,46 @@ message SyncHeadersRequest {
   uint64 count = 2;
 }
 
+// Find at which point the chain splits.
 message FindChainSplitRequest {
+  // A set of block hashes ordered in height descending order from the chain tip.
   repeated bytes block_hashes = 1;
-  uint64 count = 2;
-}
+  // The maximum number of headers to return starting at the first header after the matched height
+  uint64 header_count = 2;}
 
 message FindChainSplitResponse {
   // An ordered list of headers starting from next header after the matching hash, up until `FindChainSplitRequest::count`
   repeated tari.core.BlockHeader headers = 1;
   // The index of the hash that matched from `FindChainSplitRequest::block_hashes`. This value could also be used to know how far back a split occurs.
-  uint32 found_hash_index = 2;
+  uint32 fork_hash_index = 2;
+  /// The current header height of this node
+  uint64 tip_height = 3;
 }
+
+message SyncKernelsRequest {
+  uint64 start = 1;
+  bytes end_header_hash = 2;
+}
+
+message SyncUtxosRequest  {
+  uint64 start = 1;
+  bytes end_header_hash = 2;
+}
+
+message SyncUtxosResponse  {
+  repeated SyncUtxo utxos = 1;
+  // present if a utxo in utxos is the last in a block so that the merkle root can be
+  // checked
+  repeated bytes deleted_bitmaps = 2;
+}
+
+message SyncUtxo {
+  // The output. optional, if deleted at the time of the requested height,
+  // will be empty and `hash` and `rangeproof_hash` will be populated instead
+  tari.types.TransactionOutput output = 1;
+  // Only present if 'output` is empty
+  bytes hash = 2;
+  // Only present if `output` is empty
+  bytes rangeproof_hash = 3;
+}
+

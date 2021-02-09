@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    blocks::{blockheader::BlockHeaderValidationError, BlockValidationError},
+    blocks::{block_header::BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
-    proof_of_work::PowError,
+    proof_of_work::{monero_rx::MergeMineError, PowError},
     transactions::transaction::TransactionError,
 };
 use thiserror::Error;
@@ -51,6 +51,8 @@ pub enum ValidationError {
     InvalidAccountingBalance,
     #[error("Transaction contains already spent inputs")]
     ContainsSTxO,
+    #[error("Transaction contains already outputs that already exist")]
+    ContainsTxO,
     #[error("The recorded chain accumulated difficulty was stronger")]
     WeakerAccumulatedDifficulty,
     #[error("Invalid output merkle root")]
@@ -63,6 +65,16 @@ pub enum ValidationError {
     ChainBalanceValidationFailed(u64),
     #[error("Proof of work error: {0}")]
     ProofOfWorkError(#[from] PowError),
+    #[error("Attempted to validate genesis block")]
+    ValidatingGenesis,
+    #[error("Previous block hash not found")]
+    PreviousHashNotFound,
+    #[error("Duplicate or unsorted input found in block body")]
+    UnsortedOrDuplicateInput,
+    #[error("Duplicate or unsorted output found in block body")]
+    UnsortedOrDuplicateOutput,
+    #[error("Error in merge mine data:{0}")]
+    MergeMineError(#[from] MergeMineError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

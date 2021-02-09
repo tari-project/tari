@@ -35,10 +35,6 @@ mod mempool;
 #[cfg(feature = "base_node")]
 mod mempool_storage;
 #[cfg(feature = "base_node")]
-mod orphan_pool;
-#[cfg(feature = "base_node")]
-mod pending_pool;
-#[cfg(feature = "base_node")]
 mod priority;
 #[cfg(feature = "base_node")]
 mod reorg_pool;
@@ -61,14 +57,15 @@ pub use self::config::{MempoolConfig, MempoolServiceConfig};
 #[cfg(feature = "base_node")]
 pub use error::MempoolError;
 #[cfg(feature = "base_node")]
-pub use mempool::{Mempool, MempoolValidators};
-#[cfg(feature = "base_node")]
-pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoolServiceInterface};
+pub use mempool::Mempool;
 
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod proto;
+
 #[cfg(any(feature = "base_node", feature = "mempool_proto"))]
 pub mod service;
+#[cfg(feature = "base_node")]
+pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoolServiceInterface};
 
 #[cfg(feature = "base_node")]
 mod sync_protocol;
@@ -84,9 +81,7 @@ use tari_crypto::tari_utilities::hex::Hex;
 pub struct StatsResponse {
     pub total_txs: usize,
     pub unconfirmed_txs: usize,
-    pub orphan_txs: usize,
-    pub timelocked_txs: usize,
-    pub published_txs: usize,
+    pub reorg_txs: usize,
     pub total_weight: u64,
 }
 
@@ -94,14 +89,8 @@ impl Display for StatsResponse {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             fmt,
-            "Mempool stats: Total transactions: {}, Unconfirmed: {}, Orphaned: {}, Time locked: {}, Published: {}, \
-             Total Weight: {}",
-            self.total_txs,
-            self.unconfirmed_txs,
-            self.orphan_txs,
-            self.timelocked_txs,
-            self.published_txs,
-            self.total_weight
+            "Mempool stats: Total transactions: {}, Unconfirmed: {}, Published: {}, Total Weight: {}",
+            self.total_txs, self.unconfirmed_txs, self.reorg_txs, self.total_weight
         )
     }
 }
@@ -109,8 +98,6 @@ impl Display for StatsResponse {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StateResponse {
     pub unconfirmed_pool: Vec<Signature>,
-    pub orphan_pool: Vec<Signature>,
-    pub pending_pool: Vec<Signature>,
     pub reorg_pool: Vec<Signature>,
 }
 
@@ -119,14 +106,6 @@ impl Display for StateResponse {
         fmt.write_str("----------------- Mempool -----------------\n")?;
         fmt.write_str("--- Unconfirmed Pool ---\n")?;
         for excess_sig in &self.unconfirmed_pool {
-            fmt.write_str(&format!("    {}\n", excess_sig.get_signature().to_hex()))?;
-        }
-        fmt.write_str("--- Orphan Pool ---\n")?;
-        for excess_sig in &self.orphan_pool {
-            fmt.write_str(&format!("    {}\n", excess_sig.get_signature().to_hex()))?;
-        }
-        fmt.write_str("--- Pending Pool ---\n")?;
-        for excess_sig in &self.pending_pool {
             fmt.write_str(&format!("    {}\n", excess_sig.get_signature().to_hex()))?;
         }
         fmt.write_str("--- Reorg Pool ---\n")?;
@@ -140,18 +119,16 @@ impl Display for StateResponse {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum TxStorageResponse {
     UnconfirmedPool,
-    OrphanPool,
-    PendingPool,
     ReorgPool,
+    NotStoredOrphan,
+    NotStoredTimeLocked,
+    NotStoredAlreadySpent,
     NotStored,
 }
 
 impl TxStorageResponse {
     pub fn is_stored(&self) -> bool {
-        match self {
-            TxStorageResponse::NotStored => false,
-            _ => true,
-        }
+        matches!(self, Self::UnconfirmedPool | Self::ReorgPool)
     }
 }
 
@@ -159,9 +136,10 @@ impl Display for TxStorageResponse {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         let storage = match self {
             TxStorageResponse::UnconfirmedPool => "Unconfirmed pool",
-            TxStorageResponse::OrphanPool => "Orphan pool",
-            TxStorageResponse::PendingPool => "Pending pool",
             TxStorageResponse::ReorgPool => "Reorg pool",
+            TxStorageResponse::NotStoredOrphan => "Not stored orphan transaction",
+            TxStorageResponse::NotStoredTimeLocked => "Not stored time locked transaction",
+            TxStorageResponse::NotStoredAlreadySpent => "Not stored output already spent",
             TxStorageResponse::NotStored => "Not stored",
         };
         fmt.write_str(&storage)

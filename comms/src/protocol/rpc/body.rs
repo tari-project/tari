@@ -76,17 +76,11 @@ impl Body {
     }
 
     pub fn is_single(&self) -> bool {
-        match self.kind {
-            BodyKind::Single(_) => true,
-            _ => false,
-        }
+        matches!(self.kind, BodyKind::Single(_))
     }
 
     pub fn is_streaming(&self) -> bool {
-        match self.kind {
-            BodyKind::Streaming(_) => true,
-            _ => false,
-        }
+        matches!(self.kind, BodyKind::Streaming(_))
     }
 }
 
@@ -170,6 +164,14 @@ impl BodyBytes {
 
     pub fn into_bytes_mut(self) -> BytesMut {
         self.0.map(|v| v.into_iter().collect()).unwrap_or_else(BytesMut::new)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.as_ref().map(|b| b.len()).unwrap_or(0)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn into_vec(self) -> Vec<u8> {

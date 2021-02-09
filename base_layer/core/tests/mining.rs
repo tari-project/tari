@@ -43,10 +43,10 @@ use tari_core::{
     consensus::{ConsensusManagerBuilder, Network},
     mempool::{MempoolServiceConfig, TxStorageResponse},
     mining::Miner,
-    transactions::{helpers::schema_to_transaction, proto, tari_amount::T, types::CryptoFactories},
+    proto,
+    transactions::{helpers::schema_to_transaction, tari_amount::T, types::CryptoFactories},
     txn_schema,
 };
-use tari_mmr::MmrCacheConfig;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert_eventually;
@@ -70,7 +70,6 @@ fn mining() {
         &mut runtime,
         BlockchainDatabaseConfig::default(),
         BaseNodeServiceConfig::default(),
-        MmrCacheConfig { rewind_hist_len: 10 },
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,

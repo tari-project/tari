@@ -59,6 +59,7 @@ pub enum TransactionServiceRequest {
     GenerateCoinbaseTransaction(MicroTari, MicroTari, u64),
     RestartTransactionProtocols,
     RestartBroadcastProtocols,
+    NumConfirmationsRequired,
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
     #[cfg(feature = "test_harness")]
@@ -90,13 +91,14 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SubmitTransaction((id, _, _, _, _)) => f.write_str(&format!("SubmitTransaction ({})", id)),
             Self::SetLowPowerMode => f.write_str("SetLowPowerMode "),
             Self::SetNormalPowerMode => f.write_str("SetNormalPowerMode"),
-            TransactionServiceRequest::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
-            TransactionServiceRequest::RemoveEncryption => f.write_str("RemoveEncryption"),
-            TransactionServiceRequest::GenerateCoinbaseTransaction(_, _, bh) => {
+            Self::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
+            Self::RemoveEncryption => f.write_str("RemoveEncryption"),
+            Self::GenerateCoinbaseTransaction(_, _, bh) => {
                 f.write_str(&format!("GenerateCoinbaseTransaction (Blockheight {})", bh))
             },
-            TransactionServiceRequest::RestartTransactionProtocols => f.write_str("RestartTransactionProtocols"),
-            TransactionServiceRequest::RestartBroadcastProtocols => f.write_str("RestartBroadcastProtocols"),
+            Self::RestartTransactionProtocols => f.write_str("RestartTransactionProtocols"),
+            Self::RestartBroadcastProtocols => f.write_str("RestartBroadcastProtocols"),
+            Self::NumConfirmationsRequired => f.write_str("NumConfirmationsRequired"),
             #[cfg(feature = "test_harness")]
             Self::CompletePendingOutboundTransaction(tx) => {
                 f.write_str(&format!("CompletePendingOutboundTransaction ({})", tx.tx_id))
@@ -111,7 +113,7 @@ impl fmt::Display for TransactionServiceRequest {
             Self::MineTransaction(id) => f.write_str(&format!("MineTransaction ({})", id)),
             #[cfg(feature = "test_harness")]
             Self::BroadcastTransaction(id) => f.write_str(&format!("BroadcastTransaction ({})", id)),
-            TransactionServiceRequest::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
+            Self::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
         }
     }
 }
@@ -135,6 +137,7 @@ pub enum TransactionServiceResponse {
     CoinbaseTransactionGenerated(Box<Transaction>),
     ProtocolsRestarted,
     AnyTransaction(Box<Option<WalletTransaction>>),
+    NumConfirmationsRequired(u64),
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -161,6 +164,8 @@ pub enum TransactionEvent {
     TransactionBroadcast(TxId),
     TransactionMined(TxId),
     TransactionMinedRequestTimedOut(TxId),
+    TransactionMinedUnconfirmed(TxId, u64),
+    TransactionBaseNodeConnectionProblem(TxId),
     Error(String),
 }
 
@@ -421,6 +426,17 @@ impl TransactionServiceHandle {
     pub async fn remove_encryption(&mut self) -> Result<(), TransactionServiceError> {
         match self.handle.call(TransactionServiceRequest::RemoveEncryption).await?? {
             TransactionServiceResponse::EncryptionRemoved => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn num_confirmations_required(&mut self) -> Result<u64, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::NumConfirmationsRequired)
+            .await??
+        {
+            TransactionServiceResponse::NumConfirmationsRequired(confirmations) => Ok(confirmations),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

@@ -54,7 +54,7 @@ if [ ! "$(uname)" == "Darwin" ]; then
 fi
 
 DATA_DIR=${1:-"$HOME/.tari"}
-NETWORK=ridcully
+NETWORK=stibbons
 
 banner Installing and setting up your Tari Base Node
 if [ ! -d "$DATA_DIR/$NETWORK" ]; then
@@ -64,8 +64,8 @@ fi
 
 if [ ! -f "$DATA_DIR/config.toml" ]; then
   echo "Copying configuraton files"
-  cp tari-sample.toml $DATA_DIR/config.toml
-  cp log4rs-sample-base-node.yml $DATA_DIR/log4rs.yml
+  cp tari_sample.toml $DATA_DIR/config.toml
+  cp log4rs_sample_base_node.yml $DATA_DIR/log4rs_base_node.yml
   echo "Configuration complete."
 fi
 

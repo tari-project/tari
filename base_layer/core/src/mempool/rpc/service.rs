@@ -22,7 +22,7 @@
 
 use crate::{
     mempool::{rpc::MempoolService, service::MempoolHandle},
-    proto::generated as proto,
+    proto,
     transactions::transaction::Transaction,
 };
 use log::*;
@@ -50,7 +50,7 @@ impl MempoolRpcService {
 //       way to provide this functionality.
 fn to_internal_error<T: std::error::Error>(err: T) -> RpcStatus {
     error!(target: LOG_TARGET, "Internal error: {}", err);
-    RpcStatus::general_default()
+    RpcStatus::general(err.to_string())
 }
 
 #[tari_comms::async_trait]

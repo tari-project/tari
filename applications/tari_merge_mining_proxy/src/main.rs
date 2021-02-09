@@ -39,22 +39,27 @@ use crate::{block_template_data::BlockTemplateRepository, error::MmProxyError};
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
-use std::convert::Infallible;
+use std::{convert::Infallible, io};
 use structopt::StructOpt;
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
 
 #[tokio_macros::main]
 async fn main() -> Result<(), MmProxyError> {
-    // tracing_subscriber::fmt::init();
     let config = initialize()?;
 
-    let addr = config.proxy_host_address;
-    println!("Listening on {}...", addr);
-
     let config = MergeMiningProxyConfig::from(config);
+    let addr = config.proxy_host_address;
+
     let xmrig_service = MergeMiningProxyService::new(config, BlockTemplateRepository::new());
+    if !xmrig_service.check_connections(&mut io::stdout()).await {
+        println!(
+            "Warning: some services have not been started or are mis-configured in the proxy config. The proxy will \
+             remain running and connect to these services on demand."
+        );
+    }
     let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(xmrig_service.clone())));
 
+    println!("\nListening on {}...\n", addr);
     Server::bind(&addr).serve(service).await?;
 
     Ok(())

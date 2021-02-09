@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::time::Duration;
+use tari_comms::peer_manager::NodeId;
 
 /// Configuration for liveness service
 #[derive(Debug, Clone)]
@@ -31,7 +32,10 @@ pub struct LivenessConfig {
     pub refresh_neighbours_interval: Duration,
     /// The length of time between querying peer manager for random neighbours. (default: 2 hours)
     pub refresh_random_pool_interval: Duration,
+    /// Number of peers to ping per round, excluding monitored peers (Default: 8)
     pub num_peers_per_round: usize,
+    /// Peers to include in every auto ping round (Default: <empty>)
+    pub monitored_peers: Vec<NodeId>,
 }
 
 impl Default for LivenessConfig {
@@ -41,6 +45,7 @@ impl Default for LivenessConfig {
             refresh_neighbours_interval: Duration::from_secs(2 * 60),
             refresh_random_pool_interval: Duration::from_secs(2 * 60 * 60),
             num_peers_per_round: 8,
+            monitored_peers: Default::default(),
         }
     }
 }

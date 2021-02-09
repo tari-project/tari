@@ -29,11 +29,15 @@ use crate::{
         NodeCommsResponse,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    chain_storage::{ChainMetadata, HistoricalBlock, MmrTree},
+    chain_storage::HistoricalBlock,
     proof_of_work::PowAlgorithm,
-    transactions::types::{Commitment, HashOutput, Signature},
+    transactions::{
+        transaction::TransactionOutput,
+        types::{Commitment, HashOutput, Signature},
+    },
 };
 use std::sync::Arc;
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
 
@@ -145,33 +149,28 @@ impl LocalNodeCommsInterface {
         self.block_sender.call((block, propagate)).await?
     }
 
-    pub fn publish_block_event(&mut self, event: BlockEvent) -> usize {
+    pub fn publish_block_event(&self, event: BlockEvent) -> usize {
         // If event send fails, that means that there are no receivers (i.e. it was sent to zero receivers)
         self.block_event_sender.send(Arc::new(event)).unwrap_or(0)
     }
 
-    /// Fetches the set of leaf node hashes and their deletion status' for the nth to nth+count leaf node index in the
-    /// given MMR tree.
-    pub async fn fetch_mmr_nodes(
+    pub async fn fetch_matching_utxos(
         &mut self,
-        tree: MmrTree,
-        pos: u32,
-        count: u32,
-        hist_height: u64,
-    ) -> Result<(Vec<HashOutput>, Vec<u8>), CommsInterfaceError>
+        hashes: Vec<HashOutput>,
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError>
     {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchMatchingMmrNodes(tree, pos, count, hist_height))
+            .call(NodeCommsRequest::FetchMatchingUtxos(hashes))
             .await??
         {
-            NodeCommsResponse::MmrNodes(added, deleted) => Ok((added, deleted)),
+            NodeCommsResponse::TransactionOutputs(outputs) => Ok(outputs),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
 
     /// Fetches the blocks with the specified utxo commitments
-    pub async fn get_blocks_with_utxos(
+    pub async fn fetch_blocks_with_utxos(
         &mut self,
         commitments: Vec<Commitment>,
     ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError>

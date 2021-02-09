@@ -20,37 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
-
 use super::{
     config::BaseNodeServiceConfig,
     error::BaseNodeServiceError,
     handle::{BaseNodeEvent, BaseNodeEventSender, BaseNodeServiceRequest, BaseNodeServiceResponse},
+};
+use crate::storage::database::WalletDatabase;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
 };
 
 use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, Stream, StreamExt};
 use log::*;
 use rand::rngs::OsRng;
+use std::convert::TryInto;
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    waiting_requests::{generate_request_key, RequestKey},
+};
 use tari_comms::peer_manager::Peer;
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundMessageRequester};
-use tari_core::{
-    base_node::{
-        generate_request_key,
-        proto::{
-            base_node as BaseNodeProto,
-            base_node::{
-                base_node_service_request::Request as BaseNodeRequestProto,
-                base_node_service_response::Response as BaseNodeResponseProto,
-            },
-        },
-        RequestKey,
-    },
-    chain_storage::ChainMetadata,
-};
+use tari_core::proto::{base_node as proto, base_node::base_node_service_request::Request as BaseNodeRequestProto};
+
+use crate::storage::database::WalletBackend;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
@@ -64,6 +58,24 @@ pub struct BaseNodeState {
     pub chain_metadata: Option<ChainMetadata>,
     pub is_synced: Option<bool>,
     pub updated: Option<NaiveDateTime>,
+    pub latency: Option<Duration>,
+    pub online: OnlineState,
+}
+
+impl BaseNodeState {
+    fn set_online(&mut self, online: OnlineState) -> Self {
+        self.online = online;
+
+        self.clone()
+    }
+}
+
+/// Connection state of the Base Node
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum OnlineState {
+    Connecting,
+    Online,
+    Offline,
 }
 
 impl Default for BaseNodeState {
@@ -72,11 +84,13 @@ impl Default for BaseNodeState {
             chain_metadata: None,
             is_synced: None,
             updated: None,
+            latency: None,
+            online: OnlineState::Connecting,
         }
     }
 }
 
-/// To keep track of when a request was sent
+/// Keep track of the identity and the time the request was sent
 #[derive(Debug, Clone, Copy)]
 struct RequestMetadata {
     request_key: RequestKey,
@@ -84,7 +98,9 @@ struct RequestMetadata {
 }
 
 /// The wallet base node service is responsible for handling requests to be sent to the connected base node.
-pub struct BaseNodeService<BNResponseStream> {
+pub struct BaseNodeService<BNResponseStream, T>
+where T: WalletBackend + 'static
+{
     config: BaseNodeServiceConfig,
     base_node_response_stream: Option<BNResponseStream>,
     request_stream: Option<Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>>,
@@ -94,10 +110,13 @@ pub struct BaseNodeService<BNResponseStream> {
     shutdown_signal: Option<ShutdownSignal>,
     state: BaseNodeState,
     requests: Vec<RequestMetadata>,
+    db: WalletDatabase<T>,
 }
 
-impl<BNResponseStream> BaseNodeService<BNResponseStream>
-where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>
+impl<BNResponseStream, T> BaseNodeService<BNResponseStream, T>
+where
+    T: WalletBackend + 'static,
+    BNResponseStream: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
 {
     pub fn new(
         config: BaseNodeServiceConfig,
@@ -106,6 +125,7 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
         outbound_messaging: OutboundMessageRequester,
         event_publisher: BaseNodeEventSender,
         shutdown_signal: ShutdownSignal,
+        db: WalletDatabase<T>,
     ) -> Self
     {
         Self {
@@ -116,8 +136,9 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
             event_publisher,
             base_node_peer: None,
             shutdown_signal: Some(shutdown_signal),
-            state: BaseNodeState::default(),
-            requests: Vec::new(),
+            state: Default::default(),
+            requests: Default::default(),
+            db,
         }
     }
 
@@ -161,12 +182,13 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
                 request_context = request_stream.select_next_some() => {
                     trace!(target: LOG_TARGET, "Handling Base Node Service API Request");
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request).await.or_else(|resp| {
-                        error!(target: LOG_TARGET, "Error handling request: {:?}", resp);
-                        Err(resp)
-                    })).or_else(|resp| {
+                    let response = self.handle_request(request).await.map_err(|e| {
+                        error!(target: LOG_TARGET, "Error handling request: {:?}", e);
+                        e
+                    });
+                    let _ = reply_tx.send(response).map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
-                        Err(resp)
+                        e
                     });
                 },
 
@@ -195,7 +217,7 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
 
     /// Sends a request to the connected base node to retrieve chain metadata.
     async fn refresh_chain_metadata(&mut self) -> Result<(), BaseNodeServiceError> {
-        debug!(target: LOG_TARGET, "Refresh chain metadata");
+        trace!(target: LOG_TARGET, "Refresh chain metadata");
         let base_node_peer = self
             .base_node_peer
             .clone()
@@ -206,8 +228,8 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
 
         self.requests.push(RequestMetadata { request_key, sent: now });
 
-        // remove old request keys
-        let (current_requests, old): (Vec<RequestMetadata>, Vec<RequestMetadata>) =
+        // remove old requests
+        let (current_requests, old_requests): (Vec<RequestMetadata>, Vec<RequestMetadata>) =
             self.requests.iter().partition(|r| {
                 let age = Utc::now().naive_utc() - r.sent;
                 // convert to std Duration
@@ -217,12 +239,16 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
             });
 
         trace!(target: LOG_TARGET, "current requests: {:?}", current_requests);
-        trace!(target: LOG_TARGET, "discarded requests : {:?}", old);
+        trace!(target: LOG_TARGET, "discarded requests : {:?}", old_requests);
 
         self.requests = current_requests;
 
+        // check if base node is offline
+        self.check_online_status(old_requests.len());
+
+        // send the new request
         let request = BaseNodeRequestProto::GetChainMetadata(true);
-        let service_request = BaseNodeProto::BaseNodeServiceRequest {
+        let service_request = proto::BaseNodeServiceRequest {
             request_key,
             request: Some(request),
         };
@@ -236,15 +262,45 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
             .await
             .map_err(BaseNodeServiceError::OutboundError)?;
 
-        debug!(target: LOG_TARGET, "Refresh chain metadata sent");
+        debug!(target: LOG_TARGET, "Refresh chain metadata message sent");
 
         Ok(())
+    }
+
+    fn check_online_status(&mut self, discarded: usize) {
+        // if we are discarding old requests and have never received a response
+        let never_connected = discarded > 0 && self.state.updated.is_none();
+
+        // or if the last time we received a response is greater than the max request age config
+        let timing_out = if let Some(updated) = self.state.updated {
+            let now = Utc::now().naive_utc();
+            let millis = (now - updated).num_milliseconds() as u64;
+            let last_updated = Duration::from_millis(millis);
+
+            matches!(self.state.online, OnlineState::Online) && last_updated > self.config.request_max_age
+        } else {
+            false
+        };
+
+        // then the base node is currently not responding
+        if never_connected || timing_out {
+            info!(
+                target: LOG_TARGET,
+                "Base node is offline. Either we never connected ({}), or haven't received a response newer than the \
+                 max request age ({}).",
+                never_connected,
+                timing_out
+            );
+            let state = self.state.set_online(OnlineState::Offline);
+            let event = BaseNodeEvent::BaseNodeState(state);
+            self.publish_event(event);
+        }
     }
 
     /// Handles the response from the connected base node.
     async fn handle_base_node_response(
         &mut self,
-        response: DomainMessage<BaseNodeProto::BaseNodeServiceResponse>,
+        response: DomainMessage<proto::BaseNodeServiceResponse>,
     ) -> Result<(), BaseNodeServiceError>
     {
         let DomainMessage::<_> { inner: message, .. } = response;
@@ -256,18 +312,29 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
 
         if !found.is_empty() {
             debug!(target: LOG_TARGET, "Handle base node response message: {:?}", message);
+
+            let now = Utc::now().naive_utc();
+            let time_sent = found.first().unwrap().sent;
+            let millis = (now - time_sent).num_milliseconds() as u64;
+            let latency = Duration::from_millis(millis);
+
             match message.response {
-                Some(BaseNodeResponseProto::ChainMetadata(chain_metadata)) => {
+                Some(proto::base_node_service_response::Response::ChainMetadata(chain_metadata)) => {
                     trace!(target: LOG_TARGET, "Chain Metadata response {:?}", chain_metadata);
-                    let now = Utc::now().naive_utc();
+                    info!(target: LOG_TARGET, "Base node latency: {}ms", millis);
+                    let metadata: ChainMetadata = chain_metadata
+                        .try_into()
+                        .map_err(BaseNodeServiceError::InvalidBaseNodeResponse)?;
+                    self.db.set_chain_meta(metadata.clone()).await?;
                     let state = BaseNodeState {
                         is_synced: Some(message.is_synced),
-                        chain_metadata: Some(chain_metadata.into()),
+                        chain_metadata: Some(metadata),
                         updated: Some(now),
+                        latency: Some(latency),
+                        online: OnlineState::Online,
                     };
                     self.publish_event(BaseNodeEvent::BaseNodeState(state.clone()));
                     self.set_state(state);
-                    self.requests = remaining;
                 },
                 _ => {
                     trace!(
@@ -277,17 +344,32 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
                     );
                 },
             }
+
+            self.requests = remaining;
         }
 
         Ok(())
     }
 
-    fn set_base_node_peer(&mut self, peer: Box<Peer>) {
-        self.base_node_peer = Some(*peer);
+    fn reset_state(&mut self) {
+        // drop outstanding reqs
+        self.requests = Vec::new();
+
+        // reset base node state
+        let state = BaseNodeState::default();
+        self.publish_event(BaseNodeEvent::BaseNodeState(state.clone()));
+        self.set_state(state);
+    }
+
+    fn set_base_node_peer(&mut self, peer: Peer) {
+        self.reset_state();
+
+        self.base_node_peer = Some(peer.clone());
+        self.publish_event(BaseNodeEvent::BaseNodePeerSet(Box::new(peer)));
     }
 
     fn publish_event(&mut self, event: BaseNodeEvent) {
-        debug!(target: LOG_TARGET, "Publishing event: {:?}", event);
+        trace!(target: LOG_TARGET, "Publishing event: {:?}", event);
         let _ = self.event_publisher.send(Arc::new(event)).map_err(|_| {
             trace!(
                 target: LOG_TARGET,
@@ -308,12 +390,13 @@ where BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServi
         );
         match request {
             BaseNodeServiceRequest::SetBaseNodePeer(peer) => {
-                self.set_base_node_peer(peer);
+                self.set_base_node_peer(*peer);
                 Ok(BaseNodeServiceResponse::BaseNodePeerSet)
             },
-            BaseNodeServiceRequest::GetChainMetadata => Ok(BaseNodeServiceResponse::ChainMetadata(
-                self.state.chain_metadata.clone(),
-            )),
+            BaseNodeServiceRequest::GetChainMetadata => match self.state.chain_metadata.clone() {
+                Some(v) => Ok(BaseNodeServiceResponse::ChainMetadata(Some(v))),
+                None => Ok(BaseNodeServiceResponse::ChainMetadata(self.db.get_chain_meta().await?)),
+            },
         }
     }
 }

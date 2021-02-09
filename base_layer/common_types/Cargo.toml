@@ -1,0 +1,14 @@
+[package]
+name = "tari_common_types"
+authors = ["The Tari Development Community"]
+description = "Tari cryptocurrency common types"
+license = "BSD-3-Clause"
+version = "0.8.2"
+edition = "2018"
+
+[dependencies]
+futures = {version = "^0.3.1", features = ["async-await"] }
+rand = "0.7.2"
+tari_crypto = "^0.8"
+serde = { version = "1.0.106", features = ["derive"] }
+tokio = { version="^0.2", features = ["blocking", "time", "sync"] }

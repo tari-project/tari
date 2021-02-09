@@ -2,7 +2,7 @@ use crate::{dir_utils::default_subdir, ConfigBootstrap, LOG_TARGET};
 use config::Config;
 use log::{debug, info};
 use multiaddr::{Multiaddr, Protocol};
-use std::{fs, path::Path};
+use std::{fs, fs::File, io::Write, path::Path};
 
 //-------------------------------------           Main API functions         --------------------------------------//
 
@@ -31,10 +31,14 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, String>
     }
 }
 
-/// Installs a new configuration file template, copied from `tari-sample.toml` to the given path.
+/// Installs a new configuration file template, copied from `tari_sample.toml` to the given path.
 pub fn install_default_config_file(path: &Path) -> Result<(), std::io::Error> {
-    let source = include_str!("../../config/presets/tari-sample.toml");
-    fs::write(path, source)
+    let source = include_str!("../../config/presets/tari_sample.toml");
+    if let Some(d) = path.parent() {
+        fs::create_dir_all(d)?
+    };
+    let mut file = File::create(path)?;
+    file.write_all(source.as_ref())
 }
 
 //-------------------------------------      Configuration file defaults      --------------------------------------//
@@ -80,16 +84,17 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         default_subdir("wallet/console-wallet.dat", Some(&bootstrap.base_path)),
     )
     .unwrap();
-    cfg.set_default("wallet.base_node_query_timeout", 900).unwrap();
-    cfg.set_default("wallet.transaction_broadcast_monitoring_timeout", 600)
+    cfg.set_default("wallet.base_node_query_timeout", 60).unwrap();
+    cfg.set_default("wallet.transaction_broadcast_monitoring_timeout", 60)
         .unwrap();
-    cfg.set_default("wallet.transaction_chain_monitoring_timeout", 15)
+    cfg.set_default("wallet.transaction_chain_monitoring_timeout", 60)
         .unwrap();
-    cfg.set_default("wallet.transaction_direct_send_timeout", 600).unwrap();
-    cfg.set_default("wallet.transaction_broadcast_send_timeout", 600)
+    cfg.set_default("wallet.transaction_direct_send_timeout", 20).unwrap();
+    cfg.set_default("wallet.transaction_broadcast_send_timeout", 60)
         .unwrap();
     cfg.set_default("wallet.prevent_fee_gt_amount", true).unwrap();
-    cfg.set_default("wallet.base_node_service_peer", "").unwrap();
+    cfg.set_default("wallet.base_node_service_peers", Vec::<String>::new())
+        .unwrap();
 
     //---------------------------------- Mainnet Defaults --------------------------------------------//
 
@@ -106,8 +111,11 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.mainnet.peer_seeds", Vec::<String>::new())
         .unwrap();
-    cfg.set_default("base_node.mainnet.block_sync_strategy", "ViaBestChainMetadata")
+    cfg.set_default("base_node.mainnet.dns_seeds", Vec::<String>::new())
         .unwrap();
+    cfg.set_default("base_node.mainnet.dns_seeds_name_server", "1.1.1.1:53")
+        .unwrap();
+    cfg.set_default("base_node.mainnet.dns_seeds_use_dnssec", true).unwrap();
     cfg.set_default(
         "base_node.mainnet.data_dir",
         default_subdir("mainnet/", Some(&bootstrap.base_path)),
@@ -115,32 +123,32 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     .unwrap();
     cfg.set_default(
         "base_node.mainnet.base_node_identity_file",
-        default_subdir("mainnet/base_node_id.json", Some(&bootstrap.base_path)),
+        default_subdir("config/base_node_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.mainnet.base_node_tor_identity_file",
-        default_subdir("mainnet/base_node_tor.json", Some(&bootstrap.base_path)),
+        default_subdir("config/base_node_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.mainnet.wallet_identity_file",
-        default_subdir("mainnet/wallet_id.json", Some(&bootstrap.base_path)),
+        default_subdir("config/wallet_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.mainnet.console_wallet_identity_file",
-        default_subdir("mainnet/console_wallet_id.json", Some(&bootstrap.base_path)),
+        default_subdir("config/console_wallet_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.mainnet.wallet_tor_identity_file",
-        default_subdir("mainnet/wallet_tor.json", Some(&bootstrap.base_path)),
+        default_subdir("config/wallet_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
         "base_node.mainnet.console_wallet_tor_identity_file",
-        default_subdir("mainnet/console_wallet_tor.json", Some(&bootstrap.base_path)),
+        default_subdir("config/console_wallet_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
@@ -149,145 +157,85 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default("base_node.mainnet.grpc_enabled", false).unwrap();
+    cfg.set_default("base_node.mainnet.allow_test_addresses", false)
+        .unwrap();
     cfg.set_default("base_node.mainnet.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();
     cfg.set_default("base_node.mainnet.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
     cfg.set_default("base_node.mainnet.enable_mining", false).unwrap();
+    cfg.set_default("base_node.mainnet.enable_wallet", true).unwrap();
     cfg.set_default("base_node.mainnet.num_mining_threads", 1).unwrap();
 
-    //---------------------------------- Rincewind Defaults --------------------------------------------//
+    //---------------------------------- Stibbons Defaults --------------------------------------------//
 
-    cfg.set_default("base_node.rincewind.db_type", "lmdb").unwrap();
-    cfg.set_default("base_node.rincewind.orphan_storage_capacity", 720)
+    cfg.set_default("base_node.stibbons.db_type", "lmdb").unwrap();
+    cfg.set_default("base_node.stibbons.orphan_storage_capacity", 720)
         .unwrap();
-    cfg.set_default("base_node.rincewind.orphan_db_clean_out_threshold", 0)
+    cfg.set_default("base_node.stibbons.orphan_db_clean_out_threshold", 0)
         .unwrap();
-    cfg.set_default("base_node.rincewind.pruning_horizon", 0).unwrap();
-    cfg.set_default("base_node.rincewind.pruned_mode_cleanup_interval", 50)
+    cfg.set_default("base_node.stibbons.pruning_horizon", 0).unwrap();
+    cfg.set_default("base_node.stibbons.pruned_mode_cleanup_interval", 50)
         .unwrap();
-    cfg.set_default("base_node.rincewind.peer_seeds", Vec::<String>::new())
-        .unwrap();
-    cfg.set_default("base_node.rincewind.block_sync_strategy", "ViaBestChainMetadata")
+    cfg.set_default("base_node.stibbons.peer_seeds", Vec::<String>::new())
         .unwrap();
     cfg.set_default(
-        "base_node.rincewind.data_dir",
-        default_subdir("rincewind/", Some(&bootstrap.base_path)),
+        "base_node.stibbons.data_dir",
+        default_subdir("stibbons/", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.rincewind.base_node_tor_identity_file",
-        default_subdir("rincewind/base_node_tor.json", Some(&bootstrap.base_path)),
+        "base_node.stibbons.base_node_tor_identity_file",
+        default_subdir("config/base_node_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.rincewind.wallet_identity_file",
-        default_subdir("rincewind/wallet_id.json", Some(&bootstrap.base_path)),
+        "base_node.stibbons.wallet_identity_file",
+        default_subdir("config/wallet_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.rincewind.console_wallet_identity_file",
-        default_subdir("rincewind/console_wallet_id.json", Some(&bootstrap.base_path)),
+        "base_node.stibbons.console_wallet_identity_file",
+        default_subdir("config/console_wallet_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.rincewind.wallet_tor_identity_file",
-        default_subdir("rincewind/wallet_tor.json", Some(&bootstrap.base_path)),
+        "base_node.stibbons.wallet_tor_identity_file",
+        default_subdir("config/wallet_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.rincewind.console_wallet_tor_identity_file",
-        default_subdir("rincewind/console_wallet_tor.json", Some(&bootstrap.base_path)),
+        "base_node.stibbons.console_wallet_tor_identity_file",
+        default_subdir("config/console_wallet_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.rincewind.base_node_identity_file",
-        default_subdir("rincewind/base_node_id.json", Some(&bootstrap.base_path)),
+        "base_node.stibbons.base_node_identity_file",
+        default_subdir("config/base_node_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.rincewind.public_address",
+        "base_node.stibbons.public_address",
         format!("{}/tcp/18141", local_ip_addr),
     )
     .unwrap();
 
-    cfg.set_default("base_node.rincewind.grpc_enabled", false).unwrap();
-    cfg.set_default("base_node.rincewind.grpc_base_node_address", "127.0.0.1:18142")
+    cfg.set_default("base_node.stibbons.allow_test_addresses", false)
         .unwrap();
-    cfg.set_default("base_node.rincewind.grpc_console_wallet_address", "127.0.0.1:18143")
+    cfg.set_default("base_node.stibbons.grpc_enabled", false).unwrap();
+    cfg.set_default("base_node.stibbons.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();
-    cfg.set_default("base_node.rincewind.enable_mining", false).unwrap();
-    cfg.set_default("base_node.rincewind.enable_wallet", true).unwrap();
-    cfg.set_default("base_node.rincewind.num_mining_threads", 1).unwrap();
+    cfg.set_default("base_node.stibbons.grpc_console_wallet_address", "127.0.0.1:18143")
+        .unwrap();
+    cfg.set_default("base_node.stibbons.enable_mining", false).unwrap();
+    cfg.set_default("base_node.stibbons.enable_wallet", true).unwrap();
+    cfg.set_default("base_node.stibbons.num_mining_threads", 1).unwrap();
 
-    cfg.set_default("base_node.localnet.peer_seeds", Vec::<String>::new())
+    cfg.set_default("base_node.stibbons.dns_seeds_name_server", "1.1.1.1:53")
         .unwrap();
-
-    //---------------------------------- Ridcully Defaults --------------------------------------------//
-
-    cfg.set_default("base_node.ridcully.db_type", "lmdb").unwrap();
-    cfg.set_default("base_node.ridcully.orphan_storage_capacity", 720)
+    cfg.set_default("base_node.stibbons.dns_seeds_use_dnssec", true)
         .unwrap();
-    cfg.set_default("base_node.ridcully.orphan_db_clean_out_threshold", 0)
-        .unwrap();
-    cfg.set_default("base_node.ridcully.pruning_horizon", 0).unwrap();
-    cfg.set_default("base_node.ridcully.pruned_mode_cleanup_interval", 50)
-        .unwrap();
-    cfg.set_default("base_node.ridcully.peer_seeds", Vec::<String>::new())
-        .unwrap();
-    cfg.set_default("base_node.ridcully.block_sync_strategy", "ViaBestChainMetadata")
-        .unwrap();
-    cfg.set_default(
-        "base_node.ridcully.data_dir",
-        default_subdir("ridcully/", Some(&bootstrap.base_path)),
-    )
-    .unwrap();
-    cfg.set_default(
-        "base_node.ridcully.base_node_tor_identity_file",
-        default_subdir("ridcully/base_node_tor.json", Some(&bootstrap.base_path)),
-    )
-    .unwrap();
-    cfg.set_default(
-        "base_node.ridcully.wallet_identity_file",
-        default_subdir("ridcully/wallet_id.json", Some(&bootstrap.base_path)),
-    )
-    .unwrap();
-    cfg.set_default(
-        "base_node.ridcully.console_wallet_identity_file",
-        default_subdir("ridcully/console_wallet_id.json", Some(&bootstrap.base_path)),
-    )
-    .unwrap();
-    cfg.set_default(
-        "base_node.ridcully.wallet_tor_identity_file",
-        default_subdir("ridcully/wallet_tor.json", Some(&bootstrap.base_path)),
-    )
-    .unwrap();
-    cfg.set_default(
-        "base_node.ridcully.console_wallet_tor_identity_file",
-        default_subdir("ridcully/console_wallet_tor.json", Some(&bootstrap.base_path)),
-    )
-    .unwrap();
-    cfg.set_default(
-        "base_node.ridcully.base_node_identity_file",
-        default_subdir("ridcully/base_node_id.json", Some(&bootstrap.base_path)),
-    )
-    .unwrap();
-    cfg.set_default(
-        "base_node.ridcully.public_address",
-        format!("{}/tcp/18141", local_ip_addr),
-    )
-    .unwrap();
-
-    cfg.set_default("base_node.ridcully.grpc_enabled", false).unwrap();
-    cfg.set_default("base_node.ridcully.grpc_base_node_address", "127.0.0.1:18142")
-        .unwrap();
-    cfg.set_default("base_node.ridcully.grpc_console_wallet_address", "127.0.0.1:18143")
-        .unwrap();
-    cfg.set_default("base_node.ridcully.enable_mining", false).unwrap();
-    cfg.set_default("base_node.ridcully.enable_wallet", true).unwrap();
-    cfg.set_default("base_node.ridcully.num_mining_threads", 1).unwrap();
-
-    cfg.set_default("base_node.ridcully.peer_seeds", Vec::<String>::new())
+    cfg.set_default("wallet.base_node_service_peers", Vec::<String>::new())
         .unwrap();
 
     set_transport_defaults(&mut cfg);
@@ -297,32 +245,32 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 }
 
 fn set_merge_mining_defaults(cfg: &mut Config) {
-    cfg.set_default(
-        "merge_mining_proxy.rincewind.monerod_url",
-        "http://192.110.160.146:38081",
-    )
-    .unwrap();
-    cfg.set_default("merge_mining_proxy.rincewind.proxy_host_address", "127.0.0.1:7878")
+    cfg.set_default("merge_mining_proxy.mainnet.monerod_url", "http://18.133.55.120:38081")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.rincewind.monerod_use_auth", "false")
+    cfg.set_default("merge_mining_proxy.mainnet.proxy_host_address", "127.0.0.1:7878")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.rincewind.monerod_username", "")
+    cfg.set_default("merge_mining_proxy.mainnet.monerod_use_auth", "false")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.rincewind.monerod_password", "")
+    cfg.set_default("merge_mining_proxy.mainnet.monerod_username", "")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.mainnet.monerod_password", "")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.mainnet.wait_for_initial_sync_at_startup", true)
         .unwrap();
 
-    cfg.set_default(
-        "merge_mining_proxy.ridcully.monerod_url",
-        "http://192.110.160.146:38081",
-    )
-    .unwrap();
-    cfg.set_default("merge_mining_proxy.ridcully.proxy_host_address", "127.0.0.1:7878")
+    cfg.set_default("merge_mining_proxy.stibbons.monerod_url", "http://18.133.55.120:38081")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.ridcully.monerod_use_auth", "false")
+    cfg.set_default("merge_mining_proxy.stibbons.proxy_host_address", "127.0.0.1:7878")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.ridcully.monerod_username", "")
+    cfg.set_default("merge_mining_proxy.stibbons.proxy_submit_to_origin", true)
         .unwrap();
-    cfg.set_default("merge_mining_proxy.ridcully.monerod_password", "")
+    cfg.set_default("merge_mining_proxy.stibbons.monerod_use_auth", "false")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.stibbons.monerod_username", "")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.stibbons.monerod_password", "")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.stibbons.wait_for_initial_sync_at_startup", true)
         .unwrap();
 }
 
@@ -346,42 +294,24 @@ fn set_transport_defaults(cfg: &mut Config) {
         .unwrap();
     cfg.set_default("base_node.mainnet.socks5_auth", "none").unwrap();
 
-    // rincewind
-    // Default transport for rincewind is tcp
-    cfg.set_default("base_node.rincewind.transport", "tcp").unwrap();
-    cfg.set_default("base_node.rincewind.tcp_listener_address", "/ip4/0.0.0.0/tcp/18189")
+    // stibbons
+    // Default transport for stibbons is tcp
+    cfg.set_default("base_node.stibbons.transport", "tcp").unwrap();
+    cfg.set_default("base_node.stibbons.tcp_listener_address", "/ip4/0.0.0.0/tcp/18189")
         .unwrap();
 
-    cfg.set_default("base_node.rincewind.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
+    cfg.set_default("base_node.stibbons.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
         .unwrap();
-    cfg.set_default("base_node.rincewind.tor_control_auth", "none").unwrap();
-    cfg.set_default("base_node.rincewind.tor_forward_address", "/ip4/127.0.0.1/tcp/0")
+    cfg.set_default("base_node.stibbons.tor_control_auth", "none").unwrap();
+    cfg.set_default("base_node.stibbons.tor_forward_address", "/ip4/127.0.0.1/tcp/0")
         .unwrap();
-    cfg.set_default("base_node.rincewind.tor_onion_port", "18141").unwrap();
+    cfg.set_default("base_node.stibbons.tor_onion_port", "18141").unwrap();
 
-    cfg.set_default("base_node.rincewind.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9150")
+    cfg.set_default("base_node.stibbons.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9150")
         .unwrap();
-    cfg.set_default("base_node.rincewind.socks5_listener_address", "/ip4/0.0.0.0/tcp/18199")
+    cfg.set_default("base_node.stibbons.socks5_listener_address", "/ip4/0.0.0.0/tcp/18199")
         .unwrap();
-    cfg.set_default("base_node.rincewind.socks5_auth", "none").unwrap();
-    // ridcully
-    // Default transport for ridcully is tcp
-    cfg.set_default("base_node.ridcully.transport", "tcp").unwrap();
-    cfg.set_default("base_node.ridcully.tcp_listener_address", "/ip4/0.0.0.0/tcp/18189")
-        .unwrap();
-
-    cfg.set_default("base_node.ridcully.tor_control_address", "/ip4/127.0.0.1/tcp/9051")
-        .unwrap();
-    cfg.set_default("base_node.ridcully.tor_control_auth", "none").unwrap();
-    cfg.set_default("base_node.ridcully.tor_forward_address", "/ip4/127.0.0.1/tcp/0")
-        .unwrap();
-    cfg.set_default("base_node.ridcully.tor_onion_port", "18141").unwrap();
-
-    cfg.set_default("base_node.ridcully.socks5_proxy_address", "/ip4/0.0.0.0/tcp/9150")
-        .unwrap();
-    cfg.set_default("base_node.ridcully.socks5_listener_address", "/ip4/0.0.0.0/tcp/18199")
-        .unwrap();
-    cfg.set_default("base_node.ridcully.socks5_auth", "none").unwrap();
+    cfg.set_default("base_node.stibbons.socks5_auth", "none").unwrap();
 }
 
 fn get_local_ip() -> Option<Multiaddr> {

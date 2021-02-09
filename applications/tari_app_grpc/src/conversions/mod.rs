@@ -28,6 +28,7 @@ mod consensus_constants;
 mod historical_block;
 mod new_block_template;
 mod output_features;
+mod peer;
 mod proof_of_work;
 mod signature;
 mod transaction;
@@ -44,6 +45,7 @@ pub use self::{
     historical_block::*,
     new_block_template::*,
     output_features::*,
+    peer::*,
     proof_of_work::*,
     signature::*,
     transaction::*,
@@ -56,7 +58,7 @@ use crate::{tari_rpc as grpc, tari_rpc::BlockGroupRequest};
 use prost_types::Timestamp;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
-/// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`
+/// Utility function that converts a `EpochTime` to a `prost::Timestamp`
 pub fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {
     Timestamp {
         seconds: datetime.as_u64() as i64,
@@ -64,8 +66,21 @@ pub fn datetime_to_timestamp(datetime: EpochTime) -> Timestamp {
     }
 }
 
+/// Utility function that converts a `chrono::NaiveDateTime` to a `prost::Timestamp`
+pub fn naive_datetime_to_timestamp(datetime: chrono::NaiveDateTime) -> Timestamp {
+    Timestamp {
+        seconds: datetime.timestamp(),
+        nanos: 0,
+    }
+}
+
 pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> EpochTime {
     (timestamp.seconds as u64).into()
+}
+
+/// Current unix time as timestamp (seconds part only)
+pub fn timestamp() -> Timestamp {
+    datetime_to_timestamp(EpochTime::now())
 }
 
 impl From<u64> for grpc::IntegerValue {

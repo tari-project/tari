@@ -37,7 +37,12 @@ use bitflags::bitflags;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Display, time::Duration};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    hash::{Hash, Hasher},
+    time::Duration,
+};
 use tari_crypto::tari_utilities::hex::serialize_to_hex;
 
 bitflags! {
@@ -56,7 +61,7 @@ pub struct PeerIdentity {
 /// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a
 /// collection of the NetAddressesWithStats that this Peer can be reached by. The struct also maintains a set of flags
 /// describing the status of the Peer.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Eq)]
 pub struct Peer {
     /// The local id of the peer. If this is None, the peer has never been persisted
     pub(super) id: Option<PeerId>,
@@ -91,13 +96,13 @@ pub struct Peer {
 
 impl Peer {
     /// Constructs a new peer.
-    pub fn new<'p, P: IntoIterator<Item = &'p ProtocolId>>(
+    pub fn new(
         public_key: CommsPublicKey,
         node_id: NodeId,
         addresses: MultiaddressesWithStats,
         flags: PeerFlags,
         features: PeerFeatures,
-        supported_protocols: P,
+        supported_protocols: Vec<ProtocolId>,
         user_agent: String,
     ) -> Peer
     {
@@ -113,7 +118,7 @@ impl Peer {
             offline_at: None,
             connection_stats: Default::default(),
             added_at: Utc::now().naive_utc(),
-            supported_protocols: supported_protocols.into_iter().cloned().collect(),
+            supported_protocols,
             user_agent,
             metadata: HashMap::new(),
         }
@@ -262,6 +267,19 @@ impl Peer {
     pub fn get_metadata(&self, key: u8) -> Option<&Vec<u8>> {
         self.metadata.get(&key)
     }
+
+    pub fn to_short_string(&self) -> String {
+        format!(
+            "{}::{}",
+            self.public_key,
+            self.addresses
+                .addresses
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    }
 }
 
 /// Display Peer as `[peer_id]: <pubkey>`
@@ -313,6 +331,12 @@ impl PartialEq for Peer {
     }
 }
 
+impl Hash for Peer {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.public_key.hash(state)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -336,7 +360,7 @@ mod test {
             addresses,
             PeerFlags::default(),
             PeerFeatures::empty(),
-            &[],
+            Default::default(),
             Default::default(),
         );
         assert_eq!(peer.is_banned(), false);
@@ -359,7 +383,7 @@ mod test {
             MultiaddressesWithStats::from(net_address1.clone()),
             PeerFlags::default(),
             PeerFeatures::empty(),
-            &[],
+            Default::default(),
             Default::default(),
         );
 
@@ -410,7 +434,7 @@ mod test {
             "/ip4/127.0.0.1/tcp/9000".parse::<Multiaddr>().unwrap().into(),
             PeerFlags::empty(),
             PeerFeatures::empty(),
-            &[],
+            Default::default(),
             Default::default(),
         );
 

@@ -31,8 +31,6 @@ impl TryFrom<proto::TxStorageResponse> for TxStorageResponse {
         Ok(match tx_storage {
             None => return Err("TxStorageResponse not provided".to_string()),
             UnconfirmedPool => TxStorageResponse::UnconfirmedPool,
-            OrphanPool => TxStorageResponse::OrphanPool,
-            PendingPool => TxStorageResponse::PendingPool,
             ReorgPool => TxStorageResponse::ReorgPool,
             NotStored => TxStorageResponse::NotStored,
         })
@@ -44,10 +42,11 @@ impl From<TxStorageResponse> for proto::TxStorageResponse {
         use TxStorageResponse::*;
         match resp {
             UnconfirmedPool => proto::TxStorageResponse::UnconfirmedPool,
-            OrphanPool => proto::TxStorageResponse::OrphanPool,
-            PendingPool => proto::TxStorageResponse::PendingPool,
             ReorgPool => proto::TxStorageResponse::ReorgPool,
             NotStored => proto::TxStorageResponse::NotStored,
+            NotStoredOrphan => proto::TxStorageResponse::NotStored,
+            NotStoredTimeLocked => proto::TxStorageResponse::NotStored,
+            NotStoredAlreadySpent => proto::TxStorageResponse::NotStored,
         }
     }
 }

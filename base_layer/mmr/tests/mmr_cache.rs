@@ -53,23 +53,23 @@ fn create_cache_update_and_rewind() {
     let cp4_mmr_only_root = combine_hashes(&[&combine_hashes(&[&hahb, &hchd])]);
 
     checkpoint_db
-        .push(MerkleCheckPoint::new(vec![h1.clone(), h2.clone()], Bitmap::create(), 0))
+        .push(MerkleCheckPoint::new(vec![h1, h2], Bitmap::create(), 0))
         .unwrap();
     assert!(mmr_cache.update().is_ok());
     assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp1_mmr_only_root.clone()));
 
     checkpoint_db
-        .push(MerkleCheckPoint::new(vec![h3.clone(), h4.clone()], Bitmap::create(), 0))
+        .push(MerkleCheckPoint::new(vec![h3, h4], Bitmap::create(), 0))
         .unwrap();
     assert!(mmr_cache.update().is_ok());
-    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp2_mmr_only_root.clone()));
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp2_mmr_only_root));
 
     // Two checkpoint update
     checkpoint_db
-        .push(MerkleCheckPoint::new(vec![h5.clone(), h6.clone()], Bitmap::create(), 0))
+        .push(MerkleCheckPoint::new(vec![h5, h6], Bitmap::create(), 0))
         .unwrap();
     checkpoint_db
-        .push(MerkleCheckPoint::new(vec![h7.clone(), h8.clone()], Bitmap::create(), 0))
+        .push(MerkleCheckPoint::new(vec![h7, h8], Bitmap::create(), 0))
         .unwrap();
     assert!(mmr_cache.update().is_ok());
     assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp4_mmr_only_root.clone()));
@@ -106,20 +106,20 @@ fn multiple_rewinds() {
         .push(MerkleCheckPoint::new(vec![h1.clone()], Bitmap::create(), 0))
         .unwrap();
     assert!(mmr_cache.update().is_ok());
-    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1]).clone()));
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1])));
 
     checkpoint_db
         .push(MerkleCheckPoint::new(vec![h2.clone()], Bitmap::create(), 0))
         .unwrap();
     assert!(mmr_cache.update().is_ok());
     let h1h2 = combine_hashes(&[&h1, &h2]);
-    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2]).clone()));
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2])));
 
     checkpoint_db
         .push(MerkleCheckPoint::new(vec![h3.clone()], Bitmap::create(), 0))
         .unwrap();
     assert!(mmr_cache.update().is_ok());
-    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2, &h3]).clone()));
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2, &h3])));
 
     checkpoint_db
         .push(MerkleCheckPoint::new(vec![h4.clone()], Bitmap::create(), 0))
@@ -127,14 +127,14 @@ fn multiple_rewinds() {
     assert!(mmr_cache.update().is_ok());
     let h3h4 = combine_hashes(&[&h3, &h4]);
     let h1h2h3h4 = combine_hashes(&[&h1h2, &h3h4]);
-    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2h3h4]).clone()));
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2h3h4])));
     assert_eq!(checkpoint_db.len(), Ok(4));
 
     // Remove h4 checkpoint
     checkpoint_db.truncate(3).unwrap();
     assert_eq!(checkpoint_db.len(), Ok(3));
     assert!(mmr_cache.update().is_ok());
-    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2, &h3]).clone()));
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2, &h3])));
 
     // Add h5 checkpoint
     checkpoint_db
@@ -143,19 +143,19 @@ fn multiple_rewinds() {
     assert!(mmr_cache.update().is_ok());
     let h3h5 = combine_hashes(&[&h3, &h5]);
     let h1h2h3h5 = combine_hashes(&[&h1h2, &h3h5]);
-    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2h3h5]).clone()));
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2h3h5])));
 
     // Remove h5 checkpoint
     checkpoint_db.truncate(3).unwrap();
     assert_eq!(checkpoint_db.len(), Ok(3));
     assert!(mmr_cache.update().is_ok());
-    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2, &h3]).clone()));
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2, &h3])));
 
     // Remove h3 checkpoint
     checkpoint_db.truncate(2).unwrap();
     assert_eq!(checkpoint_db.len(), Ok(2));
     assert!(mmr_cache.update().is_ok());
-    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2]).clone()));
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(combine_hashes(&[&h1h2])));
 }
 
 #[test]
@@ -176,12 +176,12 @@ fn checkpoint_merging() {
     let hahb = combine_hashes(&[&ha, &hb]);
     let cp4_mmr_only_root = combine_hashes(&[&hahb]);
     let cp6_mmr_only_root = combine_hashes(&[&hahb, &hc]);
-    let cp1 = MerkleCheckPoint::new(vec![h1.clone()], Bitmap::create(), 0);
-    let cp2 = MerkleCheckPoint::new(vec![h2.clone()], Bitmap::create(), 0);
-    let cp3 = MerkleCheckPoint::new(vec![h3.clone()], Bitmap::create(), 0);
-    let cp4 = MerkleCheckPoint::new(vec![h4.clone()], Bitmap::create(), 0);
-    let cp5 = MerkleCheckPoint::new(vec![h5.clone()], Bitmap::create(), 0);
-    let cp6 = MerkleCheckPoint::new(vec![h6.clone()], Bitmap::create(), 0);
+    let cp1 = MerkleCheckPoint::new(vec![h1], Bitmap::create(), 0);
+    let cp2 = MerkleCheckPoint::new(vec![h2], Bitmap::create(), 0);
+    let cp3 = MerkleCheckPoint::new(vec![h3], Bitmap::create(), 0);
+    let cp4 = MerkleCheckPoint::new(vec![h4], Bitmap::create(), 0);
+    let cp5 = MerkleCheckPoint::new(vec![h5], Bitmap::create(), 0);
+    let cp6 = MerkleCheckPoint::new(vec![h6], Bitmap::create(), 0);
 
     checkpoint_db.push(cp1).unwrap();
     assert!(mmr_cache.update().is_ok());
@@ -199,7 +199,7 @@ fn checkpoint_merging() {
     assert!(checkpoint_db.push_front(merged_cp).is_ok());
     assert_eq!(checkpoint_db.len(), Ok(3));
     assert!(mmr_cache.checkpoints_merged(2).is_ok());
-    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp4_mmr_only_root.clone()));
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp4_mmr_only_root));
 
     checkpoint_db.push(cp5).unwrap();
     assert!(mmr_cache.update().is_ok());
@@ -228,5 +228,5 @@ fn checkpoint_merging() {
     assert!(checkpoint_db.push_front(merged_cp).is_ok());
     assert_eq!(checkpoint_db.len(), Ok(1));
     assert!(mmr_cache.checkpoints_merged(3).is_ok());
-    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp6_mmr_only_root.clone()));
+    assert_eq!(mmr_cache.get_mmr_only_root(), Ok(cp6_mmr_only_root));
 }

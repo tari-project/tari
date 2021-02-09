@@ -37,7 +37,6 @@ use fs2::FileExt;
 use log::*;
 use std::{
     fs::File,
-    io,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard},
 };
@@ -77,7 +76,7 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     connection.execute("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 60000;")?;
 
     embed_migrations!("./migrations");
-    embedded_migrations::run_with_output(&connection, &mut io::stdout())
+    embedded_migrations::run(&connection)
         .map_err(|err| WalletStorageError::DatabaseMigrationError(format!("Database migration failed {}", err)))?;
 
     Ok(WalletDbConnection::new(connection, Some(file_lock)))

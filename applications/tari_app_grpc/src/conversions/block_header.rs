@@ -25,11 +25,7 @@ use crate::{
     tari_rpc as grpc,
 };
 use std::convert::TryFrom;
-use tari_core::{
-    blocks::BlockHeader,
-    proof_of_work::{PowAlgorithm, ProofOfWork},
-    transactions::types::BlindingFactor,
-};
+use tari_core::{blocks::BlockHeader, proof_of_work::ProofOfWork, transactions::types::BlindingFactor};
 use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
 impl From<BlockHeader> for grpc::BlockHeader {
@@ -42,19 +38,14 @@ impl From<BlockHeader> for grpc::BlockHeader {
             timestamp: Some(datetime_to_timestamp(h.timestamp)),
             output_mr: h.output_mr.clone(),
             range_proof_mr: h.range_proof_mr.clone(),
+            output_mmr_size: h.output_mmr_size,
             kernel_mr: h.kernel_mr.clone(),
+            kernel_mmr_size: h.kernel_mmr_size,
             total_kernel_offset: Vec::from(h.total_kernel_offset.as_bytes()),
             nonce: h.nonce,
             pow: Some(grpc::ProofOfWork {
-                pow_algo: match h.pow.pow_algo {
-                    PowAlgorithm::Monero => 0,
-                    PowAlgorithm::Blake => 1,
-                    PowAlgorithm::Sha3 => 2,
-                },
-                accumulated_monero_difficulty: h.pow.accumulated_monero_difficulty.into(),
-                accumulated_blake_difficulty: h.pow.accumulated_blake_difficulty.into(),
+                pow_algo: h.pow_algo().as_u64(),
                 pow_data: h.pow.pow_data,
-                target_difficulty: h.pow.target_difficulty.as_u64(),
             }),
         }
     }
@@ -83,7 +74,9 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
             timestamp,
             output_mr: header.output_mr,
             range_proof_mr: header.range_proof_mr,
+            output_mmr_size: header.output_mmr_size,
             kernel_mr: header.kernel_mr,
+            kernel_mmr_size: header.kernel_mmr_size,
             total_kernel_offset,
             nonce: header.nonce,
             pow,

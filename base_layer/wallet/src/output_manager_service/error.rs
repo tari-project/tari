@@ -20,10 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::storage::database::DbKey;
+use crate::{base_node_service::error::BaseNodeServiceError, output_manager_service::storage::database::DbKey};
 use diesel::result::Error as DieselError;
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
+use tari_core::transactions::{
+    transaction::TransactionError,
+    transaction_protocol::TransactionProtocolError,
+    CoinbaseBuildError,
+};
 use tari_crypto::tari_utilities::ByteArrayError;
 use tari_key_manager::{key_manager::KeyManagerError, mnemonic::MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
@@ -80,6 +84,14 @@ pub enum OutputManagerError {
     ServiceError(String),
     #[error("Base node is not synced")]
     BaseNodeNotSynced,
+    #[error("Invalid Sender Message Type")]
+    InvalidSenderMessage,
+    #[error("Coinbase build error: `{0}`")]
+    CoinbaseBuildError(#[from] CoinbaseBuildError),
+    #[error("TXO Validation protocol cancelled")]
+    Cancellation,
+    #[error("Base NodeService Error: `{0}`")]
+    BaseNodeServiceError(#[from] BaseNodeServiceError),
 }
 
 #[derive(Debug, Error, PartialEq)]

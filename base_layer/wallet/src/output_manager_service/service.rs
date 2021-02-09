@@ -21,10 +21,17 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
+    base_node_service::handle::BaseNodeServiceHandle,
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError},
-        handle::{OutputManagerEvent, OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
+        handle::{
+            OutputManagerEvent,
+            OutputManagerEventSender,
+            OutputManagerRequest,
+            OutputManagerResponse,
+            PublicRewindKeys,
+        },
         protocols::txo_validation_protocol::{TxoValidationProtocol, TxoValidationRetry, TxoValidationType},
         storage::{
             database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
@@ -42,7 +49,8 @@ use std::{cmp::Ordering, collections::HashMap, fmt, sync::Arc, time::Duration};
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
-    base_node::proto::base_node as BaseNodeProto,
+    consensus::ConsensusConstants,
+    proto::base_node as proto,
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
@@ -54,11 +62,17 @@ use tari_core::{
             TransactionOutput,
             UnblindedOutput,
         },
-        types::{CryptoFactories, PrivateKey},
+        transaction_protocol::{sender::TransactionSenderMessage, RewindData},
+        types::{CryptoFactories, PrivateKey, PublicKey},
+        CoinbaseBuilder,
+        ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::keys::SecretKey as SecretKeyTrait;
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+    range_proof::REWIND_USER_MESSAGE_LENGTH,
+};
 use tari_key_manager::{
     key_manager::KeyManager,
     mnemonic::{from_secret_key, MnemonicLanguage},
@@ -74,6 +88,10 @@ use tokio::{
 const LOG_TARGET: &str = "wallet::output_manager_service";
 const LOG_TARGET_STRESS: &str = "stress_test::output_manager_service";
 
+const KEY_MANAGER_COINBASE_BRANCH_KEY: &str = "coinbase";
+const KEY_MANAGER_RECOVERY_VIEWONLY_BRANCH_KEY: &str = "recovery_viewonly";
+const KEY_MANAGER_RECOVERY_BLINDING_BRANCH_KEY: &str = "recovery_blinding";
+
 /// This service will manage a wallet's available outputs and the key manager that produces the keys for these outputs.
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
 /// outputs. When the outputs are detected on the blockchain the Transaction service will call this Service to confirm
@@ -87,14 +105,17 @@ where TBackend: OutputManagerBackend + 'static
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_response_stream: Option<BNResponseStream>,
-    base_node_response_publisher: broadcast::Sender<Arc<BaseNodeProto::BaseNodeServiceResponse>>,
+    base_node_response_publisher: broadcast::Sender<Arc<proto::BaseNodeServiceResponse>>,
     shutdown_signal: Option<ShutdownSignal>,
+    txo_validation_cancellation_publisher: broadcast::Sender<()>,
+    txo_validation_cancellation_triggered: bool,
+    base_node_service: BaseNodeServiceHandle,
 }
 
 impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream>
 where
     TBackend: OutputManagerBackend + 'static,
-    BNResponseStream: Stream<Item = DomainMessage<BaseNodeProto::BaseNodeServiceResponse>>,
+    BNResponseStream: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
 {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
@@ -109,8 +130,9 @@ where
         db: OutputManagerDatabase<TBackend>,
         event_publisher: OutputManagerEventSender,
         factories: CryptoFactories,
-        coinbase_lock_height: u64,
+        consensus_constants: ConsensusConstants,
         shutdown_signal: ShutdownSignal,
+        base_node_service: BaseNodeServiceHandle,
     ) -> Result<OutputManagerService<TBackend, BNResponseStream>, OutputManagerError>
     {
         // Check to see if there is any persisted state, otherwise start fresh
@@ -127,14 +149,37 @@ where
             Some(km) => km,
         };
 
-        let coinbase_key_manager =
-            KeyManager::<PrivateKey, KeyDigest>::from(key_manager_state.master_key.clone(), "coinbase".to_string(), 0);
+        let coinbase_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
+            key_manager_state.master_key.clone(),
+            KEY_MANAGER_COINBASE_BRANCH_KEY.to_string(),
+            0,
+        );
 
         let key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
-            key_manager_state.master_key,
+            key_manager_state.master_key.clone(),
             key_manager_state.branch_seed,
             key_manager_state.primary_key_index,
         );
+
+        let rewind_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
+            key_manager_state.master_key.clone(),
+            KEY_MANAGER_RECOVERY_VIEWONLY_BRANCH_KEY.to_string(),
+            0,
+        );
+        let rewind_key = rewind_key_manager.derive_key(0)?.k;
+
+        let rewind_blinding_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
+            key_manager_state.master_key,
+            KEY_MANAGER_RECOVERY_BLINDING_BRANCH_KEY.to_string(),
+            0,
+        );
+        let rewind_blinding_key = rewind_blinding_key_manager.derive_key(0)?.k;
+
+        let rewind_data = RewindData {
+            rewind_key,
+            rewind_blinding_key,
+            proof_message: [0u8; REWIND_USER_MESSAGE_LENGTH],
+        };
 
         // Clear any encumberances for transactions that were being negotiated but did not complete to become official
         // Pending Transactions.
@@ -148,10 +193,12 @@ where
             factories,
             base_node_public_key: None,
             event_publisher,
-            coinbase_lock_height,
+            rewind_data,
+            consensus_constants,
         };
 
         let (base_node_response_publisher, _) = broadcast::channel(50);
+        let (txo_validation_cancellation_publisher, _) = broadcast::channel(50);
 
         Ok(OutputManagerService {
             resources,
@@ -161,6 +208,9 @@ where
             base_node_response_stream: Some(base_node_response_stream),
             base_node_response_publisher,
             shutdown_signal: Some(shutdown_signal),
+            txo_validation_cancellation_publisher,
+            txo_validation_cancellation_triggered: false,
+            base_node_service,
         })
     }
 
@@ -185,7 +235,7 @@ where
             .expect("Output Manager Service initialized without shutdown signal");
         pin_mut!(shutdown);
 
-        let mut utxo_validation_handles: FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>> =
+        let mut txo_validation_handles: FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>> =
             FuturesUnordered::new();
 
         info!(target: LOG_TARGET, "Output Manager Service started");
@@ -194,36 +244,34 @@ where
                 request_context = request_stream.select_next_some() => {
                 trace!(target: LOG_TARGET, "Handling Service API Request");
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request, &mut utxo_validation_handles).await.or_else(|resp| {
-                        warn!(target: LOG_TARGET, "Error handling request: {:?}", resp);
-                        Err(resp)
-                    })).or_else(|resp| {
+                    let response = self.handle_request(request, &mut txo_validation_handles).await.map_err(|e| {
+                        warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
+                        e
+                    });
+                    let _ = reply_tx.send(response).map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
-                        Err(resp)
+                        e
                     });
                 },
                  // Incoming messages from the Comms layer
                 msg = base_node_response_stream.select_next_some() => {
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
-                    let result = self.handle_base_node_response(inner_msg).await.or_else(|resp| {
-                        warn!(target: LOG_TARGET, "Error handling base node service response from {}: {:?}, Trace: {}", origin_public_key, resp, msg.dht_header.message_tag);
-                        Err(resp)
+                    let result = self.handle_base_node_response(inner_msg).await.map_err(|e| {
+                        warn!(target: LOG_TARGET, "Error handling base node service response from {}: {:?}, Trace: {}", origin_public_key, e, msg.dht_header.message_tag);
+                        e
                     });
 
                     if result.is_err() {
                         let _ = self.resources.event_publisher
-                                .send(OutputManagerEvent::Error(
-                                    "Error handling Base Node Response message".to_string(),
-                                ))
-                                ;
+                                .send(Arc::new(OutputManagerEvent::Error("Error handling Base Node Response message".to_string())));
                     }
                 }
-                join_result = utxo_validation_handles.select_next_some() => {
-                   trace!(target: LOG_TARGET, "UTXO Validation protocol has ended with result {:?}", join_result);
+                join_result = txo_validation_handles.select_next_some() => {
+                   trace!(target: LOG_TARGET, "TXO Validation protocol has ended with result {:?}", join_result);
                    match join_result {
                         Ok(join_result_inner) => self.complete_utxo_validation_protocol(join_result_inner).await,
-                        Err(e) => error!(target: LOG_TARGET, "Error resolving UTXO Validation protocol: {:?}", e),
+                        Err(e) => error!(target: LOG_TARGET, "Error resolving TXO Validation protocol: {:?}", e),
                     };
                 }
                 _ = shutdown => {
@@ -235,7 +283,33 @@ where
                     break;
                 }
             }
-            trace!(target: LOG_TARGET, "Select Loop end");
+
+            if self.txo_validation_cancellation_triggered {
+                // Check if all the in progress TXO validation protocols have cancelled
+                // Once they are all finished we can restart them using the newly specified base node address
+                if txo_validation_handles.is_empty() {
+                    info!(
+                        target: LOG_TARGET,
+                        "Starting TXO validation protocols for newly specified Base Node"
+                    );
+                    let _ = self.validate_outputs(
+                        TxoValidationType::Unspent,
+                        TxoValidationRetry::UntilSuccess,
+                        &mut txo_validation_handles,
+                    );
+                    let _ = self.validate_outputs(
+                        TxoValidationType::Spent,
+                        TxoValidationRetry::UntilSuccess,
+                        &mut txo_validation_handles,
+                    );
+                    let _ = self.validate_outputs(
+                        TxoValidationType::Invalid,
+                        TxoValidationRetry::UntilSuccess,
+                        &mut txo_validation_handles,
+                    );
+                    self.txo_validation_cancellation_triggered = false;
+                }
+            }
         }
         info!(target: LOG_TARGET, "Output Manager Service ended");
         Ok(())
@@ -245,7 +319,7 @@ where
     async fn handle_request(
         &mut self,
         request: OutputManagerRequest,
-        utxo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
+        txo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<OutputManagerResponse, OutputManagerError>
     {
         trace!(target: LOG_TARGET, "Handling Service Request: {}", request);
@@ -254,18 +328,22 @@ where
                 self.add_output(uo).await.map(|_| OutputManagerResponse::OutputAdded)
             },
             OutputManagerRequest::GetBalance => self.get_balance(None).await.map(OutputManagerResponse::Balance),
-            OutputManagerRequest::GetRecipientKey((tx_id, amount)) => self
-                .get_recipient_spending_key(tx_id, amount)
+            OutputManagerRequest::GetRecipientTransaction(tsm) => self
+                .get_recipient_transaction(tsm)
                 .await
-                .map(OutputManagerResponse::RecipientKeyGenerated),
-            OutputManagerRequest::GetCoinbaseKey((tx_id, amount, block_height)) => self
-                .get_coinbase_spending_key(tx_id, amount, block_height)
+                .map(OutputManagerResponse::RecipientTransactionGenerated),
+            OutputManagerRequest::GetCoinbaseTransaction((tx_id, reward, fees, block_height)) => self
+                .get_coinbase_transaction(tx_id, reward, fees, block_height)
                 .await
-                .map(OutputManagerResponse::CoinbaseKeyGenerated),
+                .map(OutputManagerResponse::CoinbaseTransaction),
             OutputManagerRequest::PrepareToSendTransaction((amount, fee_per_gram, lock_height, message)) => self
                 .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message)
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
+            OutputManagerRequest::FeeEstimate((amount, fee_per_gram, num_kernels, num_outputs)) => self
+                .fee_estimate(amount, fee_per_gram, num_kernels, num_outputs)
+                .await
+                .map(OutputManagerResponse::FeeEstimate),
             OutputManagerRequest::ConfirmPendingTransaction(tx_id) => self
                 .confirm_encumberance(tx_id)
                 .await
@@ -310,7 +388,7 @@ where
                 .await
                 .map(|_| OutputManagerResponse::BaseNodePublicKeySet),
             OutputManagerRequest::ValidateUtxos(validation_type, retries) => self
-                .validate_outputs(validation_type, retries, utxo_validation_handles)
+                .validate_outputs(validation_type, retries, txo_validation_handles)
                 .map(OutputManagerResponse::UtxoValidationStarted),
             OutputManagerRequest::GetInvalidOutputs => {
                 let outputs = self
@@ -339,13 +417,20 @@ where
                 .await
                 .map(|_| OutputManagerResponse::EncryptionRemoved)
                 .map_err(OutputManagerError::OutputManagerStorageError),
+            OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
+                self.get_rewind_public_keys(),
+            ))),
+            OutputManagerRequest::RewindOutputs(outputs) => self
+                .rewind_outputs(outputs)
+                .await
+                .map(OutputManagerResponse::RewindOutputs),
         }
     }
 
     /// Handle an incoming basenode response message
     async fn handle_base_node_response(
         &mut self,
-        response: BaseNodeProto::BaseNodeServiceResponse,
+        response: proto::BaseNodeServiceResponse,
     ) -> Result<(), OutputManagerError>
     {
         // Publish this response to any protocols that are subscribed
@@ -363,7 +448,7 @@ where
         &mut self,
         validation_type: TxoValidationType,
         retry_strategy: TxoValidationRetry,
-        utxo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
+        txo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<u64, OutputManagerError>
     {
         match self.resources.base_node_public_key.as_ref() {
@@ -379,10 +464,11 @@ where
                     pk.clone(),
                     self.resources.config.base_node_query_timeout,
                     self.base_node_response_publisher.subscribe(),
+                    self.txo_validation_cancellation_publisher.subscribe(),
                 );
 
                 let join_handle = tokio::spawn(utxo_validation_protocol.execute());
-                utxo_validation_handles.push(join_handle);
+                txo_validation_handles.push(join_handle);
 
                 Ok(id)
             },
@@ -407,12 +493,14 @@ where
                     OutputManagerError::MaximumAttemptsExceeded => (),
                     // An event for this error has already been sent at this time
                     OutputManagerError::BaseNodeNotSynced => (),
+                    // An event for this error has already been sent at this time
+                    OutputManagerError::Cancellation => (),
                     // A generic event is sent for all other errors
                     _ => {
                         let _ = self
                             .resources
                             .event_publisher
-                            .send(OutputManagerEvent::TxoValidationFailure(id))
+                            .send(Arc::new(OutputManagerEvent::TxoValidationFailure(id)))
                             .map_err(|e| {
                                 trace!(
                                     target: LOG_TARGET,
@@ -443,18 +531,22 @@ where
         Ok(balance)
     }
 
-    /// Request a spending key to be used to accept a transaction from a sender.
-    async fn get_recipient_spending_key(
+    /// Request a receiver transaction be generated from the supplied Sender Message
+    async fn get_recipient_transaction(
         &mut self,
-        tx_id: TxId,
-        amount: MicroTari,
-    ) -> Result<PrivateKey, OutputManagerError>
+        sender_message: TransactionSenderMessage,
+    ) -> Result<ReceiverTransactionProtocol, OutputManagerError>
     {
         let mut key = PrivateKey::default();
         {
             let mut km = self.key_manager.lock().await;
             key = km.next_key()?.k;
         }
+
+        let (tx_id, amount) = match sender_message.clone() {
+            TransactionSenderMessage::Single(data) => (data.tx_id, data.amount),
+            _ => return Err(OutputManagerError::InvalidSenderMessage),
+        };
 
         self.resources.db.increment_key_index().await?;
         self.resources
@@ -470,19 +562,32 @@ where
             .await?;
 
         self.confirm_encumberance(tx_id).await?;
-        Ok(key)
+
+        let nonce = PrivateKey::random(&mut OsRng);
+
+        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
+            sender_message,
+            nonce,
+            key,
+            OutputFeatures::default(),
+            &self.resources.factories,
+            &self.resources.rewind_data,
+        );
+
+        Ok(rtp)
     }
 
-    /// Request a spending key for a coinbase transaction for a specific height. All existing pending transactions with
+    /// Request a Coinbase transaction for a specific block height. All existing pending transactions with
     /// this blockheight will be cancelled.
     /// The key will be derived from the coinbase specific keychain using the blockheight as an index. The coinbase
     /// keychain is based on the wallets master_key and the "coinbase" branch.
-    async fn get_coinbase_spending_key(
+    async fn get_coinbase_transaction(
         &mut self,
         tx_id: TxId,
-        amount: MicroTari,
+        reward: MicroTari,
+        fees: MicroTari,
         block_height: u64,
-    ) -> Result<PrivateKey, OutputManagerError>
+    ) -> Result<Transaction, OutputManagerError>
     {
         let mut key = PrivateKey::default();
         {
@@ -495,20 +600,31 @@ where
             .cancel_pending_transaction_at_block_height(block_height)
             .await?;
 
+        let nonce = PrivateKey::random(&mut OsRng);
+        let (tx, _) = CoinbaseBuilder::new(self.resources.factories.clone())
+            .with_block_height(block_height)
+            .with_fees(fees)
+            .with_spend_key(key.clone())
+            .with_nonce(nonce)
+            .with_rewind_data(self.resources.rewind_data.clone())
+            .build_with_reward(&self.resources.consensus_constants, reward)?;
+
         self.resources
             .db
             .accept_incoming_pending_transaction(
                 tx_id,
-                amount,
-                key.clone(),
-                OutputFeatures::create_coinbase(block_height + self.resources.coinbase_lock_height),
+                reward + fees,
+                key,
+                OutputFeatures::create_coinbase(
+                    block_height + self.resources.consensus_constants.coinbase_lock_height(),
+                ),
                 &self.resources.factories,
                 Some(block_height),
             )
             .await?;
 
         self.confirm_encumberance(tx_id).await?;
-        Ok(key)
+        Ok(tx)
     }
 
     /// Confirm the reception of an expected transaction output. This will be called by the Transaction Service when it
@@ -543,6 +659,36 @@ where
         );
 
         Ok(())
+    }
+
+    /// Get a fee estimate for an amount of MicroTari, at a specified fee per gram and given number of kernels and
+    /// outputs.
+    async fn fee_estimate(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        num_kernels: u64,
+        num_outputs: u64,
+    ) -> Result<MicroTari, OutputManagerError>
+    {
+        debug!(
+            target: LOG_TARGET,
+            "Getting fee estimate. Amount: {}. Fee per gram: {}. Num kernels: {}. Num outputs: {}",
+            amount,
+            fee_per_gram,
+            num_kernels,
+            num_outputs
+        );
+
+        let (utxos, _) = self
+            .select_utxos(amount, fee_per_gram, num_outputs as usize, None)
+            .await?;
+        debug!(target: LOG_TARGET, "{} utxos selected.", utxos.len());
+
+        let fee = Fee::calculate_with_minimum(fee_per_gram, num_kernels as usize, utxos.len(), num_outputs as usize);
+
+        debug!(target: LOG_TARGET, "Fee calculated: {}", fee);
+        Ok(fee)
     }
 
     /// Prepare a Sender Transaction Protocol for the amount and fee_per_gram specified. If required a change output
@@ -585,7 +731,7 @@ where
 
         let fee_without_change = Fee::calculate(fee_per_gram, 1, outputs.len(), 1);
         let mut change_key: Option<PrivateKey> = None;
-        // If the input values > the amount to be sent + fees_without_change then we will need to include a change
+        // If the input values > the amount to be sent + fee_without_change then we will need to include a change
         // output
         if total > amount + fee_without_change {
             let mut key = PrivateKey::default();
@@ -595,7 +741,7 @@ where
             }
             self.resources.db.increment_key_index().await?;
             change_key = Some(key.clone());
-            builder.with_change_secret(key);
+            builder.with_rewindable_change_secret(key, self.resources.rewind_data.clone());
         }
 
         let stp = builder
@@ -606,11 +752,7 @@ where
         let mut change_output = Vec::<DbUnblindedOutput>::new();
         if let Some(key) = change_key {
             change_output.push(DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput {
-                    value: stp.get_amount_to_self()?,
-                    spending_key: key,
-                    features: OutputFeatures::default(),
-                },
+                UnblindedOutput::new(stp.get_amount_to_self()?, key, None),
                 &self.resources.factories,
             )?);
         }
@@ -762,9 +904,22 @@ where
             },
             UTXOSelectionStrategy::Largest => uo.into_iter().rev().collect(),
         };
+        trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
+        // Now lets try to filter the UTXOs we cant yet spend.
+        let tip_height: u64 = self
+            .base_node_service
+            .get_connected_base_node_state()
+            .await?
+            .height_of_longest_chain();
+
+        let mut trimmed = 0;
         let mut require_change_output = false;
         for o in uo.iter() {
+            if o.unblinded_output.features.maturity > tip_height {
+                trimmed += 1;
+                continue;
+            }
             utxos.push(o.clone());
             total += o.unblinded_output.value;
             // I am assuming that the only output will be the payment output and change if required
@@ -777,6 +932,14 @@ where
                 require_change_output = true;
                 break;
             }
+        }
+        if trimmed > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "Some UTXOs have not matured yet at height {}, trimmed {} UTXOs",
+                tip_height,
+                trimmed
+            );
         }
 
         if (total != amount + fee_without_change) && (total < amount + fee_with_change) {
@@ -793,7 +956,18 @@ where
         base_node_public_key: CommsPublicKey,
     ) -> Result<(), OutputManagerError>
     {
+        info!(
+            target: LOG_TARGET,
+            "Setting base node public key {} for service", base_node_public_key
+        );
+        let do_txo_validation = self.resources.base_node_public_key.is_some();
         self.resources.base_node_public_key = Some(base_node_public_key);
+
+        if do_txo_validation {
+            let _ = self.txo_validation_cancellation_publisher.send(());
+            self.txo_validation_cancellation_triggered = true;
+        }
+
         Ok(())
     }
 
@@ -920,6 +1094,39 @@ where
             &MnemonicLanguage::English,
         )?)
     }
+
+    /// Return the public rewind keys
+    fn get_rewind_public_keys(&self) -> PublicRewindKeys {
+        PublicRewindKeys {
+            rewind_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_key),
+            rewind_blinding_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_blinding_key),
+        }
+    }
+
+    /// Attempt to rewind all of the given transaction outputs into unblinded outputs
+    async fn rewind_outputs(
+        &mut self,
+        outputs: Vec<TransactionOutput>,
+    ) -> Result<Vec<UnblindedOutput>, OutputManagerError>
+    {
+        let rewind_data = &self.resources.rewind_data;
+
+        let rewound_outputs: Vec<UnblindedOutput> = outputs
+            .into_iter()
+            .filter_map(|output| {
+                output
+                    .full_rewind_range_proof(
+                        &self.resources.factories.range_proof,
+                        &rewind_data.rewind_key,
+                        &rewind_data.rewind_blinding_key,
+                    )
+                    .ok()
+            })
+            .map(|output| UnblindedOutput::new(output.committed_value, output.blinding_factor, None))
+            .collect();
+
+        Ok(rewound_outputs)
+    }
 }
 
 /// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
@@ -979,5 +1186,6 @@ where TBackend: OutputManagerBackend + 'static
     pub factories: CryptoFactories,
     pub base_node_public_key: Option<CommsPublicKey>,
     pub event_publisher: OutputManagerEventSender,
-    pub coinbase_lock_height: u64,
+    pub rewind_data: RewindData,
+    pub consensus_constants: ConsensusConstants,
 }

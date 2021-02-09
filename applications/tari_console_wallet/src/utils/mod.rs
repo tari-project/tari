@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod crossterm_events;
+pub mod db;
 pub mod events;
 pub mod formatting;
 

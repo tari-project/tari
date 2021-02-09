@@ -166,6 +166,7 @@ impl Miner {
             return Ok(self);
         };
         let mut block_template = block_template.unwrap();
+        let target_difficulty = block_template.target_difficulty;
         let output = self.add_coinbase(&mut block_template);
         if output.is_err() {
             error!(
@@ -192,7 +193,7 @@ impl Miner {
             let mut tx_channel = tx.clone();
             trace!("spawning mining thread");
             spawn_blocking(move || {
-                let result = CpuPow::mine(header, stop_mining_flag, thread_hash_rate);
+                let result = CpuPow::mine(header, target_difficulty, stop_mining_flag, thread_hash_rate);
                 // send back what the miner found, None will be sent if the miner did not find a nonce
                 if let Err(e) = tx_channel.try_send(result) {
                     warn!(target: LOG_TARGET, "Could not return mining result: {}", e);
@@ -281,7 +282,6 @@ impl Miner {
                                     spawn_mining_task = true;
                                     wait_for_mining_event = false;
                                 },
-                                _ => (),
                             }
                         }
                     },
@@ -411,7 +411,7 @@ impl Miner {
         info!(target: LOG_TARGET, "Mined a block: {}", block);
         match self.node_interface.submit_block(block, Broadcast::from(true)).await {
             Ok(_) => {
-                trace!("Miner successfully submitted block");
+                trace!(target: LOG_TARGET, "Miner successfully submitted block");
                 Ok(())
             },
             Err(CommsInterfaceError::ChainStorageError(e)) => {

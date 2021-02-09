@@ -25,6 +25,7 @@ use crate::transactions::{
     transaction_protocol::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
+        RewindData,
         TransactionProtocolError,
     },
     types::{CryptoFactories, MessageHash, PrivateKey, PublicKey, Signature},
@@ -108,8 +109,34 @@ impl ReceiverTransactionProtocol {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
             TransactionSenderMessage::Single(v) => {
-                ReceiverTransactionProtocol::single_round(nonce, spending_key, features, &v, factories)
+                ReceiverTransactionProtocol::single_round(nonce, spending_key, features, &v, factories, None)
             },
+            TransactionSenderMessage::Multiple => Self::multi_round(),
+        };
+        ReceiverTransactionProtocol { state }
+    }
+
+    /// This function creates a new Receiver Transaction Protocol where the resulting receiver output range proof is
+    /// rewindable
+    pub fn new_with_rewindable_output(
+        info: TransactionSenderMessage,
+        nonce: PrivateKey,
+        spending_key: PrivateKey,
+        features: OutputFeatures,
+        factories: &CryptoFactories,
+        rewind_data: &RewindData,
+    ) -> ReceiverTransactionProtocol
+    {
+        let state = match info {
+            TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
+            TransactionSenderMessage::Single(v) => ReceiverTransactionProtocol::single_round(
+                nonce,
+                spending_key,
+                features,
+                &v,
+                factories,
+                Some(rewind_data),
+            ),
             TransactionSenderMessage::Multiple => Self::multi_round(),
         };
         ReceiverTransactionProtocol { state }
@@ -117,18 +144,12 @@ impl ReceiverTransactionProtocol {
 
     /// Returns true if the recipient protocol is finalised, and the signature data is ready to be sent to the sender.
     pub fn is_finalized(&self) -> bool {
-        match self.state {
-            RecipientState::Finalized(_) => true,
-            _ => false,
-        }
+        matches!(self.state, RecipientState::Finalized(_))
     }
 
     /// Method to determine if the transaction protocol has failed
     pub fn is_failed(&self) -> bool {
-        match &self.state {
-            RecipientState::Failed(_) => true,
-            _ => false,
-        }
+        matches!(&self.state, RecipientState::Failed(_))
     }
 
     /// Method to return the error behind a failure, if one has occurred
@@ -154,9 +175,10 @@ impl ReceiverTransactionProtocol {
         features: OutputFeatures,
         data: &SD,
         factories: &CryptoFactories,
+        rewind_data: Option<&RewindData>,
     ) -> RecipientState
     {
-        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, features, factories);
+        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, features, factories, rewind_data);
         match signer {
             Ok(signed_data) => RecipientState::Finalized(Box::new(signed_data)),
             Err(e) => RecipientState::Failed(e),
@@ -189,12 +211,17 @@ mod test {
         transaction_protocol::{
             build_challenge,
             sender::{SingleRoundSenderData, TransactionSenderMessage},
+            RewindData,
             TransactionMetadata,
         },
-        types::{CryptoFactories, PublicKey, Signature},
+        types::{CryptoFactories, PrivateKey, PublicKey, Signature},
         ReceiverTransactionProtocol,
     };
-    use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::PublicKey as PK};
+    use rand::rngs::OsRng;
+    use tari_crypto::{
+        commitment::HomomorphicCommitmentFactory,
+        keys::{PublicKey as PK, SecretKey as SecretKeyTrait},
+    };
 
     #[test]
     fn single_round_recipient() {
@@ -233,5 +260,61 @@ mod test {
         let e = build_challenge(&r_sum, &m);
         let s = Signature::sign(p.spend_key.clone(), p.nonce.clone(), &e).unwrap();
         assert_eq!(data.partial_signature, s);
+    }
+
+    #[test]
+    fn single_round_recipient_with_rewinding() {
+        let factories = CryptoFactories::default();
+        let p = TestParams::new();
+        // Rewind params
+        let rewind_key = PrivateKey::random(&mut OsRng);
+        let rewind_blinding_key = PrivateKey::random(&mut OsRng);
+        let rewind_public_key = PublicKey::from_secret_key(&rewind_key);
+        let rewind_blinding_public_key = PublicKey::from_secret_key(&rewind_blinding_key);
+        let message = b"alice__12345678910111";
+        let amount = MicroTari(500);
+        let m = TransactionMetadata {
+            fee: MicroTari(125),
+            lock_height: 0,
+        };
+        let msg = SingleRoundSenderData {
+            tx_id: 15,
+            amount,
+            public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
+            public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
+            metadata: m.clone(),
+            message: "".to_string(),
+        };
+        let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
+        let rewind_data = RewindData {
+            rewind_key: rewind_key.clone(),
+            rewind_blinding_key: rewind_blinding_key.clone(),
+            proof_message: message.clone(),
+        };
+        let receiver = ReceiverTransactionProtocol::new_with_rewindable_output(
+            sender_info,
+            p.nonce.clone(),
+            p.spend_key.clone(),
+            OutputFeatures::default(),
+            &factories,
+            &rewind_data,
+        );
+        assert!(receiver.is_finalized());
+        let data = receiver.get_signed_data().unwrap();
+
+        let rr = data
+            .output
+            .rewind_range_proof_value_only(&factories.range_proof, &rewind_public_key, &rewind_blinding_public_key)
+            .unwrap();
+        assert_eq!(rr.committed_value, amount);
+        assert_eq!(&rr.proof_message, message);
+        let full_rewind_result = data
+            .output
+            .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
+            .unwrap();
+
+        assert_eq!(full_rewind_result.committed_value, amount);
+        assert_eq!(&full_rewind_result.proof_message, message);
+        assert_eq!(full_rewind_result.blinding_factor, p.spend_key);
     }
 }

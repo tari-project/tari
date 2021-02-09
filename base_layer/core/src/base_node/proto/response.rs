@@ -20,20 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub use super::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
-use super::base_node::{
-    BlockHeaders as ProtoBlockHeaders,
-    HistoricalBlocks as ProtoHistoricalBlocks,
-    MmrNodes as ProtoMmrNodes,
-    NewBlockResponse as ProtoNewBlockResponse,
-    TransactionKernels as ProtoTransactionKernels,
-    TransactionOutputs as ProtoTransactionOutputs,
-};
+pub use crate::proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
 use crate::{
     base_node::comms_interface as ci,
     proof_of_work::Difficulty,
-    proto::core as core_proto_types,
-    transactions::proto::{types as transactions_proto, utils::try_convert_all},
+    proto,
+    proto::{
+        base_node::{
+            BlockHeaders as ProtoBlockHeaders,
+            HistoricalBlocks as ProtoHistoricalBlocks,
+            MmrNodes as ProtoMmrNodes,
+            NewBlockResponse as ProtoNewBlockResponse,
+            TransactionKernels as ProtoTransactionKernels,
+            TransactionOutputs as ProtoTransactionOutputs,
+        },
+        core as core_proto_types,
+    },
+    tari_utilities::convert::try_convert_all,
 };
 use std::{
     convert::TryInto,
@@ -46,7 +49,7 @@ impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
     fn try_into(self) -> Result<ci::NodeCommsResponse, Self::Error> {
         use ProtoNodeCommsResponse::*;
         let response = match self {
-            ChainMetadata(chain_metadata) => ci::NodeCommsResponse::ChainMetadata(chain_metadata.into()),
+            ChainMetadata(chain_metadata) => ci::NodeCommsResponse::ChainMetadata(chain_metadata.try_into()?),
             TransactionKernels(kernels) => {
                 let kernels = try_convert_all(kernels.kernels)?;
                 ci::NodeCommsResponse::TransactionKernels(kernels)
@@ -77,7 +80,6 @@ impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 },
             },
             TargetDifficulty(difficulty) => ci::NodeCommsResponse::TargetDifficulty(Difficulty::from(difficulty)),
-            MmrNodeCount(u64) => ci::NodeCommsResponse::MmrNodeCount(u64),
             MmrNodes(response) => ci::NodeCommsResponse::MmrNodes(response.added, response.deleted),
         };
 
@@ -117,7 +119,6 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 block: block.map(|b| b.into()),
             }),
             TargetDifficulty(difficulty) => ProtoNodeCommsResponse::TargetDifficulty(difficulty.as_u64()),
-            MmrNodeCount(node_count) => ProtoNodeCommsResponse::MmrNodeCount(node_count),
             MmrNodes(added, deleted) => ProtoNodeCommsResponse::MmrNodes(ProtoMmrNodes { added, deleted }),
         }
     }
@@ -127,15 +128,15 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
 
 // The following allow `Iterator::collect` to collect into these repeated types
 
-impl FromIterator<transactions_proto::TransactionKernel> for ProtoTransactionKernels {
-    fn from_iter<T: IntoIterator<Item = transactions_proto::TransactionKernel>>(iter: T) -> Self {
+impl FromIterator<proto::types::TransactionKernel> for ProtoTransactionKernels {
+    fn from_iter<T: IntoIterator<Item = proto::types::TransactionKernel>>(iter: T) -> Self {
         Self {
             kernels: iter.into_iter().collect(),
         }
     }
 }
 
-impl FromIterator<core_proto_types::BlockHeader> for ProtoBlockHeaders {
+impl FromIterator<proto::core::BlockHeader> for ProtoBlockHeaders {
     fn from_iter<T: IntoIterator<Item = core_proto_types::BlockHeader>>(iter: T) -> Self {
         Self {
             headers: iter.into_iter().collect(),
@@ -143,15 +144,15 @@ impl FromIterator<core_proto_types::BlockHeader> for ProtoBlockHeaders {
     }
 }
 
-impl FromIterator<transactions_proto::TransactionOutput> for ProtoTransactionOutputs {
-    fn from_iter<T: IntoIterator<Item = transactions_proto::TransactionOutput>>(iter: T) -> Self {
+impl FromIterator<proto::types::TransactionOutput> for ProtoTransactionOutputs {
+    fn from_iter<T: IntoIterator<Item = proto::types::TransactionOutput>>(iter: T) -> Self {
         Self {
             outputs: iter.into_iter().collect(),
         }
     }
 }
 
-impl FromIterator<core_proto_types::HistoricalBlock> for ProtoHistoricalBlocks {
+impl FromIterator<proto::core::HistoricalBlock> for ProtoHistoricalBlocks {
     fn from_iter<T: IntoIterator<Item = core_proto_types::HistoricalBlock>>(iter: T) -> Self {
         Self {
             blocks: iter.into_iter().collect(),

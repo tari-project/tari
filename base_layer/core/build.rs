@@ -22,8 +22,7 @@
 
 fn main() {
     tari_common::protobuf_build::ProtoCompiler::new()
-        .out_dir("src/proto/generated")
-        .include_paths(&["src/transactions/proto", "src/proto"])
+        .include_paths(&["src/proto"])
         .proto_paths(&[
             "src/mempool/proto",
             "src/base_node/proto",

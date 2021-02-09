@@ -131,14 +131,14 @@ async fn start_transaction_protocols_and_txo_validation(
         let event_monitoring_timeout = Duration::from_secs(cmp::max(60, base_node_query_timeout.as_secs() * 3));
 
         loop {
-            trace!(target: LOG_TARGET, "Attempting UTXO validation for Unspent Outputs.",);
+            trace!(target: LOG_TARGET, "Attempting TXO validation for Unspent Outputs.",);
             let _ = oms_handle
                 .validate_txos(TxoValidationType::Unspent, TxoValidationRetry::UntilSuccess)
                 .await
                 .map_err(|e| {
                     error!(
                         target: LOG_TARGET,
-                        "Problem starting UTXO validation protocols in the Output Manager Service: {}", e
+                        "Problem starting Unspent TXO validation protocols in the Output Manager Service: {}", e
                     );
                     e
                 });
@@ -148,10 +148,7 @@ async fn start_transaction_protocols_and_txo_validation(
         }
 
         loop {
-            trace!(
-                target: LOG_TARGET,
-                "Attempting Invalid TXO validation for Unspent Outputs.",
-            );
+            trace!(target: LOG_TARGET, "Attempting TXO validation for Invalid Outputs.",);
             let _ = oms_handle
                 .validate_txos(TxoValidationType::Invalid, TxoValidationRetry::UntilSuccess)
                 .await
@@ -168,14 +165,14 @@ async fn start_transaction_protocols_and_txo_validation(
         }
 
         loop {
-            trace!(target: LOG_TARGET, "Attempting STXO validation for Unspent Outputs.",);
+            trace!(target: LOG_TARGET, "Attempting TXO validation for Spent Outputs.",);
             let _ = oms_handle
                 .validate_txos(TxoValidationType::Spent, TxoValidationRetry::UntilSuccess)
                 .await
                 .map_err(|e| {
                     error!(
                         target: LOG_TARGET,
-                        "Problem starting STXO validation protocols in the Output Manager Service: {}", e
+                        "Problem starting Spent TXO validation protocols in the Output Manager Service: {}", e
                     );
                     e
                 });
@@ -234,61 +231,71 @@ async fn monitor_validation_protocol(
     loop {
         let mut delay = time::delay_for(event_timeout).fuse();
         futures::select! {
-            event = event_stream.select_next_some() => {
-                match event.unwrap() {
-                    // Restart the protocol if aborted (due to 'BaseNodeNotSynced')
-                    OutputManagerEvent::TxoValidationAborted(s) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "TXO validation event 'TxoValidationAborted' ({}), restarting after 30s.", s,
-                        );
-                        // This event will happen if the base node came out of sync for some reason, thus wait a bit before restarting
-                        tokio::time::delay_for(Duration::from_secs(30)).await;
-                        break;
+            result = event_stream.select_next_some() => {
+                match result {
+                    Ok(msg) => {
+                        match (*msg).clone() {
+                            // Restart the protocol if aborted (due to 'BaseNodeNotSynced')
+                            OutputManagerEvent::TxoValidationAborted(s) => {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "TXO validation event 'TxoValidationAborted' ({}), restarting after 30s.", s,
+                                );
+                                // This event will happen if the base node came out of sync for some reason, thus wait a bit before restarting
+                                tokio::time::delay_for(Duration::from_secs(30)).await;
+                                break;
+                            },
+                            // Restart the protocol if it fails
+                            OutputManagerEvent::TxoValidationFailure(s) => {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "TXO validation event 'TxoValidationFailure' ({}), restarting after 30s.", s,
+                                );
+                                // This event will happen due to an unknown reason, thus wait a bit before restarting
+                                tokio::time::delay_for(Duration::from_secs(30)).await;
+                                break;
+                            },
+                            // Exit upon success
+                            OutputManagerEvent::TxoValidationSuccess(s) => {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "TXO validation event 'TxoValidationSuccess' ({}), success.", s,
+                                );
+                                success = true;
+                                break;
+                            },
+                            // Wait for the next event if timed out (several can be attempted)
+                            OutputManagerEvent::TxoValidationTimedOut(s) => {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "TXO validation event 'TxoValidationTimedOut' ({}), waiting.", s,
+                                );
+                                continue;
+                            }
+                            // Wait for the next event if delayed
+                            OutputManagerEvent::TxoValidationDelayed(s) => {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "TXO validation event 'TxoValidationDelayed' ({}), waiting.", s,
+                                );
+                                continue;
+                            }
+                            // Wait for the next event upon an error
+                            OutputManagerEvent::Error(s) => {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "TXO validation event 'Error({})', waiting.", s,
+                                );
+                                continue;
+                            },
+                        }
+
                     },
-                    // Restart the protocol if failure
-                    OutputManagerEvent::TxoValidationFailure(s) => {
+                    Err(_) =>
                         trace!(
                             target: LOG_TARGET,
-                            "TXO validation event 'TxoValidationFailure' ({}), restarting after 30s.", s,
-                        );
-                        // This event will happen due to an unknown reason, thus wait a bit before restarting
-                        tokio::time::delay_for(Duration::from_secs(30)).await;
-                        break;
-                    },
-                    // Exit upon success
-                    OutputManagerEvent::TxoValidationSuccess(s) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "TXO validation event 'TxoValidationSuccess' ({}), success.", s,
-                        );
-                        success = true;
-                        break;
-                    },
-                    // Wait for the next event if timed out (several can be attempted)
-                    OutputManagerEvent::TxoValidationTimedOut(s) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "TXO validation event 'TxoValidationTimedOut' ({}), waiting.", s,
-                        );
-                        continue;
-                    }
-                    // Wait for the next event upon an error
-                    OutputManagerEvent::Error(s) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "TXO validation event 'Error({})', waiting.", s,
-                        );
-                        continue;
-                    },
-                    // Wait for the next event upon anything else
-                    _ => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "TXO validation unknown event, waiting.",
-                        );
-                        continue;
-                    },
+                            "Lagging read on event stream",
+                        ),
                 }
             },
             // Restart the protocol if it timed out

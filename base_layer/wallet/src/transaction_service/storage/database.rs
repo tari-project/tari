@@ -94,6 +94,12 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn mark_direct_send_success(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Cancel coinbase transactions at a specific block height
     fn cancel_coinbase_transaction_at_block_height(&self, block_height: u64) -> Result<(), TransactionStorageError>;
+    /// Find coinbase transaction at a specific block height for a given amount
+    fn find_coinbase_transaction_at_block_height(
+        &self,
+        block_height: u64,
+        amount: MicroTari,
+    ) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
     /// Update a completed transactions timestamp for use in test data generation
     #[cfg(feature = "test_harness")]
     fn update_completed_transaction_timestamp(
@@ -642,6 +648,20 @@ where T: TransactionBackend + 'static
         let db_clone = self.db.clone();
 
         tokio::task::spawn_blocking(move || db_clone.cancel_coinbase_transaction_at_block_height(block_height))
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
+            .and_then(|inner_result| inner_result)
+    }
+
+    pub async fn find_coinbase_transaction_at_block_height(
+        &self,
+        block_height: u64,
+        amount: MicroTari,
+    ) -> Result<Option<CompletedTransaction>, TransactionStorageError>
+    {
+        let db_clone = self.db.clone();
+
+        tokio::task::spawn_blocking(move || db_clone.find_coinbase_transaction_at_block_height(block_height, amount))
             .await
             .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
             .and_then(|inner_result| inner_result)

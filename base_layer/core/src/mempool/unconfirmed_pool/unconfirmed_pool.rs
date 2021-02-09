@@ -122,6 +122,7 @@ impl UnconfirmedPool {
     }
 
     /// Insert a set of new transactions into the UnconfirmedPool
+    #[cfg(test)]
     pub fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), UnconfirmedPoolError> {
         for tx in txs.into_iter() {
             self.insert(tx)?;
@@ -329,7 +330,7 @@ mod test {
     }
 
     #[test]
-    fn test_remove_published_txs() {
+    fn test_remove_reorg_txs() {
         let network = Network::LocalNet;
         let consensus = ConsensusManagerBuilder::new(network).build();
         let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:2, outputs: 1).0);

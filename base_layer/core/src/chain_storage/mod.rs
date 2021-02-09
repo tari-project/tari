@@ -26,66 +26,68 @@
 //! (kernels, utxos, etc) in whichever way they like. It's possible to have the UTXO set in memory, and the kernels
 //! backed by LMDB, while the merkle trees are stored in flat files for example.
 
+#[cfg(test)]
+mod tests;
+
+mod accumulated_data;
+pub use accumulated_data::{
+    BlockAccumulatedData,
+    BlockHeaderAccumulatedData,
+    BlockHeaderAccumulatedDataBuilder,
+    ChainBlock,
+    ChainHeader,
+};
+
+pub mod async_db;
+
 mod blockchain_database;
 pub use blockchain_database::{
     calculate_mmr_roots,
     fetch_header,
     fetch_headers,
-    fetch_tip_header,
+    fetch_target_difficulty,
     BlockAddResult,
-    BlockchainBackend,
     BlockchainDatabase,
     BlockchainDatabaseConfig,
-    MutableMmrState,
     Validators,
 };
+
+mod blockchain_backend;
+pub use blockchain_backend::BlockchainBackend;
 
 mod consts;
 
 mod db_transaction;
-pub use db_transaction::{
-    DbKey,
-    DbKeyValuePair,
-    DbTransaction,
-    DbValue,
-    MetadataKey,
-    MetadataValue,
-    MmrTree,
-    WriteOperation,
-};
+pub use db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation};
 
-// mod entity;
+mod mmr_tree;
+pub use mmr_tree::*;
 
 mod error;
-pub use error::ChainStorageError;
+pub use error::{ChainStorageError, Optional, OrNotFound};
 
 mod historical_block;
 pub use historical_block::HistoricalBlock;
+
+mod horizon_data;
+pub use horizon_data::HorizonData;
+
+mod pruned_output;
+pub use pruned_output::PrunedOutput;
 
 mod lmdb_db;
 pub use lmdb_db::{
     create_lmdb_database,
     create_recovery_lmdb_database,
-    remove_lmdb_database,
     LMDBDatabase,
     LMDB_DB_BLOCK_HASHES,
     LMDB_DB_HEADERS,
     LMDB_DB_KERNELS,
-    LMDB_DB_KERNEL_MMR_CP_BACKEND,
     LMDB_DB_METADATA,
+    LMDB_DB_MONERO_SEED_HEIGHT,
     LMDB_DB_ORPHANS,
-    LMDB_DB_RANGE_PROOF_MMR_CP_BACKEND,
-    LMDB_DB_STXOS,
     LMDB_DB_UTXOS,
-    LMDB_DB_UTXO_MMR_CP_BACKEND,
 };
 
-mod memory_db;
-pub use memory_db::MemoryDatabase;
-
-mod metadata;
-pub use metadata::{ChainMetadata, InProgressHorizonSyncState};
-
-mod checkpoint_utils;
-
-pub mod async_db;
+mod target_difficulties;
+pub use target_difficulties::TargetDifficulties;

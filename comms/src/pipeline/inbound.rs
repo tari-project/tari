@@ -23,7 +23,7 @@
 use crate::bounded_executor::BoundedExecutor;
 use futures::{future::FusedFuture, stream::FusedStream, Stream, StreamExt};
 use log::*;
-use std::fmt::Debug;
+use std::fmt::Display;
 use tari_shutdown::ShutdownSignal;
 use tower::{Service, ServiceExt};
 
@@ -45,7 +45,7 @@ where
     TStream: Stream + FusedStream + Unpin + Send + 'static,
     TStream::Item: Send + 'static,
     TSvc: Service<TStream::Item> + Clone + Send + 'static,
-    TSvc::Error: Debug + Send,
+    TSvc::Error: Display + Send,
     TSvc::Future: Send,
 {
     pub fn new(executor: BoundedExecutor, stream: TStream, service: TSvc, shutdown_signal: ShutdownSignal) -> Self {
@@ -74,7 +74,7 @@ where
             self.executor
                 .spawn(async move {
                     if let Err(err) = service.oneshot(item).await {
-                        warn!(target: LOG_TARGET, "Inbound pipeline returned an error: '{:?}'", err);
+                        warn!(target: LOG_TARGET, "Inbound pipeline returned an error: '{}'", err);
                     }
                 })
                 .await;
@@ -107,7 +107,7 @@ mod test {
             stream,
             service_fn(move |req| {
                 out_tx.try_send(req).unwrap();
-                future::ready(Result::<_, ()>::Ok(()))
+                future::ready(Result::<_, String>::Ok(()))
             }),
             shutdown.to_signal(),
         );

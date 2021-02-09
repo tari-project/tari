@@ -1,0 +1,94 @@
+on:
+  push:
+  pull_request:
+    types: [opened]
+
+name: CI
+
+jobs:
+  test:
+    name: build test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [
+          #ubuntu-18.04,
+          macos-10.15,
+          windows-2019
+          ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+
+      - name: ubuntu dependencies
+        if: startsWith(matrix.os,'ubuntu')
+        run: |
+          sudo apt-get update && \
+          sudo apt-get -y install \
+            openssl \
+            libssl-dev \
+            pkg-config \
+            libsqlite3-dev \
+            git \
+            cmake \
+            zip \
+            libc++-dev \
+            libc++abi-dev \
+            libprotobuf-dev \
+            protobuf-compiler
+
+      - name: macOS dependencies
+        if: startsWith(matrix.os,'macos')
+        run: brew install cmake zip
+
+      - name: windows dependencies
+        if: startsWith(matrix.os,'windows')
+        run: |
+          vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
+          choco upgrade openssl llvm zip psutils -y
+
+      - name: windows env
+        if: startsWith(matrix.os,'Windows')
+        uses: allenevans/set-env@57c4e41b5835146bcd9889174001783dd682b6c5
+        with:
+          SQLITE3_LIB_DIR: 'C:\vcpkg\installed\x64-windows\lib'
+          OPENSSL_DIR: 'C:\Program Files\OpenSSL-Win64'
+          LIBCLANG_PATH: 'C:\Program Files\LLVM\bin'
+
+      # this is a hack to fix an issue with building libclang in MSVC
+      # it should be fixed in release 16.9 of MSVC
+      # issue https://github.com/microsoft/STL/issues/1300
+      # temp fix https://github.com/mono/CppSharp/pull/1514/files
+      - name: fix intrin.h file
+        if: startsWith(matrix.os,'Windows')
+        shell: powershell
+        run: .github/temp/intrin.ps1
+
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2020-08-13
+          components: clippy, rustfmt
+          override: true
+
+      - name: cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+
+      - name: cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release

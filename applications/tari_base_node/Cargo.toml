@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari full base node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.6.0"
+version = "0.8.2"
 edition = "2018"
 
 [dependencies]
@@ -17,7 +17,7 @@ tari_service_framework = {  path = "../../base_layer/service_framework"}
 tari_shutdown = { path = "../../infrastructure/shutdown"}
 tari_mmr = {  path = "../../base_layer/mmr" }
 tari_wallet = { path = "../../base_layer/wallet" }
-tari_crypto = { version = "^0.8" }
+tari_crypto = "^0.8"
 tari_app_grpc = {  path = "../tari_app_grpc" }
 tari_app_utilities = { path = "../tari_app_utilities"}
 
@@ -44,7 +44,6 @@ strum = "^0.19"
 strum_macros = "0.18.0"
 thiserror = "^1.0.20"
 tonic = "0.2"
-itertools = "0.8.2"
 
 [build-dependencies]
 tonic-build = "0.2"

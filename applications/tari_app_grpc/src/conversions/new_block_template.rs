@@ -24,7 +24,7 @@ use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
 use tari_core::{
     blocks::{NewBlockHeaderTemplate, NewBlockTemplate},
-    proof_of_work::{PowAlgorithm, ProofOfWork},
+    proof_of_work::ProofOfWork,
     transactions::types::BlindingFactor,
 };
 use tari_crypto::tari_utilities::ByteArray;
@@ -36,15 +36,8 @@ impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
             prev_hash: block.header.prev_hash.clone(),
             total_kernel_offset: Vec::from(block.header.total_kernel_offset.as_bytes()),
             pow: Some(grpc::ProofOfWork {
-                pow_algo: match block.header.pow.pow_algo {
-                    PowAlgorithm::Monero => 0,
-                    PowAlgorithm::Blake => 1,
-                    PowAlgorithm::Sha3 => 2,
-                },
-                accumulated_monero_difficulty: block.header.pow.accumulated_monero_difficulty.into(),
-                accumulated_blake_difficulty: block.header.pow.accumulated_blake_difficulty.into(),
+                pow_algo: block.header.pow.pow_algo.as_u64(),
                 pow_data: block.header.pow.pow_data,
-                target_difficulty: block.header.pow.target_difficulty.as_u64(),
             }),
         };
         Self {
@@ -95,6 +88,14 @@ impl TryFrom<grpc::NewBlockTemplate> for NewBlockTemplate {
             .map(TryInto::try_into)
             .ok_or_else(|| "Block body not provided".to_string())??;
 
-        Ok(Self { header, body })
+        // Note,  the target_difficulty fields won't be used when converting back, but this
+        // should probably be addressed at some point
+        Ok(Self {
+            header,
+            body,
+            target_difficulty: Default::default(),
+            reward: Default::default(),
+            total_fees: Default::default(),
+        })
     }
 }

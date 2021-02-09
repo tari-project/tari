@@ -68,6 +68,28 @@ where
     }
 }
 
+/// An implementation of `ServiceInitializer` that wraps an `impl FnOnce`
+pub struct InitializerFn<TFunc>(Option<TFunc>);
+
+impl<TFunc> InitializerFn<TFunc> {
+    pub fn new(f: TFunc) -> Self {
+        Self(Some(f))
+    }
+}
+
+impl<TFunc, TFut> ServiceInitializer for InitializerFn<TFunc>
+where
+    TFunc: FnOnce(ServiceInitializerContext) -> TFut,
+    TFut: Future<Output = Result<(), ServiceInitializationError>>,
+{
+    type Future = TFut;
+
+    fn initialize(&mut self, context: ServiceInitializerContext) -> Self::Future {
+        let f = self.0.take().expect("initializer called more than once");
+        (f)(context)
+    }
+}
+
 //---------------------------------- Boxed Service Initializer --------------------------------------------//
 // The following code is essentially a substitute for async trait functions. Any initializer can
 // converted to the boxed form by using ServiceInitializer::boxed(). This is done for you when
