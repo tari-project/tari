@@ -16,13 +16,23 @@ function sleep(ms) {
     });
 }
 
-async function waitFor(asyncTestFn, toBe, maxTime) {
+async function waitFor(asyncTestFn, toBe, maxTime, timeOut=500, skipLog=50) {
     var now = new Date();
 
+    let i = 0;
     while (new Date() - now < maxTime) {
         const value = await asyncTestFn();
-        if (value === toBe) break;
-        await sleep(500);
+        if (value === toBe) {
+            if (i>1) {
+                console.log("waiting for process...", timeOut, i);
+            }
+            break;
+        }
+        if (i % skipLog == 0 && i>1) {
+            console.log("waiting for process...", timeOut, i);
+        }
+        await sleep(timeOut);
+        i++;
     }
 }
 
@@ -120,36 +130,15 @@ const getTransactionOutputHash = function(output) {
     return Buffer.from(final);
 }
 
-// This function is not used at the moment; left here as an example
-const parsePubKeyFromNetworkLog = async function (name, logFileName, retries) {
-    let i = 0;
-    if (!fs.existsSync(logFileName) && retries < 1) {
-        sleep(1000);
-    }
-    while (!fs.existsSync(logFileName) && i < retries) {
-        console.log(name + ":  waiting for `" + logFileName + "` to be created.");
-        sleep(1000);
-        i++;
-    }
-    pubKey = "";
-    if (fs.existsSync(logFileName)) {
-        const logFile = readline.createInterface({
-            input: fs.createReadStream(logFileName),
-            output: process.stdout,
-            terminal: false
-        });
-        // Note the async nature of reading the file
-        for await (const line of logFile) {
-            if (line.includes("[comms::node] INFO  Your node's public key is")) {
-                var s1 = line.split("[comms::node] INFO  Your node's public key is");
-                pubKey = s1[1].trim().replace(/'/g,'');
-                return pubKey;
-            }
-        }
-    } else {
-        console.log("  WARN: Could not read " + name + " public key from file, '" + logFileName + "' does not exist.");
-        return pubKey;
-    }
+function consoleLogTransactionDetails(txnDetails, txId) {
+     var found = txnDetails[0];
+     var status = txnDetails[1];
+     if (found) {
+         console.log("  Transaction '" + status.transactions[0]["tx_id"] + "' has status '" +
+             status.transactions[0]["status"] + "' and is_cancelled(" + status.transactions[0]["is_cancelled"] + ")");
+     } else {
+         console.log("  Transaction '" + txId + "' " + status);
+     }
 }
 
 module.exports = {
@@ -161,5 +150,5 @@ module.exports = {
     getFreePort,
     getTransactionOutputHash,
     hexSwitchEndianness,
-    parsePubKeyFromNetworkLog
+    consoleLogTransactionDetails
 };

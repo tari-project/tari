@@ -93,6 +93,10 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("wallet.transaction_broadcast_send_timeout", 60)
         .unwrap();
     cfg.set_default("wallet.prevent_fee_gt_amount", true).unwrap();
+    cfg.set_default("wallet.transaction_routing_mechanism", "DirectAndStoreAndForward")
+        .unwrap();
+    cfg.set_default("wallet.command_send_wait_stage", "Broadcast").unwrap();
+    cfg.set_default("wallet.command_send_wait_timeout", 300).unwrap();
     cfg.set_default("wallet.base_node_service_peers", Vec::<String>::new())
         .unwrap();
 

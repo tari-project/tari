@@ -8,8 +8,9 @@ const WalletClient = require('./walletClient');
 
 class WalletProcess {
 
-    constructor(name) {
+    constructor(name, options) {
         this.name = name;
+        this.options = options;
     }
 
     async init() {
@@ -25,7 +26,7 @@ class WalletProcess {
     }
 
     getClient() {
-        return new WalletClient(this.getGrpcAddress());
+        return new WalletClient(this.getGrpcAddress(), this.name);
     }
 
     setPeerSeeds(addresses) {
@@ -39,7 +40,8 @@ class WalletProcess {
                 fs.mkdirSync(this.baseDir + "/log", {recursive: true});
             }
 
-           let envs = createEnv(this.name, true, "cwalletid.json", "127.0.0.1", this.grpcPort, this.port, "127.0.0.1", "8080", "8081", "127.0.0.1:8084", [], this.peerSeeds)
+            let envs = createEnv(this.name, true, "cwalletid.json", "127.0.0.1", this.grpcPort, this.port, "127.0.0.1",
+                "8080", "8081", "127.0.0.1:8084", this.options, this.peerSeeds)
 
             var ps = spawn(cmd, args, {
                 cwd: this.baseDir,

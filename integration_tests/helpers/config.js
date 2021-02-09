@@ -7,9 +7,14 @@
  function mapEnvs(options) {
      let res = {};
      if (options.pruningHorizon) {
-         res.TARI_BASE_NODE__LOCALNET__PRUNING_HORIZON=options.pruningHorizon;
+        // In the config toml file: `base_node.network.pruning_horizon` with `network = localnet`
+         res.TARI_BASE_NODE__LOCALNET__PRUNING_HORIZON = options.pruningHorizon;
      }
-    return res;
+     if (options.routingMechanism) {
+        // In the config toml file: `wallet.transaction_routing_mechanism`
+        res.TARI_WALLET__TRANSACTION_ROUTING_MECHANISM = options.routingMechanism;
+     }
+     return res;
 }
 
 function baseEnvs(peerSeeds = [])
@@ -59,21 +64,26 @@ function baseEnvs(peerSeeds = [])
      return envs;
 }
 
-function createEnv(name="config_identity",isWallet=false, nodeFile="newnodeid.json",walletGrpcAddress="127.0.0.1", walletGrpcPort="8082", walletPort="8083", baseNodeGrpcAddress="127.0.0.1", baseNodeGrpcPort="8080", baseNodePort="8081",proxyFullAddress="127.0.0.1:8084",options, peerSeeds=[]) {
-          var envs = baseEnvs(peerSeeds);
-          var configEnvs = {
-             TARI_BASE_NODE__LOCALNET__GRPC_BASE_NODE_ADDRESS: `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`,
-             TARI_BASE_NODE__LOCALNET__GRPC_CONSOLE_WALLET_ADDRESS: `${walletGrpcAddress}:${walletGrpcPort}`,
-             TARI_BASE_NODE__LOCALNET__BASE_NODE_IDENTITY_FILE: `${nodeFile}`,
-             TARI_BASE_NODE__LOCALNET__TCP_LISTENER_ADDRESS: "/ip4/0.0.0.0/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`),
-             TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS: "/ip4/127.0.0.1/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`),
-             TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: `${proxyFullAddress}`,
-             TARI_BASE_NODE__LOCALNET__TRANSPORT: "tcp",
-         }
-         //console.log(configEnvs);
-         //console.log(configEnvs);
-         var fullEnvs = {...envs,...configEnvs};
-         return {...fullEnvs, ...mapEnvs(options || {}) } ;
+function createEnv(name="config_identity", isWallet=false, nodeFile="newnodeid.json", walletGrpcAddress="127.0.0.1",
+        walletGrpcPort="8082", walletPort="8083", baseNodeGrpcAddress="127.0.0.1", baseNodeGrpcPort="8080",
+        baseNodePort="8081", proxyFullAddress="127.0.0.1:8084", options, peerSeeds=[],
+        txnSendingMechanism="DirectAndStoreAndForward") {
+    var envs = baseEnvs(peerSeeds);
+    var configEnvs = {
+        TARI_BASE_NODE__LOCALNET__GRPC_BASE_NODE_ADDRESS: `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`,
+        TARI_BASE_NODE__LOCALNET__GRPC_CONSOLE_WALLET_ADDRESS: `${walletGrpcAddress}:${walletGrpcPort}`,
+        TARI_BASE_NODE__LOCALNET__BASE_NODE_IDENTITY_FILE: `${nodeFile}`,
+        TARI_BASE_NODE__LOCALNET__TCP_LISTENER_ADDRESS: "/ip4/0.0.0.0/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`),
+        TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS: "/ip4/127.0.0.1/tcp/" + (isWallet ? `${walletPort}` : `${baseNodePort}`),
+        TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: `${proxyFullAddress}`,
+        TARI_BASE_NODE__LOCALNET__TRANSPORT: "tcp",
+    }
+    //console.log(configEnvs);
+    var fullEnvs = {...envs,...configEnvs};
+    if (isWallet) {
+        //console.log(name, mapEnvs(options || {}));
+    }
+    return {...fullEnvs, ...mapEnvs(options || {}) } ;
 }
 
 module.exports = {

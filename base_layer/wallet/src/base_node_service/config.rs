@@ -25,7 +25,7 @@ use std::time::Duration;
 
 const LOG_TARGET: &str = "wallet::base_node_service::config";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BaseNodeServiceConfig {
     pub refresh_interval: Duration,
     pub request_max_age: Duration,
