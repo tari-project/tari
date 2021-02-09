@@ -281,6 +281,20 @@ mod test {
     };
 
     #[test]
+    fn test_find_duplicate_input() {
+        let tx1 = Arc::new(tx!(MicroTari(5000), fee: MicroTari(50), inputs: 2, outputs: 1).0);
+        let tx2 = Arc::new(tx!(MicroTari(5000), fee: MicroTari(50), inputs: 2, outputs: 1).0);
+        assert!(
+            UnconfirmedPool::find_duplicate_input(&[tx1.clone()], &tx1),
+            "Duplicate was not found"
+        );
+        assert!(
+            !UnconfirmedPool::find_duplicate_input(&[tx1.clone()], &tx2),
+            "Duplicate was incorrectly found as true"
+        );
+    }
+
+    #[test]
     fn test_insert_and_retrieve_highest_priority_txs() {
         let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(50), inputs: 2, outputs: 1).0);
         let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs: 4, outputs: 1).0);
