@@ -158,7 +158,7 @@ use tari_crypto::{
 };
 use tari_p2p::transport::{TorConfig, TransportType};
 use tari_shutdown::Shutdown;
-use tari_utilities::{hex, hex::Hex, message_format::MessageFormat};
+use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{
     contacts_service::storage::database::Contact,
     error::WalletError,
@@ -2323,7 +2323,6 @@ pub unsafe extern "C" fn transport_tcp_create(
 /// ## Arguments
 /// `control_server_address` - The pointer to a char array
 /// `tor_cookie` - The pointer to a ByteVector containing the contents of the tor cookie file, can be null
-/// `tor_identity` - The pointer to a ByteVector containing the tor identity, can be null.
 /// `tor_port` - The tor port
 /// `socks_username` - The pointer to a char array containing the socks username, can be null
 /// `socks_password` - The pointer to a char array containing the socks password, can be null
@@ -2428,45 +2427,6 @@ pub unsafe extern "C" fn transport_memory_get_address(
     }
 
     address.into_raw()
-}
-
-/// Gets the private key for tor
-///
-/// ## Arguments
-/// `wallet` - Pointer to a TariWallet
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `*mut ByteVector` - Returns the serialized tor identity as a pointer to a ByteVector, contents for ByteVector will
-/// be empty on error.
-///
-/// # Safety
-/// Can only be used with a tor transport type, will crash otherwise
-#[no_mangle]
-pub unsafe extern "C" fn wallet_get_tor_identity(wallet: *const TariWallet, error_out: *mut c_int) -> *mut ByteVector {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    let identity_bytes;
-    if !wallet.is_null() {
-        let service = (*wallet).wallet.comms.hidden_service();
-        match service {
-            Some(s) => {
-                let tor_identity = s.tor_identity();
-                identity_bytes = tor_identity.to_binary().unwrap();
-            },
-            None => {
-                identity_bytes = Vec::new();
-            },
-        };
-    } else {
-        identity_bytes = Vec::new();
-        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-    }
-
-    let bytes = ByteVector(identity_bytes);
-    Box::into_raw(Box::new(bytes))
 }
 
 /// Frees memory for a TariTransportType
