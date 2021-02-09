@@ -191,6 +191,14 @@ where TClient: From<RpcClient> + NamedProtocolService
         self
     }
 
+    /// Set the length of time that the client will wait for a response in the RPC handshake before returning a timeout
+    /// error.
+    /// Default: 15 seconds
+    pub fn with_handshake_timeout(mut self, timeout: Duration) -> Self {
+        self.config.handshake_timeout = timeout;
+        self
+    }
+
     /// Negotiates and establishes a session to the peer's RPC service
     pub async fn connect<TSubstream>(self, framed: CanonicalFraming<TSubstream>) -> Result<TClient, RpcError>
     where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + 'static {
@@ -202,6 +210,7 @@ where TClient: From<RpcClient> + NamedProtocolService
 pub struct RpcClientConfig {
     pub deadline: Option<Duration>,
     pub deadline_grace_period: Duration,
+    pub handshake_timeout: Duration,
 }
 
 impl RpcClientConfig {
@@ -216,6 +225,7 @@ impl Default for RpcClientConfig {
         Self {
             deadline: Some(Duration::from_secs(30)),
             deadline_grace_period: Duration::from_secs(10),
+            handshake_timeout: Duration::from_secs(15),
         }
     }
 }
@@ -305,7 +315,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
     async fn run(mut self) {
         debug!(target: LOG_TARGET, "Performing client handshake");
         let start = Instant::now();
-        let mut handshake = Handshake::new(&mut self.framed);
+        let mut handshake = Handshake::new(&mut self.framed).with_timeout(self.config.handshake_timeout);
         match handshake.perform_client_handshake().await {
             Ok(_) => {
                 let latency = start.elapsed();

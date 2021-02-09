@@ -77,6 +77,7 @@ pub struct RpcServer {
     maximum_concurrent_sessions: Option<usize>,
     max_frame_size: usize,
     minimum_client_deadline: Duration,
+    handshake_timeout: Duration,
     shutdown_signal: OptionalShutdownSignal,
 }
 
@@ -145,6 +146,7 @@ impl Default for RpcServer {
             maximum_concurrent_sessions: Some(100),
             max_frame_size: RPC_MAX_FRAME_SIZE,
             minimum_client_deadline: Duration::from_secs(1),
+            handshake_timeout: Duration::from_secs(15),
             shutdown_signal: Default::default(),
         }
     }
@@ -257,7 +259,7 @@ where
             },
         };
 
-        let mut handshake = Handshake::new(&mut framed);
+        let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
         let version = handshake.perform_server_handshake().await?;
         debug!(
             target: LOG_TARGET,

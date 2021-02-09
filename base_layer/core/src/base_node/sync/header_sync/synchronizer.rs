@@ -107,16 +107,21 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 Err(err @ BlockHeaderSyncError::NotInSync) => {
                     debug!(target: LOG_TARGET, "{}", err);
                 },
+
+                Err(err @ BlockHeaderSyncError::RpcError(RpcError::NegotiationTimedOut)) => {
+                    debug!(target: LOG_TARGET, "{}", err);
+                    self.ban_peer_short(node_id, BanReason::RpcNegotiationTimedOut).await?;
+                },
                 Err(BlockHeaderSyncError::ValidationFailed(err)) => {
                     debug!(target: LOG_TARGET, "Block header validation failed: {}", err);
-                    self.ban_peer_temporarily(node_id, err.into()).await?;
+                    self.ban_peer_long(node_id, err.into()).await?;
                 },
                 Err(err) => {
                     debug!(
                         target: LOG_TARGET,
                         "Failed to synchronize headers from peer `{}`: {}", node_id, err
                     );
-                    self.ban_peer_temporarily(node_id, BanReason::GeneralHeaderSyncFailure)
+                    self.ban_peer_long(node_id, BanReason::GeneralHeaderSyncFailure(err))
                         .await?;
                 },
             }
@@ -198,7 +203,21 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         Ok(connections)
     }
 
-    async fn ban_peer_temporarily(&mut self, node_id: NodeId, reason: BanReason) -> Result<(), BlockHeaderSyncError> {
+    async fn ban_peer_long(&mut self, node_id: NodeId, reason: BanReason) -> Result<(), BlockHeaderSyncError> {
+        self.ban_peer_for(node_id, reason, self.config.ban_period).await
+    }
+
+    async fn ban_peer_short(&mut self, node_id: NodeId, reason: BanReason) -> Result<(), BlockHeaderSyncError> {
+        self.ban_peer_for(node_id, reason, self.config.short_ban_period).await
+    }
+
+    async fn ban_peer_for(
+        &mut self,
+        node_id: NodeId,
+        reason: BanReason,
+        duration: Duration,
+    ) -> Result<(), BlockHeaderSyncError>
+    {
         if self.config.sync_peers.contains(&node_id) {
             debug!(
                 target: LOG_TARGET,
@@ -208,7 +227,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
         warn!(target: LOG_TARGET, "Banned sync peer because {}", reason);
         self.connectivity
-            .ban_peer_until(node_id, self.config.ban_period, reason.to_string())
+            .ban_peer_until(node_id, duration, reason.to_string())
             .await
             .map_err(BlockHeaderSyncError::FailedToBan)?;
         Ok(())
@@ -252,8 +271,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         loop {
             iter_count += 1;
             if iter_count > MAX_CHAIN_SPLIT_ITERS {
-                self.ban_peer_temporarily(peer.clone(), BanReason::ChainSplitNotFound)
-                    .await?;
+                self.ban_peer_long(peer.clone(), BanReason::ChainSplitNotFound).await?;
                 return Err(BlockHeaderSyncError::ChainSplitNotFound(peer.clone()));
             }
 
@@ -302,7 +320,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         const NUM_HEADERS_TO_REQUEST: u64 = 1000;
         let (resp, block_hashes, steps_back) = self.find_chain_split(peer, client, NUM_HEADERS_TO_REQUEST).await?;
         if resp.headers.len() > NUM_HEADERS_TO_REQUEST as usize {
-            self.ban_peer_temporarily(peer.clone(), BanReason::PeerSentTooManyHeaders(resp.headers.len()))
+            self.ban_peer_long(peer.clone(), BanReason::PeerSentTooManyHeaders(resp.headers.len()))
                 .await?;
             return Err(BlockHeaderSyncError::NotInSync);
         }
@@ -321,7 +339,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         if fork_hash_index >= block_hashes.len() as u32 {
             let _ = self
-                .ban_peer_temporarily(peer.clone(), BanReason::SplitHashGreaterThanHashes {
+                .ban_peer_long(peer.clone(), BanReason::SplitHashGreaterThanHashes {
                     fork_hash_index,
                     num_block_hashes: block_hashes.len(),
                 })
@@ -495,6 +513,8 @@ enum BanReason {
     ValidationFailed(#[from] ValidationError),
     #[error("Peer could not find the location of a chain split")]
     ChainSplitNotFound,
-    #[error("Failed to synchronize headers from peer")]
-    GeneralHeaderSyncFailure,
+    #[error("Failed to synchronize headers from peer: {0}")]
+    GeneralHeaderSyncFailure(BlockHeaderSyncError),
+    #[error("Peer did not respond timeously during RPC negotiation")]
+    RpcNegotiationTimedOut,
 }

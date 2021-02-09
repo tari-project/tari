@@ -29,6 +29,7 @@ pub struct BlockSyncConfig {
     pub num_tip_hashes: usize,
     pub num_proof_headers: usize,
     pub ban_period: Duration,
+    pub short_ban_period: Duration,
     pub sync_peers: Vec<NodeId>,
 }
 
@@ -39,6 +40,7 @@ impl Default for BlockSyncConfig {
             num_tip_hashes: 500,
             num_proof_headers: 100,
             ban_period: Duration::from_secs(30 * 60),
+            short_ban_period: Duration::from_secs(60),
             sync_peers: Default::default(),
         }
     }
