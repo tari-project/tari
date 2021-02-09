@@ -1098,6 +1098,25 @@ mod test {
     }
 
     #[test]
+    fn check_duplicate_inputs_outputs() {
+        let (tx, _, _outputs) = create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
+        assert!(!tx.body.contains_duplicated_outputs());
+        assert!(!tx.body.contains_duplicated_inputs());
+
+        let input = tx.body.inputs()[0].clone();
+        let output = tx.body.outputs()[0].clone();
+
+        let mut broken_tx_1 = tx.clone();
+        let mut broken_tx_2 = tx.clone();
+
+        broken_tx_1.body.add_input(input);
+        broken_tx_2.body.add_output(output);
+
+        assert!(broken_tx_1.body.contains_duplicated_inputs());
+        assert!(broken_tx_2.body.contains_duplicated_outputs());
+    }
+
+    #[test]
     fn test_output_rewinding() {
         let factories = CryptoFactories::new(32);
         let k = BlindingFactor::random(&mut OsRng);

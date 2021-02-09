@@ -76,6 +76,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxInputAndMaturityVa
         // verify_inputs_are_utxos(tx, &*db)?;
         let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
         verify_timelocks(tx, tip_height)?;
+        verify_no_duplicated_inputs_outputs(tx)?;
         Ok(())
     }
 }
@@ -122,6 +123,19 @@ fn verify_not_stxos<B: BlockchainBackend>(tx: &Transaction, db: &B) -> Result<()
         }
     }
 
+    Ok(())
+}
+
+/// This function checks the at the tx contains no duplicated inputs or outputs.
+fn verify_no_duplicated_inputs_outputs(tx: &Transaction) -> Result<(), ValidationError> {
+    if tx.body.contains_duplicated_inputs() {
+        warn!(target: LOG_TARGET, "Transaction validation failed due to double input");
+        return Err(ValidationError::UnsortedOrDuplicateInput);
+    }
+    if tx.body.contains_duplicated_outputs() {
+        warn!(target: LOG_TARGET, "Transaction validation failed due to double output");
+        return Err(ValidationError::UnsortedOrDuplicateOutput);
+    }
     Ok(())
 }
 
