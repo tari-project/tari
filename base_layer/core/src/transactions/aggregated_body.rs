@@ -170,11 +170,15 @@ impl AggregateBody {
             .any(|input| self.outputs.iter().any(|o| o.is_equal_to(input)))
     }
 
-    /// This will check that there are no duplicated inputs. If the body is not sorted, this will sort the body
     pub fn contains_duplicated_inputs(&self) -> bool {
-        // This can be expensive so we add in a sort check if its sorted
+        // If the body is sorted, can do a linear check instead of n^2
         if self.sorted {
-            return self.contains_duplicated_inputs_sorted();
+            for i in 1..self.inputs().len() {
+                if self.inputs()[i] == self.inputs()[i - 1] {
+                    return true;
+                }
+            }
+            return false;
         }
         for i in 0..self.inputs().len() {
             for j in (i + 1)..self.inputs().len() {
@@ -186,45 +190,21 @@ impl AggregateBody {
         false
     }
 
-    /// This will check that there are no duplicated outputs. If the body is not sorted, this will sort the body
     pub fn contains_duplicated_outputs(&self) -> bool {
-        // This can be expensive so we add in a sort check if its sorted
+        // If the body is sorted, can do a linear check instead of n^2
         if self.sorted {
-            return self.contains_duplicated_outputs_sorted();
+            for i in 1..self.outputs().len() {
+                if self.outputs()[i] == self.outputs()[i - 1] {
+                    return true;
+                }
+            }
+            return false;
         }
         for i in 0..self.outputs().len() {
             for j in (i + 1)..self.outputs().len() {
                 if self.outputs()[i] == self.outputs()[j] {
                     return true;
                 }
-            }
-        }
-        false
-    }
-
-    /// This will check that there are no duplicated outputs, this will only work on a sorted transaction, will return
-    /// true if its not sorted. If the body is not sorted, this will sort the body
-    pub fn contains_duplicated_outputs_sorted(&self) -> bool {
-        if !self.sorted {
-            return true;
-        }
-        for i in 1..self.outputs().len() {
-            if self.outputs()[i] == self.outputs()[i - 1] {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// This will check that there are no duplicated inputs, this will only work on a sorted transaction, will return
-    /// true if its not sorted. If the body is not sorted, this will sort the body
-    pub fn contains_duplicated_inputs_sorted(&self) -> bool {
-        if !self.sorted {
-            return true;
-        }
-        for i in 1..self.inputs().len() {
-            if self.inputs()[i] == self.inputs()[i - 1] {
-                return true;
             }
         }
         false
