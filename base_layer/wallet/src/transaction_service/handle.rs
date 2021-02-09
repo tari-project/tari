@@ -36,6 +36,9 @@ use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
 
+#[cfg(feature = "test_harness")]
+use tokio::runtime::Handle;
+
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
 pub enum TransactionServiceRequest {
@@ -65,7 +68,7 @@ pub enum TransactionServiceRequest {
     #[cfg(feature = "test_harness")]
     FinalizePendingInboundTransaction(TxId),
     #[cfg(feature = "test_harness")]
-    AcceptTestTransaction((TxId, MicroTari, CommsPublicKey)),
+    AcceptTestTransaction((TxId, MicroTari, CommsPublicKey, Handle)),
     #[cfg(feature = "test_harness")]
     MineTransaction(TxId),
     #[cfg(feature = "test_harness")]
@@ -108,7 +111,7 @@ impl fmt::Display for TransactionServiceRequest {
                 f.write_str(&format!("FinalizePendingInboundTransaction ({})", id))
             },
             #[cfg(feature = "test_harness")]
-            Self::AcceptTestTransaction((id, _, _)) => f.write_str(&format!("AcceptTestTransaction ({})", id)),
+            Self::AcceptTestTransaction((id, _, _, _)) => f.write_str(&format!("AcceptTestTransaction ({})", id)),
             #[cfg(feature = "test_harness")]
             Self::MineTransaction(id) => f.write_str(&format!("MineTransaction ({})", id)),
             #[cfg(feature = "test_harness")]
@@ -508,6 +511,7 @@ impl TransactionServiceHandle {
         tx_id: TxId,
         amount: MicroTari,
         source_public_key: CommsPublicKey,
+        handle: &Handle,
     ) -> Result<(), TransactionServiceError>
     {
         match self
@@ -516,6 +520,7 @@ impl TransactionServiceHandle {
                 tx_id,
                 amount,
                 source_public_key,
+                handle.clone(),
             )))
             .await??
         {

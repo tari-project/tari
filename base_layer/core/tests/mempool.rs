@@ -198,6 +198,49 @@ fn test_insert_and_process_published_block() {
 }
 
 #[test]
+fn test_time_locked() {
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+    let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
+    let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
+    // Create a block with 4 outputs
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![2 * T, 2 * T, 2 * T, 2 * T]
+    )];
+    generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
+    mempool.process_published_block(blocks[1].block.clone().into()).unwrap();
+    // Block height should be 1
+    let mut tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT);
+    tx2.lock_height = 3;
+    let tx2 = Arc::new(spend_utxos(tx2).0);
+
+    let mut tx3 = txn_schema!(
+        from: vec![outputs[1][1].clone()],
+        to: vec![1*T],
+        fee: 20*uT,
+        lock: 4,
+        OutputFeatures::with_maturity(1)
+    );
+    tx3.lock_height = 2;
+    let tx3 = Arc::new(spend_utxos(tx3).0);
+
+    // Tx2 should not go in, but Tx3 should
+    assert_eq!(
+        mempool.insert(tx2.clone()).unwrap(),
+        TxStorageResponse::NotStoredTimeLocked
+    );
+    assert_eq!(mempool.insert(tx3.clone()).unwrap(), TxStorageResponse::UnconfirmedPool);
+
+    // Spend tx3, so that the height of the chain will increase
+    generate_block(&mut store, &mut blocks, vec![tx3.deref().clone()], &consensus_manager).unwrap();
+    mempool.process_published_block(blocks[2].block.clone().into()).unwrap();
+
+    // Block height increased, so tx2 should no go in.
+    assert_eq!(mempool.insert(tx2.clone()).unwrap(), TxStorageResponse::UnconfirmedPool);
+}
+
+#[test]
 fn test_retrieve() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);

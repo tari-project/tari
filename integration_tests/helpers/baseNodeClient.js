@@ -146,11 +146,12 @@ class BaseNodeClient {
             })
             .then(template => {
                 block = template.new_block_template;
+                let height = block.header.height+2;
                 return walletClient.getCoinbase()
                     .sendMessage({
                         "reward": template.minerData.reward,
                         "fee": template.minerData.total_fees,
-                        "height": block.header.height
+                        "height": height,
                     });
             }).then(coinbase => {
                     const cb = coinbase.transaction;
@@ -173,7 +174,7 @@ class BaseNodeClient {
         let builder = new TransactionBuilder();
         let blockTemplate = existingBlockTemplate || await this.getBlockTemplate();
         const privateKey = Buffer.from(toLittleEndian(blockTemplate.block.header.height, 256)).toString('hex');
-        let cb = builder.generateCoinbase(parseInt(blockTemplate.minerData.reward), privateKey, parseInt(blockTemplate.minerData.total_fees), parseInt(blockTemplate.block.header.height) + 1);
+        let cb = builder.generateCoinbase(parseInt(blockTemplate.minerData.reward), privateKey, parseInt(blockTemplate.minerData.total_fees), parseInt(blockTemplate.block.header.height) + 2);
         let template = blockTemplate.block;
         template.body.outputs = template.body.outputs.concat(cb.outputs);
         template.body.kernels = template.body.kernels.concat(cb.kernels);

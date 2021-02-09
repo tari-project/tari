@@ -1019,6 +1019,8 @@ mod test {
         kernel.lock_height = 2;
         tx.body.add_input(input.clone());
         tx.body.add_kernel(kernel.clone());
+        assert_eq!(tx.body.check_stxo_rules(1), Err(TransactionError::InputMaturity));
+        assert_eq!(tx.body.check_stxo_rules(5), Ok(()));
 
         assert_eq!(tx.max_input_maturity(), 5);
         assert_eq!(tx.max_kernel_timelock(), 2);

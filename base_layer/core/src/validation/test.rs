@@ -23,7 +23,6 @@
 use crate::{
     blocks::BlockHeader,
     consensus::{ConsensusManagerBuilder, Network},
-    tari_utilities::Hashable,
     test_helpers::blockchain::create_store_with_consensus,
     validation::header_iter::HeaderIter,
 };

@@ -4435,6 +4435,7 @@ dependencies = [
  "log 0.4.11",
  "log4rs",
  "rand 0.7.3",
+ "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
  "tari_core",

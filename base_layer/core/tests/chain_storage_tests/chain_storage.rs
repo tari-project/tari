@@ -37,7 +37,7 @@ use crate::helpers::{
     test_blockchain::TestBlockchain,
 };
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
+use tari_common_types::types::BlockHash;
 use tari_core::{
     blocks::{genesis_block, Block, BlockHeader},
     chain_storage::{
@@ -59,7 +59,7 @@ use tari_core::{
         create_test_db,
     },
     transactions::{
-        helpers::{create_test_kernel, spend_utxos},
+        helpers::spend_utxos,
         tari_amount::{uT, MicroTari, T},
         types::CryptoFactories,
     },
@@ -67,7 +67,7 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, ValidationError},
 };
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_crypto::tari_utilities::Hashable;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 

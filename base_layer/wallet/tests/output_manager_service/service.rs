@@ -65,7 +65,7 @@ use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_wallet::{
-    base_node_service::handle::BaseNodeServiceHandle,
+    base_node_service::{handle::BaseNodeServiceHandle, mock_base_node_service::MockBaseNodeService},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
@@ -115,10 +115,14 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     let constants = ConsensusConstantsBuilder::new(Network::Ridcully).build();
 
-    let (sender, _) = reply_channel::unbounded();
+    let (sender, receiver_bns) = reply_channel::unbounded();
     let (event_publisher_bns, _) = broadcast::channel(100);
 
     let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
+    let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown.to_signal());
+    mock_base_node_service.set_default_base_node_state();
+    runtime.spawn(mock_base_node_service.run());
+
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig {

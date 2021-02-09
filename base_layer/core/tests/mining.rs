@@ -40,7 +40,7 @@ use tari_core::{
         state_machine_service::states::{ListeningInfo, StateEvent, StateInfo, StatusInfo},
     },
     chain_storage::BlockchainDatabaseConfig,
-    consensus::{ConsensusManagerBuilder, Network},
+    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder, Network},
     mempool::{MempoolServiceConfig, TxStorageResponse},
     mining::Miner,
     proto,
@@ -57,13 +57,15 @@ use tokio::{runtime::Runtime, sync::broadcast};
 fn mining() {
     let network = Network::LocalNet;
     let factories = CryptoFactories::default();
-    let consensus_constants = network.create_consensus_constants();
+    let consensus_constants = ConsensusConstantsBuilder::new(network)
+        .with_coinbase_lockheight(1)
+        .build();
     let mut runtime = Runtime::new().unwrap();
     let temp_dir = tempdir().unwrap();
     let (block0, utxos0) =
-        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants[0]);
+        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants[0].clone())
+        .with_consensus_constants(consensus_constants.clone())
         .with_block(block0.clone())
         .build();
     let (mut alice_node, mut bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
