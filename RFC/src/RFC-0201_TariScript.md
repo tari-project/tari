@@ -537,7 +537,7 @@ To summarise, the information required for one-sided transactions is as follows:
 
 ### HTLC-like script
 
-In this use case we have a script that controls where ita can be spent. The script is out of scope for this example, but
+In this use case we have a script that controls where it can be spent. The script is out of scope for this example, but
 has applies the following rules:
 
 * Alice can spend the UTXO unilaterally after block _n_, **or**
@@ -649,7 +649,7 @@ When spending the multi-party input:
 | script            | \\( \alpha_s \\)                      | Public, can verify that \\( \hash{\alpha_d} = \scripthash_d \\)                                                    |
 | script input      | \\( \input_s \\)                      | Public                                                                                                             |
 | height            | \\( h_a \\)                           | Public                                                                                                             |
-| script signature  | \\( s_{Sa} , R_{Sa} \\)               | Alice knows \\( k_{SaA},\\, r_{SaA} \\), Bob knows \\( k_{SaB},\\, r_{SaB} \\).  Neither party knows \\( k_{Sa}\\) |
+| script signature  | \\( s_{Ss} , R_{Ss} \\)               | Alice knows \\( k_{SsA},\\, r_{SsA} \\), Bob knows \\( k_{SsB},\\, r_{SsB} \\).  Neither party knows \\( k_{Ss}\\) |
 | offset public key | \\( K_{Os} \\)                        | As above, Alice and Bob each know part of the offset key                                                           |
 
 
@@ -660,7 +660,7 @@ When spending the multi-party input:
 A major issue with many Mimblewimble extension schemes is that miners are able to cut-through UTXOs if an output is spent
 in the same block it was created. Tari_script with its script offset will stop cut-through completely as it currently works. It will still allow pruning thou. Cut-through is still possible if the original owner participates. Example Alice, pays Bob, who pays Carol. Cut-through can happen only if Alice and Carol negotiate a new transaction.
 
-This will ensure that the original owner is happy with the spending the transaction to a new party, eg verified the spending conditions like a script.
+This will ensure that the original owner is happy with the spending the transaction to a new party, eg verified the spending conditions like a script. And that we don't spend any script without verifying its spending conditions. 
 
 ### Script lock key generation
 
