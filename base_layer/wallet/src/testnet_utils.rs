@@ -33,12 +33,13 @@ use crate::{
         database::{DbKeyValuePair, WalletBackend, WriteOperation},
         memory_db::WalletMemoryDatabase,
     },
+    test_utils::make_transaction_database,
     transaction_service::{
         handle::TransactionEvent,
         storage::{
             database::TransactionBackend,
-            memory_db::TransactionMemoryDatabase,
             models::{CompletedTransaction, TransactionDirection, TransactionStatus},
+            sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
     wallet::WalletConfig,
@@ -124,7 +125,12 @@ pub async fn create_wallet(
     public_address: Multiaddr,
     datastore_path: PathBuf,
     shutdown_signal: ShutdownSignal,
-) -> Wallet<WalletMemoryDatabase, TransactionMemoryDatabase, OutputManagerMemoryDatabase, ContactsServiceMemoryDatabase>
+) -> Wallet<
+    WalletMemoryDatabase,
+    TransactionServiceSqliteDatabase,
+    OutputManagerMemoryDatabase,
+    ContactsServiceMemoryDatabase,
+>
 {
     let factories = CryptoFactories::default();
 
@@ -137,7 +143,7 @@ pub async fn create_wallet(
             listener_address: public_address,
         },
         node_identity,
-        datastore_path,
+        datastore_path: datastore_path.clone(),
         peer_database_name: random_string(8),
         max_concurrent_inbound_tasks: 100,
         outbound_buffer_size: 100,
@@ -157,6 +163,7 @@ pub async fn create_wallet(
 
     let config = WalletConfig::new(comms_config, factories, None, None, Network::Stibbons, None, None, None);
     let db = WalletMemoryDatabase::new();
+    let (backend, _) = make_transaction_database(Some(datastore_path.to_str().unwrap().to_string()));
 
     let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
@@ -165,7 +172,7 @@ pub async fn create_wallet(
     Wallet::new(
         config,
         db,
-        TransactionMemoryDatabase::new(),
+        backend,
         OutputManagerMemoryDatabase::new(),
         ContactsServiceMemoryDatabase::new(),
         shutdown_signal,

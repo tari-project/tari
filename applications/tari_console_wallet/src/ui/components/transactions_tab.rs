@@ -187,6 +187,8 @@ impl TransactionsTab {
             )));
             let status = if t.cancelled {
                 "Cancelled".to_string()
+            } else if !t.valid {
+                "Invalid".to_string()
             } else {
                 t.status.to_string()
             };
@@ -312,6 +314,8 @@ impl TransactionsTab {
             let fee = Span::styled(format!("{}", tx.fee), Style::default().fg(Color::White));
             let status_msg = if tx.cancelled {
                 "Cancelled".to_string()
+            } else if !tx.valid {
+                "Invalid".to_string()
             } else {
                 tx.status.to_string()
             };

@@ -83,8 +83,11 @@ impl WalletEventMonitor {
                                     },
                                     TransactionEvent::ReceivedTransaction(tx_id) |
                                     TransactionEvent::ReceivedTransactionReply(tx_id) |
+                                    TransactionEvent::ReceivedFinalizedTransaction(tx_id) |
+                                    TransactionEvent::TransactionCancelled(tx_id) |
                                     TransactionEvent::TransactionBroadcast(tx_id) |
-                                    TransactionEvent::TransactionMinedRequestTimedOut(tx_id) => {
+                                    TransactionEvent::TransactionMinedRequestTimedOut(tx_id) |
+                                    TransactionEvent::TransactionMinedUnconfirmed(tx_id, _) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                     },
                                     TransactionEvent::TransactionDirectSendResult(tx_id, success) |
@@ -93,6 +96,9 @@ impl WalletEventMonitor {
                                             self.trigger_tx_state_refresh(tx_id).await;
                                             notifier.transaction_sent(tx_id);
                                         }
+                                    },
+                                    TransactionEvent::TransactionValidationComplete => {
+                                        self.trigger_full_tx_state_refresh().await;
                                     },
                                     // Only the above variants trigger state refresh
                                     _ => (),
@@ -164,6 +170,14 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.refresh_single_transaction_state(tx_id).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+        }
+    }
+
+    async fn trigger_full_tx_state_refresh(&mut self) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_full_transaction_state().await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
     }

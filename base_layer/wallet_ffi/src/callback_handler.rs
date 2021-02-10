@@ -213,6 +213,10 @@ where TBackend: TransactionBackend + 'static
                                 TransactionEvent::TransactionMined(tx_id) => {
                                     self.receive_transaction_mined_event(tx_id).await;
                                 },
+                                // TODO The front end and these event callbacks should handle confirmed/unconfirmed
+                                TransactionEvent::TransactionMinedUnconfirmed(tx_id, _) => {
+                                    self.receive_transaction_mined_event(tx_id).await;
+                                },
                                 // Only the above variants are mapped to callbacks
                                 _ => (),
                             }
@@ -443,11 +447,11 @@ mod test {
     use tari_shutdown::Shutdown;
     use tari_wallet::{
         output_manager_service::handle::OutputManagerEvent,
+        test_utils::make_transaction_database,
         transaction_service::{
             handle::TransactionEvent,
             storage::{
                 database::TransactionDatabase,
-                memory_db::TransactionMemoryDatabase,
                 models::{
                     CompletedTransaction,
                     InboundTransaction,
@@ -584,7 +588,8 @@ mod test {
     fn test_callback_handler() {
         let mut runtime = Runtime::new().unwrap();
 
-        let db = TransactionDatabase::new(TransactionMemoryDatabase::new());
+        let (backend, _tempdir) = make_transaction_database(None);
+        let db = TransactionDatabase::new(backend);
         let rtp = ReceiverTransactionProtocol::new_placeholder();
         let inbound_tx = InboundTransaction::new(
             1u64,

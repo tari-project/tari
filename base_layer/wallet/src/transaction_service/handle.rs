@@ -169,6 +169,7 @@ pub enum TransactionEvent {
     TransactionMinedRequestTimedOut(TxId),
     TransactionMinedUnconfirmed(TxId, u64),
     TransactionBaseNodeConnectionProblem(TxId),
+    TransactionValidationComplete,
     Error(String),
 }
 
@@ -476,6 +477,7 @@ impl TransactionServiceHandle {
         }
     }
 
+    /// This will start Transaction validation if it hasn't already started and then restart the broadcast protocols
     pub async fn restart_broadcast_protocols(&mut self) -> Result<(), TransactionServiceError> {
         match self
             .handle

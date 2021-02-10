@@ -53,14 +53,23 @@ use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::{
     base_node::{
         comms_interface::Broadcast,
-        proto::wallet_response::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
+        proto::wallet_response::{
+            TxLocation,
+            TxQueryBatchResponse,
+            TxQueryResponse,
+            TxSubmissionRejectionReason,
+            TxSubmissionResponse,
+        },
         rpc::{BaseNodeWalletRpcService, BaseNodeWalletService},
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
     chain_storage::ChainBlock,
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     crypto::tari_utilities::Hashable,
-    proto::types::{Signature as SignatureProto, Transaction as TransactionProto},
+    proto::{
+        base_node::Signatures as SignaturesProto,
+        types::{Signature as SignatureProto, Transaction as TransactionProto},
+    },
     test_helpers::blockchain::TempDatabase,
     transactions::{
         helpers::schema_to_transaction,
@@ -105,8 +114,11 @@ fn setup() -> (
     });
 
     let request_mock = runtime.enter(|| RpcRequestMock::new(base_node.comms.peer_manager()));
-    let service =
-        BaseNodeWalletRpcService::new(base_node.blockchain_db.clone().into(), base_node.mempool_handle.clone());
+    let service = BaseNodeWalletRpcService::new(
+        base_node.blockchain_db.clone().into(),
+        base_node.mempool_handle.clone(),
+        base_node.state_machine_handle.clone(),
+    );
     (
         service,
         base_node,
@@ -254,4 +266,27 @@ fn test_base_node_wallet_rpc() {
     assert_eq!(resp.confirmations, 1);
     assert_eq!(resp.block_hash, Some(block1.hash()));
     assert_eq!(resp.location, TxLocation::Mined);
+
+    // try a batch query
+    let msg = SignaturesProto {
+        sigs: vec![
+            SignatureProto::from(tx1_sig.clone()),
+            SignatureProto::from(tx2_sig.clone()),
+        ],
+    };
+    let req = request_mock.request_with_context(Default::default(), msg.clone());
+    let response = runtime
+        .block_on(service.transaction_batch_query(req))
+        .unwrap()
+        .into_message();
+
+    for r in response.responses {
+        let response = TxQueryBatchResponse::try_from(r).unwrap();
+
+        if response.signature == tx1_sig {
+            assert_eq!(response.location, TxLocation::Mined);
+        } else {
+            assert_eq!(response.location, TxLocation::InMempool);
+        }
+    }
 }

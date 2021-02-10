@@ -63,11 +63,8 @@ use tari_wallet::{
             run_migration_and_create_sqlite_connection,
         },
     },
-    transaction_service::{
-        config::TransactionServiceConfig,
-        handle::TransactionEvent,
-        storage::memory_db::TransactionMemoryDatabase,
-    },
+    test_utils::make_transaction_database,
+    transaction_service::{config::TransactionServiceConfig, handle::TransactionEvent},
     wallet::WalletConfig,
     Wallet,
     WalletSqlite,
@@ -574,6 +571,7 @@ async fn test_import_utxo() {
     )
     .unwrap();
     let temp_dir = tempdir().unwrap();
+    let (tx_backend, _temp_dir) = make_transaction_database(None);
     let comms_config = CommsConfig {
         node_identity: Arc::new(alice_identity.clone()),
         transport_type: TransportType::Tcp {
@@ -607,7 +605,7 @@ async fn test_import_utxo() {
     let mut alice_wallet = Wallet::new(
         config,
         WalletMemoryDatabase::new(),
-        TransactionMemoryDatabase::new(),
+        tx_backend,
         OutputManagerMemoryDatabase::new(),
         ContactsServiceMemoryDatabase::new(),
         shutdown.to_signal(),
@@ -676,7 +674,7 @@ async fn test_data_generation() {
 
     let config = WalletConfig::new(comms_config, factories, None, None, Network::Ridcully, None, None, None);
 
-    let transaction_backend = TransactionMemoryDatabase::new();
+    let (transaction_backend, _temp_dir) = make_transaction_database(None);
 
     let db = WalletMemoryDatabase::new();
 

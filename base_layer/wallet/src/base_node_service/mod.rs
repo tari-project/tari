@@ -23,7 +23,7 @@
 pub mod config;
 pub mod error;
 pub mod handle;
-#[cfg(feature = "test_harness")]
+
 pub mod mock_base_node_service;
 pub mod service;
 

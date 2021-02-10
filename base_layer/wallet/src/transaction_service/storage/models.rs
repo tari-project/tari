@@ -42,17 +42,17 @@ pub enum TransactionStatus {
     Completed,
     /// This transaction has been broadcast to the base layer network and is currently in one or more base node
     /// mempools.
-    /// TODO This status is no longer used but it is left here for backward compatibility. A transaction will be
-    /// Completed and transition straight to mined
     Broadcast,
     /// This transaction has been mined and included in a block.
-    Mined,
+    MinedUnconfirmed,
     /// This transaction was generated as part of importing a spendable UTXO
     Imported,
     /// This transaction is still being negotiated by the parties
     Pending,
     /// This is a created Coinbase Transaction
     Coinbase,
+    /// This transaction is mined and confirmed at the current base node's height
+    MinedConfirmed,
 }
 
 impl TryFrom<i32> for TransactionStatus {
@@ -62,10 +62,11 @@ impl TryFrom<i32> for TransactionStatus {
         match value {
             0 => Ok(TransactionStatus::Completed),
             1 => Ok(TransactionStatus::Broadcast),
-            2 => Ok(TransactionStatus::Mined),
+            2 => Ok(TransactionStatus::MinedUnconfirmed),
             3 => Ok(TransactionStatus::Imported),
             4 => Ok(TransactionStatus::Pending),
             5 => Ok(TransactionStatus::Coinbase),
+            6 => Ok(TransactionStatus::MinedConfirmed),
             _ => Err(TransactionStorageError::ConversionError(
                 "Invalid TransactionStatus".to_string(),
             )),
@@ -85,7 +86,8 @@ impl Display for TransactionStatus {
         match self {
             TransactionStatus::Completed => write!(f, "Completed"),
             TransactionStatus::Broadcast => write!(f, "Broadcast"),
-            TransactionStatus::Mined => write!(f, "Mined"),
+            TransactionStatus::MinedUnconfirmed => write!(f, "Mined Unconfirmed"),
+            TransactionStatus::MinedConfirmed => write!(f, "Mined Confirmed"),
             TransactionStatus::Imported => write!(f, "Imported"),
             TransactionStatus::Pending => write!(f, "Pending"),
             TransactionStatus::Coinbase => write!(f, "Coinbase"),
@@ -198,6 +200,7 @@ pub struct CompletedTransaction {
     pub coinbase_block_height: Option<u64>,
     pub send_count: u32,
     pub last_send_timestamp: Option<NaiveDateTime>,
+    pub valid: bool,
 }
 
 impl CompletedTransaction {
@@ -231,6 +234,7 @@ impl CompletedTransaction {
             coinbase_block_height,
             send_count: 0,
             last_send_timestamp: None,
+            valid: true,
         }
     }
 }
@@ -322,6 +326,7 @@ impl From<OutboundTransaction> for CompletedTransaction {
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
+            valid: true,
         }
     }
 }
@@ -343,6 +348,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
+            valid: true,
         }
     }
 }

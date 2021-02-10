@@ -23,17 +23,18 @@
 #[cfg(feature = "base_node")]
 mod service;
 #[cfg(feature = "base_node")]
+use crate::base_node::StateMachineHandle;
+use crate::proto::{
+    base_node::{Signatures, TxQueryBatchResponses, TxQueryResponse, TxSubmissionResponse},
+    types::{Signature, Transaction},
+};
+#[cfg(feature = "base_node")]
 use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     mempool::service::MempoolHandle,
 };
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeWalletRpcService;
-
-use crate::proto::{
-    base_node::{TxQueryResponse, TxSubmissionResponse},
-    types::{Signature, Transaction},
-};
 
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_comms_rpc_macros::tari_rpc;
@@ -48,13 +49,20 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
 
     #[rpc(method = 2)]
     async fn transaction_query(&self, request: Request<Signature>) -> Result<Response<TxQueryResponse>, RpcStatus>;
+
+    #[rpc(method = 3)]
+    async fn transaction_batch_query(
+        &self,
+        request: Request<Signatures>,
+    ) -> Result<Response<TxQueryBatchResponses>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]
 pub fn create_base_node_wallet_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,
     mempool: MempoolHandle,
+    state_machine: StateMachineHandle,
 ) -> BaseNodeWalletRpcServer<BaseNodeWalletRpcService<B>>
 {
-    BaseNodeWalletRpcServer::new(BaseNodeWalletRpcService::new(db, mempool))
+    BaseNodeWalletRpcServer::new(BaseNodeWalletRpcService::new(db, mempool, state_machine))
 }

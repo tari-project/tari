@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::proto::base_node as proto;
+use crate::{crypto::tari_utilities::ByteArrayError, proto::base_node as proto, transactions::types::Signature};
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
@@ -32,6 +32,7 @@ use tari_common_types::types::BlockHash;
 pub struct TxSubmissionResponse {
     pub accepted: bool,
     pub rejection_reason: TxSubmissionRejectionReason,
+    pub is_synced: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -98,6 +99,7 @@ impl TryFrom<proto::TxSubmissionResponse> for TxSubmissionResponse {
                 proto::TxSubmissionRejectionReason::from_i32(value.rejection_reason)
                     .ok_or_else(|| "Invalid or unrecognised `TxSubmissionRejectionReason` enum".to_string())?,
             )?,
+            is_synced: value.is_synced,
         })
     }
 }
@@ -107,12 +109,22 @@ impl From<TxSubmissionResponse> for proto::TxSubmissionResponse {
         Self {
             accepted: value.accepted,
             rejection_reason: proto::TxSubmissionRejectionReason::from(value.rejection_reason) as i32,
+            is_synced: value.is_synced,
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxQueryResponse {
+    pub location: TxLocation,
+    pub block_hash: Option<BlockHash>,
+    pub confirmations: u64,
+    pub is_synced: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TxQueryBatchResponse {
+    pub signature: Signature,
     pub location: TxLocation,
     pub block_hash: Option<BlockHash>,
     pub confirmations: u64,
@@ -172,6 +184,7 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
             )?,
             block_hash: proto_response.block_hash,
             confirmations: proto_response.confirmations,
+            is_synced: proto_response.is_synced,
         })
     }
 }
@@ -182,6 +195,28 @@ impl From<TxQueryResponse> for proto::TxQueryResponse {
             location: proto::TxLocation::from(response.location) as i32,
             block_hash: response.block_hash,
             confirmations: response.confirmations,
+            is_synced: response.is_synced,
         }
+    }
+}
+
+impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
+    type Error = String;
+
+    fn try_from(proto_response: proto::TxQueryBatchResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            signature: Signature::try_from(
+                proto_response
+                    .signature
+                    .ok_or_else(|| "Signature not present".to_string())?,
+            )
+            .map_err(|err: ByteArrayError| err.to_string())?,
+            location: TxLocation::try_from(
+                proto::TxLocation::from_i32(proto_response.location)
+                    .ok_or_else(|| "Invalid or unrecognised `TxLocation` enum".to_string())?,
+            )?,
+            block_hash: proto_response.block_hash,
+            confirmations: proto_response.confirmations,
+        })
     }
 }
