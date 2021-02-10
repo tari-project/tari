@@ -30,8 +30,6 @@ pub fn success_response(req_id: Option<i64>, result: json::Value) -> json::Value
        "id": req_id.unwrap_or(-1),
        "jsonrpc": "2.0",
        "result": result,
-       "status": "OK",
-       "untrusted": false
     })
 }
 
