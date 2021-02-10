@@ -294,17 +294,23 @@ impl Display for Peer {
         let status_str = {
             let mut s = Vec::new();
             if let Some(offline_at) = self.offline_at.as_ref() {
-                s.push(format!("OFFLINE since {}", offline_at));
+                s.push(format!("Offline since: {}", offline_at));
             }
 
             if let Some(dt) = self.banned_until() {
-                s.push(format!("BANNED until {}", dt));
-                s.push(format!("Banned because: {}", self.banned_reason))
+                s.push(format!("Banned until: {}", dt));
+                s.push(format!("Reason: {}", self.banned_reason))
             }
-            s.join(", ")
+            s.join(". ")
         };
+
+        let user_agent = match self.user_agent.as_ref() {
+            "" => "<unknown>",
+            ua => ua,
+        };
+
         f.write_str(&format!(
-            "{}[{}] PK={} ({}) {} {:?} {}",
+            "{}[{}] PK={} ({}) - {}. Type: {}. User agent: {}. {}.",
             flags_str,
             self.node_id.short_str(),
             self.public_key,
@@ -320,6 +326,7 @@ impl Display for Peer {
                 PeerFeatures::COMMUNICATION_CLIENT => "WALLET".to_string(),
                 f => format!("{:?}", f),
             },
+            user_agent,
             self.connection_stats,
         ))
     }
