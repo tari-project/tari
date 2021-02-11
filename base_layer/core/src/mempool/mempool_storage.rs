@@ -233,7 +233,7 @@ impl MempoolStorage {
             .unconfirmed_pool
             .snapshot()
             .iter()
-            .map(|tx| tx.body.kernels()[0].excess_sig.clone())
+            .map(|tx| tx.as_ref().clone())
             .collect::<Vec<_>>();
         let reorg_pool = self
             .reorg_pool

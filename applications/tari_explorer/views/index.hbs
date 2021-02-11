@@ -1,0 +1,83 @@
+<h3>Tip</h3>
+<table border="1">
+    <thead>
+    <tr>
+        <th>Chain height</th>
+        <th>Best block</th>
+        <th>Pruning horizon</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+        <td>{{this.tipInfo.metadata.height_of_longest_chain}}</td>
+        <td>{{hex this.tipInfo.metadata.best_block}}</td>
+        <td>{{this.tipInfo.metadata.pruning_horizon}}</td>
+    </tr>
+    </tbody>
+</table>
+
+
+<h1>{{title}}</h1>
+
+<table border="1" >
+<thead>
+<tr>
+<th>Height</th>
+    <th>Time</th>
+<th>Proof of Work</th>
+    <th>Hash</th>
+    <th>Kernels</th>
+    <th>Outputs</th>
+</tr>
+</thead>
+<tbody>
+{{#each this.headers}}
+<tr>
+    <td><a href="blocks/{{this.height}}">{{this.height}}</a></td>
+    <td>{{timestamp this.timestamp}}</td>
+    <td>{{lookup ../pows this.pow.pow_algo}}</td>
+    <td>{{hex this.hash}}</td>
+    <td>{{kernels}}</td>
+    <td>{{outputs}}</td>
+</tr>
+{{/each}}
+</tbody>
+</table>
+<p>
+<a href="/?from={{prevPage}}&limit={{limit}}">&lt; Prev</a>
+    <a href="/?limit={{limit}}">Tip</a>
+<a href="/?from={{nextPage}}&limit={{limit}}">Next &gt;</a>
+</p>
+<p>
+    Show per page:
+    <a href="/?from={{from}}&limit=10">10</a>
+    <a href="/?from={{from}}&limit=20">20</a>
+    <a href="/?from={{from}}&limit=50">50</a>
+    <a href="/?from={{from}}&limit=100">100</a>
+</p>
+
+<h2>Mempool</h2>
+<table border="1">
+    <thead>
+    <tr>
+        <th>Excess</th>
+        <th>Total Fees</th>
+        <th>Outputs</th>
+        <th>Kernels</th>
+        <th>Inputs</th>
+    </tr>
+    </thead>
+    <tbody>
+    {{#each mempool}}
+        {{#with this.transaction.body}}
+        <tr>
+            <td>{{#each this.kernels}}<span>{{hex this.excess_sig.signature}}</span>{{/each}}</td>
+            <td>{{this.total_fees}}</td>
+            <td>{{this.outputs.length}}</td>
+            <td>{{this.kernels.length}}</td>
+            <td>{{this.inputs.length}}</td>
+        </tr>
+    {{/with}}
+    {{/each}}
+    </tbody>
+</table>

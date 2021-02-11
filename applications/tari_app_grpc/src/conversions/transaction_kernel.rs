@@ -27,7 +27,7 @@ use tari_core::transactions::{
     transaction::{KernelFeatures, TransactionKernel},
     types::Commitment,
 };
-use tari_crypto::tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
 impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
     type Error = String;
@@ -55,6 +55,8 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
 
 impl From<TransactionKernel> for grpc::TransactionKernel {
     fn from(kernel: TransactionKernel) -> Self {
+        let hash = kernel.hash();
+
         grpc::TransactionKernel {
             features: kernel.features.bits() as u32,
             fee: kernel.fee.0,
@@ -64,6 +66,7 @@ impl From<TransactionKernel> for grpc::TransactionKernel {
                 public_nonce: Vec::from(kernel.excess_sig.get_public_nonce().as_bytes()),
                 signature: Vec::from(kernel.excess_sig.get_signature().as_bytes()),
             }),
+            hash,
         }
     }
 }

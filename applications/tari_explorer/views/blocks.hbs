@@ -1,0 +1,78 @@
+<a href="/">Back to all blocks</a>
+<h1>{{title}}</h1>
+<p>
+    <a href="/blocks/{{prevHeight}}">&lt Block {{prevHeight}}</a>
+    <a href="/blocks/{{nextHeight}}">Block {{nextHeight}} &gt;</a>
+</p>
+
+<h2>Kernels</h2>
+<table border="1">
+    <thead>
+    <tr>
+        <th>Hash</th>
+        <th>Excess</th>
+        <th>Excess Signature</th>
+        <th>Fee</th>
+        <th>Lock Height</th>
+        <th>Features</th>
+    </tr>
+    </thead>
+    <tbody>
+    {{#each this.block.body.kernels}}
+        <tr>
+            <td>{{hex hash}}</td>
+            <td>{{hex excess}}</td>
+            <td>Nonce:{{hex excess_sig.public_nonce}} Sig:{{hex excess_sig.signature}}</td>
+            <td>{{fee}}</td>
+            <td>{{lock_height}}</td>
+            <td>{{features}}</td>
+        </tr>
+    {{/each}}
+    </tbody>
+</table>
+
+
+<h2>Outputs</h2>
+<table border="1">
+    <thead>
+    <tr>
+        <th>Hash</th>
+        <th>Commitment</th>
+        <th>Flags</th>
+        <th>Maturity</th>
+    </tr>
+    </thead>
+    <tbody>
+    {{#each this.block.body.outputs}}
+     <tr>
+         <td>{{hex hash}}</td>
+         <td>{{hex commitment}}</td>
+         <td>{{features.flags}}</td>
+         <td>{{features.maturity}}</td>
+     </tr>
+    {{/each}}
+    </tbody>
+</table>
+
+<hr/>
+<h2>Spent Inputs</h2>
+<table border="1">
+    <thead>
+    <tr>
+        <th>Hash</th>
+        <th>Commitment</th>
+        <th>Flags</th>
+        <th>Maturity</th>
+    </tr>
+    </thead>
+    <tbody>
+    {{#each this.block.body.inputs}}
+        <tr>
+            <td>{{hex hash}}</td>
+            <td>{{hex commitment}}</td>
+            <td>{{features.flags}}</td>
+            <td>{{features.maturity}}</td>
+        </tr>
+    {{/each}}
+    </tbody>
+</table>
