@@ -22,7 +22,6 @@
 
 use super::StoreAndForwardRequester;
 use crate::{
-    envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
     store_forward::{
         database::NewStoredMessage,
@@ -361,10 +360,19 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(None);
         }
 
-        use NodeDestination::*;
-        match &message.dht_header.destination {
-            Unknown => {
-                // No destination provided,
+        // TODO: Remove this once we have a layer that filters out all messages to/from banned peers
+        if let Some(origin_pk) = message.authenticated_origin() {
+            if let Ok(peer) = self.peer_manager.find_by_public_key(origin_pk).await {
+                if peer.is_banned() {
+                    log_not_eligible("source peer is banned by this node");
+                    return Ok(None);
+                }
+            }
+        }
+
+        match message.dht_header.destination.to_derived_node_id() {
+            // No destination provided,
+            None => {
                 if message.dht_header.message_type.is_dht_discovery() {
                     log_not_eligible("it is an anonymous discovery message");
                     Ok(None)
@@ -372,26 +380,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     Ok(Some(StoredMessagePriority::Low))
                 }
             },
-            PublicKey(dest_public_key) => {
-                // If we know the destination peer, keep the message for them
-                match peer_manager.find_by_public_key(&dest_public_key).await {
-                    Ok(peer) => {
-                        if peer.is_banned() {
-                            log_not_eligible(
-                                "origin peer is banned. ** This should not happen because it should have been checked \
-                                 earlier in the pipeline **",
-                            );
-                            Ok(None)
-                        } else {
-                            Ok(Some(StoredMessagePriority::High))
-                        }
-                    },
-                    Err(err) if err.is_peer_not_found() => Ok(Some(StoredMessagePriority::Low)),
-                    Err(err) => Err(err.into()),
-                }
-            },
-            NodeId(dest_node_id) => {
-                if peer_manager
+            Some(dest_node_id) => {
+                if !peer_manager
                     .in_network_region(
                         &dest_node_id,
                         node_identity.node_id(),
@@ -399,13 +389,21 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     )
                     .await?
                 {
-                    Ok(Some(StoredMessagePriority::High))
-                } else {
-                    log_not_eligible(&format!(
-                        "this node does not consider node '{}' as a neighbour",
-                        dest_node_id
-                    ));
-                    Ok(None)
+                    return Ok(None);
+                }
+
+                match peer_manager.find_by_node_id(&dest_node_id).await {
+                    Ok(peer) if peer.is_banned() => {
+                        log_not_eligible("destination peer is banned.");
+                        Ok(None)
+                    },
+                    // We know the peer, they aren't banned and they are in our network region, keep the message for
+                    // them
+                    Ok(_) => Ok(Some(StoredMessagePriority::High)),
+                    // We don't know this peer, let's keep the message for a short while (default: 6 hours) because they
+                    // are in our neighbourhood.
+                    Err(err) if err.is_peer_not_found() => Ok(Some(StoredMessagePriority::Low)),
+                    Err(err) => Err(err.into()),
                 }
             },
         }
@@ -433,7 +431,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 mod test {
     use super::*;
     use crate::{
-        envelope::DhtMessageFlags,
+        envelope::{DhtMessageFlags, NodeDestination},
         proto::{dht::JoinMessage, envelope::DhtMessageType},
         test_utils::{
             build_peer_manager,
@@ -569,5 +567,35 @@ mod test {
         );
         let duration = Utc::now().naive_utc().signed_duration_since(message.stored_at);
         assert!(duration.num_seconds() <= 5);
+    }
+
+    #[tokio_macros::test_basic]
+    async fn decryption_failed_banned_peer() {
+        let (requester, mock_state) = create_store_and_forward_mock();
+        let spy = service_spy();
+        let peer_manager = build_peer_manager();
+        let origin_node_identity = make_node_identity();
+        let mut peer = origin_node_identity.to_peer();
+        peer.ban_for(Duration::from_secs(1_000_000 /* 🧏 */), "for being evil".to_string());
+        peer_manager.add_peer(peer).await.unwrap();
+        let node_identity = make_node_identity();
+        let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, requester)
+            .layer(spy.to_service::<PipelineError>());
+
+        let mut inbound_msg = make_dht_inbound_message(
+            &origin_node_identity,
+            b"Will you keep this for me?".to_vec(),
+            DhtMessageFlags::ENCRYPTED,
+            true,
+        );
+        inbound_msg.dht_header.destination =
+            NodeDestination::PublicKey(Box::new(origin_node_identity.public_key().clone()));
+        let msg_banned = DecryptedDhtMessage::failed(inbound_msg.clone());
+        service.call(msg_banned).await.unwrap();
+        assert_eq!(spy.is_called(), true);
+
+        assert_eq!(mock_state.call_count(), 0);
+        let messages = mock_state.get_messages().await;
+        assert!(messages.is_empty());
     }
 }

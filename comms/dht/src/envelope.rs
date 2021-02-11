@@ -219,27 +219,36 @@ pub enum NodeDestination {
 
 impl NodeDestination {
     pub fn to_inner_bytes(&self) -> Vec<u8> {
+        use NodeDestination::*;
         match self {
-            NodeDestination::Unknown => Vec::default(),
-            NodeDestination::PublicKey(pk) => pk.to_vec(),
-            NodeDestination::NodeId(node_id) => node_id.to_vec(),
+            Unknown => Vec::default(),
+            PublicKey(pk) => pk.to_vec(),
+            NodeId(node_id) => node_id.to_vec(),
         }
     }
 
     pub fn public_key(&self) -> Option<&CommsPublicKey> {
+        use NodeDestination::*;
         match self {
-            NodeDestination::Unknown => None,
-            NodeDestination::PublicKey(pk) => Some(pk),
-            NodeDestination::NodeId(_) => None,
+            Unknown => None,
+            PublicKey(pk) => Some(pk),
+            NodeId(_) => None,
         }
     }
 
     pub fn node_id(&self) -> Option<&NodeId> {
+        use NodeDestination::*;
         match self {
-            NodeDestination::Unknown => None,
-            NodeDestination::PublicKey(_) => None,
-            NodeDestination::NodeId(node_id) => Some(node_id),
+            Unknown => None,
+            PublicKey(_) => None,
+            NodeId(node_id) => Some(node_id),
         }
+    }
+
+    pub fn to_derived_node_id(&self) -> Option<NodeId> {
+        self.node_id()
+            .cloned()
+            .or_else(|| self.public_key().map(NodeId::from_public_key))
     }
 
     pub fn is_unknown(&self) -> bool {
