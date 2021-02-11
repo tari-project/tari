@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+import "transaction.proto";
+
 package tari.mempool;
 
 // TODO: Remove duplicate Signature, transaction also has a Signature.
@@ -12,7 +14,7 @@ message Signature {
 
 message StateResponse {
     // List of transactions in unconfirmed pool.
-    repeated Signature unconfirmed_pool = 1;
+    repeated tari.types.Transaction unconfirmed_pool = 1;
     // List of transactions in reorg pool.
     repeated Signature reorg_pool = 4;
 }

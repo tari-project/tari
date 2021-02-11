@@ -27,7 +27,7 @@ use tari_core::transactions::{
     transaction::TransactionOutput,
     types::Commitment,
 };
-use tari_crypto::tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
 impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
     type Error = String;
@@ -50,7 +50,9 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
 
 impl From<TransactionOutput> for grpc::TransactionOutput {
     fn from(output: TransactionOutput) -> Self {
+        let hash = output.hash();
         grpc::TransactionOutput {
+            hash,
             features: Some(grpc::OutputFeatures {
                 flags: output.features.flags.bits() as u32,
                 maturity: output.features.maturity,

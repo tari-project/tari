@@ -110,6 +110,7 @@ pub async fn get_heights(
 impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type FetchMatchingUtxosStream = mpsc::Receiver<Result<tari_rpc::FetchMatchingUtxosResponse, Status>>;
     type GetBlocksStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
+    type GetMempoolTransactionsStream = mpsc::Receiver<Result<tari_rpc::GetMempoolTransactionsResponse, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
     type GetTokensInCirculationStream = mpsc::Receiver<Result<tari_rpc::ValueAtHeightResponse, Status>>;
@@ -242,6 +243,53 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             target: LOG_TARGET,
             "Sending GetNetworkDifficulty response stream to client"
         );
+        Ok(Response::new(rx))
+    }
+
+    async fn get_mempool_transactions(
+        &self,
+        request: Request<tari_rpc::GetMempoolTransactionsRequest>,
+    ) -> Result<Response<Self::GetMempoolTransactionsStream>, Status>
+    {
+        let _request = request.into_inner();
+        debug!(target: LOG_TARGET, "Incoming GRPC request for GetMempoolTransactions",);
+
+        let mut mempool = self.mempool_service.clone();
+        let (mut tx, rx) = mpsc::channel(1000);
+
+        self.executor.spawn(async move {
+            let transactions = match mempool.get_mempool_state().await {
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                    return;
+                },
+                Ok(data) => data,
+            };
+            for transaction in transactions.unconfirmed_pool {
+                match tx
+                    .send(Ok(tari_rpc::GetMempoolTransactionsResponse {
+                        transaction: Some(transaction.into()),
+                    }))
+                    .await
+                {
+                    Ok(_) => (),
+                    Err(err) => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Error sending mempool transaction via GRPC:  {}", err
+                        );
+                        match tx.send(Err(Status::unknown("Error sending data"))).await {
+                            Ok(_) => (),
+                            Err(send_err) => {
+                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                            },
+                        }
+                        return;
+                    },
+                }
+            }
+        });
+        debug!(target: LOG_TARGET, "Sending GetMempool response stream to client");
         Ok(Response::new(rx))
     }
 

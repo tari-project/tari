@@ -143,6 +143,8 @@ message TransactionKernel {
     // The signature proving the excess is a valid public key, which signs
     // the transaction fee.
     Signature excess_sig = 7;
+    // The hash of the kernel, as it appears in the MMR
+    bytes hash = 8;
 }
 
 // A transaction input.
@@ -165,6 +167,8 @@ message TransactionOutput {
     bytes commitment = 2;
     // A proof that the commitment is in the right range
     bytes range_proof = 3;
+    // The hash of the output, as it appears in the MMR
+    bytes hash = 4;
 }
 
 // Options for UTXO's
