@@ -120,6 +120,7 @@ pub struct TxQueryResponse {
     pub block_hash: Option<BlockHash>,
     pub confirmations: u64,
     pub is_synced: bool,
+    pub height_of_longest_chain: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -185,6 +186,7 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
             block_hash: proto_response.block_hash,
             confirmations: proto_response.confirmations,
             is_synced: proto_response.is_synced,
+            height_of_longest_chain: proto_response.height_of_longest_chain,
         })
     }
 }
@@ -196,6 +198,7 @@ impl From<TxQueryResponse> for proto::TxQueryResponse {
             block_hash: response.block_hash,
             confirmations: response.confirmations,
             is_synced: response.is_synced,
+            height_of_longest_chain: response.height_of_longest_chain,
         }
     }
 }
