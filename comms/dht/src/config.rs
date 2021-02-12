@@ -114,6 +114,11 @@ pub struct DhtConfig {
     /// `flood_ban_max_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
     /// Default: 100 seconds
     pub flood_ban_timespan: Duration,
+    /// Once a peer has been marked as offline, wait at least this length of time before reconsidering them.
+    /// In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
+    /// peers that were previously tried.
+    /// Default: 24 hours
+    pub offline_peer_cooldown: Duration,
 }
 
 impl DhtConfig {
@@ -175,6 +180,7 @@ impl Default for DhtConfig {
             allow_test_addresses: false,
             flood_ban_max_msg_count: 1000,
             flood_ban_timespan: Duration::from_secs(100),
+            offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
         }
     }
 }

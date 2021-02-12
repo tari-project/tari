@@ -159,6 +159,13 @@ impl Peer {
         self.offline_at.is_some()
     }
 
+    /// The length of time since a peer was marked as offline
+    pub fn offline_since(&self) -> Option<Duration> {
+        self.offline_at
+            .map(|offline_at| Utc::now().naive_utc() - offline_at)
+            .map(|since| Duration::from_millis(since.num_milliseconds() as u64))
+    }
+
     /// TODO: Remove once we don't have to sync wallet and base node db
     pub fn unset_id(&mut self) {
         self.id = None;
@@ -347,7 +354,13 @@ impl Hash for Peer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{net_address::MultiaddressesWithStats, peer_manager::NodeId, protocol, types::CommsPublicKey};
+    use crate::{
+        net_address::MultiaddressesWithStats,
+        peer_manager::NodeId,
+        protocol,
+        test_utils::node_identity::build_node_identity,
+        types::CommsPublicKey,
+    };
     use serde_json::Value;
     use tari_crypto::{
         keys::PublicKey,
@@ -376,6 +389,22 @@ mod test {
         assert_eq!(peer.is_banned(), true);
         peer.ban_for(Duration::from_millis(0), "".to_string());
         assert_eq!(peer.is_banned(), false);
+    }
+
+    #[test]
+    fn test_offline_since() {
+        let mut peer = build_node_identity(Default::default()).to_peer();
+        assert!(peer.offline_since().is_none());
+        peer.set_offline(true);
+        assert!(peer.offline_since().is_some());
+    }
+
+    #[test]
+    fn test_is_offline() {
+        let mut peer = build_node_identity(Default::default()).to_peer();
+        assert_eq!(peer.is_offline(), false);
+        peer.set_offline(true);
+        assert_eq!(peer.is_offline(), true);
     }
 
     #[test]
