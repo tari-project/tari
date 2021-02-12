@@ -372,6 +372,14 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
+            NodeCommsRequest::GetHeaderByHash(hash) => {
+                let header = self.blockchain_db.fetch_header_by_block_hash(hash).await?;
+                Ok(NodeCommsResponse::BlockHeader(header))
+            },
+            NodeCommsRequest::GetBlockByHash(hash) => {
+                let block = self.blockchain_db.fetch_block_by_hash(hash).await?;
+                Ok(NodeCommsResponse::HistoricalBlock(Box::new(block)))
+            },
             NodeCommsRequest::GetNewBlockTemplate(pow_algo) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
 

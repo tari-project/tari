@@ -40,6 +40,10 @@ message BaseNodeServiceRequest {
         Commitments fetch_blocks_with_utxos = 18;
         // Indicates a Fetch kernel by excess signature request
         tari.types.Signature fetch_kernel_by_excess_sig = 19;
+        // Indicates a GetHeaderByHash request.
+        bytes get_header_by_hash = 20;
+        // Indicates a GetBlockByHash request.
+        bytes get_block_by_hash = 21;
     }
 }
 

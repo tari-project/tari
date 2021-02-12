@@ -216,4 +216,32 @@ impl LocalNodeCommsInterface {
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }
+
+    /// Return header matching the given hash. If the header cannot be found `Ok(None)` is returned.
+    pub async fn get_header_by_hash(&mut self, hash: HashOutput) -> Result<Option<BlockHeader>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::GetHeaderByHash(hash))
+            .await??
+        {
+            NodeCommsResponse::BlockHeader(header) => Ok(header),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Return block matching the given hash. If the block cannot be found `Ok(None)` is returned.
+    pub async fn get_block_by_hash(
+        &mut self,
+        hash: HashOutput,
+    ) -> Result<Option<HistoricalBlock>, CommsInterfaceError>
+    {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::GetBlockByHash(hash))
+            .await??
+        {
+            NodeCommsResponse::HistoricalBlock(block) => Ok(*block),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
 }

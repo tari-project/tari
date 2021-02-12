@@ -30,12 +30,24 @@ message BaseNodeServiceResponse {
         BlockHeaders fetch_headers_after_response = 10;
         // Indicates a MmrNodes response
         MmrNodes MmrNodes = 12;
+        // A single header response
+        BlockHeaderResponse block_header = 14;
+        // A single historical block response
+        HistoricalBlockResponse historical_block = 15;
     }
     bool is_synced = 13;
 }
 
 message BlockHeaders {
     repeated tari.core.BlockHeader headers = 1;
+}
+
+message HistoricalBlockResponse {
+    tari.core.HistoricalBlock block = 1;
+}
+
+message BlockHeaderResponse {
+    tari.core.BlockHeader header = 1;
 }
 
 message TransactionKernels {
