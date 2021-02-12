@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    connectivity::DhtConnectivity,
+    connectivity::{DhtConnectivity, MetricsCollector},
     test_utils::{build_peer_manager, create_dht_actor_mock, make_node_identity, DhtMockState},
     DhtConfig,
 };
@@ -76,6 +76,7 @@ async fn setup(
         connectivity,
         dht_requester,
         event_publisher.subscribe(),
+        MetricsCollector::spawn(),
         shutdown.to_signal(),
     );
 
@@ -253,4 +254,40 @@ async fn insert_neighbour() {
         .cloned()
         .collect::<Vec<_>>();
     assert_eq!(&dht_connectivity.neighbours[..7], ordered_node_ids.as_slice());
+}
+
+mod metrics {
+    mod collector {
+        use crate::connectivity::MetricsCollector;
+        use tari_comms::peer_manager::NodeId;
+
+        #[tokio_macros::test_basic]
+        async fn it_adds_message_received() {
+            let mut metric_collector = MetricsCollector::spawn();
+            let node_id = NodeId::default();
+            (0..100).for_each(|_| {
+                assert!(metric_collector.write_metric_message_received(node_id.clone()));
+            });
+
+            let ts = metric_collector
+                .get_messages_received_timeseries(node_id)
+                .await
+                .unwrap();
+            assert_eq!(ts.count(), 100);
+        }
+
+        #[tokio_macros::test_basic]
+        async fn it_clears_the_metrics() {
+            let mut metric_collector = MetricsCollector::spawn();
+            let node_id = NodeId::default();
+            assert!(metric_collector.write_metric_message_received(node_id.clone()));
+
+            metric_collector.clear_metrics(node_id.clone()).await.unwrap();
+            let ts = metric_collector
+                .get_messages_received_timeseries(node_id)
+                .await
+                .unwrap();
+            assert_eq!(ts.count(), 0);
+        }
+    }
 }

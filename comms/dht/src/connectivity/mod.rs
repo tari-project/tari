@@ -23,7 +23,10 @@
 #[cfg(test)]
 mod test;
 
-use crate::{event::DhtEvent, DhtActorError, DhtConfig, DhtRequester};
+mod metrics;
+pub use metrics::{MetricsCollector, MetricsCollectorHandle};
+
+use crate::{connectivity::metrics::MetricsError, event::DhtEvent, DhtActorError, DhtConfig, DhtRequester};
 use futures::{stream::Fuse, StreamExt};
 use log::*;
 use std::{sync::Arc, time::Instant};
@@ -48,6 +51,8 @@ pub enum DhtConnectivityError {
     PeerManagerError(#[from] PeerManagerError),
     #[error("Failed to send network Join message: {0}")]
     SendJoinFailed(#[from] DhtActorError),
+    #[error("Metrics error: {0}")]
+    MetricError(#[from] MetricsError),
 }
 
 /// # DHT Connectivity Actor
@@ -75,10 +80,13 @@ pub struct DhtConnectivity {
     stats: Stats,
     dht_events: Fuse<broadcast::Receiver<Arc<DhtEvent>>>,
 
+    metrics_collector: MetricsCollectorHandle,
+
     shutdown_signal: Option<ShutdownSignal>,
 }
 
 impl DhtConnectivity {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: DhtConfig,
         peer_manager: Arc<PeerManager>,
@@ -86,6 +94,7 @@ impl DhtConnectivity {
         connectivity: ConnectivityRequester,
         dht_requester: DhtRequester,
         dht_events: broadcast::Receiver<Arc<DhtEvent>>,
+        metrics_collector: MetricsCollectorHandle,
         shutdown_signal: ShutdownSignal,
     ) -> Self
     {
@@ -97,6 +106,7 @@ impl DhtConnectivity {
             node_identity,
             connectivity,
             dht_requester,
+            metrics_collector,
             random_pool_last_refresh: None,
             stats: Stats::new(),
             dht_events: dht_events.fuse(),
@@ -156,6 +166,9 @@ impl DhtConnectivity {
                     if let Err(err) = self.refresh_random_pool_if_required().await {
                         debug!(target: LOG_TARGET, "Error refreshing random peer pool: {:?}", err);
                     }
+                    if let Err(err) = self.check_and_ban_flooding_peers().await {
+                        debug!(target: LOG_TARGET, "Error checking for peer flooding: {:?}", err);
+                    }
                },
 
                _ = shutdown_signal => {
@@ -184,6 +197,28 @@ impl DhtConnectivity {
             _ => {},
         }
 
+        Ok(())
+    }
+
+    async fn check_and_ban_flooding_peers(&mut self) -> Result<(), DhtConnectivityError> {
+        let nodes = self
+            .metrics_collector
+            .get_message_rates_exceeding(self.config.flood_ban_max_msg_count, self.config.flood_ban_timespan)
+            .await?;
+
+        for (peer, mps) in nodes {
+            warn!(
+                target: LOG_TARGET,
+                "Banning peer `{}` because of flooding. Message rate: {:.2}m/s", peer, mps
+            );
+            self.connectivity
+                .ban_peer_until(
+                    peer,
+                    self.config.ban_duration,
+                    "Exceeded maximum message rate".to_string(),
+                )
+                .await?;
+        }
         Ok(())
     }
 
@@ -353,6 +388,12 @@ impl DhtConnectivity {
             ManagedPeerConnectFailed(node_id) |
             PeerOffline(node_id) |
             PeerBanned(node_id) => {
+                if self.metrics_collector.clear_metrics(node_id.clone()).await.is_err() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to clear metrics for peer `{}`. Metric collector is shut down.", node_id
+                    );
+                };
                 self.replace_managed_peer(node_id).await?;
             },
             ConnectivityStateOnline(n) => {
