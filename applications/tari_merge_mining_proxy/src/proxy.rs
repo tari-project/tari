@@ -48,7 +48,7 @@ use serde_json as json;
 use std::{
     cmp,
     cmp::min,
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     future::Future,
     io::Write,
     net::SocketAddr,
@@ -227,18 +227,11 @@ impl Service<Request<Body>> for MergeMiningProxyService {
                 Err(err) => {
                     error!(target: LOG_TARGET, "Error handling request: {}", err);
 
-                    Ok(Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(
-                            json::to_string(&json_rpc::standard_error_response(
-                                None,
-                                StandardError::InternalError,
-                                None,
-                            ))
-                            .expect("unexpected failure")
-                            .into(),
-                        )
-                        .unwrap())
+                    Ok(json_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        &json_rpc::standard_error_response(None, StandardError::InternalError, None),
+                    )
+                    .expect("unexpected failure"))
                 },
             }
         }
@@ -299,7 +292,8 @@ impl InnerService {
 
         json["height"] = json!(cmp::max(json["height"].as_i64().unwrap_or_default(), height as i64));
 
-        Ok(into_body(parts, json))
+        let resp = try_into_response(parts, &json)?;
+        Ok(resp)
     }
 
     async fn handle_submit_block(
@@ -320,21 +314,18 @@ impl InnerService {
         let params = match request["params"].as_array() {
             Some(v) => v,
             None => {
-                return Ok(Response::builder()
-                    .body(
-                        json::to_string(&json_rpc::standard_error_response(
-                            request["id"].as_i64(),
-                            StandardError::InvalidParams,
-                            Some(
-                                "`params` field is empty or an invalid type for submit block request. Expected an \
-                                 array."
-                                    .into(),
-                            ),
-                        ))
-                        .unwrap()
-                        .into(),
-                    )
-                    .unwrap());
+                return Ok(json_response(
+                    StatusCode::OK,
+                    &json_rpc::standard_error_response(
+                        request["id"].as_i64(),
+                        StandardError::InvalidParams,
+                        Some(
+                            "`params` field is empty or an invalid type for submit block request. Expected an array."
+                                .into(),
+                        ),
+                    ),
+                )
+                .unwrap())
             },
         };
 
@@ -373,12 +364,7 @@ impl InnerService {
             let start = Instant::now();
             match base_node_client.submit_block(block_data.tari_block).await {
                 Ok(_) => {
-                    json_resp = json_rpc::success_response(
-                        json_resp["id"].as_i64(),
-                        json!({
-                            "status": "OK"
-                        }),
-                    );
+                    json_resp = json_rpc::success_response(request["id"].as_i64(), json!({ "status": "OK" }));
 
                     debug!(
                         target: LOG_TARGET,
@@ -417,8 +403,8 @@ impl InnerService {
         }
 
         debug!(target: LOG_TARGET, "Sending submit_block response {}", json_resp);
-        // Return the Monero response as is
-        Ok(into_body(parts, json_resp))
+        let resp = try_into_response(parts, &json_resp)?;
+        Ok(resp)
     }
 
     async fn handle_get_block_template(
@@ -608,7 +594,8 @@ impl InnerService {
         );
 
         debug!(target: LOG_TARGET, "Returning template result: {}", monerod_resp);
-        Ok(into_body(parts, monerod_resp))
+        let resp = try_into_response(parts, &monerod_resp)?;
+        Ok(resp)
     }
 
     async fn connect_grpc_client(
@@ -710,7 +697,7 @@ impl InnerService {
                 // Map requests to monerod requests (with aliases)
                 match request.uri().path() {
                     "/get_height" | "/getheight" => self.handle_get_height(monerod_resp).await,
-                    _ => Ok(into_body_from_response(monerod_resp)),
+                    _ => try_into_body_from_response(monerod_resp).map_err(Into::into),
                 }
             },
             Method::POST => {
@@ -721,13 +708,14 @@ impl InnerService {
                 // All post requests go to /json_rpc, body of request contains a field `method` to indicate which call
                 // takes place.
                 match request.body()["method"].as_str().unwrap_or_default() {
+                    "get_height" | "getheight" => self.handle_get_height(monerod_resp).await,
                     "submitblock" | "submit_block" => self.handle_submit_block(request, monerod_resp).await,
                     "getblocktemplate" | "get_block_template" => self.handle_get_block_template(monerod_resp).await,
-                    _ => Ok(into_body_from_response(monerod_resp)),
+                    _ => try_into_body_from_response(monerod_resp).map_err(Into::into),
                 }
             },
             // Simply return the response "as is"
-            _ => Ok(into_body_from_response(monerod_resp)),
+            _ => try_into_body_from_response(monerod_resp).map_err(Into::into),
         }
     }
 
@@ -790,16 +778,29 @@ async fn convert_reqwest_response_to_hyper_json_response(
     Ok(resp)
 }
 
-fn into_body<T: ToString>(mut parts: Parts, content: T) -> Response<Body> {
-    let resp = content.to_string();
-    // Ensure that the content length header is correct
-    parts.headers.insert(header::CONTENT_LENGTH, resp.len().into());
-    Response::from_parts(parts, resp.into())
+fn json_response(status: StatusCode, body: &json::Value) -> Result<Response<Body>, MmProxyError> {
+    let body_str = json::to_string(body)?;
+    Response::builder()
+        .header(header::CONTENT_TYPE, "application/json".to_string())
+        .header(header::CONTENT_LENGTH, body_str.len())
+        .status(status)
+        .body(body_str.into())
+        .map_err(Into::into)
 }
 
-fn into_body_from_response<T: ToString>(resp: Response<T>) -> Response<Body> {
+fn try_into_response(mut parts: Parts, content: &json::Value) -> Result<Response<Body>, json::Error> {
+    let resp = json::to_string(content)?;
+    // Ensure that the content length header is correct
+    parts.headers.insert(header::CONTENT_LENGTH, resp.len().into());
+    parts
+        .headers
+        .insert(header::CONTENT_TYPE, "application/json".try_into().unwrap());
+    Ok(Response::from_parts(parts, resp.into()))
+}
+
+fn try_into_body_from_response(resp: Response<json::Value>) -> Result<Response<Body>, json::Error> {
     let (parts, body) = resp.into_parts();
-    into_body(parts, body)
+    try_into_response(parts, &body)
 }
 
 /// Reads the `Body` until there is no more to read
