@@ -243,11 +243,17 @@ impl OutputManagerBackend for OutputManagerMemoryDatabase {
 
         // Add Spent outputs
         for o in pending_tx.outputs_to_be_spent.drain(..) {
+            if db.spent_outputs.iter().any(|uo| uo.output == o) {
+                return Err(OutputManagerStorageError::DuplicateOutput);
+            }
             db.spent_outputs.push(DbOutput::new(tx_id, o))
         }
 
         // Add Unspent outputs
         for o in pending_tx.outputs_to_be_received.drain(..) {
+            if db.unspent_outputs.iter().any(|uo| uo.output == o) {
+                return Err(OutputManagerStorageError::DuplicateOutput);
+            }
             db.unspent_outputs.push(DbOutput::new(tx_id, o));
         }
 

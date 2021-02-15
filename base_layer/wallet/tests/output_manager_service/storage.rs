@@ -26,6 +26,7 @@ use aes_gcm::{
     Aes256Gcm,
 };
 use chrono::{Duration as ChronoDuration, Utc};
+use diesel::result::{DatabaseErrorKind, Error::DatabaseError};
 use rand::{rngs::OsRng, RngCore};
 use std::time::Duration;
 use tari_core::transactions::{
@@ -36,6 +37,7 @@ use tari_core::transactions::{
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
 use tari_wallet::{
     output_manager_service::{
+        error::OutputManagerStorageError,
         service::Balance,
         storage::{
             database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
@@ -621,4 +623,76 @@ pub async fn test_cancelled_outputs_excluded<T: OutputManagerBackend + 'static>(
     // so it actually spent a cancelled output instead of the utxo
     let balance = db.get_balance(None).await.unwrap();
     assert_eq!(balance.available_balance, MicroTari(0));
+}
+
+#[tokio_macros::test]
+pub async fn test_no_duplicate_outputs_memory_db() {
+    test_no_duplicate_outputs(OutputManagerMemoryDatabase::new()).await;
+}
+
+#[tokio_macros::test]
+pub async fn test_no_duplicate_outputs_sqlite_db() {
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let temp_dir = tempdir().unwrap();
+    let db_folder = temp_dir.path().to_str().unwrap().to_string();
+    let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
+
+    test_no_duplicate_outputs(OutputManagerSqliteDatabase::new(connection, None)).await;
+}
+
+pub async fn test_no_duplicate_outputs<T: OutputManagerBackend + 'static>(backend: T) {
+    let factories = CryptoFactories::default();
+    let db = OutputManagerDatabase::new(backend);
+
+    // create an output
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000), &factories.commitment);
+    let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
+
+    // add it to the database
+    let result = db.add_unspent_output(uo.clone()).await;
+    assert!(result.is_ok());
+    let outputs = db.get_unspent_outputs().await.unwrap();
+    assert_eq!(outputs.len(), 1);
+
+    // adding it again should be an error
+    let err = db.add_unspent_output(uo.clone()).await.unwrap_err();
+    assert!(matches!(err, OutputManagerStorageError::DuplicateOutput));
+    let outputs = db.get_unspent_outputs().await.unwrap();
+    assert_eq!(outputs.len(), 1);
+
+    // add a pending transaction with the same duplicate output
+    let pending_tx = PendingTransactionOutputs {
+        tx_id: OsRng.next_u64(),
+        outputs_to_be_spent: vec![],
+        outputs_to_be_received: vec![uo],
+        timestamp: Utc::now().naive_utc() - ChronoDuration::from_std(Duration::from_millis(120_000_000)).unwrap(),
+        coinbase_block_height: None,
+    };
+
+    match db.add_pending_transaction_outputs(pending_tx.clone()).await {
+        Ok(()) => {
+            // memory db storage allows the pending tx but trying to confirm the transaction should be an error
+            let err = db
+                .confirm_pending_transaction_outputs(pending_tx.tx_id)
+                .await
+                .unwrap_err();
+            assert!(matches!(err, OutputManagerStorageError::DuplicateOutput));
+        },
+        Err(e) => {
+            // sqlite db storage should not even allow the pending tx, since it adds a duplicate in the outputs table
+            if let OutputManagerStorageError::DieselError(e) = e {
+                if let DatabaseError(db_err, _) = e {
+                    assert!(matches!(db_err, DatabaseErrorKind::UniqueViolation));
+                } else {
+                    assert!(false, "Unexpected database error type: {}", e);
+                }
+            } else {
+                assert!(false, "Unexpected output manager storage error type: {}", e);
+            }
+        },
+    }
+
+    // we should still only have 1 unspent output
+    let outputs = db.get_unspent_outputs().await.unwrap();
+    assert_eq!(outputs.len(), 1);
 }
