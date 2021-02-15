@@ -139,7 +139,7 @@ requirement of having range proofs attached to UTXOs, which require that the val
 This argument is independent of the nature of the additional restrictions. Specifically, if these restrictions are
 manifested as a script that provides additional constraints over whether a UTXO may be spent, the same arguments apply.
 
-This means that in a very hand wavy sort of way, there ought to be no reason that Tari Script is not workable.
+This means that in a very hand-wavy sort of way, there ought to be no reason that Tari Script is not workable.
 
 Note that range proofs can be discarded after a UTXO is spent. This entails that the global security guarantees of
 Mimblewimble are not that every transaction in history was valid from an inflation perspective, but that the net effect
@@ -389,12 +389,9 @@ validation steps.
 
 ### Standard MW transaction
 
-For this use case we have Alice, who sends Bob some Tari in the transaction \\( C_a \Rightarrow C_b \\).
+For this use case we have Alice who sends Bob some Tari.
 Bob's wallet is  online and is able to countersign the transaction.
 
-This can be done in two ways.
-
-#### Standard transactions
 Alice creates a new transaction spending \\( C_a \\) to a new output \\( C_b \\) (ignoring fees for now).
 
 To spend \\( C_a \\), she provides
@@ -497,7 +494,7 @@ $$
 $$
 
 
-For the script hash, she provides the hash of a script that looks something like, `Dup PushPubkey(K_Sb) EqualVerify CheckSig`.
+For the script hash, she provides the hash of a script that locks the output to Bob's public key, `PushPubkey(K_Sb)`.
 This script will only resolve successfully if the spender can provide a valid signature as input that demonstrates proof
 of knowledge of \\( k_{Sb} \\) which only Bob knows.
 
@@ -765,6 +762,24 @@ The capital letter subscripts, _R_ and _S_ refer to a UTXO _receiver_ and _scrip
 | \\( \input_i \\)        | The serialised input for script \\( \script_i \\)                                                                                  |
 | \\( s_{Si} \\)          | A script signature for output \\( i \\). \\( s_{Si} = r_{Si} + k_{Si}\hash{\alpha_i \cat \theta_i \cat h_i} \\)                    |
 
+## Extensions
+
+### Covenants
+
+Tari script places restrictions on _who_ can spend UTXOs. It will also be useful for Tari digital asset applications to
+restrict _how_ or _where_ UTXOs may be spent in some cases. The general term for these sorts of restrictions are termed
+_covenants_. The [Handshake white paper] has a fairly good description of how covenants work.
+
+It is beyond the scope of this RFC, but it's anticipated that Tari Script would play a key role in the introduction of
+generalised covenant support into Tari.
+
+### Lock-time malleability
+
+The current Tari protocol has an issue with Transaction Output Maturity malleability. This output feature is enforced in
+the consensus rules, but it is actually possible for a miner to change the value without invalidating the transaction.
+
+With TariScript, output features are properly committed to in the transaction and verified as part of the script offset
+validation.
 
 ### Credits
 
