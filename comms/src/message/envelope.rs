@@ -24,6 +24,10 @@ use super::MessageError;
 
 // Re-export protos
 pub use crate::proto::envelope::*;
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+};
 
 /// Wraps a number of `prost::Message`s in a EnvelopeBody
 #[macro_export]
@@ -81,5 +85,11 @@ impl EnvelopeBody {
             Some(part) => T::decode(part.as_slice()).map(Some).map_err(Into::into),
             None => Ok(None),
         }
+    }
+}
+
+impl Display for EnvelopeBody {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} byte(s), {} part(s)", self.total_size(), self.len())
     }
 }

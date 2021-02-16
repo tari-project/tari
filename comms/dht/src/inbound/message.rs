@@ -25,7 +25,8 @@ use crate::{
     envelope::{DhtMessageFlags, DhtMessageHeader},
 };
 use std::{
-    fmt::{Display, Error, Formatter},
+    fmt,
+    fmt::{Display, Formatter},
     sync::Arc,
 };
 use tari_comms::{
@@ -58,7 +59,7 @@ impl DhtInboundMessage {
 }
 
 impl Display for DhtInboundMessage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
             "\n---- Inbound Message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n{}\n----",
@@ -171,5 +172,29 @@ impl DecryptedDhtMessage {
 
     pub fn set_already_forwarded(&mut self, is_already_forwarded: bool) {
         self.is_already_forwarded = is_already_forwarded;
+    }
+}
+
+impl Display for DecryptedDhtMessage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(
+            f,
+            "version = {}, origin = {}, decryption_result = {}, header = ({}), is_saf_message = {}, is_saf_stored = \
+             {:?}, source_peer = {}, tag = {}",
+            self.version,
+            self.authenticated_origin
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "None".to_string()),
+            self.decryption_result
+                .as_ref()
+                .map(|envelope| format!("Success({})", envelope))
+                .unwrap_or_else(|_| "Failed".to_string()),
+            self.dht_header,
+            self.is_saf_message,
+            self.is_saf_stored,
+            self.source_peer.node_id,
+            self.tag
+        )
     }
 }

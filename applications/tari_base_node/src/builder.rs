@@ -413,7 +413,7 @@ async fn build_node_context(
         blockchain_db,
         base_node_comms,
         base_node_dht,
-        wallet_comms: wallet_handles.clone().map(|h| h.expect_handle::<CommsNode>()),
+        wallet_comms: wallet_handles.as_ref().map(|h| h.expect_handle::<CommsNode>()),
         base_node_handles,
         wallet_handles,
         miner: Some(miner),

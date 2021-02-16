@@ -473,8 +473,8 @@ impl DhtActor {
             Propagate(destination, exclude) => {
                 let dest_node_id = destination
                     .node_id()
-                    .map(Clone::clone)
-                    .or_else(|| destination.public_key().and_then(|pk| NodeId::from_key(pk).ok()));
+                    .cloned()
+                    .or_else(|| destination.public_key().map(|pk| NodeId::from_public_key(pk)));
 
                 let connections = match dest_node_id {
                     Some(node_id) => {

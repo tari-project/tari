@@ -224,11 +224,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 Ok(_) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Removing {:?} stored messages for peer '{}'",
+                        "Removing {} stored message(s) for peer '{}'",
                         message_ids.len(),
                         message.source_peer.node_id.short_str()
                     );
-                    trace!(target: LOG_TARGET, "Removing stored messages: {:?}", message_ids,);
                     self.saf_requester.remove_messages(message_ids).await?;
                 },
                 Err(err) => {
@@ -252,6 +251,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message.source_peer.public_key,
             message.dht_header.message_tag
         );
+        let source_node_id = message.source_peer.node_id.clone();
+        let message_tag = message.dht_header.message_tag;
         // TODO: Should check that stored messages were requested before accepting them
         let msg = message
             .success()
@@ -263,12 +264,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         debug!(
             target: LOG_TARGET,
-            "Received {} stored messages of type {} from peer",
+            "Received {} stored messages of type {} from peer `{}` (Trace: {})",
             response.messages().len(),
             SafResponseType::from_i32(response.response_type)
                 .as_ref()
                 .map(|t| format!("{:?}", t))
                 .unwrap_or_else(|| "<Invalid>".to_string()),
+            source_node_id,
+            message_tag
         );
 
         let tasks = response
@@ -282,6 +285,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .into_iter()
             .map(|result| {
                 match &result {
+                    Ok(msg) => {
+                        trace!(target: LOG_TARGET, "Recv SAF message: {}", msg);
+                    },
                     // Failed decryption is acceptable, the message wasn't for this node so we
                     // simply discard the message.
                     // TODO: Should we add this message to our SAF store?
@@ -325,7 +331,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                             err
                         );
                     },
-                    _ => {},
                 }
 
                 result
