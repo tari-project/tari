@@ -10,17 +10,17 @@ echo "config_path: $config_path"
 echo "exe_path:    $exe_path"
 echo
 export use_parent_paths=true
-sha3_mining=1
 
 call_base_node() {
-    if [[ $sha3_mining -eq 1 ]]; then
-        export enable_mining="--enable_mining"
-    fi
     "${exe_path}/start_tari_base_node.sh"
 }
 
 call_console_wallet() {
     "${exe_path}/start_tari_console_wallet.sh"
+}
+
+call_mining() {
+    "${exe_path}/start_tari_mining_node.sh"
 }
 
 call_merge_mining_proxy() {
@@ -43,8 +43,8 @@ mining() {
     while true; do
         read yn
         case $yn in
-            [Yy]* ) sha3_mining=0; merged_mining; break;;
-            [Nn]* ) call_base_node; call_console_wallet; exit;;
+            [Yy]* ) merged_mining; break;;
+            [Nn]* ) call_base_node; call_console_wallet; call_mining; exit;;
             * ) echo "Please answer yes or no.";;
         esac
    done
@@ -56,7 +56,7 @@ echo "Do you want to enable mining?"
         read yn
         case $yn in
             [Yy]* )  mining; break;;
-            [Nn]* )  sha3_mining=0; call_base_node; call_console_wallet; exit;;
+            [Nn]* )  call_base_node; call_console_wallet; exit;;
             * ) echo "Please answer yes or no.";;
         esac
  done

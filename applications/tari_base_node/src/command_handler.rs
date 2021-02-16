@@ -979,11 +979,14 @@ impl CommandHandler {
     pub fn toggle_mining(&self) {
         // 'enable_miner' should not be changed directly; this is done indirectly via miner instructions,
         // while 'mining_status' will reflect if mining is happening or not
+
         if self.wallet_output_service.is_some() {
-            let enable_miner = self.enable_miner.clone();
-            let mining_status = self.mining_status.clone();
-            let miner_instructions = self.miner_instructions.clone();
+            let _enable_miner = self.enable_miner.clone();
+            let _mining_status = self.mining_status.clone();
+            let _miner_instructions = self.miner_instructions.clone();
             self.executor.spawn(async move {
+                println!("Please use standalone miner, this command is no longer supported");
+                /*
                 let new_state = !enable_miner.load(Ordering::SeqCst);
                 // The event channel can interrupt the mining thread timeously to stop or start mining
                 let _ = match new_state {
@@ -1043,6 +1046,7 @@ impl CommandHandler {
                         break;
                     }
                 }
+                */
             });
         } else {
             println!("Cannot complete command, Wallet is disabled so Mining is also disabled");

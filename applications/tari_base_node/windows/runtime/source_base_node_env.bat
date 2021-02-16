@@ -179,4 +179,4 @@ if not exist "%config_path%\log4rs_base_node.yml" (
 
 rem Consecutive runs
 cd "%base_path%"
-"%base_node%" --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%" %mining_flag%
+"%base_node%" --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"

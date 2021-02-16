@@ -41,7 +41,7 @@ if [%errorlevel%]==[10101] (
 echo.
 echo Run the base node
 echo -----------------
-call "%my_exe_path%\source_base_node_env.bat" %mining_flag%
+call "%my_exe_path%\source_base_node_env.bat"
 
 goto END:
 
