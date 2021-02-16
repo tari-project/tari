@@ -21,10 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{framing::CanonicalFraming, message::MessageExt, proto, protocol::rpc::RpcError};
+use bytes::BytesMut;
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
 use prost::Message;
-use std::time::Duration;
+use std::{io, time::Duration};
 use tokio::time;
 
 const LOG_TARGET: &str = "comms::rpc::handshake";
@@ -36,19 +37,26 @@ const SUPPORTED_VERSIONS: &[u32] = &[0];
 /// Handshake protocol
 pub struct Handshake<'a, T> {
     framed: &'a mut CanonicalFraming<T>,
+    timeout: Option<Duration>,
 }
 
 impl<'a, T> Handshake<'a, T>
 where T: AsyncRead + AsyncWrite + Unpin
 {
+    /// Create a Handshake using the given framing and no timeout. To set a timeout, use `with_timeout`.
     pub fn new(framed: &'a mut CanonicalFraming<T>) -> Self {
-        Self { framed }
+        Self { framed, timeout: None }
+    }
+
+    /// Set the length of time that a client/server should wait for the other side to response before timing out.
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
     }
 
     /// Server-side handshake protocol
     pub async fn perform_server_handshake(&mut self) -> Result<u32, RpcError> {
-        let result = time::timeout(Duration::from_secs(10), self.framed.next()).await;
-        match result {
+        match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSession::decode(&mut msg.freeze())?;
                 let version = SUPPORTED_VERSIONS.iter().find(|v| msg.supported_versions.contains(v));
@@ -79,8 +87,7 @@ where T: AsyncRead + AsyncWrite + Unpin
             supported_versions: SUPPORTED_VERSIONS.to_vec(),
         };
         self.framed.send(msg.to_encoded_bytes().into()).await?;
-        let result = time::timeout(Duration::from_secs(10), self.framed.next()).await;
-        match result {
+        match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSessionReply::decode(&mut msg.freeze())?;
                 let version = msg
@@ -92,6 +99,13 @@ where T: AsyncRead + AsyncWrite + Unpin
             Ok(Some(Err(err))) => Err(err.into()),
             Ok(None) => Err(RpcError::ServerClosedRequest),
             Err(_) => Err(RpcError::NegotiationTimedOut),
+        }
+    }
+
+    async fn recv_next_frame(&mut self) -> Result<Option<Result<BytesMut, io::Error>>, time::Elapsed> {
+        match self.timeout {
+            Some(timeout) => time::timeout(timeout, self.framed.next()).await,
+            None => Ok(self.framed.next().await),
         }
     }
 }
