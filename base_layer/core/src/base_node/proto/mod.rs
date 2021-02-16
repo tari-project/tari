@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod chain_metadata;
-pub mod wallet_response;
+pub mod wallet_rpc;
 
 #[cfg(feature = "base_node")]
 mod mmr_tree;

@@ -198,7 +198,6 @@ where
             .add_initializer(P2pInitializer::new(config.comms_config, publisher))
             .add_initializer(OutputManagerServiceInitializer::new(
                 config.output_manager_service_config.unwrap_or_default(),
-                peer_message_subscription_factory.clone(),
                 output_manager_backend,
                 factories.clone(),
                 config.network,

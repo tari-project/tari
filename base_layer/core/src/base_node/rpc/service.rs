@@ -26,6 +26,8 @@ use crate::{
     mempool::{service::MempoolHandle, TxStorageResponse},
     proto::{
         base_node::{
+            FetchMatchingUtxos,
+            FetchUtxosResponse,
             Signatures as SignaturesProto,
             TxLocation,
             TxQueryBatchResponse,
@@ -267,5 +269,40 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             });
         }
         Ok(Response::new(TxQueryBatchResponses { responses, is_synced }))
+    }
+
+    async fn fetch_matching_utxos(
+        &self,
+        request: Request<FetchMatchingUtxos>,
+    ) -> Result<Response<FetchUtxosResponse>, RpcStatus>
+    {
+        let message = request.into_message();
+
+        let state_machine = self.state_machine();
+        // Determine if we are synced
+        let status_watch = state_machine.get_status_info_watch();
+        let is_synced = match (*status_watch.borrow()).state_info {
+            StateInfo::Listening(li) => li.is_synced(),
+            _ => false,
+        };
+
+        let db = self.db();
+        let mut res = Vec::with_capacity(message.output_hashes.len());
+        for item in db
+            .fetch_utxos(message.output_hashes, None)
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+        {
+            if let Some((output, spent)) = item {
+                if !spent {
+                    res.push(output);
+                }
+            }
+        }
+
+        Ok(Response::new(FetchUtxosResponse {
+            outputs: res.into_iter().map(Into::into).collect(),
+            is_synced,
+        }))
     }
 }

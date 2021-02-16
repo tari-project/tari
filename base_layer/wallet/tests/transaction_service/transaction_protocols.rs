@@ -42,7 +42,7 @@ use tari_comms::{
 use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
 use tari_core::{
     base_node::{
-        proto::wallet_response::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
+        proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcServer,
     },
     transactions::{

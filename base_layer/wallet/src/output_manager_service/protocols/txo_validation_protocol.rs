@@ -28,27 +28,19 @@ use crate::output_manager_service::{
 };
 use futures::{FutureExt, StreamExt};
 use log::*;
-use rand::{rngs::OsRng, RngCore};
 use std::{cmp, collections::HashMap, convert::TryFrom, fmt, sync::Arc, time::Duration};
-use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::domain_message::OutboundDomainMessage;
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
 use tari_core::{
-    proto::{
-        base_node as proto,
-        base_node::{
-            base_node_service_request::Request as BaseNodeRequestProto,
-            base_node_service_response::Response as BaseNodeResponseProto,
-        },
-    },
-    transactions::{transaction::TransactionOutput, types::Commitment},
+    base_node::rpc::BaseNodeWalletRpcClient,
+    proto::base_node::FetchMatchingUtxos,
+    transactions::transaction::TransactionOutput,
 };
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
-use tari_p2p::tari_message::TariMessageType;
 use tokio::{sync::broadcast, time::delay_for};
 
 const LOG_TARGET: &str = "wallet::output_manager_service::protocols::utxo_validation_protocol";
-const MIN_RETRY_DELAY: u64 = 2;
-const MAX_RETRY_DELAY: u64 = 32;
+
+const MAX_RETRY_DELAY: Duration = Duration::from_secs(300);
 
 pub struct TxoValidationProtocol<TBackend>
 where TBackend: OutputManagerBackend + 'static
@@ -58,11 +50,8 @@ where TBackend: OutputManagerBackend + 'static
     retry_strategy: TxoValidationRetry,
     resources: OutputManagerResources<TBackend>,
     base_node_public_key: CommsPublicKey,
-    timeout: Duration,
     retry_delay: Duration,
-    base_node_response_receiver: Option<broadcast::Receiver<Arc<proto::BaseNodeServiceResponse>>>,
-    cancellation_receiver: Option<broadcast::Receiver<()>>,
-    pending_queries: HashMap<u64, Vec<Vec<u8>>>,
+    base_node_update_receiver: Option<broadcast::Receiver<CommsPublicKey>>,
 }
 
 /// This protocol defines the process of submitting our current UTXO set to the Base Node to validate it.
@@ -76,56 +65,459 @@ where TBackend: OutputManagerBackend + 'static
         retry_strategy: TxoValidationRetry,
         resources: OutputManagerResources<TBackend>,
         base_node_public_key: CommsPublicKey,
-        timeout: Duration,
-        base_node_response_receiver: broadcast::Receiver<Arc<proto::BaseNodeServiceResponse>>,
-        cancellation_receiver: broadcast::Receiver<()>,
+        base_node_update_receiver: broadcast::Receiver<CommsPublicKey>,
     ) -> Self
     {
-        let retry_delay = Duration::from_secs(MIN_RETRY_DELAY);
+        let retry_delay = resources.config.base_node_query_timeout;
         Self {
             id,
             validation_type,
             retry_strategy,
             resources,
             base_node_public_key,
-            timeout,
             retry_delay,
-            base_node_response_receiver: Some(base_node_response_receiver),
-            cancellation_receiver: Some(cancellation_receiver),
-            pending_queries: Default::default(),
+            base_node_update_receiver: Some(base_node_update_receiver),
         }
     }
 
     /// The task that defines the execution of the protocol.
     pub async fn execute(mut self) -> Result<u64, OutputManagerProtocolError> {
-        let mut base_node_response_receiver = self
-            .base_node_response_receiver
+        let mut base_node_update_receiver = self
+            .base_node_update_receiver
             .take()
             .ok_or_else(|| {
                 OutputManagerProtocolError::new(
                     self.id,
-                    OutputManagerError::ServiceError("No base node response channel provided".to_string()),
+                    OutputManagerError::ServiceError("A Base Node Update receiver was not provided".to_string()),
                 )
             })?
             .fuse();
 
-        let mut cancellation_receiver = self
-            .cancellation_receiver
-            .take()
-            .ok_or_else(|| {
-                OutputManagerProtocolError::new(
-                    self.id,
-                    OutputManagerError::ServiceError("No cancellation channel provided".to_string()),
-                )
-            })?
-            .fuse();
+        let mut shutdown = self.resources.shutdown_signal.clone();
 
-        debug!(
+        let total_retries_str = match self.retry_strategy {
+            TxoValidationRetry::Limited(n) => format!("{}", n),
+            TxoValidationRetry::UntilSuccess => "∞".to_string(),
+        };
+
+        info!(
             target: LOG_TARGET,
-            "Starting TXO validation protocol (Id: {}) for {}", self.id, self.validation_type,
+            "Starting TXO validation protocol (Id: {}) for {} with {} retries",
+            self.id,
+            self.validation_type,
+            total_retries_str
         );
 
-        let outputs_to_query: Vec<Vec<u8>> = match self.validation_type {
+        let mut output_batches_to_query: Vec<Vec<Vec<u8>>> = self.get_output_batches().await?;
+
+        if output_batches_to_query.is_empty() {
+            debug!(
+                target: LOG_TARGET,
+                "TXO validation protocol (Id: {}) has no outputs to validate", self.id,
+            );
+            let _ = self
+                .resources
+                .event_publisher
+                .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(self.id)))
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event {:?}, because there are no subscribers.",
+                        e.0
+                    );
+                    e
+                });
+            return Ok(self.id);
+        }
+
+        let mut retries = 0;
+        let batch_total = output_batches_to_query.len();
+
+        'main: loop {
+            if let TxoValidationRetry::Limited(max_retries) = self.retry_strategy {
+                if retries > max_retries {
+                    info!(
+                        target: LOG_TARGET,
+                        "Maximum attempts exceeded for TXO Validation Protocol (Id: {})", self.id
+                    );
+                    let _ = self
+                        .resources
+                        .event_publisher
+                        .send(Arc::new(OutputManagerEvent::TxoValidationFailure(self.id)))
+                        .map_err(|e| {
+                            trace!(
+                                target: LOG_TARGET,
+                                "Error sending event because there are no subscribers: {:?}",
+                                e
+                            );
+                            e
+                        });
+                    return Err(OutputManagerProtocolError::new(
+                        self.id,
+                        OutputManagerError::MaximumAttemptsExceeded,
+                    ));
+                }
+            }
+
+            let base_node_node_id = NodeId::from_key(&self.base_node_public_key.clone())
+                .map_err(|e| OutputManagerProtocolError::new(self.id, OutputManagerError::from(e)))?;
+            let mut connection: Option<PeerConnection> = None;
+
+            let delay = delay_for(self.resources.config.peer_dial_retry_timeout);
+
+            debug!(
+                target: LOG_TARGET,
+                "Connecting to Base Node (Public Key: {})", self.base_node_public_key,
+            );
+            futures::select! {
+                dial_result = self.resources.connectivity_manager.dial_peer(base_node_node_id.clone()).fuse() => {
+                    match dial_result {
+                        Ok(base_node_connection) => {
+                            connection = Some(base_node_connection);
+                        },
+                        Err(e) => {
+                            info!(target: LOG_TARGET, "Problem connecting to base node: {} for Output TXO Validation Validation Protocol: {}", e, self.id);
+                        },
+                    }
+                },
+                new_base_node = base_node_update_receiver.select_next_some() => {
+                    match new_base_node {
+                        Ok(bn) => {
+                            self.base_node_public_key = bn;
+                             info!(
+                                target: LOG_TARGET,
+                                "TXO Validation protocol Base Node Public key updated to {:?}", self.base_node_public_key
+                            );
+                             let _ = self
+                                .resources
+                                .event_publisher
+                                .send(Arc::new(OutputManagerEvent::TxoValidationAborted(self.id)))
+                                .map_err(|e| {
+                                    trace!(
+                                        target: LOG_TARGET,
+                                        "Error sending event {:?}, because there are no subscribers.",
+                                        e.0
+                                    );
+                                    e
+                                });
+                            continue;
+                        },
+                        Err(e) => {
+                            trace!(
+                                target: LOG_TARGET,
+                                "TXO Validation protocol event 'base_node_update' triggered with error: {:?}",
+
+                                e,
+                            );
+                        }
+                    }
+                }
+                _ = shutdown => {
+                    info!(target: LOG_TARGET, "TXO Validation Protocol  (Id: {}) shutting down because it received the shutdown signal", self.id);
+                    return Err(OutputManagerProtocolError::new(self.id, OutputManagerError::Shutdown));
+                },
+            }
+
+            let mut base_node_connection = match connection {
+                None => {
+                    futures::select! {
+                        _ = delay.fuse() => {
+                            let _ = self
+                                .resources
+                                .event_publisher
+                                .send(Arc::new(OutputManagerEvent::TxoValidationTimedOut(self.id)))
+                                .map_err(|e| {
+                                    trace!(
+                                        target: LOG_TARGET,
+                                        "Error sending event {:?}, because there are no subscribers.",
+                                        e.0
+                                    );
+                                    e
+                                });
+                            retries += 1;
+                            continue;
+                        },
+                        _ = shutdown => {
+                            info!(target: LOG_TARGET, "TXO Validation Protocol  (Id: {}) shutting down because it received the shutdown signal", self.id);
+                            return Err(OutputManagerProtocolError::new(self.id, OutputManagerError::Shutdown));
+                        },
+                    }
+                },
+                Some(c) => c,
+            };
+
+            let mut client = match base_node_connection
+                .connect_rpc_using_builder(
+                    BaseNodeWalletRpcClient::builder().with_deadline(self.resources.config.base_node_query_timeout),
+                )
+                .await
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Problem establishing RPC connection: {}", e);
+                    delay.await;
+                    continue;
+                },
+            };
+            let mut batch_num = 0;
+            debug!(target: LOG_TARGET, "RPC client connected");
+            'per_batch: loop {
+                let batch = if let Some(b) = output_batches_to_query.pop() {
+                    batch_num += 1;
+                    b
+                } else {
+                    break 'main;
+                };
+                info!(
+                    target: LOG_TARGET,
+                    "Output Manager TXO Validation protocol (Id: {}) sending batch query {} of {}",
+                    self.id,
+                    batch_num,
+                    batch_total
+                );
+                let delay = delay_for(self.retry_delay);
+                futures::select! {
+                    new_base_node = base_node_update_receiver.select_next_some() => {
+                        match new_base_node {
+                            Ok(bn) => {
+                                self.base_node_public_key = bn;
+                                info!(
+                                    target: LOG_TARGET,
+                                    "TXO Validation protocol Base Node Public key updated to {:?}", self.base_node_public_key
+                                );
+                                output_batches_to_query = self.get_output_batches().await?;
+                                 let _ = self
+                                    .resources
+                                    .event_publisher
+                                    .send(Arc::new(OutputManagerEvent::TxoValidationAborted(self.id)))
+                                    .map_err(|e| {
+                                        trace!(
+                                            target: LOG_TARGET,
+                                            "Error sending event {:?}, because there are no subscribers.",
+                                            e.0
+                                        );
+                                        e
+                                    });
+                                break 'per_batch;
+                            },
+                            Err(e) => {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "TXO Validation protocol event 'base_node_update' triggered with error: {:?}",
+                                    e,
+                                );
+                            }
+                        }
+                    },
+                    result = self.send_query_batch(batch.clone(), &mut client).fuse() => {
+                        match result {
+                            Ok(synced) => {
+                                if !synced {
+                                    info!(target: LOG_TARGET, "Base Node reports not being synced, will retry.");
+                                    let _ = self
+                                        .resources
+                                        .event_publisher
+                                        .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(self.id)))
+                                        .map_err(|e| {
+                                            trace!(
+                                                target: LOG_TARGET,
+                                                "Error sending event {:?}, because there are no subscribers.",
+                                                e.0
+                                            );
+                                            e
+                                        });
+                                    delay.await;
+                                    self.update_retry_delay(false);
+                                    output_batches_to_query = self.get_output_batches().await?;
+                                    break 'per_batch;
+                                }
+                                self.update_retry_delay(true);
+                            },
+                            Err(OutputManagerProtocolError{id: _, error: OutputManagerError::RpcError(e)}) => {
+                                warn!(target: LOG_TARGET, "Error with RPC Client: {}. Retrying RPC client connection.", e);
+                                delay.await;
+                                self.update_retry_delay(false);
+                                output_batches_to_query.push(batch);
+                                retries += 1;
+                                break 'per_batch;
+                            }
+                            Err(e) => { return Err(e); },
+                        }
+                    },
+                    _ = shutdown => {
+                        info!(target: LOG_TARGET, "TXO Validation Protocol (Id: {}) shutting down because it received the shutdown signal", self.id);
+                        return Err(OutputManagerProtocolError::new(self.id, OutputManagerError::Shutdown));
+                    },
+                }
+            }
+        }
+
+        let _ = self
+            .resources
+            .event_publisher
+            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(self.id)))
+            .map_err(|e| {
+                trace!(
+                    target: LOG_TARGET,
+                    "Error sending event {:?}, because there are no subscribers.",
+                    e.0
+                );
+                e
+            });
+        Ok(self.id)
+    }
+
+    async fn send_query_batch(
+        &mut self,
+        batch: Vec<Vec<u8>>,
+        client: &mut BaseNodeWalletRpcClient,
+    ) -> Result<bool, OutputManagerProtocolError>
+    {
+        let request = FetchMatchingUtxos {
+            output_hashes: batch.clone(),
+        };
+
+        let batch_response = client
+            .fetch_matching_utxos(request)
+            .await
+            .map_err(|e| OutputManagerProtocolError::new(self.id, OutputManagerError::from(e)))?;
+
+        if !batch_response.is_synced {
+            return Ok(false);
+        }
+
+        let mut returned_outputs = Vec::new();
+        for output_proto in batch_response.outputs.iter() {
+            let output = TransactionOutput::try_from(output_proto.clone()).map_err(|_| {
+                OutputManagerProtocolError::new(
+                    self.id,
+                    OutputManagerError::ConversionError("Could not convert protobuf TransactionOutput".to_string()),
+                )
+            })?;
+            returned_outputs.push(output);
+        }
+
+        // complete validation
+        match self.validation_type {
+            TxoValidationType::Unspent => {
+                // Construct a HashMap of all the unspent outputs
+                let unspent_outputs: Vec<DbUnblindedOutput> =
+                    self.resources.db.get_unspent_outputs().await.map_err(|e| {
+                        OutputManagerProtocolError::new(self.id, OutputManagerError::OutputManagerStorageError(e))
+                    })?;
+
+                // We only want to check outputs that we were expecting and are still valid
+                let mut output_hashes = HashMap::new();
+                for uo in unspent_outputs.iter() {
+                    let hash = uo.hash.clone();
+                    if batch.iter().any(|h| &hash == h) {
+                        output_hashes.insert(hash, uo.clone());
+                    }
+                }
+
+                // Go through all the returned UTXOs and if they are in the hashmap remove them
+                for output in returned_outputs.iter() {
+                    let response_hash = output.hash();
+
+                    let _ = output_hashes.remove(&response_hash);
+                }
+
+                // If there are any remaining Unspent Outputs we will move them to the invalid collection
+                for (_k, v) in output_hashes {
+                    // Get the transaction these belonged to so we can display the kernel signature of the transaction
+                    // this output belonged to.
+
+                    warn!(
+                        target: LOG_TARGET,
+                        "Output with value {} not returned from Base Node query and is thus being invalidated",
+                        v.unblinded_output.value,
+                    );
+                    // If the output that is being invalidated has an associated TxId then get the kernel signature of
+                    // the transaction and display for easier debugging
+                    if let Some(tx_id) = self.resources.db.invalidate_output(v).await.map_err(|e| {
+                        OutputManagerProtocolError::new(self.id, OutputManagerError::OutputManagerStorageError(e))
+                    })? {
+                        if let Ok(transaction) = self
+                            .resources
+                            .transaction_service
+                            .get_completed_transaction(tx_id)
+                            .await
+                        {
+                            info!(
+                                target: LOG_TARGET,
+                                "Invalidated Output is from Transaction (TxId: {}) with message: {} and Kernel \
+                                 Signature: {}",
+                                transaction.tx_id,
+                                transaction.message,
+                                transaction.transaction.body.kernels()[0]
+                                    .excess_sig
+                                    .get_signature()
+                                    .to_hex()
+                            )
+                        }
+                    } else {
+                        info!(
+                            target: LOG_TARGET,
+                            "Invalidated Output does not have an associated TxId, it is likely a Coinbase output lost \
+                             to a Re-Org"
+                        );
+                    }
+                }
+            },
+            TxoValidationType::Invalid => {
+                let invalid_outputs = self.resources.db.get_invalid_outputs().await.map_err(|e| {
+                    OutputManagerProtocolError::new(self.id, OutputManagerError::OutputManagerStorageError(e))
+                })?;
+
+                for output in returned_outputs.iter() {
+                    let response_hash = output.hash();
+
+                    if let Some(output) = invalid_outputs.iter().find(|o| o.hash == response_hash) {
+                        if self
+                            .resources
+                            .db
+                            .revalidate_output(output.commitment.clone())
+                            .await
+                            .is_ok()
+                        {
+                            info!(
+                                target: LOG_TARGET,
+                                "Output with value {} has been restored to a valid spendable output",
+                                output.unblinded_output.value
+                            );
+                        }
+                    }
+                }
+            },
+            TxoValidationType::Spent => {
+                // Go through the response outputs and check if they are currently Spent, if they are then they can be
+                // marked as Unspent because they exist in the UTXO set. Hooray!
+                for output in returned_outputs.iter() {
+                    match self
+                        .resources
+                        .db
+                        .update_spent_output_to_unspent(output.clone().commitment)
+                        .await
+                    {
+                        Ok(uo) => info!(
+                            target: LOG_TARGET,
+                            "Spent output with value {} restored to Unspent output", uo.unblinded_output.value
+                        ),
+                        Err(e) => debug!(target: LOG_TARGET, "Unable to restore Spent output to Unspent: {}", e),
+                    }
+                }
+            },
+        }
+        debug!(
+            target: LOG_TARGET,
+            "Completed validation query for one batch of output hashes"
+        );
+
+        Ok(true)
+    }
+
+    async fn get_output_batches(&self) -> Result<Vec<Vec<Vec<u8>>>, OutputManagerProtocolError> {
+        let mut outputs: Vec<Vec<u8>> = match self.validation_type {
             TxoValidationType::Unspent => self
                 .resources
                 .db
@@ -161,454 +553,38 @@ where TBackend: OutputManagerBackend + 'static
                 .collect(),
         };
 
-        if outputs_to_query.is_empty() {
-            debug!(
-                target: LOG_TARGET,
-                "TXO validation protocol (Id: {}) has no outputs to validate", self.id,
-            );
-            let _ = self
-                .resources
-                .event_publisher
-                .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(self.id)))
-                .map_err(|e| {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Error sending event {:?}, because there are no subscribers.",
-                        e.0
-                    );
-                    e
-                });
-            return Ok(self.id);
-        }
+        // Determine how many rounds of base node request we need to query all the transactions in batches of
+        // max_tx_query_batch_size
+        let num_batches =
+            ((outputs.len() as f32) / (self.resources.config.max_utxo_query_size as f32 + 0.1)) as usize + 1;
 
-        let total_retries_str = match self.retry_strategy {
-            TxoValidationRetry::Limited(n) => format!("{}", n),
-            TxoValidationRetry::UntilSuccess => "∞".to_string(),
-        };
-
-        let mut retries = 0;
-
-        loop {
-            self.send_queries(outputs_to_query.clone()).await?;
-
-            let mut timeout = delay_for(self.timeout).fuse();
-
-            let retry_reason = loop {
-                futures::select! {
-                    base_node_response = base_node_response_receiver.select_next_some() => {
-                        match base_node_response {
-                            Ok(response) => match self.handle_base_node_response(response).await? {
-                                Retry::None => {
-                                    trace!(target: LOG_TARGET, "Response handled with success for {} and pending_queries len: {}", self.id, self.pending_queries.len());
-                                    if self.pending_queries.is_empty() {
-                                        let _ = self
-                                            .resources
-                                            .event_publisher
-                                            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(self.id)))
-                                            .map_err(|e| {
-                                            trace!(
-                                                    target: LOG_TARGET,
-                                                    "Error sending event {:?}, because there are no subscribers.",
-                                                    e.0
-                                                );
-                                                e
-                                            });
-                                        return Ok(self.id);
-                                    }
-                                },
-                                Retry::Delay => {
-                                    trace!(target: LOG_TARGET, "Response handled with delay for {} and pending_queries len: {}", self.id, self.pending_queries.len());
-                                    let _ = self
-                                        .resources
-                                        .event_publisher
-                                        .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(self.id)))
-                                        .map_err(|e| {
-                                        trace!(
-                                                target: LOG_TARGET,
-                                                "Error sending event {:?}, because there are no subscribers.",
-                                                e.0
-                                            );
-                                            e
-                                        });
-                                    break Retry::Delay;
-                                },
-                                Retry::Timeout => {},
-                            }
-                            Err(e) => trace!(target: LOG_TARGET, "Error reading broadcast base_node_response: {:?}", e),
-                        }
-
-                    },
-                    cancellation_trigger = cancellation_receiver.select_next_some() => {
-                        if let Ok(()) = cancellation_trigger {
-                            info!(target: LOG_TARGET, "TXO Validation protocol (Id: {}) is ending due to cancellation", self.id);
-                            let _ = self
-                                .resources
-                                .event_publisher
-                                .send(Arc::new(OutputManagerEvent::TxoValidationAborted(self.id)))
-                                .map_err(|e| {
-                                    trace!(
-                                        target: LOG_TARGET,
-                                        "Error sending event {:?}, because there are no subscribers.",
-                                        e.0
-                                    );
-                                    e
-                                });
-                            return Err(OutputManagerProtocolError::new(
-                                self.id,
-                                OutputManagerError::Cancellation,
-                            ))
-                        }
-                    },
-                    () = timeout => {
-                        break Retry::Timeout;
-                    },
-                }
-            };
-
-            match retry_reason {
-                Retry::None => {},
-                Retry::Delay => {
-                    debug!(target: LOG_TARGET, "Delaying for {:#?}", self.retry_delay);
-                    delay_for(self.retry_delay).await;
-                },
-                Retry::Timeout => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "TXO Validation protocol (Id: {}) attempt {} out of {} timed out.",
-                        self.id,
-                        retries + 1,
-                        total_retries_str
-                    );
-
-                    let _ = self
-                        .resources
-                        .event_publisher
-                        .send(Arc::new(OutputManagerEvent::TxoValidationTimedOut(self.id)))
-                        .map_err(|e| {
-                            trace!(
-                                target: LOG_TARGET,
-                                "Error sending event {:?}, because there are no subscribers.",
-                                e.0
-                            );
-                            e
-                        });
-
-                    retries += 1;
-                    match self.retry_strategy {
-                        TxoValidationRetry::Limited(n) => {
-                            if retries >= n {
-                                break;
-                            }
-                        },
-                        TxoValidationRetry::UntilSuccess => (),
-                    }
-                },
+        let mut batches: Vec<Vec<Vec<u8>>> = Vec::new();
+        for _b in 0..num_batches {
+            let mut batch = Vec::new();
+            for o in outputs.drain(..cmp::min(self.resources.config.max_utxo_query_size, outputs.len())) {
+                batch.push(o);
             }
-            self.pending_queries.clear();
-        }
-
-        info!(
-            target: LOG_TARGET,
-            "Maximum attempts exceeded for TXO Validation Protocol (Id: {})", self.id
-        );
-        Err(OutputManagerProtocolError::new(
-            self.id,
-            OutputManagerError::MaximumAttemptsExceeded,
-        ))
-    }
-
-    async fn send_queries(&mut self, mut outputs_to_query: Vec<Vec<u8>>) -> Result<(), OutputManagerProtocolError> {
-        // Determine how many rounds of base node request we need to query all the outputs in batches of
-        // max_utxo_query_size
-        let rounds =
-            ((outputs_to_query.len() as f32) / (self.resources.config.max_utxo_query_size as f32 + 0.1)) as usize + 1;
-
-        for r in 0..rounds {
-            let mut output_hashes = Vec::new();
-            for uo_hash in
-                outputs_to_query.drain(..cmp::min(self.resources.config.max_utxo_query_size, outputs_to_query.len()))
-            {
-                output_hashes.push(uo_hash);
+            if !batch.is_empty() {
+                batches.push(batch);
             }
-
-            let request_key = if r == 0 { self.id } else { OsRng.next_u64() };
-
-            let request = BaseNodeRequestProto::FetchMatchingUtxos(proto::HashOutputs {
-                outputs: output_hashes.clone(),
-            });
-
-            let service_request = proto::BaseNodeServiceRequest {
-                request_key,
-                request: Some(request),
-            };
-
-            let send_message_response = self
-                .resources
-                .outbound_message_service
-                .send_direct(
-                    self.base_node_public_key.clone(),
-                    OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request),
-                )
-                .await
-                .map_err(|e| OutputManagerProtocolError::new(self.id, OutputManagerError::from(e)))?;
-
-            // Here we are going to spawn a non-blocking task that will monitor and log the progress of the
-            // send process.
-            tokio::spawn(async move {
-                match send_message_response.resolve().await {
-                    Err(e) => trace!(
-                        target: LOG_TARGET,
-                        "Failed to send Output Manager TXO query ({}) to Base Node: {}",
-                        request_key,
-                        e
-                    ),
-                    Ok(send_states) => {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Output Manager TXO query ({}) queued for sending with Message {}",
-                            request_key,
-                            send_states[0].tag,
-                        );
-                        let message_tag = send_states[0].tag;
-                        if send_states.wait_single().await {
-                            trace!(
-                                target: LOG_TARGET,
-                                "Output Manager TXO query ({}) successfully sent to Base Node with Message {}",
-                                request_key,
-                                message_tag,
-                            )
-                        } else {
-                            trace!(
-                                target: LOG_TARGET,
-                                "Failed to send Output Manager TXO query ({}) to Base Node with Message {}",
-                                request_key,
-                                message_tag,
-                            );
-                        }
-                    },
-                }
-            });
-
-            self.pending_queries.insert(request_key, output_hashes);
-
-            info!(
-                target: LOG_TARGET,
-                "Output Manager {} query (Id: {}) sent to Base Node, part {} of {} requests",
-                self.validation_type,
-                request_key,
-                r + 1,
-                rounds
-            );
         }
-
-        Ok(())
+        Ok(batches)
     }
 
     // exponential back-off with max and min delays
     fn update_retry_delay(&mut self, synced: bool) {
         let new_delay = if synced {
-            MIN_RETRY_DELAY
+            self.resources.config.base_node_query_timeout
         } else {
-            let delay = self.retry_delay.as_secs();
+            let delay = self.retry_delay;
             cmp::min(delay * 2, MAX_RETRY_DELAY)
         };
 
-        self.retry_delay = Duration::from_secs(new_delay);
-    }
-
-    async fn handle_base_node_response(
-        &mut self,
-        response: Arc<proto::BaseNodeServiceResponse>,
-    ) -> Result<Retry, OutputManagerProtocolError>
-    {
-        let request_key = response.request_key;
-
-        let queried_hashes = if let Some(hashes) = self.pending_queries.remove(&request_key) {
-            hashes
-        } else {
-            trace!(
-                target: LOG_TARGET,
-                "Base Node Response (Id: {}) not expected for TXO Validation protocol {}",
-                request_key,
-                self.id
-            );
-            return Ok(Retry::None);
-        };
-
-        self.update_retry_delay(response.is_synced);
-
-        if !response.is_synced {
-            info!(
-                target: LOG_TARGET,
-                "Assigned Base Node is not synced to chain tip, delaying by {:#?} to retry TXO Validation protocol \
-                 (id: {})",
-                self.retry_delay,
-                self.id
-            );
-            return Ok(Retry::Delay);
-        }
-
-        trace!(
-            target: LOG_TARGET,
-            "Handling a Base Node Response for {} request (Id: {}) for TXO Validation protocol {}",
-            self.validation_type,
-            request_key,
-            self.id
-        );
-
-        let response: Vec<tari_core::proto::types::TransactionOutput> = match (*response).clone().response {
-            Some(BaseNodeResponseProto::TransactionOutputs(outputs)) => outputs.outputs,
-            _ => {
-                return Err(OutputManagerProtocolError::new(
-                    self.id,
-                    OutputManagerError::InvalidResponseError("Base Node Response of unexpected variant".to_string()),
-                ));
-            },
-        };
-
-        match self.validation_type {
-            TxoValidationType::Unspent => {
-                // Construct a HashMap of all the unspent outputs
-                let unspent_outputs: Vec<DbUnblindedOutput> =
-                    self.resources.db.get_unspent_outputs().await.map_err(|e| {
-                        OutputManagerProtocolError::new(self.id, OutputManagerError::OutputManagerStorageError(e))
-                    })?;
-
-                // We only want to check outputs that we were expecting and are still valid
-                let mut output_hashes = HashMap::new();
-                for uo in unspent_outputs.iter() {
-                    let hash = uo.hash.clone();
-                    if queried_hashes.iter().any(|h| &hash == h) {
-                        output_hashes.insert(hash, uo.clone());
-                    }
-                }
-
-                // Go through all the returned UTXOs and if they are in the hashmap remove them
-                for output in response.iter() {
-                    let response_hash = TransactionOutput::try_from(output.clone())
-                        .map_err(|_| {
-                            OutputManagerProtocolError::new(
-                                self.id,
-                                OutputManagerError::ConversionError(
-                                    "Could not convert protobuf TransactionOutput".to_string(),
-                                ),
-                            )
-                        })?
-                        .hash();
-
-                    let _ = output_hashes.remove(&response_hash);
-                }
-
-                // If there are any remaining Unspent Outputs we will move them to the invalid collection
-                for (_k, v) in output_hashes {
-                    // Get the transaction these belonged to so we can display the kernel signature of the transaction
-                    // this output belonged to.
-
-                    warn!(
-                        target: LOG_TARGET,
-                        "Output with value {} not returned from Base Node query ({}) and is thus being invalidated",
-                        v.unblinded_output.value,
-                        request_key,
-                    );
-                    // If the output that is being invalidated has an associated TxId then get the kernel signature of
-                    // the transaction and display for easier debugging
-                    if let Some(tx_id) = self.resources.db.invalidate_output(v).await.map_err(|e| {
-                        OutputManagerProtocolError::new(self.id, OutputManagerError::OutputManagerStorageError(e))
-                    })? {
-                        if let Ok(transaction) = self
-                            .resources
-                            .transaction_service
-                            .get_completed_transaction(tx_id)
-                            .await
-                        {
-                            info!(
-                                target: LOG_TARGET,
-                                "Invalidated Output is from Transaction (TxId: {}) with message: {} and Kernel \
-                                 Signature: {}",
-                                transaction.tx_id,
-                                transaction.message,
-                                transaction.transaction.body.kernels()[0]
-                                    .excess_sig
-                                    .get_signature()
-                                    .to_hex()
-                            )
-                        }
-                    } else {
-                        info!(
-                            target: LOG_TARGET,
-                            "Invalidated Output does not have an associated TxId, it is likely a Coinbase output lost \
-                             to a Re-Org"
-                        );
-                    }
-                }
-                debug!(
-                    target: LOG_TARGET,
-                    "Handled Base Node response (Id: {}) for Unspent Outputs Query {}", request_key, self.id
-                );
-            },
-            TxoValidationType::Invalid => {
-                let invalid_outputs = self.resources.db.get_invalid_outputs().await.map_err(|e| {
-                    OutputManagerProtocolError::new(self.id, OutputManagerError::OutputManagerStorageError(e))
-                })?;
-
-                for output in response.iter() {
-                    let response_hash = TransactionOutput::try_from(output.clone())
-                        .map_err(|_| {
-                            OutputManagerProtocolError::new(
-                                self.id,
-                                OutputManagerError::ConversionError("Could not convert Transaction Output".to_string()),
-                            )
-                        })?
-                        .hash();
-
-                    if let Some(output) = invalid_outputs.iter().find(|o| o.hash == response_hash) {
-                        if self
-                            .resources
-                            .db
-                            .revalidate_output(output.commitment.clone())
-                            .await
-                            .is_ok()
-                        {
-                            info!(
-                                target: LOG_TARGET,
-                                "Output with value {} has been restored to a valid spendable output",
-                                output.unblinded_output.value
-                            );
-                        }
-                    }
-                }
-
-                debug!(
-                    target: LOG_TARGET,
-                    "Handled Base Node response (Id: {}) for Invalidated Outputs Query {}", request_key, self.id
-                );
-            },
-            TxoValidationType::Spent => {
-                // Go through the response outputs and check if they are currently Spent, if they are then they can be
-                // marked as Unspent because they exist in the UTXO set. Hooray!
-                for output in response.iter() {
-                    if let Some(Some(commitment)) = output.clone().commitment.map(|c| Commitment::try_from(c).ok()) {
-                        match self.resources.db.update_spent_output_to_unspent(commitment).await {
-                            Ok(uo) => info!(
-                                target: LOG_TARGET,
-                                "Spent output with value {} restored to Unspent output", uo.unblinded_output.value
-                            ),
-                            Err(e) => debug!(target: LOG_TARGET, "Unable to restore Spent output to Unspent: {}", e),
-                        }
-                    }
-                }
-
-                debug!(
-                    target: LOG_TARGET,
-                    "Handled Base Node response (Id: {}) for Spent Outputs Query {}", request_key, self.id
-                );
-            },
-        }
-
-        Ok(Retry::None)
+        self.retry_delay = new_delay;
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum TxoValidationType {
     Unspent,
     Spent,
@@ -629,11 +605,4 @@ impl fmt::Display for TxoValidationType {
 pub enum TxoValidationRetry {
     Limited(u8),
     UntilSuccess,
-}
-
-#[derive(Debug)]
-enum Retry {
-    None,
-    Timeout,
-    Delay,
 }
