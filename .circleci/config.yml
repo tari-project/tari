@@ -118,7 +118,7 @@ jobs:
       - run:
           name: RFC documentation
           command: |
-            cargo install mdbook --version 0.4.5 --force
+            cargo install mdbook --version ^0.4
             cd RFC && mdbook test && mdbook build
 
       - persist_to_workspace:
