@@ -18,7 +18,7 @@
     - [RFC-0190: Mempool](RFC-0190_Mempool.md)
     - [Tari-specific extensions to Mimblewimble](BaseLayerExtensions.md)
       - [RFC-0201: TariScript](RFC-0201_TariScript.md)
-      - [RFC-0201: TariScript Opcodes](RFC-0202_TariScriptOpcodes.md)
+      - [RFC-0202: TariScript Opcodes](RFC-0202_TariScriptOpcodes.md)
       - [RFC-0230: Hash time locked contracts](RFC-0230_HTLC.md)
       - [RFC-0322: Validator Node Registration](RFC-0322_VNRegistration.md)
       - [RFC-0341: Asset registration](RFC-0341_AssetRegistration.md)

@@ -1,4 +1,4 @@
-# RFC-0201/TariScriptOpcodes
+# RFC-0202/TariScriptOpcodes
 
 ## Tari Script Opcodes
 
@@ -54,7 +54,7 @@ examples and applicaitons.
 
 ## Related Requests for Comment
 
-* [RFC-0201: TariScript](RFC-201_TariScript.md)
+* [RFC-0201: TariScript](RFC-0201_TariScript.md)
 * [RFC-0200: Base Layer Extensions](BaseLayerExtensions.md)
 
 
@@ -63,7 +63,7 @@ examples and applicaitons.
 
 ## Tari Script semantics
 
-The proposal for Tari Script is straightforward. It is based on Bitcoin script and inherits most of its ideas.
+The proposal for TariScript is straightforward. It is based on Bitcoin script and inherits most of its ideas.
 
 The main properties of Tari script are
 
@@ -71,32 +71,38 @@ The main properties of Tari script are
   operating on the stack contents.
 * If an error occurs during execution, the script fails.
 * After the script completes, it is successful if and only if it has not aborted, and there is exactly a single element
-  on the stack with a value of zero. In other words, the script fails if the stack is empty, or contains more than one
-  element, or aborts early.
+  on the stack. The script fails if the stack is empty, or contains more than one element, or aborts early.
 * It is not Turing complete, so there are no loops or timing functions.
 * The opcodes enforce type safety. e.g. A public key cannot be added to an integer scalar. Errors of this kind MUST cause
   the script to fail. The Rust implementation of Tari Script automatically applies the type safety rules.
 
 ### Failure modes
 
-A script can fail for a variety of reasons. Most failures are not context-dependent, i.e. they will fail irrespective of
-the state of the blockchain.
+Bitcoin transactions can "fail" in two main ways: Either there is a genuine error in the locking or unlocking script;
+or a wallet broadcasts a _[Non-standard transaction]_ to a non-mining node. To be more precise, Bitcoin core nodes
+only accept a small subset of valid transaction scripts that are deemed [Standard transactions]. To succesfully produce
+a non-standard Bitcoin transaction, one has to submit it directly to a miner that accepts non-standard transactions.
 
-Some scripts' execution result, such as those that make comparisons to the block height, are dependent on the execution
-context. If a script fails, it can fail in a `Failure` mode, indicating that the script will always fail, or it can fail
-in `ContextFailure` mode, meaning it is possible that the script could pass in a different context.
+It's interesting to note that only 0.02% of transactions
+mined in Bitcoin before block 550,000 were non-standard, and it appears that the vast majority of these were in fact
+unintentional, leading to loss of funds [(1)].
 
-The context is invariant in block validations, and so both failure modes are treated identically: The script, and block are
-both invalid and MUST be rejected.
+[Standard transactions]: https://www.oreilly.com/library/view/mastering-bitcoin/9781491902639/ch05.html
+[Non-standard transaction]: https://www.frontiersin.org/articles/10.3389/fbloc.2019.00007/full
+[(1)]: https://www.frontiersin.org/articles/10.3389/fbloc.2019.00007/full
 
-But in transaction validations, the mempool SHOULD move a transaction to the Pending pool if a transaction fails
-with `ContextFailure`. It MUST reject the transaction if it fails with `Failure`.
+The present RFC proposes that TariScript not identify a subset of transactions as "standard". However, some transactions
+might be invalid in and of- themselves (e.g. invalid signature, invalid script), while others may be invalid because of
+the execution context (e.g. a lock time has not expired).
 
-Not all context-dependent failures will fail with `ContextFailure`. For example, `CheckHeight(height) ZeroVerify` will
-fail with `Failure` even though this script might pass in future. This is because the `CheckHeight(height)` does not have
-a context failure mode. The TariScript VM is not smart enough to know that the `ZeroVerify` opcode is context-dependent
-by virtue of the preceding instruction. If you wish to write context-dependent scripts, then use opcode that can
-fail immediately with the `ContextFailure` state.
+All Tari nodes MUST reject the former type of invalid transaction; and SHOULD reject the latter. In these instances, it
+is the _wallets'_ responsibility to wait until transactions are valid before broadcasting them.
+
+Rejected transactions are simply silently dropped.
+
+This policy discourages spamming on the network and promotes responsible behaviour by wallets.
+
+The full list of [Error codes](#error-codes) is given below.
 
 ### Constraints
 
@@ -116,145 +122,173 @@ validation, the next earliest block height) against a given value.
 
 ##### CheckHeightVerify(height)
 
-Compare this block's height to `height`. This is a no-op opcode.
+Compare the current block height to `height`.
 
-Fails with `ContextFailure` if:
-* the height < `height`.
+Fails with `VERIFY_FAILED` if the block height < `height`.
 
 ##### CheckHeight(height)
 
-Compare this block's height to `height`. Push the value of (`height` - the current height) to the stack
-if the height <= `height`, otherwise push zero to the stack. In other words, the top of the stack will hold the height
-difference between `height` and the current height (with a minimum of zero).
+Pushes the value of (the current height - `height`) to the stack. In other words,
+the top of the stack will hold the height difference between `height` and the current height. If the chain has
+progressed beyond height, the value is positive; and negative if the chain has yet to reach `height`.
 
-Fails with `Failure` if:
-* the stack would exceed the max stack height.
+Fails with `STACK_OVERFLOW` if the stack would exceed the max stack height.
 
 ##### CompareHeightVerify
 
-Pop the top of the stack as `height`. The result of this opcode is a no-op.
+The same as [`CheckHeightVerify`](#checkheightverifyheight), except that the height to compare against the block height
+  is popped off the stack instead of being hardcoded in the script. Pops the top of the stack as `height` and compares
+  it to the current block height.
 
-Fails with `ContextFailure` if:
-* the height < `height`.
+* Fails with `INVALID_INPUT` if there is not a valid integer value on top of the stack.
+* Fails with `EMPTY_STACK` if the stack is empty.
+* Fails with `VERIFY_FAILED` if the block height < `height`.
 
-Fails with `Failure` if:
-* there is not a valid integer value on top of the stack,
-* the stack is empty.
 
 ##### CompareHeight
 
-Pop the top of the stack as `height`. Push the value of (`height` - the current height) to the stack if the height
-<= `height`, otherwise push zero to the stack. In other words, this opcode replaces the top of the stack with the
-difference between that value and the current height.
+The same as [`CompareHeight`](#checkheightheight) except that the height to compare against the block height
+  is popped off the stack instead of being hardcoded in the script.
 
-Fails with `Failure` if:
-* there is not a valid integer value on top of the stack,
-* the stack is empty.
+Pops the top of the stack as `height`, then pushes the value of (`height` - the current height) to the stack.
+In other words, this opcode replaces the top of the stack with the difference between that value and the current height.
+
+* Fails with `INVALID_INPUT` if there is not a valid integer value on top of the stack.
+* Fails with `EMPTY_STACK` if the stack is empty.
 
 ### Stack manipulation
+
+##### NoOp
+
+Does nothing. Never fails.
 
 ##### PushZero
 
 Pushes a zero onto the stack. This is a very common opcode and has the same effect as `PushInt(0)` but is more compact.
+`PushZero` can also be interpreted as `PushFalse` (although no such opcode exists).
 
-The default script is a single `PushZero`.
+* Fails with `STACK_OVERFLOW` if the stack would exceed the max stack height.
 
 ##### PushOne
 
 Pushes a one onto the stack. This is a very common opcode and has the same effect as `PushInt(1)` but is more compact.
+`PushOne` can also be interpreted as `PushTrue`, although no such opcode exists.
 
-`PushOne` can be used in conditionals and to represent `false` or a failure condition. For example,
-
-    PushOne
-
-is a burn script, meaning that no-one can spend the output, since the script will always fail, similar to `Return`
+* Fails with `STACK_OVERFLOW` if the stack would exceed the max stack height.
 
 ##### PushHash(HashValue)
 
 Push the associated 32-byte value onto the stack.
 
-Fails with `Failure` if:
-* HashValue is not a valid 32 byte sequence
-* the stack would exceed the max stack height.
+* Fails with `INVALID_SCRIPT_DATA` if HashValue is not a valid 32 byte sequence
+* Fails with `STACK_OVERFLOW` if the stack would exceed the max stack height.
 
 ##### PushInt(i64)
 
-Push the associated 64 bit signed integer onto the stack
+Push the associated 64-bit signed integer onto the stack
 
-Fails with `Failure` if:
-* HashValue is not a valid 8 byte sequence
-* the stack would exceed the max stack height.
+* Fails with `INVALID_SCRIPT_DATA` if `i64` is not a valid integer.
+* Fails with `STACK_OVERFLOW` if the stack would exceed the max stack height.
 
 ##### PushPubKey(PublicKey)
 
 Push the associated 32-byte value onto the stack. It will be interpreted as a public key or a commitment.
 
-Fails with `Failure` if:
-* PublicKey is not a valid 32 byte sequence
-* the stack would exceed the max stack height.
+* Fails with `INVALID_SCRIPT_DATA` if HashValue is not a valid 32 byte sequence
+* Fails with `STACK_OVERFLOW` if the stack would exceed the max stack height.
 
 ##### Drop
 
 Drops the top stack item.
 
-Fails with `Failure` if:
-* The stack is empty
+* Fails with `EMPTY_STACK` if the stack is empty.
 
 ##### Dup
 
 Duplicates the top stack item.
 
-Fails with `Failure` if:
-* The stack is empty
-* the stack would exceed the max stack height.
+* Fails with `EMPTY_STACK` if the stack is empty.
+* Fails with `STACK_OVERFLOW` if the stack would exceed the max stack height.
 
-##### RevRot,
+##### RevRot
 
 Reverse rotation. The top stack item moves into 3rd place, e.g. `abc => bca`.
 
-Fails with `Failure` if:
-* The stack has two or fewer elements
+* Fails with `EMPTY_STACK` if the stack has fewer than three items.
 
 ### Math operations
+
+#### GeZero
+
+Pops the top stack element as `val`. If `val` is greater than or equal to zero, push a 1 to the stack, otherwise push 0.
+
+* Fails with `EMPTY_STACK` if the stack is empty.
+* Fails with `INVALID_INPUT` if `val` is not an integer.
+
+#### GtZero
+
+Pops the top stack element as `val`. If `val` is strictly greater than zero, push a 1 to the stack, otherwise push 0.
+
+* Fails with `EMPTY_STACK` if the stack is empty.
+* Fails with `INVALID_INPUT` if the item is not an integer.
+
+#### LeZero
+
+Pops the top stack element as `val`. If `val` is less than or equal to zero, push a 1 to the stack, otherwise push 0.
+
+* Fails with `EMPTY_STACK` if the stack is empty.
+* Fails with `INVALID_INPUT` if the item is not an integer.
+
+#### LtZero
+
+Pops the top stack element as `val`. If `val` is strictly less than zero, push a 1 to the stack, otherwise push 0.
+
+* Fails with `EMPTY_STACK` if the stack is empty.
+* Fails with `INVALID_INPUT` if the items is not an integer.
 
 ##### Add
 
 Pop two items and push their sum
 
-Fails with `Failure` if:
-* The stack has a height of one or less
+* Fails with `EMPTY_STACK` if the stack has fewer than two items.
+* Fails with `INVALID_INPUT` if the items cannot be added to each other (e.g. an integer and public key).
 
 ##### Sub
 
 Pop two items and push the second minus the top
 
-Fails with `Failure` if:
-* The stack has a height of one or less
+* Fails with `EMPTY_STACK` if the stack has fewer than two items.
+* Fails with `INVALID_INPUT` if the items cannot be subtracted from each other (e.g. an integer and public key).
 
 ##### Equal
 
-Pops the top two items, and pushes 0 to the stack if the inputs are exactly equal, 1 otherwise.
+Pops the top two items, and pushes 1 to the stack if the inputs are exactly equal, 0 otherwise. 0 is also pushed if the
+values cannot be compared (e.g. integer and pubkey).
 
-Fails with `Failure` if:
-* The stack height is one or less
+* Fails with `EMPTY_STACK` if the stack has fewer than two items.
 
 ##### EqualVerify
 
-Pops the top two items, and compare their values.
+Pops the top two items, and compares their values.
 
-Fails with `Failure` if:
-* The stack height is one or less,
-* The top two stack elements are not equal
+* Fails with `EMPTY_STACK` if the stack has fewer than two items.
+* Fails with `VERIFY_FAILED` if the top two stack elements are not equal.
 
 ### Boolean logic
 
 #### Or(n)
 
-`n` items are popped from the stack. The top item must match at least one of those items.
+`n` + 1 items are popped from the stack. If the last item popped matches at least one of the first `n` items popped,
+push 1 onto the stack. Push 0 otherwise.
 
-Fails with `Failure` if:
-* The stack has height `n` or less
-* The top value does not match any of the popped items
+* Fails with `EMPTY_STACK` if the stack has fewer than `n` items.
+
+#### OrVerify(n)
+
+`n` + 1 items are popped from the stack. If the last item popped matches at least one of the first `n` items popped,
+continue. Fail with `VERIFY_FAILED` otherwise.
+
+* Fails with `EMPTY_STACK` if the stack has fewer than `n` + 1 items.
 
 ### Cryptographic operations
 
@@ -262,69 +296,61 @@ Fails with `Failure` if:
 
 Pop the top element, hash it with the Blake256 hash function and push the result to the stack.
 
-Fails with `Failure` if:
-* The stack is empty
+* Fails with `EMPTY_STACK` if the stack is empty.
 
-##### CheckSig,
+##### HashSha256
 
-Pop the public key and then the signature. If the signature signs the script, push 0 to the stack, otherwise
-push 1.
+Pop the top element, hash it with the SHA256 hash function and push the result to the stack.
 
-Fails with `Failure` if:
-* The stack is of height one or less
-* The top stack element is not a PublicKey or Commitment
-* The second stack element is not a Signature
+* Fails with `EMPTY_STACK` if the stack is empty.
 
-##### CheckSigVerify,
+##### HashSha3
 
-Pop the public key and then the signature. A successful execution does not manipulate the stack an further.
+Pop the top element, hash it with the SHA-3 hash function and push the result to the stack.
 
-Fails with `Failure` if:
-* The stack is of height one or less
-* The top stack element is not a PublicKey or Commitment
-* The second stack element is not a Signature
-* The signature does not sign the script
+* Fails with `EMPTY_STACK` if the stack is empty.
+
+##### CheckSig(Msg)
+
+Pop the public key and then the signature. If the signature signs the 32-byte message, push 1 to the stack, otherwise
+push 0.
+
+* Fails with `INVALID_SCRIPT_DATA` if the `Msg` is not a valid 32-byte value.
+* Fails with `EMPTY_STACK` if the stack has fewer than 2 items.
+* Fails with `INVALID_INPUT` if the top stack element is not a PublicKey or Commitment
+* Fails with `INVALID_INPUT` if the second stack element is not a Signature
+
+##### CheckSigVerify(Msg),
+
+Identical to [`CheckSig`](#checksigmsg), except that nothing is pushed to the stack if the signature is valid, and the
+operation fails with `VERIFY_FAILED` if the signature is invalid.
 
 ### Miscellaneous
 
 ##### Return
 
-Always fails with `Failure`.
+Always fails with `VERIFY_FAILED`.
 
 ##### If-then-else
 
 The if-then-else clause is marked with the `IFTHEN` opcode.
 When the `IFTHEN` opcode is reached, the top element of the stack is popped into `pred`.
-If `pred` is zero, the instructions between `IFTHEN` and `ELSE` are executed. The instructions from `ELSE` to `ENDIF` are
+If `pred` is 1, the instructions between `IFTHEN` and `ELSE` are executed. The instructions from `ELSE` to `ENDIF` are
 then popped without being executed.
 
-If `pred` is not zero, instructions are popped until `ELSE` or `ENDIF` is encountered.
+If `pred` is 0, instructions are popped until `ELSE` or `ENDIF` is encountered.
 If `ELSE` is encountered, instructions are executed until `ENDIF` is reached.
 `ENDIF` is a marker opcode and a no-op.
 
-Fails with `Failure` if:
-* The instruction stack is empty before encountering `ENDIF`
-
-If any instruction during execution of the clause causes a failure, the script fails with the same mode.
-
+* Fails with `EMPTY_STACK` if the stack is empty.
+* If `pred` is anything other than 0 or 1, the script fails with `INVALID_INPUT`.
+* If any instruction during execution of the clause causes a failure, the script fails with that failure code.
 
 ## Serialisation
 
 Tari Script and the execution stack are serialised into byte strings using a simple linear parser. Since all opcodes are
 a single byte, it's very easy to read and write script byte strings. If an opcode has a parameter associated with it,
-e.g. `PushHash` then it is equally known how many bytes following the opcode will contain the parameter. So for example,
-a pay-to-public-key-hash script (P2PKH) script, when serialised is
-
-```text
-71b07aae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e58170ac
-```
-
-which maps to
-
-```text
-71  b0           7a       ae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e5  81          70   ac
-Dup HashBlake256 PushHash(ae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e5) EqualVerify Drop CheckSig
-```
+e.g. `PushHash` then it is equally known how many bytes following the opcode will contain the parameter.
 
 The script input data is serialised in an analogous manner. The first byte in a stream indicates the type of data in the
 bytes that follow. The length of each type is fixed and known _a priori_. The next _n_ bytes read represent the data type.
@@ -334,157 +360,97 @@ be operated on _first_!
 
 The types of input parameters that are accepted are:
 
-```rust,ignore
-pub enum StackItem {
-    Integer(i64),
-    Hash(HashValue),
-    PublicKey(RistrettoPublicKey),
-    Signature(RistrettoSchnorr),
-}
-```
+| Type      | Range / Value                                                          |
+|:----------|:-----------------------------------------------------------------------|
+| Integer   | 64-bit signed integer                                                  |
+| Hash      | 32-byte hash value                                                     |
+| PublicKey | 32-byte public key                                                     |
+| Signature | 32-byte nonce +  32-byte signature                                     |
+| Data      | single byte, n, indicating length of data, followed by n bytes of data |
 
-## Extensions
+## Example scripts
 
-### Covenants
+### Anyone can spend
 
-Tari script places restrictions on _who_ can spend UTXOs. It will also be useful for Tari digital asset applications to
-restrict _how_ or _where_ UTXOs may be spent in some cases. The general term for these sorts of restrictions are termed
-_covenants_. The [Handshake white paper] has a fairly good description of how covenants work.
-
-It is beyond the scope of this RFC, but it's anticipated that Tari Script would play a key role in the introduction of
-generalised covenant support into Tari.
-
-### Lock-time malleability
-
-The current Tari protocol has an issue with Transaction Output Maturity malleability. This output feature is enforced in
-the consensus rules but it is actually possible for a miner to change the value without invalidating the transaction.
-
-With TariScript, we can simply remove all the output features, except the coinbase feature completely and rely on
-TariScript to reliably enforce UTXO lock times instead and any other features instead.
-
-## Applications
+The simplest script is an empty script, or a script with a single `NoOp` opcode. When faced with this script, the spender
+can supply any pubkey in her script input for which she knows the private key. The script will execute, leaving that
+public key as the result, and the transaction script validation will pass.
 
 ### One-sided transactions
 
-One-sided transactions are Mimblewimble payments that do not require the receiver to interact in the transaction
-process. [LIP-004] describes how this will be implemented in Litecoin's Mimblewimble implementation. The main thrust is
-that the sender uses Diffie-Hellman exchange to generate a shared private key that is used as the receiver's blinding
-factor.
-
-To prevent the sender from spending the coins (since both parties now know the spending key), there is an additional
-commitment balance equation that is carried out on the block and transaction that requires the spender to know the
-receiver's private key.
-
-To implement one-sided payments in Tari, we propose using Diffie-Hellman exchange in conjunction with Tari Script to
-achieve the same thing.
-
-In particular, if Alice is sending some Tari to Bob, she generates a shared private key as follows:
-
-$$ k_s = \mathrm{H}(k_a P_b) $$
-
-where \\( P_b \\) is Bob's Tari node address, or any other public key Bob has shared with Alice. Alice can generate
-an ephemeral public-private keypair, \\( P_a = k_a. G \\) for this transaction.
-
-Alice then locks the output with the following script:
+One-sided transactions lock the input to a predetermined public key provided by the recipient; essentially the same
+method that Bitcoin uses. The simplest form of this is to simply post the new owner's public key as the script:
 
 ```text
-Dup PushPubkey(P_B) EqualVerify CheckSig
+PushPubkey(P_B)
 ```
 
-where `P_B` is Bob's public key. As one can see, this Tari script is very similar to Bitcoin script.
-The interpretation of this script is, "Given a Public key, and a signature of this
-script, the public key must be equal to the one in the locking script, and the signature must be valid using the same
-public key".
+To spend this output, Bob provides an empty input stack. After execution, the stack contains his public key.
 
-This is in effect the same as Bitcoin's P2PK script.
+An equivalent script to Bitcoin's P2PKH would be:
 
-This script would be executed with Bob supplying his public key and signature signing the script above.
+```text
+Dup HashBlake256 PushHash(PKH) EqualVerify
+```
 
+To spend this, Bob provides his public key as script input.
 To illustrate the execution process, we show the script running on the left, and resulting stack on the right:
 
-| Initial script    | Initial Stack         |
-|:------------------|:----------------------|
-| `Dup`             | Bob's Pubkey          |
-| `PushPubkey(P_B)` | Bob's signature (R,s) |
-| `EqualVerify`     |                       |
-| `CheckSig`        |                       |
+| Initial script  | Initial Stack |
+|:----------------|:--------------|
+| `Dup`           | Bob's Pubkey  |
+| `HashBlake256`  |               |
+| `PushHash(PKH)` |               |
+| `EqualVerify`   |               |
 
 Copy Bob's pubkey:
 
-| `Dup`             |                       |
-|:------------------|:----------------------|
-| `PushPubkey(P_B)` | Bob's Pubkey          |
-| `EqualVerify`     | Bob's Pubkey          |
-| `CheckSig`        | Bob's signature (R,s) |
+| `Dup`           |              |
+|:----------------|:-------------|
+| `HashBlake256`  | Bob's Pubkey |
+| `PushHash(PKH)` | Bob's Pubkey |
+| `EqualVerify`   |              |
 
-Push the pubkey we need to the stack:
+Hash the public key:
 
-| `PushPubkey(P_B)` |                       |
-|:------------------|:----------------------|
-| `EqualVerify`     | P_b                   |
-| `CheckSig`        | Bob's Pubkey          |
-|                   | Bob's Pubkey          |
-|                   | Bob's signature (R,s) |
+| `HashBlake256`  |                 |
+|:----------------|:----------------|
+| `PushHash(PKH)` | H(Bob's Pubkey) |
+| `EqualVerify`   | Bob's Pubkey    |
 
+Push the expected hash to the stack:
 
-Is `P_b` equal to `Bob's pubkey`?
+| `PushHash(PKH)` |                 |
+|:----------------|:----------------|
+| `EqualVerify`   | PKH             |
+|                 | H(Bob's Pubkey) |
+|                 | Bob's Pubkey    |
 
-| `EqualVerify` |                       |
-|:--------------|:----------------------|
-| `CheckSig`    | Bob's Pubkey          |
-|               | Bob's signature (R,s) |
+Is `PKH` equal to the hash of Bob's public key?
 
-Check the signature, and if it is correct:
+| `EqualVerify` |              |
+|:--------------|:-------------|
+|               | Bob's Pubkey |
 
-| `CheckSig` |     |
-|:-----------|:----|
-|            | `0` |
-|            |     |
-
-The script has completed and is successful.
-
-To increase privacy, Alice could also lock the UTXO with a P2PKH
-script:
-
-```text
-Dup HashBlake256 PushHash(HB) EqualVerify CheckSig
-```
-
-where `HB` is the hash of Bob's public key.
-
-In either case, only someone with the knowledge of Bob's private key can generate a valid signature, so Alice will not
-be able to unlock the UTXO to spend it.
-
-Since the script is committed to and cannot be cut-through, only Bob will be able to spend this UTXO unless someone is
-able to discover the private key from the public key information (the discrete log assumption), or if the majority of
-miners collude to not honour the consensus rules governing the successful evaluation of the script (the 51% assumption).
-
-### Non-malleable lock_height
-
-A simple lock height script, of the "you can only spend this UTXO after block 420" variety:
-
-```text
-checkHeightVerify(420) PushZero
-```
-
-Note that we need the `PushZero` opcode, since the `xxxVerify` opCodes do not push any results to the stack.
+The script has completed without errors, and Bob's public key remains on the stack.
 
 ###  Hash time-lock contract
 
 Alice sends some Tari to Bob. If he doesn't spend it within a certain timeframe (up till block 4000), then she is also
 able to spend it back to herself.
 
+The spender provides their public key as input to the script.
+
 ```text
-Dup PushPubkey(P_b) CheckHeight(4000) IFTHEN PushPubkey(P_a) Or(2) Drop ELSE EqualVerify ENDIF CheckSig
+Dup PushPubkey(P_b) CheckHeight(4000) GeZero IFTHEN PushPubkey(P_a) OrVerify(2) ELSE EqualVerify ENDIF
 ```
 
-Let's run through this script assuming it's block 3999 and Bob is spending the UTXO. We'll only print the stack this
+Let's run through this script assuming it's block 3990 and Bob is spending the UTXO. We'll only print the stack this
 time:
 
 | Initial Stack   |
 |:----------------|
 | Bob's pubkey    |
-| Bob's signature |
 
 `Dup`:
 
@@ -492,7 +458,6 @@ time:
 |:----------------|
 | Bob's pubkey    |
 | Bob's pubkey    |
-| Bob's signature |
 
 `PushPubkey(P_b)`:
 
@@ -501,101 +466,107 @@ time:
 | `P_b`           |
 | Bob's pubkey    |
 | Bob's pubkey    |
-| Bob's signature |
 
-`CheckHeight(4000)`. The block height height is 3999, so `max(0, 4000 - 3999)` is pushed to the stack:
+`CheckHeight(4000)`. The block height is 3990, so `3990 - 4000` is pushed to the stack:
 
 | Stack           |
 |:----------------|
-| 1               |
+| -10             |
 | `P_b`           |
 | Bob's pubkey    |
 | Bob's pubkey    |
-| Bob's signature |
 
-`IFTHEN` compares the top of the stack to zero. It is not a match, so it will execute the `ELSE` branch:
+`GeZero` pushes a 1 if the top stack element is positive or zero:
+
+| Stack        |
+|:-------------|
+| 0            |
+| `P_b`        |
+| Bob's pubkey |
+| Bob's pubkey |
+
+`IFTHEN` compares the top of the stack to 1. It is not a match, so it will execute the `ELSE` branch:
+
+| Stack        |
+|:-------------|
+| `P_b`        |
+| Bob's pubkey |
+| Bob's pubkey |
 
 `EqualVerify` checks that `P_b` is equal to Bob's pubkey:
 
 | Stack           |
 |:----------------|
 | Bob's pubkey    |
-| Bob's signature |
 
+The `ENDIF` is a no-op, so the stack contains Bob's public key, meaning Bob must sign to spend this transaction.
 
-The `ENDIF` is a no-op, so the last instruction checks the given signature against Bob's pubkey:
+Similarly, if it is after block 4000, say block 4005, and Alice or Bob tries to spend the UTXO, the sequence is:
 
-`CheckSig`:
-
-| Stack |
-|:------|
-| 0     |
-
-Similarly, if it is after block 4000, and Alice tries to spend the UTXO, the sequence is:
-
-| Initial Stack     |
-|:------------------|
-| Alice's pubkey    |
-| Alice's signature |
+| Initial Stack         |
+|:----------------------|
+| Alice or Bob's pubkey |
 
 `Dup` and `PushPubkey(P_b)` as before:
 
-| Stack             |
-|:------------------|
-| `P_b`             |
-| Alice's pubkey    |
-| Alice's pubkey    |
-| Alice's signature |
+| Stack                    |
+|:-------------------------|
+| `P_b`                    |
+| Alice or Bob's pubkey    |
+| Alice or Bob's pubkey    |
 
-`CheckHeight(4000)` calculates `max(0, 4000 - 4001)` and pushes 0 to the stack:
+`CheckHeight(4000)` calculates `4005 - 4000)` and pushes 5 to the stack:
 
-| Stack             |
-|:------------------|
-| 0                 |
-| `P_b`             |
-| Alice's pubkey    |
-| Alice's pubkey    |
-| Alice's signature |
+| Stack                 |
+|:----------------------|
+| 5                     |
+| `P_b`                 |
+| Alice or Bob's pubkey |
+| Alice or Bob's pubkey |
 
-The top of the stack is zero, so `IFTHEN` executes the first branch, `PushPubkey(P_a)`:
 
-| Stack             |
-|:------------------|
-| `P_a`             |
-| `P_b`             |
-| Alice's pubkey    |
-| Alice's pubkey    |
-| Alice's signature |
+`GeZero` pops the 5 and pushes a 1 to the stack:
 
-`Or(2)` compares the 3rd element, Alice's pubkey, with the 2 top items that were popped. There is a match, so the script
+| Stack                 |
+|:----------------------|
+| 1                     |
+| `P_b`                 |
+| Alice or Bob's pubkey |
+| Alice or Bob's pubkey |
+
+The top of the stack is 1, so `IFTHEN` executes the first branch, `PushPubkey(P_a)`:
+
+| Stack                 |
+|:----------------------|
+| `P_a`                 |
+| `P_b`                 |
+| Alice or Bob's pubkey |
+| Alice or Bob's pubkey |
+
+`OrVerify(2)` compares the 3rd element, Alice's pubkey, with the 2 top items that were popped. There is a match, so the script
 continues.
 
-| Stack             |
-|:------------------|
-| Alice's pubkey    |
-| Alice's pubkey    |
-| Alice's signature |
+| Stack                 |
+|:----------------------|
+| Alice or Bob's pubkey |
 
-`Drop`:
+If the script executes successfully, then either Alice's or Bob's public key is left on the stack, meaning only Alice
+or Bob can spend the output.
 
-| Stack             |
-|:------------------|
-| Alice's pubkey    |
-| Alice's signature |
+### Error codes
 
-`CheckSig`:
-
-| Stack |
-|:------|
-| 0     |
+| Code                        | Description                                                                      |
+|:----------------------------|:---------------------------------------------------------------------------------|
+| `SCRIPT_TOO_LONG`           | The serialised script exceeds 1024 bytes.                                        |
+| `SCRIPT_INPUT_TOO_LONG`     | The serialised script input exceeds 1024 bytes.                                  |
+| `STACK_OVERFLOW`            | The stack exceeded 255 elements during script execution                          |
+| `EMPTY_STACK`               | There was an attempt to pop an item off an empty stack                           |
+| `INVALID_OPCODE`            | The script cannot be deserialised due to an invalid opcode                       |
+| `INVALID_SCRIPT_DATA`       | An opcode parameter is invalid or of the wrong type                              |
+| `INVALID_INPUT`             | Invalid or incompatible data was popped off the stack as input into an operation |
+| `VERIFY_FAILED` | A script condition (typically a `nnnVerify` opcode) failed                       |
 
 ### Credits
 
 Thanks to [@philipr-za](https://github.com/philipr-za) and [@SWvheerden](https://github.com/SWvheerden) for their input
 and contributions to this RFC.
-
-[data commitments]: https://phyro.github.io/grinvestigation/data_commitments.html
-[LIP-004]: https://github.com/DavidBurkett/lips/blob/master/lip-0004.mediawiki
-[Scriptless script]: https://tlu.tarilabs.com/cryptography/scriptless-scripts/introduction-to-scriptless-scripts.html
-[Handshake white paper]: https://handshake.org/files/handshake.txt
-
