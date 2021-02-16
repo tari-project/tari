@@ -1501,7 +1501,12 @@ fn test_set_num_confirmations() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
-    let backend = TransactionMemoryDatabase::new();
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let temp_dir = tempdir().unwrap();
+    let db_folder = temp_dir.path().to_str().unwrap().to_string();
+    let connection = run_migration_and_create_sqlite_connection(&format!("{}/{}", db_folder, db_name)).unwrap();
+
+    let backend = TransactionServiceSqliteDatabase::new(connection, None);
 
     let (mut ts, _, _, _, _, _, _, _, _, _shutdown, _, _, _) = setup_transaction_service_no_comms(
         &mut runtime,
