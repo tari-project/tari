@@ -28,7 +28,7 @@ commands:
             cargo fmt --all -- --check
       - run:
           name: Run tests
-          command: cargo test --workspace --all-features --jobs=3 <<#parameters.release>>--release<</parameters.release>>
+          command: cargo test --workspace --all-features -v --jobs=3 <<#parameters.release>>--release<</parameters.release>>
       - save_cache:
           paths:
             - /usr/local/cargo/registry
