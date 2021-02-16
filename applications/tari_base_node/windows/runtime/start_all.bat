@@ -27,7 +27,6 @@ if ["%ERRORLEVEL%"]==["2"] (
 
 :NO_MINING
 echo No mining
-set mining_flag=
 start cmd /k "%my_exe_path%\start_tari_base_node.bat"
 ping -n 7 localhost>nul
 start cmd /k "%my_exe_path%\start_tari_console_wallet.bat"
@@ -35,10 +34,11 @@ goto :end
 
 :MINING
 echo Mining
-set mining_flag=--enable_mining
 start cmd /k "%my_exe_path%\start_tari_base_node.bat"
 ping -n 7 localhost>nul
 start cmd /k "%my_exe_path%\start_tari_console_wallet.bat"
+ping -n 7 localhost>nul
+start cmd /k "%my_exe_path%\start_tari_mining_node.bat"
 goto :end
 
 :MERGED_MINING

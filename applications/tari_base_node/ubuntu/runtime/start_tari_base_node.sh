@@ -39,5 +39,5 @@ echo
 
 # Run
 echo Spawning Base Node into new terminal..
-gnome-terminal --working-directory="$PWD" -- "${exe_path}/tari_base_node" --config "${config_path}/config.toml" --log_config "${config_path}/log4rs_base_node.yml" --base-path ${base_path} ${enable_mining}
+gnome-terminal --working-directory="$PWD" -- "${exe_path}/tari_base_node" --config "${config_path}/config.toml" --log_config "${config_path}/log4rs_base_node.yml" --base-path ${base_path}
 echo

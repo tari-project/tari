@@ -51,7 +51,7 @@ echo Spawning Base Node into new terminal..
 # https://gist.github.com/delta1/8ffc61200b650ab471e83f008645b01c
 # so hack around it. 🔪
 
-echo "${exe_path}/tari_base_node" --config="${config_path}/config.toml" --log_config="${config_path}/log4rs_base_node.yml" --base-path="${base_path}" ${enable_mining} > $exe_path/tari_base_node_command.sh
+echo "${exe_path}/tari_base_node" --config="${config_path}/config.toml" --log_config="${config_path}/log4rs_base_node.yml" --base-path="${base_path}" > $exe_path/tari_base_node_command.sh
 chmod +x $exe_path/tari_base_node_command.sh
 
 open -a terminal $exe_path/tari_base_node_command.sh

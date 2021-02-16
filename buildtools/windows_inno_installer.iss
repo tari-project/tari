@@ -4,21 +4,21 @@
 ; Notes:
 ;  (1) To run this script from the command line, prepare the following:
 ;      - Install Microsoft Windows SDK 10 (https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk/)
-;      - Add the Microsoft Windows SDK 10 folder where "signtool.exe" is located to the path, 
+;      - Add the Microsoft Windows SDK 10 folder where "signtool.exe" is located to the path,
 ;        e.g. "C:\Program Files (x86)\Windows Kits\10\bin\10.0.18362.0\x64"
 ;      - Install Inno Setup (https://jrsoftware.org/isinfo.php)
 ;  (2) To run this script from the command line with Inno Setup console-mode compiler:
-;      - "<path to console-mode compiler>\ISCC.exe" "/SSignTool=signtool sign 
-;         /tr http://timestamp.digicert.com /f "<path and filename of the certificate>" 
-;         /p <password used to create the certificate> $f" 
+;      - "<path to console-mode compiler>\ISCC.exe" "/SSignTool=signtool sign
+;         /tr http://timestamp.digicert.com /f "<path and filename of the certificate>"
+;         /p <password used to create the certificate> $f"
 ;         "/DMyAppVersion=<base node version>" "windows_inno_installer.iss"
 ;  (3) To configure sign tools for Inno Script Studio:
 ;      - with 'Tools -> Configure Sign Tools...' (Example configuration), add
-;        Name: 
-;          SignTool 
-;        Command: 
-;          signtool sign /tr http://timestamp.digicert.com 
-;          /f "<path and filename of the certificate>" 
+;        Name:
+;          SignTool
+;        Command:
+;          signtool sign /tr http://timestamp.digicert.com
+;          /f "<path and filename of the certificate>"
 ;          /p "<password used to create the certificate>" $f
 
 
@@ -34,6 +34,8 @@
 #define BaseNodeExeName "start_tari_base_node.bat"
 #define ConsoleWalletName "Console Wallet"
 #define ConsoleWalletExeName "start_tari_console_wallet.bat"
+#define MiningNodeName "Mining Node"
+#define MiningNodeExeName "start_tari_mining_node.bat"
 #define TorServicesName "Tor Services"
 #define TorServicesExeName "start_tor.bat"
 #define MergeMiningProxyName "Merge Mining Proxy"
@@ -89,11 +91,13 @@ Source: "..\applications\tari_base_node\windows\README.md"; DestDir: "{app}"; De
 Source: "..\applications\tari_base_node\windows\start_all.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\start_tari_base_node.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\tari_console_wallet\windows\start_tari_console_wallet.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\tari_mining_node\windows\start_tari_mining_node.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\tari_merge_mining_proxy\windows\start_tari_merge_mining_proxy.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\tari_merge_mining_proxy\windows\start_xmrig.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\start_tor.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\tari_base_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\target\release\tari_console_wallet.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\target\release\tari_mining_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\target\release\tari_merge_mining_proxy.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\runtime\start_all.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_base_node\windows\runtime\start_tor.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
@@ -101,6 +105,8 @@ Source: "..\applications\tari_base_node\windows\runtime\source_base_node_env.bat
 Source: "..\applications\tari_base_node\windows\runtime\start_tari_base_node.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_console_wallet\windows\runtime\source_console_wallet_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_console_wallet\windows\runtime\start_tari_console_wallet.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_mining_node\windows\runtime\source_mining_node_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\tari_mining_node\windows\runtime\start_tari_mining_node.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_merge_mining_proxy\windows\runtime\source_merge_mining_proxy_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_merge_mining_proxy\windows\runtime\start_tari_merge_mining_proxy.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\tari_merge_mining_proxy\windows\runtime\source_xmrig_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
@@ -124,6 +130,7 @@ Source: "..\common\xmrig_config\config_example_mainnet_self_select.json"; DestDi
 Name: "{group}\Start {#AllName}"; Filename: "{app}\runtime\{#AllExeName}"; WorkingDir: "{app}"
 Name: "{group}\Start {#BaseNodeName}"; Filename: "{app}\runtime\{#BaseNodeExeName}"; WorkingDir: "{app}"
 Name: "{group}\Start {#ConsoleWalletName}"; Filename: "{app}\runtime\{#ConsoleWalletExeName}"; WorkingDir: "{app}"
+Name: "{group}\Start {#MiningNodeName}"; Filename: "{app}\runtime\{#MiningNodeExeName}"; WorkingDir: "{app}"
 Name: "{group}\Start {#MergeMiningProxyName}"; Filename: "{app}\runtime\{#MergeMiningProxyExeName}"; WorkingDir: "{app}"
 Name: "{group}\Start {#MergeMiningName}"; Filename: "{app}\runtime\{#MergeMiningExeName}"; WorkingDir: "{app}"
 Name: "{group}\Start {#TorServicesName}"; Filename: "{app}\runtime\{#TorServicesExeName}"; WorkingDir: "{app}"
@@ -134,6 +141,7 @@ Name: "{group}\{cm:UninstallProgram,{#MyOrgName} - Testnet}"; Filename: "{uninst
 Name: "{userdesktop}\{#MyOrgName} {#AllName}"; Filename: "{app}\runtime\{#AllExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{userdesktop}\{#MyOrgName} {#BaseNodeName}"; Filename: "{app}\runtime\{#BaseNodeExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{userdesktop}\{#MyOrgName} {#ConsoleWalletName}"; Filename: "{app}\runtime\{#ConsoleWalletExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userdesktop}\{#MyOrgName} {#MiningNodeName}"; Filename: "{app}\runtime\{#MiningNodeExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{userdesktop}\{#MyOrgName} {#MergeMiningProxyName}"; Filename: "{app}\runtime\{#MergeMiningProxyExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{userdesktop}\{#MyOrgName} {#MergeMiningName}"; Filename: "{app}\runtime\{#MergeMiningExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{userdesktop}\{#MyOrgName} - {#TorServicesName}"; Filename: "{app}\runtime\{#TorServicesExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
@@ -160,12 +168,14 @@ Type: files; Name: "{app}\README.txt"
 Type: files; Name: "{app}\start_all.lnk"
 Type: files; Name: "{app}\start_tari_base_node.lnk"
 Type: files; Name: "{app}\start_tari_console_wallet.lnk"
+Type: files; Name: "{app}\start_tari_mining_node.lnk"
 Type: files; Name: "{app}\start_tari_merge_mining_proxy.lnk"
 Type: files; Name: "{app}\start_xmrig.lnk"
 Type: files; Name: "{app}\start_tor.lnk"
 Type: files; Name: "{userdesktop}\Tari All.lnk"
 Type: files; Name: "{userdesktop}\Tari Base Node.lnk"
 Type: files; Name: "{userdesktop}\Tari Console Wallet.lnk"
+Type: files; Name: "{userdesktop}\Tari Mining Node.lnk"
 Type: files; Name: "{userdesktop}\Tari Merge Mining Proxy.lnk"
 Type: files; Name: "{userdesktop}\Tari XMRig.lnk"
 Type: files; Name: "{userdesktop}\Tari - Tor Services.lnk"

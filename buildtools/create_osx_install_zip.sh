@@ -57,6 +57,11 @@ cp -f -P "${app_dir}/tari_console_wallet/osx/start_tari_console_wallet" "${tarba
 cp -f "${app_dir}/tari_console_wallet/osx/runtime/start_tari_console_wallet.sh" "${tarball_folder}/runtime/start_tari_console_wallet.sh"
 cp -f "${project_dir}/target/release/tari_console_wallet" "${tarball_folder}/runtime/tari_console_wallet"
 
+# Mining Node
+cp -f -P "${app_dir}/tari_mining_node/osx/start_tari_mining_node" "${tarball_folder}/start_tari_mining_node"
+cp -f "${app_dir}/tari_mining_node/osx/runtime/start_tari_mining_node.sh" "${tarball_folder}/runtime/start_tari_mining_node.sh"
+cp -f "${project_dir}/target/release/tari_mining_node" "${tarball_folder}/runtime/tari_mining_node"
+
 # Merge Mining Proxy
 cp -f -P "${app_dir}/tari_merge_mining_proxy/osx/start_tari_merge_mining_proxy" "${tarball_folder}/start_tari_merge_mining_proxy"
 cp -f -P "${app_dir}/tari_merge_mining_proxy/osx/start_xmrig" "${tarball_folder}/start_xmrig"
