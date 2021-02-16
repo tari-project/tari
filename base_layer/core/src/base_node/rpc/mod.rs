@@ -25,7 +25,14 @@ mod service;
 #[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
 use crate::proto::{
-    base_node::{Signatures, TxQueryBatchResponses, TxQueryResponse, TxSubmissionResponse},
+    base_node::{
+        FetchMatchingUtxos,
+        FetchUtxosResponse,
+        Signatures,
+        TxQueryBatchResponses,
+        TxQueryResponse,
+        TxSubmissionResponse,
+    },
     types::{Signature, Transaction},
 };
 #[cfg(feature = "base_node")]
@@ -55,6 +62,12 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
         &self,
         request: Request<Signatures>,
     ) -> Result<Response<TxQueryBatchResponses>, RpcStatus>;
+
+    #[rpc(method = 4)]
+    async fn fetch_matching_utxos(
+        &self,
+        request: Request<FetchMatchingUtxos>,
+    ) -> Result<Response<FetchUtxosResponse>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]

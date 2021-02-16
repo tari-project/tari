@@ -27,6 +27,7 @@ pub struct OutputManagerServiceConfig {
     pub base_node_query_timeout: Duration,
     pub max_utxo_query_size: usize,
     pub prevent_fee_gt_amount: bool,
+    pub peer_dial_retry_timeout: Duration,
 }
 
 impl Default for OutputManagerServiceConfig {
@@ -35,6 +36,7 @@ impl Default for OutputManagerServiceConfig {
             base_node_query_timeout: Duration::from_secs(60),
             max_utxo_query_size: 5000,
             prevent_fee_gt_amount: true,
+            peer_dial_retry_timeout: Duration::from_secs(20),
         }
     }
 }

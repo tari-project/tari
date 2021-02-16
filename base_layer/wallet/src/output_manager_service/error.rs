@@ -22,6 +22,7 @@
 
 use crate::{base_node_service::error::BaseNodeServiceError, output_manager_service::storage::database::DbKey};
 use diesel::result::Error as DieselError;
+use tari_comms::{peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
     transaction::TransactionError,
@@ -92,6 +93,12 @@ pub enum OutputManagerError {
     Cancellation,
     #[error("Base NodeService Error: `{0}`")]
     BaseNodeServiceError(#[from] BaseNodeServiceError),
+    #[error("Shutdown Signal Received")]
+    Shutdown,
+    #[error("RpcError: `{0}`")]
+    RpcError(#[from] RpcError),
+    #[error("Node ID error: `{0}`")]
+    NodeIdError(#[from] NodeIdError),
 }
 
 #[derive(Debug, Error, PartialEq)]

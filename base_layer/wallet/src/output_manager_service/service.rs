@@ -42,15 +42,13 @@ use crate::{
     transaction_service::handle::TransactionServiceHandle,
     types::{HashDigest, KeyDigest},
 };
-use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
+use futures::{pin_mut, stream::FuturesUnordered, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use std::{cmp::Ordering, collections::HashMap, fmt, sync::Arc, time::Duration};
-use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::outbound::OutboundMessageRequester;
+use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
 use tari_core::{
     consensus::ConsensusConstants,
-    proto::base_node as proto,
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
@@ -77,7 +75,6 @@ use tari_key_manager::{
     key_manager::KeyManager,
     mnemonic::{from_secret_key, MnemonicLanguage},
 };
-use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -96,7 +93,7 @@ const KEY_MANAGER_RECOVERY_BLINDING_BRANCH_KEY: &str = "recovery_blinding";
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
 /// outputs. When the outputs are detected on the blockchain the Transaction service will call this Service to confirm
 /// them to be moved to the spent and unspent output lists respectively.
-pub struct OutputManagerService<TBackend, BNResponseStream>
+pub struct OutputManagerService<TBackend>
 where TBackend: OutputManagerBackend + 'static
 {
     resources: OutputManagerResources<TBackend>,
@@ -104,36 +101,30 @@ where TBackend: OutputManagerBackend + 'static
     coinbase_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
-    base_node_response_stream: Option<BNResponseStream>,
-    base_node_response_publisher: broadcast::Sender<Arc<proto::BaseNodeServiceResponse>>,
-    shutdown_signal: Option<ShutdownSignal>,
-    txo_validation_cancellation_publisher: broadcast::Sender<()>,
-    txo_validation_cancellation_triggered: bool,
+    base_node_update_publisher: broadcast::Sender<CommsPublicKey>,
+    txo_validation_protocols_in_progress: HashMap<String, u64>,
     base_node_service: BaseNodeServiceHandle,
 }
 
-impl<TBackend, BNResponseStream> OutputManagerService<TBackend, BNResponseStream>
-where
-    TBackend: OutputManagerBackend + 'static,
-    BNResponseStream: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
+impl<TBackend> OutputManagerService<TBackend>
+where TBackend: OutputManagerBackend + 'static
 {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         config: OutputManagerServiceConfig,
-        outbound_message_service: OutboundMessageRequester,
         transaction_service: TransactionServiceHandle,
         request_stream: reply_channel::Receiver<
             OutputManagerRequest,
             Result<OutputManagerResponse, OutputManagerError>,
         >,
-        base_node_response_stream: BNResponseStream,
         db: OutputManagerDatabase<TBackend>,
         event_publisher: OutputManagerEventSender,
         factories: CryptoFactories,
         consensus_constants: ConsensusConstants,
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
-    ) -> Result<OutputManagerService<TBackend, BNResponseStream>, OutputManagerError>
+        connectivity_manager: ConnectivityRequester,
+    ) -> Result<OutputManagerService<TBackend>, OutputManagerError>
     {
         // Check to see if there is any persisted state, otherwise start fresh
         let key_manager_state = match db.get_key_manager_state().await? {
@@ -188,28 +179,25 @@ where
         let resources = OutputManagerResources {
             config,
             db,
-            outbound_message_service,
             transaction_service,
             factories,
             base_node_public_key: None,
             event_publisher,
             rewind_data,
             consensus_constants,
+            connectivity_manager,
+            shutdown_signal,
         };
 
-        let (base_node_response_publisher, _) = broadcast::channel(50);
-        let (txo_validation_cancellation_publisher, _) = broadcast::channel(50);
+        let (base_node_update_publisher, _) = broadcast::channel(50);
 
         Ok(OutputManagerService {
             resources,
             key_manager: Mutex::new(key_manager),
             coinbase_key_manager: Mutex::new(coinbase_key_manager),
             request_stream: Some(request_stream),
-            base_node_response_stream: Some(base_node_response_stream),
-            base_node_response_publisher,
-            shutdown_signal: Some(shutdown_signal),
-            txo_validation_cancellation_publisher,
-            txo_validation_cancellation_triggered: false,
+            base_node_update_publisher,
+            txo_validation_protocols_in_progress: HashMap::new(),
             base_node_service,
         })
     }
@@ -222,18 +210,7 @@ where
             .fuse();
         pin_mut!(request_stream);
 
-        let base_node_response_stream = self
-            .base_node_response_stream
-            .take()
-            .expect("Output Manager Service initialized without base_node_response_stream")
-            .fuse();
-        pin_mut!(base_node_response_stream);
-
-        let shutdown = self
-            .shutdown_signal
-            .take()
-            .expect("Output Manager Service initialized without shutdown signal");
-        pin_mut!(shutdown);
+        let mut shutdown = self.resources.shutdown_signal.clone();
 
         let mut txo_validation_handles: FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>> =
             FuturesUnordered::new();
@@ -253,20 +230,6 @@ where
                         e
                     });
                 },
-                 // Incoming messages from the Comms layer
-                msg = base_node_response_stream.select_next_some() => {
-                    let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
-                    trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
-                    let result = self.handle_base_node_response(inner_msg).await.map_err(|e| {
-                        warn!(target: LOG_TARGET, "Error handling base node service response from {}: {:?}, Trace: {}", origin_public_key, e, msg.dht_header.message_tag);
-                        e
-                    });
-
-                    if result.is_err() {
-                        let _ = self.resources.event_publisher
-                                .send(Arc::new(OutputManagerEvent::Error("Error handling Base Node Response message".to_string())));
-                    }
-                }
                 join_result = txo_validation_handles.select_next_some() => {
                    trace!(target: LOG_TARGET, "TXO Validation protocol has ended with result {:?}", join_result);
                    match join_result {
@@ -281,33 +244,6 @@ where
                 complete => {
                     info!(target: LOG_TARGET, "Output manager service shutting down");
                     break;
-                }
-            }
-
-            if self.txo_validation_cancellation_triggered {
-                // Check if all the in progress TXO validation protocols have cancelled
-                // Once they are all finished we can restart them using the newly specified base node address
-                if txo_validation_handles.is_empty() {
-                    info!(
-                        target: LOG_TARGET,
-                        "Starting TXO validation protocols for newly specified Base Node"
-                    );
-                    let _ = self.validate_outputs(
-                        TxoValidationType::Unspent,
-                        TxoValidationRetry::UntilSuccess,
-                        &mut txo_validation_handles,
-                    );
-                    let _ = self.validate_outputs(
-                        TxoValidationType::Spent,
-                        TxoValidationRetry::UntilSuccess,
-                        &mut txo_validation_handles,
-                    );
-                    let _ = self.validate_outputs(
-                        TxoValidationType::Invalid,
-                        TxoValidationRetry::UntilSuccess,
-                        &mut txo_validation_handles,
-                    );
-                    self.txo_validation_cancellation_triggered = false;
                 }
             }
         }
@@ -384,7 +320,7 @@ where
             },
             OutputManagerRequest::GetSeedWords => self.get_seed_words().await.map(OutputManagerResponse::SeedWords),
             OutputManagerRequest::SetBaseNodePublicKey(pk) => self
-                .set_base_node_public_key(pk)
+                .set_base_node_public_key(pk, txo_validation_handles)
                 .await
                 .map(|_| OutputManagerResponse::BaseNodePublicKeySet),
             OutputManagerRequest::ValidateUtxos(validation_type, retries) => self
@@ -427,23 +363,6 @@ where
         }
     }
 
-    /// Handle an incoming basenode response message
-    async fn handle_base_node_response(
-        &mut self,
-        response: proto::BaseNodeServiceResponse,
-    ) -> Result<(), OutputManagerError>
-    {
-        // Publish this response to any protocols that are subscribed
-        if let Err(_e) = self.base_node_response_publisher.send(Arc::new(response)) {
-            trace!(
-                target: LOG_TARGET,
-                "Could not publish Base Node Response, no subscribers to receive."
-            );
-        }
-
-        Ok(())
-    }
-
     fn validate_outputs(
         &mut self,
         validation_type: TxoValidationType,
@@ -454,23 +373,35 @@ where
         match self.resources.base_node_public_key.as_ref() {
             None => Err(OutputManagerError::NoBaseNodeKeysProvided),
             Some(pk) => {
-                let id = OsRng.next_u64();
+                if let Some(id) = self
+                    .txo_validation_protocols_in_progress
+                    .get(&validation_type.to_string())
+                {
+                    info!(
+                        target: LOG_TARGET,
+                        "TXO Validation of type {} already in progress", validation_type
+                    );
+                    Ok(*id)
+                } else {
+                    let id = OsRng.next_u64();
 
-                let utxo_validation_protocol = TxoValidationProtocol::new(
-                    id,
-                    validation_type,
-                    retry_strategy,
-                    self.resources.clone(),
-                    pk.clone(),
-                    self.resources.config.base_node_query_timeout,
-                    self.base_node_response_publisher.subscribe(),
-                    self.txo_validation_cancellation_publisher.subscribe(),
-                );
+                    let utxo_validation_protocol = TxoValidationProtocol::new(
+                        id,
+                        validation_type,
+                        retry_strategy,
+                        self.resources.clone(),
+                        pk.clone(),
+                        self.base_node_update_publisher.subscribe(),
+                    );
 
-                let join_handle = tokio::spawn(utxo_validation_protocol.execute());
-                txo_validation_handles.push(join_handle);
+                    let join_handle = tokio::spawn(utxo_validation_protocol.execute());
+                    txo_validation_handles.push(join_handle);
+                    let _ = self
+                        .txo_validation_protocols_in_progress
+                        .insert(validation_type.to_string(), id);
 
-                Ok(id)
+                    Ok(id)
+                }
             },
         }
     }
@@ -482,12 +413,23 @@ where
                     target: LOG_TARGET,
                     "UTXO Validation Protocol (Id: {}) completed successfully", id
                 );
+
+                for (k, v) in self.txo_validation_protocols_in_progress.clone().iter() {
+                    if v == &id {
+                        let _ = self.txo_validation_protocols_in_progress.remove(k);
+                    }
+                }
             },
             Err(OutputManagerProtocolError { id, error }) => {
                 warn!(
                     target: LOG_TARGET,
                     "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
                 );
+                for (k, v) in self.txo_validation_protocols_in_progress.clone().iter() {
+                    if v == &id {
+                        let _ = self.txo_validation_protocols_in_progress.remove(k);
+                    }
+                }
                 match error {
                     // An event for this error has already been sent at this time
                     OutputManagerError::MaximumAttemptsExceeded => (),
@@ -963,6 +905,7 @@ where
     async fn set_base_node_public_key(
         &mut self,
         base_node_public_key: CommsPublicKey,
+        txo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<(), OutputManagerError>
     {
         info!(
@@ -970,11 +913,41 @@ where
             "Setting base node public key {} for service", base_node_public_key
         );
         let do_txo_validation = self.resources.base_node_public_key.is_some();
-        self.resources.base_node_public_key = Some(base_node_public_key);
+        self.resources.base_node_public_key = Some(base_node_public_key.clone());
+        if let Err(e) = self.base_node_update_publisher.send(base_node_public_key) {
+            trace!(
+                target: LOG_TARGET,
+                "No subscribers to receive base node public key update: {:?}",
+                e
+            );
+        }
 
         if do_txo_validation {
-            let _ = self.txo_validation_cancellation_publisher.send(());
-            self.txo_validation_cancellation_triggered = true;
+            info!(
+                target: LOG_TARGET,
+                "Starting TXO validation protocols for newly specified Base Node"
+            );
+            let _ = self
+                .validate_outputs(
+                    TxoValidationType::Unspent,
+                    TxoValidationRetry::UntilSuccess,
+                    txo_validation_handles,
+                )
+                .map_err(|e| warn!(target: LOG_TARGET, "Error starting validation protocol: {}", e));
+            let _ = self
+                .validate_outputs(
+                    TxoValidationType::Spent,
+                    TxoValidationRetry::UntilSuccess,
+                    txo_validation_handles,
+                )
+                .map_err(|e| warn!(target: LOG_TARGET, "Error starting validation protocol: {}", e));
+            let _ = self
+                .validate_outputs(
+                    TxoValidationType::Invalid,
+                    TxoValidationRetry::UntilSuccess,
+                    txo_validation_handles,
+                )
+                .map_err(|e| warn!(target: LOG_TARGET, "Error starting validation protocol: {}", e));
         }
 
         Ok(())
@@ -1190,11 +1163,12 @@ where TBackend: OutputManagerBackend + 'static
 {
     pub config: OutputManagerServiceConfig,
     pub db: OutputManagerDatabase<TBackend>,
-    pub outbound_message_service: OutboundMessageRequester,
     pub transaction_service: TransactionServiceHandle,
     pub factories: CryptoFactories,
     pub base_node_public_key: Option<CommsPublicKey>,
     pub event_publisher: OutputManagerEventSender,
     pub rewind_data: RewindData,
     pub consensus_constants: ConsensusConstants,
+    pub connectivity_manager: ConnectivityRequester,
+    pub shutdown_signal: ShutdownSignal,
 }

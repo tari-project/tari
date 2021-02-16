@@ -53,7 +53,7 @@ use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::{
     base_node::{
         comms_interface::Broadcast,
-        proto::wallet_response::{
+        proto::wallet_rpc::{
             TxLocation,
             TxQueryBatchResponse,
             TxQueryResponse,
@@ -67,14 +67,14 @@ use tari_core::{
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
     crypto::tari_utilities::Hashable,
     proto::{
-        base_node::Signatures as SignaturesProto,
+        base_node::{FetchMatchingUtxos, Signatures as SignaturesProto},
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
     test_helpers::blockchain::TempDatabase,
     transactions::{
         helpers::schema_to_transaction,
         tari_amount::{uT, T},
-        transaction::UnblindedOutput,
+        transaction::{TransactionOutput, UnblindedOutput},
         types::CryptoFactories,
     },
     txn_schema,
@@ -140,7 +140,7 @@ fn test_base_node_wallet_rpc() {
     let tx1 = (*txs1[0]).clone();
     let tx1_sig = tx1.first_kernel_excess_sig().clone().unwrap().clone();
 
-    let (txs2, _utxos2) = schema_to_transaction(&vec![txn_schema!(
+    let (txs2, utxos2) = schema_to_transaction(&vec![txn_schema!(
         from: vec![utxos1[0].clone()],
         to: vec![400_000 * uT, 590_000 * uT]
     )]);
@@ -266,7 +266,6 @@ fn test_base_node_wallet_rpc() {
     assert_eq!(resp.confirmations, 1);
     assert_eq!(resp.block_hash, Some(block1.hash()));
     assert_eq!(resp.location, TxLocation::Mined);
-
     // try a batch query
     let msg = SignaturesProto {
         sigs: vec![
@@ -288,5 +287,33 @@ fn test_base_node_wallet_rpc() {
         } else {
             assert_eq!(response.location, TxLocation::InMempool);
         }
+    }
+    let factories = CryptoFactories::default();
+
+    let mut req_utxos = utxos1.clone();
+    req_utxos.push(utxos2[0].clone());
+
+    let msg = FetchMatchingUtxos {
+        output_hashes: req_utxos
+            .iter()
+            .map(|uo| uo.as_transaction_output(&factories).unwrap().hash().clone())
+            .collect(),
+    };
+
+    let req = request_mock.request_with_context(Default::default(), msg.clone());
+
+    let response = runtime
+        .block_on(service.fetch_matching_utxos(req))
+        .unwrap()
+        .into_message();
+
+    assert_eq!(response.outputs.len(), utxos1.len());
+    for output_proto in response.outputs.iter() {
+        let output = TransactionOutput::try_from(output_proto.clone()).unwrap();
+
+        assert!(utxos1
+            .iter()
+            .find(|u| u.as_transaction_output(&factories).unwrap().commitment == output.commitment)
+            .is_some());
     }
 }

@@ -35,7 +35,7 @@ use std::{cmp, convert::TryFrom, sync::Arc, time::Duration};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
 use tari_core::{
     base_node::{
-        proto::wallet_response::{TxLocation, TxQueryBatchResponse},
+        proto::wallet_rpc::{TxLocation, TxQueryBatchResponse},
         rpc::BaseNodeWalletRpcClient,
     },
     proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},

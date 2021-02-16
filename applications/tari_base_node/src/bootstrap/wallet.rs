@@ -148,7 +148,6 @@ impl WalletBootstrapper {
                     prevent_fee_gt_amount: config.prevent_fee_gt_amount,
                     ..Default::default()
                 },
-                peer_message_subscriptions.clone(),
                 OutputManagerSqliteDatabase::new(wallet_db_conn.clone(), None),
                 self.factories.clone(),
                 config.network.into(),

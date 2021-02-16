@@ -30,20 +30,12 @@ use crate::{
     },
     transaction_service::handle::TransactionServiceHandle,
 };
-use futures::{future, Future, Stream, StreamExt};
+use futures::{future, Future};
 use log::*;
-use std::sync::Arc;
-use tari_comms_dht::Dht;
+use tari_comms::connectivity::ConnectivityRequester;
 use tari_core::{
     consensus::{ConsensusConstantsBuilder, Network},
-    proto::base_node as proto,
     transactions::types::CryptoFactories,
-};
-use tari_p2p::{
-    comms_connector::SubscriptionFactory,
-    domain_message::DomainMessage,
-    services::utils::{map_decode, ok_or_skip_result},
-    tari_message::TariMessageType,
 };
 use tari_service_framework::{
     reply_channel,
@@ -62,7 +54,6 @@ pub mod service;
 pub mod storage;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
-const SUBSCRIPTION_LABEL: &str = "Output Manager";
 
 pub type TxId = u64;
 
@@ -70,7 +61,6 @@ pub struct OutputManagerServiceInitializer<T>
 where T: OutputManagerBackend
 {
     config: OutputManagerServiceConfig,
-    subscription_factory: Arc<SubscriptionFactory>,
     backend: Option<T>,
     factories: CryptoFactories,
     network: Network,
@@ -79,34 +69,13 @@ where T: OutputManagerBackend
 impl<T> OutputManagerServiceInitializer<T>
 where T: OutputManagerBackend + 'static
 {
-    pub fn new(
-        config: OutputManagerServiceConfig,
-        subscription_factory: Arc<SubscriptionFactory>,
-        backend: T,
-        factories: CryptoFactories,
-        network: Network,
-    ) -> Self
-    {
+    pub fn new(config: OutputManagerServiceConfig, backend: T, factories: CryptoFactories, network: Network) -> Self {
         Self {
             config,
-            subscription_factory,
             backend: Some(backend),
             factories,
             network,
         }
-    }
-
-    fn base_node_response_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>> {
-        trace!(
-            target: LOG_TARGET,
-            "Subscription '{}' for topic '{:?}' created.",
-            SUBSCRIPTION_LABEL,
-            TariMessageType::BaseNodeResponse
-        );
-        self.subscription_factory
-            .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::BaseNodeServiceResponse>)
-            .filter_map(ok_or_skip_result)
     }
 }
 
@@ -121,8 +90,6 @@ where T: OutputManagerBackend + 'static
             "Output manager initialization: Base node query timeout: {}s",
             self.config.base_node_query_timeout.as_secs()
         );
-
-        let base_node_response_stream = self.base_node_response_stream();
 
         let (sender, receiver) = reply_channel::unbounded();
         let (publisher, _) = broadcast::channel(200);
@@ -140,22 +107,21 @@ where T: OutputManagerBackend + 'static
         let constants = ConsensusConstantsBuilder::new(self.network).build();
 
         context.spawn_when_ready(move |handles| async move {
-            let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let transaction_service = handles.expect_handle::<TransactionServiceHandle>();
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
+            let connectivity_manager = handles.expect_handle::<ConnectivityRequester>();
 
             let service = OutputManagerService::new(
                 config,
-                outbound_message_service,
                 transaction_service,
                 receiver,
-                base_node_response_stream,
                 OutputManagerDatabase::new(backend),
                 publisher,
                 factories,
                 constants,
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
+                connectivity_manager,
             )
             .await
             .expect("Could not initialize Output Manager Service")

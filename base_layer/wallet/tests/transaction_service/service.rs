@@ -31,7 +31,6 @@ use crate::{
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::{
     channel::{mpsc, mpsc::Sender},
-    stream,
     FutureExt,
     SinkExt,
     StreamExt,
@@ -65,7 +64,7 @@ use tari_comms_dht::outbound::mock::{
 };
 use tari_core::{
     base_node::{
-        proto::wallet_response::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
+        proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcServer,
     },
     consensus::{ConsensusConstantsBuilder, Network},
@@ -185,7 +184,6 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static, P: AsRef<Path>
         .add_initializer(RegisterHandle::new(comms.connectivity()))
         .add_initializer(OutputManagerServiceInitializer::new(
             OutputManagerServiceConfig::default(),
-            subscription_factory.clone(),
             OutputManagerMemoryDatabase::new(),
             factories.clone(),
             Network::Ridcully,
@@ -330,16 +328,15 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
             OutputManagerServiceConfig::default(),
-            outbound_message_requester.clone(),
             ts_handle.clone(),
             oms_request_receiver,
-            stream::empty(),
             OutputManagerDatabase::new(oms_backend),
             oms_event_publisher.clone(),
             factories.clone(),
             constants,
             shutdown.to_signal(),
             basenode_service_handle,
+            connectivity_manager.clone(),
         ))
         .unwrap();
 

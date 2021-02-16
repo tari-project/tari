@@ -3,6 +3,7 @@ syntax = "proto3";
 import "google/protobuf/wrappers.proto";
 import "block.proto";
 import "types.proto";
+import "transaction.proto";
 
 package tari.base_node;
 
@@ -47,3 +48,13 @@ message TxQueryBatchResponses {
     bool is_synced = 2;
 
 }
+
+message FetchMatchingUtxos {
+    repeated bytes output_hashes = 1;
+}
+
+message FetchUtxosResponse {
+    repeated tari.types.TransactionOutput outputs = 1;
+    bool is_synced = 2;
+}
+

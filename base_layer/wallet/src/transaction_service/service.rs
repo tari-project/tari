@@ -1864,11 +1864,9 @@ where
             },
             transaction_service::{handle::TransactionServiceHandle, storage::models::InboundTransaction},
         };
-        use futures::stream;
         use tari_core::consensus::{ConsensusConstantsBuilder, Network};
 
         let (_sender, receiver) = reply_channel::unbounded();
-        let (tx, _rx) = mpsc::channel(20);
         let (oms_event_publisher, _oms_event_subscriber) = broadcast::channel(100);
         let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
         let (event_publisher, _) = broadcast::channel(100);
@@ -1877,6 +1875,10 @@ where
         let shutdown_signal = self.resources.shutdown_signal.clone();
         let (sender, receiver_bns) = reply_channel::unbounded();
         let (event_publisher_bns, _) = broadcast::channel(100);
+        let (connectivity_tx_publisher, _) = broadcast::channel(100);
+        let (connectivity_tx, _) = mpsc::channel(20);
+
+        let connectivity_manager = ConnectivityRequester::new(connectivity_tx, connectivity_tx_publisher);
 
         let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
         let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown_signal.clone());
@@ -1884,16 +1886,15 @@ where
         handle.spawn(mock_base_node_service.run());
         let mut fake_oms = OutputManagerService::new(
             OutputManagerServiceConfig::default(),
-            OutboundMessageRequester::new(tx),
             ts_handle,
             receiver,
-            stream::empty(),
             OutputManagerDatabase::new(OutputManagerMemoryDatabase::new()),
             oms_event_publisher,
             self.resources.factories.clone(),
             constants,
             shutdown_signal,
             basenode_service_handle,
+            connectivity_manager,
         )
         .await?;
 

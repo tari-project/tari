@@ -28,20 +28,30 @@ use std::{
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_core::{
     base_node::{
-        proto::wallet_response::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
+        proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletService,
     },
     proto::{
         base_node::{
+            FetchMatchingUtxos,
+            FetchUtxosResponse,
             Signatures as SignaturesProto,
             TxQueryBatchResponse as TxQueryBatchResponseProto,
             TxQueryBatchResponses as TxQueryBatchResponsesProto,
             TxQueryResponse as TxQueryResponseProto,
             TxSubmissionResponse as TxSubmissionResponseProto,
         },
-        types::{Signature as SignatureProto, Transaction as TransactionProto},
+        types::{
+            Signature as SignatureProto,
+            Transaction as TransactionProto,
+            TransactionOutput as TransactionOutputProto,
+        },
     },
-    transactions::{transaction::Transaction, types::Signature},
+    tari_utilities::Hashable,
+    transactions::{
+        transaction::{Transaction, TransactionOutput},
+        types::Signature,
+    },
 };
 use tokio::time::delay_for;
 
@@ -70,9 +80,11 @@ pub struct BaseNodeWalletRpcMockState {
     transaction_batch_query_calls: Arc<Mutex<Vec<Vec<Signature>>>>,
     submit_transaction_response: Arc<Mutex<TxSubmissionResponse>>,
     transaction_query_response: Arc<Mutex<TxQueryResponse>>,
+    fetch_utxos_calls: Arc<Mutex<Vec<Vec<Vec<u8>>>>>,
     response_delay: Arc<Mutex<Option<Duration>>>,
     rpc_status_error: Arc<Mutex<Option<RpcStatus>>>,
     synced: Arc<Mutex<bool>>,
+    utxos: Arc<Mutex<Vec<TransactionOutput>>>,
 }
 
 impl BaseNodeWalletRpcMockState {
@@ -92,9 +104,11 @@ impl BaseNodeWalletRpcMockState {
                 confirmations: 0,
                 is_synced: true,
             })),
+            fetch_utxos_calls: Arc::new(Mutex::new(Vec::new())),
             response_delay: Arc::new(Mutex::new(None)),
             rpc_status_error: Arc::new(Mutex::new(None)),
             synced: Arc::new(Mutex::new(true)),
+            utxos: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -123,6 +137,12 @@ impl BaseNodeWalletRpcMockState {
         *lock = synced;
     }
 
+    /// This method sets the contents of the UTXO set against which the queries will be made
+    pub fn set_utxos(&self, utxos: Vec<TransactionOutput>) {
+        let mut lock = acquire_lock!(self.utxos);
+        *lock = utxos;
+    }
+
     pub fn take_submit_transaction_calls(&self) -> Vec<Transaction> {
         acquire_lock!(self.submit_transaction_calls).drain(..).collect()
     }
@@ -145,6 +165,14 @@ impl BaseNodeWalletRpcMockState {
 
     pub fn pop_transaction_batch_query_call(&self) -> Option<Vec<Signature>> {
         acquire_lock!(self.transaction_batch_query_calls).pop()
+    }
+
+    pub fn take_transaction_fetch_utxo_calls(&self) -> Vec<Vec<Vec<u8>>> {
+        acquire_lock!(self.fetch_utxos_calls).drain(..).collect()
+    }
+
+    pub fn pop_transaction_fetch_utxo_call(&self) -> Option<Vec<Vec<u8>>> {
+        acquire_lock!(self.fetch_utxos_calls).pop()
     }
 
     pub async fn wait_pop_transaction_query_calls(
@@ -192,6 +220,24 @@ impl BaseNodeWalletRpcMockState {
         let now = Instant::now();
         while now.elapsed() < timeout {
             let mut lock = acquire_lock!(self.submit_transaction_calls);
+            if (*lock).len() >= num_calls {
+                return Ok((*lock).drain(..num_calls).collect());
+            }
+            drop(lock);
+            delay_for(Duration::from_millis(100)).await;
+        }
+        Err("Did not receive enough calls within the timeout period".to_string())
+    }
+
+    pub async fn wait_pop_fetch_utxos_calls(
+        &self,
+        num_calls: usize,
+        timeout: Duration,
+    ) -> Result<Vec<Vec<Vec<u8>>>, String>
+    {
+        let now = Instant::now();
+        while now.elapsed() < timeout {
+            let mut lock = acquire_lock!(self.fetch_utxos_calls);
             if (*lock).len() >= num_calls {
                 return Ok((*lock).drain(..num_calls).collect());
             }
@@ -319,6 +365,43 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
             is_synced: *sync_lock,
         }))
     }
+
+    async fn fetch_matching_utxos(
+        &self,
+        request: Request<FetchMatchingUtxos>,
+    ) -> Result<Response<FetchUtxosResponse>, RpcStatus>
+    {
+        let delay_lock = (*acquire_lock!(self.state.response_delay)).clone();
+        if let Some(delay) = delay_lock {
+            delay_for(delay).await;
+        }
+
+        let message = request.into_message();
+
+        let mut result = Vec::new();
+        let utxo_lock = acquire_lock!(self.state.utxos);
+        let utxos = (*utxo_lock).clone();
+
+        let mut fetch_utxos_calls = acquire_lock!(self.state.fetch_utxos_calls);
+        (*fetch_utxos_calls).push(message.output_hashes.clone());
+
+        for hash in message.output_hashes.iter() {
+            if let Some(output) = utxos.iter().find(|o| &o.hash() == hash) {
+                result.push(TransactionOutputProto::from(output.clone()));
+            }
+        }
+
+        let status_lock = acquire_lock!(self.state.rpc_status_error);
+        if let Some(status) = (*status_lock).clone() {
+            return Err(status);
+        }
+
+        let sync_lock = acquire_lock!(self.state.synced);
+        Ok(Response::new(FetchUtxosResponse {
+            outputs: result,
+            is_synced: *sync_lock,
+        }))
+    }
 }
 
 #[cfg(test)]
@@ -333,7 +416,7 @@ mod test {
     use std::convert::TryFrom;
     use tari_core::{
         base_node::{
-            proto::wallet_response::{TxSubmissionRejectionReason, TxSubmissionResponse},
+            proto::wallet_rpc::{TxSubmissionRejectionReason, TxSubmissionResponse},
             rpc::{BaseNodeWalletRpcClient, BaseNodeWalletRpcServer},
         },
         transactions::{transaction::Transaction, types::BlindingFactor},
