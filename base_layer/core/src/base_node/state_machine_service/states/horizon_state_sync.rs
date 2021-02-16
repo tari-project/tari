@@ -37,7 +37,11 @@ mod horizon_state_synchronization;
 
 use horizon_state_synchronization::HorizonStateSynchronization;
 
-use super::{BlockSyncInfo, StateEvent, StateInfo};
+use super::{
+    events_and_states::{HorizonSyncInfo, HorizonSyncStatus},
+    StateEvent,
+    StateInfo,
+};
 use crate::{base_node::BaseNodeStateMachine, chain_storage::BlockchainBackend, transactions::types::CryptoFactories};
 use log::*;
 use tari_comms::PeerConnection;
@@ -60,34 +64,34 @@ impl HorizonStateSync {
     ) -> StateEvent
     {
         let local_metadata = match shared.db.get_chain_metadata().await {
-            Ok(m) => m,
+            Ok(metadata) => metadata,
             Err(err) => return StateEvent::FatalError(err.to_string()),
         };
+
         if local_metadata.height_of_longest_chain() > 0 &&
             local_metadata.height_of_longest_chain() >= local_metadata.pruned_height()
         {
             return StateEvent::HorizonStateSynchronized;
         }
-        let sync_height = match shared.db.fetch_last_header().await {
-            Ok(h) => h.height.saturating_sub(local_metadata.pruning_horizon()),
+
+        let horizon_sync_height = match shared.db.fetch_last_header().await {
+            Ok(header) => header.height.saturating_sub(local_metadata.pruning_horizon()),
             Err(err) => return StateEvent::FatalError(err.to_string()),
         };
 
-        if local_metadata.height_of_longest_chain() > sync_height {
+        if local_metadata.height_of_longest_chain() > horizon_sync_height {
             return StateEvent::HorizonStateSynchronized;
         }
-        shared.set_state_info(StateInfo::HorizonSync(BlockSyncInfo::new(
-            sync_height,
-            local_metadata.height_of_longest_chain(),
-            vec![self.sync_peer.peer_node_id().clone()],
-        )));
+
+        let info = HorizonSyncInfo::new(vec![self.sync_peer.peer_node_id().clone()], HorizonSyncStatus::Starting);
+        shared.set_state_info(StateInfo::HorizonSync(info));
 
         let prover = CryptoFactories::default().range_proof;
-        let mut horizon_header_sync =
-            HorizonStateSynchronization::new(shared, self.sync_peer.clone(), sync_height, prover.as_ref());
-        match horizon_header_sync.synchronize().await {
+        let mut horizon_state =
+            HorizonStateSynchronization::new(shared, self.sync_peer.clone(), horizon_sync_height, &prover);
+        match horizon_state.synchronize().await {
             Ok(()) => {
-                info!(target: LOG_TARGET, "Horizon state has synchronised.");
+                info!(target: LOG_TARGET, "Horizon state has synchronized.");
                 StateEvent::HorizonStateSynchronized
             },
             Err(err) => {
