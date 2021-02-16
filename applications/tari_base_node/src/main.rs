@@ -311,7 +311,7 @@ async fn cli_loop(parser: Parser, command_handler: Arc<CommandHandler>, mut shut
     pin_mut!(read_command_fut);
     let mut shutdown_signal = shutdown.to_signal();
     loop {
-        let mut delay = time::delay_for(Duration::from_secs(30)).fuse();
+        let mut interval = time::delay_for(Duration::from_secs(30)).fuse();
         futures::select! {
                 res = read_command_fut => {
                     match res {
@@ -328,7 +328,7 @@ async fn cli_loop(parser: Parser, command_handler: Arc<CommandHandler>, mut shut
                         }
                     }
                 },
-                () = delay => {
+                () = interval => {
                        command_handler.status();
                        print!(">> ")
                },

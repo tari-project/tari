@@ -130,7 +130,7 @@ impl CommandHandler {
     }
 
     pub fn status(&self) {
-        let mut channel = self.state_machine_info.clone();
+        let mut state_info = self.state_machine_info.clone();
         let mut node = self.node_service.clone();
         let mut mempool = self.mempool_service.clone();
         let peer_manager = self.peer_manager.clone();
@@ -150,7 +150,7 @@ impl CommandHandler {
             ("DISABLED".to_string(), "0".to_string())
         };
         self.executor.spawn(async move {
-            let state = channel.recv().await.unwrap();
+            let state = state_info.recv().await.unwrap();
             let metadata = node.get_metadata().await.unwrap();
             let last_header = node
                 .get_headers(vec![metadata.height_of_longest_chain()])

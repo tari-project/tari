@@ -160,7 +160,7 @@ impl Display for BaseNodeState {
 pub enum StateInfo {
     StartUp,
     HeaderSync(BlockSyncInfo),
-    HorizonSync(BlockSyncInfo),
+    HorizonSync(HorizonSyncInfo),
     BlockSync(BlockSyncInfo),
     Listening(ListeningInfo),
 }
@@ -170,14 +170,29 @@ impl StateInfo {
         match self {
             Self::StartUp => "Starting up".to_string(),
             Self::HeaderSync(info) => format!(
-                "Syncing headers:{}/{} ({:.0}%)",
+                "Syncing headers: {}/{} ({:.0}%)",
                 info.local_height,
                 info.tip_height,
                 info.local_height as f64 / info.tip_height as f64 * 100.0
             ),
-            Self::HorizonSync(_) => "Syncing to horizon".to_string(),
+            Self::HorizonSync(info) => match info.status {
+                HorizonSyncStatus::Starting => "Starting horizon sync".to_string(),
+                HorizonSyncStatus::Kernels(current, total) => format!(
+                    "Syncing kernels: {}/{} ({:.0}%)",
+                    current,
+                    total,
+                    current as f64 / total as f64 * 100.0
+                ),
+                HorizonSyncStatus::Outputs(current, total) => format!(
+                    "Syncing outputs: {}/{} ({:.0}%)",
+                    current,
+                    total,
+                    current as f64 / total as f64 * 100.0
+                ),
+                HorizonSyncStatus::Finalizing => "Finalizing horizon sync".to_string(),
+            },
             Self::BlockSync(info) => format!(
-                "Syncing blocks:{}/{} ({:.0}%)",
+                "Syncing blocks: {}/{} ({:.0}%)",
                 info.local_height,
                 info.tip_height,
                 info.local_height as f64 / info.tip_height as f64 * 100.0
@@ -261,4 +276,44 @@ impl Display for BlockSyncInfo {
         }
         fmt.write_str(&format!("Syncing {}/{}\n", self.local_height, self.tip_height))
     }
+}
+
+/// Info about the state of horizon sync
+#[derive(Clone, Debug, PartialEq)]
+pub struct HorizonSyncInfo {
+    pub sync_peers: Vec<NodeId>,
+    pub status: HorizonSyncStatus,
+}
+
+impl HorizonSyncInfo {
+    pub fn new(sync_peers: Vec<NodeId>, status: HorizonSyncStatus) -> HorizonSyncInfo {
+        HorizonSyncInfo { sync_peers, status }
+    }
+}
+
+impl Display for HorizonSyncInfo {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        fmt.write_str("Syncing horizon state from the following peers: \n")?;
+        for peer in &self.sync_peers {
+            fmt.write_str(&format!("{}\n", peer))?;
+        }
+
+        match self.status {
+            HorizonSyncStatus::Starting => fmt.write_str("Starting horizon state synchronization"),
+            HorizonSyncStatus::Kernels(current, total) => {
+                fmt.write_str(&format!("Horizon syncing kernels: {}/{}\n", current, total))
+            },
+            HorizonSyncStatus::Outputs(current, total) => {
+                fmt.write_str(&format!("Horizon syncing outputs: {}/{}\n", current, total))
+            },
+            HorizonSyncStatus::Finalizing => fmt.write_str("Finalizing horizon state synchronization"),
+        }
+    }
+}
+#[derive(Clone, Debug, PartialEq)]
+pub enum HorizonSyncStatus {
+    Starting,
+    Kernels(u64, u64),
+    Outputs(u64, u64),
+    Finalizing,
 }
