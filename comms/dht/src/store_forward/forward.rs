@@ -168,6 +168,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             decryption_result,
             dht_header,
             is_saf_stored,
+            is_already_forwarded,
             ..
         } = message;
 
@@ -199,15 +200,28 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let mut send_params = SendMessageParams::new();
         match (dest_node_id, is_saf_stored) {
             (Some(node_id), Some(true)) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Forwarding SAF message directly to node: {}, Tag#{}", node_id, dht_header.message_tag
+                );
                 send_params.closest_connected(node_id.clone(), excluded_peers);
             },
             _ => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Not storing this SAF message for {}, propagating it. Tag#{}",
+                    dht_header.destination,
+                    dht_header.message_tag
+                );
+
                 send_params.propagate(dht_header.destination.clone(), excluded_peers);
             },
         };
 
-        send_params.with_dht_header(dht_header.clone());
-        self.outbound_service.send_raw(send_params.finish(), body).await?;
+        if !is_already_forwarded {
+            send_params.with_dht_header(dht_header.clone());
+            self.outbound_service.send_raw(send_params.finish(), body).await?;
+        }
 
         Ok(())
     }

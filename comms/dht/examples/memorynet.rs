@@ -55,9 +55,9 @@ use std::{iter::repeat_with, time::Duration};
 use tari_comms::peer_manager::PeerFeatures;
 
 // Size of network
-const NUM_NODES: usize = 40;
+const NUM_NODES: usize = 6;
 // Must be at least 2
-const NUM_WALLETS: usize = 6;
+const NUM_WALLETS: usize = 30;
 const QUIET_MODE: bool = true;
 /// Number of neighbouring nodes each node should include in the connection pool
 const NUM_NEIGHBOURING_NODES: usize = 8;

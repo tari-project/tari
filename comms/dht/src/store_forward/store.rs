@@ -189,7 +189,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         message.set_saf_stored(false);
         if let Some(priority) = self.get_storage_priority(&message).await? {
             message.set_saf_stored(true);
-            self.store(priority, message.clone()).await?;
+            let existing = self.store(priority, message.clone()).await?;
+            message.set_already_forwarded(existing);
         }
 
         trace!(
@@ -409,7 +410,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
     }
 
-    async fn store(&mut self, priority: StoredMessagePriority, message: DecryptedDhtMessage) -> SafResult<()> {
+    async fn store(&mut self, priority: StoredMessagePriority, message: DecryptedDhtMessage) -> SafResult<bool> {
         debug!(
             target: LOG_TARGET,
             "Storing message {} from peer '{}' ({} bytes) (Trace: {})",
@@ -421,9 +422,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let stored_message = NewStoredMessage::try_construct(message, priority)
             .ok_or_else(|| StoreAndForwardError::InvalidStoreMessage)?;
-        self.saf_requester.insert_message(stored_message).await?;
-
-        Ok(())
+        self.saf_requester.insert_message(stored_message).await
     }
 }
 

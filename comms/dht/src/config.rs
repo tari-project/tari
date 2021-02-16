@@ -24,7 +24,7 @@ use crate::{envelope::Network, network_discovery::NetworkDiscoveryConfig, storag
 use std::time::Duration;
 
 /// The default maximum number of messages that can be stored using the Store-and-forward middleware
-pub const SAF_MSG_STORAGE_CAPACITY: usize = 10_000;
+pub const SAF_MSG_STORAGE_CAPACITY: usize = 100_000;
 /// The default time-to-live duration used for storage of low priority messages by the Store-and-forward middleware
 pub const SAF_LOW_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(6 * 60 * 60); // 6 hours
 /// The default time-to-live duration used for storage of high priority messages by the Store-and-forward middleware
@@ -166,7 +166,7 @@ impl Default for DhtConfig {
             saf_auto_request: true,
             saf_max_message_size: 512 * 1024, // 500 KiB
             saf_minimum_request_period: SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
-            msg_hash_cache_capacity: 10_000,
+            msg_hash_cache_capacity: 100_000,
             msg_hash_cache_ttl: Duration::from_secs(5 * 60),
             database_url: DbConnectionUrl::Memory,
             discovery_request_timeout: Duration::from_secs(2 * 60),

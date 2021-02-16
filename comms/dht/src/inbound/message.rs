@@ -83,6 +83,7 @@ pub struct DecryptedDhtMessage {
     pub dht_header: DhtMessageHeader,
     pub is_saf_message: bool,
     pub is_saf_stored: Option<bool>,
+    pub is_already_forwarded: bool,
     pub decryption_result: Result<EnvelopeBody, Vec<u8>>,
 }
 
@@ -101,6 +102,7 @@ impl DecryptedDhtMessage {
             dht_header: message.dht_header,
             is_saf_message: message.is_saf_message,
             is_saf_stored: None,
+            is_already_forwarded: false,
             decryption_result: Ok(message_body),
         }
     }
@@ -114,6 +116,7 @@ impl DecryptedDhtMessage {
             dht_header: message.dht_header,
             is_saf_message: message.is_saf_message,
             is_saf_stored: None,
+            is_already_forwarded: false,
             decryption_result: Err(message.body),
         }
     }
@@ -164,5 +167,9 @@ impl DecryptedDhtMessage {
 
     pub fn set_saf_stored(&mut self, is_stored: bool) {
         self.is_saf_stored = Some(is_stored);
+    }
+
+    pub fn set_already_forwarded(&mut self, is_already_forwarded: bool) {
+        self.is_already_forwarded = is_already_forwarded;
     }
 }

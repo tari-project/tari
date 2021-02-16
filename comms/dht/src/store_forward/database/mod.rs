@@ -43,16 +43,17 @@ impl StoreAndForwardDatabase {
         Self { connection }
     }
 
-    pub async fn insert_message_if_unique(&self, message: NewStoredMessage) -> Result<(), StorageError> {
+    /// Inserts and returns Ok(true) if the item already existed and Ok(false) if it didn't
+    pub async fn insert_message_if_unique(&self, message: NewStoredMessage) -> Result<bool, StorageError> {
         self.connection
             .with_connection_async(move |conn| {
                 match diesel::insert_into(stored_messages::table)
                     .values(message)
                     .execute(conn)
                 {
-                    Ok(_) => Ok(()),
+                    Ok(_) => Ok(false),
                     Err(diesel::result::Error::DatabaseError(kind, e_info)) => match kind {
-                        DatabaseErrorKind::UniqueViolation => Ok(()),
+                        DatabaseErrorKind::UniqueViolation => Ok(true),
                         _ => Err(diesel::result::Error::DatabaseError(kind, e_info).into()),
                     },
                     Err(e) => Err(e.into()),
