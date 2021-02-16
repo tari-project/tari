@@ -45,6 +45,7 @@ use tari_core::{
         state_machine_service::{initializer::BaseNodeStateMachineInitializer, states::HorizonSyncConfig},
         BaseNodeStateMachineConfig,
         BlockSyncConfig,
+        StateMachineHandle,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
@@ -203,6 +204,7 @@ where B: BlockchainBackend + 'static
             .add_service(base_node::rpc::create_base_node_wallet_rpc_service(
                 db,
                 handles.expect_handle::<MempoolHandle>(),
+                handles.expect_handle::<StateMachineHandle>(),
             ));
 
         comms.add_protocol_extension(rpc_server)

@@ -20,10 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::{
-    comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
-    rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::{make_input, random_string, TestParams},
+use crate::{
+    support::{
+        comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
+        rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
+        utils::{make_input, random_string, TestParams},
+    },
+    transaction_service::transaction_protocols::add_transaction_to_database,
 };
 use chrono::{Duration as ChronoDuration, Utc};
 use futures::{
@@ -114,13 +117,13 @@ use tari_wallet::{
         memory_db::WalletMemoryDatabase,
         sqlite_utilities::run_migration_and_create_sqlite_connection,
     },
+    test_utils::make_transaction_database,
     transaction_service::{
         config::TransactionServiceConfig,
         handle::{TransactionEvent, TransactionServiceHandle},
         service::TransactionService,
         storage::{
             database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
-            memory_db::TransactionMemoryDatabase,
             models::{
                 CompletedTransaction,
                 InboundTransaction,
@@ -343,7 +346,7 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
 
     let test_config = config.unwrap_or(TransactionServiceConfig {
-        broadcast_monitoring_timeout: Duration::from_secs(3),
+        broadcast_monitoring_timeout: Duration::from_secs(5),
         chain_monitoring_timeout: Duration::from_secs(5),
         direct_send_timeout: Duration::from_secs(5),
         broadcast_send_timeout: Duration::from_secs(5),
@@ -352,6 +355,7 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
         resend_response_cooldown: Duration::from_secs(200),
         pending_transaction_cancellation_timeout: Duration::from_secs(300),
         peer_dial_retry_timeout: Duration::from_secs(5),
+        max_tx_query_batch_size: 2,
         ..Default::default()
     });
 
@@ -1264,23 +1268,27 @@ fn discovery_async_return_test() {
     );
     let mut shutdown = Shutdown::new();
 
+    let (carol_db, _temp_dir1) = make_transaction_database(None);
+
     let (_carol_ts, _carol_oms, carol_comms) = setup_transaction_service(
         &mut runtime,
         carol_node_identity.clone(),
         vec![],
         factories.clone(),
-        TransactionMemoryDatabase::new(),
+        carol_db,
         db_folder.join("carol"),
         Duration::from_secs(1),
         shutdown.to_signal(),
     );
+
+    let (alice_db, _temp_dir2) = make_transaction_database(None);
 
     let (mut alice_ts, mut alice_oms, alice_comms) = setup_transaction_service(
         &mut runtime,
         alice_node_identity.clone(),
         vec![carol_node_identity.clone()],
         factories.clone(),
-        TransactionMemoryDatabase::new(),
+        alice_db,
         db_folder.join("alice"),
         Duration::from_secs(20),
         shutdown.to_signal(),
@@ -1393,7 +1401,8 @@ fn discovery_async_return_test() {
 fn test_power_mode_updates() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-    let backend = TransactionMemoryDatabase::new();
+    let (backend, _temp_dir) = make_transaction_database(None);
+
     let kernel = KernelBuilder::new()
         .with_excess(&factories.commitment.zero())
         .with_signature(&Signature::default())
@@ -1415,6 +1424,7 @@ fn test_power_mode_updates() {
         coinbase_block_height: None,
         send_count: 0,
         last_send_timestamp: None,
+        valid: true,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -1432,6 +1442,7 @@ fn test_power_mode_updates() {
         coinbase_block_height: None,
         send_count: 0,
         last_send_timestamp: None,
+        valid: true,
     };
 
     backend
@@ -1776,6 +1787,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+    let (backend, _temp_dir) = make_transaction_database(None);
 
     let (
         mut alice_ts,
@@ -1791,7 +1803,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         _,
         _,
         _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
 
     let alice_total_available = 250000 * uT;
     let (_utxo, uo) = make_input(&mut OsRng, alice_total_available, &factories.commitment);
@@ -1830,13 +1842,14 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         },
     };
     assert_eq!(tx_id, msg_tx_id);
+    let (backend, _temp_dir) = make_transaction_database(None);
 
     // Test sending the Reply to a receiver with Direct and then with SAF and never both
     let (_bob_ts, _, bob_outbound_service, _, mut bob_tx_sender, _, _, _, _, _shutdown, _, _, _) =
         setup_transaction_service_no_comms(
             &mut runtime,
             factories.clone(),
-            TransactionMemoryDatabase::new(),
+            backend,
             Some(TransactionServiceConfig {
                 broadcast_monitoring_timeout: Duration::from_secs(20),
                 chain_monitoring_timeout: Duration::from_secs(20),
@@ -1871,12 +1884,13 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
 
     runtime.block_on(async { delay_for(Duration::from_secs(5)).await });
     assert_eq!(bob_outbound_service.call_count(), 0, "Should be no more calls");
+    let (backend, _temp_dir) = make_transaction_database(None);
 
     let (_bob2_ts, _, bob2_outbound_service, _, mut bob2_tx_sender, _, _, _, _, _shutdown, _, _, _) =
         setup_transaction_service_no_comms(
             &mut runtime,
             factories.clone(),
-            TransactionMemoryDatabase::new(),
+            backend,
             Some(TransactionServiceConfig {
                 broadcast_monitoring_timeout: Duration::from_secs(20),
                 chain_monitoring_timeout: Duration::from_secs(20),
@@ -2012,6 +2026,7 @@ fn test_tx_direct_send_behaviour() {
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+    let (backend, _temp_dir) = make_transaction_database(None);
 
     let (
         mut alice_ts,
@@ -2027,7 +2042,7 @@ fn test_tx_direct_send_behaviour() {
         _,
         _,
         _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     let (_utxo, uo) = make_input(&mut OsRng, 1000000 * uT, &factories.commitment);
@@ -2213,9 +2228,8 @@ fn test_tx_direct_send_behaviour() {
 fn test_restarting_transaction_protocols() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-
-    let alice_backend = TransactionMemoryDatabase::new();
-    let bob_backend = TransactionMemoryDatabase::new();
+    let (alice_backend, _temp_dir) = make_transaction_database(None);
+    let (bob_backend, _temp_dir2) = make_transaction_database(None);
 
     let base_node_identity = Arc::new(
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
@@ -2393,8 +2407,7 @@ fn test_handling_coinbase_transactions() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
-    let base_node_identity =
-        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+    let (backend, _temp_dir) = make_transaction_database(None);
 
     let (
         mut alice_ts,
@@ -2407,10 +2420,10 @@ fn test_handling_coinbase_transactions() {
         mut alice_base_node_response_sender,
         _,
         _shutdown,
-        _,
-        _,
-        _,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
+        _mock_rpc_server,
+        server_node_identity,
+        rpc_service_state,
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     let blockheight1 = 10;
@@ -2490,9 +2503,14 @@ fn test_handling_coinbase_transactions() {
     );
 
     runtime
-        .block_on(alice_ts.set_base_node_public_key(base_node_identity.public_key().clone()))
+        .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
         .unwrap();
-
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::Mined,
+        block_hash: None,
+        confirmations: TransactionServiceConfig::default().num_confirmations_required,
+        is_synced: true,
+    });
     assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
 
     // Two Coinbase Monitoring Protocols should be started at this stage.
@@ -2551,13 +2569,13 @@ fn test_handling_coinbase_transactions() {
     runtime
         .block_on(alice_base_node_response_sender.send(create_dummy_message(
             base_node_response_outputs,
-            base_node_identity.public_key(),
+            server_node_identity.public_key(),
         )))
         .unwrap();
     runtime
         .block_on(alice_base_node_response_sender.send(create_dummy_message(
             metadata_response1,
-            base_node_identity.public_key(),
+            server_node_identity.public_key(),
         )))
         .unwrap();
 
@@ -2639,13 +2657,13 @@ fn test_handling_coinbase_transactions() {
     runtime
         .block_on(alice_base_node_response_sender.send(create_dummy_message(
             base_node_response_outputs,
-            base_node_identity.public_key(),
+            server_node_identity.public_key(),
         )))
         .unwrap();
     runtime
         .block_on(alice_base_node_response_sender.send(create_dummy_message(
             metadata_response1,
-            base_node_identity.public_key(),
+            server_node_identity.public_key(),
         )))
         .unwrap();
 
@@ -2727,9 +2745,10 @@ fn test_handling_coinbase_transactions() {
 fn test_coinbase_transaction_reused_for_same_height() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
+    let (backend, _temp_dir) = make_transaction_database(None);
 
     let (mut tx_service, mut output_service, _, _, _, _, _, _, _, _shutdown, _, _, _) =
-        setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
 
     let blockheight1 = 10;
     let fees1 = 2000 * uT;
@@ -3049,8 +3068,7 @@ fn test_resend_on_startup() {
         send_count: 1,
         last_send_timestamp: Some(Utc::now().naive_utc()),
     };
-
-    let alice_backend = TransactionMemoryDatabase::new();
+    let (alice_backend, _temp_dir) = make_transaction_database(None);
     alice_backend
         .write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
             tx_id,
@@ -3088,7 +3106,8 @@ fn test_resend_on_startup() {
     outbound_tx.send_count = 1;
     outbound_tx.last_send_timestamp = Utc::now().naive_utc().checked_sub_signed(ChronoDuration::seconds(20));
 
-    let alice_backend2 = TransactionMemoryDatabase::new();
+    let (alice_backend2, _temp_dir2) = make_transaction_database(None);
+
     alice_backend2
         .write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
             tx_id,
@@ -3151,8 +3170,8 @@ fn test_resend_on_startup() {
         send_count: 0,
         last_send_timestamp: Some(Utc::now().naive_utc()),
     };
+    let (bob_backend, _temp_dir) = make_transaction_database(None);
 
-    let bob_backend = TransactionMemoryDatabase::new();
     bob_backend
         .write(WriteOperation::Insert(DbKeyValuePair::PendingInboundTransaction(
             tx_id,
@@ -3187,8 +3206,8 @@ fn test_resend_on_startup() {
     // Now we do it again with the timestamp prior to the cooldown and see that a message is sent
     inbound_tx.send_count = 1;
     inbound_tx.last_send_timestamp = Utc::now().naive_utc().checked_sub_signed(ChronoDuration::seconds(20));
+    let (bob_backend2, _temp_dir2) = make_transaction_database(None);
 
-    let bob_backend2 = TransactionMemoryDatabase::new();
     bob_backend2
         .write(WriteOperation::Insert(DbKeyValuePair::PendingInboundTransaction(
             tx_id,
@@ -3489,8 +3508,8 @@ fn test_transaction_timeout_cancellation() {
         send_count: 1,
         last_send_timestamp: Some(Utc::now().naive_utc()),
     };
+    let (bob_backend, _temp_dir) = make_transaction_database(None);
 
-    let bob_backend = TransactionMemoryDatabase::new();
     bob_backend
         .write(WriteOperation::Insert(DbKeyValuePair::PendingOutboundTransaction(
             tx_id,
@@ -3529,13 +3548,14 @@ fn test_transaction_timeout_cancellation() {
     let call = bob_outbound_service.pop_call().unwrap();
     let bob_cancelled_message = try_decode_transaction_cancelled_message(call.1.to_vec().clone()).unwrap();
     assert_eq!(bob_cancelled_message.tx_id, tx_id);
+    let (backend, _temp_dir) = make_transaction_database(None);
 
     // Now to do this for the Receiver
     let (carol_ts, _, carol_outbound_service, _, mut carol_tx_sender, _, _, _, _, _shutdown, _, _, _) =
         setup_transaction_service_no_comms(
             &mut runtime,
             factories.clone(),
-            TransactionMemoryDatabase::new(),
+            backend,
             Some(TransactionServiceConfig {
                 transaction_resend_period: Duration::from_secs(10),
                 resend_response_cooldown: Duration::from_secs(5),
@@ -3605,6 +3625,7 @@ fn transaction_service_tx_broadcast() {
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+    let (backend, _temp_dir) = make_transaction_database(None);
 
     let (
         mut alice_ts,
@@ -3620,15 +3641,16 @@ fn transaction_service_tx_broadcast() {
         _mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     runtime
         .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
         .unwrap();
 
+    let (backend2, _temp_dir2) = make_transaction_database(None);
     let (_bob_ts, _bob_output_manager, bob_outbound_service, _, mut bob_tx_sender, _, _, _, _, _shutdown, _, _, _) =
-        setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend2, None);
 
     let alice_output_value = MicroTari(250000);
 
@@ -3779,16 +3801,17 @@ fn transaction_service_tx_broadcast() {
     assert_eq!(alice_completed_tx1.status, TransactionStatus::Completed);
 
     let _ = runtime
-        .block_on(rpc_service_state.wait_pop_submit_transaction_calls(1, Duration::from_secs(20)))
+        .block_on(rpc_service_state.wait_pop_submit_transaction_calls(1, Duration::from_secs(30)))
         .expect("Should receive a tx submission");
     let _ = runtime
-        .block_on(rpc_service_state.wait_pop_transaction_query_calls(1, Duration::from_secs(20)))
+        .block_on(rpc_service_state.wait_pop_transaction_query_calls(1, Duration::from_secs(30)))
         .expect("Should receive a tx query");
 
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::Mined,
         block_hash: None,
         confirmations: TransactionServiceConfig::default().num_confirmations_required,
+        is_synced: true,
     });
 
     runtime.block_on(async {
@@ -3849,21 +3872,23 @@ fn transaction_service_tx_broadcast() {
     assert_eq!(alice_completed_tx2.status, TransactionStatus::Completed);
 
     let _ = runtime
-        .block_on(rpc_service_state.wait_pop_submit_transaction_calls(1, Duration::from_secs(20)))
+        .block_on(rpc_service_state.wait_pop_submit_transaction_calls(1, Duration::from_secs(30)))
         .expect("Should receive a tx submission");
     let _ = runtime
-        .block_on(rpc_service_state.wait_pop_transaction_query_calls(1, Duration::from_secs(20)))
+        .block_on(rpc_service_state.wait_pop_transaction_query_calls(1, Duration::from_secs(30)))
         .expect("Should receive a tx query");
 
     rpc_service_state.set_submit_transaction_response(TxSubmissionResponse {
         accepted: false,
         rejection_reason: TxSubmissionRejectionReason::Orphan,
+        is_synced: true,
     });
 
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::NotStored,
         block_hash: None,
         confirmations: TransactionServiceConfig::default().num_confirmations_required,
+        is_synced: true,
     });
 
     runtime.block_on(async {
@@ -3900,8 +3925,7 @@ fn transaction_service_tx_broadcast() {
 fn broadcast_all_completed_transactions_on_startup() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
-
-    let db = TransactionMemoryDatabase::new();
+    let (db, _temp_dir) = make_transaction_database(None);
 
     let kernel = KernelBuilder::new()
         .with_excess(&factories.commitment.zero())
@@ -3926,11 +3950,12 @@ fn broadcast_all_completed_transactions_on_startup() {
         coinbase_block_height: None,
         send_count: 0,
         last_send_timestamp: None,
+        valid: true,
     };
 
     let completed_tx2 = CompletedTransaction {
         tx_id: 2,
-        status: TransactionStatus::Mined,
+        status: TransactionStatus::MinedConfirmed,
         ..completed_tx1.clone()
     };
 
@@ -3958,13 +3983,20 @@ fn broadcast_all_completed_transactions_on_startup() {
     )))
     .unwrap();
 
-    let (mut alice_ts, _, _, _, _, _, _, _, _, _shutdown, _mock_rpc_server, _server_node_identity, _rpc_service_state) =
+    let (mut alice_ts, _, _, _, _, _, _, _, _, _shutdown, _mock_rpc_server, server_node_identity, rpc_service_state) =
         setup_transaction_service_no_comms(&mut runtime, factories.clone(), db, None);
+
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::Mined,
+        block_hash: None,
+        confirmations: TransactionServiceConfig::default().num_confirmations_required,
+        is_synced: true,
+    });
 
     assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_err());
 
     runtime
-        .block_on(alice_ts.set_base_node_public_key(PublicKey::default()))
+        .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
         .unwrap();
 
     assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
@@ -3978,7 +4010,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    if let TransactionEvent::TransactionBaseNodeConnectionProblem(tx_id) = (*event.unwrap()).clone() {
+                    if let TransactionEvent::TransactionBroadcast(tx_id) = (*event.unwrap()).clone() {
                         if tx_id == 1u64 {
                             found1 = true
                         }
@@ -4017,6 +4049,7 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
 
     let bob_node_identity =
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap();
+    let (backend, _temp_dir) = make_transaction_database(None);
 
     let (
         mut alice_ts,
@@ -4032,15 +4065,16 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
         _mock_rpc_server,
         server_node_identity,
         rpc_service_state,
-    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
     let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
     runtime
         .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
         .unwrap();
+    let (backend2, _temp_dir2) = make_transaction_database(None);
 
     let (_bob_ts, _bob_output_manager, bob_outbound_service, _, mut bob_tx_sender, _, _, _, _, _shutdown, _, _, _) =
-        setup_transaction_service_no_comms(&mut runtime, factories.clone(), TransactionMemoryDatabase::new(), None);
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend2, None);
 
     let alice_output_value = MicroTari(250000);
 
@@ -4168,7 +4202,8 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
     new_rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::Mined,
         block_hash: None,
-        confirmations: TransactionServiceConfig::default().num_confirmations_required,
+        confirmations: 1,
+        is_synced: true,
     });
 
     runtime
@@ -4177,8 +4212,15 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
 
     // Wait for 1 query
     let _ = runtime
-        .block_on(new_rpc_service_state.wait_pop_transaction_query_calls(1, Duration::from_secs(5)))
+        .block_on(new_rpc_service_state.wait_pop_transaction_query_calls(1, Duration::from_secs(60)))
         .unwrap();
+
+    new_rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::Mined,
+        block_hash: None,
+        confirmations: TransactionServiceConfig::default().num_confirmations_required,
+        is_synced: true,
+    });
 
     runtime.block_on(async {
         let mut delay = delay_for(Duration::from_secs(60)).fuse();
@@ -4201,7 +4243,7 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
 }
 
 #[test]
-fn only_start_one_tx_braodcast_protocol_at_a_time() {
+fn only_start_one_tx_broadcast_protocol_at_a_time() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();
 
@@ -4234,6 +4276,7 @@ fn only_start_one_tx_braodcast_protocol_at_a_time() {
         coinbase_block_height: None,
         send_count: 0,
         last_send_timestamp: None,
+        valid: true,
     };
 
     backend
@@ -4256,4 +4299,168 @@ fn only_start_one_tx_braodcast_protocol_at_a_time() {
     let tx_submit_calls =
         runtime.block_on(rpc_service_state.wait_pop_submit_transaction_calls(2, Duration::from_secs(2)));
     assert!(tx_submit_calls.is_err(), "Should not be 2 calls made");
+}
+
+#[test]
+fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
+    let mut runtime = Runtime::new().unwrap();
+    let factories = CryptoFactories::default();
+
+    let temp_dir = tempdir().unwrap();
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let backend = TransactionServiceSqliteDatabase::new(connection, None);
+
+    let db = TransactionDatabase::new(backend.clone());
+
+    runtime.block_on(add_transaction_to_database(
+        1,
+        1 * T,
+        true,
+        Some(TransactionStatus::MinedConfirmed),
+        db.clone(),
+    ));
+
+    runtime.block_on(add_transaction_to_database(
+        2,
+        2 * T,
+        false,
+        Some(TransactionStatus::MinedConfirmed),
+        db.clone(),
+    ));
+    runtime.block_on(add_transaction_to_database(
+        3,
+        3 * T,
+        true,
+        Some(TransactionStatus::Completed),
+        db.clone(),
+    ));
+
+    runtime.block_on(add_transaction_to_database(
+        4,
+        4 * T,
+        true,
+        Some(TransactionStatus::MinedConfirmed),
+        db.clone(),
+    ));
+
+    runtime.block_on(add_transaction_to_database(
+        5,
+        5 * T,
+        false,
+        Some(TransactionStatus::MinedConfirmed),
+        db.clone(),
+    ));
+    runtime.block_on(add_transaction_to_database(
+        6,
+        6 * T,
+        true,
+        Some(TransactionStatus::MinedConfirmed),
+        db.clone(),
+    ));
+
+    let (
+        mut alice_ts,
+        _,
+        _,
+        connectivity_mock_state,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _shutdown,
+        _mock_rpc_server,
+        server_node_identity,
+        rpc_service_state,
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
+
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::Mined,
+        block_hash: None,
+        confirmations: 1,
+        is_synced: true,
+    });
+
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
+        .unwrap();
+
+    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
+
+    let _tx_batch_query_calls =
+        runtime.block_on(rpc_service_state.wait_pop_transaction_batch_query_calls(1, Duration::from_secs(60)));
+
+    let _tx_submit_calls =
+        runtime.block_on(rpc_service_state.wait_pop_submit_transaction_calls(1, Duration::from_secs(60)));
+
+    let _tx_query_calls =
+        runtime.block_on(rpc_service_state.wait_pop_transaction_query_calls(7, Duration::from_secs(60)));
+
+    let completed_txs = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+
+    assert_eq!(completed_txs.len(), 6);
+
+    for (_, tx) in completed_txs.iter() {
+        assert_eq!(tx.status, TransactionStatus::MinedUnconfirmed);
+        assert!(tx.valid);
+    }
+
+    let new_server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let service = BaseNodeWalletRpcMockService::new();
+    let mut new_rpc_service_state = service.get_state();
+
+    let new_server = BaseNodeWalletRpcServer::new(service);
+    let protocol_name = new_server.as_protocol_name();
+
+    let mut new_mock_server = runtime
+        .handle()
+        .enter(|| MockRpcServer::new(new_server, new_server_node_identity.clone()));
+
+    runtime.handle().enter(|| new_mock_server.serve());
+
+    let connection =
+        runtime.block_on(new_mock_server.create_connection(new_server_node_identity.to_peer(), protocol_name.into()));
+    runtime.block_on(connectivity_mock_state.add_active_connection(connection));
+
+    // Set new Base Node response to be mined but unconfirmed
+    new_rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::NotStored,
+        block_hash: None,
+        confirmations: 1,
+        is_synced: true,
+    });
+
+    new_rpc_service_state.set_response_delay(Some(Duration::from_secs(2)));
+
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(new_server_node_identity.public_key().clone()))
+        .unwrap();
+
+    let _tx_batch_query_calls =
+        runtime.block_on(new_rpc_service_state.wait_pop_transaction_batch_query_calls(1, Duration::from_secs(60)));
+
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::Mined,
+        block_hash: None,
+        confirmations: TransactionServiceConfig::default().num_confirmations_required,
+        is_synced: true,
+    });
+
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
+        .unwrap();
+
+    let _tx_batch_query_calls =
+        runtime.block_on(rpc_service_state.wait_pop_transaction_batch_query_calls(3, Duration::from_secs(60)));
+
+    let completed_txs = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+
+    assert_eq!(completed_txs.len(), 6);
+
+    for (_, tx) in completed_txs.iter() {
+        assert_eq!(tx.status, TransactionStatus::MinedConfirmed);
+        assert!(tx.valid);
+    }
 }

@@ -167,6 +167,7 @@ where TBackend: TransactionBackend + 'static
                                 target: LOG_TARGET,
                                 "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {:?}", self.tx_id, self.base_node_public_key
                             );
+                            self.first_rejection = false;
                             continue;
                         },
                         Err(e) => {
@@ -185,7 +186,7 @@ where TBackend: TransactionBackend + 'static
                 },
             }
 
-            let base_node_connection = match connection {
+            let mut base_node_connection = match connection {
                 None => {
                     futures::select! {
                         _ = delay.fuse() => {
@@ -217,7 +218,8 @@ where TBackend: TransactionBackend + 'static
             };
 
             if !(completed_tx.status == TransactionStatus::Completed ||
-                completed_tx.status == TransactionStatus::Broadcast)
+                completed_tx.status == TransactionStatus::Broadcast ||
+                completed_tx.status == TransactionStatus::MinedUnconfirmed)
             {
                 debug!(
                     target: LOG_TARGET,
@@ -225,6 +227,21 @@ where TBackend: TransactionBackend + 'static
                 );
                 return Ok(self.tx_id);
             }
+
+            let mut client = match base_node_connection
+                .connect_rpc_using_builder(
+                    BaseNodeWalletRpcClient::builder()
+                        .with_deadline(self.resources.config.broadcast_monitoring_timeout),
+                )
+                .await
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    warn!(target: LOG_TARGET, "Problem establishing RPC connection: {}", e);
+                    delay.await;
+                    continue;
+                },
+            };
 
             let delay = delay_for(self.timeout);
             loop {
@@ -237,6 +254,7 @@ where TBackend: TransactionBackend + 'static
                                     target: LOG_TARGET,
                                     "Transaction Broadcast protocol (TxId: {}) Base Node Public key updated to {:?}", self.tx_id, self.base_node_public_key
                                 );
+                                self.first_rejection = false;
                                 continue;
                             },
                             Err(e) => {
@@ -249,14 +267,11 @@ where TBackend: TransactionBackend + 'static
                             }
                         }
                     },
-                    result = self.query_or_submit_transaction(completed_tx.clone(), base_node_connection.clone()).fuse() => {
+                    result = self.query_or_submit_transaction(completed_tx.clone(), &mut client).fuse() => {
                         match self.mode {
                             TxBroadcastMode::TransactionSubmission => {
                                 if result? {
                                     self.mode = TxBroadcastMode::TransactionQuery;
-                                    // Wait out the remainder of the delay before proceeding with next loop
-                                    delay.await;
-                                    break;
                                 }
                             },
                             TxBroadcastMode::TransactionQuery => {
@@ -274,7 +289,7 @@ where TBackend: TransactionBackend + 'static
 
                                     self.resources
                                         .db
-                                        .mine_completed_transaction(completed_tx.tx_id)
+                                        .confirm_broadcast_transaction(completed_tx.tx_id)
                                         .await
                                         .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
 
@@ -292,13 +307,12 @@ where TBackend: TransactionBackend + 'static
                                         });
 
                                     return Ok(self.tx_id)
-                                } else {
-                                    // Wait out the remainder of the delay before proceeding with next loop
-                                    delay.await;
-                                    break;
                                 }
                             },
                         }
+                        // Wait out the remainder of the delay before proceeding with next loop
+                        delay.await;
+                        break;
                     },
                     updated_timeout = timeout_update_receiver.select_next_some() => {
                         if let Ok(to) = updated_timeout {
@@ -318,7 +332,7 @@ where TBackend: TransactionBackend + 'static
                         }
                     },
                     _ = shutdown => {
-                        info!(target: LOG_TARGET, "Transaction protocolProtocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
+                        info!(target: LOG_TARGET, "Transaction Broadcast Protocol (TxId: {}) shutting down because it received the shutdown signal", self.tx_id);
                         return Err(TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::Shutdown))
                     },
                 }
@@ -334,14 +348,9 @@ where TBackend: TransactionBackend + 'static
     async fn submit_transaction(
         &mut self,
         tx: Transaction,
-        base_node_connection: &mut PeerConnection,
+        client: &mut BaseNodeWalletRpcClient,
     ) -> Result<bool, TransactionServiceProtocolError>
     {
-        let mut client = base_node_connection
-            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(self.timeout))
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
-
         let response = match client.submit_transaction(tx.into()).await {
             Ok(r) => match TxSubmissionResponse::try_from(r) {
                 Ok(r) => r,
@@ -358,6 +367,14 @@ where TBackend: TransactionBackend + 'static
                 return Ok(false);
             },
         };
+
+        if !response.is_synced {
+            info!(
+                target: LOG_TARGET,
+                "Base Node reports not being synced, submission will be retried."
+            );
+            return Ok(false);
+        }
 
         if !response.accepted && response.rejection_reason != TxSubmissionRejectionReason::AlreadyMined {
             error!(
@@ -395,11 +412,21 @@ where TBackend: TransactionBackend + 'static
                 target: LOG_TARGET,
                 "Transaction (TxId: {}) is Already Mined according to Base Node.", self.tx_id
             );
+            self.resources
+                .db
+                .mine_completed_transaction(self.tx_id)
+                .await
+                .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
         } else {
             info!(
                 target: LOG_TARGET,
                 "Transaction (TxId: {}) successfully submitted to UnconfirmedPool", self.tx_id
             );
+            self.resources
+                .db
+                .broadcast_completed_transaction(self.tx_id)
+                .await
+                .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
             let _ = self
                 .resources
                 .event_publisher
@@ -426,14 +453,9 @@ where TBackend: TransactionBackend + 'static
     async fn transaction_query(
         &mut self,
         signature: Signature,
-        base_node_connection: &mut PeerConnection,
+        client: &mut BaseNodeWalletRpcClient,
     ) -> Result<bool, TransactionServiceProtocolError>
     {
-        let mut client = base_node_connection
-            .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(self.timeout))
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
-
         let response = match client.transaction_query(signature.into()).await {
             Ok(r) => match TxQueryResponse::try_from(r) {
                 Ok(r) => r,
@@ -450,6 +472,17 @@ where TBackend: TransactionBackend + 'static
                 return Ok(false);
             },
         };
+
+        if !(response.is_synced ||
+            (response.location == TxLocation::Mined &&
+                response.confirmations >= self.resources.config.num_confirmations_required as u64))
+        {
+            info!(
+                target: LOG_TARGET,
+                "Base Node reports not being synced, submission will be retried."
+            );
+            return Ok(false);
+        }
 
         // Mined?
         if response.location == TxLocation::Mined {
@@ -468,6 +501,12 @@ where TBackend: TransactionBackend + 'static
                 self.tx_id,
                 response.confirmations
             );
+            self.resources
+                .db
+                .mine_completed_transaction(self.tx_id)
+                .await
+                .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
+
             let _ = self
                 .resources
                 .event_publisher
@@ -530,7 +569,7 @@ where TBackend: TransactionBackend + 'static
     async fn query_or_submit_transaction(
         &mut self,
         completed_transaction: CompletedTransaction,
-        mut base_node_connection: PeerConnection,
+        client: &mut BaseNodeWalletRpcClient,
     ) -> Result<bool, TransactionServiceProtocolError>
     {
         if self.mode == TxBroadcastMode::TransactionSubmission {
@@ -538,8 +577,7 @@ where TBackend: TransactionBackend + 'static
                 target: LOG_TARGET,
                 "Submitting Transaction (TxId: {}) to Base Node", self.tx_id
             );
-            self.submit_transaction(completed_transaction.transaction, &mut base_node_connection)
-                .await
+            self.submit_transaction(completed_transaction.transaction, client).await
         } else {
             info!(
                 target: LOG_TARGET,
@@ -551,8 +589,7 @@ where TBackend: TransactionBackend + 'static
                 .ok_or_else(|| {
                     TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidTransaction)
                 })?;
-            self.transaction_query(signature.clone(), &mut base_node_connection)
-                .await
+            self.transaction_query(signature.clone(), client).await
         }
     }
 

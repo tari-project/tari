@@ -2,6 +2,7 @@ syntax = "proto3";
 
 import "google/protobuf/wrappers.proto";
 import "block.proto";
+import "types.proto";
 
 package tari.base_node;
 
@@ -17,6 +18,7 @@ enum TxSubmissionRejectionReason {
 message TxSubmissionResponse {
     bool accepted = 1;
     TxSubmissionRejectionReason rejection_reason = 2;
+    bool is_synced = 3;
 }
 
 enum TxLocation {
@@ -30,4 +32,18 @@ message TxQueryResponse {
     TxLocation location = 1;
     google.protobuf.BytesValue block_hash = 2;
     uint64 confirmations = 3;
+    bool is_synced = 4;
+}
+
+message TxQueryBatchResponse {
+    tari.types.Signature signature = 1;
+    TxLocation location = 2;
+    google.protobuf.BytesValue block_hash = 3;
+    uint64 confirmations = 4;
+}
+
+message TxQueryBatchResponses {
+    repeated TxQueryBatchResponse responses = 1;
+    bool is_synced = 2;
+
 }

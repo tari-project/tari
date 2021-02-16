@@ -133,6 +133,8 @@ pub enum TransactionServiceError {
     InvalidTransaction,
     #[error("RpcError: `{0}`")]
     RpcError(#[from] RpcError),
+    #[error("Protobuf Conversion Error: `{0}`")]
+    ProtobufConversionError(String),
 }
 
 #[derive(Debug, Error)]
@@ -169,6 +171,8 @@ pub enum TransactionStorageError {
     AlreadyEncrypted,
     #[error("Aead error: `{0}`")]
     AeadError(String),
+    #[error("Transaction (TxId: '{0}') is not mined")]
+    TransactionNotMined(TxId),
 }
 
 /// This error type is used to return TransactionServiceErrors from inside a Transaction Service protocol but also

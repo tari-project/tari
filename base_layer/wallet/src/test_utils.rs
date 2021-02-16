@@ -20,8 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod transaction_broadcast_protocol;
-pub mod transaction_coinbase_monitoring_protocol;
-pub mod transaction_receive_protocol;
-pub mod transaction_send_protocol;
-pub mod transaction_validation_protocol;
+use crate::{
+    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+    transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
+};
+use core::iter;
+use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+use std::path::Path;
+use tempfile::{tempdir, TempDir};
+
+pub fn random_string(len: usize) -> String {
+    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
+}
+
+/// A test helper to create a temporary transaction service database
+pub fn make_transaction_database(path: Option<String>) -> (TransactionServiceSqliteDatabase, Option<TempDir>) {
+    let (path_string, temp_dir): (String, Option<TempDir>) = if let Some(p) = path {
+        (p, None)
+    } else {
+        let temp_dir = tempdir().unwrap();
+        let path_string = temp_dir.path().to_str().unwrap().to_string();
+        (path_string, Some(temp_dir))
+    };
+
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_path = Path::new(&path_string).join(db_name);
+
+    let connection =
+        run_migration_and_create_sqlite_connection(&db_path.to_str().expect("Should be able to make path")).unwrap();
+    (TransactionServiceSqliteDatabase::new(connection, None), temp_dir)
+}

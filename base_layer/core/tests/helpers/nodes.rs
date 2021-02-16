@@ -37,6 +37,7 @@ use tari_core::{
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
         LocalNodeCommsInterface,
         OutboundNodeCommsInterface,
+        StateMachineHandle,
     },
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
@@ -81,6 +82,7 @@ pub struct NodeInterfaces {
     pub liveness_handle: LivenessHandle,
     pub comms: CommsNode,
     pub mock_base_node_state_machine: MockBaseNodeStateMachine,
+    pub state_machine_handle: StateMachineHandle,
     pub messaging_events: MessagingEventSender,
     pub shutdown: Shutdown,
 }
@@ -460,6 +462,7 @@ fn setup_base_node_services(
     let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
     let chain_metadata_handle = handles.expect_handle::<ChainMetadataHandle>();
     let liveness_handle = handles.expect_handle::<LivenessHandle>();
+    let state_machine_handle = handles.expect_handle::<StateMachineHandle>();
 
     NodeInterfaces {
         node_identity,
@@ -477,5 +480,6 @@ fn setup_base_node_services(
         messaging_events,
         mock_base_node_state_machine: mock_state_machine,
         shutdown,
+        state_machine_handle,
     }
 }

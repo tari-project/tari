@@ -21,18 +21,21 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::rpc::BaseNodeWalletService,
+    base_node::{rpc::BaseNodeWalletService, state_machine_service::states::StateInfo, StateMachineHandle},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    mempool::service::MempoolHandle,
+    mempool::{service::MempoolHandle, TxStorageResponse},
     proto::{
-        base_node::{TxLocation, TxQueryResponse, TxSubmissionResponse},
+        base_node::{
+            Signatures as SignaturesProto,
+            TxLocation,
+            TxQueryBatchResponse,
+            TxQueryBatchResponses,
+            TxQueryResponse,
+            TxSubmissionRejectionReason,
+            TxSubmissionResponse,
+        },
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
-};
-
-use crate::{
-    mempool::TxStorageResponse,
-    proto::base_node::TxSubmissionRejectionReason,
     transactions::{transaction::Transaction, types::Signature},
 };
 use std::convert::TryFrom;
@@ -43,11 +46,16 @@ const LOG_TARGET: &str = "c::base_node::rpc";
 pub struct BaseNodeWalletRpcService<B> {
     db: AsyncBlockchainDb<B>,
     mempool: MempoolHandle,
+    state_machine: StateMachineHandle,
 }
 
 impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
-    pub fn new(db: AsyncBlockchainDb<B>, mempool: MempoolHandle) -> Self {
-        Self { db, mempool }
+    pub fn new(db: AsyncBlockchainDb<B>, mempool: MempoolHandle, state_machine: StateMachineHandle) -> Self {
+        Self {
+            db,
+            mempool,
+            state_machine,
+        }
     }
 
     #[inline]
@@ -59,83 +67,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
     pub fn mempool(&self) -> MempoolHandle {
         self.mempool.clone()
     }
-}
 
-#[tari_comms::async_trait]
-impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpcService<B> {
-    async fn submit_transaction(
-        &self,
-        request: Request<TransactionProto>,
-    ) -> Result<Response<TxSubmissionResponse>, RpcStatus>
-    {
-        let message = request.into_message();
-        let transaction =
-            Transaction::try_from(message).map_err(|_| RpcStatus::bad_request("Transaction was invalid"))?;
-        let mut mempool = self.mempool();
-
-        let response = match mempool
-            .submit_transaction(transaction.clone())
-            .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
-        {
-            TxStorageResponse::UnconfirmedPool => TxSubmissionResponse {
-                accepted: true,
-                rejection_reason: TxSubmissionRejectionReason::None.into(),
-            },
-
-            TxStorageResponse::NotStoredOrphan => TxSubmissionResponse {
-                accepted: false,
-                rejection_reason: TxSubmissionRejectionReason::Orphan.into(),
-            },
-            TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {
-                accepted: false,
-                rejection_reason: TxSubmissionRejectionReason::TimeLocked.into(),
-            },
-
-            TxStorageResponse::NotStored => TxSubmissionResponse {
-                accepted: false,
-                rejection_reason: TxSubmissionRejectionReason::ValidationFailed.into(),
-            },
-            TxStorageResponse::NotStoredAlreadySpent | TxStorageResponse::ReorgPool => {
-                // Is this transaction a double spend or has this transaction been mined?
-                match transaction.first_kernel_excess_sig() {
-                    None => TxSubmissionResponse {
-                        accepted: false,
-                        rejection_reason: TxSubmissionRejectionReason::DoubleSpend.into(),
-                    },
-                    Some(s) => {
-                        // Check to see if the kernel exists in the blockchain db in which case this exact transaction
-                        // already exists in the chain, otherwise it is a double spend
-                        let db = self.db();
-                        match db
-                            .fetch_kernel_by_excess_sig(s.clone())
-                            .await
-                            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
-                        {
-                            None => TxSubmissionResponse {
-                                accepted: false,
-                                rejection_reason: TxSubmissionRejectionReason::DoubleSpend.into(),
-                            },
-                            Some(_) => TxSubmissionResponse {
-                                accepted: false,
-                                rejection_reason: TxSubmissionRejectionReason::AlreadyMined.into(),
-                            },
-                        }
-                    },
-                }
-            },
-        };
-        Ok(Response::new(response))
+    #[inline]
+    pub fn state_machine(&self) -> StateMachineHandle {
+        self.state_machine.clone()
     }
 
-    async fn transaction_query(
-        &self,
-        request: Request<SignatureProto>,
-    ) -> Result<Response<TxQueryResponse>, RpcStatus>
-    {
-        let message = request.into_message();
-        let signature = Signature::try_from(message).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
-
+    async fn fetch_kernel(&self, signature: Signature) -> Result<TxQueryResponse, RpcStatus> {
         let db = self.db();
         match db
             .fetch_kernel_by_excess_sig(signature.clone())
@@ -160,8 +98,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                             location: TxLocation::Mined as i32,
                             block_hash: Some(block_hash),
                             confirmations,
+                            is_synced: true,
                         };
-                        return Ok(Response::new(response));
+                        return Ok(response);
                     },
                 }
             },
@@ -178,6 +117,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 location: TxLocation::InMempool as i32,
                 block_hash: None,
                 confirmations: 0,
+                is_synced: true,
             },
             TxStorageResponse::ReorgPool |
             TxStorageResponse::NotStoredOrphan |
@@ -187,9 +127,145 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 location: TxLocation::NotStored as i32,
                 block_hash: None,
                 confirmations: 0,
+                is_synced: true,
             },
         };
+        Ok(mempool_response)
+    }
+}
 
-        Ok(Response::new(mempool_response))
+#[tari_comms::async_trait]
+impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpcService<B> {
+    async fn submit_transaction(
+        &self,
+        request: Request<TransactionProto>,
+    ) -> Result<Response<TxSubmissionResponse>, RpcStatus>
+    {
+        let message = request.into_message();
+        let transaction =
+            Transaction::try_from(message).map_err(|_| RpcStatus::bad_request("Transaction was invalid"))?;
+        let mut mempool = self.mempool();
+        let state_machine = self.state_machine();
+
+        // Determine if we are synced
+        let status_watch = state_machine.get_status_info_watch();
+        let is_synced = match (*status_watch.borrow()).state_info {
+            StateInfo::Listening(li) => li.is_synced(),
+            _ => false,
+        };
+
+        let response = match mempool
+            .submit_transaction(transaction.clone())
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+        {
+            TxStorageResponse::UnconfirmedPool => TxSubmissionResponse {
+                accepted: true,
+                rejection_reason: TxSubmissionRejectionReason::None.into(),
+                is_synced,
+            },
+
+            TxStorageResponse::NotStoredOrphan => TxSubmissionResponse {
+                accepted: false,
+                rejection_reason: TxSubmissionRejectionReason::Orphan.into(),
+                is_synced,
+            },
+            TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {
+                accepted: false,
+                rejection_reason: TxSubmissionRejectionReason::TimeLocked.into(),
+                is_synced,
+            },
+
+            TxStorageResponse::NotStored => TxSubmissionResponse {
+                accepted: false,
+                rejection_reason: TxSubmissionRejectionReason::ValidationFailed.into(),
+                is_synced,
+            },
+            TxStorageResponse::NotStoredAlreadySpent | TxStorageResponse::ReorgPool => {
+                // Is this transaction a double spend or has this transaction been mined?
+                match transaction.first_kernel_excess_sig() {
+                    None => TxSubmissionResponse {
+                        accepted: false,
+                        rejection_reason: TxSubmissionRejectionReason::DoubleSpend.into(),
+                        is_synced,
+                    },
+                    Some(s) => {
+                        // Check to see if the kernel exists in the blockchain db in which case this exact transaction
+                        // already exists in the chain, otherwise it is a double spend
+                        let db = self.db();
+                        match db
+                            .fetch_kernel_by_excess_sig(s.clone())
+                            .await
+                            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                        {
+                            None => TxSubmissionResponse {
+                                accepted: false,
+                                rejection_reason: TxSubmissionRejectionReason::DoubleSpend.into(),
+                                is_synced,
+                            },
+                            Some(_) => TxSubmissionResponse {
+                                accepted: false,
+                                rejection_reason: TxSubmissionRejectionReason::AlreadyMined.into(),
+                                is_synced,
+                            },
+                        }
+                    },
+                }
+            },
+        };
+        Ok(Response::new(response))
+    }
+
+    async fn transaction_query(
+        &self,
+        request: Request<SignatureProto>,
+    ) -> Result<Response<TxQueryResponse>, RpcStatus>
+    {
+        let state_machine = self.state_machine();
+
+        // Determine if we are synced
+        let status_watch = state_machine.get_status_info_watch();
+        let is_synced = match (*status_watch.borrow()).state_info {
+            StateInfo::Listening(li) => li.is_synced(),
+            _ => false,
+        };
+
+        let message = request.into_message();
+        let signature = Signature::try_from(message).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
+
+        let mut response = self.fetch_kernel(signature).await?;
+        response.is_synced = is_synced;
+        Ok(Response::new(response))
+    }
+
+    async fn transaction_batch_query(
+        &self,
+        request: Request<SignaturesProto>,
+    ) -> Result<Response<TxQueryBatchResponses>, RpcStatus>
+    {
+        let state_machine = self.state_machine();
+
+        // Determine if we are synced
+        let status_watch = state_machine.get_status_info_watch();
+        let is_synced = match (*status_watch.borrow()).state_info {
+            StateInfo::Listening(li) => li.is_synced(),
+            _ => false,
+        };
+
+        let message = request.into_message();
+
+        let mut responses: Vec<TxQueryBatchResponse> = Vec::new();
+
+        for sig in message.sigs {
+            let signature = Signature::try_from(sig).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
+            let response: TxQueryResponse = self.fetch_kernel(signature.clone()).await?;
+            responses.push(TxQueryBatchResponse {
+                signature: Some(SignatureProto::from(signature)),
+                location: response.location,
+                block_hash: response.block_hash,
+                confirmations: response.confirmations,
+            });
+        }
+        Ok(Response::new(TxQueryBatchResponses { responses, is_synced }))
     }
 }

@@ -56,7 +56,8 @@ impl From<models::TransactionStatus> for grpc::TransactionStatus {
         match status {
             Completed => grpc::TransactionStatus::Completed,
             Broadcast => grpc::TransactionStatus::Broadcast,
-            Mined => grpc::TransactionStatus::Mined,
+            MinedUnconfirmed => grpc::TransactionStatus::MinedUnconfirmed,
+            MinedConfirmed => grpc::TransactionStatus::MinedConfirmed,
             Imported => grpc::TransactionStatus::Imported,
             Pending => grpc::TransactionStatus::Pending,
             Coinbase => grpc::TransactionStatus::Coinbase,

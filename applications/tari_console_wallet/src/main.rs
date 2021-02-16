@@ -5,7 +5,7 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
-#![recursion_limit = "512"]
+#![recursion_limit = "1024"]
 use init::{
     boot,
     change_password,

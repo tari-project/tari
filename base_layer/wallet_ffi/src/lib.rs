@@ -5362,7 +5362,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::Mined);
+        assert_eq!((*tx).status, TransactionStatus::MinedUnconfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.mined_tx_callback_called = true;
         drop(lock);
@@ -5439,7 +5439,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::Mined);
+        assert_eq!((*tx).status, TransactionStatus::MinedUnconfirmed);
         completed_transaction_destroy(tx);
     }
 
@@ -6000,9 +6000,9 @@ mod test {
                     (&mut (*id_completed)).tx_id,
                     error_ptr,
                 );
-                if (&mut (*id_completed)).status == TransactionStatus::Mined {
+                if (&mut (*id_completed)).status == TransactionStatus::MinedUnconfirmed {
                     assert_eq!((*id_completed), (*id_completed_get));
-                    assert_eq!((*id_completed_get).status, TransactionStatus::Mined);
+                    assert_eq!((*id_completed_get).status, TransactionStatus::MinedUnconfirmed);
                 } else {
                     assert_eq!(id_completed_get, ptr::null_mut());
                     let pk_compare = wallet_get_public_key(&mut (*alice_wallet), error_ptr);
@@ -6013,7 +6013,7 @@ mod test {
                             error_ptr,
                         );
                         assert_ne!(id_inbound_get, ptr::null_mut());
-                        assert_ne!((&mut (*id_inbound_get)).status, TransactionStatus::Mined);
+                        assert_ne!((&mut (*id_inbound_get)).status, TransactionStatus::MinedUnconfirmed);
                         pending_inbound_transaction_destroy(&mut (*id_inbound_get));
                     } else {
                         let id_outbound_get = wallet_get_pending_outbound_transaction_by_id(
@@ -6022,7 +6022,7 @@ mod test {
                             error_ptr,
                         );
                         assert_ne!(id_outbound_get, ptr::null_mut());
-                        assert_ne!((&mut (*id_outbound_get)).status, TransactionStatus::Mined);
+                        assert_ne!((&mut (*id_outbound_get)).status, TransactionStatus::MinedUnconfirmed);
                         pending_outbound_transaction_destroy(&mut (*id_outbound_get));
                     }
                     public_key_destroy(&mut (*pk_compare));
@@ -6206,7 +6206,8 @@ mod test {
 
             let split_msg = CString::new("Test Coin Split").unwrap();
             let split_msg_str: *const c_char = CString::into_raw(split_msg) as *const c_char;
-            let split_tx_id = wallet_coin_split(alice_wallet, 1000, 3, 100, split_msg_str, 0, error_ptr);
+
+            let split_tx_id = wallet_coin_split(alice_wallet, 50000, 3, 20, split_msg_str, 0, error_ptr);
             assert_eq!(error, 0);
             let split_tx = (*alice_wallet).runtime.block_on(
                 (*alice_wallet)

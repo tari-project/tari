@@ -32,7 +32,13 @@ use tari_core::{
         rpc::BaseNodeWalletService,
     },
     proto::{
-        base_node::{TxQueryResponse as TxQueryResponseProto, TxSubmissionResponse as TxSubmissionResponseProto},
+        base_node::{
+            Signatures as SignaturesProto,
+            TxQueryBatchResponse as TxQueryBatchResponseProto,
+            TxQueryBatchResponses as TxQueryBatchResponsesProto,
+            TxQueryResponse as TxQueryResponseProto,
+            TxSubmissionResponse as TxSubmissionResponseProto,
+        },
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
     transactions::{transaction::Transaction, types::Signature},
@@ -61,8 +67,12 @@ macro_rules! acquire_lock {
 pub struct BaseNodeWalletRpcMockState {
     submit_transaction_calls: Arc<Mutex<Vec<Transaction>>>,
     transaction_query_calls: Arc<Mutex<Vec<Signature>>>,
+    transaction_batch_query_calls: Arc<Mutex<Vec<Vec<Signature>>>>,
     submit_transaction_response: Arc<Mutex<TxSubmissionResponse>>,
     transaction_query_response: Arc<Mutex<TxQueryResponse>>,
+    response_delay: Arc<Mutex<Option<Duration>>>,
+    rpc_status_error: Arc<Mutex<Option<RpcStatus>>>,
+    synced: Arc<Mutex<bool>>,
 }
 
 impl BaseNodeWalletRpcMockState {
@@ -70,15 +80,21 @@ impl BaseNodeWalletRpcMockState {
         Self {
             submit_transaction_calls: Arc::new(Mutex::new(Vec::new())),
             transaction_query_calls: Arc::new(Mutex::new(Vec::new())),
+            transaction_batch_query_calls: Arc::new(Mutex::new(Vec::new())),
             submit_transaction_response: Arc::new(Mutex::new(TxSubmissionResponse {
                 accepted: true,
                 rejection_reason: TxSubmissionRejectionReason::None,
+                is_synced: true,
             })),
             transaction_query_response: Arc::new(Mutex::new(TxQueryResponse {
                 location: TxLocation::InMempool,
                 block_hash: None,
                 confirmations: 0,
+                is_synced: true,
             })),
+            response_delay: Arc::new(Mutex::new(None)),
+            rpc_status_error: Arc::new(Mutex::new(None)),
+            synced: Arc::new(Mutex::new(true)),
         }
     }
 
@@ -90,6 +106,21 @@ impl BaseNodeWalletRpcMockState {
     pub fn set_transaction_query_response(&self, response: TxQueryResponse) {
         let mut lock = acquire_lock!(self.transaction_query_response);
         *lock = response;
+    }
+
+    pub fn set_response_delay(&mut self, delay: Option<Duration>) {
+        let mut lock = acquire_lock!(self.response_delay);
+        *lock = delay;
+    }
+
+    pub fn set_rpc_status_error(&self, rpc_status: Option<RpcStatus>) {
+        let mut lock = acquire_lock!(self.rpc_status_error);
+        *lock = rpc_status;
+    }
+
+    pub fn set_is_synced(&self, synced: bool) {
+        let mut lock = acquire_lock!(self.synced);
+        *lock = synced;
     }
 
     pub fn take_submit_transaction_calls(&self) -> Vec<Transaction> {
@@ -108,6 +139,14 @@ impl BaseNodeWalletRpcMockState {
         acquire_lock!(self.transaction_query_calls).pop()
     }
 
+    pub fn take_transaction_batch_query_calls(&self) -> Vec<Vec<Signature>> {
+        acquire_lock!(self.transaction_batch_query_calls).drain(..).collect()
+    }
+
+    pub fn pop_transaction_batch_query_call(&self) -> Option<Vec<Signature>> {
+        acquire_lock!(self.transaction_batch_query_calls).pop()
+    }
+
     pub async fn wait_pop_transaction_query_calls(
         &self,
         num_calls: usize,
@@ -117,6 +156,24 @@ impl BaseNodeWalletRpcMockState {
         let now = Instant::now();
         while now.elapsed() < timeout {
             let mut lock = acquire_lock!(self.transaction_query_calls);
+            if (*lock).len() >= num_calls {
+                return Ok((*lock).drain(..num_calls).collect());
+            }
+            drop(lock);
+            delay_for(Duration::from_millis(100)).await;
+        }
+        Err("Did not receive enough calls within the timeout period".to_string())
+    }
+
+    pub async fn wait_pop_transaction_batch_query_calls(
+        &self,
+        num_calls: usize,
+        timeout: Duration,
+    ) -> Result<Vec<Vec<Signature>>, String>
+    {
+        let now = Instant::now();
+        while now.elapsed() < timeout {
+            let mut lock = acquire_lock!(self.transaction_batch_query_calls);
             if (*lock).len() >= num_calls {
                 return Ok((*lock).drain(..num_calls).collect());
             }
@@ -168,6 +225,11 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<TransactionProto>,
     ) -> Result<Response<TxSubmissionResponseProto>, RpcStatus>
     {
+        let delay_lock = (*acquire_lock!(self.state.response_delay)).clone();
+        if let Some(delay) = delay_lock {
+            delay_for(delay).await;
+        }
+
         let message = request.into_message();
         let transaction =
             Transaction::try_from(message).map_err(|_| RpcStatus::bad_request("Transaction was invalid"))?;
@@ -175,6 +237,11 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
 
         let mut submit_transaction_calls_lock = acquire_lock!(self.state.submit_transaction_calls);
         (*submit_transaction_calls_lock).push(transaction);
+
+        let status_lock = acquire_lock!(self.state.rpc_status_error);
+        if let Some(status) = (*status_lock).clone() {
+            return Err(status);
+        }
 
         let submit_transaction_response_lock = acquire_lock!(self.state.submit_transaction_response);
 
@@ -186,6 +253,11 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<SignatureProto>,
     ) -> Result<Response<TxQueryResponseProto>, RpcStatus>
     {
+        let delay_lock = (*acquire_lock!(self.state.response_delay)).clone();
+        if let Some(delay) = delay_lock {
+            delay_for(delay).await;
+        }
+
         let message = request.into_message();
         let signature = Signature::try_from(message).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
         log::info!("Transaction Query call received: {:?}", signature);
@@ -193,9 +265,59 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         let mut transaction_query_calls_lock = acquire_lock!(self.state.transaction_query_calls);
         (*transaction_query_calls_lock).push(signature);
 
+        let status_lock = acquire_lock!(self.state.rpc_status_error);
+        if let Some(status) = (*status_lock).clone() {
+            return Err(status);
+        }
+
         let transaction_query_response_lock = acquire_lock!(self.state.transaction_query_response);
 
         Ok(Response::new(transaction_query_response_lock.clone().into()))
+    }
+
+    async fn transaction_batch_query(
+        &self,
+        request: Request<SignaturesProto>,
+    ) -> Result<Response<TxQueryBatchResponsesProto>, RpcStatus>
+    {
+        let delay_lock = (*acquire_lock!(self.state.response_delay)).clone();
+        if let Some(delay) = delay_lock {
+            delay_for(delay).await;
+        }
+
+        let message = request.into_message();
+        let mut signatures = Vec::new();
+        for s in message.sigs {
+            let signature = Signature::try_from(s).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
+            signatures.push(signature);
+        }
+        log::info!("Transaction Batch Query call received: {:?}", signatures);
+
+        let mut transaction_query_calls_lock = acquire_lock!(self.state.transaction_batch_query_calls);
+        (*transaction_query_calls_lock).push(signatures.clone());
+
+        let status_lock = acquire_lock!(self.state.rpc_status_error);
+        if let Some(status) = (*status_lock).clone() {
+            return Err(status);
+        }
+
+        let transaction_query_response_lock = acquire_lock!(self.state.transaction_query_response);
+        let transaction_query_response = TxQueryResponseProto::from(transaction_query_response_lock.clone());
+        let mut responses = Vec::new();
+        for sig in signatures.iter() {
+            let response = TxQueryBatchResponseProto {
+                signature: Some(sig.clone().into()),
+                location: transaction_query_response.location,
+                block_hash: transaction_query_response.block_hash.clone(),
+                confirmations: transaction_query_response.confirmations,
+            };
+            responses.push(response);
+        }
+        let sync_lock = acquire_lock!(self.state.synced);
+        Ok(Response::new(TxQueryBatchResponsesProto {
+            responses,
+            is_synced: *sync_lock,
+        }))
     }
 }
 
@@ -250,6 +372,7 @@ mod test {
         service_state.set_submit_transaction_response(TxSubmissionResponse {
             accepted: false,
             rejection_reason: TxSubmissionRejectionReason::TimeLocked,
+            is_synced: true,
         });
 
         let tx = Transaction::new(vec![], vec![], vec![], BlindingFactor::default());

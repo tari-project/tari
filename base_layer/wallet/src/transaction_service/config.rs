@@ -37,6 +37,7 @@ pub struct TransactionServiceConfig {
     pub pending_transaction_cancellation_timeout: Duration,
     pub num_confirmations_required: u64,
     pub peer_dial_retry_timeout: Duration,
+    pub max_tx_query_batch_size: usize,
     pub transaction_routing_mechanism: TransactionRoutingMechanism,
 }
 
@@ -53,6 +54,7 @@ impl Default for TransactionServiceConfig {
             pending_transaction_cancellation_timeout: Duration::from_secs(259200), // 3 Days
             num_confirmations_required: 3,
             peer_dial_retry_timeout: Duration::from_secs(20),
+            max_tx_query_batch_size: 5000,
             transaction_routing_mechanism: TransactionRoutingMechanism::default(),
         }
     }

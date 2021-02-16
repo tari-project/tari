@@ -40,7 +40,6 @@ use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::storage::{
         database::{TransactionBackend, TransactionDatabase},
-        memory_db::TransactionMemoryDatabase,
         models::{
             CompletedTransaction,
             InboundTransaction,
@@ -237,7 +236,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             status: match i {
                 0 => TransactionStatus::Completed,
                 1 => TransactionStatus::Broadcast,
-                _ => TransactionStatus::Mined,
+                _ => TransactionStatus::MinedUnconfirmed,
             },
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
@@ -246,6 +245,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
+            valid: true,
         });
         runtime
             .block_on(db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone()))
@@ -327,7 +327,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         assert!(retrieved_completed_txs.contains_key(&completed_txs[0].tx_id));
         assert_eq!(
             retrieved_completed_txs.get(&completed_txs[0].tx_id).unwrap().status,
-            TransactionStatus::Mined
+            TransactionStatus::MinedUnconfirmed
         );
     }
 
@@ -520,11 +520,6 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     } else {
         assert!(false, "Should have found cancelled outbound tx");
     }
-}
-
-#[test]
-pub fn test_transaction_service_memory_db() {
-    test_db_backend(TransactionMemoryDatabase::new());
 }
 
 #[test]

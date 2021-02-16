@@ -516,6 +516,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                             direction: None,
                             send_count: None,
                             last_send_timestamp: None,
+                            valid: None,
                         }),
                         &(*conn),
                     )?;
@@ -538,12 +539,13 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             Ok(v) => {
                 v.update(
                     UpdateCompletedTransactionSql::from(UpdateCompletedTransaction {
-                        status: Some(TransactionStatus::Mined),
+                        status: Some(TransactionStatus::MinedUnconfirmed),
                         timestamp: None,
                         cancelled: None,
                         direction: None,
                         send_count: None,
                         last_send_timestamp: None,
+                        valid: None,
                     }),
                     &(*conn),
                 )?;
@@ -652,6 +654,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     direction: None,
                     send_count: None,
                     last_send_timestamp: None,
+                    valid: None,
                 }),
                 &(*conn),
             )?;
@@ -807,6 +810,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 transaction_protocol: None,
                 send_count: Some(tx.send_count + 1),
                 last_send_timestamp: Some(Some(Utc::now().naive_utc())),
+                valid: None,
             };
             tx.update(update, &conn)?;
         } else if let Ok(tx) = OutboundTransactionSql::find(tx_id, &conn) {
@@ -831,6 +835,67 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             return Err(TransactionStorageError::ValuesNotFound);
         }
 
+        Ok(())
+    }
+
+    fn confirm_broadcast_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+            Ok(v) => {
+                if v.status == TransactionStatus::MinedUnconfirmed as i32 ||
+                    v.status == TransactionStatus::MinedConfirmed as i32 ||
+                    v.status == TransactionStatus::Broadcast as i32
+                {
+                    v.confirm(&(*conn))?;
+                } else {
+                    return Err(TransactionStorageError::TransactionNotMined(tx_id));
+                }
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
+                    tx_id,
+                )));
+            },
+            Err(e) => return Err(e),
+        };
+        Ok(())
+    }
+
+    fn unconfirm_mined_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+            Ok(v) => {
+                if v.status == TransactionStatus::MinedUnconfirmed as i32 ||
+                    v.status == TransactionStatus::MinedConfirmed as i32
+                {
+                    v.unconfirm(&(*conn))?;
+                } else {
+                    return Err(TransactionStorageError::TransactionNotMined(tx_id));
+                }
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
+                    tx_id,
+                )));
+            },
+            Err(e) => return Err(e),
+        };
+        Ok(())
+    }
+
+    fn set_completed_transaction_validity(&self, tx_id: u64, valid: bool) -> Result<(), TransactionStorageError> {
+        let conn = self.database_connection.acquire_lock();
+        match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
+            Ok(v) => {
+                v.set_validity(valid, &(*conn))?;
+            },
+            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
+                return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
+                    tx_id,
+                )));
+            },
+            Err(e) => return Err(e),
+        };
         Ok(())
     }
 }
@@ -1225,6 +1290,7 @@ struct CompletedTransactionSql {
     coinbase_block_height: Option<i64>,
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
+    valid: i32,
 }
 
 impl CompletedTransactionSql {
@@ -1320,6 +1386,61 @@ impl CompletedTransactionSql {
                 transaction_protocol: None,
                 send_count: None,
                 last_send_timestamp: None,
+                valid: None,
+            },
+            conn,
+        )?;
+
+        Ok(())
+    }
+
+    pub fn confirm(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        self.update(
+            UpdateCompletedTransactionSql {
+                status: Some(TransactionStatus::MinedConfirmed as i32),
+                timestamp: None,
+                cancelled: None,
+                direction: None,
+                transaction_protocol: None,
+                send_count: None,
+                last_send_timestamp: None,
+                valid: None,
+            },
+            conn,
+        )?;
+
+        Ok(())
+    }
+
+    pub fn unconfirm(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        self.update(
+            UpdateCompletedTransactionSql {
+                status: Some(TransactionStatus::MinedUnconfirmed as i32),
+                timestamp: None,
+                cancelled: None,
+                direction: None,
+                transaction_protocol: None,
+                send_count: None,
+                last_send_timestamp: None,
+                valid: None,
+            },
+            conn,
+        )?;
+
+        Ok(())
+    }
+
+    pub fn set_validity(&self, valid: bool, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
+        self.update(
+            UpdateCompletedTransactionSql {
+                status: None,
+                timestamp: None,
+                cancelled: None,
+                direction: None,
+                transaction_protocol: None,
+                send_count: None,
+                last_send_timestamp: None,
+                valid: Some(valid as i32),
             },
             conn,
         )?;
@@ -1337,6 +1458,7 @@ impl CompletedTransactionSql {
                 transaction_protocol: Some(self.transaction_protocol.clone()),
                 send_count: None,
                 last_send_timestamp: None,
+                valid: None,
             },
             conn,
         )?;
@@ -1384,6 +1506,7 @@ impl TryFrom<CompletedTransaction> for CompletedTransactionSql {
             coinbase_block_height: c.coinbase_block_height.map(|b| b as i64),
             send_count: c.send_count as i32,
             last_send_timestamp: c.last_send_timestamp,
+            valid: c.valid as i32,
         })
     }
 }
@@ -1409,6 +1532,7 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
             coinbase_block_height: c.coinbase_block_height.map(|b| b as u64),
             send_count: c.send_count as u32,
             last_send_timestamp: c.last_send_timestamp,
+            valid: c.valid != 0,
         })
     }
 }
@@ -1421,6 +1545,7 @@ pub struct UpdateCompletedTransaction {
     direction: Option<TransactionDirection>,
     send_count: Option<u32>,
     last_send_timestamp: Option<Option<NaiveDateTime>>,
+    valid: Option<bool>,
 }
 
 #[derive(AsChangeset)]
@@ -1433,6 +1558,7 @@ pub struct UpdateCompletedTransactionSql {
     transaction_protocol: Option<String>,
     send_count: Option<i32>,
     last_send_timestamp: Option<Option<NaiveDateTime>>,
+    valid: Option<i32>,
 }
 
 /// Map a Rust friendly UpdateCompletedTransaction to the Sql data type form
@@ -1446,6 +1572,7 @@ impl From<UpdateCompletedTransaction> for UpdateCompletedTransactionSql {
             transaction_protocol: None,
             send_count: u.send_count.map(|c| c as i32),
             last_send_timestamp: u.last_send_timestamp,
+            valid: u.valid.map(|c| c as i32),
         }
     }
 }
@@ -1640,7 +1767,7 @@ mod test {
             amount,
             fee: MicroTari::from(100),
             transaction: tx.clone(),
-            status: TransactionStatus::Mined,
+            status: TransactionStatus::MinedUnconfirmed,
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
@@ -1648,6 +1775,7 @@ mod test {
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
+            valid: true,
         };
         let completed_tx2 = CompletedTransaction {
             tx_id: 3,
@@ -1664,6 +1792,7 @@ mod test {
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
+            valid: true,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone())
@@ -1777,6 +1906,7 @@ mod test {
             coinbase_block_height: Some(2),
             send_count: 0,
             last_send_timestamp: None,
+            valid: true,
         };
 
         let coinbase_tx2 = CompletedTransaction {
@@ -1794,6 +1924,7 @@ mod test {
             coinbase_block_height: Some(2),
             send_count: 0,
             last_send_timestamp: None,
+            valid: true,
         };
 
         let coinbase_tx3 = CompletedTransaction {
@@ -1811,6 +1942,7 @@ mod test {
             coinbase_block_height: Some(3),
             send_count: 0,
             last_send_timestamp: None,
+            valid: true,
         };
 
         CompletedTransactionSql::try_from(coinbase_tx1.clone())
@@ -1838,13 +1970,14 @@ mod test {
             .unwrap()
             .update(
                 UpdateCompletedTransactionSql {
-                    status: Some(TransactionStatus::Mined as i32),
+                    status: Some(TransactionStatus::MinedUnconfirmed as i32),
                     timestamp: None,
                     cancelled: None,
                     direction: None,
                     transaction_protocol: None,
                     send_count: None,
                     last_send_timestamp: None,
+                    valid: None,
                 },
                 &conn,
             )
@@ -1921,7 +2054,7 @@ mod test {
             amount: MicroTari::from(100),
             fee: MicroTari::from(100),
             transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng)),
-            status: TransactionStatus::Mined,
+            status: TransactionStatus::MinedUnconfirmed,
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
@@ -1929,6 +2062,7 @@ mod test {
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
+            valid: true,
         };
 
         let mut completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
@@ -1993,7 +2127,7 @@ mod test {
             amount: MicroTari::from(100),
             fee: MicroTari::from(100),
             transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::random(&mut OsRng)),
-            status: TransactionStatus::Mined,
+            status: TransactionStatus::MinedUnconfirmed,
             message: "Yo!".to_string(),
             timestamp: Utc::now().naive_utc(),
             cancelled: false,
@@ -2001,6 +2135,7 @@ mod test {
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
+            valid: true,
         };
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
         completed_tx_sql.commit(&conn).unwrap();

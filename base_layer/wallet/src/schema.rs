@@ -21,6 +21,7 @@ table! {
         coinbase_block_height -> Nullable<BigInt>,
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
+        valid -> Integer,
     }
 }
 

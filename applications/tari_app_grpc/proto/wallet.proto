@@ -110,13 +110,15 @@ enum TransactionStatus {
     // This transaction has been broadcast to the base layer network and is currently in one or more base node mempools.
     TRANSACTION_STATUS_BROADCAST = 1;
     // This transaction has been mined and included in a block.
-    TRANSACTION_STATUS_MINED = 2;
+    TRANSACTION_STATUS_MINED_UNCONFIRMED = 2;
     // This transaction was generated as part of importing a spendable UTXO
     TRANSACTION_STATUS_IMPORTED = 3;
     // This transaction is still being negotiated by the parties
     TRANSACTION_STATUS_PENDING = 4;
     // This is a created Coinbase Transaction
     TRANSACTION_STATUS_COINBASE = 5;
+    // This transaction is mined and confirmed at the current base node's height
+    TRANSACTION_STATUS_MINED_CONFIRMED = 6;
 }
 
 message GetCoinbaseRequest {

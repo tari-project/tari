@@ -22,4 +22,4 @@
 
 pub mod service;
 pub mod storage;
-pub mod transaction_broadcast_protocol;
+pub mod transaction_protocols;
