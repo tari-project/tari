@@ -577,7 +577,6 @@ where
                 )
                 .await
                 .map(|_| TransactionServiceResponse::ProtocolsRestarted),
-
             TransactionServiceRequest::RestartBroadcastProtocols => {
                 if self.broadcast_restart_state == BroadcastRestartState::NotTriggered {
                     self.broadcast_restart_state = BroadcastRestartState::Triggered;
@@ -587,9 +586,13 @@ where
                     .await
                     .map(|_| TransactionServiceResponse::ProtocolsRestarted)
             },
-            TransactionServiceRequest::NumConfirmationsRequired => Ok(
+            TransactionServiceRequest::GetNumConfirmationsRequired => Ok(
                 TransactionServiceResponse::NumConfirmationsRequired(self.resources.config.num_confirmations_required),
             ),
+            TransactionServiceRequest::SetNumConfirmationsRequired(number) => {
+                self.resources.config.num_confirmations_required = number;
+                Ok(TransactionServiceResponse::NumConfirmationsSet)
+            },
         }
     }
 

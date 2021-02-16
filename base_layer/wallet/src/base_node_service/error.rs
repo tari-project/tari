@@ -29,7 +29,7 @@ use thiserror::Error;
 pub enum BaseNodeServiceError {
     #[error("No base node peer set")]
     NoBaseNodePeer,
-    #[error("No chain meta data from peer")]
+    #[error("No chain metadata from peer")]
     NoChainMetadata,
     #[error("Unexpected API Response")]
     UnexpectedApiResponse,

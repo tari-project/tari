@@ -12,8 +12,8 @@
 if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
   echo "$0 (clean|latest-tag|latest-tagv|'any-string-version')"
   echo " 'clean' cargo clean and lock remove"
-  echo " 'latest-tag' pull and switch too latest git tag"
-  echo " 'latest-tagv' pull and switch too latest git tag starting with 'v'"
+  echo " 'latest-tag' pull and switch to latest git tag"
+  echo " 'latest-tagv' pull and switch to latest git tag starting with 'v'"
   echo " 'any-string-version' archive string to tag with"
   echo "   ie: $0 nightly-development-test-\$(date +'%Y-%m-%d')"
   exit 1
@@ -28,7 +28,7 @@ tsstamp=$(date +'%Y%m%dT%Hh%M')
 
 envFile="$sPath/.env"
 if [ -f "$envFile" ]; then
-  echo "Overriding Enviroment with $envFile file for settings ..."
+  echo "Overriding Environment with $envFile file for settings ..."
   source "$envFile"
 fi
 

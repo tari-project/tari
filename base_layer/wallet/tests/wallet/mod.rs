@@ -137,7 +137,7 @@ async fn create_wallet(
         factories,
         Some(transaction_service_config),
         None,
-        Network::Ridcully,
+        Network::Stibbons,
         None,
         None,
         None,
@@ -597,7 +597,7 @@ async fn test_import_utxo() {
         factories.clone(),
         None,
         None,
-        Network::Ridcully,
+        Network::Stibbons,
         None,
         None,
         None,
@@ -672,7 +672,7 @@ async fn test_data_generation() {
         dns_seeds_use_dnssec: false,
     };
 
-    let config = WalletConfig::new(comms_config, factories, None, None, Network::Ridcully, None, None, None);
+    let config = WalletConfig::new(comms_config, factories, None, None, Network::Stibbons, None, None, None);
 
     let (transaction_backend, _temp_dir) = make_transaction_database(None);
 

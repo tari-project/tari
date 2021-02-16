@@ -97,6 +97,7 @@ pub struct GlobalConfig {
     pub transaction_direct_send_timeout: Duration,
     pub transaction_broadcast_send_timeout: Duration,
     pub transaction_routing_mechanism: String,
+    pub transaction_num_confirmations_required: u64,
     pub console_wallet_password: Option<String>,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
@@ -437,6 +438,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
             .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as u64,
     );
 
+    let key = "wallet.transaction_num_confirmations_required";
+    let transaction_num_confirmations_required = optional(cfg.get_int(&key))?.unwrap_or(3) as u64;
+
     let key = "wallet.prevent_fee_gt_amount";
     let prevent_fee_gt_amount = cfg
         .get_bool(&key)
@@ -620,6 +624,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         transaction_direct_send_timeout,
         transaction_broadcast_send_timeout,
         transaction_routing_mechanism,
+        transaction_num_confirmations_required,
         console_wallet_password,
         wallet_command_send_wait_stage,
         wallet_command_send_wait_timeout,

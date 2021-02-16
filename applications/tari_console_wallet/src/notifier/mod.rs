@@ -112,7 +112,7 @@ impl Notifier {
             self.handle.spawn(async move {
                 match transaction_service.get_completed_transaction(tx_id).await {
                     Ok(tx) => {
-                        let confirmations = match transaction_service.num_confirmations_required().await {
+                        let confirmations = match transaction_service.get_num_confirmations_required().await {
                             Ok(n) => Some(n),
                             Err(e) => {
                                 error!(target: LOG_TARGET, "Transaction service error: {}", e);
