@@ -9,7 +9,6 @@ class MergeMiningProxyClient {
 
     async getHeight() {
         let res = await axios.get(`${this.address}/get_height`);
-        console.log("Merge Mining Height:",res.data.height);
         return res.data.height;
     }
 

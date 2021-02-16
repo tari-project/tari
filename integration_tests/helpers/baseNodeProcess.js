@@ -6,6 +6,8 @@ const {getFreePort} = require("./util");
 const dateFormat = require('dateformat');
 const {createEnv} = require("./config");
 
+let outputProcess;
+
 class BaseNodeProcess {
     constructor(name, options, nodeFile) {
         this.name = name;
@@ -20,11 +22,19 @@ class BaseNodeProcess {
         this.name = `Basenode${this.port}-${this.name}`;
         this.nodeFile = this.nodeFile || "nodeid.json";
         this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
-        await this.run("cargo",["run", "--release", "--bin", "tari_base_node", "--", "--base-path", ".", "--init", "--create-id"]);
+        await this.run(await this.compile(),["--base-path", ".", "--init", "--create-id"]);
         // console.log("POrt:", this.port);
         // console.log("GRPC:", this.grpcPort);
         // console.log(`Starting node ${this.name}...`);
 
+    }
+
+    async compile() {
+        if (!outputProcess) {
+            await this.run("cargo", ["build", "--release", "--bin", "tari_base_node","-Z", "unstable-options", "--out-dir", __dirname + "/../temp/out"]);
+            outputProcess = __dirname + "/../temp/out/tari_base_node";
+        }
+        return outputProcess;
     }
 
 
@@ -101,7 +111,7 @@ class BaseNodeProcess {
             });
 
             ps.stderr.on('data', (data) => {
-                // console.error(`stderr: ${data}`);
+                console.error(`stderr: ${data}`);
                 fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString());
             });
 
@@ -130,7 +140,7 @@ class BaseNodeProcess {
     }
 
     async start () {
-        return await this.run("cargo",["run", "--release", "--bin", "tari_base_node", "--", "--base-path", "."]);
+        return await this.run(await this.compile(),["--base-path", "."]);
     }
 
     stop() {
