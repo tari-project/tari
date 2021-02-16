@@ -29,4 +29,6 @@ pub enum UnconfirmedPoolError {
     StorageOutofSync,
     #[error("Priority error: `{0}`")]
     PriorityError(#[from] PriorityError),
+    #[error("Transaction has no kernels")]
+    TransactionNoKernels,
 }

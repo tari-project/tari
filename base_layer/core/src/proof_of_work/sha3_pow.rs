@@ -63,11 +63,7 @@ fn sha3_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
 pub mod test {
     use crate::{
         blocks::BlockHeader,
-        proof_of_work::{
-            sha3_pow::{sha3_difficulty, sha3_difficulty_with_hash},
-            Difficulty,
-            PowAlgorithm,
-        },
+        proof_of_work::{sha3_pow::sha3_difficulty, Difficulty, PowAlgorithm},
     };
     use chrono::{DateTime, NaiveDate, Utc};
 

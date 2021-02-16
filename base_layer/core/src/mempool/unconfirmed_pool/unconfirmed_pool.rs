@@ -99,8 +99,10 @@ impl UnconfirmedPool {
     /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
     #[allow(clippy::map_entry)]
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<(), UnconfirmedPoolError> {
-        let tx_key = tx.body.kernels()[0].excess_sig.clone();
-        if !self.txs_by_signature.contains_key(&tx_key) {
+        let tx_key = tx
+            .first_kernel_excess_sig()
+            .ok_or_else(|| UnconfirmedPoolError::TransactionNoKernels)?;
+        if !self.txs_by_signature.contains_key(tx_key) {
             debug!(
                 target: LOG_TARGET,
                 "Inserting tx into unconfirmed pool: {}",
@@ -116,7 +118,7 @@ impl UnconfirmedPool {
             }
             self.txs_by_priority
                 .insert(prioritized_tx.priority.clone(), tx_key.clone());
-            self.txs_by_signature.insert(tx_key, prioritized_tx);
+            self.txs_by_signature.insert(tx_key.clone(), prioritized_tx);
         }
         Ok(())
     }
@@ -259,8 +261,8 @@ impl UnconfirmedPool {
     }
 
     #[cfg(test)]
-    /// Checks the consistency status of the Hashmap and BtreeMap
-    pub fn check_status(&self) -> bool {
+    /// Returns false if there are any inconsistencies in the internal mempool state, otherwise true
+    fn check_status(&self) -> bool {
         if self.txs_by_priority.len() != self.txs_by_signature.len() {
             return false;
         }
@@ -276,7 +278,14 @@ mod test {
     use crate::{
         consensus::{ConsensusManagerBuilder, Network},
         test_helpers::create_orphan_block,
-        transactions::tari_amount::MicroTari,
+        transactions::{
+            fee::Fee,
+            helpers::TestParams,
+            tari_amount::MicroTari,
+            transaction::{KernelFeatures, UnblindedOutput},
+            types::{CryptoFactories, HashDigest},
+            SenderTransactionProtocol,
+        },
         tx,
     };
 
@@ -341,6 +350,60 @@ mod test {
         // space, the second best transaction was then included
 
         assert!(unconfirmed_pool.check_status());
+    }
+
+    #[test]
+    fn test_double_spend_inputs() {
+        let (tx1, _, _) = tx!(MicroTari(5_000), fee: MicroTari(50), inputs: 1, outputs: 1);
+        const INPUT_AMOUNT: MicroTari = MicroTari(5_000);
+        let (tx2, inputs, _) = tx!(INPUT_AMOUNT, fee: MicroTari(20), inputs: 1, outputs: 1);
+
+        let test_params = TestParams::new();
+
+        let mut stx_builder = SenderTransactionProtocol::builder(0);
+        stx_builder
+            .with_lock_height(0)
+            .with_fee_per_gram(20.into())
+            .with_offset(Default::default())
+            .with_private_nonce(test_params.nonce.clone())
+            .with_change_secret(test_params.change_key.clone());
+
+        // Double spend the input from tx2 in tx3
+        let double_spend_utxo = tx2.body.inputs().first().unwrap().clone();
+        let double_spend_input = inputs.first().unwrap().clone();
+
+        let estimated_fee = Fee::calculate(20.into(), 1, 1, 1);
+        let utxo = UnblindedOutput::new(INPUT_AMOUNT - estimated_fee, test_params.spend_key.clone(), None);
+        stx_builder
+            .with_input(double_spend_utxo, double_spend_input)
+            .with_output(utxo);
+
+        let factories = CryptoFactories::default();
+        let mut stx_protocol = stx_builder.build::<HashDigest>(&factories).unwrap();
+        stx_protocol.finalize(KernelFeatures::empty(), &factories).unwrap();
+
+        let tx3 = stx_protocol.get_transaction().unwrap().clone();
+
+        let tx1 = Arc::new(tx1);
+        let tx2 = Arc::new(tx2);
+        let tx3 = Arc::new(tx3);
+
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 4,
+            weight_tx_skip_count: 3,
+        });
+
+        unconfirmed_pool
+            .insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone()])
+            .unwrap();
+        assert_eq!(unconfirmed_pool.len(), 3);
+
+        let desired_weight = tx1.calculate_weight() + tx2.calculate_weight() + tx3.calculate_weight() + 1000;
+        let selected_txs = unconfirmed_pool.highest_priority_txs(desired_weight).unwrap();
+        assert!(selected_txs.contains(&tx1));
+        // Whether tx2 or tx3 is selected is non-deterministic
+        assert!(selected_txs.contains(&tx2) ^ selected_txs.contains(&tx3));
+        assert_eq!(selected_txs.len(), 2);
     }
 
     #[test]

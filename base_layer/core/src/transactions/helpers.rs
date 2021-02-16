@@ -33,11 +33,7 @@ use crate::transactions::{
         TransactionOutput,
         UnblindedOutput,
     },
-    transaction_protocol::{
-        build_challenge,
-        transaction_initializer::SenderTransactionInitializer,
-        TransactionMetadata,
-    },
+    transaction_protocol::{build_challenge, TransactionMetadata},
     types::{Commitment, CommitmentFactory, CryptoFactories, PrivateKey, PublicKey, Signature},
     SenderTransactionProtocol,
 };
@@ -231,14 +227,14 @@ pub fn create_tx(
     amount: MicroTari,
     fee_per_gram: MicroTari,
     lock_height: u64,
-    input_count: u64,
+    input_count: usize,
     input_maturity: u64,
-    output_count: u64,
+    output_count: usize,
 ) -> (Transaction, Vec<UnblindedOutput>, Vec<UnblindedOutput>)
 {
     let factories = CryptoFactories::default();
     let test_params = TestParams::new();
-    let mut stx_builder: SenderTransactionInitializer = SenderTransactionProtocol::builder(0);
+    let mut stx_builder = SenderTransactionProtocol::builder(0);
     stx_builder
         .with_lock_height(lock_height)
         .with_fee_per_gram(fee_per_gram)
@@ -246,23 +242,22 @@ pub fn create_tx(
         .with_private_nonce(test_params.nonce.clone())
         .with_change_secret(test_params.change_key.clone());
 
-    let mut unblinded_inputs = Vec::with_capacity(input_count as usize);
-    let mut unblinded_outputs = Vec::with_capacity(output_count as usize);
-    let amount_per_input = amount / input_count;
+    let mut unblinded_inputs = Vec::with_capacity(input_count);
+    let mut unblinded_outputs = Vec::with_capacity(output_count);
+    let amount_per_input = amount / input_count as u64;
     for i in 0..input_count - 1 {
         let (utxo, input) = create_test_input(amount_per_input, input_maturity, &factories.commitment);
-        let size = i + 1;
-        unblinded_inputs.resize(size as usize, input.clone());
+        unblinded_inputs.resize(i + 1, input.clone());
         stx_builder.with_input(utxo, input);
     }
-    let amount_for_last_input = amount - amount_per_input * (input_count - 1);
+    let amount_for_last_input = amount - amount_per_input * (input_count as u64 - 1);
     let (utxo, input) = create_test_input(amount_for_last_input, input_maturity, &factories.commitment);
     unblinded_inputs.push(input.clone());
     stx_builder.with_input(utxo, input);
 
-    let estimated_fee = Fee::calculate(fee_per_gram, 1, input_count as usize, output_count as usize);
-    let amount_per_output = (amount - estimated_fee) / output_count;
-    let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count - 1);
+    let estimated_fee = Fee::calculate(fee_per_gram, 1, input_count, output_count);
+    let amount_per_output = (amount - estimated_fee) / output_count as u64;
+    let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count as u64 - 1);
     for i in 0..output_count {
         let output_amount = if i < output_count - 1 {
             amount_per_output
