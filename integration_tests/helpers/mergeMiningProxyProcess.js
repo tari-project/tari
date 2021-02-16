@@ -6,6 +6,7 @@ const {expect} = require('chai');
 const MergeMiningProxyClient = require('./mergeMiningProxyClient');
 const {createEnv} = require("./config");
 
+let outputProcess;
 class MergeMiningProxyProcess {
     constructor(name, baseNodeAddress, walletAddress) {
         this.name = name;
@@ -67,7 +68,15 @@ class MergeMiningProxyProcess {
 
     async startNew() {
         await this.init();
-        return await this.run("cargo", ["run", "--release", "--bin tari_merge_mining_proxy", "--", "--base-path", ".", "--init"], true);
+        return await this.run(await this.compile(), ["--base-path", ".", "--init"], true);
+    }
+
+    async compile() {
+        if (!outputProcess) {
+            await this.run("cargo", ["build", "--release", "--bin", "tari_merge_mining_proxy","-Z", "unstable-options", "--out-dir", __dirname + "/../temp/out"]);
+            outputProcess = __dirname + "/../temp/out/tari_merge_mining_proxy";
+        }
+        return outputProcess;
     }
 
     stop() {
