@@ -562,7 +562,11 @@ impl DhtConnectivity {
                     return false;
                 }
 
-                if peer.is_offline() {
+                if peer
+                    .offline_since()
+                    .map(|since| since <= self.config.offline_peer_cooldown)
+                    .unwrap_or(false)
+                {
                     connect_ineligable_count += 1;
                     return false;
                 }
