@@ -239,6 +239,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.stibbons.dns_seeds_use_dnssec", true)
         .unwrap();
+    cfg.set_default("base_node.stibbons.auto_ping_interval", 30).unwrap();
+
     cfg.set_default("wallet.base_node_service_peers", Vec::<String>::new())
         .unwrap();
 

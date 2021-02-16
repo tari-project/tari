@@ -135,7 +135,7 @@ where B: BlockchainBackend + 'static
             .add_initializer(mempool_sync)
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
-                    auto_ping_interval: Some(Duration::from_secs(30)),
+                    auto_ping_interval: Some(Duration::from_secs(config.auto_ping_interval)),
                     refresh_neighbours_interval: Duration::from_secs(3 * 60),
                     monitored_peers: sync_peers.clone(),
                     ..Default::default()
@@ -222,6 +222,7 @@ where B: BlockchainBackend + 'static
                 database_url: DbConnectionUrl::File(self.config.data_dir.join("dht.db")),
                 auto_join: true,
                 allow_test_addresses: self.config.allow_test_addresses,
+                network: self.config.network.into(),
                 ..Default::default()
             },
             allow_test_addresses: self.config.allow_test_addresses,

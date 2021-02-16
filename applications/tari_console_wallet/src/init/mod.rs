@@ -349,6 +349,7 @@ pub async fn init_wallet(
             database_url: DbConnectionUrl::File(config.data_dir.join("dht-console-wallet.db")),
             auto_join: true,
             allow_test_addresses: config.allow_test_addresses,
+            network: config.network.into(),
             ..Default::default()
         },
         // TODO: This should be false unless testing locally - make this configurable
