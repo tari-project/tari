@@ -98,9 +98,6 @@ struct TariTransportType *transport_tor_create(
     const char *socks_password,
     int* error_out);
 
-// Gets the tor private key from the wallet
-struct ByteVector *wallet_get_tor_identity(struct TariWallet *wallet,int* error_out );
-
 // Gets the address from a memory transport type
 char *transport_memory_get_address(struct TariTransportType *transport,int* error_out);
 
