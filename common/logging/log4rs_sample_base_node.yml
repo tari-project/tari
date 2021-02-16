@@ -72,7 +72,6 @@ appenders:
 root:
   level: info
   appenders:
-    - stdout
     - base_layer
 
 loggers:

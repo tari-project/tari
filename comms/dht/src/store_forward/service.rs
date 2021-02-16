@@ -90,7 +90,7 @@ impl FetchStoredMessageQuery {
 #[derive(Debug)]
 pub enum StoreAndForwardRequest {
     FetchMessages(FetchStoredMessageQuery, oneshot::Sender<SafResult<Vec<StoredMessage>>>),
-    InsertMessage(NewStoredMessage),
+    InsertMessage(NewStoredMessage, oneshot::Sender<SafResult<bool>>),
     RemoveMessages(Vec<i32>),
     SendStoreForwardRequestToPeer(Box<NodeId>),
     SendStoreForwardRequestNeighbours,
@@ -115,12 +115,13 @@ impl StoreAndForwardRequester {
         reply_rx.await.map_err(|_| StoreAndForwardError::RequestCancelled)?
     }
 
-    pub async fn insert_message(&mut self, message: NewStoredMessage) -> SafResult<()> {
+    pub async fn insert_message(&mut self, message: NewStoredMessage) -> SafResult<bool> {
+        let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(StoreAndForwardRequest::InsertMessage(message))
+            .send(StoreAndForwardRequest::InsertMessage(message, reply_tx))
             .await
             .map_err(|_| StoreAndForwardError::RequesterChannelClosed)?;
-        Ok(())
+        reply_rx.await.map_err(|_| StoreAndForwardError::RequestCancelled)?
     }
 
     pub async fn remove_messages(&mut self, message_ids: Vec<i32>) -> SafResult<()> {
@@ -258,20 +259,25 @@ impl StoreAndForwardService {
                     let _ = reply_tx.send(Err(err));
                 },
             },
-            InsertMessage(msg) => {
+            InsertMessage(msg, reply_tx) => {
                 let public_key = msg.destination_pubkey.clone();
                 let node_id = msg.destination_node_id.clone();
                 match self.database.insert_message_if_unique(msg).await {
-                    Ok(_) => info!(
-                        target: LOG_TARGET,
-                        "Stored message for {}",
-                        public_key
+                    Ok(existed) => {
+                        let pub_key = public_key
                             .map(|p| format!("public key '{}'", p))
                             .or_else(|| node_id.map(|n| format!("node id '{}'", n)))
-                            .unwrap_or_else(|| "<Anonymous>".to_string())
-                    ),
+                            .unwrap_or_else(|| "<Anonymous>".to_string());
+                        if !existed {
+                            info!(target: LOG_TARGET, "Stored message for {}", pub_key);
+                        } else {
+                            info!(target: LOG_TARGET, "SAF message for {} already stored", pub_key);
+                        }
+                        let _ = reply_tx.send(Ok(existed));
+                    },
                     Err(err) => {
                         error!(target: LOG_TARGET, "InsertMessage failed because '{:?}'", err);
+                        let _ = reply_tx.send(Err(err.into()));
                     },
                 }
             },

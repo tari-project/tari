@@ -119,20 +119,23 @@ impl StoreAndForwardMock {
                 let msgs = self.state.stored_messages.read().await;
                 let _ = reply_tx.send(Ok(msgs.clone()));
             },
-            InsertMessage(msg) => self.state.stored_messages.write().await.push(StoredMessage {
-                id: OsRng.next_u32() as i32,
-                version: msg.version,
-                origin_pubkey: msg.origin_pubkey,
-                message_type: msg.message_type,
-                destination_pubkey: msg.destination_pubkey,
-                destination_node_id: msg.destination_node_id,
-                header: msg.header,
-                body: msg.body.clone(),
-                is_encrypted: msg.is_encrypted,
-                priority: msg.priority,
-                stored_at: Utc::now().naive_utc(),
-                body_hash: Challenge::new().chain(msg.body).result().to_vec().to_hex(),
-            }),
+            InsertMessage(msg, reply_tx) => {
+                self.state.stored_messages.write().await.push(StoredMessage {
+                    id: OsRng.next_u32() as i32,
+                    version: msg.version,
+                    origin_pubkey: msg.origin_pubkey,
+                    message_type: msg.message_type,
+                    destination_pubkey: msg.destination_pubkey,
+                    destination_node_id: msg.destination_node_id,
+                    header: msg.header,
+                    body: msg.body.clone(),
+                    is_encrypted: msg.is_encrypted,
+                    priority: msg.priority,
+                    stored_at: Utc::now().naive_utc(),
+                    body_hash: Challenge::new().chain(msg.body).result().to_vec().to_hex(),
+                });
+                reply_tx.send(Ok(false)).unwrap();
+            },
             RemoveMessages(message_ids) => {
                 for id in message_ids {
                     self.state.stored_messages.write().await.retain(|msg| msg.id != id);
