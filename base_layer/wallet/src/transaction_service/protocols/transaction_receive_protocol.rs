@@ -155,20 +155,20 @@ where TBackend: TransactionBackend + 'static
                 Utc::now().naive_utc(),
             );
 
+            self.resources
+                .db
+                .add_pending_inbound_transaction(inbound_transaction.tx_id, inbound_transaction.clone())
+                .await
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+
             let send_result = send_transaction_reply(
-                inbound_transaction.clone(),
+                inbound_transaction,
                 self.resources.outbound_message_service.clone(),
                 self.resources.config.direct_send_timeout,
                 self.resources.config.transaction_routing_mechanism,
             )
             .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, e))?;
-
-            self.resources
-                .db
-                .add_pending_inbound_transaction(inbound_transaction.tx_id, inbound_transaction)
-                .await
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             self.resources
                 .db
