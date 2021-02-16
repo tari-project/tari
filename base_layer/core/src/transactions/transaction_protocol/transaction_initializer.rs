@@ -273,6 +273,10 @@ impl SenderTransactionInitializer {
             Ok((fee, change, output)) => (fee, change, output),
             Err(e) => return self.build_err(&e),
         };
+        debug!(
+            target: LOG_TARGET,
+            "Build transaction with. Fee: {}. Change: {}. Output: {:?}", total_fee, change, change_output,
+        );
         // Some checks on the fee
         if total_fee < MINIMUM_TRANSACTION_FEE {
             return self.build_err("Fee is less than the minimum");

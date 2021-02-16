@@ -701,6 +701,10 @@ where
         message: String,
     ) -> Result<SenderTransactionProtocol, OutputManagerError>
     {
+        debug!(
+            target: LOG_TARGET,
+            "Preparing to send transaction. Amount: {}. Fee per gram: {}. ", amount, fee_per_gram,
+        );
         let (outputs, _) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
         let total = outputs
             .iter()
@@ -728,7 +732,12 @@ where
                 uo.unblinded_output.clone(),
             );
         }
-
+        debug!(
+            target: LOG_TARGET,
+            "Calculating fee for tx with: Fee per gram: {}. Num outputs: {}",
+            amount,
+            outputs.len()
+        );
         let fee_without_change = Fee::calculate(fee_per_gram, 1, outputs.len(), 1);
         let mut change_key: Option<PrivateKey> = None;
         // If the input values > the amount to be sent + fee_without_change then we will need to include a change
