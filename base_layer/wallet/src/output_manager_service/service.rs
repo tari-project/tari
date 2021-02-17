@@ -263,7 +263,14 @@ where TBackend: OutputManagerBackend + 'static
             OutputManagerRequest::AddOutput(uo) => {
                 self.add_output(uo).await.map(|_| OutputManagerResponse::OutputAdded)
             },
-            OutputManagerRequest::GetBalance => self.get_balance(None).await.map(OutputManagerResponse::Balance),
+            OutputManagerRequest::GetBalance => {
+                let tip = self
+                    .base_node_service
+                    .get_connected_base_node_state()
+                    .await?
+                    .height_of_longest_chain();
+                self.get_balance(Some(tip)).await.map(OutputManagerResponse::Balance)
+            },
             OutputManagerRequest::GetRecipientTransaction(tsm) => self
                 .get_recipient_transaction(tsm)
                 .await
