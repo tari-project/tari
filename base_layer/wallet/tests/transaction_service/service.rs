@@ -4406,7 +4406,7 @@ fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
         _shutdown,
         _mock_rpc_server,
         server_node_identity,
-        rpc_service_state,
+        mut rpc_service_state,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
 
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
@@ -4415,6 +4415,7 @@ fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
         confirmations: 1,
         is_synced: true,
     });
+    rpc_service_state.set_response_delay(Some(Duration::from_secs(2)));
 
     runtime
         .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
@@ -4486,7 +4487,7 @@ fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
         .unwrap();
 
     let _tx_batch_query_calls =
-        runtime.block_on(rpc_service_state.wait_pop_transaction_batch_query_calls(3, Duration::from_secs(60)));
+        runtime.block_on(rpc_service_state.wait_pop_transaction_batch_query_calls(6, Duration::from_secs(30)));
 
     let completed_txs = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
 
