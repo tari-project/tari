@@ -21,7 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_comms::{peer_manager::Peer, types::CommsPublicKey};
+use tari_comms::{
+    peer_manager::{NodeId, Peer},
+    types::CommsPublicKey,
+};
 use tari_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageHeader};
 
 const LOG_TARGET: &str = "comms::dht::requests::inbound";
@@ -55,5 +58,13 @@ impl PeerMessage {
             );
         }
         Ok(msg)
+    }
+
+    pub fn origin_node_id(&self) -> NodeId {
+        self.authenticated_origin
+            .as_ref()
+            .map(NodeId::from_public_key)
+            // Otherwise the source peer was the origin of the message
+            .unwrap_or_else(|| self.source_peer.node_id.clone())
     }
 }

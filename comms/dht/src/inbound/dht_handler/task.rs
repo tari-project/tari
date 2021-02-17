@@ -91,8 +91,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         trace!(
             target: LOG_TARGET,
-            "Executing {} for {} (Trace: {})",
+            "Received DHT message type `{}` (Source peer: {}, Tag: {}, Trace: {})",
             message.dht_header.message_type,
+            message.source_peer.node_id,
             message.tag,
             message.dht_header.message_tag
         );

@@ -23,17 +23,6 @@
 use crate::{envelope::Network, network_discovery::NetworkDiscoveryConfig, storage::DbConnectionUrl};
 use std::time::Duration;
 
-/// The default maximum number of messages that can be stored using the Store-and-forward middleware
-pub const SAF_MSG_STORAGE_CAPACITY: usize = 100_000;
-/// The default time-to-live duration used for storage of low priority messages by the Store-and-forward middleware
-pub const SAF_LOW_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(6 * 60 * 60); // 6 hours
-/// The default time-to-live duration used for storage of high priority messages by the Store-and-forward middleware
-pub const SAF_HIGH_PRIORITY_MSG_STORAGE_TTL: Duration = Duration::from_secs(3 * 24 * 60 * 60); // 3 days
-/// The default number of known peer nodes that are closest to this node
-pub const DEFAULT_NUM_NEIGHBOURING_NODES: usize = 8;
-/// The default number of randomly-selected peer nodes
-pub const DEFAULT_NUM_RANDOM_NODES: usize = 4;
-
 #[derive(Debug, Clone)]
 pub struct DhtConfig {
     /// The `DbConnectionUrl` for the Dht database. Default: In-memory database
@@ -53,7 +42,8 @@ pub struct DhtConfig {
     /// Send to this many peers when using the propagate strategy
     /// Default: 4
     pub propagation_factor: usize,
-    /// The maximum number of messages that can be stored using the Store-and-forward middleware. Default: 10_000
+    /// The maximum number of messages that can be stored using the Store-and-forward middleware.
+    /// Default: 100,000
     pub saf_msg_storage_capacity: usize,
     /// A request to retrieve stored messages will be ignored if the requesting node is
     /// not within one of this nodes _n_ closest nodes.
@@ -75,9 +65,10 @@ pub struct DhtConfig {
     /// The minimum period used to request SAF messages from a peer. When requesting SAF messages,
     /// it will request messages since the DHT last went offline, but this may be a small amount of
     /// time, so `minimum_request_period` can be used so that messages aren't missed.
+    /// Default: 3 days
     pub saf_minimum_request_period: Duration,
     /// The max capacity of the message hash cache
-    /// Default: 10000
+    /// Default: 100,000
     pub msg_hash_cache_capacity: usize,
     /// The time-to-live for items in the message hash cache
     /// Default: 300s (5 mins)
@@ -153,19 +144,19 @@ impl DhtConfig {
 impl Default for DhtConfig {
     fn default() -> Self {
         Self {
-            num_neighbouring_nodes: DEFAULT_NUM_NEIGHBOURING_NODES,
-            num_random_nodes: DEFAULT_NUM_RANDOM_NODES,
+            num_neighbouring_nodes: 8,
+            num_random_nodes: 4,
             propagation_factor: 4,
             broadcast_factor: 8,
+            outbound_buffer_size: 20,
             saf_num_closest_nodes: 10,
             saf_max_returned_messages: 50,
-            outbound_buffer_size: 20,
-            saf_msg_storage_capacity: SAF_MSG_STORAGE_CAPACITY,
-            saf_low_priority_msg_storage_ttl: SAF_LOW_PRIORITY_MSG_STORAGE_TTL,
-            saf_high_priority_msg_storage_ttl: SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
+            saf_msg_storage_capacity: 100_000,
+            saf_low_priority_msg_storage_ttl: Duration::from_secs(6 * 60 * 60), // 6 hours
+            saf_high_priority_msg_storage_ttl: Duration::from_secs(3 * 24 * 60 * 60), // 3 days
             saf_auto_request: true,
-            saf_max_message_size: 512 * 1024, // 500 KiB
-            saf_minimum_request_period: SAF_HIGH_PRIORITY_MSG_STORAGE_TTL,
+            saf_max_message_size: 512 * 1024,
+            saf_minimum_request_period: Duration::from_secs(3 * 24 * 60 * 60), // 3 days
             msg_hash_cache_capacity: 100_000,
             msg_hash_cache_ttl: Duration::from_secs(5 * 60),
             database_url: DbConnectionUrl::Memory,

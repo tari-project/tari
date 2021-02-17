@@ -24,7 +24,7 @@ use super::peer_message::PeerMessage;
 use crate::{comms_connector::InboundDomainConnector, tari_message::TariMessageType};
 use futures::{channel::mpsc, future, stream::Fuse, Stream, StreamExt};
 use log::*;
-use std::{fmt::Debug, sync::Arc, time::Duration};
+use std::{cmp, fmt::Debug, sync::Arc, time::Duration};
 use tari_comms::rate_limit::RateLimit;
 use tokio::{runtime::Handle, sync::broadcast};
 
@@ -59,7 +59,7 @@ pub fn pubsub_connector(
     executor.spawn(async move {
         let forwarder = receiver
             // Rate limit the receiver; the sender will adhere to the limit
-            .rate_limit(std::cmp::max(rate_limit, RATE_LIMIT_MIN_CAPACITY), RATE_LIMIT_RESTOCK_INTERVAL)
+            .rate_limit(cmp::max(rate_limit, RATE_LIMIT_MIN_CAPACITY), RATE_LIMIT_RESTOCK_INTERVAL)
             // Map DomainMessage into a TopicPayload
             .filter_map(move |msg: Arc<PeerMessage>| {
                 let opt = match TariMessageType::from_i32(msg.message_header.message_type) {
@@ -68,8 +68,8 @@ pub fn pubsub_connector(
                         let payload = TopicPayload::new(msg_type, msg);
                         trace!(
                             target: LOG_TARGET,
-                            "Created topic payload message {:?}, Trace: {}. [n={}, r={}/s]",
-                            &payload.topic(), message_tag_trace, buf_size.to_owned(), rate_limit.to_owned(),
+                            "Created topic payload message {:?}, Origin: {}, Trace: {}. [n={}, r={}/s]",
+                            payload.topic(), payload.message().origin_node_id(), message_tag_trace, buf_size, rate_limit,
                         );
                         Some(payload)
                     }
