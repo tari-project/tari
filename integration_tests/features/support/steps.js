@@ -5,7 +5,7 @@ const BaseNodeProcess = require('../../helpers/baseNodeProcess');
 const MergeMiningProxyProcess = require('../../helpers/mergeMiningProxyProcess');
 const WalletProcess = require('../../helpers/walletProcess');
 const expect = require('chai').expect;
-const {waitFor, getTransactionOutputHashm, sleep, consoleLogTransactionDetails} = require('../../helpers/util');
+const {waitFor, getTransactionOutputHash, sleep, consoleLogTransactionDetails} = require('../../helpers/util');
 const TransactionBuilder = require('../../helpers/transactionBuilder');
 var lastResult;
 

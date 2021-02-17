@@ -28,7 +28,7 @@ grpc_console_wallet_address = "127.0.0.1:18143"
 transport = "tor"
 dns_seeds =["seeds.stibbons.tari.com"]
 dns_seeds_use_dnssec = false
-pruning_horizon = 1000
+#pruning_horizon = 1000
 
 [merge_mining_proxy.stibbons]
 monerod_url = "http://18.133.55.120:38081"
