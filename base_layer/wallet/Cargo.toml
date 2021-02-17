@@ -3,7 +3,7 @@ name = "tari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "v0.8.3"
+version = "0.8.3"
 edition = "2018"
 
 [dependencies]
@@ -43,7 +43,7 @@ bincode = "1.3.1"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
-version = "v0.8.3"
+version = "^0.8"
 default-features = false
 features = ["transactions", "mempool_proto", "base_node_proto"]
 
