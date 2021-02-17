@@ -115,6 +115,7 @@ pub struct GlobalConfig {
     pub wait_for_initial_sync_at_startup: bool,
     pub max_randomx_vms: usize,
     pub console_wallet_notify_file: Option<PathBuf>,
+    pub auto_ping_interval: u64,
 }
 
 impl GlobalConfig {
@@ -394,6 +395,14 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     )?
     .unwrap_or_default();
 
+    // Liveness auto ping interval
+    let key = config_string("base_node", &net_str, "auto_ping_interval");
+    let auto_ping_interval = match cfg.get_int(&key) {
+        Ok(seconds) => seconds as u64,
+        Err(ConfigError::NotFound(_)) => 30,
+        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+    };
+
     // set wallet_db_file
     let key = "wallet.wallet_db_file".to_string();
     let wallet_db_file = cfg
@@ -642,6 +651,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         wait_for_initial_sync_at_startup,
         max_randomx_vms,
         console_wallet_notify_file,
+        auto_ping_interval,
     })
 }
 

@@ -52,6 +52,10 @@ enum Network {
     NetworkTestNet = 1;
     // Network used for local tests
     NetworkLocalTest = 2;
+    // Ridcully
+    NetworkRidcully = 3;
+    // Stibbons
+    NetworkStibbons = 4;
 }
 
 message DhtEnvelope {
