@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.8.2"
+version = "v0.8.3"
 authors = ["Philip Robinson <simian@tari.com>"]
 edition = "2018"
 
