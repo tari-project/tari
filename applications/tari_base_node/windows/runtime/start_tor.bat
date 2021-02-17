@@ -1,7 +1,7 @@
 @echo off
-set file_1=%TEMP%\tor1.txt
-set file_2=%TEMP%\tor2.txt
-set file_3=%TEMP%\tor3.txt
+set file_1=%TEMP%\tor1%1.txt
+set file_2=%TEMP%\tor2%1.txt
+set file_3=%TEMP%\tor3%1.txt
 set TOR_EXE_NAME=tor.exe
 
 call :QUERY_TOR_SERVICE

@@ -35,7 +35,7 @@ goto :end
 :MINING
 echo Mining
 start cmd /k "%my_exe_path%\start_tari_base_node.bat"
-ping -n 7 localhost>nul
+ping -n 20 localhost>nul
 start cmd /k "%my_exe_path%\start_tari_console_wallet.bat"
 ping -n 7 localhost>nul
 start cmd /k "%my_exe_path%\start_tari_mining_node.bat"
@@ -45,7 +45,7 @@ goto :end
 echo Merged mining
 rem TODO: Problem enclosing these in quotes, to be sorted out
 start cmd /k "%my_exe_path%\start_tari_base_node.bat"
-ping -n 7 localhost>nul
+ping -n 20 localhost>nul
 start cmd /k "%my_exe_path%\start_tari_console_wallet.bat"
 ping -n 7 localhost>nul
 start cmd /k "%my_exe_path%\start_tari_merge_mining_proxy.bat"
