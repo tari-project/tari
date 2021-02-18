@@ -63,7 +63,6 @@ pub enum ParsedArgument {
     Amount(MicroTari),
     PublicKey(PublicKey),
     Text(String),
-    Float(f64),
     Int(u64),
     Date(DateTime<Utc>),
 }
@@ -74,7 +73,6 @@ impl Display for ParsedArgument {
             ParsedArgument::Amount(v) => write!(f, "{}", v.to_string()),
             ParsedArgument::PublicKey(v) => write!(f, "{}", v.to_string()),
             ParsedArgument::Text(v) => write!(f, "{}", v.to_string()),
-            ParsedArgument::Float(v) => write!(f, "{}", v.to_string()),
             ParsedArgument::Int(v) => write!(f, "{}", v.to_string()),
             ParsedArgument::Date(v) => write!(f, "{}", v.to_string()),
         }
@@ -102,23 +100,9 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
     let mut parsed_args = Vec::new();
 
     // txs per second
-    let txps = args.next().ok_or_else(|| ParseError::Empty("Txs/s".to_string()))?;
-    let txps = txps.parse::<f64>().map_err(ParseError::Float)?;
-    if txps > 25.0 {
-        println!("Maximum transaction rate is 25/sec");
-        return Err(ParseError::Invalid);
-    }
-    parsed_args.push(ParsedArgument::Float(txps));
-
-    // duration
-    let duration = args.next().ok_or_else(|| ParseError::Empty("duration".to_string()))?;
-    let duration = duration.parse::<u64>().map_err(ParseError::Int)?;
-    parsed_args.push(ParsedArgument::Int(duration));
-
-    if (txps * duration as f64) < 1.0 {
-        println!("Invalid data provided for [number of Txs/s] * [test duration (s)], must be >= 1\n");
-        return Err(ParseError::Invalid);
-    }
+    let txs = args.next().ok_or_else(|| ParseError::Empty("Txs".to_string()))?;
+    let txs = txs.parse::<u64>().map_err(ParseError::Int)?;
+    parsed_args.push(ParsedArgument::Int(txs));
 
     // start amount
     let start_amount = args

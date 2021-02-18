@@ -106,37 +106,32 @@ pub async fn make_it_rain(
 {
     use ParsedArgument::*;
 
-    let txps = match args[0].clone() {
-        Float(r) => Ok(r),
+    let txs = match args[0].clone() {
+        Int(r) => Ok(r),
         _ => Err(CommandError::Argument),
     }?;
 
-    let duration = match args[1].clone() {
-        Int(s) => Ok(s),
-        _ => Err(CommandError::Argument),
-    }?;
-
-    let start_amount = match args[2].clone() {
+    let start_amount = match args[1].clone() {
         Amount(mtari) => Ok(mtari),
         _ => Err(CommandError::Argument),
     }?;
 
-    let inc_amount = match args[3].clone() {
+    let inc_amount = match args[2].clone() {
         Amount(mtari) => Ok(mtari),
         _ => Err(CommandError::Argument),
     }?;
 
-    let start_time = match args[4].clone() {
+    let start_time = match args[3].clone() {
         Date(dt) => Ok(dt as DateTime<Utc>),
         _ => Err(CommandError::Argument),
     }?;
 
-    let public_key = match args[5].clone() {
+    let public_key = match args[4].clone() {
         PublicKey(pk) => Ok(pk),
         _ => Err(CommandError::Argument),
     }?;
 
-    let message = match args[6].clone() {
+    let message = match args[5].clone() {
         Text(m) => Ok(m),
         _ => Err(CommandError::Argument),
     }?;
@@ -159,19 +154,9 @@ pub async fn make_it_rain(
     );
     delay_for(Duration::from_millis(delay_ms)).await;
 
-    let num_txs = (txps * duration as f64) as usize;
-
     let mut tx_ids = Vec::new();
-    let started_at = Utc::now();
 
-    for i in 0..num_txs {
-        // Manage Tx rate
-        let actual_ms = (Utc::now() - started_at).num_milliseconds() as u64;
-        let target_ms = (i as f64 / (txps / 1000.0)) as u64;
-        if target_ms - actual_ms > 0 {
-            // Maximum delay between Txs set to 120 s
-            delay_for(Duration::from_millis((target_ms - actual_ms).min(120_000u64))).await;
-        }
+    for i in 0..txs {
         // Send Tx
         let amount = start_amount + inc_amount * (i as u64);
         let send_args = vec![
