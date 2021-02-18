@@ -33,9 +33,13 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
-        protocols::txo_validation_protocol::{TxoValidationRetry, TxoValidationType},
+        protocols::txo_validation_protocol::TxoValidationType,
     },
-    transaction_service::handle::TransactionServiceHandle,
+    transaction_service::{
+        handle::TransactionServiceHandle,
+        tasks::start_transaction_validation_and_broadcast_protocols::start_transaction_validation_and_broadcast_protocols,
+    },
+    types::ValidationRetryStrategy,
 };
 use tokio::{task, time};
 
@@ -133,7 +137,7 @@ async fn start_transaction_protocols_and_txo_validation(
         loop {
             trace!(target: LOG_TARGET, "Attempting TXO validation for Unspent Outputs.",);
             let _ = oms_handle
-                .validate_txos(TxoValidationType::Unspent, TxoValidationRetry::UntilSuccess)
+                .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
                 .await
                 .map_err(|e| {
                     error!(
@@ -150,7 +154,7 @@ async fn start_transaction_protocols_and_txo_validation(
         loop {
             trace!(target: LOG_TARGET, "Attempting TXO validation for Invalid Outputs.",);
             let _ = oms_handle
-                .validate_txos(TxoValidationType::Invalid, TxoValidationRetry::UntilSuccess)
+                .validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::UntilSuccess)
                 .await
                 .map_err(|e| {
                     error!(
@@ -167,7 +171,7 @@ async fn start_transaction_protocols_and_txo_validation(
         loop {
             trace!(target: LOG_TARGET, "Attempting TXO validation for Spent Outputs.",);
             let _ = oms_handle
-                .validate_txos(TxoValidationType::Spent, TxoValidationRetry::UntilSuccess)
+                .validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::UntilSuccess)
                 .await
                 .map_err(|e| {
                     error!(
@@ -184,16 +188,18 @@ async fn start_transaction_protocols_and_txo_validation(
         // We want to ensure transaction protocols only use a fully validated TXO set, thus delaying this until
         // after the prior validation
         trace!(target: LOG_TARGET, "Attempting restart of the broadcast protocols.",);
-        let _ = transaction_service_handle
-            .restart_broadcast_protocols()
-            .await
-            .map_err(|e| {
-                error!(
-                    target: LOG_TARGET,
-                    "Problem restarting broadcast protocols in the Transaction Service: {}", e
-                );
-                e
-            });
+        let _ = start_transaction_validation_and_broadcast_protocols(
+            transaction_service_handle.clone(),
+            ValidationRetryStrategy::UntilSuccess,
+        )
+        .await
+        .map_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "Problem restarting broadcast protocols in the Transaction Service: {}", e
+            );
+            e
+        });
 
         trace!(target: LOG_TARGET, "Attempting restart of the transaction protocols.",);
         let _ = transaction_service_handle
@@ -236,7 +242,7 @@ async fn monitor_validation_protocol(
                     Ok(msg) => {
                         match (*msg).clone() {
                             // Restart the protocol if aborted (due to 'BaseNodeNotSynced')
-                            OutputManagerEvent::TxoValidationAborted(s) => {
+                            OutputManagerEvent::TxoValidationAborted(s,_) => {
                                 trace!(
                                     target: LOG_TARGET,
                                     "TXO validation event 'TxoValidationAborted' ({}), restarting after 30s.", s,
@@ -246,7 +252,7 @@ async fn monitor_validation_protocol(
                                 break;
                             },
                             // Restart the protocol if it fails
-                            OutputManagerEvent::TxoValidationFailure(s) => {
+                            OutputManagerEvent::TxoValidationFailure(s,_) => {
                                 trace!(
                                     target: LOG_TARGET,
                                     "TXO validation event 'TxoValidationFailure' ({}), restarting after 30s.", s,
@@ -256,7 +262,7 @@ async fn monitor_validation_protocol(
                                 break;
                             },
                             // Exit upon success
-                            OutputManagerEvent::TxoValidationSuccess(s) => {
+                            OutputManagerEvent::TxoValidationSuccess(s,_) => {
                                 trace!(
                                     target: LOG_TARGET,
                                     "TXO validation event 'TxoValidationSuccess' ({}), success.", s,
@@ -265,7 +271,7 @@ async fn monitor_validation_protocol(
                                 break;
                             },
                             // Wait for the next event if timed out (several can be attempted)
-                            OutputManagerEvent::TxoValidationTimedOut(s) => {
+                            OutputManagerEvent::TxoValidationTimedOut(s,_) => {
                                 trace!(
                                     target: LOG_TARGET,
                                     "TXO validation event 'TxoValidationTimedOut' ({}), waiting.", s,
@@ -273,7 +279,7 @@ async fn monitor_validation_protocol(
                                 continue;
                             }
                             // Wait for the next event if delayed
-                            OutputManagerEvent::TxoValidationDelayed(s) => {
+                            OutputManagerEvent::TxoValidationDelayed(s,_) => {
                                 trace!(
                                     target: LOG_TARGET,
                                     "TXO validation event 'TxoValidationDelayed' ({}), waiting.", s,

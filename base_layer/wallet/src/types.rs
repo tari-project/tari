@@ -32,3 +32,9 @@ pub type KeyDigest = Blake256;
 
 /// Specify the Hash function used when constructing challenges during transaction building
 pub type HashDigest = Blake256;
+
+#[derive(Debug)]
+pub enum ValidationRetryStrategy {
+    Limited(u8),
+    UntilSuccess,
+}

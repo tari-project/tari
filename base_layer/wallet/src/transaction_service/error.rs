@@ -135,6 +135,8 @@ pub enum TransactionServiceError {
     RpcError(#[from] RpcError),
     #[error("Protobuf Conversion Error: `{0}`")]
     ProtobufConversionError(String),
+    #[error("Maximum Attempts Exceeded")]
+    MaximumAttemptsExceeded,
 }
 
 #[derive(Debug, Error)]

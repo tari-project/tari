@@ -109,7 +109,7 @@ where TBackend: TransactionBackend + 'static
                 .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
             let mut connection: Option<PeerConnection> = None;
 
-            let delay = delay_for(self.resources.config.peer_dial_retry_timeout);
+            let delay = delay_for(self.timeout);
 
             debug!(
                 target: LOG_TARGET,

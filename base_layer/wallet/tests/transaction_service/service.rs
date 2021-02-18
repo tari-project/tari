@@ -132,9 +132,10 @@ use tari_wallet::{
             },
             sqlite_db::TransactionServiceSqliteDatabase,
         },
+        tasks::start_transaction_validation_and_broadcast_protocols::start_transaction_validation_and_broadcast_protocols,
         TransactionServiceInitializer,
     },
-    types::HashDigest,
+    types::{HashDigest, ValidationRetryStrategy},
 };
 use tempfile::tempdir;
 use tokio::{
@@ -351,7 +352,6 @@ pub fn setup_transaction_service_no_comms_and_oms_backend<
         transaction_resend_period: Duration::from_secs(200),
         resend_response_cooldown: Duration::from_secs(200),
         pending_transaction_cancellation_timeout: Duration::from_secs(300),
-        peer_dial_retry_timeout: Duration::from_secs(5),
         max_tx_query_batch_size: 2,
         ..Default::default()
     });
@@ -4421,7 +4421,12 @@ fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
         .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
         .unwrap();
 
-    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
+    runtime
+        .block_on(start_transaction_validation_and_broadcast_protocols(
+            alice_ts.clone(),
+            ValidationRetryStrategy::UntilSuccess,
+        ))
+        .expect("Validation should start");
 
     let _tx_batch_query_calls =
         runtime.block_on(rpc_service_state.wait_pop_transaction_batch_query_calls(1, Duration::from_secs(60)));
@@ -4472,6 +4477,10 @@ fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
         .block_on(alice_ts.set_base_node_public_key(new_server_node_identity.public_key().clone()))
         .unwrap();
 
+    runtime
+        .block_on(alice_ts.validate_transactions(ValidationRetryStrategy::UntilSuccess))
+        .unwrap();
+
     let _tx_batch_query_calls =
         runtime.block_on(new_rpc_service_state.wait_pop_transaction_batch_query_calls(1, Duration::from_secs(60)));
 
@@ -4484,6 +4493,10 @@ fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
 
     runtime
         .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
+        .unwrap();
+
+    runtime
+        .block_on(alice_ts.validate_transactions(ValidationRetryStrategy::UntilSuccess))
         .unwrap();
 
     let _tx_batch_query_calls =

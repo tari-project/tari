@@ -232,6 +232,9 @@ unsigned long long completed_transaction_get_transaction_id(struct TariCompleted
 // Gets the timestamp of a TariCompletedTransaction
 unsigned long long completed_transaction_get_timestamp(struct TariCompletedTransaction *transaction,int* error_out);
 
+// Check if a TariCompletedTransaction is Valid or not
+bool completed_transaction_is_valid(struct TariCompletedTransaction *tx,int* error_out);
+
 // Checks if a TariCompletedTransaction was originally a TariPendingOutboundTransaction,
 // i.e the transaction was originally sent from the wallet
 bool completed_transaction_is_outbound(struct TariCompletedTransaction *tx,int* error_out);
@@ -374,6 +377,7 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// -------------------------------- TariWallet ----------------------------------------------- //
 
 /// Creates a TariWallet
+///
 /// ## Arguments
 /// `config` - The TariCommsConfig pointer
 /// `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
@@ -382,9 +386,9 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// this to 0
 /// `size_per_log_file_bytes` - Specifies the size, in bytes, at which the logs files will roll over, if no
 /// rolling files are wanted then set this to 0
-/// `passphrase` - An optional string that represents the passphrase used to encrypt/decrypt the databases for this
-/// wallet. If it is left Null no encryption is used. If the databases have been encrypted then the correct passphrase
-/// is required or this function will fail.
+/// `passphrase` - An optional string that represents the passphrase used to
+/// encrypt/decrypt the databases for this wallet. If it is left Null no encryption is used. If the databases have been
+/// encrypted then the correct passphrase is required or this function will fail.
 /// `callback_received_transaction` - The callback function pointer matching the
 /// function signature. This will be called when an inbound transaction is received.
 /// `callback_received_transaction_reply` - The callback function pointer matching the function signature. This will be
@@ -394,14 +398,24 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 /// `callback_transaction_broadcast` - The callback function pointer matching the function signature. This will be
 /// called when a Finalized transaction is detected a Broadcast to a base node mempool.
 /// `callback_transaction_mined` - The callback function pointer matching the function signature. This will be called
-/// when a Broadcast transaction is detected as mined.
+/// when a Broadcast transaction is detected as mined AND confirmed.
+/// `callback_transaction_mined_unconfirmed` - The callback function pointer matching the function signature. This will
+/// be called  when a Broadcast transaction is detected as mined but not yet confirmed.
 /// `callback_discovery_process_complete` - The callback function pointer matching the function signature. This will be
 /// called when a `send_transacion(..)` call is made to a peer whose address is not known and a discovery process must
 /// be conducted. The outcome of the discovery process is relayed via this callback
-/// `callback_base_node_sync_complete` - The callback function pointer matching the function signature. This is called
-/// when a Base Node Sync process is completed or times out. The request_key is used to identify which request this
-/// callback references and a result of true means it was successful and false that the process timed out and new one
-/// will be started
+/// `callback_utxo_validation_complete` - The callback function pointer matching the function signature. This is called
+/// when a UTXO validation process is completed. The request_key is used to identify which request this
+/// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
+/// `callback_stxo_validation_complete` - The callback function pointer matching the function signature. This is called
+/// when a STXO validation process is completed. The request_key is used to identify which request this
+/// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
+/// `callback_invalid_txo_validation_complete` - The callback function pointer matching the function signature. This is
+/// called when a invalid TXO validation process is completed. The request_key is used to identify which request this
+/// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
+/// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
+/// called when a Transaction validation process is completed. The request_key is used to identify which request this
+/// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
 /// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
 /// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
 /// for it.
@@ -413,6 +427,14 @@ void comms_config_destroy(struct TariCommsConfig *wc);
 ///
 /// # Safety
 /// The ```wallet_destroy``` method must be called when finished with a TariWallet to prevent a memory leak
+///
+/// The CallbackValidationResults enum can return the following values:
+/// enum CallbackValidationResults {
+///        Success,           // 0
+///        Aborted,           // 1
+///        Failure,           // 2
+///        BaseNodeNotInSync, // 3
+///    }
 struct TariWallet *wallet_create(struct TariWalletConfig *config,
                                     const char *log_path,
                                     unsigned int num_rolling_log_files,
@@ -423,10 +445,14 @@ struct TariWallet *wallet_create(struct TariWalletConfig *config,
                                     void (*callback_received_finalized_transaction)(struct TariCompletedTransaction*),
                                     void (*callback_transaction_broadcast)(struct TariCompletedTransaction*),
                                     void (*callback_transaction_mined)(struct TariCompletedTransaction*),
+                                    void (*callback_transaction_mined)(struct TariCompletedTransaction*, unsigned long long),
                                     void (*callback_direct_send_result)(unsigned long long, bool),
                                     void (*callback_store_and_forward_send_result)(unsigned long long, bool),
                                     void (*callback_transaction_cancellation)(struct TariCompletedTransaction*),
-                                    void (*callback_base_node_sync_complete)(unsigned long long, bool),
+                                    void (*callback_utxo_validation_complete)(unsigned long long, unsigned char),
+                                    void (*callback_stxo_validation_complete)(unsigned long long, unsigned char),
+                                    void (*callback_invalid_txo_validation_complete)(unsigned long long, unsigned char),
+                                    void (*callback_transaction_validation_complete)(unsigned long long, unsigned char),
                                     void (*callback_saf_message_received)(),
                                     int* error_out);
 
@@ -507,8 +533,17 @@ bool wallet_test_complete_sent_transaction(struct TariWallet *wallet, struct Tar
 // event.
 unsigned long long wallet_import_utxo(struct TariWallet *wallet, unsigned long long amount, struct TariPrivateKey *spending_key, struct TariPublicKey *source_public_key, const char *message, int* error_out);
 
-// This function will tell the wallet to query the set base node to confirm the status of wallet data.
-unsigned long long wallet_sync_with_base_node(struct TariWallet *wallet, int* error_out);
+// This function will tell the wallet to query the set base node to confirm the status of unspent transaction outputs (UTXOs).
+unsigned long long wallet_start_utxo_validation(struct TariWallet *wallet, int* error_out);
+
+// This function will tell the wallet to query the set base node to confirm the status of spent transaction outputs (STXOs).
+unsigned long long wallet_start_stxo_validation(struct TariWallet *wallet, int* error_out);
+
+// This function will tell the wallet to query the set base node to confirm the status of invalid transaction outputs.
+unsigned long long wallet_start_invalid_txo_validation(struct TariWallet *wallet, int* error_out);
+
+//This function will tell the wallet to query the set base node to confirm the status of mined transactions.
+unsigned long long wallet_start_transaction_validation(struct TariWallet *wallet, int* error_out);
 
 // Set the power mode of the wallet to Low Power mode which will reduce the amount of network operations the wallet performs to conserve power
 void wallet_set_low_power_mode(struct TariWallet *wallet, int* error_out);

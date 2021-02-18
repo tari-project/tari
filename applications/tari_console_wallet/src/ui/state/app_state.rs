@@ -30,11 +30,17 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     contacts_service::storage::database::Contact,
-    output_manager_service::{handle::OutputManagerEventReceiver, service::Balance, TxId},
+    output_manager_service::{
+        handle::OutputManagerEventReceiver,
+        protocols::txo_validation_protocol::TxoValidationType,
+        service::Balance,
+        TxId,
+    },
     transaction_service::{
         handle::{TransactionEvent, TransactionEventReceiver, TransactionServiceHandle},
         storage::models::{CompletedTransaction, TransactionStatus},
     },
+    types::ValidationRetryStrategy,
     util::emoji::EmojiId,
     WalletSqlite,
 };
@@ -551,6 +557,16 @@ impl AppStateInner {
             )
             .await?;
 
+        if let Err(e) = self
+            .wallet
+            .transaction_service
+            .validate_transactions(ValidationRetryStrategy::UntilSuccess)
+            .await
+        {
+            error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
+        }
+        self.validate_outputs().await;
+
         self.data.base_node_previous = self.data.base_node_selected.clone();
         self.data.base_node_selected = peer.clone();
         self.updated = true;
@@ -579,6 +595,16 @@ impl AppStateInner {
                     .to_string(),
             )
             .await?;
+
+        if let Err(e) = self
+            .wallet
+            .transaction_service
+            .validate_transactions(ValidationRetryStrategy::UntilSuccess)
+            .await
+        {
+            error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
+        }
+        self.validate_outputs().await;
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
         self.data.base_node_selected = peer.clone();
@@ -630,6 +656,16 @@ impl AppStateInner {
             )
             .await?;
 
+        if let Err(e) = self
+            .wallet
+            .transaction_service
+            .validate_transactions(ValidationRetryStrategy::UntilSuccess)
+            .await
+        {
+            error!(target: LOG_TARGET, "Problem validating transactions: {}", e);
+        }
+        self.validate_outputs().await;
+
         self.data.base_node_peer_custom = None;
         self.data.base_node_selected = previous;
         self.data.base_node_list.remove(0);
@@ -645,6 +681,35 @@ impl AppStateInner {
             .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
             .await?;
         Ok(())
+    }
+
+    pub async fn validate_outputs(&mut self) {
+        if let Err(e) = self
+            .wallet
+            .output_manager_service
+            .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
+            .await
+        {
+            error!(target: LOG_TARGET, "Problem validating UTXOs: {}", e);
+        }
+
+        if let Err(e) = self
+            .wallet
+            .output_manager_service
+            .validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::UntilSuccess)
+            .await
+        {
+            error!(target: LOG_TARGET, "Problem validating STXOs: {}", e);
+        }
+
+        if let Err(e) = self
+            .wallet
+            .output_manager_service
+            .validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::UntilSuccess)
+            .await
+        {
+            error!(target: LOG_TARGET, "Problem validating Invalid TXOs: {}", e);
+        }
     }
 }
 
