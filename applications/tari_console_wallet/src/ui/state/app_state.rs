@@ -12,8 +12,8 @@ use crate::{
 use futures::{stream::Fuse, StreamExt};
 use log::*;
 use qrcode::{render::unicode, QrCode};
-use std::sync::Arc;
-use tari_common::Network;
+use std::{collections::HashMap, sync::Arc};
+use tari_common::{GlobalConfig, Network};
 use tari_comms::{
     connectivity::ConnectivityEventRx,
     multiaddr::Multiaddr,
@@ -46,6 +46,7 @@ const LOG_TARGET: &str = "wallet::console_wallet::app_state";
 pub struct AppState {
     inner: Arc<RwLock<AppStateInner>>,
     cached_data: AppStateData,
+    node_config: GlobalConfig,
 }
 
 impl AppState {
@@ -55,6 +56,7 @@ impl AppState {
         wallet: WalletSqlite,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
+        node_config: GlobalConfig,
     ) -> Self
     {
         let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
@@ -62,6 +64,7 @@ impl AppState {
         Self {
             inner: Arc::new(RwLock::new(inner)),
             cached_data,
+            node_config,
         }
     }
 
@@ -232,6 +235,10 @@ impl AppState {
         &self.cached_data.completed_txs
     }
 
+    pub fn get_confirmations(&self, tx_id: &TxId) -> Option<&u64> {
+        (&self.cached_data.confirmations).get(tx_id)
+    }
+
     pub fn get_completed_tx(&self, index: usize) -> Option<&CompletedTransaction> {
         if index < self.cached_data.completed_txs.len() {
             Some(&self.cached_data.completed_txs[index])
@@ -300,6 +307,10 @@ impl AppState {
         }
         self.update_cache().await;
         Ok(())
+    }
+
+    pub fn get_required_confirmations(&self) -> u64 {
+        (&self.node_config.transaction_num_confirmations_required).to_owned()
     }
 }
 
@@ -394,6 +405,17 @@ impl AppStateInner {
         self.data.completed_txs = completed_transactions;
         self.refresh_balance().await?;
         self.updated = true;
+        Ok(())
+    }
+
+    pub async fn refresh_single_confirmation_state(&mut self, tx_id: TxId, confirmations: u64) -> Result<(), UiError> {
+        let stat = self.data.confirmations.entry(tx_id).or_insert(confirmations);
+        *stat = confirmations;
+        Ok(())
+    }
+
+    pub async fn cleanup_single_confirmation_state(&mut self, tx_id: TxId) -> Result<(), UiError> {
+        self.data.confirmations.remove_entry(&tx_id);
         Ok(())
     }
 
@@ -652,6 +674,7 @@ impl AppStateInner {
 struct AppStateData {
     pending_txs: Vec<CompletedTransaction>,
     completed_txs: Vec<CompletedTransaction>,
+    confirmations: HashMap<TxId, u64>,
     my_identity: MyIdentity,
     contacts: Vec<UiContact>,
     connected_peers: Vec<Peer>,
@@ -715,6 +738,7 @@ impl AppStateData {
         AppStateData {
             pending_txs: Vec::new(),
             completed_txs: Vec::new(),
+            confirmations: HashMap::new(),
             my_identity: identity,
             contacts: Vec::new(),
             connected_peers: Vec::new(),

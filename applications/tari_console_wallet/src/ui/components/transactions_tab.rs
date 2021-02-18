@@ -47,7 +47,7 @@ impl TransactionsTab {
 
     fn draw_transaction_lists<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
-        let (pending_constraint, completed_constaint) = if app_state.get_pending_txs().is_empty() {
+        let (pending_constraint, completed_constraint) = if app_state.get_pending_txs().is_empty() {
             self.selected_tx_list = SelectedTransactionList::CompletedTxs;
             (Constraint::Max(3), Constraint::Min(4))
         } else {
@@ -57,7 +57,7 @@ impl TransactionsTab {
             )
         };
         let list_areas = Layout::default()
-            .constraints([pending_constraint, completed_constaint].as_ref())
+            .constraints([pending_constraint, completed_constraint].as_ref())
             .split(area);
 
         let style = if self.selected_tx_list == SelectedTransactionList::PendingTxs {
@@ -207,7 +207,7 @@ impl TransactionsTab {
         column_list.render(f, list_areas[1], &mut completed_list_state);
     }
 
-    fn draw_detailed_transaction<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
+    fn draw_detailed_transaction<B>(&self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Transaction Details",
@@ -235,6 +235,8 @@ impl TransactionsTab {
                     Constraint::Length(1),
                     Constraint::Length(1),
                     Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
                 ]
                 .as_ref(),
             )
@@ -250,6 +252,7 @@ impl TransactionsTab {
         let message = Span::styled("Message:", Style::default().fg(Color::Magenta));
         let timestamp = Span::styled("Timestamp:", Style::default().fg(Color::Magenta));
         let excess = Span::styled("Excess:", Style::default().fg(Color::Magenta));
+        let confirmations = Span::styled("Confirmations:", Style::default().fg(Color::Magenta));
         let paragraph = Paragraph::new(tx_id).wrap(Wrap { trim: true });
         f.render_widget(paragraph, label_layout[0]);
         let paragraph = Paragraph::new(source_public_key).wrap(Wrap { trim: true });
@@ -270,13 +273,15 @@ impl TransactionsTab {
         f.render_widget(paragraph, label_layout[8]);
         let paragraph = Paragraph::new(excess).wrap(Wrap { trim: true });
         f.render_widget(paragraph, label_layout[9]);
-
+        let paragraph = Paragraph::new(confirmations).wrap(Wrap { trim: true });
+        f.render_widget(paragraph, label_layout[10]);
         // Content:
-
+        let required_confirmations = app_state.get_required_confirmations();
         if let Some(tx) = self.detailed_transaction.as_ref() {
             let content_layout = Layout::default()
                 .constraints(
                     [
+                        Constraint::Length(1),
                         Constraint::Length(1),
                         Constraint::Length(1),
                         Constraint::Length(1),
@@ -331,6 +336,19 @@ impl TransactionsTab {
                 tx.transaction.body.kernels()[0].excess_sig.get_signature().to_hex()
             };
             let excess = Span::styled(excess_hex.as_str(), Style::default().fg(Color::White));
+            let confirmation_count = app_state.get_confirmations(&tx.tx_id);
+            let confirmations_msg = if tx.status == TransactionStatus::MinedConfirmed && !tx.cancelled {
+                format!("{} required confirmations met", required_confirmations)
+            } else if tx.status == TransactionStatus::MinedUnconfirmed && !tx.cancelled {
+                if let Some(count) = confirmation_count {
+                    format!("{} of {} required confirmations met", count, required_confirmations)
+                } else {
+                    "N/A".to_string()
+                }
+            } else {
+                "N/A".to_string()
+            };
+            let confirmations = Span::styled(confirmations_msg.as_str(), Style::default().fg(Color::White));
             let paragraph = Paragraph::new(tx_id).wrap(Wrap { trim: true });
             f.render_widget(paragraph, content_layout[0]);
             let paragraph = Paragraph::new(source_public_key).wrap(Wrap { trim: true });
@@ -351,6 +369,8 @@ impl TransactionsTab {
             f.render_widget(paragraph, content_layout[8]);
             let paragraph = Paragraph::new(excess).wrap(Wrap { trim: true });
             f.render_widget(paragraph, content_layout[9]);
+            let paragraph = Paragraph::new(confirmations).wrap(Wrap { trim: true });
+            f.render_widget(paragraph, content_layout[10]);
         }
     }
 }
@@ -363,7 +383,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                     Constraint::Length(3),
                     Constraint::Length(1),
                     Constraint::Min(10),
-                    Constraint::Length(12),
+                    Constraint::Length(13),
                 ]
                 .as_ref(),
             )
