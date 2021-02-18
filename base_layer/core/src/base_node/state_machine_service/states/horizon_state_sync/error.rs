@@ -47,8 +47,13 @@ pub enum HorizonSyncError {
     JoinError(#[from] task::JoinError),
     #[error("Invalid kernel signature: {0}")]
     InvalidKernelSignature(TransactionError),
-    #[error("Validation failed for {0} MMR")]
-    InvalidMmrRoot(MmrTree),
+    #[error("MMR did not match for {mmr_tree} at height {at_height}. {expected_hex} did not equal {actual_hex}")]
+    InvalidMmrRoot {
+        mmr_tree: MmrTree,
+        at_height: u64,
+        expected_hex: String,
+        actual_hex: String,
+    },
     #[error("Invalid range proof for output:{0} : {1}")]
     InvalidRangeProof(String, String),
     #[error("Base node request error: {0}")]
