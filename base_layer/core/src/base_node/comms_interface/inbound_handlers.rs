@@ -42,6 +42,7 @@ use std::{
     sync::Arc,
 };
 use strum_macros::Display;
+use tari_common_types::types::BlockHash;
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tokio::sync::Semaphore;
@@ -472,7 +473,8 @@ where T: BlockchainBackend + 'static
         match block.pop() {
             Some(block) => {
                 self.handle_block(Arc::new(block.try_into_block()?), true.into(), Some(source_peer))
-                    .await
+                    .await?;
+                Ok(())
             },
             None => {
                 // TODO: #banheuristic - peer propagated block hash for which it could not return the full block
@@ -495,7 +497,7 @@ where T: BlockchainBackend + 'static
         block: Arc<Block>,
         broadcast: Broadcast,
         source_peer: Option<NodeId>,
-    ) -> Result<(), CommsInterfaceError>
+    ) -> Result<BlockHash, CommsInterfaceError>
     {
         let block_hash = block.hash();
         let block_height = block.header.height;
@@ -534,10 +536,10 @@ where T: BlockchainBackend + 'static
                         block_hash.to_hex()
                     );
                     let exclude_peers = source_peer.into_iter().collect();
-                    let new_block = NewBlock::new(block_hash);
+                    let new_block = NewBlock::new(block_hash.clone());
                     self.outbound_nci.propagate_block(new_block, exclude_peers).await?;
                 }
-                Ok(())
+                Ok(block_hash)
             },
             Err(e) => {
                 warn!(

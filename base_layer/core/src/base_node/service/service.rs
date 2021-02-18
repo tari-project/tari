@@ -51,7 +51,10 @@ use futures::{
 use log::*;
 use rand::rngs::OsRng;
 use std::{convert::TryInto, sync::Arc, time::Duration};
-use tari_common_types::waiting_requests::{generate_request_key, RequestKey, WaitingRequests};
+use tari_common_types::{
+    types::BlockHash,
+    waiting_requests::{generate_request_key, RequestKey, WaitingRequests},
+};
 use tari_comms::peer_manager::NodeId;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
@@ -156,7 +159,7 @@ where B: BlockchainBackend + 'static
         SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
         SBlockIn: Stream<Item = DomainMessage<NewBlock>>,
         SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
-        SLocalBlock: Stream<Item = RequestContext<(Block, Broadcast), Result<(), CommsInterfaceError>>>,
+        SLocalBlock: Stream<Item = RequestContext<(Block, Broadcast), Result<BlockHash, CommsInterfaceError>>>,
     {
         let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
@@ -360,7 +363,7 @@ where B: BlockchainBackend + 'static
 
     fn spawn_handle_local_block(
         &self,
-        block_context: RequestContext<(Block, Broadcast), Result<(), CommsInterfaceError>>,
+        block_context: RequestContext<(Block, Broadcast), Result<BlockHash, CommsInterfaceError>>,
     )
     {
         let inbound_nch = self.inbound_nch.clone();
