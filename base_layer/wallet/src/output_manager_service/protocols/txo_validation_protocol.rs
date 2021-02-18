@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::{
-    error::{OutputManagerError, OutputManagerProtocolError},
-    handle::OutputManagerEvent,
-    service::OutputManagerResources,
-    storage::{database::OutputManagerBackend, models::DbUnblindedOutput},
+use crate::{
+    output_manager_service::{
+        error::{OutputManagerError, OutputManagerProtocolError},
+        handle::OutputManagerEvent,
+        service::OutputManagerResources,
+        storage::{database::OutputManagerBackend, models::DbUnblindedOutput},
+    },
+    types::ValidationRetryStrategy,
 };
 use futures::{FutureExt, StreamExt};
 use log::*;
@@ -47,11 +50,12 @@ where TBackend: OutputManagerBackend + 'static
 {
     id: u64,
     validation_type: TxoValidationType,
-    retry_strategy: TxoValidationRetry,
+    retry_strategy: ValidationRetryStrategy,
     resources: OutputManagerResources<TBackend>,
     base_node_public_key: CommsPublicKey,
     retry_delay: Duration,
     base_node_update_receiver: Option<broadcast::Receiver<CommsPublicKey>>,
+    base_node_synced: bool,
 }
 
 /// This protocol defines the process of submitting our current UTXO set to the Base Node to validate it.
@@ -62,7 +66,7 @@ where TBackend: OutputManagerBackend + 'static
     pub fn new(
         id: u64,
         validation_type: TxoValidationType,
-        retry_strategy: TxoValidationRetry,
+        retry_strategy: ValidationRetryStrategy,
         resources: OutputManagerResources<TBackend>,
         base_node_public_key: CommsPublicKey,
         base_node_update_receiver: broadcast::Receiver<CommsPublicKey>,
@@ -77,6 +81,7 @@ where TBackend: OutputManagerBackend + 'static
             base_node_public_key,
             retry_delay,
             base_node_update_receiver: Some(base_node_update_receiver),
+            base_node_synced: true,
         }
     }
 
@@ -96,8 +101,8 @@ where TBackend: OutputManagerBackend + 'static
         let mut shutdown = self.resources.shutdown_signal.clone();
 
         let total_retries_str = match self.retry_strategy {
-            TxoValidationRetry::Limited(n) => format!("{}", n),
-            TxoValidationRetry::UntilSuccess => "∞".to_string(),
+            ValidationRetryStrategy::Limited(n) => format!("{}", n),
+            ValidationRetryStrategy::UntilSuccess => "∞".to_string(),
         };
 
         info!(
@@ -118,7 +123,10 @@ where TBackend: OutputManagerBackend + 'static
             let _ = self
                 .resources
                 .event_publisher
-                .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(self.id)))
+                .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(
+                    self.id,
+                    self.validation_type,
+                )))
                 .map_err(|e| {
                     trace!(
                         target: LOG_TARGET,
@@ -134,30 +142,40 @@ where TBackend: OutputManagerBackend + 'static
         let batch_total = output_batches_to_query.len();
 
         'main: loop {
-            if let TxoValidationRetry::Limited(max_retries) = self.retry_strategy {
+            if let ValidationRetryStrategy::Limited(max_retries) = self.retry_strategy {
                 if retries > max_retries {
                     info!(
                         target: LOG_TARGET,
                         "Maximum attempts exceeded for TXO Validation Protocol (Id: {})", self.id
                     );
-                    let _ = self
-                        .resources
-                        .event_publisher
-                        .send(Arc::new(OutputManagerEvent::TxoValidationFailure(self.id)))
-                        .map_err(|e| {
-                            trace!(
-                                target: LOG_TARGET,
-                                "Error sending event because there are no subscribers: {:?}",
+                    // If this retry is not because of a !base_node_synced then we emit this error event, if the retries
+                    // are due to a base node NOT being synced then we rely on the TxoValidationDelayed event
+                    // because we were actually able to connect
+                    if self.base_node_synced {
+                        let _ = self
+                            .resources
+                            .event_publisher
+                            .send(Arc::new(OutputManagerEvent::TxoValidationFailure(
+                                self.id,
+                                self.validation_type,
+                            )))
+                            .map_err(|e| {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "Error sending event because there are no subscribers: {:?}",
+                                    e
+                                );
                                 e
-                            );
-                            e
-                        });
+                            });
+                    }
                     return Err(OutputManagerProtocolError::new(
                         self.id,
                         OutputManagerError::MaximumAttemptsExceeded,
                     ));
                 }
             }
+            // Assume base node is synced until we achieve a connection and it tells us it is not synced
+            self.base_node_synced = true;
 
             let base_node_node_id = NodeId::from_key(&self.base_node_public_key.clone())
                 .map_err(|e| OutputManagerProtocolError::new(self.id, OutputManagerError::from(e)))?;
@@ -182,16 +200,15 @@ where TBackend: OutputManagerBackend + 'static
                 },
                 new_base_node = base_node_update_receiver.select_next_some() => {
                     match new_base_node {
-                        Ok(bn) => {
-                            self.base_node_public_key = bn;
+                        Ok(_) => {
                              info!(
                                 target: LOG_TARGET,
-                                "TXO Validation protocol Base Node Public key updated to {:?}", self.base_node_public_key
-                            );
+                                "TXO Validation protocol aborted due to Base Node Public key change"
+                             );
                              let _ = self
                                 .resources
                                 .event_publisher
-                                .send(Arc::new(OutputManagerEvent::TxoValidationAborted(self.id)))
+                                .send(Arc::new(OutputManagerEvent::TxoValidationAborted(self.id, self.validation_type)))
                                 .map_err(|e| {
                                     trace!(
                                         target: LOG_TARGET,
@@ -200,7 +217,7 @@ where TBackend: OutputManagerBackend + 'static
                                     );
                                     e
                                 });
-                            continue;
+                            return Ok(self.id);
                         },
                         Err(e) => {
                             trace!(
@@ -225,7 +242,7 @@ where TBackend: OutputManagerBackend + 'static
                             let _ = self
                                 .resources
                                 .event_publisher
-                                .send(Arc::new(OutputManagerEvent::TxoValidationTimedOut(self.id)))
+                                .send(Arc::new(OutputManagerEvent::TxoValidationTimedOut(self.id, self.validation_type)))
                                 .map_err(|e| {
                                     trace!(
                                         target: LOG_TARGET,
@@ -280,25 +297,20 @@ where TBackend: OutputManagerBackend + 'static
                     new_base_node = base_node_update_receiver.select_next_some() => {
                         match new_base_node {
                             Ok(bn) => {
-                                self.base_node_public_key = bn;
-                                info!(
-                                    target: LOG_TARGET,
-                                    "TXO Validation protocol Base Node Public key updated to {:?}", self.base_node_public_key
-                                );
-                                output_batches_to_query = self.get_output_batches().await?;
-                                 let _ = self
-                                    .resources
-                                    .event_publisher
-                                    .send(Arc::new(OutputManagerEvent::TxoValidationAborted(self.id)))
-                                    .map_err(|e| {
-                                        trace!(
-                                            target: LOG_TARGET,
-                                            "Error sending event {:?}, because there are no subscribers.",
-                                            e.0
-                                        );
-                                        e
-                                    });
-                                break 'per_batch;
+                             info!(target: LOG_TARGET, "TXO Validation protocol aborted due to Base Node Public key change" );
+                             let _ = self
+                                .resources
+                                .event_publisher
+                                .send(Arc::new(OutputManagerEvent::TxoValidationAborted(self.id, self.validation_type)))
+                                .map_err(|e| {
+                                    trace!(
+                                        target: LOG_TARGET,
+                                        "Error sending event {:?}, because there are no subscribers.",
+                                        e.0
+                                    );
+                                    e
+                                });
+                                return Ok(self.id);
                             },
                             Err(e) => {
                                 trace!(
@@ -312,12 +324,13 @@ where TBackend: OutputManagerBackend + 'static
                     result = self.send_query_batch(batch.clone(), &mut client).fuse() => {
                         match result {
                             Ok(synced) => {
+                                self.base_node_synced = synced;
                                 if !synced {
                                     info!(target: LOG_TARGET, "Base Node reports not being synced, will retry.");
                                     let _ = self
                                         .resources
                                         .event_publisher
-                                        .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(self.id)))
+                                        .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(self.id, self.validation_type)))
                                         .map_err(|e| {
                                             trace!(
                                                 target: LOG_TARGET,
@@ -329,6 +342,7 @@ where TBackend: OutputManagerBackend + 'static
                                     delay.await;
                                     self.update_retry_delay(false);
                                     output_batches_to_query = self.get_output_batches().await?;
+                                    retries += 1;
                                     break 'per_batch;
                                 }
                                 self.update_retry_delay(true);
@@ -341,7 +355,21 @@ where TBackend: OutputManagerBackend + 'static
                                 retries += 1;
                                 break 'per_batch;
                             }
-                            Err(e) => { return Err(e); },
+                            Err(e) => {
+                                let _ = self
+                                    .resources
+                                    .event_publisher
+                                    .send(Arc::new(OutputManagerEvent::TxoValidationFailure(self.id, self.validation_type)))
+                                    .map_err(|e| {
+                                        trace!(
+                                            target: LOG_TARGET,
+                                            "Error sending event because there are no subscribers: {:?}",
+                                            e
+                                        );
+                                        e
+                                    });
+                                return Err(e);
+                            },
                         }
                     },
                     _ = shutdown => {
@@ -355,7 +383,10 @@ where TBackend: OutputManagerBackend + 'static
         let _ = self
             .resources
             .event_publisher
-            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(self.id)))
+            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(
+                self.id,
+                self.validation_type,
+            )))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,
@@ -584,7 +615,7 @@ where TBackend: OutputManagerBackend + 'static
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TxoValidationType {
     Unspent,
     Spent,
@@ -599,10 +630,4 @@ impl fmt::Display for TxoValidationType {
             TxoValidationType::Invalid => write!(f, "Invalid Outputs Validation"),
         }
     }
-}
-
-#[derive(Debug)]
-pub enum TxoValidationRetry {
-    Limited(u8),
-    UntilSuccess,
 }

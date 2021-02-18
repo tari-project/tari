@@ -23,4 +23,5 @@
 pub mod send_finalized_transaction;
 pub mod send_transaction_cancelled;
 pub mod send_transaction_reply;
+pub mod start_transaction_validation_and_broadcast_protocols;
 pub mod wait_on_dial;

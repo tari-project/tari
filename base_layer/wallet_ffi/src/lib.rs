@@ -113,7 +113,7 @@
 //!     change the status of the `CompletedTransaction` from    `Broadcast` to `Mined`. The pending funds will also
 //!     become finalized as spent and available funds respectively
 
-#![recursion_limit = "512"]
+#![recursion_limit = "1024"]
 
 #[cfg(test)]
 #[macro_use]
@@ -162,7 +162,6 @@ use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{
     contacts_service::storage::database::Contact,
     error::WalletError,
-    output_manager_service::protocols::txo_validation_protocol::TxoValidationRetry,
     storage::{
         database::WalletDatabase,
         sqlite_db::WalletSqliteDatabase,
@@ -213,6 +212,7 @@ use tari_p2p::transport::TransportType::Tor;
 use tari_wallet::{
     error::WalletStorageError,
     output_manager_service::protocols::txo_validation_protocol::TxoValidationType,
+    types::ValidationRetryStrategy,
     WalletSqlite,
 };
 use tokio::runtime::Runtime;
@@ -1624,12 +1624,14 @@ pub unsafe extern "C" fn completed_transaction_get_source_public_key(
 /// `c_int` - Returns the status which corresponds to:
 /// | Value | Interpretation |
 /// |---|---|
-/// |  -1 | TxNullError |
-/// |   0 | Completed   |
-/// |   1 | Broadcast   |
-/// |   2 | Mined       |
-/// |   3 | Imported    |
-/// |   4 | Pending     |
+/// |  -1 | TxNullError         |
+/// |   0 | Completed           |
+/// |   1 | Broadcast           |
+/// |   2 | MinedUnconfirmed    |
+/// |   3 | Imported            |
+/// |   4 | Pending             |
+/// |   5 | Coinbase            |
+/// |   6 | MinedConfirmed      |
 ///
 /// # Safety
 /// None
@@ -1765,6 +1767,36 @@ pub unsafe extern "C" fn completed_transaction_get_message(
 
     result = CString::new(message).unwrap();
     result.into_raw()
+}
+
+/// Check if a TariCompletedTransaction is Valid or not
+///
+/// ## Arguments
+/// `transaction` - The pointer to a TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Returns if the transaction was originally sent from the wallet
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_is_valid(
+    transaction: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> bool
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if transaction.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    (*transaction).valid
 }
 
 /// This function checks to determine if a TariCompletedTransaction was originally a TariPendingOutboundTransaction
@@ -2737,14 +2769,24 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 /// `callback_transaction_broadcast` - The callback function pointer matching the function signature. This will be
 /// called when a Finalized transaction is detected a Broadcast to a base node mempool.
 /// `callback_transaction_mined` - The callback function pointer matching the function signature. This will be called
-/// when a Broadcast transaction is detected as mined.
+/// when a Broadcast transaction is detected as mined AND confirmed.
+/// `callback_transaction_mined_unconfirmed` - The callback function pointer matching the function signature. This will
+/// be called  when a Broadcast transaction is detected as mined but not yet confirmed.
 /// `callback_discovery_process_complete` - The callback function pointer matching the function signature. This will be
 /// called when a `send_transacion(..)` call is made to a peer whose address is not known and a discovery process must
 /// be conducted. The outcome of the discovery process is relayed via this callback
-/// `callback_base_node_sync_complete` - The callback function pointer matching the function signature. This is called
-/// when a Base Node Sync process is completed or times out. The request_key is used to identify which request this
-/// callback references and a result of true means it was successful and false that the process timed out and new one
-/// will be started
+/// `callback_utxo_validation_complete` - The callback function pointer matching the function signature. This is called
+/// when a UTXO validation process is completed. The request_key is used to identify which request this
+/// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
+/// `callback_stxo_validation_complete` - The callback function pointer matching the function signature. This is called
+/// when a STXO validation process is completed. The request_key is used to identify which request this
+/// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
+/// `callback_invalid_txo_validation_complete` - The callback function pointer matching the function signature. This is
+/// called when a invalid TXO validation process is completed. The request_key is used to identify which request this
+/// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
+/// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
+/// called when a Transaction validation process is completed. The request_key is used to identify which request this
+/// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
 /// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
 /// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
 /// for it.
@@ -2768,10 +2810,14 @@ pub unsafe extern "C" fn wallet_create(
     callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_transaction_broadcast: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_transaction_mined: unsafe extern "C" fn(*mut TariCompletedTransaction),
+    callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction),
-    callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
+    callback_utxo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_stxo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_invalid_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_saf_messages_received: unsafe extern "C" fn(),
     error_out: *mut c_int,
 ) -> *mut TariWallet
@@ -2945,10 +2991,14 @@ pub unsafe extern "C" fn wallet_create(
                         callback_received_finalized_transaction,
                         callback_transaction_broadcast,
                         callback_transaction_mined,
+                        callback_transaction_mined_unconfirmed,
                         callback_direct_send_result,
                         callback_store_and_forward_send_result,
                         callback_transaction_cancellation,
-                        callback_base_node_sync_complete,
+                        callback_utxo_validation_complete,
+                        callback_stxo_validation_complete,
+                        callback_invalid_txo_validation_complete,
+                        callback_transaction_validation_complete,
                         callback_saf_messages_received,
                     );
 
@@ -3439,36 +3489,6 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
             .set_base_node_peer((*public_key).clone(), address_string),
     ) {
         error = LibWalletError::from(e).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-    // Restart Transaction Service protocols that need the base node peer
-    if let Err(e) = (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.transaction_service.restart_broadcast_protocols())
-    {
-        error = LibWalletError::from(WalletError::from(e)).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-    // Start once off Output manager validation protocols that need the base node peer to be set
-    if let Err(e) = (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .output_manager_service
-            .validate_txos(TxoValidationType::Invalid, TxoValidationRetry::Limited(5)),
-    ) {
-        error = LibWalletError::from(WalletError::from(e)).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-    if let Err(e) = (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .output_manager_service
-            .validate_txos(TxoValidationType::Spent, TxoValidationRetry::Limited(5)),
-    ) {
-        error = LibWalletError::from(WalletError::from(e)).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
     }
@@ -4641,9 +4661,8 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
     }
 }
 
-/// This function will tell the wallet to query the set base node to confirm the status of wallet data. For example this
-/// will check that Unspent Outputs stored in the wallet are still available as UTXO's on the blockchain. This will also
-/// trigger a request for outstanding SAF messages to you neighbours
+/// This function will tell the wallet to query the set base node to confirm the status of unspent transaction outputs
+/// (UTXOs).
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
@@ -4657,7 +4676,7 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn wallet_sync_with_base_node(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
+pub unsafe extern "C" fn wallet_start_utxo_validation(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -4666,13 +4685,179 @@ pub unsafe extern "C" fn wallet_sync_with_base_node(wallet: *mut TariWallet, err
         return 0;
     }
 
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.validate_utxos(TxoValidationRetry::Limited(1)))
-    {
+    if let Err(e) = (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .store_and_forward_requester
+            .request_saf_messages_from_neighbours(),
+    ) {
+        error = LibWalletError::from(e).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .output_manager_service
+            .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::Limited(0)),
+    ) {
         Ok(request_key) => request_key,
         Err(e) => {
-            error = LibWalletError::from(e).code;
+            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
+}
+
+/// This function will tell the wallet to query the set base node to confirm the status of spent transaction outputs
+/// (UTXOs).
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` -  Returns a unique Request Key that is used to identify which callbacks refer to this specific sync
+/// request. Note the result will be 0 if there was an error
+///
+/// # Safety
+/// None
+pub unsafe extern "C" fn wallet_start_stxo_validation(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    if let Err(e) = (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .store_and_forward_requester
+            .request_saf_messages_from_neighbours(),
+    ) {
+        error = LibWalletError::from(e).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .output_manager_service
+            .validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::Limited(0)),
+    ) {
+        Ok(request_key) => request_key,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
+}
+
+/// This function will tell the wallet to query the set base node to confirm the status of invalid transaction outputs.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` -  Returns a unique Request Key that is used to identify which callbacks refer to this specific sync
+/// request. Note the result will be 0 if there was an error
+///
+/// # Safety
+/// None
+pub unsafe extern "C" fn wallet_start_invalid_txo_validation(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    if let Err(e) = (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .store_and_forward_requester
+            .request_saf_messages_from_neighbours(),
+    ) {
+        error = LibWalletError::from(e).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .output_manager_service
+            .validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::Limited(0)),
+    ) {
+        Ok(request_key) => request_key,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
+}
+
+/// This function will tell the wallet to query the set base node to confirm the status of mined transactions.
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_ulonglong` -  Returns a unique Request Key that is used to identify which callbacks refer to this specific sync
+/// request. Note the result will be 0 if there was an error
+///
+/// # Safety
+/// None
+pub unsafe extern "C" fn wallet_start_transaction_validation(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> c_ulonglong
+{
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    if let Err(e) = (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .store_and_forward_requester
+            .request_saf_messages_from_neighbours(),
+    ) {
+        error = LibWalletError::from(e).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .validate_transactions(ValidationRetryStrategy::Limited(0)),
+    ) {
+        Ok(request_key) => request_key,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             0
         },
@@ -5302,10 +5487,14 @@ mod test {
         pub received_finalized_tx_callback_called: bool,
         pub broadcast_tx_callback_called: bool,
         pub mined_tx_callback_called: bool,
+        pub mined_tx_unconfirmed_callback_called: bool,
         pub direct_send_callback_called: bool,
         pub store_and_forward_send_callback_called: bool,
         pub tx_cancellation_callback_called: bool,
-        pub base_node_sync_callback_called: bool,
+        pub callback_utxo_validation_complete: bool,
+        pub callback_stxo_validation_complete: bool,
+        pub callback_invalid_txo_validation_complete: bool,
+        pub callback_transaction_validation_complete: bool,
     }
 
     impl CallbackState {
@@ -5316,10 +5505,14 @@ mod test {
                 received_finalized_tx_callback_called: false,
                 broadcast_tx_callback_called: false,
                 mined_tx_callback_called: false,
+                mined_tx_unconfirmed_callback_called: false,
                 direct_send_callback_called: false,
                 store_and_forward_send_callback_called: false,
-                base_node_sync_callback_called: false,
                 tx_cancellation_callback_called: false,
+                callback_utxo_validation_complete: false,
+                callback_stxo_validation_complete: false,
+                callback_invalid_txo_validation_complete: false,
+                callback_transaction_validation_complete: false,
             }
         }
 
@@ -5329,10 +5522,14 @@ mod test {
             self.received_finalized_tx_callback_called = false;
             self.broadcast_tx_callback_called = false;
             self.mined_tx_callback_called = false;
+            self.mined_tx_unconfirmed_callback_called = false;
             self.direct_send_callback_called = false;
             self.store_and_forward_send_callback_called = false;
             self.tx_cancellation_callback_called = false;
-            self.base_node_sync_callback_called = false;
+            self.callback_utxo_validation_complete = false;
+            self.callback_stxo_validation_complete = false;
+            self.callback_invalid_txo_validation_complete = false;
+            self.callback_transaction_validation_complete = false;
         }
     }
 
@@ -5407,6 +5604,19 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
+    unsafe extern "C" fn mined_unconfirmed_callback(tx: *mut TariCompletedTransaction, _confirmations: u64) {
+        assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::MinedUnconfirmed);
+        let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+        lock.mined_tx_unconfirmed_callback_called = true;
+        drop(lock);
+        completed_transaction_destroy(tx);
+    }
+
     unsafe extern "C" fn direct_send_callback(_tx_id: c_ulonglong, _result: bool) {
         assert!(true);
     }
@@ -5424,7 +5634,19 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn base_node_sync_process_complete_callback(_tx_id: c_ulonglong, _result: bool) {
+    unsafe extern "C" fn utxo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn stxo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn invalid_txo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn transaction_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
         assert!(true);
     }
 
@@ -5481,6 +5703,19 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
+    unsafe extern "C" fn mined_unconfirmed_callback_bob(tx: *mut TariCompletedTransaction, _confirmations: u64) {
+        assert_eq!(tx.is_null(), false);
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::MinedUnconfirmed);
+        let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+        lock.mined_tx_unconfirmed_callback_called = true;
+        drop(lock);
+        completed_transaction_destroy(tx);
+    }
+
     unsafe extern "C" fn direct_send_callback_bob(_tx_id: c_ulonglong, _result: bool) {
         assert!(true);
     }
@@ -5498,7 +5733,19 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn base_node_sync_process_complete_callback_bob(_tx_id: c_ulonglong, _result: bool) {
+    unsafe extern "C" fn utxo_validation_complete_callback_bob(_tx_id: c_ulonglong, _result: u8) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn stxo_validation_complete_callback_bob(_tx_id: c_ulonglong, _result: u8) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn invalid_txo_validation_complete_callback_bob(_tx_id: c_ulonglong, _result: u8) {
+        assert!(true);
+    }
+
+    unsafe extern "C" fn transaction_validation_complete_callback_bob(_tx_id: c_ulonglong, _result: u8) {
         assert!(true);
     }
 
@@ -5811,10 +6058,14 @@ mod test {
                 received_tx_finalized_callback,
                 broadcast_callback,
                 mined_callback,
+                mined_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                base_node_sync_process_complete_callback,
+                utxo_validation_complete_callback,
+                stxo_validation_complete_callback,
+                invalid_txo_validation_complete_callback,
+                transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 error_ptr,
             );
@@ -5854,10 +6105,14 @@ mod test {
                 received_tx_finalized_callback_bob,
                 broadcast_callback_bob,
                 mined_callback_bob,
+                mined_unconfirmed_callback_bob,
                 direct_send_callback_bob,
                 store_and_forward_send_callback_bob,
                 tx_cancellation_callback_bob,
-                base_node_sync_process_complete_callback_bob,
+                utxo_validation_complete_callback_bob,
+                stxo_validation_complete_callback_bob,
+                invalid_txo_validation_complete_callback_bob,
+                transaction_validation_complete_callback_bob,
                 saf_messages_received_callback_bob,
                 error_ptr,
             );
@@ -6045,7 +6300,7 @@ mod test {
 
             assert_eq!(num_completed_tx_pre + 1, completed_transactions.len());
 
-            // At this stage there is only 1 Mined transaction created by the `wallet_test_generate_data(...)` function
+            // At this stage there is only 1 Mined transaction created by the `wallet_test_generate_data(...)`function
             let ffi_completed_txs = wallet_get_completed_transactions(&mut (*alice_wallet), error_ptr);
             assert_eq!(completed_transactions_get_length(ffi_completed_txs, error_ptr), 1);
 
@@ -6175,13 +6430,20 @@ mod test {
                 .expect("Tx should be in collection");
 
             assert_eq!(import_transaction.amount, utxo_value * uT);
-            assert_eq!(wallet_sync_with_base_node(alice_wallet, error_ptr), 0);
+
+            assert_eq!(wallet_start_utxo_validation(alice_wallet, error_ptr), 0);
+            assert_eq!(wallet_start_stxo_validation(alice_wallet, error_ptr), 0);
+            assert_eq!(wallet_start_invalid_txo_validation(alice_wallet, error_ptr), 0);
+            assert_eq!(wallet_start_transaction_validation(alice_wallet, error_ptr), 0);
             let mut peer_added =
                 wallet_add_base_node_peer(alice_wallet, public_key_bob.clone(), address_bob_str, error_ptr);
             assert_eq!(peer_added, true);
             peer_added = wallet_add_base_node_peer(bob_wallet, public_key_alice.clone(), address_alice_str, error_ptr);
             assert_eq!(peer_added, true);
-            assert!(wallet_sync_with_base_node(alice_wallet, error_ptr) > 0);
+            assert!(wallet_start_utxo_validation(alice_wallet, error_ptr) > 0);
+            assert!(wallet_start_stxo_validation(alice_wallet, error_ptr) > 0);
+            assert!(wallet_start_invalid_txo_validation(alice_wallet, error_ptr) > 0);
+            assert!(wallet_start_transaction_validation(alice_wallet, error_ptr) > 0);
 
             // Test pending tx cancellation
             let ffi_cancelled_txs = wallet_get_cancelled_transactions(&mut (*alice_wallet), error_ptr);
@@ -6396,10 +6658,14 @@ mod test {
                 received_tx_finalized_callback,
                 broadcast_callback,
                 mined_callback,
+                mined_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                base_node_sync_process_complete_callback,
+                utxo_validation_complete_callback,
+                stxo_validation_complete_callback,
+                invalid_txo_validation_complete_callback,
+                transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 error_ptr,
             );
@@ -6500,10 +6766,14 @@ mod test {
                 received_tx_finalized_callback,
                 broadcast_callback,
                 mined_callback,
+                mined_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                base_node_sync_process_complete_callback,
+                utxo_validation_complete_callback,
+                stxo_validation_complete_callback,
+                invalid_txo_validation_complete_callback,
+                transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 error_ptr,
             );
@@ -6548,10 +6818,14 @@ mod test {
                 received_tx_finalized_callback,
                 broadcast_callback,
                 mined_callback,
+                mined_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                base_node_sync_process_complete_callback,
+                utxo_validation_complete_callback,
+                stxo_validation_complete_callback,
+                invalid_txo_validation_complete_callback,
+                transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 error_ptr,
             );
@@ -6573,10 +6847,14 @@ mod test {
                 received_tx_finalized_callback,
                 broadcast_callback,
                 mined_callback,
+                mined_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                base_node_sync_process_complete_callback,
+                utxo_validation_complete_callback,
+                stxo_validation_complete_callback,
+                invalid_txo_validation_complete_callback,
+                transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 error_ptr,
             );
@@ -6593,10 +6871,14 @@ mod test {
                 received_tx_finalized_callback,
                 broadcast_callback,
                 mined_callback,
+                mined_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                base_node_sync_process_complete_callback,
+                utxo_validation_complete_callback,
+                stxo_validation_complete_callback,
+                invalid_txo_validation_complete_callback,
+                transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 error_ptr,
             );
@@ -6632,10 +6914,14 @@ mod test {
                 received_tx_finalized_callback,
                 broadcast_callback,
                 mined_callback,
+                mined_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                base_node_sync_process_complete_callback,
+                utxo_validation_complete_callback,
+                stxo_validation_complete_callback,
+                invalid_txo_validation_complete_callback,
+                transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 error_ptr,
             );
@@ -6694,10 +6980,14 @@ mod test {
                 received_tx_finalized_callback,
                 broadcast_callback,
                 mined_callback,
+                mined_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
-                base_node_sync_process_complete_callback,
+                utxo_validation_complete_callback,
+                stxo_validation_complete_callback,
+                invalid_txo_validation_complete_callback,
+                transaction_validation_complete_callback,
                 saf_messages_received_callback,
                 error_ptr,
             );

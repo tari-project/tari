@@ -76,6 +76,7 @@ use tari_wallet::{
             sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
+    types::ValidationRetryStrategy,
 };
 use tempfile::{tempdir, TempDir};
 use tokio::{sync::broadcast, task, time::delay_for};
@@ -155,7 +156,7 @@ pub async fn setup(
         node_identity: client_node_identity,
         factories: CryptoFactories::default(),
         config: TransactionServiceConfig {
-            peer_dial_retry_timeout: Duration::from_secs(3),
+            broadcast_monitoring_timeout: Duration::from_secs(3),
             max_tx_query_batch_size: 2,
             ..TransactionServiceConfig::default()
         },
@@ -982,7 +983,6 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
 /// valid.
 #[tokio_macros::test]
 async fn tx_validation_protocol_tx_becomes_valid() {
-    let _ = env_logger::try_init();
     let (
         resources,
         _connectivity_mock_state,
@@ -1040,11 +1040,13 @@ async fn tx_validation_protocol_tx_becomes_valid() {
     rpc_service_state.set_is_synced(false);
 
     let protocol = TransactionValidationProtocol::new(
+        1,
         resources.clone(),
         server_node_identity.public_key().clone(),
         Duration::from_secs(1),
         base_node_update_publisher.subscribe(),
         _timeout_update_publisher.subscribe(),
+        ValidationRetryStrategy::UntilSuccess,
     );
 
     let join_handle = task::spawn(protocol.execute());
@@ -1107,11 +1109,13 @@ async fn tx_validation_protocol_tx_becomes_invalid() {
     });
 
     let protocol = TransactionValidationProtocol::new(
+        1,
         resources.clone(),
         server_node_identity.public_key().clone(),
         Duration::from_secs(1),
         base_node_update_publisher.subscribe(),
         _timeout_update_publisher.subscribe(),
+        ValidationRetryStrategy::UntilSuccess,
     );
 
     let join_handle = task::spawn(protocol.execute());
@@ -1168,11 +1172,13 @@ async fn tx_validation_protocol_tx_becomes_unconfirmed() {
     });
 
     let protocol = TransactionValidationProtocol::new(
+        1,
         resources.clone(),
         server_node_identity.public_key().clone(),
         Duration::from_secs(1),
         base_node_update_publisher.subscribe(),
         _timeout_update_publisher.subscribe(),
+        ValidationRetryStrategy::UntilSuccess,
     );
 
     let join_handle = task::spawn(protocol.execute());
@@ -1202,10 +1208,10 @@ async fn tx_validation_protocol_tx_becomes_unconfirmed() {
 /// Test the validation protocol reacts correctly to a change in base node and redoes the full validation based on the
 /// new base node
 #[tokio_macros::test]
-async fn tx_validation_protocol_tx_through_base_node_switch() {
+async fn tx_validation_protocol_tx_ends_on_base_node_end() {
     let (
         resources,
-        connectivity_mock_state,
+        _connectivity_mock_state,
         _outbound_mock_state,
         _mock_rpc_server,
         server_node_identity,
@@ -1216,6 +1222,7 @@ async fn tx_validation_protocol_tx_through_base_node_switch() {
     ) = setup(TxProtocolTestConfig::WithConnection).await;
     let (base_node_update_publisher, _) = broadcast::channel(20);
     let (_timeout_update_publisher, _) = broadcast::channel(20);
+    let mut event_stream = resources.event_publisher.subscribe().fuse();
 
     add_transaction_to_database(
         1,
@@ -1282,11 +1289,13 @@ async fn tx_validation_protocol_tx_through_base_node_switch() {
     rpc_service_state.set_response_delay(Some(Duration::from_secs(5)));
 
     let protocol = TransactionValidationProtocol::new(
+        1,
         resources.clone(),
         server_node_identity.public_key().clone(),
-        Duration::from_secs(1),
+        Duration::from_secs(10),
         base_node_update_publisher.subscribe(),
         _timeout_update_publisher.subscribe(),
+        ValidationRetryStrategy::UntilSuccess,
     );
 
     let join_handle = task::spawn(protocol.execute());
@@ -1298,47 +1307,34 @@ async fn tx_validation_protocol_tx_through_base_node_switch() {
 
     // Setup new RPC Server
     let new_server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-    let service = BaseNodeWalletRpcMockService::new();
-    let new_rpc_service_state = service.get_state();
-
-    let new_server = BaseNodeWalletRpcServer::new(service);
-    let protocol_name = new_server.as_protocol_name();
-    let mut new_mock_server = MockRpcServer::new(new_server, new_server_node_identity.clone());
-    new_mock_server.serve();
-
-    let connection = new_mock_server
-        .create_connection(new_server_node_identity.to_peer(), protocol_name.into())
-        .await;
-    connectivity_mock_state.add_active_connection(connection).await;
-
-    // Set new Base Node response to be mined but unconfirmed
-    new_rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::NotStored,
-        block_hash: None,
-        confirmations: 1,
-        is_synced: true,
-    });
 
     // Change Base Node
     base_node_update_publisher
         .send(new_server_node_identity.public_key().clone())
         .unwrap();
 
-    let _ = new_rpc_service_state
-        .wait_pop_transaction_batch_query_calls(3, Duration::from_secs(60))
-        .await
-        .unwrap();
-
     // Check that the protocol ends with success
     let result = join_handle.await.unwrap();
     assert!(result.is_ok());
 
-    // Check transaction status is updated
-    let db_completed_txs = resources.db.get_completed_transactions().await.unwrap();
-
-    for tx in db_completed_txs.values() {
-        assert!(!tx.valid, "TxId: {} should be invalid", tx.tx_id);
+    let mut delay = delay_for(Duration::from_secs(1)).fuse();
+    let mut aborted = false;
+    loop {
+        futures::select! {
+            event = event_stream.select_next_some() => {
+                match &*event.unwrap() {
+                        TransactionEvent::TransactionValidationAborted(_) => {
+                            aborted = true;
+                        },
+                        _ => (),
+                        }
+            },
+            () = delay => {
+                break;
+            },
+        }
     }
+    assert!(aborted, "Validation protocol should have aborted");
 }
 
 /// Test the validation protocol reacts correctly when the RPC client returns an error between calls.
@@ -1423,11 +1419,13 @@ async fn tx_validation_protocol_rpc_client_broken_between_calls() {
     rpc_service_state.set_response_delay(Some(Duration::from_secs(5)));
 
     let protocol = TransactionValidationProtocol::new(
+        1,
         resources.clone(),
         server_node_identity.public_key().clone(),
-        Duration::from_secs(1),
+        Duration::from_secs(10),
         base_node_update_publisher.subscribe(),
         _timeout_update_publisher.subscribe(),
+        ValidationRetryStrategy::UntilSuccess,
     );
 
     let join_handle = task::spawn(protocol.execute());
@@ -1457,4 +1455,197 @@ async fn tx_validation_protocol_rpc_client_broken_between_calls() {
     for tx in db_completed_txs.values() {
         assert!(tx.valid, "TxId: {} should be valid", tx.tx_id);
     }
+}
+
+/// Test the validation protocol reacts correctly when the RPC client returns an error between calls and only retry
+/// finite amount of times
+#[tokio_macros::test]
+async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
+    let (
+        resources,
+        _connectivity_mock_state,
+        _outbound_mock_state,
+        _mock_rpc_server,
+        server_node_identity,
+        mut rpc_service_state,
+        _timeout_update_publisher,
+        _shutdown,
+        _temp_dir,
+    ) = setup(TxProtocolTestConfig::WithConnection).await;
+    let (base_node_update_publisher, _) = broadcast::channel(20);
+    let (_timeout_update_publisher, _) = broadcast::channel(20);
+    let mut event_stream = resources.event_publisher.subscribe().fuse();
+    add_transaction_to_database(
+        1,
+        1 * T,
+        true,
+        Some(TransactionStatus::MinedConfirmed),
+        resources.db.clone(),
+    )
+    .await;
+
+    add_transaction_to_database(
+        2,
+        2 * T,
+        false,
+        Some(TransactionStatus::MinedConfirmed),
+        resources.db.clone(),
+    )
+    .await;
+
+    // Set Base Node to respond with AlreadyMined
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::Mined,
+        block_hash: None,
+        confirmations: 1,
+        is_synced: true,
+    });
+    rpc_service_state.set_rpc_status_error(Some(RpcStatus::bad_request("blah".to_string())));
+
+    rpc_service_state.set_response_delay(Some(Duration::from_secs(1)));
+
+    let protocol = TransactionValidationProtocol::new(
+        1,
+        resources.clone(),
+        server_node_identity.public_key().clone(),
+        Duration::from_secs(5),
+        base_node_update_publisher.subscribe(),
+        _timeout_update_publisher.subscribe(),
+        ValidationRetryStrategy::Limited(2),
+    );
+
+    let join_handle = task::spawn(protocol.execute());
+
+    let _ = rpc_service_state
+        .wait_pop_transaction_batch_query_calls(3, Duration::from_secs(60))
+        .await
+        .unwrap();
+
+    // Check that the protocol ends with success
+    let result = join_handle.await.unwrap();
+    assert!(result.is_err());
+
+    // Check that the connection problem event was emitted at least twice
+    let mut delay = delay_for(Duration::from_secs(10)).fuse();
+    let mut timeouts = 0;
+    let mut failures = 0;
+    loop {
+        futures::select! {
+            event = event_stream.select_next_some() => {
+            log::error!("EVENT: {:?}", event);
+                match &*event.unwrap() {
+                    TransactionEvent::TransactionValidationTimedOut(_) => {
+                        timeouts +=1 ;
+                    }
+                    TransactionEvent::TransactionValidationFailure(_) => {
+                        failures +=1 ;
+                    }
+                    _ => (),
+                }
+                if failures + timeouts >= 4 {
+                    break;
+                }
+            },
+            () = delay => {
+                break;
+            },
+        }
+    }
+    assert!(timeouts >= 3, "Should have timed out twice");
+    assert!(failures >= 1, "Should have failed");
+}
+
+/// Validate completed transactions, will check that valid ones stay valid and incorrectly marked invalid tx become
+/// valid.
+#[tokio_macros::test]
+async fn tx_validation_protocol_base_node_not_synced() {
+    let (
+        resources,
+        _connectivity_mock_state,
+        _outbound_mock_state,
+        _mock_rpc_server,
+        server_node_identity,
+        rpc_service_state,
+        _timeout_update_publisher,
+        _shutdown,
+        _temp_dir,
+    ) = setup(TxProtocolTestConfig::WithConnection).await;
+    let (base_node_update_publisher, _) = broadcast::channel(20);
+    let (_timeout_update_publisher, _) = broadcast::channel(20);
+    let mut event_stream = resources.event_publisher.subscribe().fuse();
+
+    add_transaction_to_database(
+        1,
+        1 * T,
+        true,
+        Some(TransactionStatus::MinedConfirmed),
+        resources.db.clone(),
+    )
+    .await;
+    add_transaction_to_database(
+        2,
+        2 * T,
+        false,
+        Some(TransactionStatus::MinedConfirmed),
+        resources.db.clone(),
+    )
+    .await;
+    add_transaction_to_database(
+        3,
+        3 * T,
+        true,
+        Some(TransactionStatus::MinedConfirmed),
+        resources.db.clone(),
+    )
+    .await;
+
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::Mined,
+        block_hash: None,
+        confirmations: resources.config.num_confirmations_required.into(),
+        is_synced: false,
+    });
+
+    rpc_service_state.set_is_synced(false);
+
+    let protocol = TransactionValidationProtocol::new(
+        1,
+        resources.clone(),
+        server_node_identity.public_key().clone(),
+        Duration::from_secs(1),
+        base_node_update_publisher.subscribe(),
+        _timeout_update_publisher.subscribe(),
+        ValidationRetryStrategy::Limited(0),
+    );
+
+    let join_handle = task::spawn(protocol.execute());
+
+    // Check that the protocol ends with success
+    let result = join_handle.await.unwrap();
+    assert!(result.is_err());
+
+    let mut delay = delay_for(Duration::from_secs(10)).fuse();
+    let mut delayed = 0;
+    let mut failures = 0;
+    loop {
+        futures::select! {
+            event = event_stream.select_next_some() => {
+                match &*event.unwrap() {
+                    TransactionEvent::TransactionValidationDelayed(_) => {
+                        delayed +=1 ;
+                    }
+                    TransactionEvent::TransactionValidationFailure(_) => {
+                        failures +=1 ;
+                    }
+                    _ => (),
+                }
+
+            },
+            () = delay => {
+                break;
+            },
+        }
+    }
+    assert!(delayed >= 1, "Should have been delayed");
+    assert_eq!(failures, 0, "Should not have failed when BN is not synced");
 }

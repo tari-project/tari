@@ -61,7 +61,7 @@ use tari_wallet::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
         handle::{OutputManagerEvent, OutputManagerHandle},
-        protocols::txo_validation_protocol::{TxoValidationRetry, TxoValidationType},
+        protocols::txo_validation_protocol::TxoValidationType,
         service::OutputManagerService,
         storage::{
             database::{DbKey, DbKeyValuePair, DbValue, OutputManagerBackend, OutputManagerDatabase, WriteOperation},
@@ -73,6 +73,7 @@ use tari_wallet::{
     },
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     transaction_service::handle::TransactionServiceHandle,
+    types::ValidationRetryStrategy,
 };
 use tempfile::tempdir;
 use tokio::{
@@ -1140,7 +1141,7 @@ fn test_utxo_stxo_invalid_txo_validation() {
         .unwrap();
 
     runtime
-        .block_on(oms.validate_txos(TxoValidationType::Invalid, TxoValidationRetry::Limited(5)))
+        .block_on(oms.validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::Limited(5)))
         .unwrap();
 
     let _fetch_utxo_calls = runtime
@@ -1156,7 +1157,7 @@ fn test_utxo_stxo_invalid_txo_validation() {
                     match event {
                         Ok(msg) => {
                             match (*msg).clone() {
-                                OutputManagerEvent::TxoValidationSuccess(_) => {
+                                OutputManagerEvent::TxoValidationSuccess(_,TxoValidationType::Invalid) => {
                                    success = true;
                                    break;
                                 },
@@ -1186,7 +1187,7 @@ fn test_utxo_stxo_invalid_txo_validation() {
     ]);
 
     runtime
-        .block_on(oms.validate_txos(TxoValidationType::Unspent, TxoValidationRetry::UntilSuccess))
+        .block_on(oms.validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess))
         .unwrap();
 
     let _fetch_utxo_calls = runtime
@@ -1202,7 +1203,7 @@ fn test_utxo_stxo_invalid_txo_validation() {
                     match event {
                         Ok(msg) => {
                             match (*msg).clone() {
-                                OutputManagerEvent::TxoValidationSuccess(_) => {
+                                OutputManagerEvent::TxoValidationSuccess(_,TxoValidationType::Unspent) => {
                                    success = true;
                                    break;
                                 },
@@ -1231,7 +1232,7 @@ fn test_utxo_stxo_invalid_txo_validation() {
     rpc_service_state.set_utxos(vec![spent_tx_output1]);
 
     runtime
-        .block_on(oms.validate_txos(TxoValidationType::Spent, TxoValidationRetry::UntilSuccess))
+        .block_on(oms.validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::UntilSuccess))
         .unwrap();
 
     let _fetch_utxo_calls = runtime
@@ -1247,7 +1248,7 @@ fn test_utxo_stxo_invalid_txo_validation() {
                     match event {
                         Ok(msg) => {
                             match (*msg).clone() {
-                                OutputManagerEvent::TxoValidationSuccess(_) => {
+                                OutputManagerEvent::TxoValidationSuccess(_, TxoValidationType::Spent) => {
                                    success = true;
                                    break;
                                 },
@@ -1272,7 +1273,7 @@ fn test_utxo_stxo_invalid_txo_validation() {
 }
 
 #[test]
-fn test_base_node_switching_triggered_txo_validation_and_base_node_switch_during_validation() {
+fn test_base_node_switch_during_validation() {
     let factories = CryptoFactories::default();
 
     let mut runtime = Runtime::new().unwrap();
@@ -1285,7 +1286,7 @@ fn test_base_node_switching_triggered_txo_validation_and_base_node_switch_during
         _mock_rpc_server,
         server_node_identity,
         mut rpc_service_state,
-        connectivity_mock_state,
+        _connectivity_mock_state,
     ) = setup_output_manager_service(&mut runtime, backend, true);
     let mut event_stream = oms.get_event_stream_fused();
 
@@ -1299,7 +1300,6 @@ fn test_base_node_switching_triggered_txo_validation_and_base_node_switch_during
     let unspent_key2 = PrivateKey::random(&mut OsRng);
     let unspent_value2 = 800;
     let unspent_output2 = UnblindedOutput::new(MicroTari::from(unspent_value2), unspent_key2.clone(), None);
-    let unspent_tx_output2 = unspent_output2.as_transaction_output(&factories).unwrap();
 
     runtime.block_on(oms.add_output(unspent_output2.clone())).unwrap();
 
@@ -1316,35 +1316,13 @@ fn test_base_node_switching_triggered_txo_validation_and_base_node_switch_during
 
     // New base node we will switch to
     let new_server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-    let service = BaseNodeWalletRpcMockService::new();
-    let new_rpc_service_state = service.get_state();
-
-    let new_server = BaseNodeWalletRpcServer::new(service);
-    let protocol_name = new_server.as_protocol_name();
-
-    let mut new_mock_server = runtime
-        .handle()
-        .enter(|| MockRpcServer::new(new_server, new_server_node_identity.clone()));
-
-    runtime.handle().enter(|| new_mock_server.serve());
-
-    let connection =
-        runtime.block_on(new_mock_server.create_connection(new_server_node_identity.to_peer(), protocol_name.into()));
-    runtime.block_on(connectivity_mock_state.add_active_connection(connection));
-
-    new_rpc_service_state.set_utxos(vec![unspent_tx_output1, unspent_tx_output2]);
 
     runtime
         .block_on(oms.set_base_node_public_key(server_node_identity.public_key().clone()))
         .unwrap();
 
-    // check that a validation is not started for the first base node set
-    assert!(runtime
-        .block_on(rpc_service_state.wait_pop_fetch_utxos_calls(1, Duration::from_secs(2)))
-        .is_err());
-
     runtime
-        .block_on(oms.set_base_node_public_key(server_node_identity.public_key().clone()))
+        .block_on(oms.validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess))
         .unwrap();
 
     let _fetch_utxo_calls = runtime
@@ -1364,7 +1342,7 @@ fn test_base_node_switching_triggered_txo_validation_and_base_node_switch_during
                     match event {
                         Ok(msg) => {
                             match (*msg).clone() {
-                                OutputManagerEvent::TxoValidationAborted(_) => {
+                                OutputManagerEvent::TxoValidationAborted(_,_) => {
                                    abort = true;
                                    break;
                                 },
@@ -1381,43 +1359,6 @@ fn test_base_node_switching_triggered_txo_validation_and_base_node_switch_during
         }
         assert!(abort, "Did not receive validation abort");
     });
-
-    let _fetch_utxo_calls = runtime
-        .block_on(new_rpc_service_state.wait_pop_fetch_utxos_calls(2, Duration::from_secs(60)))
-        .unwrap();
-
-    runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
-        let mut success = false;
-        loop {
-            futures::select! {
-                event = event_stream.select_next_some() => {
-                    match event {
-                        Ok(msg) => {
-                            match (*msg).clone() {
-                                OutputManagerEvent::TxoValidationSuccess(_) => {
-                                   success = true;
-                                   break;
-                                },
-                                _ => (),
-                            }
-                        },
-                        _ => (),
-                    }
-                },
-                () = delay => {
-                    break;
-                },
-            }
-        }
-        assert!(success, "Did not receive validation success event");
-    });
-
-    let outputs = runtime.block_on(oms.get_unspent_outputs()).unwrap();
-
-    assert_eq!(outputs.len(), 2);
-    assert!(outputs.iter().find(|&o| o == &unspent_output1).is_some());
-    assert!(outputs.iter().find(|&o| o == &unspent_output2).is_some());
 }
 
 #[test]
@@ -1446,7 +1387,7 @@ fn test_txo_validation_connection_timeout_retries() {
         .unwrap();
 
     runtime
-        .block_on(oms.validate_txos(TxoValidationType::Unspent, TxoValidationRetry::Limited(1)))
+        .block_on(oms.validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::Limited(1)))
         .unwrap();
 
     runtime.block_on(async {
@@ -1458,12 +1399,11 @@ fn test_txo_validation_connection_timeout_retries() {
                 event = event_stream.select_next_some() => {
                     match event {
                         Ok(msg) => {
-                        log::error!("EVENT: {:?}", msg);
                             match (*msg).clone() {
-                                OutputManagerEvent::TxoValidationTimedOut(_) => {
+                                OutputManagerEvent::TxoValidationTimedOut(_,_) => {
                                    timeout+=1;
                                 },
-                                 OutputManagerEvent::TxoValidationFailure(_) => {
+                                 OutputManagerEvent::TxoValidationFailure(_,_) => {
                                    failed+=1;
                                 },
                                 _ => (),
@@ -1512,7 +1452,7 @@ fn test_txo_validation_rpc_error_retries() {
         .unwrap();
 
     runtime
-        .block_on(oms.validate_txos(TxoValidationType::Unspent, TxoValidationRetry::Limited(1)))
+        .block_on(oms.validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::Limited(1)))
         .unwrap();
 
     runtime.block_on(async {
@@ -1524,7 +1464,7 @@ fn test_txo_validation_rpc_error_retries() {
                     match event {
                         Ok(msg) => {
                             match (*msg).clone() {
-                                 OutputManagerEvent::TxoValidationFailure(_) => {
+                                 OutputManagerEvent::TxoValidationFailure(_,_) => {
                                    failed+=1;
                                 },
                                 _ => (),
@@ -1579,7 +1519,7 @@ fn test_txo_validation_rpc_timeout() {
         .unwrap();
 
     runtime
-        .block_on(oms.validate_txos(TxoValidationType::Unspent, TxoValidationRetry::Limited(1)))
+        .block_on(oms.validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::Limited(1)))
         .unwrap();
 
     runtime.block_on(async {
@@ -1591,7 +1531,7 @@ fn test_txo_validation_rpc_timeout() {
                     match event {
                         Ok(msg) => {
                             match (*msg).clone() {
-                                 OutputManagerEvent::TxoValidationFailure(_) => {
+                                 OutputManagerEvent::TxoValidationFailure(_,_) => {
                                    failed+=1;
                                 },
                                 _ => (),
@@ -1642,7 +1582,7 @@ fn test_txo_validation_base_node_not_synced() {
         .unwrap();
 
     runtime
-        .block_on(oms.validate_txos(TxoValidationType::Unspent, TxoValidationRetry::Limited(5)))
+        .block_on(oms.validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::Limited(5)))
         .unwrap();
 
     runtime.block_on(async {
@@ -1654,7 +1594,7 @@ fn test_txo_validation_base_node_not_synced() {
                     match event {
                         Ok(msg) => {
                             match (*msg).clone() {
-                                 OutputManagerEvent::TxoValidationDelayed(_) => {
+                                 OutputManagerEvent::TxoValidationDelayed(_,_) => {
                                    delayed+=1;
                                 },
                                 _ => (),
@@ -1686,7 +1626,7 @@ fn test_txo_validation_base_node_not_synced() {
                     match event {
                         Ok(msg) => {
                             match (*msg).clone() {
-                                OutputManagerEvent::TxoValidationSuccess(_) => {
+                                OutputManagerEvent::TxoValidationSuccess(_,_) => {
                                    success = true;
                                    break;
                                 },

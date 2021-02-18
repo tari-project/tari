@@ -20,12 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::output_manager_service::{
-    error::OutputManagerError,
-    protocols::txo_validation_protocol::{TxoValidationRetry, TxoValidationType},
-    service::Balance,
-    storage::database::PendingTransactionOutputs,
-    TxId,
+use crate::{
+    output_manager_service::{
+        error::OutputManagerError,
+        protocols::txo_validation_protocol::TxoValidationType,
+        service::Balance,
+        storage::database::PendingTransactionOutputs,
+        TxId,
+    },
+    types::ValidationRetryStrategy,
 };
 use aes_gcm::Aes256Gcm;
 use futures::{stream::Fuse, StreamExt};
@@ -60,7 +63,7 @@ pub enum OutputManagerRequest {
     GetInvalidOutputs,
     GetSeedWords,
     SetBaseNodePublicKey(CommsPublicKey),
-    ValidateUtxos(TxoValidationType, TxoValidationRetry),
+    ValidateUtxos(TxoValidationType, ValidationRetryStrategy),
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
@@ -131,14 +134,14 @@ pub enum OutputManagerResponse {
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
 pub type OutputManagerEventReceiver = broadcast::Receiver<Arc<OutputManagerEvent>>;
 
-/// Events that can be published on the Text Message Service Event Stream
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+/// Events that can be published on the Output Manager Service Event Stream
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutputManagerEvent {
-    TxoValidationTimedOut(u64),
-    TxoValidationSuccess(u64),
-    TxoValidationFailure(u64),
-    TxoValidationAborted(u64),
-    TxoValidationDelayed(u64),
+    TxoValidationTimedOut(u64, TxoValidationType),
+    TxoValidationSuccess(u64, TxoValidationType),
+    TxoValidationFailure(u64, TxoValidationType),
+    TxoValidationAborted(u64, TxoValidationType),
+    TxoValidationDelayed(u64, TxoValidationType),
     Error(String),
 }
 
@@ -382,7 +385,7 @@ impl OutputManagerHandle {
     pub async fn validate_txos(
         &mut self,
         validation_type: TxoValidationType,
-        retries: TxoValidationRetry,
+        retries: ValidationRetryStrategy,
     ) -> Result<u64, OutputManagerError>
     {
         match self

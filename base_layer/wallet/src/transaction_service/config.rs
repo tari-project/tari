@@ -36,7 +36,6 @@ pub struct TransactionServiceConfig {
     pub resend_response_cooldown: Duration,
     pub pending_transaction_cancellation_timeout: Duration,
     pub num_confirmations_required: u64,
-    pub peer_dial_retry_timeout: Duration,
     pub max_tx_query_batch_size: usize,
     pub transaction_routing_mechanism: TransactionRoutingMechanism,
 }
@@ -44,7 +43,7 @@ pub struct TransactionServiceConfig {
 impl Default for TransactionServiceConfig {
     fn default() -> Self {
         Self {
-            broadcast_monitoring_timeout: Duration::from_secs(60),
+            broadcast_monitoring_timeout: Duration::from_secs(30),
             chain_monitoring_timeout: Duration::from_secs(60),
             direct_send_timeout: Duration::from_secs(20),
             broadcast_send_timeout: Duration::from_secs(60),
@@ -53,7 +52,6 @@ impl Default for TransactionServiceConfig {
             resend_response_cooldown: Duration::from_secs(300),
             pending_transaction_cancellation_timeout: Duration::from_secs(259200), // 3 Days
             num_confirmations_required: 3,
-            peer_dial_retry_timeout: Duration::from_secs(20),
             max_tx_query_batch_size: 5000,
             transaction_routing_mechanism: TransactionRoutingMechanism::default(),
         }
