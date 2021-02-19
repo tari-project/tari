@@ -404,63 +404,6 @@ fn test_reorg() {
 }
 
 #[test]
-#[ignore]
-// TODO: fix this test
-fn test_orphaned_mempool_transactions() {
-    let network = Network::LocalNet;
-    let (store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
-    // A parallel store that will "mine" the orphan chain
-    let mut miner = create_test_blockchain_db();
-    let schemas = vec![txn_schema!(
-        from: vec![outputs[0][0].clone()],
-        to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T]
-    )];
-    generate_new_block(
-        &mut miner,
-        &mut blocks,
-        &mut outputs,
-        schemas.clone(),
-        &consensus_manager,
-    )
-    .unwrap();
-    store.add_block(blocks[1].block.clone().into()).unwrap();
-    let schemas = vec![
-        txn_schema!(from: vec![outputs[1][0].clone(), outputs[1][1].clone()], to: vec![], fee: 500*uT, lock: 1100, OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 300*uT, lock: 1700, OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 100*uT),
-    ];
-    let (txns, _) = schema_to_transaction(&schemas.clone());
-    generate_new_block(&mut miner, &mut blocks, &mut outputs, schemas, &consensus_manager).unwrap();
-    // tx3 and tx4 depend on tx0 and tx1
-    let schemas = vec![
-        txn_schema!(from: vec![outputs[2][0].clone()], to: vec![], fee: 200*uT),
-        txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 500*uT, lock: 1000, OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 600*uT, lock: 5200, OutputFeatures::default()),
-    ];
-    let (txns2, _) = schema_to_transaction(&schemas.clone());
-    generate_new_block(&mut miner, &mut blocks, &mut outputs, schemas, &consensus_manager).unwrap();
-    let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
-    let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
-    // There are 2 orphan txs
-    vec![txns[2].clone(), txns2[0].clone(), txns2[1].clone(), txns2[2].clone()]
-        .into_iter()
-        .for_each(|t| {
-            let _ = mempool.insert(t).unwrap();
-        });
-
-    let stats = mempool.stats().unwrap();
-    assert_eq!(stats.total_txs, 4);
-    assert_eq!(stats.unconfirmed_txs, 1);
-    store.add_block(blocks[1].block.clone().into()).unwrap();
-    store.add_block(blocks[2].block.clone().into()).unwrap();
-    mempool.process_published_block(blocks[1].block.clone().into()).unwrap();
-    mempool.process_published_block(blocks[2].block.clone().into()).unwrap();
-    let stats = mempool.stats().unwrap();
-    assert_eq!(stats.total_txs, 3);
-    assert_eq!(stats.unconfirmed_txs, 1);
-}
-
-#[test]
 // TODO: This test returns 0 in the unconfirmed pool, so might not catch errors. It should be updated to return better
 // data
 fn request_response_get_stats() {
