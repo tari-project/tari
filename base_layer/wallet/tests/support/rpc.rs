@@ -73,7 +73,7 @@ macro_rules! acquire_lock {
     };
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BaseNodeWalletRpcMockState {
     submit_transaction_calls: Arc<Mutex<Vec<Transaction>>>,
     transaction_query_calls: Arc<Mutex<Vec<Signature>>>,
@@ -103,6 +103,7 @@ impl BaseNodeWalletRpcMockState {
                 block_hash: None,
                 confirmations: 0,
                 is_synced: true,
+                height_of_longest_chain: 0,
             })),
             fetch_utxos_calls: Arc::new(Mutex::new(Vec::new())),
             response_delay: Arc::new(Mutex::new(None)),
@@ -182,15 +183,20 @@ impl BaseNodeWalletRpcMockState {
     ) -> Result<Vec<Signature>, String>
     {
         let now = Instant::now();
+        let mut count = 0usize;
         while now.elapsed() < timeout {
             let mut lock = acquire_lock!(self.transaction_query_calls);
+            count = (*lock).len();
             if (*lock).len() >= num_calls {
                 return Ok((*lock).drain(..num_calls).collect());
             }
             drop(lock);
             delay_for(Duration::from_millis(100)).await;
         }
-        Err("Did not receive enough calls within the timeout period".to_string())
+        Err(format!(
+            "Did not receive enough calls within the timeout period, received {}, expected {}.",
+            count, num_calls
+        ))
     }
 
     pub async fn wait_pop_transaction_batch_query_calls(

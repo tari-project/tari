@@ -77,6 +77,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
 
     async fn fetch_kernel(&self, signature: Signature) -> Result<TxQueryResponse, RpcStatus> {
         let db = self.db();
+        let chain_metadata = db
+            .get_chain_metadata()
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
         match db
             .fetch_kernel_by_excess_sig(signature.clone())
             .await
@@ -91,16 +95,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                 {
                     None => (),
                     Some(header) => {
-                        let chain_meta_data = db
-                            .get_chain_metadata()
-                            .await
-                            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
-                        let confirmations = chain_meta_data.height_of_longest_chain() - header.height;
+                        let confirmations = chain_metadata.height_of_longest_chain().saturating_sub(header.height);
                         let response = TxQueryResponse {
                             location: TxLocation::Mined as i32,
                             block_hash: Some(block_hash),
                             confirmations,
                             is_synced: true,
+                            height_of_longest_chain: chain_metadata.height_of_longest_chain(),
                         };
                         return Ok(response);
                     },
@@ -120,6 +121,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                 block_hash: None,
                 confirmations: 0,
                 is_synced: true,
+                height_of_longest_chain: chain_metadata.height_of_longest_chain(),
             },
             TxStorageResponse::ReorgPool |
             TxStorageResponse::NotStoredOrphan |
@@ -130,6 +132,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                 block_hash: None,
                 confirmations: 0,
                 is_synced: true,
+                height_of_longest_chain: chain_metadata.height_of_longest_chain(),
             },
         };
         Ok(mempool_response)
