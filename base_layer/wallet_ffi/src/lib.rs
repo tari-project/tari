@@ -4725,6 +4725,7 @@ pub unsafe extern "C" fn wallet_start_utxo_validation(wallet: *mut TariWallet, e
 ///
 /// # Safety
 /// None
+#[no_mangle]
 pub unsafe extern "C" fn wallet_start_stxo_validation(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -4773,6 +4774,7 @@ pub unsafe extern "C" fn wallet_start_stxo_validation(wallet: *mut TariWallet, e
 ///
 /// # Safety
 /// None
+#[no_mangle]
 pub unsafe extern "C" fn wallet_start_invalid_txo_validation(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
@@ -4825,6 +4827,7 @@ pub unsafe extern "C" fn wallet_start_invalid_txo_validation(
 ///
 /// # Safety
 /// None
+#[no_mangle]
 pub unsafe extern "C" fn wallet_start_transaction_validation(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
@@ -4877,6 +4880,7 @@ pub unsafe extern "C" fn wallet_start_transaction_validation(
 ///
 /// # Safety
 /// None
+#[no_mangle]
 pub unsafe extern "C" fn wallet_restart_transaction_broadcast(wallet: *mut TariWallet, error_out: *mut c_int) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
