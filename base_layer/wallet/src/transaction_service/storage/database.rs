@@ -82,7 +82,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
     /// Indicated that a completed transaction has been detected as mined on a base node
     fn mine_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Indicated that a broadcast transaction has been detected as confirm on a base node
-    fn confirm_broadcast_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    fn confirm_broadcast_or_coinbase_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Indicated that a mined transaction has been detected as unconfirmed on a base node, due to reorg or base node
     /// switch
     fn unconfirm_mined_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
@@ -698,9 +698,9 @@ where T: TransactionBackend + 'static
         Ok(())
     }
 
-    pub async fn confirm_broadcast_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    pub async fn confirm_broadcast_or_coinbase_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.confirm_broadcast_transaction(tx_id))
+        tokio::task::spawn_blocking(move || db_clone.confirm_broadcast_or_coinbase_transaction(tx_id))
             .await
             .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())

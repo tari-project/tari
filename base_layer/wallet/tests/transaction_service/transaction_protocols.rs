@@ -1520,7 +1520,7 @@ async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
         block_hash: None,
         confirmations: 1,
         is_synced: true,
-        height_of_longest_chain: 0
+        height_of_longest_chain: 0,
     });
     rpc_service_state.set_rpc_status_error(Some(RpcStatus::bad_request("blah".to_string())));
 
@@ -1626,7 +1626,7 @@ async fn tx_validation_protocol_base_node_not_synced() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required.into(),
         is_synced: false,
-        height_of_longest_chain: 0
+        height_of_longest_chain: 0,
     });
 
     rpc_service_state.set_is_synced(false);

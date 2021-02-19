@@ -43,6 +43,7 @@ use tari_core::{
     },
     transactions::{transaction::Transaction, types::Signature},
 };
+use tari_crypto::tari_utilities::hex::Hex;
 use tokio::{sync::broadcast, time::delay_for};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
@@ -289,7 +290,7 @@ where TBackend: TransactionBackend + 'static
 
                                     self.resources
                                         .db
-                                        .confirm_broadcast_transaction(completed_tx.tx_id)
+                                        .confirm_broadcast_or_coinbase_transaction(completed_tx.tx_id)
                                         .await
                                         .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
 
@@ -572,10 +573,18 @@ where TBackend: TransactionBackend + 'static
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<bool, TransactionServiceProtocolError>
     {
+        let signature = completed_transaction
+            .transaction
+            .first_kernel_excess_sig()
+            .ok_or_else(|| {
+                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidTransaction)
+            })?;
         if self.mode == TxBroadcastMode::TransactionSubmission {
             info!(
                 target: LOG_TARGET,
-                "Submitting Transaction (TxId: {}) to Base Node", self.tx_id
+                "Submitting Transaction (TxId: {}) with signature '{}' to Base Node",
+                self.tx_id,
+                signature.clone().get_signature().to_hex(),
             );
             self.submit_transaction(completed_transaction.transaction, client).await
         } else {
@@ -583,12 +592,6 @@ where TBackend: TransactionBackend + 'static
                 target: LOG_TARGET,
                 "Querying Transaction (TxId: {}) status on Base Node", self.tx_id
             );
-            let signature = completed_transaction
-                .transaction
-                .first_kernel_excess_sig()
-                .ok_or_else(|| {
-                    TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidTransaction)
-                })?;
             self.transaction_query(signature.clone(), client).await
         }
     }

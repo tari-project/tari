@@ -4,6 +4,9 @@ use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
     tari_rpc::{
         wallet_server,
+        GetAllCompletedTransactionsRequest,
+        GetBalanceRequest,
+        GetBalanceResponse,
         GetCoinbaseRequest,
         GetCoinbaseResponse,
         GetIdentityRequest,
@@ -23,6 +26,7 @@ use tari_app_grpc::{
 use tari_comms::types::CommsPublicKey;
 use tari_core::tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
+    output_manager_service::handle::OutputManagerHandle,
     transaction_service::{handle::TransactionServiceHandle, storage::models},
     WalletSqlite,
 };
@@ -42,6 +46,10 @@ impl WalletGrpcServer {
     fn get_transaction_service(&self) -> TransactionServiceHandle {
         self.wallet.transaction_service.clone()
     }
+
+    fn get_output_manager_service(&self) -> OutputManagerHandle {
+        self.wallet.output_manager_service.clone()
+    }
 }
 
 #[tonic::async_trait]
@@ -60,6 +68,20 @@ impl wallet_server::Wallet for WalletGrpcServer {
             public_key: identity.public_key().to_string().as_bytes().to_vec(),
             public_address: identity.public_address().to_string(),
             node_id: identity.node_id().to_string().as_bytes().to_vec(),
+        }))
+    }
+
+    async fn get_balance(&self, _request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
+        let mut output_service = self.get_output_manager_service();
+        let balance;
+        match output_service.get_balance().await {
+            Ok(b) => balance = b,
+            Err(e) => return Err(Status::not_found(format!("GetBalance error! {}", e))),
+        }
+        Ok(Response::new(GetBalanceResponse {
+            available_balance: balance.available_balance.0,
+            pending_incoming_balance: balance.pending_incoming_balance.0,
+            pending_outgoing_balance: balance.pending_outgoing_balance.0,
         }))
     }
 
@@ -175,6 +197,53 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         Ok(Response::new(GetTransactionInfoResponse { transactions }))
     }
+
+    async fn get_all_completed_transactions(
+        &self,
+        _request: Request<GetAllCompletedTransactionsRequest>,
+    ) -> Result<Response<GetTransactionInfoResponse>, Status>
+    {
+        debug!(
+            target: LOG_TARGET,
+            "Incoming GRPC request for GetAllCompletedTransactions"
+        );
+        let mut transaction_service = self.get_transaction_service();
+        let transactions;
+        match transaction_service.get_completed_transactions().await {
+            Ok(t) => {
+                transactions = t;
+            },
+            Err(_) => {
+                return Err(Status::not_found("No completed transactions found."));
+            },
+        };
+
+        let transactions = transactions
+            .into_iter()
+            .map(|tx| TransactionInfo {
+                tx_id: tx.1.tx_id,
+                source_pk: tx.1.source_public_key.to_vec(),
+                dest_pk: tx.1.destination_public_key.to_vec(),
+                status: TransactionStatus::from(tx.1.status) as i32,
+                amount: tx.1.amount.into(),
+                is_cancelled: tx.1.cancelled,
+                direction: TransactionDirection::from(tx.1.direction) as i32,
+                fee: tx.1.fee.into(),
+                timestamp: Some(naive_datetime_to_timestamp(tx.1.timestamp)),
+                excess_sig: tx
+                    .1
+                    .transaction
+                    .first_kernel_excess_sig()
+                    .expect("Complete transaction has no kernels")
+                    .get_signature()
+                    .to_vec(),
+                message: tx.1.message,
+                valid: tx.1.valid,
+            })
+            .collect();
+
+        Ok(Response::new(GetTransactionInfoResponse { transactions }))
+    }
 }
 
 fn convert_wallet_transaction_into_transaction_info(
@@ -196,6 +265,7 @@ fn convert_wallet_transaction_into_transaction_info(
             excess_sig: Default::default(),
             timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
             message: tx.message,
+            valid: true,
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id,
@@ -209,6 +279,7 @@ fn convert_wallet_transaction_into_transaction_info(
             excess_sig: Default::default(),
             timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
             message: tx.message,
+            valid: true,
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id,
@@ -227,6 +298,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 .get_signature()
                 .to_vec(),
             message: tx.message,
+            valid: tx.valid,
         },
     }
 }

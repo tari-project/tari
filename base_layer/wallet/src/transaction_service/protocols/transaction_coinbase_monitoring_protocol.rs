@@ -139,7 +139,11 @@ where TBackend: TransactionBackend + 'static
             };
             debug!(
                 target: LOG_TARGET,
-                "Coinbase transaction (TxId: {}) has status '{}'", self.tx_id, completed_tx.status,
+                "Coinbase transaction (TxId: {}) has status '{}' and is cancelled ({}) and is valid ({}).",
+                self.tx_id,
+                completed_tx.status,
+                completed_tx.cancelled,
+                completed_tx.valid,
             );
 
             let mut hashes = Vec::new();
@@ -510,6 +514,12 @@ where TBackend: TransactionBackend + 'static
                         completed_tx.transaction.body.inputs().clone(),
                         completed_tx.transaction.body.outputs().clone(),
                     )
+                    .await
+                    .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
+
+                self.resources
+                    .db
+                    .confirm_broadcast_or_coinbase_transaction(self.tx_id)
                     .await
                     .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
 

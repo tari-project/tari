@@ -480,7 +480,12 @@ where TBackend: TransactionBackend + 'static
                                  updated",
                                 queried_tx.tx_id
                             );
-                            if let Err(e) = self.resources.db.confirm_broadcast_transaction(queried_tx.tx_id).await {
+                            if let Err(e) = self
+                                .resources
+                                .db
+                                .confirm_broadcast_or_coinbase_transaction(queried_tx.tx_id)
+                                .await
+                            {
                                 warn!(
                                     target: LOG_TARGET,
                                     "Error confirming mined transaction (TxId: {}): {}", queried_tx.tx_id, e

@@ -131,14 +131,46 @@ const getTransactionOutputHash = function(output) {
 }
 
 function consoleLogTransactionDetails(txnDetails, txId) {
-     var found = txnDetails[0];
-     var status = txnDetails[1];
-     if (found) {
-         console.log("  Transaction '" + status.transactions[0]["tx_id"] + "' has status '" +
-             status.transactions[0]["status"] + "' and is_cancelled(" + status.transactions[0]["is_cancelled"] + ")");
-     } else {
+    var found = txnDetails[0];
+    var status = txnDetails[1];
+    if (found) {
+         console.log(
+             "  Transaction " + pad("'" + status.transactions[0]["tx_id"] + "'", 24) +
+             " has status " + pad("'" + status.transactions[0]["status"] + "'", 40) +
+             " and " + pad("is_cancelled(" + status.transactions[0]["is_cancelled"] + ")", 21) +
+             " and " + pad("is_valid(" + status.transactions[0]["valid"] + ")", 16)
+         );
+    } else {
          console.log("  Transaction '" + txId + "' " + status);
-     }
+    }
+}
+
+function consoleLogBalance(balance) {
+    console.log(
+        "  Available " + pad(balance["available_balance"], 16) +
+        " uT, Pending incoming " + pad(balance["pending_incoming_balance"], 16) +
+        " uT, Pending outgoing " + pad(balance["pending_outgoing_balance"], 16) + " uT"
+    );
+}
+
+function consoleLogCoinbaseDetails(txnDetails) {
+    console.log(
+        "  Transaction " + pad("'" + txnDetails["tx_id"] + "'", 24) +
+        " has status " + pad("'" + txnDetails["status"] + "'", 40) +
+        " and " + pad("is_cancelled(" + txnDetails["is_cancelled"] + ")", 21) +
+        " and " + pad("is_valid(" + txnDetails["valid"] + ")", 16)
+    );
+}
+
+function pad(str, length, padLeft=true) {
+    var padding = Array(length).join(' ')
+    if (typeof str === 'undefined')
+        return padding;
+    if (padLeft) {
+        return (padding + str).slice(-padding.length);
+    } else {
+        return (str + padding).substring(' ', padding.length);
+    }
 }
 
 module.exports = {
@@ -150,5 +182,7 @@ module.exports = {
     getFreePort,
     getTransactionOutputHash,
     hexSwitchEndianness,
-    consoleLogTransactionDetails
+    consoleLogTransactionDetails,
+    consoleLogBalance,
+    consoleLogCoinbaseDetails
 };

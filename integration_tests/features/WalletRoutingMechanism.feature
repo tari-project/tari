@@ -13,9 +13,9 @@ Scenario Outline: Wallets transacting via specified routing mechanism only
     Then all nodes are at height 20
         # TODO: This wait is needed to stop base nodes from shutting down
     When I wait 1 seconds
-    When I wait for wallet WALLET_A to have more than 100000000 tari
+    When I wait for wallet WALLET_A to have at least 100000000 tari
     #When I print the world
-    And I multi-send 1000000 tari from wallet WALLET_A to all wallets at fee 100
+    And I multi-send 1000000 uT from wallet WALLET_A to all wallets at fee 100
     Then all wallets detect all transactions are at least Pending
     Then all wallets detect all transactions are at least Completed
     Then all wallets detect all transactions are at least Broadcast

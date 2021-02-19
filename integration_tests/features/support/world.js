@@ -20,6 +20,7 @@ class CustomWorld {
         this.transactions = {};
         this.peers = {};
         this.transactionsMap = new Map();
+        this.resultStack = [];
     }
 
     async createSeedNode(name) {
