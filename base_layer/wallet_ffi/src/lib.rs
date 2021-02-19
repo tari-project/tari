@@ -4864,6 +4864,52 @@ pub unsafe extern "C" fn wallet_start_transaction_validation(
     }
 }
 
+/// This function will tell the wallet retart any broadcast protocols for completed transactions. Ideally this should be
+/// called after a successfuly Transaction Validation is complete
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` -  Returns a boolean value indicating if the launch was success or not.
+///
+/// # Safety
+/// None
+pub unsafe extern "C" fn wallet_restart_transaction_broadcast(wallet: *mut TariWallet, error_out: *mut c_int) -> bool {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    if let Err(e) = (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .store_and_forward_requester
+            .request_saf_messages_from_neighbours(),
+    ) {
+        error = LibWalletError::from(e).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.transaction_service.restart_broadcast_protocols())
+    {
+        Ok(()) => true,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
+        },
+    }
+}
+
 /// This function will tell the wallet to do a coin split.
 ///
 /// ## Arguments

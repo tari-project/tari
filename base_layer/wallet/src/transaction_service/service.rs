@@ -589,7 +589,7 @@ where
             TransactionServiceRequest::ValidateTransactions(retry_strategy) => self
                 .start_transaction_validation_protocol(retry_strategy, transaction_validation_join_handles)
                 .await
-                .map(|id| TransactionServiceResponse::ValidationStarted(id)),
+                .map(TransactionServiceResponse::ValidationStarted),
         }
     }
 

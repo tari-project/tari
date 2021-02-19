@@ -445,7 +445,7 @@ struct TariWallet *wallet_create(struct TariWalletConfig *config,
                                     void (*callback_received_finalized_transaction)(struct TariCompletedTransaction*),
                                     void (*callback_transaction_broadcast)(struct TariCompletedTransaction*),
                                     void (*callback_transaction_mined)(struct TariCompletedTransaction*),
-                                    void (*callback_transaction_mined)(struct TariCompletedTransaction*, unsigned long long),
+                                    void (*callback_transaction_mined_unconfirmed)(struct TariCompletedTransaction*, unsigned long long),
                                     void (*callback_direct_send_result)(unsigned long long, bool),
                                     void (*callback_store_and_forward_send_result)(unsigned long long, bool),
                                     void (*callback_transaction_cancellation)(struct TariCompletedTransaction*),
@@ -544,6 +544,10 @@ unsigned long long wallet_start_invalid_txo_validation(struct TariWallet *wallet
 
 //This function will tell the wallet to query the set base node to confirm the status of mined transactions.
 unsigned long long wallet_start_transaction_validation(struct TariWallet *wallet, int* error_out);
+
+//This function will tell the wallet retart any broadcast protocols for completed transactions. Ideally this should be
+// called after a successfuly Transaction Validation is complete
+bool wallet_restart_transaction_broadcast(struct TariWallet *wallet, int* error_out);
 
 // Set the power mode of the wallet to Low Power mode which will reduce the amount of network operations the wallet performs to conserve power
 void wallet_set_low_power_mode(struct TariWallet *wallet, int* error_out);
