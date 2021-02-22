@@ -165,9 +165,9 @@ pub async fn create_wallet(
     let db = WalletMemoryDatabase::new();
     let (backend, _) = make_transaction_database(Some(datastore_path.to_str().unwrap().to_string()));
 
-    let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+    let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
-    db.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMeta(meta_data)))
+    db.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)))
         .unwrap();
     Wallet::new(
         config,

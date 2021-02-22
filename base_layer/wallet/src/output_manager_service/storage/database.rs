@@ -441,6 +441,7 @@ where T: OutputManagerBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    /// Retrieves UTXOs sorted by value from smallest to largest.
     pub async fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let db_clone = self.db.clone();
 

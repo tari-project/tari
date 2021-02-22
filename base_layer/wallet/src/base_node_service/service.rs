@@ -320,7 +320,10 @@ where
                     let metadata: ChainMetadata = chain_metadata
                         .try_into()
                         .map_err(BaseNodeServiceError::InvalidBaseNodeResponse)?;
-                    self.db.set_chain_meta(metadata.clone()).await?;
+
+                    // store chain metadata in the wallet db
+                    self.db.set_chain_metadata(metadata.clone()).await?;
+
                     let state = BaseNodeState {
                         is_synced: Some(message.is_synced),
                         chain_metadata: Some(metadata),
@@ -389,8 +392,12 @@ where
                 Ok(BaseNodeServiceResponse::BaseNodePeerSet)
             },
             BaseNodeServiceRequest::GetChainMetadata => match self.state.chain_metadata.clone() {
-                Some(v) => Ok(BaseNodeServiceResponse::ChainMetadata(Some(v))),
-                None => Ok(BaseNodeServiceResponse::ChainMetadata(self.db.get_chain_meta().await?)),
+                Some(metadata) => Ok(BaseNodeServiceResponse::ChainMetadata(Some(metadata))),
+                None => {
+                    // if we don't have live state, check if we've previously stored state in the wallet db
+                    let metadata = self.db.get_chain_metadata().await?;
+                    Ok(BaseNodeServiceResponse::ChainMetadata(metadata))
+                },
             },
         }
     }

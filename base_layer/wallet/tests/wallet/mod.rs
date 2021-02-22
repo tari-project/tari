@@ -144,7 +144,7 @@ async fn create_wallet(
     );
     let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
-    let _ = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMeta(meta_data)));
+    let _ = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(meta_data)));
 
     let wallet = Wallet::new(
         config,
@@ -680,7 +680,7 @@ async fn test_data_generation() {
 
     let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
-    db.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMeta(meta_data)))
+    db.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(meta_data)))
         .unwrap();
 
     let mut wallet = Wallet::new(

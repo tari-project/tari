@@ -168,9 +168,9 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static, P: AsRef<Path>
     ));
 
     let db = WalletDatabase::new(WalletMemoryDatabase::new());
-    let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+    let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
-    runtime.block_on(db.set_chain_meta(meta_data)).unwrap();
+    runtime.block_on(db.set_chain_metadata(metadata)).unwrap();
 
     let fut = StackBuilder::new(shutdown_signal)
         .add_initializer(RegisterHandle::new(dht))

@@ -57,7 +57,7 @@ pub enum DbKey {
     CommsFeatures,
     Identity,
     TorId,
-    BaseNodeChainMeta,
+    BaseNodeChainMetadata,
     ClientKey(String),
 }
 
@@ -70,7 +70,7 @@ pub enum DbValue {
     TorId(TorIdentity),
     ClientValue(String),
     ValueCleared,
-    BaseNodeChainMeta(ChainMetadata),
+    BaseNodeChainMetadata(ChainMetadata),
 }
 
 #[derive(Clone)]
@@ -79,7 +79,7 @@ pub enum DbKeyValuePair {
     ClientKeyValue(String, String),
     Identity(Box<NodeIdentity>),
     TorId(TorIdentity),
-    BaseNodeChainMeta(ChainMetadata),
+    BaseNodeChainMetadata(ChainMetadata),
 }
 
 pub enum WriteOperation {
@@ -149,25 +149,25 @@ where T: WalletBackend + 'static
         Ok(())
     }
 
-    pub async fn get_chain_meta(&self) -> Result<Option<ChainMetadata>, WalletStorageError> {
+    pub async fn get_chain_metadata(&self) -> Result<Option<ChainMetadata>, WalletStorageError> {
         let db_clone = self.db.clone();
 
-        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::BaseNodeChainMeta) {
+        let c = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::BaseNodeChainMetadata) {
             Ok(None) => Ok(None),
-            Ok(Some(DbValue::BaseNodeChainMeta(k))) => Ok(Some(k)),
-            Ok(Some(other)) => unexpected_result(DbKey::BaseNodeChainMeta, other),
-            Err(e) => log_error(DbKey::BaseNodeChainMeta, e),
+            Ok(Some(DbValue::BaseNodeChainMetadata(metadata))) => Ok(Some(metadata)),
+            Ok(Some(other)) => unexpected_result(DbKey::BaseNodeChainMetadata, other),
+            Err(e) => log_error(DbKey::BaseNodeChainMetadata, e),
         })
         .await
         .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(c)
     }
 
-    pub async fn set_chain_meta(&self, metadata: ChainMetadata) -> Result<(), WalletStorageError> {
+    pub async fn set_chain_metadata(&self, metadata: ChainMetadata) -> Result<(), WalletStorageError> {
         let db_clone = self.db.clone();
 
         tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMeta(metadata)))
+            db_clone.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)))
         })
         .await
         .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
@@ -250,7 +250,7 @@ impl Display for DbKey {
             DbKey::Identity => f.write_str(&"NodeIdentity".to_string()),
             DbKey::TorId => f.write_str(&"TorId".to_string()),
             DbKey::ClientKey(k) => f.write_str(&format!("ClientKey: {:?}", k)),
-            DbKey::BaseNodeChainMeta => f.write_str(&"Last seen Chain metadata from base node".to_string()),
+            DbKey::BaseNodeChainMetadata => f.write_str(&"Last seen Chain metadata from base node".to_string()),
         }
     }
 }
@@ -266,7 +266,7 @@ impl Display for DbValue {
             DbValue::CommsAddress(_) => f.write_str(&"Comms Address".to_string()),
             DbValue::TorId(v) => f.write_str(&format!("Tor ID: {}", v)),
             DbValue::Identity(v) => f.write_str(&format!("Node Identity: {}", v)),
-            DbValue::BaseNodeChainMeta(v) => f.write_str(&format!("Last seen Chain metadata from base node:{}", v)),
+            DbValue::BaseNodeChainMetadata(v) => f.write_str(&format!("Last seen Chain metadata from base node:{}", v)),
         }
     }
 }
