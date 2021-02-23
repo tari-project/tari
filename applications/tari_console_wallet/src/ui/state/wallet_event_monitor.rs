@@ -70,10 +70,12 @@ impl WalletEventMonitor {
                                         notifier.transaction_received(tx_id);
                                     },
                                     TransactionEvent::TransactionMinedUnconfirmed(tx_id, confirmations) => {
+                                        self.trigger_confirmations_refresh(tx_id, confirmations).await;
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         notifier.transaction_mined_unconfirmed(tx_id, confirmations);
                                     },
                                     TransactionEvent::TransactionMined(tx_id) => {
+                                        self.trigger_confirmations_cleanup(tx_id).await;
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         notifier.transaction_mined(tx_id);
                                     },
@@ -170,6 +172,22 @@ impl WalletEventMonitor {
         let mut inner = self.app_state_inner.write().await;
 
         if let Err(e) = inner.refresh_single_transaction_state(tx_id).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+        }
+    }
+
+    async fn trigger_confirmations_refresh(&mut self, tx_id: TxId, confirmations: u64) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_single_confirmation_state(tx_id, confirmations).await {
+            warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+        }
+    }
+
+    async fn trigger_confirmations_cleanup(&mut self, tx_id: TxId) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.cleanup_single_confirmation_state(tx_id).await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
         }
     }

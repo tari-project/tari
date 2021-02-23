@@ -159,6 +159,7 @@ pub fn tui_mode(
         node_config.network,
         base_node_selected,
         base_node_config,
+        node_config,
         notifier,
     ));
     handle.enter(|| run(app))?;

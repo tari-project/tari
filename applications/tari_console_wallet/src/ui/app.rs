@@ -37,7 +37,7 @@ use crate::{
     },
     wallet_modes::PeerConfig,
 };
-use tari_common::Network;
+use tari_common::{GlobalConfig, Network};
 use tari_comms::peer_manager::Peer;
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
@@ -69,6 +69,7 @@ impl<B: Backend> App<B> {
         network: Network,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
+        node_config: GlobalConfig,
         notifier: Notifier,
     ) -> Self
     {
@@ -78,6 +79,7 @@ impl<B: Backend> App<B> {
             wallet,
             base_node_selected.clone(),
             base_node_config,
+            node_config,
         );
 
         let tabs = TabsContainer::<B>::new(title.clone())
