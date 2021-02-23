@@ -70,4 +70,6 @@ pub enum MmProxyError {
     HexError(#[from] FromHexError),
     #[error("Coinbase builder error: {0}")]
     CoinbaseBuilderError(#[from] CoinbaseBuildError),
+    #[error("Unexpected Tari base node response: {0}")]
+    UnexpectedTariBaseNodeResponse(String),
 }
