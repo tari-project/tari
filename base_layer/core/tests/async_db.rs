@@ -47,7 +47,7 @@ use tari_test_utils::runtime::test_async;
 
 /// Finds the UTXO in a block corresponding to the unblinded output. We have to search for outputs because UTXOs get
 /// sorted in blocks, and so the order they were inserted in can change.
-fn _find_utxo(output: &UnblindedOutput, block: &Block, factory: &CommitmentFactory) -> Option<TransactionOutput> {
+fn find_utxo(output: &UnblindedOutput, block: &Block, factory: &CommitmentFactory) -> Option<TransactionOutput> {
     for utxo in block.body.outputs().iter() {
         if factory.open_value(&output.spending_key, output.value.into(), &utxo.commitment) {
             return Some(utxo.clone());
@@ -92,28 +92,24 @@ fn async_rewind_to_height() {
 }
 
 #[test]
-#[ignore]
-// Ignored until pruned mode fixed
 fn fetch_async_utxo() {
-    unimplemented!()
-    // let (db, blocks, outputs, _) = create_blockchain_db_no_cut_through();
-    // let factory = CommitmentFactory::default();
-    // // Retrieve a UTXO and an STXO
-    // let utxo = find_utxo(&outputs[4][0], &blocks[4], &factory).unwrap();
-    // let stxo = find_utxo(&outputs[1][0], &blocks[1], &factory).unwrap();
-    // test_async(move |rt| {
-    //     let db = db.clone();
-    //     let db2 = db.clone();
-    //     let _blocks2 = blocks.clone();
-    //     rt.spawn(async move {
-    //         let utxo_check = async_db::fetch_utxo(db.clone(), utxo.hash()).await.unwrap();
-    //         assert_eq!(utxo_check, utxo);
-    //     });
-    //     rt.spawn(async move {
-    //         let stxo_check = async_db::fetch_stxo(db2.clone(), stxo.hash()).await.unwrap();
-    //         assert_eq!(stxo_check, stxo);
-    //     });
-    // });
+    let (adb, blocks, outputs, _) = create_blockchain_db_no_cut_through();
+    let factory = CommitmentFactory::default();
+    // Retrieve a UTXO and an STXO
+    let utxo = find_utxo(&outputs[4][0], &blocks[4].block, &factory).unwrap();
+    let stxo = find_utxo(&outputs[1][0], &blocks[1].block, &factory).unwrap();
+    test_async(move |rt| {
+        let db = AsyncBlockchainDb::new(adb.clone());
+        let db2 = AsyncBlockchainDb::new(adb);
+        rt.spawn(async move {
+            let utxo_check = db.fetch_utxo(utxo.hash()).await.unwrap().unwrap();
+            assert_eq!(utxo_check, utxo);
+        });
+        rt.spawn(async move {
+            let stxo_check = db2.fetch_utxo(stxo.hash()).await.unwrap().unwrap();
+            assert_eq!(stxo_check, stxo);
+        });
+    });
 }
 
 #[test]
@@ -163,12 +159,8 @@ fn async_add_new_block() {
 }
 
 #[test]
-#[ignore]
-// TODO: Fix this test
 fn async_add_block_fetch_orphan() {
-    let network = Network::LocalNet;
-    let consensus: ConsensusManager = ConsensusManagerBuilder::new(network).build();
-    let (db, _, _, _) = create_blockchain_db_no_cut_through();
+    let (db, _, _, consensus) = create_blockchain_db_no_cut_through();
 
     let orphan = create_orphan_block(7, vec![], &consensus);
     let block_hash = orphan.hash();
