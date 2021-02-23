@@ -23,9 +23,12 @@
 pub use crate::proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
 use crate::{
     base_node::comms_interface as ci,
+    blocks::BlockHeader,
+    chain_storage::HistoricalBlock,
     proof_of_work::Difficulty,
     proto,
     proto::{
+        base_node as base_node_proto,
         base_node::{
             BlockHeaders as ProtoBlockHeaders,
             HistoricalBlocks as ProtoHistoricalBlocks,
@@ -58,6 +61,8 @@ impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 let headers = try_convert_all(headers.headers)?;
                 ci::NodeCommsResponse::BlockHeaders(headers)
             },
+            BlockHeader(header) => ci::NodeCommsResponse::BlockHeader(header.try_into()?),
+            HistoricalBlock(block) => ci::NodeCommsResponse::HistoricalBlock(Box::new(block.try_into()?)),
             FetchHeadersAfterResponse(headers) => {
                 let headers = try_convert_all(headers.headers)?;
                 ci::NodeCommsResponse::FetchHeadersAfterResponse(headers)
@@ -100,6 +105,8 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
                 let block_headers = headers.into_iter().map(Into::into).collect();
                 ProtoNodeCommsResponse::BlockHeaders(block_headers)
             },
+            BlockHeader(header) => ProtoNodeCommsResponse::BlockHeader(header.into()),
+            HistoricalBlock(block) => ProtoNodeCommsResponse::HistoricalBlock((*block).into()),
             FetchHeadersAfterResponse(headers) => {
                 let block_headers = headers.into_iter().map(Into::into).collect();
                 ProtoNodeCommsResponse::FetchHeadersAfterResponse(block_headers)
@@ -120,6 +127,50 @@ impl From<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
             }),
             TargetDifficulty(difficulty) => ProtoNodeCommsResponse::TargetDifficulty(difficulty.as_u64()),
             MmrNodes(added, deleted) => ProtoNodeCommsResponse::MmrNodes(ProtoMmrNodes { added, deleted }),
+        }
+    }
+}
+
+impl From<Option<BlockHeader>> for base_node_proto::BlockHeaderResponse {
+    fn from(v: Option<BlockHeader>) -> Self {
+        Self {
+            header: v.map(Into::into),
+        }
+    }
+}
+
+impl TryInto<Option<BlockHeader>> for base_node_proto::BlockHeaderResponse {
+    type Error = String;
+
+    fn try_into(self) -> Result<Option<BlockHeader>, Self::Error> {
+        match self.header {
+            Some(header) => {
+                let header = header.try_into()?;
+                Ok(Some(header))
+            },
+            None => Ok(None),
+        }
+    }
+}
+
+impl From<Option<HistoricalBlock>> for base_node_proto::HistoricalBlockResponse {
+    fn from(v: Option<HistoricalBlock>) -> Self {
+        Self {
+            block: v.map(Into::into),
+        }
+    }
+}
+
+impl TryInto<Option<HistoricalBlock>> for base_node_proto::HistoricalBlockResponse {
+    type Error = String;
+
+    fn try_into(self) -> Result<Option<HistoricalBlock>, Self::Error> {
+        match self.block {
+            Some(block) => {
+                let block = block.try_into()?;
+                Ok(Some(block))
+            },
+            None => Ok(None),
         }
     }
 }

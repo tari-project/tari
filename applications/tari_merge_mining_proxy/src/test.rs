@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::proxy::{read_body_until_end, MergeMiningProxyConfig};
+use crate::{common::proxy, proxy::MergeMiningProxyConfig};
 use hyper::Body;
 use tari_common::Network;
 
@@ -40,7 +40,7 @@ fn default_test_config() -> MergeMiningProxyConfig {
 }
 
 async fn read_body_as_json(body: &mut Body) -> serde_json::Value {
-    serde_json::from_slice(&read_body_until_end(body).await.unwrap()).unwrap()
+    serde_json::from_slice(&proxy::read_body_until_end(body).await.unwrap()).unwrap()
 }
 
 mod merge_mining_proxy_service {
@@ -72,37 +72,34 @@ mod merge_mining_proxy_service {
     }
 }
 
-mod add_mmproxy_extensions {
+mod add_aux_data {
     use crate::{
-        json_rpc,
-        proxy::{add_mmproxy_extensions, MMPROXY_EXTENSIONS_KEY_NAME},
+        common::json_rpc,
+        proxy::{add_aux_data, MMPROXY_AUX_KEY_NAME},
     };
     use serde_json::json;
 
     #[test]
-    fn it_adds_extension_data() {
+    fn it_adds_aux_data() {
         let v = json_rpc::success_response(None, json!({ "hello": "world"}));
-        let v = add_mmproxy_extensions(v, json!({"test": "works"}));
-        assert_eq!(
-            v["result"][MMPROXY_EXTENSIONS_KEY_NAME]["test"].as_str().unwrap(),
-            "works"
-        );
+        let v = add_aux_data(v, json!({"test": "works"}));
+        assert_eq!(v["result"][MMPROXY_AUX_KEY_NAME]["test"].as_str().unwrap(), "works");
     }
 
     #[test]
-    fn it_appends_to_existing_extension_data() {
+    fn it_merges_to_existing_aux_data() {
         let v = json_rpc::success_response(None, json!({ "hello": "world"}));
-        let v = add_mmproxy_extensions(v, json!({"test1": 1}));
-        let v = add_mmproxy_extensions(v, json!({"test2": 2, "test3": 3}));
-        assert_eq!(v["result"][MMPROXY_EXTENSIONS_KEY_NAME]["test1"].as_u64().unwrap(), 1);
-        assert_eq!(v["result"][MMPROXY_EXTENSIONS_KEY_NAME]["test2"].as_u64().unwrap(), 2);
-        assert_eq!(v["result"][MMPROXY_EXTENSIONS_KEY_NAME]["test3"].as_u64().unwrap(), 3);
+        let v = add_aux_data(v, json!({"test1": 1}));
+        let v = add_aux_data(v, json!({"test2": 2, "test3": 3}));
+        assert_eq!(v["result"][MMPROXY_AUX_KEY_NAME]["test1"].as_u64().unwrap(), 1);
+        assert_eq!(v["result"][MMPROXY_AUX_KEY_NAME]["test2"].as_u64().unwrap(), 2);
+        assert_eq!(v["result"][MMPROXY_AUX_KEY_NAME]["test3"].as_u64().unwrap(), 3);
     }
 
     #[test]
     fn it_does_not_add_data_to_errors() {
         let v = json_rpc::error_response(None, 1, "it's on 🔥", None);
-        let v = add_mmproxy_extensions(v, json!({"it": "is broken"}));
-        assert!(v["result"][MMPROXY_EXTENSIONS_KEY_NAME]["it"].as_str().is_none());
+        let v = add_aux_data(v, json!({"it": "is broken"}));
+        assert!(v["result"][MMPROXY_AUX_KEY_NAME]["it"].as_str().is_none());
     }
 }
