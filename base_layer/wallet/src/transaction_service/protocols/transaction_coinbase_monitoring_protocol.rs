@@ -350,38 +350,35 @@ where TBackend: TransactionBackend + 'static
                             );
                             return Ok(self.tx_id);
                         }
-                        match metadata {
-                            Some(tip) => {
-                                // If the tip has moved beyond this Coinbase transaction's blockheight and required
-                                // number of confirmations and it wasn't mined then it should be cancelled
-                                if tip > self.block_height + self.resources.config.num_confirmations_required {
-                                    warn!(
-                                        target: LOG_TARGET,
-                                        "Chain tip has moved ahead of this Coinbase transaction's block height and \
-                                         required number of confirmations without it being mined. Cancelling Coinbase \
-                                         transaction (TxId: {}).",
-                                        self.tx_id
-                                    );
-                                    self.cancel_transaction().await;
-                                    let _ = self
-                                        .resources
-                                        .event_publisher
-                                        .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id)))
-                                        .map_err(|e| {
-                                            trace!(
-                                                target: LOG_TARGET,
-                                                "Error sending event, usually because there are no subscribers: {:?}",
-                                                e
-                                            );
+                        if let Some(tip) = metadata {
+                            // If the tip has moved beyond this Coinbase transaction's blockheight and required
+                            // number of confirmations and it wasn't mined then it should be cancelled
+                            if tip > self.block_height + self.resources.config.num_confirmations_required {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Chain tip has moved ahead of this Coinbase transaction's block height and \
+                                        required number of confirmations without it being mined. Cancelling Coinbase \
+                                        transaction (TxId: {}).",
+                                    self.tx_id
+                                );
+                                self.cancel_transaction().await;
+                                let _ = self
+                                    .resources
+                                    .event_publisher
+                                    .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id)))
+                                    .map_err(|e| {
+                                        trace!(
+                                            target: LOG_TARGET,
+                                            "Error sending event, usually because there are no subscribers: {:?}",
                                             e
-                                        });
-                                    return Err(TransactionServiceProtocolError::new(
-                                        self.tx_id,
-                                        TransactionServiceError::ChainTipHigherThanCoinbaseHeight,
-                                    ));
-                                };
-                            },
-                            _ => {},
+                                        );
+                                        e
+                                    });
+                                return Err(TransactionServiceProtocolError::new(
+                                    self.tx_id,
+                                    TransactionServiceError::ChainTipHigherThanCoinbaseHeight,
+                                ));
+                            };
                         }
                         info!(
                             target: LOG_TARGET,

@@ -759,7 +759,7 @@ where B: BlockchainBackend
         calculate_mmr_roots(&*db, &block)
     }
 
-    /// Fetches the total merkle mountain range node count upto the specified height.
+    /// Fetches the total merkle mountain range node count up to the specified height.
     pub fn fetch_mmr_size(&self, tree: MmrTree) -> Result<u64, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_mmr_size(tree)

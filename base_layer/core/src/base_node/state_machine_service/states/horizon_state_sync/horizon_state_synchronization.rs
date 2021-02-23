@@ -22,7 +22,13 @@
 
 use super::error::HorizonSyncError;
 use crate::{
-    base_node::{state_machine_service::BaseNodeStateMachine, sync::rpc},
+    base_node::{
+        state_machine_service::{
+            states::events_and_states::{HorizonSyncInfo, HorizonSyncStatus, StateInfo},
+            BaseNodeStateMachine,
+        },
+        sync::rpc,
+    },
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, HorizonData, MmrTree},
     proto::base_node::{SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse},
@@ -49,6 +55,8 @@ pub struct HorizonStateSynchronization<'a, B: BlockchainBackend> {
     sync_peer: PeerConnection,
     horizon_sync_height: u64,
     prover: &'a RangeProofService,
+    num_kernels: u64,
+    num_outputs: u64,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
@@ -64,6 +72,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             sync_peer,
             horizon_sync_height,
             prover,
+            num_kernels: 0,
+            num_outputs: 0,
         }
     }
 
@@ -104,11 +114,18 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let local_num_kernels = self.db().fetch_mmr_size(MmrTree::Kernel).await?;
 
         let remote_num_kernels = to_header.kernel_mmr_size;
+        self.num_kernels = remote_num_kernels;
 
         if local_num_kernels >= remote_num_kernels {
             debug!(target: LOG_TARGET, "Local kernel set already synchronized");
             return Ok(());
         }
+
+        let info = HorizonSyncInfo::new(
+            vec![self.sync_peer.peer_node_id().clone()],
+            HorizonSyncStatus::Kernels(local_num_kernels, remote_num_kernels),
+        );
+        self.shared.set_state_info(StateInfo::HorizonSync(info));
 
         debug!(
             target: LOG_TARGET,
@@ -142,12 +159,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut current_header = self.shared.db.fetch_header_containing_kernel_mmr(start + 1).await?;
         debug!(
             target: LOG_TARGET,
-            "Found current header in progress for kernels at mmr pos: {} height:{}",
+            "Found current header in progress for kernels at mmr pos: {} height: {}",
             start,
             current_header.height()
         );
         let mut kernels = vec![];
-        let mut txn = self.shared.db.write_transaction();
+        let db = self.shared.db.clone();
+        let mut txn = db.write_transaction();
         let mut mmr_position = start;
         while let Some(kernel) = kernel_stream.next().await {
             let kernel: TransactionKernel = kernel?.try_into().map_err(HorizonSyncError::ConversionError)?;
@@ -196,6 +214,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 }
             }
             mmr_position += 1;
+
+            if mmr_position % 100 == 0 || mmr_position == self.num_kernels {
+                let info = HorizonSyncInfo::new(
+                    vec![self.sync_peer.peer_node_id().clone()],
+                    HorizonSyncStatus::Kernels(mmr_position, self.num_kernels),
+                );
+                self.shared.set_state_info(StateInfo::HorizonSync(info));
+            }
         }
         Ok(())
     }
@@ -204,11 +230,18 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let local_num_outputs = self.db().fetch_mmr_size(MmrTree::Utxo).await?;
 
         let remote_num_outputs = to_header.output_mmr_size;
+        self.num_outputs = remote_num_outputs;
 
         if local_num_outputs >= remote_num_outputs {
             debug!(target: LOG_TARGET, "Local output set already synchronized");
             return Ok(());
         }
+
+        let info = HorizonSyncInfo::new(
+            vec![self.sync_peer.peer_node_id().clone()],
+            HorizonSyncStatus::Outputs(local_num_outputs, self.num_outputs),
+        );
+        self.shared.set_state_info(StateInfo::HorizonSync(info));
 
         debug!(
             target: LOG_TARGET,
@@ -247,7 +280,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         );
         let mut output_hashes = vec![];
         let mut rp_hashes = vec![];
-        let mut txn = self.shared.db.write_transaction();
+        let db = self.shared.db.clone();
+        let mut txn = db.write_transaction();
         let mut unpruned_outputs = vec![];
         let mut mmr_position = start;
         while let Some(response) = output_stream.next().await {
@@ -351,6 +385,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     }
                 }
                 mmr_position += 1;
+
+                if mmr_position % 100 == 0 || mmr_position == self.num_outputs {
+                    let info = HorizonSyncInfo::new(
+                        vec![self.sync_peer.peer_node_id().clone()],
+                        HorizonSyncStatus::Outputs(mmr_position, self.num_outputs),
+                    );
+                    self.shared.set_state_info(StateInfo::HorizonSync(info));
+                }
             }
         }
         Ok(())
@@ -358,8 +400,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
     // Finalize the horizon state synchronization by setting the chain metadata to the local tip and committing
     // the horizon state to the blockchain backend.
-    async fn finalize_horizon_sync(&self) -> Result<(), HorizonSyncError> {
+    async fn finalize_horizon_sync(&mut self) -> Result<(), HorizonSyncError> {
         debug!(target: LOG_TARGET, "Validating horizon state");
+
+        let info = HorizonSyncInfo::new(
+            vec![self.sync_peer.peer_node_id().clone()],
+            HorizonSyncStatus::Finalizing,
+        );
+        self.shared.set_state_info(StateInfo::HorizonSync(info));
 
         let header = self.shared.db.fetch_chain_header(self.horizon_sync_height).await?;
         let horizon_data = self.db().fetch_horizon_data().await?.unwrap_or_else(HorizonData::zero);
