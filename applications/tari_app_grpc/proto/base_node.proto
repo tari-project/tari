@@ -53,7 +53,7 @@ service BaseNode {
     // Construct a new block from a provided template
     rpc GetNewBlock(NewBlockTemplate) returns (GetNewBlockResult);
     // Submit a new block for propagation
-    rpc SubmitBlock(Block) returns (Empty);
+    rpc SubmitBlock(Block) returns (SubmitBlockResponse);
     // Submit a transaction for propagation
     rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
     // Get the base node sync information
@@ -68,6 +68,10 @@ service BaseNode {
     // get all peers from the base node
     rpc GetPeers(GetPeersRequest) returns (stream GetPeersResponse);
     rpc GetMempoolTransactions(GetMempoolTransactionsRequest) returns (stream GetMempoolTransactionsResponse);
+}
+
+message SubmitBlockResponse {
+    bytes block_hash = 1;
 }
 
 /// return type of GetTipInfo

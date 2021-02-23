@@ -24,7 +24,11 @@ use crate::grpc::{
     helpers::{mean, median},
 };
 use log::*;
-use std::{cmp, convert::TryInto, sync::Arc};
+use std::{
+    cmp,
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+};
 use tari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
@@ -462,29 +466,31 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
-    async fn submit_block(&self, request: Request<tari_rpc::Block>) -> Result<Response<tari_rpc::Empty>, Status> {
+    async fn submit_block(
+        &self,
+        request: Request<tari_rpc::Block>,
+    ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status>
+    {
         let request = request.into_inner();
-        let block: Block = request
-            .try_into()
+        let block = Block::try_from(request)
             .map_err(|e| Status::invalid_argument(format!("Failed to convert arguments. Invalid block : {:?}", e)))?;
-        let block_height = block.clone().header.height;
+        let block_height = block.header.height;
         debug!(
             target: LOG_TARGET,
-            "Received SubmitBlock #{} request from client", &block_height
+            "Received SubmitBlock #{} request from client", block_height
         );
 
         let mut handler = self.node_service.clone();
-        handler
+        let block_hash = handler
             .submit_block(block, Broadcast::from(true))
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        let response: tari_rpc::Empty = tari_rpc::Empty {};
 
         debug!(
             target: LOG_TARGET,
             "Sending SubmitBlock #{} response to client", block_height
         );
-        Ok(Response::new(response))
+        Ok(Response::new(tari_rpc::SubmitBlockResponse { block_hash }))
     }
 
     async fn submit_transaction(
