@@ -309,14 +309,14 @@ impl WalletSqliteDatabase {
         }
     }
 
-    fn set_chain_meta(&self, chain: ChainMetadata, conn: &SqliteConnection) -> Result<(), WalletStorageError> {
+    fn set_chain_metadata(&self, chain: ChainMetadata, conn: &SqliteConnection) -> Result<(), WalletStorageError> {
         let bytes = bincode::serialize(&chain).map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
-        WalletSettingSql::new(DbKey::BaseNodeChainMeta.to_string(), bytes.to_hex()).set(&conn)?;
+        WalletSettingSql::new(DbKey::BaseNodeChainMetadata.to_string(), bytes.to_hex()).set(&conn)?;
         Ok(())
     }
 
-    fn get_chain_meta(&self, conn: &SqliteConnection) -> Result<Option<ChainMetadata>, WalletStorageError> {
-        if let Some(key_str) = WalletSettingSql::get(DbKey::BaseNodeChainMeta.to_string(), &conn)? {
+    fn get_chain_metadata(&self, conn: &SqliteConnection) -> Result<Option<ChainMetadata>, WalletStorageError> {
+        if let Some(key_str) = WalletSettingSql::get(DbKey::BaseNodeChainMetadata.to_string(), &conn)? {
             let chain_metadata = bincode::deserialize(&from_hex(&key_str)?)
                 .map_err(|e| WalletStorageError::ConversionError(e.to_string()))?;
             Ok(Some(chain_metadata))
@@ -367,7 +367,7 @@ impl WalletBackend for WalletSqliteDatabase {
             },
             DbKey::TorId => self.get_tor_id(&conn)?,
             DbKey::CommsFeatures => self.get_comms_features(&conn)?.map(DbValue::CommsFeatures),
-            DbKey::BaseNodeChainMeta => self.get_chain_meta(&conn)?.map(DbValue::BaseNodeChainMeta),
+            DbKey::BaseNodeChainMetadata => self.get_chain_metadata(&conn)?.map(DbValue::BaseNodeChainMetadata),
         };
 
         Ok(result)
@@ -386,8 +386,8 @@ impl WalletBackend for WalletSqliteDatabase {
                 DbKeyValuePair::TorId(node_id) => {
                     self.set_tor_id(node_id, &(*conn))?;
                 },
-                DbKeyValuePair::BaseNodeChainMeta(metadata) => {
-                    self.set_chain_meta(metadata, &(*conn))?;
+                DbKeyValuePair::BaseNodeChainMetadata(metadata) => {
+                    self.set_chain_metadata(metadata, &(*conn))?;
                 },
                 DbKeyValuePair::ClientKeyValue(k, v) => {
                     // First see if we will overwrite a value so we can return the old value
@@ -425,7 +425,7 @@ impl WalletBackend for WalletSqliteDatabase {
                 DbKey::CommsAddress => {
                     return Err(WalletStorageError::OperationNotSupported);
                 },
-                DbKey::BaseNodeChainMeta => {
+                DbKey::BaseNodeChainMetadata => {
                     return Err(WalletStorageError::OperationNotSupported);
                 },
                 DbKey::TorId => {

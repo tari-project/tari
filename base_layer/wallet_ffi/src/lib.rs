@@ -6064,7 +6064,6 @@ mod test {
 
     #[test]
     fn test_wallet_ffi() {
-        use tari_common_types::chain_metadata::ChainMetadata;
         unsafe {
             {
                 let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
@@ -6196,17 +6195,7 @@ mod test {
             private_key_destroy(test_contact_private_key);
             string_destroy(test_contact_alias as *mut c_char);
 
-            let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
-            (*alice_wallet)
-                .runtime
-                .block_on((*alice_wallet).wallet.db.set_chain_meta(meta_data.clone()))
-                .unwrap();
-            (*bob_wallet)
-                .runtime
-                .block_on((*bob_wallet).wallet.db.set_chain_meta(meta_data.clone()))
-                .unwrap();
-
-            // number of confirmations
+            // test number of confirmations calls
             let num_confirmations_required = wallet_get_num_confirmations_required(alice_wallet, error_ptr);
             assert_eq!(
                 num_confirmations_required,
@@ -6222,6 +6211,11 @@ mod test {
                 assert_eq!(num_confirmations_required, number);
                 assert_eq!(error, 0);
             }
+
+            // empty wallet
+            let fee = wallet_get_fee_estimate(alice_wallet, 100, 1, 1, 1, error_ptr);
+            assert_eq!(fee, 0);
+            assert_eq!(error, 101);
 
             let generated = wallet_test_generate_data(alice_wallet, db_path_alice_str, error_ptr);
             assert_eq!(generated, true);
@@ -6780,7 +6774,6 @@ mod test {
     #[test]
     fn test_wallet_encryption() {
         unsafe {
-            use tari_common_types::chain_metadata::ChainMetadata;
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
@@ -6827,11 +6820,6 @@ mod test {
                 saf_messages_received_callback,
                 error_ptr,
             );
-            let mut runtime = Runtime::new().unwrap();
-            let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
-            runtime
-                .block_on((*alice_wallet).wallet.db.set_chain_meta(meta_data))
-                .unwrap();
             let generated = wallet_test_generate_data(alice_wallet, db_path_alice_str, error_ptr);
             assert!(generated);
 

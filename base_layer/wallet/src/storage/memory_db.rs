@@ -96,7 +96,7 @@ impl WalletBackend for WalletMemoryDatabase {
             DbKey::CommsFeatures => Some(DbValue::CommsFeatures(db.features)),
             DbKey::Identity => db.identity.clone().map(DbValue::Identity),
             DbKey::TorId => db.tor_id.clone().map(DbValue::TorId),
-            DbKey::BaseNodeChainMeta => db.chain_metadata.clone().map(DbValue::BaseNodeChainMeta),
+            DbKey::BaseNodeChainMetadata => db.chain_metadata.clone().map(DbValue::BaseNodeChainMetadata),
         };
 
         Ok(result)
@@ -118,8 +118,8 @@ impl WalletBackend for WalletMemoryDatabase {
                 DbKeyValuePair::TorId(v) => {
                     db.tor_id = Some(v);
                 },
-                DbKeyValuePair::BaseNodeChainMeta(v) => {
-                    db.chain_metadata = Some(v);
+                DbKeyValuePair::BaseNodeChainMetadata(metadata) => {
+                    db.chain_metadata = Some(metadata);
                 },
             },
             WriteOperation::Remove(k) => match k {
@@ -145,7 +145,7 @@ impl WalletBackend for WalletMemoryDatabase {
                 DbKey::Identity => {
                     return Err(WalletStorageError::OperationNotSupported);
                 },
-                DbKey::BaseNodeChainMeta => {
+                DbKey::BaseNodeChainMetadata => {
                     return Err(WalletStorageError::OperationNotSupported);
                 },
                 DbKey::TorId => {
