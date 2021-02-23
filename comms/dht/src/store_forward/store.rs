@@ -465,41 +465,7 @@ mod test {
         assert_eq!(messages.len(), 0);
     }
 
-    #[ignore]
-    #[tokio_macros::test_basic]
-    async fn cleartext_join_message() {
-        let (requester, mock_state) = create_store_and_forward_mock();
 
-        let spy = service_spy();
-        let peer_manager = build_peer_manager();
-        let node_identity = make_node_identity();
-        let join_msg_bytes = JoinMessage::from(&node_identity).to_encoded_bytes();
-
-        let mut service = StoreLayer::new(Default::default(), peer_manager, node_identity, requester)
-            .layer(spy.to_service::<PipelineError>());
-        let sender_identity = make_node_identity();
-        let inbound_msg = make_dht_inbound_message(&sender_identity, b"".to_vec(), DhtMessageFlags::empty(), true);
-
-        let mut msg = DecryptedDhtMessage::succeeded(
-            wrap_in_envelope_body!(join_msg_bytes),
-            Some(sender_identity.public_key().clone()),
-            inbound_msg,
-        );
-        msg.dht_header.message_type = DhtMessageType::Join;
-        service.call(msg).await.unwrap();
-        assert!(spy.is_called());
-
-        // Because we dont wait for the message to reach the mock/service before continuing (for efficiency and it's not
-        // necessary) we need to wait for the call to happen eventually - it should be almost instant
-        async_assert_eventually!(
-            mock_state.call_count(),
-            expect = 1,
-            max_attempts = 10,
-            interval = Duration::from_millis(10),
-        );
-        let messages = mock_state.get_messages().await;
-        assert_eq!(messages[0].message_type, DhtMessageType::Join as i32);
-    }
 
     #[tokio_macros::test_basic]
     async fn decryption_succeeded_no_store() {
