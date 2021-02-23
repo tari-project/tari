@@ -29,7 +29,7 @@ use futures::{future, StreamExt};
 use log::*;
 use std::{
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64},
         Arc,
     },
     time::Duration,
@@ -394,8 +394,11 @@ async fn build_node_context(
         config.num_mining_threads,
     );
     if config.enable_mining {
-        info!(target: LOG_TARGET, "Enabling solo miner");
-        miner.enable_mining_flag().store(true, Ordering::Relaxed);
+        info!(
+            target: LOG_TARGET,
+            "Please use standalone miner, enabling the internal solo miner is no longer supported."
+        );
+    // miner.enable_mining_flag().store(true, Ordering::Relaxed);
     } else {
         info!(
             target: LOG_TARGET,
