@@ -26,7 +26,10 @@ use chrono_english::DateError;
 use log::*;
 use tari_app_utilities::utilities::ExitCodes;
 use tari_core::transactions::tari_amount::MicroTariError;
-use tari_wallet::transaction_service::error::TransactionServiceError;
+use tari_wallet::{
+    output_manager_service::error::OutputManagerError,
+    transaction_service::error::TransactionServiceError,
+};
 use thiserror::Error;
 use tokio::task::JoinError;
 
@@ -38,6 +41,8 @@ pub enum CommandError {
     Argument,
     #[error("Transaction service error `{0}`")]
     Transaction(#[from] TransactionServiceError),
+    #[error("Output manager error: `{0}`")]
+    OutputManagerError(#[from] OutputManagerError),
     #[error("Tokio join error `{0}`")]
     Join(#[from] JoinError),
     #[error("Config error `{0}`")]

@@ -27,9 +27,9 @@ use log::*;
 use std::{str::FromStr, time::Duration};
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_common::GlobalConfig;
-use tari_core::transactions::tari_amount::uT;
+use tari_core::transactions::tari_amount::{uT, MicroTari};
 use tari_wallet::{
-    output_manager_service::TxId,
+    output_manager_service::{handle::OutputManagerHandle, TxId},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     WalletSqlite,
 };
@@ -50,6 +50,7 @@ pub enum WalletCommand {
     GetBalance,
     SendTari,
     MakeItRain,
+    CoinSplit,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -96,6 +97,33 @@ pub async fn send_tari(
         .send_transaction(dest_pubkey, amount, fee_per_gram, message)
         .await
         .map_err(CommandError::Transaction)
+}
+
+pub async fn coin_split(
+    args: &[ParsedArgument],
+    output_service: &mut OutputManagerHandle,
+    transaction_service: &mut TransactionServiceHandle,
+) -> Result<TxId, CommandError>
+{
+    use ParsedArgument::*;
+    let amount_per_split = match args[0] {
+        Amount(s) => Ok(s),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    let num_splits = match args[1] {
+        Int(s) => Ok(s),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    let (tx_id, tx, fee, amount) = output_service
+        .create_coin_split(amount_per_split, num_splits as usize, MicroTari(100), None)
+        .await?;
+    transaction_service
+        .submit_transaction(tx_id, tx, fee, amount, "Coin split".into())
+        .await?;
+
+    Ok(tx_id)
 }
 
 pub async fn make_it_rain(
@@ -316,7 +344,7 @@ pub async fn command_runner(
         println!("{}. {}", idx + 1, parsed);
 
         match parsed.command {
-            WalletCommand::GetBalance => match output_service.get_balance().await {
+            WalletCommand::GetBalance => match output_service.clone().get_balance().await {
                 Ok(balance) => {
                     println!("====== Wallet Balance ======");
                     println!("{}", balance);
@@ -332,6 +360,11 @@ pub async fn command_runner(
             WalletCommand::MakeItRain => {
                 let rain_ids = make_it_rain(handle.clone(), transaction_service.clone(), parsed.args).await?;
                 tx_ids.extend(rain_ids);
+            },
+            WalletCommand::CoinSplit => {
+                let tx_id = coin_split(&parsed.args, &mut output_service, &mut transaction_service.clone()).await?;
+                tx_ids.push(tx_id);
+                println!("Coin split succeeded");
             },
         }
     }
