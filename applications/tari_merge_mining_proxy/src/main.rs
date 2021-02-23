@@ -60,10 +60,22 @@ async fn main() -> Result<(), MmProxyError> {
     }
     let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(xmrig_service.clone())));
 
-    println!("\nListening on {}...\n", addr);
-    Server::bind(&addr).serve(service).await?;
-
-    Ok(())
+    match Server::try_bind(&addr) {
+        Ok(builder) => {
+            println!("Listening on {}...", addr);
+            builder.serve(service).await?;
+            Ok(())
+        },
+        Err(err) => {
+            println!("Fatal: Cannot bind to '{}'.", addr);
+            println!("It may be part of a Port Exclusion Range. Please try to use another port for the");
+            println!("'proxy_host_address' in 'config/config.toml' and for the applicable XMRig '[pools][url]' or");
+            println!("[pools][self-select]' config setting that can be found  in 'config/xmrig_config_***.json' or");
+            println!("'<xmrig folder>/config.json'.");
+            println!();
+            Err(err.into())
+        },
+    }
 }
 
 /// Loads the configuration and sets up logging
