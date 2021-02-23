@@ -54,11 +54,9 @@ use tari_core::{
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
-    output_manager_service::{
-        handle::OutputManagerHandle,
-        protocols::txo_validation_protocol::{TxoValidationRetry, TxoValidationType},
-    },
+    output_manager_service::{handle::OutputManagerHandle, protocols::txo_validation_protocol::TxoValidationType},
     transaction_service::handle::TransactionServiceHandle,
+    types::ValidationRetryStrategy,
 };
 use tokio::{
     sync::{broadcast::Sender as syncSender, watch},
@@ -113,7 +111,7 @@ impl BaseNodeContext {
                             task::spawn(async move {
                                 delay_for(Duration::from_secs(240)).await;
                                 let _ = oms_handle_clone
-                                    .validate_txos(TxoValidationType::Unspent, TxoValidationRetry::UntilSuccess)
+                                    .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
                                     .await;
                             });
                         },

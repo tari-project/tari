@@ -163,12 +163,15 @@ impl CommandHandler {
             let banned_peers = banned_peers(&peer_manager).await.unwrap();
             let conns = connectivity.get_active_connections().await.unwrap();
             println!(
-                "{}: State: {}, Tip: {} ({}), Mempool: {} tx, Mining (H/R): {} ({} MH/s), Connections: {}, Banned: {}",
+                "{}: State: {}, Tip: {} ({}), Mempool: {}tx ({}g, +/- {}blks), Mining: {} ({} MH/s), Connections: {}, \
+                 Banned: {}",
                 Utc::now().format("%H:%M"),
                 state.state_info.short_desc(),
                 metadata.height_of_longest_chain(),
                 last_block_time.to_rfc2822(),
                 mempool_stats.total_txs,
+                mempool_stats.total_weight,
+                mempool_stats.total_weight / 19500,
                 mining_status,
                 hash_rate,
                 conns.len(),

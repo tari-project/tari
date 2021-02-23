@@ -56,6 +56,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver},
+        protocols::txo_validation_protocol::TxoValidationType,
         TxId,
     },
     transaction_service::{
@@ -69,6 +70,14 @@ use tari_wallet::{
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
+#[derive(Clone, Copy)]
+enum CallbackValidationResults {
+    Success,           // 0
+    Aborted,           // 1
+    Failure,           // 2
+    BaseNodeNotInSync, // 3
+}
+
 pub struct CallbackHandler<TBackend>
 where TBackend: TransactionBackend + 'static
 {
@@ -77,10 +86,14 @@ where TBackend: TransactionBackend + 'static
     callback_received_finalized_transaction: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
+    callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
     callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
-    callback_base_node_sync_complete: unsafe extern "C" fn(TxId, bool),
+    callback_utxo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_stxo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_invalid_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
     callback_saf_messages_received: unsafe extern "C" fn(),
     db: TransactionDatabase<TBackend>,
     transaction_service_event_stream: Fuse<TransactionEventReceiver>,
@@ -106,10 +119,14 @@ where TBackend: TransactionBackend + 'static
         callback_received_finalized_transaction: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
+        callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
         callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
         callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction),
-        callback_base_node_sync_complete: unsafe extern "C" fn(u64, bool),
+        callback_utxo_validation_complete: unsafe extern "C" fn(TxId, u8),
+        callback_stxo_validation_complete: unsafe extern "C" fn(TxId, u8),
+        callback_invalid_txo_validation_complete: unsafe extern "C" fn(TxId, u8),
+        callback_transaction_validation_complete: unsafe extern "C" fn(TxId, u8),
         callback_saf_messages_received: unsafe extern "C" fn(),
     ) -> Self
     {
@@ -135,6 +152,10 @@ where TBackend: TransactionBackend + 'static
         );
         info!(
             target: LOG_TARGET,
+            "TransactionMinedUnconfirmedCallback -> Assigning Fn: {:?}", callback_transaction_mined_unconfirmed
+        );
+        info!(
+            target: LOG_TARGET,
             "DirectSendResultCallback -> Assigning Fn:  {:?}", callback_direct_send_result
         );
         info!(
@@ -147,7 +168,19 @@ where TBackend: TransactionBackend + 'static
         );
         info!(
             target: LOG_TARGET,
-            "BaseNodeSyncCompleteCallback -> Assigning Fn:  {:?}", callback_base_node_sync_complete
+            "UtxoValidationCompleteCallback -> Assigning Fn:  {:?}", callback_utxo_validation_complete
+        );
+        info!(
+            target: LOG_TARGET,
+            "StxoValidationCompleteCallback -> Assigning Fn:  {:?}", callback_stxo_validation_complete
+        );
+        info!(
+            target: LOG_TARGET,
+            "InvalidTxoValidationCompleteCallback -> Assigning Fn:  {:?}", callback_invalid_txo_validation_complete
+        );
+        info!(
+            target: LOG_TARGET,
+            "TransactionValidationCompleteCallback -> Assigning Fn:  {:?}", callback_transaction_validation_complete
         );
         info!(
             target: LOG_TARGET,
@@ -160,10 +193,14 @@ where TBackend: TransactionBackend + 'static
             callback_received_finalized_transaction,
             callback_transaction_broadcast,
             callback_transaction_mined,
+            callback_transaction_mined_unconfirmed,
             callback_direct_send_result,
             callback_store_and_forward_send_result,
             callback_transaction_cancellation,
-            callback_base_node_sync_complete,
+            callback_utxo_validation_complete,
+            callback_stxo_validation_complete,
+            callback_invalid_txo_validation_complete,
+            callback_transaction_validation_complete,
             callback_saf_messages_received,
             db,
             transaction_service_event_stream,
@@ -213,9 +250,20 @@ where TBackend: TransactionBackend + 'static
                                 TransactionEvent::TransactionMined(tx_id) => {
                                     self.receive_transaction_mined_event(tx_id).await;
                                 },
-                                // TODO The front end and these event callbacks should handle confirmed/unconfirmed
-                                TransactionEvent::TransactionMinedUnconfirmed(tx_id, _) => {
-                                    self.receive_transaction_mined_event(tx_id).await;
+                                TransactionEvent::TransactionMinedUnconfirmed(tx_id, c) => {
+                                    self.receive_transaction_mined_unconfirmed_event(tx_id, c).await;
+                                },
+                                TransactionEvent::TransactionValidationSuccess(tx_id)  => {
+                                    self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Success);
+                                },
+                                TransactionEvent::TransactionValidationFailure(tx_id)  => {
+                                    self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Failure);
+                                },
+                                TransactionEvent::TransactionValidationAborted(tx_id)  => {
+                                    self.transaction_validation_complete_event(tx_id, CallbackValidationResults::Aborted);
+                                },
+                                TransactionEvent::TransactionValidationDelayed(tx_id)  => {
+                                    self.transaction_validation_complete_event(tx_id, CallbackValidationResults::BaseNodeNotInSync);
                                 },
                                 // Only the above variants are mapped to callbacks
                                 _ => (),
@@ -229,17 +277,17 @@ where TBackend: TransactionBackend + 'static
                         Ok(msg) => {
                             trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
                             match (*msg).clone() {
-                                OutputManagerEvent::TxoValidationSuccess(request_key) => {
-                                    self.receive_sync_process_result(request_key, true);
+                                OutputManagerEvent::TxoValidationSuccess(request_key, validation_type) => {
+                                    self.output_validation_complete_event(request_key, validation_type, CallbackValidationResults::Success);
                                 },
-                                OutputManagerEvent::TxoValidationTimedOut(request_key) => {
-                                    self.receive_sync_process_result(request_key, false);
+                                OutputManagerEvent::TxoValidationFailure(request_key, validation_type) => {
+                                    self.output_validation_complete_event(request_key, validation_type, CallbackValidationResults::Failure);
                                 },
-                                OutputManagerEvent::TxoValidationFailure(request_key) => {
-                                    self.receive_sync_process_result(request_key, false);
+                                OutputManagerEvent::TxoValidationAborted(request_key, validation_type) => {
+                                    self.output_validation_complete_event(request_key, validation_type, CallbackValidationResults::Aborted);
                                 },
-                                OutputManagerEvent::TxoValidationAborted(request_key) => {
-                                    self.receive_sync_process_result(request_key, false);
+                                OutputManagerEvent::TxoValidationDelayed(request_key, validation_type) => {
+                                    self.output_validation_complete_event(request_key, validation_type, CallbackValidationResults::BaseNodeNotInSync);
                                 },
                                 // Only the above variants are mapped to callbacks
                                 _ => (),
@@ -406,13 +454,124 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    fn receive_sync_process_result(&mut self, request_key: u64, result: bool) {
+    async fn receive_transaction_mined_unconfirmed_event(&mut self, tx_id: TxId, confirmations: u64) {
+        match self.db.get_completed_transaction(tx_id).await {
+            Ok(tx) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Calling Received Transaction Mined callback function for TxId: {}", tx_id
+                );
+                let boxing = Box::into_raw(Box::new(tx));
+                unsafe {
+                    (self.callback_transaction_mined_unconfirmed)(boxing, confirmations);
+                }
+            },
+            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+        }
+    }
+
+    fn transaction_validation_complete_event(&mut self, request_key: u64, result: CallbackValidationResults) {
         debug!(
             target: LOG_TARGET,
-            "Calling Base Node Sync result callback function for Request Key: {} with result {}", request_key, result
+            "Calling Transaction Validation Complete callback function for Request Key: {} with result {:?}",
+            request_key,
+            result as u8,
         );
-        unsafe {
-            (self.callback_base_node_sync_complete)(request_key, result);
+        match result {
+            CallbackValidationResults::Success => unsafe {
+                (self.callback_transaction_validation_complete)(request_key, CallbackValidationResults::Success as u8);
+            },
+            CallbackValidationResults::Aborted => unsafe {
+                (self.callback_transaction_validation_complete)(request_key, CallbackValidationResults::Aborted as u8);
+            },
+            CallbackValidationResults::Failure => unsafe {
+                (self.callback_transaction_validation_complete)(request_key, CallbackValidationResults::Failure as u8);
+            },
+            CallbackValidationResults::BaseNodeNotInSync => unsafe {
+                (self.callback_transaction_validation_complete)(
+                    request_key,
+                    CallbackValidationResults::BaseNodeNotInSync as u8,
+                );
+            },
+        }
+    }
+
+    fn output_validation_complete_event(
+        &mut self,
+        request_key: u64,
+        validation_type: TxoValidationType,
+        result: CallbackValidationResults,
+    )
+    {
+        debug!(
+            target: LOG_TARGET,
+            "Calling Output Validation Complete callback function for Request Key: {} with with type {} result {:?}",
+            request_key,
+            validation_type,
+            result as u8,
+        );
+
+        match validation_type {
+            TxoValidationType::Unspent => match result {
+                CallbackValidationResults::Success => unsafe {
+                    (self.callback_utxo_validation_complete)(request_key, CallbackValidationResults::Success as u8);
+                },
+                CallbackValidationResults::Aborted => unsafe {
+                    (self.callback_utxo_validation_complete)(request_key, CallbackValidationResults::Aborted as u8);
+                },
+                CallbackValidationResults::Failure => unsafe {
+                    (self.callback_utxo_validation_complete)(request_key, CallbackValidationResults::Failure as u8);
+                },
+                CallbackValidationResults::BaseNodeNotInSync => unsafe {
+                    (self.callback_utxo_validation_complete)(
+                        request_key,
+                        CallbackValidationResults::BaseNodeNotInSync as u8,
+                    );
+                },
+            },
+            TxoValidationType::Spent => match result {
+                CallbackValidationResults::Success => unsafe {
+                    (self.callback_stxo_validation_complete)(request_key, CallbackValidationResults::Success as u8);
+                },
+                CallbackValidationResults::Aborted => unsafe {
+                    (self.callback_stxo_validation_complete)(request_key, CallbackValidationResults::Aborted as u8);
+                },
+                CallbackValidationResults::Failure => unsafe {
+                    (self.callback_stxo_validation_complete)(request_key, CallbackValidationResults::Failure as u8);
+                },
+                CallbackValidationResults::BaseNodeNotInSync => unsafe {
+                    (self.callback_stxo_validation_complete)(
+                        request_key,
+                        CallbackValidationResults::BaseNodeNotInSync as u8,
+                    );
+                },
+            },
+            TxoValidationType::Invalid => match result {
+                CallbackValidationResults::Success => unsafe {
+                    (self.callback_invalid_txo_validation_complete)(
+                        request_key,
+                        CallbackValidationResults::Success as u8,
+                    );
+                },
+                CallbackValidationResults::Aborted => unsafe {
+                    (self.callback_invalid_txo_validation_complete)(
+                        request_key,
+                        CallbackValidationResults::Aborted as u8,
+                    );
+                },
+                CallbackValidationResults::Failure => unsafe {
+                    (self.callback_invalid_txo_validation_complete)(
+                        request_key,
+                        CallbackValidationResults::Failure as u8,
+                    );
+                },
+                CallbackValidationResults::BaseNodeNotInSync => unsafe {
+                    (self.callback_invalid_txo_validation_complete)(
+                        request_key,
+                        CallbackValidationResults::BaseNodeNotInSync as u8,
+                    );
+                },
+            },
         }
     }
 
@@ -446,7 +605,7 @@ mod test {
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
     use tari_shutdown::Shutdown;
     use tari_wallet::{
-        output_manager_service::handle::OutputManagerEvent,
+        output_manager_service::{handle::OutputManagerEvent, protocols::txo_validation_protocol::TxoValidationType},
         test_utils::make_transaction_database,
         transaction_service::{
             handle::TransactionEvent,
@@ -470,13 +629,16 @@ mod test {
         pub received_finalized_tx_callback_called: bool,
         pub broadcast_tx_callback_called: bool,
         pub mined_tx_callback_called: bool,
+        pub mined_tx_unconfirmed_callback_called: u64,
         pub direct_send_callback_called: bool,
         pub store_and_forward_send_callback_called: bool,
         pub tx_cancellation_callback_called_completed: bool,
         pub tx_cancellation_callback_called_inbound: bool,
         pub tx_cancellation_callback_called_outbound: bool,
-        pub base_node_sync_callback_called_true: bool,
-        pub base_node_sync_callback_called_false: bool,
+        pub callback_utxo_validation_complete: u32,
+        pub callback_stxo_validation_complete: u32,
+        pub callback_invalid_txo_validation_complete: u32,
+        pub callback_transaction_validation_complete: u32,
         pub saf_messages_received: bool,
     }
 
@@ -488,10 +650,13 @@ mod test {
                 received_finalized_tx_callback_called: false,
                 broadcast_tx_callback_called: false,
                 mined_tx_callback_called: false,
+                mined_tx_unconfirmed_callback_called: 0,
                 direct_send_callback_called: false,
                 store_and_forward_send_callback_called: false,
-                base_node_sync_callback_called_true: false,
-                base_node_sync_callback_called_false: false,
+                callback_utxo_validation_complete: 0,
+                callback_stxo_validation_complete: 0,
+                callback_invalid_txo_validation_complete: 0,
+                callback_transaction_validation_complete: 0,
                 tx_cancellation_callback_called_completed: false,
                 tx_cancellation_callback_called_inbound: false,
                 tx_cancellation_callback_called_outbound: false,
@@ -542,6 +707,13 @@ mod test {
         Box::from_raw(tx);
     }
 
+    unsafe extern "C" fn mined_unconfirmed_callback(tx: *mut CompletedTransaction, confirmations: u64) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.mined_tx_unconfirmed_callback_called = confirmations;
+        drop(lock);
+        Box::from_raw(tx);
+    }
+
     unsafe extern "C" fn direct_send_callback(_tx_id: u64, _result: bool) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.direct_send_callback_called = true;
@@ -573,14 +745,35 @@ mod test {
         Box::from_raw(tx);
     }
 
-    unsafe extern "C" fn base_node_sync_process_complete_callback(_tx_id: u64, result: bool) {
+    unsafe extern "C" fn utxo_validation_complete_callback(_tx_id: u64, result: u8) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
 
-        if result {
-            lock.base_node_sync_callback_called_true = true;
-        } else {
-            lock.base_node_sync_callback_called_false = true;
-        }
+        lock.callback_utxo_validation_complete += result as u32;
+
+        drop(lock);
+    }
+
+    unsafe extern "C" fn stxo_validation_complete_callback(_tx_id: u64, result: u8) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+
+        lock.callback_stxo_validation_complete += result as u32;
+
+        drop(lock);
+    }
+
+    unsafe extern "C" fn invalid_txo_validation_complete_callback(_tx_id: u64, result: u8) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+
+        lock.callback_invalid_txo_validation_complete += result as u32;
+
+        drop(lock);
+    }
+
+    unsafe extern "C" fn transaction_validation_complete_callback(_tx_id: u64, result: u8) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+
+        lock.callback_transaction_validation_complete += result as u32;
+
         drop(lock);
     }
 
@@ -670,10 +863,14 @@ mod test {
             received_tx_finalized_callback,
             broadcast_callback,
             mined_callback,
+            mined_unconfirmed_callback,
             direct_send_callback,
             store_and_forward_send_callback,
             tx_cancellation_callback,
-            base_node_sync_process_complete_callback,
+            utxo_validation_complete_callback,
+            stxo_validation_complete_callback,
+            invalid_txo_validation_complete_callback,
+            transaction_validation_complete_callback,
             saf_messages_received_callback,
         );
 
@@ -694,6 +891,11 @@ mod test {
         tx_sender
             .send(Arc::new(TransactionEvent::TransactionMined(2u64)))
             .unwrap();
+
+        tx_sender
+            .send(Arc::new(TransactionEvent::TransactionMinedUnconfirmed(2u64, 22u64)))
+            .unwrap();
+
         tx_sender
             .send(Arc::new(TransactionEvent::TransactionDirectSendResult(2u64, true)))
             .unwrap();
@@ -713,11 +915,105 @@ mod test {
             .unwrap();
 
         oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1u64)))
+            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(
+                1u64,
+                TxoValidationType::Unspent,
+            )))
             .unwrap();
+
         oms_sender
-            .send(Arc::new(OutputManagerEvent::TxoValidationTimedOut(1u64)))
+            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(
+                1u64,
+                TxoValidationType::Spent,
+            )))
             .unwrap();
+
+        oms_sender
+            .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(
+                1u64,
+                TxoValidationType::Invalid,
+            )))
+            .unwrap();
+
+        tx_sender
+            .send(Arc::new(TransactionEvent::TransactionValidationSuccess(1u64)))
+            .unwrap();
+
+        oms_sender
+            .send(Arc::new(OutputManagerEvent::TxoValidationFailure(
+                1u64,
+                TxoValidationType::Unspent,
+            )))
+            .unwrap();
+
+        oms_sender
+            .send(Arc::new(OutputManagerEvent::TxoValidationFailure(
+                1u64,
+                TxoValidationType::Spent,
+            )))
+            .unwrap();
+
+        oms_sender
+            .send(Arc::new(OutputManagerEvent::TxoValidationFailure(
+                1u64,
+                TxoValidationType::Invalid,
+            )))
+            .unwrap();
+
+        tx_sender
+            .send(Arc::new(TransactionEvent::TransactionValidationFailure(1u64)))
+            .unwrap();
+
+        oms_sender
+            .send(Arc::new(OutputManagerEvent::TxoValidationAborted(
+                1u64,
+                TxoValidationType::Unspent,
+            )))
+            .unwrap();
+
+        oms_sender
+            .send(Arc::new(OutputManagerEvent::TxoValidationAborted(
+                1u64,
+                TxoValidationType::Spent,
+            )))
+            .unwrap();
+
+        oms_sender
+            .send(Arc::new(OutputManagerEvent::TxoValidationAborted(
+                1u64,
+                TxoValidationType::Invalid,
+            )))
+            .unwrap();
+
+        tx_sender
+            .send(Arc::new(TransactionEvent::TransactionValidationAborted(1u64)))
+            .unwrap();
+
+        oms_sender
+            .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(
+                1u64,
+                TxoValidationType::Unspent,
+            )))
+            .unwrap();
+
+        oms_sender
+            .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(
+                1u64,
+                TxoValidationType::Spent,
+            )))
+            .unwrap();
+
+        oms_sender
+            .send(Arc::new(OutputManagerEvent::TxoValidationDelayed(
+                1u64,
+                TxoValidationType::Invalid,
+            )))
+            .unwrap();
+
+        tx_sender
+            .send(Arc::new(TransactionEvent::TransactionValidationDelayed(1u64)))
+            .unwrap();
+
         dht_sender
             .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))
             .unwrap();
@@ -730,14 +1026,19 @@ mod test {
         assert!(lock.received_finalized_tx_callback_called);
         assert!(lock.broadcast_tx_callback_called);
         assert!(lock.mined_tx_callback_called);
+        assert_eq!(lock.mined_tx_unconfirmed_callback_called, 22u64);
         assert!(lock.direct_send_callback_called);
         assert!(lock.store_and_forward_send_callback_called);
         assert!(lock.tx_cancellation_callback_called_inbound);
         assert!(lock.tx_cancellation_callback_called_completed);
         assert!(lock.tx_cancellation_callback_called_outbound);
-        assert!(lock.base_node_sync_callback_called_true);
-        assert!(lock.base_node_sync_callback_called_false);
         assert!(lock.saf_messages_received);
+
+        assert_eq!(lock.callback_utxo_validation_complete, 6);
+        assert_eq!(lock.callback_stxo_validation_complete, 6);
+        assert_eq!(lock.callback_invalid_txo_validation_complete, 6);
+        assert_eq!(lock.callback_transaction_validation_complete, 6);
+
         drop(lock);
     }
 }

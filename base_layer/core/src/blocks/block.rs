@@ -37,7 +37,10 @@ use crate::{
 };
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+};
 use tari_common_types::types::BlockHash;
 use tari_crypto::tari_utilities::Hashable;
 use thiserror::Error;
@@ -126,13 +129,13 @@ impl Block {
 }
 
 impl Display for Block {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        fmt.write_str("----------------- Block -----------------\n")?;
-        fmt.write_str("--- Header ---\n")?;
-        fmt.write_str(&format!("Hash: {}\n", self.header.hash().to_hex()))?;
-        fmt.write_str(&format!("{}\n", self.header))?;
-        fmt.write_str("---  Body  ---\n")?;
-        fmt.write_str(&format!("{}\n", self.body))
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        writeln!(f, "----------------- Block -----------------")?;
+        writeln!(f, "--- Header ---")?;
+        writeln!(f, "Hash: {}", self.header.hash().to_hex())?;
+        writeln!(f, "{}", self.header)?;
+        writeln!(f, "---  Body  ---")?;
+        writeln!(f, "{}", self.body)
     }
 }
 

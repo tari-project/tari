@@ -25,14 +25,8 @@ use crate::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError},
-        handle::{
-            OutputManagerEvent,
-            OutputManagerEventSender,
-            OutputManagerRequest,
-            OutputManagerResponse,
-            PublicRewindKeys,
-        },
-        protocols::txo_validation_protocol::{TxoValidationProtocol, TxoValidationRetry, TxoValidationType},
+        handle::{OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse, PublicRewindKeys},
+        protocols::txo_validation_protocol::{TxoValidationProtocol, TxoValidationType},
         storage::{
             database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase, PendingTransactionOutputs},
             models::DbUnblindedOutput,
@@ -40,12 +34,12 @@ use crate::{
         TxId,
     },
     transaction_service::handle::TransactionServiceHandle,
-    types::{HashDigest, KeyDigest},
+    types::{HashDigest, KeyDigest, ValidationRetryStrategy},
 };
 use futures::{pin_mut, stream::FuturesUnordered, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{cmp::Ordering, collections::HashMap, fmt, sync::Arc, time::Duration};
+use std::{cmp::Ordering, collections::HashMap, fmt, time::Duration};
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
 use tari_core::{
     consensus::ConsensusConstants,
@@ -102,7 +96,6 @@ where TBackend: OutputManagerBackend + 'static
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_update_publisher: broadcast::Sender<CommsPublicKey>,
-    txo_validation_protocols_in_progress: HashMap<String, u64>,
     base_node_service: BaseNodeServiceHandle,
 }
 
@@ -197,7 +190,6 @@ where TBackend: OutputManagerBackend + 'static
             coinbase_key_manager: Mutex::new(coinbase_key_manager),
             request_stream: Some(request_stream),
             base_node_update_publisher,
-            txo_validation_protocols_in_progress: HashMap::new(),
             base_node_service,
         })
     }
@@ -326,7 +318,7 @@ where TBackend: OutputManagerBackend + 'static
             },
             OutputManagerRequest::GetSeedWords => self.get_seed_words().await.map(OutputManagerResponse::SeedWords),
             OutputManagerRequest::SetBaseNodePublicKey(pk) => self
-                .set_base_node_public_key(pk, txo_validation_handles)
+                .set_base_node_public_key(pk)
                 .await
                 .map(|_| OutputManagerResponse::BaseNodePublicKeySet),
             OutputManagerRequest::ValidateUtxos(validation_type, retries) => self
@@ -372,42 +364,28 @@ where TBackend: OutputManagerBackend + 'static
     fn validate_outputs(
         &mut self,
         validation_type: TxoValidationType,
-        retry_strategy: TxoValidationRetry,
+        retry_strategy: ValidationRetryStrategy,
         txo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<u64, OutputManagerError>
     {
         match self.resources.base_node_public_key.as_ref() {
             None => Err(OutputManagerError::NoBaseNodeKeysProvided),
             Some(pk) => {
-                if let Some(id) = self
-                    .txo_validation_protocols_in_progress
-                    .get(&validation_type.to_string())
-                {
-                    info!(
-                        target: LOG_TARGET,
-                        "TXO Validation of type {} already in progress", validation_type
-                    );
-                    Ok(*id)
-                } else {
-                    let id = OsRng.next_u64();
+                let id = OsRng.next_u64();
 
-                    let utxo_validation_protocol = TxoValidationProtocol::new(
-                        id,
-                        validation_type,
-                        retry_strategy,
-                        self.resources.clone(),
-                        pk.clone(),
-                        self.base_node_update_publisher.subscribe(),
-                    );
+                let utxo_validation_protocol = TxoValidationProtocol::new(
+                    id,
+                    validation_type,
+                    retry_strategy,
+                    self.resources.clone(),
+                    pk.clone(),
+                    self.base_node_update_publisher.subscribe(),
+                );
 
-                    let join_handle = tokio::spawn(utxo_validation_protocol.execute());
-                    txo_validation_handles.push(join_handle);
-                    let _ = self
-                        .txo_validation_protocols_in_progress
-                        .insert(validation_type.to_string(), id);
+                let join_handle = tokio::spawn(utxo_validation_protocol.execute());
+                txo_validation_handles.push(join_handle);
 
-                    Ok(id)
-                }
+                Ok(id)
             },
         }
     }
@@ -419,46 +397,12 @@ where TBackend: OutputManagerBackend + 'static
                     target: LOG_TARGET,
                     "UTXO Validation Protocol (Id: {}) completed successfully", id
                 );
-
-                for (k, v) in self.txo_validation_protocols_in_progress.clone().iter() {
-                    if v == &id {
-                        let _ = self.txo_validation_protocols_in_progress.remove(k);
-                    }
-                }
             },
             Err(OutputManagerProtocolError { id, error }) => {
                 warn!(
                     target: LOG_TARGET,
                     "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
                 );
-                for (k, v) in self.txo_validation_protocols_in_progress.clone().iter() {
-                    if v == &id {
-                        let _ = self.txo_validation_protocols_in_progress.remove(k);
-                    }
-                }
-                match error {
-                    // An event for this error has already been sent at this time
-                    OutputManagerError::MaximumAttemptsExceeded => (),
-                    // An event for this error has already been sent at this time
-                    OutputManagerError::BaseNodeNotSynced => (),
-                    // An event for this error has already been sent at this time
-                    OutputManagerError::Cancellation => (),
-                    // A generic event is sent for all other errors
-                    _ => {
-                        let _ = self
-                            .resources
-                            .event_publisher
-                            .send(Arc::new(OutputManagerEvent::TxoValidationFailure(id)))
-                            .map_err(|e| {
-                                trace!(
-                                    target: LOG_TARGET,
-                                    "Error sending event, usually because there are no subscribers: {:?}",
-                                    e
-                                );
-                                e
-                            });
-                    },
-                }
             },
         }
     }
@@ -911,14 +855,13 @@ where TBackend: OutputManagerBackend + 'static
     async fn set_base_node_public_key(
         &mut self,
         base_node_public_key: CommsPublicKey,
-        txo_validation_handles: &mut FuturesUnordered<JoinHandle<Result<u64, OutputManagerProtocolError>>>,
     ) -> Result<(), OutputManagerError>
     {
         info!(
             target: LOG_TARGET,
             "Setting base node public key {} for service", base_node_public_key
         );
-        let do_txo_validation = self.resources.base_node_public_key.is_some();
+
         self.resources.base_node_public_key = Some(base_node_public_key.clone());
         if let Err(e) = self.base_node_update_publisher.send(base_node_public_key) {
             trace!(
@@ -926,34 +869,6 @@ where TBackend: OutputManagerBackend + 'static
                 "No subscribers to receive base node public key update: {:?}",
                 e
             );
-        }
-
-        if do_txo_validation {
-            info!(
-                target: LOG_TARGET,
-                "Starting TXO validation protocols for newly specified Base Node"
-            );
-            let _ = self
-                .validate_outputs(
-                    TxoValidationType::Unspent,
-                    TxoValidationRetry::UntilSuccess,
-                    txo_validation_handles,
-                )
-                .map_err(|e| warn!(target: LOG_TARGET, "Error starting validation protocol: {}", e));
-            let _ = self
-                .validate_outputs(
-                    TxoValidationType::Spent,
-                    TxoValidationRetry::UntilSuccess,
-                    txo_validation_handles,
-                )
-                .map_err(|e| warn!(target: LOG_TARGET, "Error starting validation protocol: {}", e));
-            let _ = self
-                .validate_outputs(
-                    TxoValidationType::Invalid,
-                    TxoValidationRetry::UntilSuccess,
-                    txo_validation_handles,
-                )
-                .map_err(|e| warn!(target: LOG_TARGET, "Error starting validation protocol: {}", e));
         }
 
         Ok(())

@@ -3,10 +3,13 @@ const {sleep} = require("./util");
 
 function transactionStatus() {
     return [
+        "TRANSACTION_STATUS_IMPORTED",
+        "TRANSACTION_STATUS_COINBASE",
         "TRANSACTION_STATUS_PENDING",
         "TRANSACTION_STATUS_COMPLETED",
         "TRANSACTION_STATUS_BROADCAST",
-        "TRANSACTION_STATUS_MINED"
+        "TRANSACTION_STATUS_MINED_UNCONFIRMED",
+        "TRANSACTION_STATUS_MINED_CONFIRMED"
     ];
 }
 
@@ -53,7 +56,7 @@ class WalletClient {
             let txnDetails = await this.getTransactionInfo({
                 "transaction_ids": [ tx_id.toString() ]
             });
-            if (transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 0) {
+            if (transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 2) {
                 return true;
             } else {
                 return false;
@@ -68,7 +71,7 @@ class WalletClient {
             let txnDetails = await this.getTransactionInfo({
                 "transaction_ids": [ tx_id.toString() ]
             });
-            if (transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 1) {
+            if (transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 3) {
                 return true;
             } else {
                 return false;
@@ -83,7 +86,7 @@ class WalletClient {
             let txnDetails = await this.getTransactionInfo({
                 "transaction_ids": [ tx_id.toString() ]
             });
-            if (transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 2) {
+            if (transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 4) {
                 return true;
             } else {
                 return false;
@@ -93,12 +96,42 @@ class WalletClient {
         }
     }
 
-    async isTransactionMined(tx_id) {
+    async isTransactionAtLeastMinedUnconfirmed(tx_id) {
         try {
             let txnDetails = await this.getTransactionInfo({
                 "transaction_ids": [ tx_id.toString() ]
             });
-            if (transactionStatus().indexOf(xnDetails.transactions[0]["status"]) == 3) {
+            if (transactionStatus().indexOf(txnDetails.transactions[0]["status"]) >= 5) {
+                return true;
+            } else {
+                return false;
+            }
+        } catch (err) {
+            return false;
+        }
+    }
+
+    async isTransactionMinedUnconfirmed(tx_id) {
+        try {
+            let txnDetails = await this.getTransactionInfo({
+                "transaction_ids": [ tx_id.toString() ]
+            });
+            if (transactionStatus().indexOf(txnDetails.transactions[0]["status"]) == 5) {
+                return true;
+            } else {
+                return false;
+            }
+        } catch (err) {
+            return false;
+        }
+    }
+
+    async isTransactionMinedConfirmed(tx_id) {
+        try {
+            let txnDetails = await this.getTransactionInfo({
+                "transaction_ids": [ tx_id.toString() ]
+            });
+            if (transactionStatus().indexOf(txnDetails.transactions[0]["status"]) == 6) {
                 return true;
             } else {
                 return false;

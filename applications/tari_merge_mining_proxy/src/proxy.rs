@@ -22,25 +22,12 @@
 
 use crate::{
     block_template_data::{BlockTemplateDataBuilder, BlockTemplateRepository},
+    common::{json_rpc, merge_mining, monero_rpc::CoreRpcErrorCode, proxy},
     error::MmProxyError,
-    helpers,
-    json_rpc,
 };
-use bytes::BytesMut;
-use futures::{StreamExt, TryFutureExt};
-use hyper::{
-    body::Bytes,
-    header::HeaderValue,
-    http::{header, response::Parts},
-    service::Service,
-    Body,
-    Method,
-    Request,
-    Response,
-    StatusCode,
-    Uri,
-    Version,
-};
+use bytes::Bytes;
+use futures::TryFutureExt;
+use hyper::{service::Service, Body, Method, Request, Response, StatusCode, Uri};
 use json::json;
 use jsonrpc::error::StandardError;
 use reqwest::{ResponseBuilderExt, Url};
@@ -48,7 +35,7 @@ use serde_json as json;
 use std::{
     cmp,
     cmp::min,
-    convert::{TryFrom, TryInto},
+    convert::TryFrom,
     future::Future,
     io::Write,
     net::SocketAddr,
@@ -65,11 +52,14 @@ use tari_core::{
     blocks::{Block, NewBlockTemplate},
     proof_of_work::monero_rx,
 };
+use tari_utilities::hex::Hex;
 use tracing::{debug, error, info, instrument, trace, warn};
 
 const LOG_TARGET: &str = "tari_mm_proxy::proxy";
 /// The JSON object key name used for merge mining proxy response extensions
-pub(crate) const MMPROXY_EXTENSIONS_KEY_NAME: &str = "_merge_mining";
+pub(crate) const MMPROXY_AUX_KEY_NAME: &str = "_aux";
+/// The identifier used to identify the tari aux chain data
+const TARI_CHAIN_ID: &str = "xtr";
 
 #[derive(Debug, Clone)]
 pub struct MergeMiningProxyConfig {
@@ -227,7 +217,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
                 Err(err) => {
                     error!(target: LOG_TARGET, "Error handling request: {}", err);
 
-                    Ok(json_response(
+                    Ok(proxy::json_response(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         &json_rpc::standard_error_response(None, StandardError::InternalError, None),
                     )
@@ -292,8 +282,7 @@ impl InnerService {
 
         json["height"] = json!(cmp::max(json["height"].as_i64().unwrap_or_default(), height as i64));
 
-        let resp = try_into_response(parts, &json)?;
-        Ok(resp)
+        Ok(proxy::into_response(parts, &json))
     }
 
     async fn handle_submit_block(
@@ -314,25 +303,22 @@ impl InnerService {
         let params = match request["params"].as_array() {
             Some(v) => v,
             None => {
-                return Ok(json_response(
+                return proxy::json_response(
                     StatusCode::OK,
-                    &json_rpc::standard_error_response(
+                    &json_rpc::error_response(
                         request["id"].as_i64(),
-                        StandardError::InvalidParams,
-                        Some(
-                            "`params` field is empty or an invalid type for submit block request. Expected an array."
-                                .into(),
-                        ),
+                        CoreRpcErrorCode::WrongParam.into(),
+                        "`params` field is empty or an invalid type for submit block request. Expected an array.",
+                        None,
                     ),
                 )
-                .unwrap())
             },
         };
 
         for param in params.iter().filter_map(|p| p.as_str()) {
-            let monero_block = helpers::deserialize_monero_block_from_hex(param)?;
+            let monero_block = merge_mining::deserialize_monero_block_from_hex(param)?;
             debug!(target: LOG_TARGET, "Monero block: {}", monero_block);
-            let hash = helpers::extract_tari_hash(&monero_block)
+            let hash = merge_mining::extract_tari_hash(&monero_block)
                 .copied()
                 .ok_or_else(|| MmProxyError::MissingDataError("Could not find Tari header in coinbase".to_string()))?;
 
@@ -354,7 +340,7 @@ impl InnerService {
                 },
             };
 
-            let monero_data = helpers::construct_monero_data(monero_block, block_data.monero_seed.clone())?;
+            let monero_data = merge_mining::construct_monero_data(monero_block, block_data.monero_seed.clone())?;
 
             let header_mut = block_data.tari_block.header.as_mut().unwrap();
             let height = header_mut.height;
@@ -387,11 +373,10 @@ impl InnerService {
                     // called. In this case, let's add a block not accepted error if Tari rejected the block
                     // If `config.proxy_submit_to_origin == true` then whatever monerod returned (success or fail)
                     // should be returned.
-                    const MONERO_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED: i32 = -7;
                     if !self.config.proxy_submit_to_origin {
                         json_resp = json_rpc::error_response(
                             request["id"].as_i64(),
-                            MONERO_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED,
+                            CoreRpcErrorCode::BlockNotAccepted.into(),
                             "Block not accepted",
                             None,
                         );
@@ -403,8 +388,7 @@ impl InnerService {
         }
 
         debug!(target: LOG_TARGET, "Sending submit_block response {}", json_resp);
-        let resp = try_into_response(parts, &json_resp)?;
-        Ok(resp)
+        Ok(proxy::into_response(parts, &json_resp))
     }
 
     async fn handle_get_block_template(
@@ -446,7 +430,12 @@ impl InnerService {
 
         // Add merge mining tag on blocktemplate request
         debug!(target: LOG_TARGET, "Requested new block template from Tari base node");
-        let new_block_template_response = grpc_client
+
+        let grpc::NewBlockTemplateResponse {
+            miner_data,
+            new_block_template,
+            initial_sync_achieved,
+        } = grpc_client
             .get_new_block_template(grpc::PowAlgo {
                 pow_algo: grpc::pow_algo::PowAlgos::Monero.into(),
             })
@@ -454,20 +443,19 @@ impl InnerService {
             .map_err(|status| MmProxyError::GrpcRequestError {
                 status,
                 details: "failed to get new block template".to_string(),
-            })?;
+            })?
+            .into_inner();
 
-        let new_block_template_response = new_block_template_response.into_inner();
-        let mining_data = new_block_template_response
-            .clone()
-            .miner_data
-            .ok_or_else(|| MmProxyError::GrpcResponseMissingField("miner_data"))?;
-        let new_block_template_reward = mining_data.reward;
-        let new_block_template = new_block_template_response
-            .new_block_template
-            .ok_or_else(|| MmProxyError::GrpcResponseMissingField("new_block_template"))?;
+        let miner_data = miner_data.ok_or_else(|| MmProxyError::GrpcResponseMissingField("miner_data"))?;
+        let new_block_template =
+            new_block_template.ok_or_else(|| MmProxyError::GrpcResponseMissingField("new_block_template"))?;
+
+        let block_reward = miner_data.reward;
+        let total_fees = miner_data.total_fees;
+        let tari_difficulty = miner_data.target_difficulty;
 
         if !self.initial_sync_achieved.load(Ordering::Relaxed) {
-            if !new_block_template_response.initial_sync_achieved {
+            if !initial_sync_achieved {
                 let msg = format!(
                     "Initial base node sync not achieved, current height at #{} ... (waiting = {})",
                     new_block_template.header.as_ref().map(|h| h.height).unwrap_or_default(),
@@ -503,8 +491,8 @@ impl InnerService {
         let mut grpc_wallet_client = self.connect_grpc_wallet_client().await?;
         let coinbase_response = grpc_wallet_client
             .get_coinbase(GetCoinbaseRequest {
-                reward: new_block_template_reward,
-                fee: u64::from(template_block.body.get_total_fee()),
+                reward: block_reward,
+                fee: total_fees,
                 height: template_block.header.height,
             })
             .await
@@ -514,7 +502,7 @@ impl InnerService {
             })?;
         let coinbase_transaction = coinbase_response.into_inner().transaction;
 
-        let coinbased_block = helpers::add_coinbase(coinbase_transaction, template_block)?;
+        let coinbased_block = merge_mining::add_coinbase(coinbase_transaction, template_block)?;
         debug!(target: LOG_TARGET, "Added coinbase to new block template");
         let block = grpc_client
             .get_new_block(coinbased_block)
@@ -543,18 +531,18 @@ impl InnerService {
                     .block
                     .ok_or_else(|| MmProxyError::GrpcResponseMissingField("block"))?,
             )
-            .tari_miner_data(mining_data.clone());
+            .tari_miner_data(miner_data);
 
         // Deserialize the block template blob
         let block_template_blob = &monerod_resp["result"]["blocktemplate_blob"]
             .to_string()
             .replace("\"", "");
         debug!(target: LOG_TARGET, "Deserializing Blocktemplate Blob into Monero Block",);
-        let mut monero_block = helpers::deserialize_monero_block_from_hex(block_template_blob)?;
+        let mut monero_block = merge_mining::deserialize_monero_block_from_hex(block_template_blob)?;
 
         debug!(target: LOG_TARGET, "Appending Merged Mining Tag",);
         // Add the Tari merge mining tag to the retrieved block template
-        monero_rx::append_merge_mining_tag(&mut monero_block, mining_hash.as_slice())?;
+        monero_rx::append_merge_mining_tag(&mut monero_block, &mining_hash)?;
 
         debug!(target: LOG_TARGET, "Creating blockhashing blob from blocktemplate blob",);
         // Must be done after the tag is inserted since it will affect the hash of the miner tx
@@ -563,7 +551,7 @@ impl InnerService {
         debug!(target: LOG_TARGET, "blockhashing_blob:{}", blockhashing_blob);
         monerod_resp["result"]["blockhashing_blob"] = blockhashing_blob.into();
 
-        let blocktemplate_blob = helpers::serialize_monero_block_to_hex(&monero_block)?;
+        let blocktemplate_blob = merge_mining::serialize_monero_block_to_hex(&monero_block)?;
         debug!(target: LOG_TARGET, "blocktemplate_blob:{}", block_template_blob);
         monerod_resp["result"]["blocktemplate_blob"] = blocktemplate_blob.into();
 
@@ -571,8 +559,7 @@ impl InnerService {
 
         let block_data = block_data.monero_seed(seed);
 
-        let monero_difficulty: u64 = monerod_resp["result"]["difficulty"].as_u64().unwrap_or_default();
-        let tari_difficulty = mining_data.target_difficulty;
+        let monero_difficulty = monerod_resp["result"]["difficulty"].as_u64().unwrap_or_default();
 
         let mining_difficulty = min(monero_difficulty, tari_difficulty);
 
@@ -580,22 +567,111 @@ impl InnerService {
             .monero_difficulty(monero_difficulty)
             .tari_difficulty(tari_difficulty);
 
-        self.block_templates.save(mining_hash, block_data.build()?).await;
         info!(
             target: LOG_TARGET,
             "Difficulties: Tari ({}), Monero({}), Selected({})", tari_difficulty, monero_difficulty, mining_difficulty
         );
         monerod_resp["result"]["difficulty"] = mining_difficulty.into();
-        let monerod_resp = add_mmproxy_extensions(
+        let monerod_resp = add_aux_data(monerod_resp, json!({ "base_difficulty": monero_difficulty }));
+        let monerod_resp = append_aux_chain_data(
             monerod_resp,
             json!({
-                "difficulties": {"xmr": monero_difficulty, "xtr": tari_difficulty}
+                "id": TARI_CHAIN_ID,
+                "difficulty": tari_difficulty,
+                // The merge mining hash, before the final block hash can be calculated
+                "mining_hash": mining_hash.to_hex(),
+                "miner_reward": block_reward + total_fees,
             }),
         );
 
+        self.block_templates.save(mining_hash, block_data.build()?).await;
+
         debug!(target: LOG_TARGET, "Returning template result: {}", monerod_resp);
-        let resp = try_into_response(parts, &monerod_resp)?;
-        Ok(resp)
+        Ok(proxy::into_response(parts, &monerod_resp))
+    }
+
+    async fn handle_get_block_header_by_hash(
+        &self,
+        request: Request<json::Value>,
+        monero_resp: Response<json::Value>,
+    ) -> Result<Response<Body>, MmProxyError>
+    {
+        let (parts, monero_resp) = monero_resp.into_parts();
+
+        let request = request.into_body();
+        let hash = request["params"]["hash"]
+            .as_str()
+            .ok_or_else(|| "hash parameter is not a string")
+            .and_then(|hash| hex::decode(hash).map_err(|_| "hash parameter is not a valid hex value"));
+        let hash = match hash {
+            Ok(hash) => hash,
+            Err(err) => {
+                return proxy::json_response(
+                    StatusCode::OK,
+                    &json_rpc::error_response(request["id"].as_i64(), CoreRpcErrorCode::WrongParam.into(), err, None),
+                )
+            },
+        };
+        // If monero succeeded in finding the header, we're done here
+        if !monero_resp["result"].is_null() ||
+            monero_resp["result"]["block_header"]["hash"]
+                .as_str()
+                .map(|hash| !hash.is_empty())
+                .unwrap_or(false)
+        {
+            debug!(target: LOG_TARGET, "monerod found block `{}`.", hash.to_hex());
+            // TODO: add aux data for corresponding tari header, if it exists.
+            return Ok(proxy::into_response(parts, &monero_resp));
+        }
+
+        debug!(
+            target: LOG_TARGET,
+            "monerod could not find the block `{}`. Querying tari base node",
+            hash.to_hex()
+        );
+
+        let mut client = self.connect_grpc_client().await?;
+        let grpc::BlockHeaderResponse {
+            header,
+            reward,
+            confirmations,
+            difficulty,
+            num_transactions,
+        } = client
+            .get_header_by_hash(grpc::GetHeaderByHashRequest { hash })
+            .await
+            .map_err(|status| MmProxyError::GrpcRequestError {
+                status,
+                details: "failed to get header by hash".to_string(),
+            })?
+            .into_inner();
+        let header = header.expect("Base node GRPC returned an empty header field when calling get_header_by_hash");
+
+        let json_resp = json_rpc::success_response(
+            request["id"].as_i64(),
+            json!({
+                "block_header": {
+                   "block_size": 0, // TODO: block weight?
+                   "depth": confirmations,
+                   "difficulty": difficulty,
+                   "hash": header.hash.to_hex(),
+                   "height": header.height,
+                   "major_version": header.version,
+                   "minor_version": 0,
+                   "nonce": header.nonce,
+                   "num_txes": num_transactions,
+                   // Cannot be an orphan
+                   "orphan_status": false,
+                   "prev_hash": header.prev_hash.to_hex(),
+                   "reward": reward,
+                   "timestamp": header.timestamp.map(|ts| ts.seconds.into()).unwrap_or_else(|| json!(null)),
+               }
+            }),
+        );
+
+        let json_resp = append_aux_chain_data(json_resp, json!({ "id": TARI_CHAIN_ID }));
+
+        Ok(proxy::into_response(parts, &json_resp))
     }
 
     async fn connect_grpc_client(
@@ -624,28 +700,11 @@ impl InnerService {
     /// Proxy a request received by this server to Monerod
     async fn proxy_request_to_monerod(
         &self,
-        mut req: Request<Body>,
+        request: Request<Bytes>,
     ) -> Result<(Request<Bytes>, Response<json::Value>), MmProxyError>
     {
-        let monerod_uri = self.get_fully_qualified_monerod_url(req.uri())?;
-        let bytes = read_body_until_end(req.body_mut()).await?;
-        let request = req.map(|_| bytes.freeze());
+        let monerod_uri = self.get_fully_qualified_monerod_url(request.uri())?;
 
-        let mut submit_block = false;
-        let body: Bytes = request.body().clone();
-        let json = json::from_slice::<json::Value>(&body[..]).unwrap_or_default();
-
-        if json["method"] == "submitblock" || json["method"] == "submit_block" {
-            submit_block = true;
-        }
-
-        debug!(
-            target: LOG_TARGET,
-            "Proxying request: {} {} {}",
-            request.method(),
-            monerod_uri,
-            json["method"]
-        );
         let mut builder = self
             .http_client
             .request(request.method().clone(), monerod_uri.clone())
@@ -656,39 +715,70 @@ impl InnerService {
             builder = builder.basic_auth(&self.config.monerod_username, Some(&self.config.monerod_password));
         }
 
-        trace!(target: LOG_TARGET, "Sending request {:?}", request.body(),);
-
-        let json_response;
-        if submit_block && !self.config.proxy_submit_to_origin {
-            // Assume it would be accepted
-            let accept_response = json_rpc::success_response(json["id"].as_i64(), json!({}));
-            json_response =
-                convert_json_to_hyper_json_response(accept_response, StatusCode::OK, monerod_uri.clone()).await?;
-        } else {
+        debug!(
+            target: LOG_TARGET,
+            "[monerod] request: {} {}",
+            request.method(),
+            monerod_uri,
+        );
+        let json_response = if self.config.proxy_submit_to_origin {
             let resp = builder
                 // This is a cheap clone of the request body
                 .body(request.body().clone())
                 .send()
                 .await
                 .map_err(MmProxyError::MonerodRequestFailed)?;
-            json_response = convert_reqwest_response_to_hyper_json_response(resp).await?;
-        }
-
-        if submit_block {
-            debug!(
-                target: LOG_TARGET,
-                "Block submitted to monerod, response is: {}",
-                json_response.body()
-            );
+            convert_reqwest_response_to_hyper_json_response(resp).await?
         } else {
-            debug!(target: LOG_TARGET, "Received response {}", json_response.body());
-        }
+            // proxy_submit_to_origin == false, so do not submit blocks to monerod at all
+            let json = json::from_slice::<json::Value>(&request.body()[..])?;
+            match json["method"].as_str() {
+                Some("submitblock") | Some("submit_block") => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[monerod] skip: Did not submit block to to monerod because proxy_submit_to_origin == false",
+                    );
+
+                    // TODO: This is a little hacky, we 'fake' this success response just to get code branches elsewhere
+                    //       to run (i.e run the tari submit block handler). Skipping monerod should be formalised
+                    //       or the special mode removed if it is not needed. If we introduce "tari only" calls,
+                    //       skipping monerod may be required and should be formalised, otherwise we
+                    //       may want to take another look at this mode.
+                    let accept_response = json_rpc::success_response(json["id"].as_i64(), json!({}));
+                    proxy::convert_json_to_hyper_json_response(accept_response, StatusCode::OK, monerod_uri.clone())
+                        .await?
+                },
+                _ => {
+                    let resp = builder
+                        // This is a cheap clone of the request body
+                        .body(request.body().clone())
+                        .send()
+                        .await
+                        .map_err(MmProxyError::MonerodRequestFailed)?;
+                    convert_reqwest_response_to_hyper_json_response(resp).await?
+                },
+            }
+        };
+
+        let rpc_status = if json_response.body()["error"].is_null() {
+            "ok"
+        } else {
+            json_response.body()["error"]["message"]
+                .as_str()
+                .unwrap_or("unknown error")
+        };
+        debug!(
+            target: LOG_TARGET,
+            "[monerod] response: status = {}, monerod_rpc = {}",
+            json_response.status(),
+            rpc_status
+        );
         Ok((request, json_response))
     }
 
     async fn get_proxy_response(
         &mut self,
-        request: Request<Bytes>,
+        request: Request<json::Value>,
         monerod_resp: Response<json::Value>,
     ) -> Result<Response<Body>, MmProxyError>
     {
@@ -697,31 +787,34 @@ impl InnerService {
                 // Map requests to monerod requests (with aliases)
                 match request.uri().path() {
                     "/get_height" | "/getheight" => self.handle_get_height(monerod_resp).await,
-                    _ => try_into_body_from_response(monerod_resp).map_err(Into::into),
+                    _ => Ok(proxy::into_body_from_response(monerod_resp)),
                 }
             },
             Method::POST => {
-                // Try parse the request into JSON, it is allowed fail because if we've made it this far, then monerod
-                // accepted the request
-                let json = json::from_slice::<json::Value>(request.body())?;
-                let request = request.map(move |_| json);
                 // All post requests go to /json_rpc, body of request contains a field `method` to indicate which call
                 // takes place.
                 match request.body()["method"].as_str().unwrap_or_default() {
                     "get_height" | "getheight" => self.handle_get_height(monerod_resp).await,
                     "submitblock" | "submit_block" => self.handle_submit_block(request, monerod_resp).await,
                     "getblocktemplate" | "get_block_template" => self.handle_get_block_template(monerod_resp).await,
-                    _ => try_into_body_from_response(monerod_resp).map_err(Into::into),
+                    "getblockheaderbyhash" | "get_block_header_by_hash" => {
+                        self.handle_get_block_header_by_hash(request, monerod_resp).await
+                    },
+
+                    _ => Ok(proxy::into_body_from_response(monerod_resp)),
                 }
             },
             // Simply return the response "as is"
-            _ => try_into_body_from_response(monerod_resp).map_err(Into::into),
+            _ => Ok(proxy::into_body_from_response(monerod_resp)),
         }
     }
 
-    async fn handle(mut self, request: Request<Body>) -> Result<Response<Body>, MmProxyError> {
+    async fn handle(mut self, mut request: Request<Body>) -> Result<Response<Body>, MmProxyError> {
         debug!(target: LOG_TARGET, "Got request: {}", request.uri());
         debug!(target: LOG_TARGET, "Request headers: {:?}", request.headers());
+
+        let bytes = proxy::read_body_until_end(request.body_mut()).await?;
+        let request = request.map(|_| bytes.freeze());
         let (request, monerod_resp) = self.proxy_request_to_monerod(request).await?;
         // Any failed (!= 200 OK) responses from Monero are immediately returned to the requester
         if !monerod_resp.status().is_success() {
@@ -733,29 +826,12 @@ impl InnerService {
             );
             return Ok(monerod_resp.map(|json| json.to_string().into()));
         }
+
+        let json = json::from_slice(&request.body()[..])?;
+        let request = request.map(|_| json);
         let response = self.get_proxy_response(request, monerod_resp).await?;
         Ok(response)
     }
-}
-
-async fn convert_json_to_hyper_json_response(
-    resp: json::Value,
-    code: StatusCode,
-    url: Url,
-) -> Result<Response<json::Value>, MmProxyError>
-{
-    let mut builder = Response::builder();
-
-    let headers = builder
-        .headers_mut()
-        .expect("headers_mut errors only when the builder has an error (e.g invalid header value)");
-    headers.append("Content-Type", HeaderValue::from_str("application/json").unwrap());
-
-    builder = builder.version(Version::HTTP_11).status(code).url(url);
-
-    let body = resp;
-    let resp = builder.body(body)?;
-    Ok(resp)
 }
 
 async fn convert_reqwest_response_to_hyper_json_response(
@@ -778,48 +854,12 @@ async fn convert_reqwest_response_to_hyper_json_response(
     Ok(resp)
 }
 
-fn json_response(status: StatusCode, body: &json::Value) -> Result<Response<Body>, MmProxyError> {
-    let body_str = json::to_string(body)?;
-    Response::builder()
-        .header(header::CONTENT_TYPE, "application/json".to_string())
-        .header(header::CONTENT_LENGTH, body_str.len())
-        .status(status)
-        .body(body_str.into())
-        .map_err(Into::into)
-}
-
-fn try_into_response(mut parts: Parts, content: &json::Value) -> Result<Response<Body>, json::Error> {
-    let resp = json::to_string(content)?;
-    // Ensure that the content length header is correct
-    parts.headers.insert(header::CONTENT_LENGTH, resp.len().into());
-    parts
-        .headers
-        .insert(header::CONTENT_TYPE, "application/json".try_into().unwrap());
-    Ok(Response::from_parts(parts, resp.into()))
-}
-
-fn try_into_body_from_response(resp: Response<json::Value>) -> Result<Response<Body>, json::Error> {
-    let (parts, body) = resp.into_parts();
-    try_into_response(parts, &body)
-}
-
-/// Reads the `Body` until there is no more to read
-pub(super) async fn read_body_until_end(body: &mut Body) -> Result<BytesMut, MmProxyError> {
-    // TODO: Perhaps there is a more efficient way to do this
-    let mut bytes = BytesMut::new();
-    while let Some(data) = body.next().await {
-        let data = data?;
-        bytes.extend(data);
-    }
-    Ok(bytes)
-}
-
 /// Add mmproxy extensions object to JSON RPC success response
-pub fn add_mmproxy_extensions(mut response: json::Value, mut ext: json::Value) -> json::Value {
+pub fn add_aux_data(mut response: json::Value, mut ext: json::Value) -> json::Value {
     if response["result"].is_null() {
         return response;
     }
-    match response["result"][MMPROXY_EXTENSIONS_KEY_NAME].as_object_mut() {
+    match response["result"][MMPROXY_AUX_KEY_NAME].as_object_mut() {
         Some(obj_mut) => {
             let ext_mut = ext
                 .as_object_mut()
@@ -827,8 +867,26 @@ pub fn add_mmproxy_extensions(mut response: json::Value, mut ext: json::Value) -
             obj_mut.append(ext_mut);
         },
         None => {
-            response["result"][MMPROXY_EXTENSIONS_KEY_NAME] = ext;
+            response["result"][MMPROXY_AUX_KEY_NAME] = ext;
         },
     }
+    response
+}
+
+pub fn append_aux_chain_data(mut response: json::Value, chain_data: json::Value) -> json::Value {
+    if response["result"].is_null() {
+        return response;
+    }
+    let chains = match response["result"][MMPROXY_AUX_KEY_NAME]["chains"].as_array_mut() {
+        Some(arr_mut) => arr_mut,
+        None => {
+            response["result"][MMPROXY_AUX_KEY_NAME]["chains"] = json!([]);
+            response["result"][MMPROXY_AUX_KEY_NAME]["chains"]
+                .as_array_mut()
+                .unwrap()
+        },
+    };
+
+    chains.push(chain_data);
     response
 }

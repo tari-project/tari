@@ -39,8 +39,10 @@ pub enum NodeCommsResponse {
     ChainMetadata(ChainMetadata),
     TransactionKernels(Vec<TransactionKernel>),
     BlockHeaders(Vec<BlockHeader>),
+    BlockHeader(Option<BlockHeader>),
     TransactionOutputs(Vec<TransactionOutput>),
     HistoricalBlocks(Vec<HistoricalBlock>),
+    HistoricalBlock(Box<Option<HistoricalBlock>>),
     NewBlockTemplate(NewBlockTemplate),
     NewBlock {
         success: bool,
@@ -55,10 +57,12 @@ pub enum NodeCommsResponse {
 impl Display for NodeCommsResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use NodeCommsResponse::*;
-        match &self {
+        match self {
             ChainMetadata(_) => write!(f, "ChainMetadata"),
             TransactionKernels(_) => write!(f, "TransactionKernel"),
             BlockHeaders(_) => write!(f, "BlockHeaders"),
+            BlockHeader(_) => write!(f, "BlockHeader"),
+            HistoricalBlock(_) => write!(f, "HistoricalBlock"),
             TransactionOutputs(_) => write!(f, "TransactionOutputs"),
             HistoricalBlocks(_) => write!(f, "HistoricalBlocks"),
             NewBlockTemplate(_) => write!(f, "NewBlockTemplate"),

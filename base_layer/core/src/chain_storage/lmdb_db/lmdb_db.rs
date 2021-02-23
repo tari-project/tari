@@ -1290,16 +1290,18 @@ impl BlockchainBackend for LMDBDatabase {
                 header.kernel_mmr_size
             };
 
-            let mut result = Vec::with_capacity((end - start) as usize);
+            let total_size = (end - start) as usize + 1;
+            let mut result = Vec::with_capacity(total_size);
 
             let mut skip_amount = (start - previous_mmr_count) as usize;
             debug!(
                 target: LOG_TARGET,
-                "Fetching kernels by MMR position. Start {}, end {}, starting in header at height {},  prev mmr \
-                 count: {}, skipping the first:{}",
+                "Fetching kernels by MMR position. Start {}, end {}, in headers at height {}-{},  prev mmr count: {}, \
+                 skipping the first:{}",
                 start,
                 end,
                 start_height,
+                end_height,
                 previous_mmr_count,
                 skip_amount
             );
@@ -1321,6 +1323,7 @@ impl BlockchainBackend for LMDBDatabase {
                     )?
                     .into_iter()
                     .skip(skip_amount)
+                    .take(total_size - result.len())
                     .map(|f| f.kernel),
                 );
 
@@ -1353,7 +1356,8 @@ impl BlockchainBackend for LMDBDatabase {
                 header.output_mmr_size
             };
 
-            let mut result = Vec::with_capacity((end - start) as usize);
+            let total_size = (end - start) as usize + 1;
+            let mut result = Vec::with_capacity(total_size);
             let mut deleted_result = vec![];
 
             let mut skip_amount = (start - previous_mmr_count) as usize;
@@ -1385,6 +1389,7 @@ impl BlockchainBackend for LMDBDatabase {
                     )?
                     .into_iter()
                     .skip(skip_amount)
+                    .take(total_size - result.len())
                     .map(|row| {
                         if deleted.contains(row.mmr_position) {
                             return PrunedOutput::Pruned {

@@ -20,14 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transaction_service::{
-    error::TransactionServiceError,
-    handle::TransactionEvent,
-    service::TransactionServiceResources,
-    storage::{
-        database::TransactionBackend,
-        models::{CompletedTransaction, TransactionStatus},
+use crate::{
+    transaction_service::{
+        error::{TransactionServiceError, TransactionServiceProtocolError},
+        handle::TransactionEvent,
+        service::TransactionServiceResources,
+        storage::{
+            database::TransactionBackend,
+            models::{CompletedTransaction, TransactionStatus},
+        },
     },
+    types::ValidationRetryStrategy,
 };
 use futures::{FutureExt, StreamExt};
 use log::*;
@@ -47,11 +50,14 @@ const LOG_TARGET: &str = "wallet::transaction_service::protocols::validation_pro
 pub struct TransactionValidationProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
+    id: u64,
     resources: TransactionServiceResources<TBackend>,
     timeout: Duration,
     base_node_public_key: CommsPublicKey,
     base_node_update_receiver: Option<broadcast::Receiver<CommsPublicKey>>,
     timeout_update_receiver: Option<broadcast::Receiver<Duration>>,
+    retry_strategy: ValidationRetryStrategy,
+    base_node_synced: bool,
 }
 
 /// This protocol will check all of the mined transactions (both valid and invalid) in the db to see if they are present
@@ -63,49 +69,98 @@ impl<TBackend> TransactionValidationProtocol<TBackend>
 where TBackend: TransactionBackend + 'static
 {
     pub fn new(
+        id: u64,
         resources: TransactionServiceResources<TBackend>,
         base_node_public_key: CommsPublicKey,
         timeout: Duration,
         base_node_update_receiver: broadcast::Receiver<CommsPublicKey>,
         timeout_update_receiver: broadcast::Receiver<Duration>,
+        retry_strategy: ValidationRetryStrategy,
     ) -> Self
     {
         Self {
+            id,
             resources,
             timeout,
             base_node_public_key,
             base_node_update_receiver: Some(base_node_update_receiver),
             timeout_update_receiver: Some(timeout_update_receiver),
+            retry_strategy,
+            base_node_synced: true,
         }
     }
 
     /// The task that defines the execution of the protocol.
-    pub async fn execute(mut self) -> Result<(), TransactionServiceError> {
+    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
         let mut timeout_update_receiver = self
             .timeout_update_receiver
             .take()
-            .ok_or_else(|| TransactionServiceError::InvalidStateError)?
+            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?
             .fuse();
 
         let mut base_node_update_receiver = self
             .base_node_update_receiver
             .take()
-            .ok_or_else(|| TransactionServiceError::InvalidStateError)?
+            .ok_or_else(|| TransactionServiceProtocolError::new(self.id, TransactionServiceError::InvalidStateError))?
             .fuse();
 
         let mut shutdown = self.resources.shutdown_signal.clone();
 
-        info!("Starting Transaction Validation Protocol");
+        let total_retries_str = match self.retry_strategy {
+            ValidationRetryStrategy::Limited(n) => format!("{}", n),
+            ValidationRetryStrategy::UntilSuccess => "∞".to_string(),
+        };
 
-        let mut batches = self.get_transaction_batches().await?;
+        info!(
+            "Starting Transaction Validation Protocol (Id: {}) with {} retries",
+            self.id, total_retries_str
+        );
+
+        let mut batches = self
+            .get_transaction_batches()
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, e))?;
+        let mut retries = 0;
 
         // Main protocol loop
         'main: loop {
-            let base_node_node_id =
-                NodeId::from_key(&self.base_node_public_key.clone()).map_err(TransactionServiceError::from)?;
+            if let ValidationRetryStrategy::Limited(max_retries) = self.retry_strategy {
+                if retries > max_retries {
+                    info!(
+                        target: LOG_TARGET,
+                        "Maximum attempts exceeded for Transaction Validation Protocol (Id: {})", self.id
+                    );
+                    // If this retry is not because of a !base_node_synced then we emit this error event, if the retries
+                    // are due to a base node NOT being synced then we rely on the TransactionValidationDelayed event
+                    // because we were actually able to connect
+                    if self.base_node_synced {
+                        let _ = self
+                            .resources
+                            .event_publisher
+                            .send(Arc::new(TransactionEvent::TransactionValidationFailure(self.id)))
+                            .map_err(|e| {
+                                trace!(
+                                    target: LOG_TARGET,
+                                    "Error sending event because there are no subscribers: {:?}",
+                                    e
+                                );
+                                e
+                            });
+                    }
+                    return Err(TransactionServiceProtocolError::new(
+                        self.id,
+                        TransactionServiceError::MaximumAttemptsExceeded,
+                    ));
+                }
+            }
+            // Assume base node is synced until we achieve a connection and it tells us it is not synced
+            self.base_node_synced = true;
+
+            let base_node_node_id = NodeId::from_key(&self.base_node_public_key.clone())
+                .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
             let mut connection: Option<PeerConnection> = None;
 
-            let delay = delay_for(self.resources.config.peer_dial_retry_timeout);
+            let delay = delay_for(self.timeout);
 
             debug!(
                 target: LOG_TARGET,
@@ -119,32 +174,27 @@ where TBackend: TransactionBackend + 'static
                         },
                         Err(e) => {
                             info!(target: LOG_TARGET, "Problem connecting to base node: {} for Transaction Validation Protocol", e);
-                            let _ = self
-                            .resources
-                            .event_publisher
-                            .send(Arc::new(TransactionEvent::TransactionBaseNodeConnectionProblem(
-                                0,
-                            )))
-                            .map_err(|e| {
-                                trace!(
-                                    target: LOG_TARGET,
-                                    "Error sending event because there are no subscribers: {:?}",
-                                    e
-                                );
-                                e
-                            });
                         },
                     }
                 },
                 new_base_node = base_node_update_receiver.select_next_some() => {
+
                     match new_base_node {
-                        Ok(bn) => {
-                            self.base_node_public_key = bn;
-                             info!(
-                                target: LOG_TARGET,
-                                "Transaction Validation protocol Base Node Public key updated to {:?}", self.base_node_public_key
-                            );
-                            continue;
+                        Ok(_) => {
+                            info!(target: LOG_TARGET, "Aborting Transaction Validation Protocol as new Base node is set");
+                             let _ = self
+                                .resources
+                                .event_publisher
+                                .send(Arc::new(TransactionEvent::TransactionValidationAborted(self.id)))
+                                .map_err(|e| {
+                                    trace!(
+                                        target: LOG_TARGET,
+                                        "Error sending event because there are no subscribers: {:?}",
+                                        e
+                                    );
+                                    e
+                                });
+                                return Ok(self.id);
                         },
                         Err(e) => {
                             trace!(
@@ -177,7 +227,7 @@ where TBackend: TransactionBackend + 'static
                 },
                 _ = shutdown => {
                     info!(target: LOG_TARGET, "Transaction Validation Protocol shutting down because it received the shutdown signal");
-                    return Err(TransactionServiceError::Shutdown)
+                    return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                 },
             }
 
@@ -185,11 +235,24 @@ where TBackend: TransactionBackend + 'static
                 None => {
                     futures::select! {
                         _ = delay.fuse() => {
+                            let _ = self
+                                .resources
+                                .event_publisher
+                                .send(Arc::new(TransactionEvent::TransactionValidationTimedOut(self.id)))
+                                .map_err(|e| {
+                                    trace!(
+                                        target: LOG_TARGET,
+                                        "Error sending event {:?}, because there are no subscribers.",
+                                        e.0
+                                    );
+                                    e
+                                });
+                            retries += 1;
                             continue;
                         },
                         _ = shutdown => {
                             info!(target: LOG_TARGET, "Transaction Validation Protocol shutting down because it received the shutdown signal");
-                            return Err(TransactionServiceError::Shutdown)
+                            return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                         },
                     }
                 },
@@ -197,10 +260,7 @@ where TBackend: TransactionBackend + 'static
             };
 
             let mut client = match base_node_connection
-                .connect_rpc_using_builder(
-                    BaseNodeWalletRpcClient::builder()
-                        .with_deadline(self.resources.config.broadcast_monitoring_timeout),
-                )
+                .connect_rpc_using_builder(BaseNodeWalletRpcClient::builder().with_deadline(self.timeout))
                 .await
             {
                 Ok(c) => c,
@@ -223,15 +283,21 @@ where TBackend: TransactionBackend + 'static
                 futures::select! {
                     new_base_node = base_node_update_receiver.select_next_some() => {
                         match new_base_node {
-                            Ok(bn) => {
-                                self.base_node_public_key = bn;
-                                 info!(
-                                    target: LOG_TARGET,
-                                    "Transaction Validation protocol  Base Node Public key updated to {:?}", self.base_node_public_key
-                                );
-                                info!(target: LOG_TARGET, "Restarting Transaction Validation process on new base node");
-                                batches = self.get_transaction_batches().await?;
-                                break 'per_tx;
+                            Ok(_) => {
+                               info!(target: LOG_TARGET, "Aborting Transaction Validation Protocol as new Base node is set");
+                                let _ = self
+                                    .resources
+                                    .event_publisher
+                                    .send(Arc::new(TransactionEvent::TransactionValidationAborted(self.id)))
+                                    .map_err(|e| {
+                                        trace!(
+                                            target: LOG_TARGET,
+                                            "Error sending event because there are no subscribers: {:?}",
+                                            e
+                                        );
+                                        e
+                                    });
+                                return Ok(self.id);
                             },
                             Err(e) => {
                                 trace!(
@@ -246,20 +312,61 @@ where TBackend: TransactionBackend + 'static
                     result = self.transaction_query_batch(batch.clone(), &mut client).fuse() => {
                         match result {
                             Ok(synced) => {
+                                self.base_node_synced = synced;
                                 if !synced {
                                     info!(target: LOG_TARGET, "Base Node reports not being synced, will retry.");
+                                        let _ = self
+                                        .resources
+                                        .event_publisher
+                                        .send(Arc::new(TransactionEvent::TransactionValidationDelayed(self.id)))
+                                        .map_err(|e| {
+                                            trace!(
+                                                target: LOG_TARGET,
+                                                "Error sending event because there are no subscribers: {:?}",
+                                                e
+                                            );
+                                            e
+                                        });
                                     delay.await;
-                                    batches = self.get_transaction_batches().await?;
+                                    retries += 1;
+                                    batches = self.get_transaction_batches().await.map_err(|e| TransactionServiceProtocolError::new(self.id, e))?;
                                     break 'per_tx;
                                 }
                             },
                             Err(TransactionServiceError::RpcError(e)) => {
                                 warn!(target: LOG_TARGET, "Error with RPC Client: {}. Retrying RPC client connection.", e);
+                                let _ = self
+                                .resources
+                                .event_publisher
+                                .send(Arc::new(TransactionEvent::TransactionValidationTimedOut(self.id)))
+                                .map_err(|e| {
+                                    trace!(
+                                        target: LOG_TARGET,
+                                        "Error sending event {:?}, because there are no subscribers.",
+                                        e.0
+                                    );
+                                    e
+                                });
                                 delay.await;
                                 batches.push(batch);
+                                retries += 1;
                                 break 'per_tx;
                             }
-                            Err(e) => { return Err(e); },
+                            Err(e) => {
+                                let _ = self
+                                    .resources
+                                    .event_publisher
+                                    .send(Arc::new(TransactionEvent::TransactionValidationFailure(self.id)))
+                                    .map_err(|e| {
+                                        trace!(
+                                            target: LOG_TARGET,
+                                            "Error sending event because there are no subscribers: {:?}",
+                                            e
+                                        );
+                                        e
+                                    });
+                                return Err(TransactionServiceProtocolError::new(self.id,e));
+                            },
                         }
                     },
                     updated_timeout = timeout_update_receiver.select_next_some() => {
@@ -283,7 +390,7 @@ where TBackend: TransactionBackend + 'static
                     },
                     _ = shutdown => {
                         info!(target: LOG_TARGET, "Transaction Validation Protocol shutting down because it received the shutdown signal");
-                        return Err(TransactionServiceError::Shutdown)
+                        return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                     },
                 }
             }
@@ -292,7 +399,7 @@ where TBackend: TransactionBackend + 'static
         let _ = self
             .resources
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionValidationComplete))
+            .send(Arc::new(TransactionEvent::TransactionValidationSuccess(self.id)))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,
@@ -302,7 +409,7 @@ where TBackend: TransactionBackend + 'static
                 e
             });
 
-        Ok(())
+        Ok(self.id)
     }
 
     /// Attempt to query the location of the transaction from the base node via RPC.

@@ -24,6 +24,7 @@ use tari_comms::{
     multiaddr,
     peer_manager::{node_id::NodeIdError, NodeIdentityError},
 };
+use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::{hex::HexError, ByteArrayError},
@@ -171,6 +172,10 @@ impl From<WalletError> for LibWalletError {
                 code: 113,
                 message: format!("{:?}", w),
             },
+            WalletError::OutputManagerError(_) => Self {
+                code: 114,
+                message: format!("{:?}", w),
+            },
             // Transaction Service Errors
             WalletError::TransactionServiceError(TransactionServiceError::InvalidStateError) => Self {
                 code: 201,
@@ -198,6 +203,10 @@ impl From<WalletError> for LibWalletError {
             },
             WalletError::TransactionServiceError(TransactionServiceError::OutboundSendDiscoveryInProgress(_)) => Self {
                 code: 210,
+                message: format!("{:?}", w),
+            },
+            WalletError::TransactionServiceError(_) => Self {
+                code: 211,
                 message: format!("{:?}", w),
             },
             // Comms Stack errors
@@ -370,6 +379,15 @@ impl From<SchnorrSignatureError> for LibWalletError {
     }
 }
 
+impl From<StoreAndForwardError> for LibWalletError {
+    fn from(err: StoreAndForwardError) -> Self {
+        error!(target: LOG_TARGET, "{}", format!("{:?}", err));
+        Self {
+            code: 902,
+            message: format!("{:?}", err),
+        }
+    }
+}
 #[derive(Debug, Error, PartialEq)]
 pub enum TransactionError {
     #[error("The transaction has an incorrect status: `{0}`")]

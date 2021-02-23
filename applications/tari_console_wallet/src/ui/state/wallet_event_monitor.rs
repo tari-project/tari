@@ -97,7 +97,7 @@ impl WalletEventMonitor {
                                             notifier.transaction_sent(tx_id);
                                         }
                                     },
-                                    TransactionEvent::TransactionValidationComplete => {
+                                    TransactionEvent::TransactionValidationSuccess(_) => {
                                         self.trigger_full_tx_state_refresh().await;
                                     },
                                     // Only the above variants trigger state refresh
@@ -147,7 +147,7 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
-                                if let OutputManagerEvent::TxoValidationSuccess(_) = *msg.clone() {
+                                if let OutputManagerEvent::TxoValidationSuccess(_,_) = *msg.clone() {
                                         self.trigger_balance_refresh().await;
                                 }
                             },

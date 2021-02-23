@@ -36,6 +36,7 @@ use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
 
+use crate::types::ValidationRetryStrategy;
 #[cfg(feature = "test_harness")]
 use tokio::runtime::Handle;
 
@@ -64,6 +65,7 @@ pub enum TransactionServiceRequest {
     RestartBroadcastProtocols,
     GetNumConfirmationsRequired,
     SetNumConfirmationsRequired(u64),
+    ValidateTransactions(ValidationRetryStrategy),
     #[cfg(feature = "test_harness")]
     CompletePendingOutboundTransaction(CompletedTransaction),
     #[cfg(feature = "test_harness")]
@@ -119,6 +121,7 @@ impl fmt::Display for TransactionServiceRequest {
             #[cfg(feature = "test_harness")]
             Self::BroadcastTransaction(id) => f.write_str(&format!("BroadcastTransaction ({})", id)),
             Self::GetAnyTransaction(t) => f.write_str(&format!("GetAnyTransaction({})", t)),
+            TransactionServiceRequest::ValidateTransactions(t) => f.write_str(&format!("ValidateTransaction({:?})", t)),
         }
     }
 }
@@ -144,6 +147,7 @@ pub enum TransactionServiceResponse {
     AnyTransaction(Box<Option<WalletTransaction>>),
     NumConfirmationsRequired(u64),
     NumConfirmationsSet,
+    ValidationStarted(u64),
     #[cfg(feature = "test_harness")]
     CompletedPendingTransaction,
     #[cfg(feature = "test_harness")]
@@ -171,8 +175,12 @@ pub enum TransactionEvent {
     TransactionMined(TxId),
     TransactionMinedRequestTimedOut(TxId),
     TransactionMinedUnconfirmed(TxId, u64),
-    TransactionBaseNodeConnectionProblem(TxId),
-    TransactionValidationComplete,
+    TransactionValidationTimedOut(u64),
+    TransactionValidationSuccess(u64),
+    TransactionValidationFailure(u64),
+    TransactionValidationAborted(u64),
+    TransactionValidationDelayed(u64),
+    TransactionBaseNodeConnectionProblem(u64),
     Error(String),
 }
 
@@ -491,7 +499,6 @@ impl TransactionServiceHandle {
         }
     }
 
-    /// This will start Transaction validation if it hasn't already started and then restart the broadcast protocols
     pub async fn restart_broadcast_protocols(&mut self) -> Result<(), TransactionServiceError> {
         match self
             .handle
@@ -499,6 +506,21 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::ProtocolsRestarted => Ok(()),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn validate_transactions(
+        &mut self,
+        retry_strategy: ValidationRetryStrategy,
+    ) -> Result<u64, TransactionServiceError>
+    {
+        match self
+            .handle
+            .call(TransactionServiceRequest::ValidateTransactions(retry_strategy))
+            .await??
+        {
+            TransactionServiceResponse::ValidationStarted(id) => Ok(id),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

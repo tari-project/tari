@@ -29,9 +29,8 @@
 #![deny(unknown_lints)]
 
 mod block_template_data;
+mod common;
 mod error;
-mod helpers;
-mod json_rpc;
 mod proxy;
 
 #[cfg(test)]

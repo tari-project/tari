@@ -127,8 +127,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let latency = client.get_last_request_latency().await?;
         debug!(
             target: LOG_TARGET,
-            "Initiating kernel sync with peer `{}` (latency = {}ms)",
+            "Initiating kernel sync with peer `{}` `{}` (latency = {}ms)",
             self.sync_peer.peer_node_id(),
+            self.sync_peer.address(),
             latency.unwrap_or_default().as_millis()
         );
 
@@ -153,6 +154,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             kernel
                 .verify_signature()
                 .map_err(HorizonSyncError::InvalidKernelSignature)?;
+
             kernels.push(kernel.clone());
             txn.insert_kernel_via_horizon_sync(kernel, current_header.hash().clone(), mmr_position as u32);
             if mmr_position == current_header.header.kernel_mmr_size - 1 {
@@ -173,13 +175,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
                 let mmr_root = kernel_mmr.get_merkle_root()?;
                 if mmr_root != current_header.header.kernel_mr {
-                    debug!(
-                        target: LOG_TARGET,
-                        "MMR did not match for kernels, {} != {}",
-                        mmr_root.to_hex(),
-                        current_header.header.kernel_mr.to_hex()
-                    );
-                    return Err(HorizonSyncError::InvalidMmrRoot(MmrTree::Kernel));
+                    return Err(HorizonSyncError::InvalidMmrRoot {
+                        mmr_tree: MmrTree::Kernel,
+                        at_height: current_header.height(),
+                        expected_hex: current_header.header.kernel_mr.to_hex(),
+                        actual_hex: mmr_root.to_hex(),
+                    });
                 }
 
                 txn.update_pruned_hash_set(
@@ -310,23 +311,21 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
                     let mmr_root = output_mmr.get_merkle_root()?;
                     if mmr_root != current_header.header.output_mr {
-                        warn!(
-                            target: LOG_TARGET,
-                            "MMR did not match for outputs, {} != {}",
-                            mmr_root.to_hex(),
-                            current_header.header.output_mr.to_hex()
-                        );
-                        return Err(HorizonSyncError::InvalidMmrRoot(MmrTree::Utxo));
+                        return Err(HorizonSyncError::InvalidMmrRoot {
+                            mmr_tree: MmrTree::Utxo,
+                            at_height: current_header.height(),
+                            expected_hex: current_header.header.output_mr.to_hex(),
+                            actual_hex: mmr_root.to_hex(),
+                        });
                     }
                     let mmr_root = proof_mmr.get_merkle_root()?;
                     if mmr_root != current_header.header.range_proof_mr {
-                        warn!(
-                            target: LOG_TARGET,
-                            "MMR did not match for proofs, {} != {}",
-                            mmr_root.to_hex(),
-                            current_header.header.range_proof_mr.to_hex()
-                        );
-                        return Err(HorizonSyncError::InvalidMmrRoot(MmrTree::RangeProof));
+                        return Err(HorizonSyncError::InvalidMmrRoot {
+                            mmr_tree: MmrTree::RangeProof,
+                            at_height: current_header.height(),
+                            expected_hex: current_header.header.range_proof_mr.to_hex(),
+                            actual_hex: mmr_root.to_hex(),
+                        });
                     }
 
                     // Validate rangeproofs if the MMR matches

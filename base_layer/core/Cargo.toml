@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.8.3"
+version = "0.8.4"
 edition = "2018"
 
 [features]
@@ -71,7 +71,6 @@ config = { version = "0.9.3" }
 env_logger = "0.7.0"
 tempfile = "3.1.0"
 tokio-macros = "0.2.4"
-tari_wallet = { version = "^0.8", path = "../../base_layer/wallet" }
 
 [build-dependencies]
 tari_common = { version = "^0.8", path="../../common"}

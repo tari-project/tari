@@ -43,7 +43,8 @@ use tari_core::{
         StateMachineHandle,
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
-    consensus::{ConsensusManagerBuilder, Network},
+    consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
+    crypto::tari_utilities::hex::Hex,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
     transactions::transaction::Transaction,
@@ -78,6 +79,7 @@ pub struct BaseNodeGrpcServer {
     node_config: GlobalConfig,
     state_machine_handle: StateMachineHandle,
     peer_manager: Arc<PeerManager>,
+    consensus_rules: ConsensusManager,
 }
 
 impl BaseNodeGrpcServer {
@@ -94,6 +96,7 @@ impl BaseNodeGrpcServer {
             executor,
             node_service: local_node,
             mempool_service: local_mempool,
+            consensus_rules: ConsensusManager::builder(node_config.network.into()).build(),
             node_config,
             state_machine_handle,
             peer_manager,
@@ -418,9 +421,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let pow = algo as i32;
         let response = tari_rpc::NewBlockTemplateResponse {
             miner_data: Some(tari_rpc::MinerData {
-                reward: new_template.reward.0,
+                reward: new_template.reward.into(),
                 target_difficulty: new_template.target_difficulty.as_u64(),
-                total_fees: new_template.total_fees.0,
+                total_fees: new_template.total_fees.into(),
                 algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
             }),
             new_block_template: Some(new_template.into()),
@@ -914,10 +917,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
 
         if let Some(info) = sync_info {
-            let mut node_ids = Vec::new();
-            info.sync_peers
+            let node_ids = info
+                .sync_peers
                 .iter()
-                .for_each(|x| node_ids.push(x.to_string().as_bytes().to_vec()));
+                .map(|x| x.to_string().as_bytes().to_vec())
+                .collect();
             response = tari_rpc::SyncInfoResponse {
                 tip_height: info.tip_height,
                 local_height: info.local_height,
@@ -927,6 +931,38 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         debug!(target: LOG_TARGET, "Sending SyncData response to client");
         Ok(Response::new(response))
+    }
+
+    async fn get_header_by_hash(
+        &self,
+        request: Request<tari_rpc::GetHeaderByHashRequest>,
+    ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status>
+    {
+        let tari_rpc::GetHeaderByHashRequest { hash } = request.into_inner();
+        let mut node_service = self.node_service.clone();
+        let hash_hex = hash.to_hex();
+        let block = node_service
+            .get_block_by_hash(hash)
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        match block {
+            Some(block) => {
+                let (block, acc_data, confirmations, _) = block.dissolve();
+                let total_block_reward = self.consensus_rules.calculate_coinbase_and_fees(&block);
+
+                let resp = tari_rpc::BlockHeaderResponse {
+                    difficulty: acc_data.achieved_difficulty.into(),
+                    num_transactions: block.body.kernels().len() as u32,
+                    confirmations,
+                    header: Some(block.header.into()),
+                    reward: total_block_reward.into(),
+                };
+
+                Ok(Response::new(resp))
+            },
+            None => Err(Status::not_found(format!("Header not found with hash `{}`", hash_hex))),
+        }
     }
 }
 
