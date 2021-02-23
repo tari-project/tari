@@ -85,10 +85,28 @@ impl MockBaseNodeService {
         }
     }
 
-    pub fn set_default_base_node_state(&mut self) {
-        let meta = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+    /// Set the mock server state, either online and synced to a specific height, or offline with None
+    pub fn set_base_node_state(&mut self, height: Option<u64>) {
+        let (chain_metadata, is_synced, online) = match height {
+            Some(height) => {
+                let metadata = ChainMetadata::new(height, Vec::new(), 0, 0, 0);
+                (Some(metadata), Some(true), OnlineState::Online)
+            },
+            None => (None, None, OnlineState::Offline),
+        };
         self.state = BaseNodeState {
-            chain_metadata: Some(meta),
+            chain_metadata,
+            is_synced,
+            updated: None,
+            latency: None,
+            online,
+        }
+    }
+
+    pub fn set_default_base_node_state(&mut self) {
+        let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+        self.state = BaseNodeState {
+            chain_metadata: Some(metadata),
             is_synced: Some(true),
             updated: None,
             latency: None,

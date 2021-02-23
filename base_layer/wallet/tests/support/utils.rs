@@ -77,6 +77,7 @@ impl TestParams {
         }
     }
 }
+
 pub fn make_input<R: Rng + CryptoRng>(
     rng: &mut R,
     val: MicroTari,
@@ -87,6 +88,19 @@ pub fn make_input<R: Rng + CryptoRng>(
     let commitment = factory.commit_value(&key, val.into());
     let input = TransactionInput::new(OutputFeatures::default(), commitment);
     (input, UnblindedOutput::new(val, key, None))
+}
+
+pub fn make_input_with_features<R: Rng + CryptoRng>(
+    rng: &mut R,
+    value: MicroTari,
+    factory: &CommitmentFactory,
+    features: Option<OutputFeatures>,
+) -> (TransactionInput, UnblindedOutput)
+{
+    let spending_key = PrivateKey::random(rng);
+    let commitment = factory.commit_value(&spending_key, value.into());
+    let input = TransactionInput::new(features.clone().unwrap_or_default(), commitment);
+    (input, UnblindedOutput::new(value, spending_key, features))
 }
 
 pub fn random_string(len: usize) -> String {

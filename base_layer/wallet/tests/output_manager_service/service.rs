@@ -22,7 +22,7 @@
 
 use crate::support::{
     rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::{make_input, random_string, TestParams},
+    utils::{make_input, make_input_with_features, random_string, TestParams},
 };
 use futures::{FutureExt, StreamExt};
 use rand::{rngs::OsRng, RngCore};
@@ -335,6 +335,231 @@ fn fee_estimate<T: Clone + OutputManagerBackend + 'static>(backend: T) {
 #[test]
 fn fee_estimate_memory_db() {
     fee_estimate(OutputManagerMemoryDatabase::new());
+}
+
+pub fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
+    runtime: &mut Runtime,
+    backend: T,
+    height: Option<u64>,
+) -> (
+    OutputManagerHandle,
+    Shutdown,
+    TransactionServiceHandle,
+    BaseNodeServiceHandle,
+)
+{
+    let shutdown = Shutdown::new();
+    let factories = CryptoFactories::default();
+
+    let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+    let (oms_event_publisher, _) = broadcast::channel(200);
+
+    let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
+    let (event_publisher, _) = channel(100);
+    let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
+
+    let constants = ConsensusConstantsBuilder::new(Network::Stibbons).build();
+
+    let (sender, receiver_bns) = reply_channel::unbounded();
+    let (event_publisher_bns, _) = broadcast::channel(100);
+
+    let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
+    let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown.to_signal());
+    mock_base_node_service.set_base_node_state(height);
+    runtime.spawn(mock_base_node_service.run());
+
+    let (connectivity_manager, connectivity_mock) = create_connectivity_mock();
+    let _connectivity_mock_state = connectivity_mock.get_shared_state();
+    runtime.spawn(connectivity_mock.run());
+
+    let output_manager_service = runtime
+        .block_on(OutputManagerService::new(
+            OutputManagerServiceConfig {
+                base_node_query_timeout: Duration::from_secs(10),
+                max_utxo_query_size: 2,
+                peer_dial_retry_timeout: Duration::from_secs(5),
+                ..Default::default()
+            },
+            ts_handle.clone(),
+            oms_request_receiver,
+            OutputManagerDatabase::new(backend),
+            oms_event_publisher.clone(),
+            factories.clone(),
+            constants,
+            shutdown.to_signal(),
+            base_node_service_handle.clone(),
+            connectivity_manager,
+        ))
+        .unwrap();
+    let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
+
+    runtime.spawn(async move { output_manager_service.start().await.unwrap() });
+
+    (
+        output_manager_service_handle,
+        shutdown,
+        ts_handle,
+        base_node_service_handle,
+    )
+}
+
+#[test]
+fn test_utxo_selection_no_chain_metadata_memory_db() {
+    test_utxo_selection_no_chain_metadata(OutputManagerMemoryDatabase::new());
+}
+
+#[test]
+fn test_utxo_selection_with_chain_metadata_memory_db() {
+    test_utxo_selection_with_chain_metadata(OutputManagerMemoryDatabase::new());
+}
+
+fn test_utxo_selection_no_chain_metadata<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    // no chain metadata
+    let (mut oms, _shutdown, _, _) = setup_oms_with_bn_state(&mut runtime, backend.clone(), None);
+
+    // no utxos - not enough funds
+    let amount = MicroTari::from(1000);
+    let fee_per_gram = MicroTari::from(10);
+    let err = runtime
+        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string()))
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
+
+    // create 10 utxos with maturity at heights from 1 to 10
+    for i in 1..=10 {
+        let (_, uo) = make_input_with_features(
+            &mut OsRng.clone(),
+            i * amount,
+            &factories.commitment,
+            Some(OutputFeatures::with_maturity(i)),
+        );
+        runtime.block_on(oms.add_output(uo.clone())).unwrap();
+    }
+
+    // but we have no chain state so the lowest maturity should be used
+    let stp = runtime
+        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string()))
+        .unwrap();
+    assert!(stp.get_tx_id().is_ok());
+
+    // test that lowest 2 maturities were encumbered
+    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
+    assert_eq!(utxos.len(), 8);
+    for (index, utxo) in utxos.iter().enumerate() {
+        let i = index as u64 + 3;
+        assert_eq!(utxo.features.maturity, i);
+        assert_eq!(utxo.value, i * amount);
+    }
+
+    // test that we can get a fee estimate with no chain metadata
+    let fee = runtime.block_on(oms.fee_estimate(amount, fee_per_gram, 1, 2)).unwrap();
+    assert_eq!(fee, MicroTari::from(300));
+
+    // coin split uses the "Largest" selection strategy
+    let (_, _, fee, utxo_total_value) = runtime
+        .block_on(oms.create_coin_split(amount, 5, fee_per_gram, None))
+        .unwrap();
+    assert_eq!(fee, MicroTari::from(820));
+    assert_eq!(utxo_total_value, MicroTari::from(10_000));
+
+    // test that largest utxo was encumbered
+    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
+    assert_eq!(utxos.len(), 7);
+    for (index, utxo) in utxos.iter().enumerate() {
+        let i = index as u64 + 3;
+        assert_eq!(utxo.features.maturity, i);
+        assert_eq!(utxo.value, i * amount);
+    }
+}
+
+fn test_utxo_selection_with_chain_metadata<T: Clone + OutputManagerBackend + 'static>(backend: T) {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    // setup with chain metadata at a height of 6
+    let (mut oms, _shutdown, _, _) = setup_oms_with_bn_state(&mut runtime, backend.clone(), Some(6));
+
+    // no utxos - not enough funds
+    let amount = MicroTari::from(1000);
+    let fee_per_gram = MicroTari::from(10);
+    let err = runtime
+        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string()))
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
+
+    // create 10 utxos with maturity at heights from 1 to 10
+    for i in 1..=10 {
+        let (_, uo) = make_input_with_features(
+            &mut OsRng.clone(),
+            i * amount,
+            &factories.commitment,
+            Some(OutputFeatures::with_maturity(i)),
+        );
+        runtime.block_on(oms.add_output(uo.clone())).unwrap();
+    }
+
+    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
+    assert_eq!(utxos.len(), 10);
+
+    // test fee estimates
+    let fee = runtime.block_on(oms.fee_estimate(amount, fee_per_gram, 1, 2)).unwrap();
+    assert_eq!(fee, MicroTari::from(310));
+
+    // test fee estimates are maturity aware
+    // even though we have utxos for the fee, they can't be spent because they are not mature yet
+    let spendable_amount = (1..=6).sum::<u64>() * amount;
+    let err = runtime
+        .block_on(oms.fee_estimate(spendable_amount, fee_per_gram, 1, 2))
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
+
+    // test coin split is maturity aware
+    let (_, _, fee, utxo_total_value) = runtime
+        .block_on(oms.create_coin_split(amount, 5, fee_per_gram, None))
+        .unwrap();
+    assert_eq!(utxo_total_value, MicroTari::from(6_000));
+    assert_eq!(fee, MicroTari::from(820));
+
+    // test that largest spendable utxo was encumbered
+    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
+    assert_eq!(utxos.len(), 9);
+    let found = utxos.iter().any(|u| u.value == 6 * amount);
+    assert!(!found, "An unspendable utxo was selected");
+
+    // test transactions
+    let stp = runtime
+        .block_on(oms.prepare_transaction_to_send(amount, fee_per_gram, None, "".to_string()))
+        .unwrap();
+    assert!(stp.get_tx_id().is_ok());
+
+    // test that utxos with the lowest 2 maturities were encumbered
+    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
+    assert_eq!(utxos.len(), 7);
+    for utxo in utxos.iter() {
+        assert_ne!(utxo.features.maturity, 1);
+        assert_ne!(utxo.value, 1 * amount);
+        assert_ne!(utxo.features.maturity, 2);
+        assert_ne!(utxo.value, 2 * amount);
+    }
+
+    // when the amount is greater than the largest utxo, then "Largest" selection strategy is used
+    let stp = runtime
+        .block_on(oms.prepare_transaction_to_send(6 * amount, fee_per_gram, None, "".to_string()))
+        .unwrap();
+    assert!(stp.get_tx_id().is_ok());
+
+    // test that utxos with the highest spendable 2 maturities were encumbered
+    let utxos = runtime.block_on(oms.get_unspent_outputs()).unwrap();
+    assert_eq!(utxos.len(), 5);
+    for utxo in utxos.iter() {
+        assert_ne!(utxo.features.maturity, 4);
+        assert_ne!(utxo.value, 4 * amount);
+        assert_ne!(utxo.features.maturity, 5);
+        assert_ne!(utxo.value, 5 * amount);
+    }
 }
 
 #[test]
