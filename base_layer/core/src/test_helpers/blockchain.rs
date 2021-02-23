@@ -89,8 +89,17 @@ pub fn create_store_with_consensus_and_validators(
     validators: Validators<TempDatabase>,
 ) -> BlockchainDatabase<TempDatabase>
 {
+    create_store_with_consensus_and_validators_and_config(&rules, validators, BlockchainDatabaseConfig::default())
+}
+
+pub fn create_store_with_consensus_and_validators_and_config(
+    rules: &ConsensusManager,
+    validators: Validators<TempDatabase>,
+    config: BlockchainDatabaseConfig,
+) -> BlockchainDatabase<TempDatabase>
+{
     let backend = create_test_db();
-    BlockchainDatabase::new(backend, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap()
+    BlockchainDatabase::new(backend, &rules, validators, config, false).unwrap()
 }
 
 pub fn create_store_with_consensus(rules: &ConsensusManager) -> BlockchainDatabase<TempDatabase> {

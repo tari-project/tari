@@ -42,7 +42,6 @@ pub struct MmrStateRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum NodeCommsRequest {
     GetChainMetadata,
-    FetchKernels(Vec<HashOutput>),
     FetchHeaders(Vec<u64>),
     FetchHeadersWithHashes(Vec<HashOutput>),
     FetchHeadersAfter(Vec<HashOutput>, HashOutput),
@@ -71,7 +70,6 @@ impl Display for NodeCommsRequest {
         use NodeCommsRequest::*;
         match self {
             GetChainMetadata => write!(f, "GetChainMetadata"),
-            FetchKernels(v) => write!(f, "FetchKernels (n={})", v.len()),
             FetchHeaders(v) => write!(f, "FetchHeaders (n={})", v.len()),
             FetchHeadersWithHashes(v) => write!(f, "FetchHeadersWithHashes (n={})", v.len()),
             FetchHeadersAfter(v, _hash) => write!(f, "FetchHeadersAfter (n={})", v.len()),

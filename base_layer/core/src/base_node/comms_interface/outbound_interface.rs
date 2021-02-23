@@ -24,10 +24,7 @@ use crate::{
     base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
     blocks::{block_header::BlockHeader, NewBlock},
     chain_storage::HistoricalBlock,
-    transactions::{
-        transaction::{TransactionKernel, TransactionOutput},
-        types::HashOutput,
-    },
+    transactions::{transaction::TransactionOutput, types::HashOutput},
 };
 use futures::channel::mpsc::UnboundedSender;
 use log::*;
@@ -81,34 +78,6 @@ impl OutboundNodeCommsInterface {
             Ok(metadata)
         } else {
             // TODO: Potentially ban peer
-            Err(CommsInterfaceError::UnexpectedApiResponse)
-        }
-    }
-
-    /// Fetch the transaction kernels with the provided hashes from remote base nodes.
-    pub async fn fetch_kernels(
-        &mut self,
-        hashes: Vec<HashOutput>,
-    ) -> Result<Vec<TransactionKernel>, CommsInterfaceError>
-    {
-        self.request_kernels_from_peer(hashes, None).await
-    }
-
-    /// Fetch the transaction kernels with the provided hashes from a specific base node, if None is provided as a
-    /// node_id then a random base node will be queried.
-    pub async fn request_kernels_from_peer(
-        &mut self,
-        hashes: Vec<HashOutput>,
-        node_id: Option<NodeId>,
-    ) -> Result<Vec<TransactionKernel>, CommsInterfaceError>
-    {
-        if let NodeCommsResponse::TransactionKernels(kernels) = self
-            .request_sender
-            .call((NodeCommsRequest::FetchKernels(hashes), node_id))
-            .await??
-        {
-            Ok(kernels)
-        } else {
             Err(CommsInterfaceError::UnexpectedApiResponse)
         }
     }
