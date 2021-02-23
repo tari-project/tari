@@ -355,11 +355,26 @@ they are not enabled already:
   grpc_base_node_address = "127.0.0.1:18142"
   grpc_console_wallet_address = "127.0.0.1:18143"
   ```
+
+And then depending on if you are using solo mining or self-select mining you will use one of the following:
+##### Solo mining
 - For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.stibbons`**
   ```
   [merge_mining_proxy.stibbons]
   monerod_url = "http://18.133.55.120:38081"
   proxy_host_address = "127.0.0.1:7878"
+  proxy_submit_to_origin = true
+  monerod_use_auth = false
+  monerod_username = ""
+  monerod_password = ""
+  ```
+##### Self-Select mining
+- For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.stibbons`**
+  ```
+  [merge_mining_proxy.stibbons]
+  monerod_url = "cryptonote.social:5555"
+  proxy_host_address = "127.0.0.1:7878"
+  proxy_submit_to_origin = false
   monerod_use_auth = false
   monerod_username = ""
   monerod_password = ""
@@ -442,7 +457,7 @@ Using the public stagenet wallet address above the resulting configuration file 
     ]
 }
 ```
-##### Pool mining with self select
+##### Pool mining with Self-Select
 
 For pool mining, the configuration file obtained from the [XMRig configuration wizard](https://xmrig.com/wizard) must 
 be augmented with Tari specific settings. Using the wizard, create the following:
