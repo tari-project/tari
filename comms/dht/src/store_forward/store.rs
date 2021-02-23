@@ -465,8 +465,6 @@ mod test {
         assert_eq!(messages.len(), 0);
     }
 
-
-
     #[tokio_macros::test_basic]
     async fn decryption_succeeded_no_store() {
         let (requester, mock_state) = create_store_and_forward_mock();

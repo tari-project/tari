@@ -241,8 +241,7 @@ fn rewind_to_height() {
 }
 
 #[test]
-#[ignore]
-// Ignored until pruned mode fixed
+#[ignore = "To be completed with pruned mode"]
 fn rewind_past_horizon_height() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_ridcully_genesis_block();
@@ -345,8 +344,7 @@ fn handle_tip_reorg() {
 }
 
 #[test]
-#[ignore]
-// Ignored because we can't create blocks on an alternate chain with a valid MMR at the moment
+#[ignore = "Can't create blocks on an alternate chain with a valid MMR at the moment"]
 fn blockchain_reorgs_to_stronger_chain() {
     let mut blockchain = TestBlockchain::with_genesis("GB");
     let blocks = blockchain.builder();
@@ -789,8 +787,7 @@ fn store_and_retrieve_blocks() {
 }
 
 #[test]
-// Ignore while pruned mode is not working
-#[ignore]
+#[ignore = "To be completed with pruned mode"]
 fn store_and_retrieve_blocks_from_contents() {
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
@@ -837,8 +834,7 @@ fn store_and_retrieve_blocks_from_contents() {
 }
 
 #[test]
-#[ignore]
-// Ignored until pruned mode fixed
+#[ignore = "To be completed with pruned mode"]
 fn restore_metadata_and_pruning_horizon_update() {
     let path = create_temporary_data_path();
 
@@ -1062,8 +1058,7 @@ fn orphan_cleanup_on_block_add() {
 }
 
 #[test]
-#[ignore]
-// Ignored until pruned mode is fixed
+#[ignore = "To be completed with pruned mode"]
 fn horizon_height_orphan_cleanup() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_ridcully_genesis_block();
@@ -1381,8 +1376,7 @@ fn fails_validation() {
 }
 
 #[test]
-#[ignore]
-// Ignored until pruned mode fixed
+#[ignore = "To be completed with pruned mode"]
 fn pruned_mode_cleanup_and_fetch_block() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_ridcully_genesis_block();
@@ -1418,8 +1412,7 @@ fn pruned_mode_cleanup_and_fetch_block() {
 }
 
 #[test]
-#[ignore]
-// Ignored until pruned mode fixed
+#[ignore = "To be completed with pruned mode"]
 fn pruned_mode_is_stxo() {
     // let network = Network::LocalNet;
     // let factories = CryptoFactories::default();
@@ -1569,8 +1562,7 @@ fn pruned_mode_is_stxo() {
 }
 
 #[test]
-#[ignore]
-// Ignored until pruned mode fixed
+#[ignore = "To be completed with pruned mode"]
 fn pruned_mode_fetch_insert_and_commit() {
     // // This test demonstrates the basic steps involved in horizon syncing without any of the comms requests.
     // let network = Network::LocalNet;
