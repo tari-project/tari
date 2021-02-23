@@ -37,7 +37,7 @@ use crate::{
     },
 };
 use std::sync::Arc;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
 
@@ -49,7 +49,7 @@ pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
 #[derive(Clone)]
 pub struct LocalNodeCommsInterface {
     request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
-    block_sender: SenderService<(Block, Broadcast), Result<(), CommsInterfaceError>>,
+    block_sender: SenderService<(Block, Broadcast), Result<BlockHash, CommsInterfaceError>>,
     block_event_sender: BlockEventSender,
 }
 
@@ -57,7 +57,7 @@ impl LocalNodeCommsInterface {
     /// Construct a new LocalNodeCommsInterface with the specified SenderService.
     pub fn new(
         request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
-        block_sender: SenderService<(Block, Broadcast), Result<(), CommsInterfaceError>>,
+        block_sender: SenderService<(Block, Broadcast), Result<BlockHash, CommsInterfaceError>>,
         block_event_sender: BlockEventSender,
     ) -> Self
     {
@@ -145,7 +145,7 @@ impl LocalNodeCommsInterface {
     }
 
     /// Submit a block to the base node service. Internal_only flag will prevent propagation.
-    pub async fn submit_block(&mut self, block: Block, propagate: Broadcast) -> Result<(), CommsInterfaceError> {
+    pub async fn submit_block(&mut self, block: Block, propagate: Broadcast) -> Result<BlockHash, CommsInterfaceError> {
         self.block_sender.call((block, propagate)).await?
     }
 
@@ -213,6 +213,34 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Return header matching the given hash. If the header cannot be found `Ok(None)` is returned.
+    pub async fn get_header_by_hash(&mut self, hash: HashOutput) -> Result<Option<BlockHeader>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::GetHeaderByHash(hash))
+            .await??
+        {
+            NodeCommsResponse::BlockHeader(header) => Ok(header),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Return block matching the given hash. If the block cannot be found `Ok(None)` is returned.
+    pub async fn get_block_by_hash(
+        &mut self,
+        hash: HashOutput,
+    ) -> Result<Option<HistoricalBlock>, CommsInterfaceError>
+    {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::GetBlockByHash(hash))
+            .await??
+        {
+            NodeCommsResponse::HistoricalBlock(block) => Ok(*block),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

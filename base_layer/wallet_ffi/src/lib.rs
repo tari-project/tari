@@ -4725,6 +4725,7 @@ pub unsafe extern "C" fn wallet_start_utxo_validation(wallet: *mut TariWallet, e
 ///
 /// # Safety
 /// None
+#[no_mangle]
 pub unsafe extern "C" fn wallet_start_stxo_validation(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -4773,6 +4774,7 @@ pub unsafe extern "C" fn wallet_start_stxo_validation(wallet: *mut TariWallet, e
 ///
 /// # Safety
 /// None
+#[no_mangle]
 pub unsafe extern "C" fn wallet_start_invalid_txo_validation(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
@@ -4825,6 +4827,7 @@ pub unsafe extern "C" fn wallet_start_invalid_txo_validation(
 ///
 /// # Safety
 /// None
+#[no_mangle]
 pub unsafe extern "C" fn wallet_start_transaction_validation(
     wallet: *mut TariWallet,
     error_out: *mut c_int,
@@ -4860,6 +4863,53 @@ pub unsafe extern "C" fn wallet_start_transaction_validation(
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             0
+        },
+    }
+}
+
+/// This function will tell the wallet retart any broadcast protocols for completed transactions. Ideally this should be
+/// called after a successfuly Transaction Validation is complete
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` -  Returns a boolean value indicating if the launch was success or not.
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_restart_transaction_broadcast(wallet: *mut TariWallet, error_out: *mut c_int) -> bool {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    if let Err(e) = (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .store_and_forward_requester
+            .request_saf_messages_from_neighbours(),
+    ) {
+        error = LibWalletError::from(e).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.transaction_service.restart_broadcast_protocols())
+    {
+        Ok(()) => true,
+        Err(e) => {
+            error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            false
         },
     }
 }
@@ -6014,7 +6064,6 @@ mod test {
 
     #[test]
     fn test_wallet_ffi() {
-        use tari_common_types::chain_metadata::ChainMetadata;
         unsafe {
             {
                 let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
@@ -6146,17 +6195,7 @@ mod test {
             private_key_destroy(test_contact_private_key);
             string_destroy(test_contact_alias as *mut c_char);
 
-            let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
-            (*alice_wallet)
-                .runtime
-                .block_on((*alice_wallet).wallet.db.set_chain_meta(meta_data.clone()))
-                .unwrap();
-            (*bob_wallet)
-                .runtime
-                .block_on((*bob_wallet).wallet.db.set_chain_meta(meta_data.clone()))
-                .unwrap();
-
-            // number of confirmations
+            // test number of confirmations calls
             let num_confirmations_required = wallet_get_num_confirmations_required(alice_wallet, error_ptr);
             assert_eq!(
                 num_confirmations_required,
@@ -6172,6 +6211,11 @@ mod test {
                 assert_eq!(num_confirmations_required, number);
                 assert_eq!(error, 0);
             }
+
+            // empty wallet
+            let fee = wallet_get_fee_estimate(alice_wallet, 100, 1, 1, 1, error_ptr);
+            assert_eq!(fee, 0);
+            assert_eq!(error, 101);
 
             let generated = wallet_test_generate_data(alice_wallet, db_path_alice_str, error_ptr);
             assert_eq!(generated, true);
@@ -6730,7 +6774,6 @@ mod test {
     #[test]
     fn test_wallet_encryption() {
         unsafe {
-            use tari_common_types::chain_metadata::ChainMetadata;
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
@@ -6777,11 +6820,6 @@ mod test {
                 saf_messages_received_callback,
                 error_ptr,
             );
-            let mut runtime = Runtime::new().unwrap();
-            let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
-            runtime
-                .block_on((*alice_wallet).wallet.db.set_chain_meta(meta_data))
-                .unwrap();
             let generated = wallet_test_generate_data(alice_wallet, db_path_alice_str, error_ptr);
             assert!(generated);
 

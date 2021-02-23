@@ -53,6 +53,8 @@ pub enum NodeCommsRequest {
     FetchBlocksWithKernels(Vec<Signature>),
     FetchBlocksWithStxos(Vec<Commitment>),
     FetchBlocksWithUtxos(Vec<Commitment>),
+    GetHeaderByHash(HashOutput),
+    GetBlockByHash(HashOutput),
     GetNewBlockTemplate(PowAlgorithm),
     GetNewBlock(NewBlockTemplate),
     FetchKernelByExcessSig(Signature),
@@ -60,32 +62,30 @@ pub enum NodeCommsRequest {
 
 impl Display for NodeCommsRequest {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        use NodeCommsRequest::*;
         match self {
-            NodeCommsRequest::GetChainMetadata => f.write_str("GetChainMetadata"),
-            NodeCommsRequest::FetchKernels(v) => f.write_str(&format!("FetchKernels (n={})", v.len())),
-            NodeCommsRequest::FetchHeaders(v) => f.write_str(&format!("FetchHeaders (n={})", v.len())),
-            NodeCommsRequest::FetchHeadersWithHashes(v) => {
-                f.write_str(&format!("FetchHeadersWithHashes (n={})", v.len()))
-            },
-            NodeCommsRequest::FetchHeadersAfter(v, _hash) => f.write_str(&format!("FetchHeadersAfter (n={})", v.len())),
-            NodeCommsRequest::FetchMatchingUtxos(v) => f.write_str(&format!("FetchMatchingUtxos (n={})", v.len())),
-            NodeCommsRequest::FetchMatchingTxos(v) => f.write_str(&format!("FetchMatchingTxos (n={})", v.len())),
-            NodeCommsRequest::FetchMatchingBlocks(v) => f.write_str(&format!("FetchMatchingBlocks (n={})", v.len())),
-            NodeCommsRequest::FetchBlocksWithHashes(v) => {
-                f.write_str(&format!("FetchBlocksWithHashes (n={})", v.len()))
-            },
-            NodeCommsRequest::FetchBlocksWithKernels(v) => {
-                f.write_str(&format!("FetchBlocksWithKernels (n={})", v.len()))
-            },
-            NodeCommsRequest::FetchBlocksWithStxos(v) => f.write_str(&format!("FetchBlocksWithStxos (n={})", v.len())),
-            NodeCommsRequest::FetchBlocksWithUtxos(v) => f.write_str(&format!("FetchBlocksWithUtxos (n={})", v.len())),
-            NodeCommsRequest::GetNewBlockTemplate(algo) => f.write_str(&format!("GetNewBlockTemplate ({})", algo)),
-            NodeCommsRequest::GetNewBlock(b) => f.write_str(&format!("GetNewBlock (Block Height={})", b.header.height)),
-            NodeCommsRequest::FetchKernelByExcessSig(s) => f.write_str(&format!(
+            GetChainMetadata => write!(f, "GetChainMetadata"),
+            FetchKernels(v) => write!(f, "FetchKernels (n={})", v.len()),
+            FetchHeaders(v) => write!(f, "FetchHeaders (n={})", v.len()),
+            FetchHeadersWithHashes(v) => write!(f, "FetchHeadersWithHashes (n={})", v.len()),
+            FetchHeadersAfter(v, _hash) => write!(f, "FetchHeadersAfter (n={})", v.len()),
+            FetchMatchingUtxos(v) => write!(f, "FetchMatchingUtxos (n={})", v.len()),
+            FetchMatchingTxos(v) => write!(f, "FetchMatchingTxos (n={})", v.len()),
+            FetchMatchingBlocks(v) => write!(f, "FetchMatchingBlocks (n={})", v.len()),
+            FetchBlocksWithHashes(v) => write!(f, "FetchBlocksWithHashes (n={})", v.len()),
+            FetchBlocksWithKernels(v) => write!(f, "FetchBlocksWithKernels (n={})", v.len()),
+            FetchBlocksWithStxos(v) => write!(f, "FetchBlocksWithStxos (n={})", v.len()),
+            FetchBlocksWithUtxos(v) => write!(f, "FetchBlocksWithUtxos (n={})", v.len()),
+            GetHeaderByHash(v) => write!(f, "GetHeaderByHash({})", v.to_hex()),
+            GetBlockByHash(v) => write!(f, "GetBlockByHash({})", v.to_hex()),
+            GetNewBlockTemplate(algo) => write!(f, "GetNewBlockTemplate ({})", algo),
+            GetNewBlock(b) => write!(f, "GetNewBlock (Block Height={})", b.header.height),
+            FetchKernelByExcessSig(s) => write!(
+                f,
                 "FetchKernelByExcessSig (signature=({}, {}))",
                 s.get_public_nonce().to_hex(),
                 s.get_signature().to_hex()
-            )),
+            ),
         }
     }
 }

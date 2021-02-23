@@ -74,10 +74,9 @@ impl BaseNodeServiceHandle {
         self.event_stream_sender.subscribe().fuse()
     }
 
-    pub async fn get_connected_base_node_state(&mut self) -> Result<ChainMetadata, BaseNodeServiceError> {
+    pub async fn get_chain_metadata(&mut self) -> Result<Option<ChainMetadata>, BaseNodeServiceError> {
         match self.handle.call(BaseNodeServiceRequest::GetChainMetadata).await?? {
-            BaseNodeServiceResponse::ChainMetadata(Some(v)) => Ok(v),
-            BaseNodeServiceResponse::ChainMetadata(None) => Err(BaseNodeServiceError::NoChainMetadata),
+            BaseNodeServiceResponse::ChainMetadata(metadata) => Ok(metadata),
             _ => Err(BaseNodeServiceError::UnexpectedApiResponse),
         }
     }

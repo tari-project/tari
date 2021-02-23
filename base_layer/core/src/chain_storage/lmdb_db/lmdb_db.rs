@@ -993,7 +993,7 @@ impl BlockchainBackend for LMDBDatabase {
         let num_operations = txn.operations().len();
         match self.apply_db_transaction(txn) {
             Ok(_) => {
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "Database completed {} operation(s) in {:.0?}",
                     num_operations,

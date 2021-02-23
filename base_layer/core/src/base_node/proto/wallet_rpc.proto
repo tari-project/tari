@@ -34,6 +34,7 @@ message TxQueryResponse {
     google.protobuf.BytesValue block_hash = 2;
     uint64 confirmations = 3;
     bool is_synced = 4;
+    uint64 height_of_longest_chain = 5;
 }
 
 message TxQueryBatchResponse {

@@ -45,6 +45,7 @@ impl Display for ParsedCommand {
             WalletCommand::GetBalance => "get-balance",
             WalletCommand::SendTari => "send-tari",
             WalletCommand::MakeItRain => "make-it-rain",
+            WalletCommand::CoinSplit => "coin-split",
         };
 
         let args = self
@@ -93,6 +94,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         GetBalance => Vec::new(),
         SendTari => parse_send_tari(args)?,
         MakeItRain => parse_make_it_rain(args)?,
+        CoinSplit => parse_coin_split(args)?,
     };
 
     Ok(ParsedCommand { command, args })
@@ -177,6 +179,23 @@ fn parse_send_tari(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, Par
     let message = args.collect::<Vec<&str>>().join(" ");
     parsed_args.push(ParsedArgument::Text(message));
 
+    Ok(parsed_args)
+}
+
+fn parse_coin_split(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = vec![];
+
+    let amount_per_split = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("amount_per_split".to_string()))?;
+    let amount_per_split = MicroTari::from_str(amount_per_split)?;
+    parsed_args.push(ParsedArgument::Amount(amount_per_split));
+    let num_splits = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("split_count".to_string()))?;
+    let num_splits = num_splits.parse::<u64>()?;
+
+    parsed_args.push(ParsedArgument::Int(num_splits));
     Ok(parsed_args)
 }
 

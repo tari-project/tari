@@ -77,6 +77,8 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
                 }
                 ci::NodeCommsRequest::FetchBlocksWithUtxos(commits)
             },
+            GetHeaderByHash(hash) => ci::NodeCommsRequest::GetHeaderByHash(hash),
+            GetBlockByHash(hash) => ci::NodeCommsRequest::GetBlockByHash(hash),
             GetNewBlockTemplate(pow_algo) => {
                 ci::NodeCommsRequest::GetNewBlockTemplate(PowAlgorithm::try_from(pow_algo)?)
             },
@@ -116,6 +118,8 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
                 let commits = commitments.into_iter().map(Into::into).collect();
                 ProtoNodeCommsRequest::FetchBlocksWithUtxos(proto::Commitments { commitments: commits })
             },
+            GetHeaderByHash(hash) => ProtoNodeCommsRequest::GetHeaderByHash(hash),
+            GetBlockByHash(hash) => ProtoNodeCommsRequest::GetBlockByHash(hash),
             GetNewBlockTemplate(pow_algo) => ProtoNodeCommsRequest::GetNewBlockTemplate(pow_algo as u64),
             GetNewBlock(block_template) => ProtoNodeCommsRequest::GetNewBlock(block_template.into()),
             FetchKernelByExcessSig(signature) => ProtoNodeCommsRequest::FetchKernelByExcessSig(signature.into()),

@@ -39,7 +39,12 @@ use crate::{
 use futures::{pin_mut, stream::FuturesUnordered, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{cmp::Ordering, collections::HashMap, fmt, time::Duration};
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    fmt::{self, Display},
+    time::Duration,
+};
 use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
 use tari_core::{
     consensus::ConsensusConstants,
@@ -256,11 +261,13 @@ where TBackend: OutputManagerBackend + 'static
                 self.add_output(uo).await.map(|_| OutputManagerResponse::OutputAdded)
             },
             OutputManagerRequest::GetBalance => {
-                let tip_or_none = match self.base_node_service.get_connected_base_node_state().await {
-                    Ok(metadata) => Some(metadata.height_of_longest_chain()),
+                let current_chain_tip = match self.base_node_service.get_chain_metadata().await {
+                    Ok(metadata) => metadata.map(|m| m.height_of_longest_chain()),
                     Err(_) => None,
                 };
-                self.get_balance(tip_or_none).await.map(OutputManagerResponse::Balance)
+                self.get_balance(current_chain_tip)
+                    .await
+                    .map(OutputManagerResponse::Balance)
             },
             OutputManagerRequest::GetRecipientTransaction(tsm) => self
                 .get_recipient_transaction(tsm)
@@ -761,6 +768,14 @@ where TBackend: OutputManagerBackend + 'static
         strategy: Option<UTXOSelectionStrategy>,
     ) -> Result<(Vec<DbUnblindedOutput>, bool), OutputManagerError>
     {
+        debug!(
+            target: LOG_TARGET,
+            "select_utxos amount: {}, fee_per_gram: {}, output_count: {}, strategy: {:?}",
+            amount,
+            fee_per_gram,
+            output_count,
+            strategy
+        );
         let mut utxos = Vec::new();
         let mut total = MicroTari::from(0);
         let mut fee_without_change = MicroTari::from(0);
@@ -768,8 +783,22 @@ where TBackend: OutputManagerBackend + 'static
 
         let uo = self.resources.db.fetch_sorted_unspent_outputs().await?;
 
-        // Heuristic for selecting strategy: Default to MaturityThenSmallest, but if amount >
-        // alpha * largest UTXO, use Largest
+        // Attempt to get the chain tip height
+        let chain_metadata = self.base_node_service.get_chain_metadata().await?;
+        let (connected, tip_height) = match chain_metadata {
+            Some(metadata) => (true, metadata.height_of_longest_chain()),
+            None => (false, 0),
+        };
+
+        // If no strategy was specified and no metadata is available, then make sure to use MaturitythenSmallest
+        let strategy = match (strategy, connected) {
+            (Some(s), _) => Some(s),
+            (None, false) => Some(UTXOSelectionStrategy::MaturityThenSmallest),
+            (None, true) => None, // use the selection heuristic next
+        };
+
+        // Heuristic for selection strategy: Default to MaturityThenSmallest, but if the amount is greater than
+        // the largest UTXO, use Largest UTXOs first.
         let strategy = match (strategy, uo.is_empty()) {
             (Some(s), _) => s,
             (None, true) => UTXOSelectionStrategy::Smallest,
@@ -782,6 +811,7 @@ where TBackend: OutputManagerBackend + 'static
                 }
             },
         };
+        debug!(target: LOG_TARGET, "select_utxos selection strategy: {}", strategy);
 
         let uo = match strategy {
             UTXOSelectionStrategy::Smallest => uo,
@@ -807,23 +837,17 @@ where TBackend: OutputManagerBackend + 'static
         };
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
-        // Now lets try to filter the UTXOs we cant yet spend.
-        let tip_height: u64 = self
-            .base_node_service
-            .get_connected_base_node_state()
-            .await?
-            .height_of_longest_chain();
-
-        let mut trimmed = 0;
+        let mut num_unmatured_utxos = 0;
         let mut require_change_output = false;
+        // Filter unmatured utxos, if chain metadata is available
         for o in uo.iter() {
-            if o.unblinded_output.features.maturity > tip_height {
-                trimmed += 1;
+            if connected && o.unblinded_output.features.maturity > tip_height {
+                num_unmatured_utxos += 1;
                 continue;
             }
             utxos.push(o.clone());
             total += o.unblinded_output.value;
-            // I am assuming that the only output will be the payment output and change if required
+            // The assumption here is that the only output will be the payment output and change if required
             fee_without_change = Fee::calculate(fee_per_gram, 1, utxos.len(), output_count);
             if total == amount + fee_without_change {
                 break;
@@ -834,12 +858,12 @@ where TBackend: OutputManagerBackend + 'static
                 break;
             }
         }
-        if trimmed > 0 {
+        if num_unmatured_utxos > 0 {
             trace!(
                 target: LOG_TARGET,
                 "Some UTXOs have not matured yet at height {}, trimmed {} UTXOs",
                 tip_height,
-                trimmed
+                num_unmatured_utxos
             );
         }
 
@@ -1034,6 +1058,7 @@ where TBackend: OutputManagerBackend + 'static
 
 /// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
 /// TODO Investigate and implement more optimal strategies
+#[derive(Debug)]
 pub enum UTXOSelectionStrategy {
     // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit
     // is removing small UTXOs from the blockchain, con is that it costs more in fees
@@ -1042,6 +1067,16 @@ pub enum UTXOSelectionStrategy {
     MaturityThenSmallest,
     // A strategy that selects the largest UTXOs first. Preferred when the amount is large
     Largest,
+}
+
+impl Display for UTXOSelectionStrategy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UTXOSelectionStrategy::Smallest => write!(f, "Smallest"),
+            UTXOSelectionStrategy::MaturityThenSmallest => write!(f, "MaturityThenSmallest"),
+            UTXOSelectionStrategy::Largest => write!(f, "Largest"),
+        }
+    }
 }
 
 /// This struct holds the detailed balance of the Output Manager Service.

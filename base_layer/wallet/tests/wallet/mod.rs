@@ -22,7 +22,7 @@
 
 use crate::support::utils::{make_input, random_string};
 use rand::rngs::OsRng;
-use std::{sync::Arc, time::Duration};
+use std::{panic, sync::Arc, time::Duration};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
@@ -144,7 +144,7 @@ async fn create_wallet(
     );
     let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
-    let _ = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMeta(meta_data)));
+    let _ = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(meta_data)));
 
     let wallet = Wallet::new(
         config,
@@ -412,9 +412,26 @@ async fn test_wallet() {
     bob_wallet.wait_until_shutdown().await;
 }
 
-// TODO Figure out why this test is so flakey. It is an integration test that is fairly simple on the surface but there
-// is something about it that is very flakey.
+#[test]
 #[ignore]
+// Useful for debugging, ignored because it takes over 30 minutes to run
+fn test_20_store_and_forward_send_tx() {
+    let mut fails = 0;
+    for n in 1..=20 {
+        let hook = panic::take_hook();
+        panic::set_hook(Box::new(|_| {}));
+        let result = panic::catch_unwind(move || test_store_and_forward_send_tx());
+        panic::set_hook(hook);
+        match result {
+            Ok(_) => {},
+            Err(_) => {
+                fails += 1;
+            },
+        }
+    }
+    assert_eq!(fails, 0);
+}
+
 #[test]
 fn test_store_and_forward_send_tx() {
     let mut shutdown_a = Shutdown::new();
@@ -493,13 +510,13 @@ fn test_store_and_forward_send_tx() {
         .unwrap();
 
     // Waiting here for a while to make sure the discovery retry is over
-    alice_runtime.block_on(async { delay_for(Duration::from_secs(10)).await });
+    alice_runtime.block_on(async { delay_for(Duration::from_secs(60)).await });
 
     alice_runtime
         .block_on(alice_wallet.transaction_service.cancel_transaction(tx_id))
         .unwrap();
 
-    alice_runtime.block_on(async { delay_for(Duration::from_secs(10)).await });
+    alice_runtime.block_on(async { delay_for(Duration::from_secs(60)).await });
 
     let carol_wallet = carol_runtime.block_on(create_wallet(
         carol_identity.clone(),
@@ -680,7 +697,7 @@ async fn test_data_generation() {
 
     let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
-    db.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMeta(meta_data)))
+    db.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(meta_data)))
         .unwrap();
 
     let mut wallet = Wallet::new(

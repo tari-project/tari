@@ -142,7 +142,9 @@ if [[ "$1" =~ ^latest* ]]; then
 
   if [ "$1" == "latest-tagv" ]; then
     #gitTagVersion=$(git describe --tags --match "v[0-9]*" --abbrev=4 HEAD)
-    gitTagVersion=$(git describe --tags `git rev-list --tags=v[0-9].[0-9].[0-9]* --max-count=1`)
+    #gitTagVersion=$(git describe --tags `git rev-list --tags=v[0-9].[0-9].[0-9]* --max-count=1`)
+    # git match/tag does not do RegEx!
+    gitTagVersion=$(git tag --list --sort=-version:refname "v*" | head -n 1)
   fi
   git checkout tags/$gitTagVersion -B $gitTagVersion-build
 else
@@ -210,6 +212,7 @@ COPY_FILES=(
   "target/release/tari_base_node"
   "target/release/tari_console_wallet"
   "target/release/tari_merge_mining_proxy"
+  "target/release/tari_mining_node"
   "common/config/presets/tari_sample.toml"
   "common/config/tari_config_example.toml"
   "common/logging/log4rs_sample_base_node.yml"

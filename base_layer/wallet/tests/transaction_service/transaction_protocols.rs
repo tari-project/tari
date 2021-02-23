@@ -300,6 +300,7 @@ async fn tx_broadcast_protocol_submit_success() {
         block_hash: None,
         confirmations: 1,
         is_synced: false,
+        height_of_longest_chain: 0,
     });
     // Wait for 1 query
     let _ = rpc_service_state
@@ -317,6 +318,7 @@ async fn tx_broadcast_protocol_submit_success() {
         block_hash: None,
         confirmations: 1,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
     // Wait for 1 query
     let _ = rpc_service_state
@@ -334,6 +336,7 @@ async fn tx_broadcast_protocol_submit_success() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required.into(),
         is_synced: false,
+        height_of_longest_chain: 0,
     });
 
     let _ = rpc_service_state
@@ -351,6 +354,7 @@ async fn tx_broadcast_protocol_submit_success() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required.into(),
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     // Check that the protocol ends with success
@@ -496,6 +500,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
         block_hash: None,
         confirmations: 0,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     let protocol = TransactionBroadcastProtocol::new(
@@ -522,6 +527,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
         block_hash: None,
         confirmations: 0,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     // Should receive a resummission call
@@ -542,6 +548,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required.into(),
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     // Check that the protocol ends with success
@@ -597,6 +604,7 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
         block_hash: None,
         confirmations: 0,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     // Set Base Node to reject resubmission
@@ -706,6 +714,7 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
         block_hash: None,
         confirmations: 1,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
     // Wait for 1 query
     let _ = rpc_service_state
@@ -723,6 +732,7 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
         block_hash: None,
         confirmations: 0,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     // Should receive a resubmission call
@@ -737,6 +747,7 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required as u64 + 1u64,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     // Check that the protocol ends with success
@@ -815,6 +826,7 @@ async fn tx_broadcast_protocol_connection_problem() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required as u64 + 1u64,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
     let result = join_handle.await.unwrap();
     assert_eq!(result.unwrap(), 1);
@@ -872,6 +884,7 @@ async fn tx_broadcast_protocol_submit_already_mined() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required.into(),
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     // Check that the protocol ends with success
@@ -940,6 +953,7 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
         block_hash: None,
         confirmations: 1,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     // Change Base Node
@@ -954,6 +968,7 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
         block_hash: None,
         confirmations: 0,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     // Wait for 1 query
@@ -968,6 +983,7 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required.into(),
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     // Check that the protocol ends with success
@@ -1035,6 +1051,7 @@ async fn tx_validation_protocol_tx_becomes_valid() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required.into(),
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     rpc_service_state.set_is_synced(false);
@@ -1106,6 +1123,7 @@ async fn tx_validation_protocol_tx_becomes_invalid() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required.into(),
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     let protocol = TransactionValidationProtocol::new(
@@ -1169,6 +1187,7 @@ async fn tx_validation_protocol_tx_becomes_unconfirmed() {
         block_hash: None,
         confirmations: 1,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     let protocol = TransactionValidationProtocol::new(
@@ -1284,6 +1303,7 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
         block_hash: None,
         confirmations: 1,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     rpc_service_state.set_response_delay(Some(Duration::from_secs(5)));
@@ -1414,6 +1434,7 @@ async fn tx_validation_protocol_rpc_client_broken_between_calls() {
         block_hash: None,
         confirmations: 1,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     rpc_service_state.set_response_delay(Some(Duration::from_secs(5)));
@@ -1499,6 +1520,7 @@ async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
         block_hash: None,
         confirmations: 1,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
     rpc_service_state.set_rpc_status_error(Some(RpcStatus::bad_request("blah".to_string())));
 
@@ -1527,8 +1549,8 @@ async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
 
     // Check that the connection problem event was emitted at least twice
     let mut delay = delay_for(Duration::from_secs(10)).fuse();
-    let mut timeouts = 0;
-    let mut failures = 0;
+    let mut timeouts = 0i32;
+    let mut failures = 0i32;
     loop {
         futures::select! {
             event = event_stream.select_next_some() => {
@@ -1604,6 +1626,7 @@ async fn tx_validation_protocol_base_node_not_synced() {
         block_hash: None,
         confirmations: resources.config.num_confirmations_required.into(),
         is_synced: false,
+        height_of_longest_chain: 0,
     });
 
     rpc_service_state.set_is_synced(false);
@@ -1625,8 +1648,8 @@ async fn tx_validation_protocol_base_node_not_synced() {
     assert!(result.is_err());
 
     let mut delay = delay_for(Duration::from_secs(10)).fuse();
-    let mut delayed = 0;
-    let mut failures = 0;
+    let mut delayed = 0i32;
+    let mut failures = 0i32;
     loop {
         futures::select! {
             event = event_stream.select_next_some() => {

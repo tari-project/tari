@@ -128,6 +128,7 @@ pub struct TransactionService<
     finalized_transaction_senders: HashMap<u64, Sender<(CommsPublicKey, TxId, Transaction)>>,
     receiver_transaction_cancellation_senders: HashMap<u64, oneshot::Sender<()>>,
     active_transaction_broadcast_protocols: HashSet<u64>,
+    active_coinbase_monitoring_protocols: HashSet<u64>,
     timeout_update_publisher: broadcast::Sender<Duration>,
     base_node_update_publisher: broadcast::Sender<CommsPublicKey>,
     power_mode: PowerMode,
@@ -202,6 +203,7 @@ where
             finalized_transaction_senders: HashMap::new(),
             receiver_transaction_cancellation_senders: HashMap::new(),
             active_transaction_broadcast_protocols: HashSet::new(),
+            active_coinbase_monitoring_protocols: HashSet::new(),
             timeout_update_publisher,
             base_node_update_publisher,
             power_mode: PowerMode::Normal,
@@ -589,7 +591,7 @@ where
             TransactionServiceRequest::ValidateTransactions(retry_strategy) => self
                 .start_transaction_validation_protocol(retry_strategy, transaction_validation_join_handles)
                 .await
-                .map(|id| TransactionServiceResponse::ValidationStarted(id)),
+                .map(TransactionServiceResponse::ValidationStarted),
         }
     }
 
@@ -1611,12 +1613,6 @@ where
             return Err(TransactionServiceError::InvalidCompletedTransaction);
         }
 
-        // Confirm that an existing coinbase monitoring protocol doesn't already exist for this transaction
-        if self.base_node_response_senders.values().any(|(t, _s)| t == &tx_id) {
-            // In this case we do not need to spawn a new monitoring protocol
-            return Ok(());
-        }
-
         let block_height = if let Some(bh) = completed_tx.coinbase_block_height {
             bh
         } else {
@@ -1630,23 +1626,24 @@ where
         match self.base_node_public_key.clone() {
             None => return Err(TransactionServiceError::NoBaseNodeKeysProvided),
             Some(pk) => {
-                let protocol_id = OsRng.next_u64();
-
-                let (base_node_response_sender, base_node_response_receiver) = mpsc::channel(100);
-                self.base_node_response_senders
-                    .insert(protocol_id, (tx_id, base_node_response_sender));
-                let protocol = TransactionCoinbaseMonitoringProtocol::new(
-                    protocol_id,
-                    completed_tx.tx_id,
-                    block_height,
-                    self.resources.clone(),
-                    timeout,
-                    pk,
-                    base_node_response_receiver,
-                    self.timeout_update_publisher.subscribe(),
-                );
-                let join_handle = tokio::spawn(protocol.execute());
-                join_handles.push(join_handle);
+                if self.active_coinbase_monitoring_protocols.insert(tx_id) {
+                    let protocol = TransactionCoinbaseMonitoringProtocol::new(
+                        completed_tx.tx_id,
+                        block_height,
+                        self.resources.clone(),
+                        timeout,
+                        pk,
+                        self.base_node_update_publisher.subscribe(),
+                        self.timeout_update_publisher.subscribe(),
+                    );
+                    let join_handle = tokio::spawn(protocol.execute());
+                    join_handles.push(join_handle);
+                } else {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Coinbase Monitoring Protocol (TxId: {}) already started", tx_id
+                    );
+                }
             },
         }
         Ok(())
@@ -1661,16 +1658,15 @@ where
         match join_result {
             Ok(id) => {
                 // Cleanup any registered senders
-                let _ = self.base_node_response_senders.remove(&id);
+                let _ = self.active_coinbase_monitoring_protocols.remove(&id);
 
-                trace!(
+                debug!(
                     target: LOG_TARGET,
-                    "Coinbase Transaction monitoring Protocol for TxId: {} completed successfully",
-                    id
+                    "Coinbase Transaction monitoring Protocol for TxId: {} completed successfully", id
                 );
             },
             Err(TransactionServiceProtocolError { id, error }) => {
-                let _ = self.base_node_response_senders.remove(&id);
+                let _ = self.active_coinbase_monitoring_protocols.remove(&id);
                 if let TransactionServiceError::Shutdown = error {
                     return;
                 }

@@ -296,7 +296,7 @@ where TBackend: OutputManagerBackend + 'static
                 futures::select! {
                     new_base_node = base_node_update_receiver.select_next_some() => {
                         match new_base_node {
-                            Ok(bn) => {
+                            Ok(_bn) => {
                              info!(target: LOG_TARGET, "TXO Validation protocol aborted due to Base Node Public key change" );
                              let _ = self
                                 .resources

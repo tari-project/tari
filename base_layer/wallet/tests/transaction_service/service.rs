@@ -38,7 +38,6 @@ use futures::{
 use prost::Message;
 use rand::rngs::OsRng;
 use std::{
-    collections::{HashMap, HashSet},
     convert::{TryFrom, TryInto},
     path::Path,
     sync::Arc,
@@ -68,14 +67,7 @@ use tari_core::{
         rpc::BaseNodeWalletRpcServer,
     },
     consensus::{ConsensusConstantsBuilder, Network},
-    proto::{
-        base_node as base_node_proto,
-        base_node::{
-            base_node_service_request::Request as BaseNodeRequestProto,
-            base_node_service_response::Response as BaseNodeResponseProto,
-        },
-        types::TransactionOutput as TransactionOutputProto,
-    },
+    proto::base_node as base_node_proto,
     transactions::{
         fee::Fee,
         tari_amount::*,
@@ -176,9 +168,9 @@ pub fn setup_transaction_service<T: TransactionBackend + 'static, P: AsRef<Path>
     ));
 
     let db = WalletDatabase::new(WalletMemoryDatabase::new());
-    let meta_data = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
+    let metadata = ChainMetadata::new(std::u64::MAX, Vec::new(), 0, 0, 0);
 
-    runtime.block_on(db.set_chain_meta(meta_data)).unwrap();
+    runtime.block_on(db.set_chain_metadata(metadata)).unwrap();
 
     let fut = StackBuilder::new(shutdown_signal)
         .add_initializer(RegisterHandle::new(dht))
@@ -442,17 +434,6 @@ fn try_decode_transaction_cancelled_message(bytes: Vec<u8>) -> Option<proto::Tra
         Err(_) => None,
         Ok(d) => d,
     }
-}
-
-fn try_decode_base_node_request(bytes: Vec<u8>) -> Option<base_node_proto::BaseNodeServiceRequest> {
-    let envelope_body = EnvelopeBody::decode(&mut bytes.as_slice()).unwrap();
-    match envelope_body.decode_part::<base_node_proto::BaseNodeServiceRequest>(1) {
-        Err(_) => return None,
-        Ok(d) => match d {
-            None => return None,
-            Some(r) => return Some(r),
-        },
-    };
 }
 
 #[test]
@@ -1496,6 +1477,7 @@ fn test_power_mode_updates() {
         .block_on(rpc_service_state.wait_pop_transaction_query_calls(4, Duration::from_secs(60)))
         .unwrap();
 }
+
 #[test]
 fn test_set_num_confirmations() {
     let factories = CryptoFactories::default();
@@ -2436,7 +2418,7 @@ fn test_restarting_transaction_protocols() {
 }
 
 #[test]
-fn test_handling_coinbase_transactions() {
+fn test_coinbase_transactions_rejection_same_height() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
@@ -2445,43 +2427,43 @@ fn test_handling_coinbase_transactions() {
     let (
         mut alice_ts,
         mut alice_output_manager,
-        alice_outbound_service,
+        _,
+        _connectivity_mock_state,
         _,
         _,
         _,
         _,
-        mut alice_base_node_response_sender,
         _,
         _shutdown,
         _mock_rpc_server,
-        server_node_identity,
-        rpc_service_state,
+        _server_node_identity,
+        _rpc_service_state,
     ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
-    let mut alice_event_stream = alice_ts.get_event_stream_fused();
 
-    let blockheight1 = 10;
-    let fees1 = 2000 * uT;
+    let block_height_a = 10;
+    let block_height_b = block_height_a + 1;
+
+    let fees1 = 1000 * uT;
     let reward1 = 1_000_000 * uT;
 
-    let blockheight2 = 10;
-    let fees2 = 3000 * uT;
+    let fees2 = 2000 * uT;
     let reward2 = 2_000_000 * uT;
-    let mut tx_id2 = 0;
 
-    let blockheight3 = 11;
     let fees3 = 4000 * uT;
-    let reward3 = 3_000_000 * uT;
-    let tx_id3;
+    let reward3 = 4_000_000 * uT;
 
+    // Create a coinbase Txn at the first block height
     let _tx1 = runtime
-        .block_on(alice_ts.generate_coinbase_transaction(reward1, fees1, blockheight1))
+        .block_on(alice_ts.generate_coinbase_transaction(reward1, fees1, block_height_a))
         .unwrap();
-
     let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
     assert_eq!(transactions.len(), 1);
-    for tx in transactions.values() {
-        assert_eq!(tx.amount, fees1 + reward1);
-    }
+    let _tx_id1 = transactions
+        .values()
+        .find(|tx| tx.amount == fees1 + reward1)
+        .clone()
+        .unwrap()
+        .tx_id;
     assert_eq!(
         runtime
             .block_on(alice_output_manager.get_balance())
@@ -2490,17 +2472,19 @@ fn test_handling_coinbase_transactions() {
         fees1 + reward1
     );
 
+    // Create another coinbase Txn at the same block height; the previous one will be cancelled
     let _tx2 = runtime
-        .block_on(alice_ts.generate_coinbase_transaction(reward2, fees2, blockheight2))
+        .block_on(alice_ts.generate_coinbase_transaction(reward2, fees2, block_height_a))
         .unwrap();
-
     let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
-
+    // Only one valid coinbase txn remains
     assert_eq!(transactions.len(), 1);
-    for tx in transactions.values() {
-        assert_eq!(tx.amount, fees2 + reward2);
-        tx_id2 = tx.tx_id;
-    }
+    let _tx_id2 = transactions
+        .values()
+        .find(|tx| tx.amount == fees2 + reward2)
+        .clone()
+        .unwrap()
+        .tx_id;
     assert_eq!(
         runtime
             .block_on(alice_output_manager.get_balance())
@@ -2509,24 +2493,18 @@ fn test_handling_coinbase_transactions() {
         fees2 + reward2
     );
 
+    // Create a third coinbase Txn at the second block height; only the last two will be valid
     let _tx3 = runtime
-        .block_on(alice_ts.generate_coinbase_transaction(reward3, fees3, blockheight3))
+        .block_on(alice_ts.generate_coinbase_transaction(reward3, fees3, block_height_b))
         .unwrap();
-
     let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
-
     assert_eq!(transactions.len(), 2);
-
-    assert!(transactions.values().find(|tx| tx.amount == fees3 + reward3).is_some());
-    tx_id3 = transactions
+    let _tx_id3 = transactions
         .values()
         .find(|tx| tx.amount == fees3 + reward3)
         .clone()
         .unwrap()
         .tx_id;
-    assert!(transactions.values().find(|tx| tx.amount == fees2 + reward2).is_some());
-    assert!(transactions.values().find(|tx| tx.amount == fees1 + reward1).is_none());
-
     assert_eq!(
         runtime
             .block_on(alice_output_manager.get_balance())
@@ -2535,243 +2513,555 @@ fn test_handling_coinbase_transactions() {
         fees2 + reward2 + fees3 + reward3
     );
 
-    runtime
-        .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
+    assert!(transactions.values().find(|tx| tx.amount == fees1 + reward1).is_none());
+    assert!(transactions.values().find(|tx| tx.amount == fees2 + reward2).is_some());
+    assert!(transactions.values().find(|tx| tx.amount == fees3 + reward3).is_some());
+}
+
+#[test]
+fn test_coinbase_monitoring_stuck_in_mempool() {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    let (backend, _temp_dir) = make_transaction_database(None);
+
+    let (
+        mut alice_ts,
+        mut alice_output_manager,
+        _,
+        _connectivity_mock_state,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _shutdown,
+        _mock_rpc_server,
+        server_node_identity,
+        mut rpc_service_state,
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    rpc_service_state.set_response_delay(Some(Duration::from_secs(1)));
+
+    let block_height_a = 10;
+    let block_height_b = block_height_a + 1;
+
+    let fees1 = 1000 * uT;
+    let reward1 = 1_000_000 * uT;
+
+    let fees2 = 2000 * uT;
+    let reward2 = 2_000_000 * uT;
+
+    // Create a coinbase Txn at the first block height
+    let _tx1 = runtime
+        .block_on(alice_ts.generate_coinbase_transaction(reward1, fees1, block_height_a))
         .unwrap();
-    rpc_service_state.set_transaction_query_response(TxQueryResponse {
-        location: TxLocation::Mined,
-        block_hash: None,
-        confirmations: TransactionServiceConfig::default().num_confirmations_required,
-        is_synced: true,
-    });
-    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
-
-    // Two Coinbase Monitoring Protocols should be started at this stage.
-    alice_outbound_service
-        .wait_call_count(4, Duration::from_secs(30))
-        .expect("Alice call wait 1");
-
-    let mut chain_metadata_request = HashSet::new();
-    let mut fetch_utxo_request = HashMap::new();
-    for _ in 0..4 {
-        let call = alice_outbound_service.pop_call().unwrap();
-        if let Some(bsr) = try_decode_base_node_request(call.1.to_vec().clone()) {
-            match bsr.request.unwrap() {
-                BaseNodeRequestProto::GetChainMetadata(_c) => {
-                    chain_metadata_request.insert(bsr.request_key);
-                },
-                BaseNodeRequestProto::FetchMatchingUtxos(f) => {
-                    fetch_utxo_request.insert(bsr.request_key, f);
-                },
-                _ => (),
-            }
-        }
-    }
-
-    assert_eq!(chain_metadata_request.len(), 2);
-    assert_eq!(fetch_utxo_request.len(), 2);
-
-    let mut request_key1 = 0;
-    for v in chain_metadata_request.iter() {
-        assert!(fetch_utxo_request.keys().find(|k| k == &v).is_some());
-        request_key1 = *v;
-    }
-
-    // Firstly lets respond with a higher tip than the request blockheight and see if the transaction gets cancelled
-    // as it should
-    let _ = chain_metadata_request.remove(&request_key1);
-
-    let base_node_response_outputs = base_node_proto::BaseNodeServiceResponse {
-        request_key: request_key1,
-        response: Some(BaseNodeResponseProto::TransactionOutputs(
-            base_node_proto::TransactionOutputs { outputs: vec![].into() },
-        )),
-        is_synced: false,
-    };
-    let metadata_response1 = base_node_proto::BaseNodeServiceResponse {
-        request_key: request_key1,
-        response: Some(BaseNodeResponseProto::ChainMetadata(base_node_proto::ChainMetadata {
-            height_of_longest_chain: Some(20),
-            best_block: None,
-            pruning_horizon: 0,
-            accumulated_difficulty: Vec::new(),
-            effective_pruned_height: 0,
-        })),
-        is_synced: false,
-    };
-    runtime
-        .block_on(alice_base_node_response_sender.send(create_dummy_message(
-            base_node_response_outputs,
-            server_node_identity.public_key(),
-        )))
-        .unwrap();
-    runtime
-        .block_on(alice_base_node_response_sender.send(create_dummy_message(
-            metadata_response1,
-            server_node_identity.public_key(),
-        )))
-        .unwrap();
-
-    let mut transaction_cancelled2 = false;
-    let mut transaction_cancelled3 = false;
-    runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
-        loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
-                     match &*event.unwrap() {
-                       TransactionEvent::TransactionCancelled(tx_id) => {
-                            if tx_id == &tx_id2 {
-                                transaction_cancelled2 = true;
-                                break;
-                            }
-                            if tx_id == &tx_id3 {
-                                transaction_cancelled3 = true;
-                                break;
-                            }
-                       }
-                       _ => (),
-                   }
-                },
-                () = delay => {
-                    break;
-                },
-            }
-        }
-        assert!(transaction_cancelled2 || transaction_cancelled3);
-    });
-
-    // Now lets send back an acceptable chain tip and affirmative output for a success
-    let (target_tx_id, target_balance) = if transaction_cancelled2 {
-        (tx_id3, reward3 + fees3)
-    } else {
-        (tx_id2, reward2 + fees2)
-    };
-
-    let target_tx = runtime
-        .block_on(alice_ts.get_completed_transactions())
+    let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+    assert_eq!(transactions.len(), 1);
+    let tx_id1 = transactions
+        .values()
+        .find(|tx| tx.amount == fees1 + reward1)
+        .clone()
         .unwrap()
-        .remove(&target_tx_id)
-        .expect("Completed Transaction must be in collection   ");
-
-    let mut request_key2 = 0;
-    for v in chain_metadata_request.iter() {
-        request_key2 = *v;
-    }
-
-    let target_tx_outputs: Vec<TransactionOutputProto> = target_tx
-        .transaction
-        .body
-        .outputs()
-        .iter()
-        .map(|o| TransactionOutputProto::from(o.clone()))
-        .collect();
-
-    let base_node_response_outputs = base_node_proto::BaseNodeServiceResponse {
-        request_key: request_key2,
-        response: Some(BaseNodeResponseProto::TransactionOutputs(
-            base_node_proto::TransactionOutputs {
-                outputs: target_tx_outputs.into(),
-            },
-        )),
-        is_synced: false,
-    };
-    let metadata_response1 = base_node_proto::BaseNodeServiceResponse {
-        request_key: request_key2,
-        response: Some(BaseNodeResponseProto::ChainMetadata(base_node_proto::ChainMetadata {
-            height_of_longest_chain: Some(blockheight2),
-            best_block: None,
-            pruning_horizon: 0,
-            accumulated_difficulty: Vec::new(),
-            effective_pruned_height: 0,
-        })),
-        is_synced: false,
-    };
-    runtime
-        .block_on(alice_base_node_response_sender.send(create_dummy_message(
-            base_node_response_outputs,
-            server_node_identity.public_key(),
-        )))
-        .unwrap();
-    runtime
-        .block_on(alice_base_node_response_sender.send(create_dummy_message(
-            metadata_response1,
-            server_node_identity.public_key(),
-        )))
-        .unwrap();
-
-    runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(60)).fuse();
-        let mut transaction_mined = false;
-        loop {
-            futures::select! {
-                event = alice_event_stream.select_next_some() => {
-                     match &*event.unwrap() {
-                       TransactionEvent::TransactionMined(tx_id) => {
-                            if tx_id == &target_tx_id {
-                                transaction_mined = true;
-                                break;
-                            }
-
-                       }
-                       _ => (),
-                   }
-                },
-                () = delay => {
-                    break;
-                },
-            }
-        }
-        assert!(transaction_mined);
-    });
-
+        .tx_id;
     assert_eq!(
         runtime
             .block_on(alice_output_manager.get_balance())
             .unwrap()
-            .available_balance,
-        target_balance
+            .pending_incoming_balance,
+        fees1 + reward1
     );
 
-    // Finally just test that the protocol gets started after Base Node Pubkey is provided and that it repeats after
-    // the timeout
-    let _ = runtime
-        .block_on(alice_ts.generate_coinbase_transaction(reward1, fees1, 66))
+    // Create another coinbase Txn at the next block height
+    let _tx2 = runtime
+        .block_on(alice_ts.generate_coinbase_transaction(reward2, fees2, block_height_b))
         .unwrap();
+    let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+    assert_eq!(transactions.len(), 2);
+    let tx_id2 = transactions
+        .values()
+        .find(|tx| tx.amount == fees2 + reward2)
+        .clone()
+        .unwrap()
+        .tx_id;
+    assert_eq!(
+        runtime
+            .block_on(alice_output_manager.get_balance())
+            .unwrap()
+            .pending_incoming_balance,
+        fees1 + reward1 + fees2 + reward2
+    );
 
-    alice_outbound_service
-        .wait_call_count(4, Duration::from_secs(30))
-        .expect("Alice call wait 2");
-    // make sure that there are 2 sets of requests and they all have the same request key
-    let mut request_key = 0;
-    let mut fetch_count = 0;
-    let mut metadata_count = 0;
-    for _ in 0..4 {
-        let call = alice_outbound_service.pop_call().unwrap();
-        if let Some(bsr) = try_decode_base_node_request(call.1.to_vec().clone()) {
-            match bsr.request.unwrap() {
-                BaseNodeRequestProto::GetChainMetadata(_c) => {
-                    if request_key == 0 {
-                        request_key = bsr.request_key;
-                    } else {
-                        assert_eq!(request_key, bsr.request_key);
-                    }
-                    metadata_count += 1;
+    assert!(transactions.values().find(|tx| tx.amount == fees1 + reward1).is_some());
+    assert!(transactions.values().find(|tx| tx.amount == fees2 + reward2).is_some());
+
+    // Start the transaction protocols
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
+        .unwrap();
+    let height_of_longest_chain = block_height_a;
+    let confirmations = height_of_longest_chain - block_height_a;
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::NotStored,
+        block_hash: None,
+        confirmations,
+        is_synced: true,
+        height_of_longest_chain,
+    });
+    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
+    match runtime.block_on(rpc_service_state.wait_pop_transaction_query_calls(4, Duration::from_secs(30))) {
+        Err(e) => println!("  {}", e),
+        _ => {},
+    }
+
+    // Test when coinbase transactions are stuck in mempool
+    let height_of_longest_chain = block_height_a + TransactionServiceConfig::default().num_confirmations_required - 1;
+    let confirmations = height_of_longest_chain - block_height_a;
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::InMempool,
+        block_hash: None,
+        confirmations,
+        is_synced: true,
+        height_of_longest_chain,
+    });
+    match runtime.block_on(rpc_service_state.wait_pop_transaction_query_calls(4, Duration::from_secs(30))) {
+        Err(e) => println!("  {}", e),
+        _ => {},
+    }
+    // 
+    // - No events expected at this height
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(5)).fuse();
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    let msg = format!("No coinbase monitoring events expected at this in-between height; event '{:?}'", event);
+                    assert!(false, msg);
                 },
-                BaseNodeRequestProto::FetchMatchingUtxos(_f) => {
-                    if request_key == 0 {
-                        request_key = bsr.request_key;
-                    } else {
-                        assert_eq!(request_key, bsr.request_key);
-                    }
-                    fetch_count += 1;
+                () = delay => {
+                    break;
                 },
-                _ => (),
             }
         }
+    });
+
+    // Both coinbase transactions should be cancelled if the block height advances past the confirmation height
+    let height_of_longest_chain = block_height_b + TransactionServiceConfig::default().num_confirmations_required + 1;
+    let confirmations = height_of_longest_chain - block_height_a;
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::InMempool,
+        block_hash: None,
+        confirmations,
+        is_synced: true,
+        height_of_longest_chain,
+    });
+    match runtime.block_on(rpc_service_state.wait_pop_transaction_query_calls(2, Duration::from_secs(30))) {
+        Err(e) => println!("  {}", e),
+        _ => {},
     }
-    assert_eq!(fetch_count, 2);
-    assert_eq!(metadata_count, 2);
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let mut count = 0usize;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::TransactionCancelled(tx_id) => {
+                            if tx_id == &tx_id1 || tx_id == &tx_id2 {
+                                count += 1;
+                            }
+                            if count == 2 {
+                                break;
+                            }
+                        }
+                        _ => (),
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(count, 2, "Expected exactly two 'TransactionCancelled(_)' events");
+    });
+}
+
+#[test]
+fn test_coinbase_monitoring_with_base_node_change_and_mined() {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    let (backend, _temp_dir) = make_transaction_database(None);
+
+    let (
+        mut alice_ts,
+        mut alice_output_manager,
+        _,
+        connectivity_mock_state,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _shutdown,
+        _mock_rpc_server,
+        server_node_identity,
+        mut rpc_service_state,
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    rpc_service_state.set_response_delay(Some(Duration::from_secs(1)));
+
+    let block_height_a = 10;
+    let block_height_b = block_height_a + 1;
+
+    let fees1 = 1000 * uT;
+    let reward1 = 1_000_000 * uT;
+
+    let fees2 = 2000 * uT;
+    let reward2 = 2_000_000 * uT;
+
+    // Create a coinbase Txn at the first block height
+    let _tx1 = runtime
+        .block_on(alice_ts.generate_coinbase_transaction(reward1, fees1, block_height_a))
+        .unwrap();
+    let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+    assert_eq!(transactions.len(), 1);
+    let tx_id1 = transactions
+        .values()
+        .find(|tx| tx.amount == fees1 + reward1)
+        .clone()
+        .unwrap()
+        .tx_id;
+    assert_eq!(
+        runtime
+            .block_on(alice_output_manager.get_balance())
+            .unwrap()
+            .pending_incoming_balance,
+        fees1 + reward1
+    );
+
+    // Create another coinbase Txn at the next block height
+    let _tx2 = runtime
+        .block_on(alice_ts.generate_coinbase_transaction(reward2, fees2, block_height_b))
+        .unwrap();
+    let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+    assert_eq!(transactions.len(), 2);
+    let tx_id2 = transactions
+        .values()
+        .find(|tx| tx.amount == fees2 + reward2)
+        .clone()
+        .unwrap()
+        .tx_id;
+    assert_eq!(
+        runtime
+            .block_on(alice_output_manager.get_balance())
+            .unwrap()
+            .pending_incoming_balance,
+        fees1 + reward1 + fees2 + reward2
+    );
+
+    assert!(transactions.values().find(|tx| tx.amount == fees1 + reward1).is_some());
+    assert!(transactions.values().find(|tx| tx.amount == fees2 + reward2).is_some());
+
+    // Start the transaction protocols
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
+        .unwrap();
+
+    let height_of_longest_chain = block_height_a;
+    let confirmations = height_of_longest_chain - block_height_a;
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::NotStored,
+        block_hash: None,
+        confirmations,
+        is_synced: true,
+        height_of_longest_chain,
+    });
+    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
+    match runtime.block_on(rpc_service_state.wait_pop_transaction_query_calls(4, Duration::from_secs(30))) {
+        Err(e) => println!("  {}", e),
+        _ => {},
+    }
+
+    // Test when coinbase transactions are mined but unconfirmed
+    let height_of_longest_chain = block_height_a + TransactionServiceConfig::default().num_confirmations_required - 1;
+    let confirmations = height_of_longest_chain - block_height_a;
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::Mined,
+        block_hash: None,
+        confirmations,
+        is_synced: true,
+        height_of_longest_chain,
+    });
+    match runtime.block_on(rpc_service_state.wait_pop_transaction_query_calls(2, Duration::from_secs(30))) {
+        Err(e) => println!("  {}", e),
+        _ => {},
+    }
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let mut count = 0usize;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::TransactionMinedUnconfirmed(tx_id, _) => {
+                            if tx_id == &tx_id1 || tx_id == &tx_id2 {
+                                count += 1;
+                            }
+                            if count == 2 {
+                                break;
+                            }
+                        }
+                        _ => (),
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(count, 2, "Expected exactly two 'TransactionMinedUnconfirmed(_)' events");
+    });
+
+    // Change the base node halfway through the protocol while still at the previous height
+    let new_server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let service = BaseNodeWalletRpcMockService::new();
+    let mut rpc_service_state = service.get_state();
+    rpc_service_state.set_response_delay(Some(Duration::from_secs(1)));
+    let new_server = BaseNodeWalletRpcServer::new(service);
+    let protocol_name = new_server.as_protocol_name();
+    let mut new_mock_server = runtime
+        .handle()
+        .enter(|| MockRpcServer::new(new_server, new_server_node_identity.clone()));
+    runtime.handle().enter(|| new_mock_server.serve());
+    let connection =
+        runtime.block_on(new_mock_server.create_connection(new_server_node_identity.to_peer(), protocol_name.into()));
+    runtime.block_on(connectivity_mock_state.add_active_connection(connection));
+    let height_of_longest_chain = block_height_a + TransactionServiceConfig::default().num_confirmations_required - 1;
+    let confirmations = height_of_longest_chain - block_height_a;
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::Mined,
+        block_hash: None,
+        confirmations,
+        is_synced: true,
+        height_of_longest_chain,
+    });
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(new_server_node_identity.public_key().clone()))
+        .unwrap();
+    match runtime.block_on(rpc_service_state.wait_pop_transaction_query_calls(4, Duration::from_secs(30))) {
+        Err(e) => println!("  {}", e),
+        _ => {},
+    }
+
+    // Test when coinbase transactions are mined and confirmed
+    let height_of_longest_chain = block_height_b + TransactionServiceConfig::default().num_confirmations_required + 1;
+    let confirmations = height_of_longest_chain - block_height_a;
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::Mined,
+        block_hash: None,
+        confirmations,
+        is_synced: true,
+        height_of_longest_chain,
+    });
+    match runtime.block_on(rpc_service_state.wait_pop_transaction_query_calls(2, Duration::from_secs(30))) {
+        Err(e) => println!("  {}", e),
+        _ => {},
+    }
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let mut count = 0usize;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::TransactionMined(tx_id) => {
+                            if tx_id == &tx_id1 || tx_id == &tx_id2 {
+                                count += 1;
+                            }
+                            if count == 2 {
+                                break;
+                            }
+                        },
+                        _ => (),
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(count, 2, "Expected exactly two 'TransactionMined(_)' events");
+    });
+}
+
+#[test]
+fn test_coinbase_monitoring_mined_not_synced() {
+    let factories = CryptoFactories::default();
+    let mut runtime = Runtime::new().unwrap();
+
+    let (backend, _temp_dir) = make_transaction_database(None);
+
+    let (
+        mut alice_ts,
+        mut alice_output_manager,
+        _,
+        _connectivity_mock_state,
+        _,
+        _,
+        _,
+        _,
+        _,
+        _shutdown,
+        _mock_rpc_server,
+        server_node_identity,
+        mut rpc_service_state,
+    ) = setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
+    let mut alice_event_stream = alice_ts.get_event_stream_fused();
+    rpc_service_state.set_response_delay(Some(Duration::from_secs(1)));
+
+    let block_height_a = 10;
+    let block_height_b = block_height_a + 1;
+
+    let fees1 = 1000 * uT;
+    let reward1 = 1_000_000 * uT;
+
+    let fees2 = 2000 * uT;
+    let reward2 = 2_000_000 * uT;
+
+    // Create a coinbase Txn at the first block height
+    let _tx1 = runtime
+        .block_on(alice_ts.generate_coinbase_transaction(reward1, fees1, block_height_a))
+        .unwrap();
+    let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+    assert_eq!(transactions.len(), 1);
+    let tx_id1 = transactions
+        .values()
+        .find(|tx| tx.amount == fees1 + reward1)
+        .clone()
+        .unwrap()
+        .tx_id;
+    assert_eq!(
+        runtime
+            .block_on(alice_output_manager.get_balance())
+            .unwrap()
+            .pending_incoming_balance,
+        fees1 + reward1
+    );
+
+    // Create another coinbase Txn at the next block height
+    let _tx2 = runtime
+        .block_on(alice_ts.generate_coinbase_transaction(reward2, fees2, block_height_b))
+        .unwrap();
+    let transactions = runtime.block_on(alice_ts.get_completed_transactions()).unwrap();
+    assert_eq!(transactions.len(), 2);
+    let tx_id2 = transactions
+        .values()
+        .find(|tx| tx.amount == fees2 + reward2)
+        .clone()
+        .unwrap()
+        .tx_id;
+    assert_eq!(
+        runtime
+            .block_on(alice_output_manager.get_balance())
+            .unwrap()
+            .pending_incoming_balance,
+        fees1 + reward1 + fees2 + reward2
+    );
+
+    assert!(transactions.values().find(|tx| tx.amount == fees1 + reward1).is_some());
+    assert!(transactions.values().find(|tx| tx.amount == fees2 + reward2).is_some());
+
+    // Start the transaction protocols
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
+        .unwrap();
+
+    let height_of_longest_chain = block_height_a;
+    let confirmations = height_of_longest_chain - block_height_a;
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::NotStored,
+        block_hash: None,
+        confirmations,
+        is_synced: false,
+        height_of_longest_chain,
+    });
+    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
+    match runtime.block_on(rpc_service_state.wait_pop_transaction_query_calls(1, Duration::from_secs(30))) {
+        Err(e) => println!("  {}", e),
+        _ => {},
+    }
+
+    // Test when coinbase transactions are mined but unconfirmed
+    let height_of_longest_chain = block_height_a + TransactionServiceConfig::default().num_confirmations_required - 1;
+    let confirmations = height_of_longest_chain - block_height_a;
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::Mined,
+        block_hash: None,
+        confirmations,
+        is_synced: false,
+        height_of_longest_chain,
+    });
+    match runtime.block_on(rpc_service_state.wait_pop_transaction_query_calls(1, Duration::from_secs(30))) {
+        Err(e) => println!("  {}", e),
+        _ => {},
+    }
+    // 
+    // - No events expected at this height
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(5)).fuse();
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    let msg = format!("No coinbase monitoring events expected at this in-between height if not synced; event '{:?}'", event);
+                    assert!(false, msg);
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+    });
+
+    // Test when coinbase transactions are mined and confirmed
+    let height_of_longest_chain = block_height_b + TransactionServiceConfig::default().num_confirmations_required + 1;
+    let confirmations = height_of_longest_chain - block_height_a;
+    rpc_service_state.set_transaction_query_response(TxQueryResponse {
+        location: TxLocation::Mined,
+        block_hash: None,
+        confirmations,
+        is_synced: false,
+        height_of_longest_chain,
+    });
+    match runtime.block_on(rpc_service_state.wait_pop_transaction_query_calls(4, Duration::from_secs(30))) {
+        Err(e) => println!("  {}", e),
+        _ => {},
+    }
+    runtime.block_on(async {
+        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let mut count = 0usize;
+        loop {
+            futures::select! {
+                event = alice_event_stream.select_next_some() => {
+                    match &*event.unwrap() {
+                        TransactionEvent::TransactionMined(tx_id) => {
+                            if tx_id == &tx_id1 || tx_id == &tx_id2 {
+                                count += 1;
+                            }
+                            if count == 2 {
+                                break;
+                            }
+                        }
+                        _ => (),
+                    }
+                },
+                () = delay => {
+                    break;
+                },
+            }
+        }
+        assert_eq!(count, 2, "Expected exactly two 'TransactionMined(_)' events");
+    });
 }
 
 #[test]
@@ -3845,6 +4135,7 @@ fn transaction_service_tx_broadcast() {
         block_hash: None,
         confirmations: TransactionServiceConfig::default().num_confirmations_required,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     runtime.block_on(async {
@@ -3922,6 +4213,7 @@ fn transaction_service_tx_broadcast() {
         block_hash: None,
         confirmations: TransactionServiceConfig::default().num_confirmations_required,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     runtime.block_on(async {
@@ -4024,6 +4316,7 @@ fn broadcast_all_completed_transactions_on_startup() {
         block_hash: None,
         confirmations: TransactionServiceConfig::default().num_confirmations_required,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_err());
@@ -4237,6 +4530,7 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
         block_hash: None,
         confirmations: 1,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     runtime
@@ -4253,6 +4547,7 @@ fn transaction_service_tx_broadcast_with_base_node_change() {
         block_hash: None,
         confirmations: TransactionServiceConfig::default().num_confirmations_required,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     runtime.block_on(async {
@@ -4414,6 +4709,7 @@ fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
         block_hash: None,
         confirmations: 1,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
     rpc_service_state.set_response_delay(Some(Duration::from_secs(2)));
 
@@ -4469,6 +4765,7 @@ fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
         block_hash: None,
         confirmations: 1,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     new_rpc_service_state.set_response_delay(Some(Duration::from_secs(2)));
@@ -4489,6 +4786,7 @@ fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
         block_hash: None,
         confirmations: TransactionServiceConfig::default().num_confirmations_required,
         is_synced: true,
+        height_of_longest_chain: 0,
     });
 
     runtime

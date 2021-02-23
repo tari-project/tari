@@ -23,26 +23,30 @@ use crate::grpc::{
     blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
     helpers::{mean, median},
 };
-use tari_comms::PeerManager;
-use tari_core::base_node::state_machine_service::states::BlockSyncInfo;
-
 use log::*;
-use std::{cmp, convert::TryInto, sync::Arc};
-use tari_common::GlobalConfig;
-use tari_core::{
-    base_node::{comms_interface::Broadcast, LocalNodeCommsInterface},
-    blocks::{Block, BlockHeader, NewBlockTemplate},
-    consensus::{ConsensusManagerBuilder, Network},
-    proof_of_work::PowAlgorithm,
+use std::{
+    cmp,
+    convert::{TryFrom, TryInto},
+    sync::Arc,
 };
-
 use tari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
 };
+use tari_common::GlobalConfig;
+use tari_comms::PeerManager;
 use tari_core::{
-    base_node::StateMachineHandle,
+    base_node::{
+        comms_interface::Broadcast,
+        state_machine_service::states::BlockSyncInfo,
+        LocalNodeCommsInterface,
+        StateMachineHandle,
+    },
+    blocks::{Block, BlockHeader, NewBlockTemplate},
+    consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
+    crypto::tari_utilities::hex::Hex,
     mempool::{service::LocalMempoolService, TxStorageResponse},
+    proof_of_work::PowAlgorithm,
     transactions::transaction::Transaction,
 };
 use tari_crypto::tari_utilities::Hashable;
@@ -75,6 +79,7 @@ pub struct BaseNodeGrpcServer {
     node_config: GlobalConfig,
     state_machine_handle: StateMachineHandle,
     peer_manager: Arc<PeerManager>,
+    consensus_rules: ConsensusManager,
 }
 
 impl BaseNodeGrpcServer {
@@ -91,6 +96,7 @@ impl BaseNodeGrpcServer {
             executor,
             node_service: local_node,
             mempool_service: local_mempool,
+            consensus_rules: ConsensusManager::builder(node_config.network.into()).build(),
             node_config,
             state_machine_handle,
             peer_manager,
@@ -415,9 +421,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let pow = algo as i32;
         let response = tari_rpc::NewBlockTemplateResponse {
             miner_data: Some(tari_rpc::MinerData {
-                reward: new_template.reward.0,
+                reward: new_template.reward.into(),
                 target_difficulty: new_template.target_difficulty.as_u64(),
-                total_fees: new_template.total_fees.0,
+                total_fees: new_template.total_fees.into(),
                 algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),
             }),
             new_block_template: Some(new_template.into()),
@@ -460,29 +466,31 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
-    async fn submit_block(&self, request: Request<tari_rpc::Block>) -> Result<Response<tari_rpc::Empty>, Status> {
+    async fn submit_block(
+        &self,
+        request: Request<tari_rpc::Block>,
+    ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status>
+    {
         let request = request.into_inner();
-        let block: Block = request
-            .try_into()
+        let block = Block::try_from(request)
             .map_err(|e| Status::invalid_argument(format!("Failed to convert arguments. Invalid block : {:?}", e)))?;
-        let block_height = block.clone().header.height;
+        let block_height = block.header.height;
         debug!(
             target: LOG_TARGET,
-            "Received SubmitBlock #{} request from client", &block_height
+            "Received SubmitBlock #{} request from client", block_height
         );
 
         let mut handler = self.node_service.clone();
-        handler
+        let block_hash = handler
             .submit_block(block, Broadcast::from(true))
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        let response: tari_rpc::Empty = tari_rpc::Empty {};
 
         debug!(
             target: LOG_TARGET,
             "Sending SubmitBlock #{} response to client", block_height
         );
-        Ok(Response::new(response))
+        Ok(Response::new(tari_rpc::SubmitBlockResponse { block_hash }))
     }
 
     async fn submit_transaction(
@@ -909,10 +917,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
 
         if let Some(info) = sync_info {
-            let mut node_ids = Vec::new();
-            info.sync_peers
+            let node_ids = info
+                .sync_peers
                 .iter()
-                .for_each(|x| node_ids.push(x.to_string().as_bytes().to_vec()));
+                .map(|x| x.to_string().as_bytes().to_vec())
+                .collect();
             response = tari_rpc::SyncInfoResponse {
                 tip_height: info.tip_height,
                 local_height: info.local_height,
@@ -922,6 +931,38 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         debug!(target: LOG_TARGET, "Sending SyncData response to client");
         Ok(Response::new(response))
+    }
+
+    async fn get_header_by_hash(
+        &self,
+        request: Request<tari_rpc::GetHeaderByHashRequest>,
+    ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status>
+    {
+        let tari_rpc::GetHeaderByHashRequest { hash } = request.into_inner();
+        let mut node_service = self.node_service.clone();
+        let hash_hex = hash.to_hex();
+        let block = node_service
+            .get_block_by_hash(hash)
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        match block {
+            Some(block) => {
+                let (block, acc_data, confirmations, _) = block.dissolve();
+                let total_block_reward = self.consensus_rules.calculate_coinbase_and_fees(&block);
+
+                let resp = tari_rpc::BlockHeaderResponse {
+                    difficulty: acc_data.achieved_difficulty.into(),
+                    num_transactions: block.body.kernels().len() as u32,
+                    confirmations,
+                    header: Some(block.header.into()),
+                    reward: total_block_reward.into(),
+                };
+
+                Ok(Response::new(resp))
+            },
+            None => Err(Status::not_found(format!("Header not found with hash `{}`", hash_hex))),
+        }
     }
 }
 

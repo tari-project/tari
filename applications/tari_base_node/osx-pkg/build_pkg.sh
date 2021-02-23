@@ -46,6 +46,7 @@ COPY_BIN_FILES=(
   "tari_base_node"
   "tari_console_wallet"
   "tari_merge_mining_proxy"
+  "tari_mining_node"
 )
 for COPY_BIN_FILE in "${COPY_BIN_FILES[@]}"; do
   # Verify signed?

@@ -30,6 +30,8 @@ package tari.rpc;
 service BaseNode {
     // Lists headers in the current best chain
     rpc ListHeaders(ListHeadersRequest) returns (stream BlockHeader);
+    // Get header by hash
+    rpc GetHeaderByHash(GetHeaderByHashRequest) returns (BlockHeaderResponse);
     // Returns blocks in the current best chain. Currently only supports querying by height
     rpc GetBlocks(GetBlocksRequest) returns (stream HistoricalBlock);
     // Returns the calc timing for the chain heights
@@ -51,7 +53,7 @@ service BaseNode {
     // Construct a new block from a provided template
     rpc GetNewBlock(NewBlockTemplate) returns (GetNewBlockResult);
     // Submit a new block for propagation
-    rpc SubmitBlock(Block) returns (Empty);
+    rpc SubmitBlock(Block) returns (SubmitBlockResponse);
     // Submit a transaction for propagation
     rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
     // Get the base node sync information
@@ -68,13 +70,17 @@ service BaseNode {
     rpc GetMempoolTransactions(GetMempoolTransactionsRequest) returns (stream GetMempoolTransactionsResponse);
 }
 
+message SubmitBlockResponse {
+    bytes block_hash = 1;
+}
+
 /// return type of GetTipInfo
-message TipInfoResponse{
+message TipInfoResponse {
     MetaData metadata = 1;
     bool initial_sync_achieved = 2;
 }
 /// return type of GetNewBlockTemplate
-message NewBlockTemplateResponse{
+message NewBlockTemplateResponse {
     NewBlockTemplate new_block_template = 1;
     bool initial_sync_achieved = 3;
     MinerData miner_data = 4;
@@ -151,6 +157,25 @@ message CalcTimingResponse {
     double avg = 3;
 }
 
+// Request that returns a header based by hash
+message GetHeaderByHashRequest {
+    // The hash of the block header
+    bytes hash = 1;
+}
+
+message BlockHeaderResponse {
+    // The block header
+    BlockHeader header = 1;
+    // The number of blocks from the tip of this block (a.k.a depth)
+    uint64 confirmations = 2;
+    // The block reward i.e mining reward + fees
+    uint64 reward = 3;
+    // Achieved difficulty
+    uint64 difficulty = 4;
+    // The number of transactions contained in the block
+    uint32 num_transactions = 5;
+}
+
 // The request used for querying headers from the base node. The parameters `from_height` and `num_headers` can be used
 // to page through the current best chain.
 message ListHeadersRequest {
@@ -197,9 +222,9 @@ message MetaData {
 }
 
 message SyncInfoResponse {
-        uint64 tip_height = 1;
-        uint64 local_height = 2;
-        repeated bytes peer_node_id = 3;
+    uint64 tip_height = 1;
+    uint64 local_height = 2;
+    repeated bytes peer_node_id = 3;
 }
 
 // This is the message that is returned for a miner after it asks for a new block.
