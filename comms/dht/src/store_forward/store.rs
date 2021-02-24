@@ -431,7 +431,6 @@ mod test {
     use super::*;
     use crate::{
         envelope::{DhtMessageFlags, NodeDestination},
-        proto::{dht::JoinMessage, envelope::DhtMessageType},
         test_utils::{
             build_peer_manager,
             create_store_and_forward_mock,
@@ -442,7 +441,7 @@ mod test {
     };
     use chrono::Utc;
     use std::time::Duration;
-    use tari_comms::{message::MessageExt, wrap_in_envelope_body};
+    use tari_comms::wrap_in_envelope_body;
     use tari_test_utils::async_assert_eventually;
     use tari_utilities::hex::Hex;
 
@@ -464,8 +463,6 @@ mod test {
         let messages = mock_state.get_messages().await;
         assert_eq!(messages.len(), 0);
     }
-
-
 
     #[tokio_macros::test_basic]
     async fn decryption_succeeded_no_store() {

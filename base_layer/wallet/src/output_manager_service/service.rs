@@ -797,6 +797,26 @@ where TBackend: OutputManagerBackend + 'static
             (None, true) => None, // use the selection heuristic next
         };
 
+        // If we know the chain height then filter out unspendable UTXOs
+        let num_utxos = uo.len();
+        let uo = if connected {
+            let mature_utxos = uo
+                .into_iter()
+                .filter(|u| u.unblinded_output.features.maturity <= tip_height)
+                .collect::<Vec<DbUnblindedOutput>>();
+
+            trace!(
+                target: LOG_TARGET,
+                "Some UTXOs have not matured yet at height {}, filtered {} UTXOs",
+                tip_height,
+                num_utxos - mature_utxos.len()
+            );
+
+            mature_utxos
+        } else {
+            uo
+        };
+
         // Heuristic for selection strategy: Default to MaturityThenSmallest, but if the amount is greater than
         // the largest UTXO, use Largest UTXOs first.
         let strategy = match (strategy, uo.is_empty()) {
@@ -815,11 +835,9 @@ where TBackend: OutputManagerBackend + 'static
 
         let uo = match strategy {
             UTXOSelectionStrategy::Smallest => uo,
-            // TODO: We should pass in the current height and group
-            // all funds less than the current height as maturity 0
             UTXOSelectionStrategy::MaturityThenSmallest => {
-                let mut new_uo = uo;
-                new_uo.sort_by(|a, b| {
+                let mut uo = uo;
+                uo.sort_by(|a, b| {
                     match a
                         .unblinded_output
                         .features
@@ -831,20 +849,14 @@ where TBackend: OutputManagerBackend + 'static
                         Ordering::Greater => Ordering::Greater,
                     }
                 });
-                new_uo
+                uo
             },
             UTXOSelectionStrategy::Largest => uo.into_iter().rev().collect(),
         };
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
-        let mut num_unmatured_utxos = 0;
         let mut require_change_output = false;
-        // Filter unmatured utxos, if chain metadata is available
         for o in uo.iter() {
-            if connected && o.unblinded_output.features.maturity > tip_height {
-                num_unmatured_utxos += 1;
-                continue;
-            }
             utxos.push(o.clone());
             total += o.unblinded_output.value;
             // The assumption here is that the only output will be the payment output and change if required
@@ -857,14 +869,6 @@ where TBackend: OutputManagerBackend + 'static
                 require_change_output = true;
                 break;
             }
-        }
-        if num_unmatured_utxos > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "Some UTXOs have not matured yet at height {}, trimmed {} UTXOs",
-                tip_height,
-                num_unmatured_utxos
-            );
         }
 
         if (total != amount + fee_without_change) && (total < amount + fee_with_change) {
@@ -938,7 +942,7 @@ where TBackend: OutputManagerBackend + 'static
                 Some(UTXOSelectionStrategy::Largest),
             )
             .await?;
-        let utxo_total = inputs
+        let utxo_total_value = inputs
             .iter()
             .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
         let input_count = inputs.len();
@@ -968,7 +972,7 @@ where TBackend: OutputManagerBackend + 'static
         }
         trace!(target: LOG_TARGET, "Add outputs to coin split transaction.");
         let mut outputs: Vec<DbUnblindedOutput> = Vec::with_capacity(output_count);
-        let change_output = utxo_total
+        let change_output = utxo_total_value
             .checked_sub(fee)
             .ok_or(OutputManagerError::NotEnoughFunds)?
             .checked_sub(total_split_amount)
@@ -1011,7 +1015,7 @@ where TBackend: OutputManagerBackend + 'static
         trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
         stp.finalize(KernelFeatures::empty(), &factories)?;
         let tx = stp.get_transaction().map(Clone::clone)?;
-        Ok((tx_id, tx, fee, utxo_total))
+        Ok((tx_id, tx, fee, utxo_total_value))
     }
 
     /// Return the Seed words for the current Master Key set in the Key Manager
