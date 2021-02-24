@@ -442,7 +442,6 @@ impl WalletBackend for WalletSqliteDatabase {
         if current_cipher.is_some() {
             return Err(WalletStorageError::AlreadyEncrypted);
         }
-        dbg!("apply encryp");
 
         let conn = self.database_connection.acquire_lock();
         let secret_key_str = match WalletSettingSql::get(DbKey::CommsSecretKey.to_string(), &conn)? {

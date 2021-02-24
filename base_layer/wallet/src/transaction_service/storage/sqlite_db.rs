@@ -838,13 +838,14 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    fn confirm_broadcast_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
+    fn confirm_broadcast_or_coinbase_transaction(&self, tx_id: u64) -> Result<(), TransactionStorageError> {
         let conn = self.database_connection.acquire_lock();
         match CompletedTransactionSql::find_by_cancelled(tx_id, false, &(*conn)) {
             Ok(v) => {
                 if v.status == TransactionStatus::MinedUnconfirmed as i32 ||
                     v.status == TransactionStatus::MinedConfirmed as i32 ||
-                    v.status == TransactionStatus::Broadcast as i32
+                    v.status == TransactionStatus::Broadcast as i32 ||
+                    v.status == TransactionStatus::Coinbase as i32
                 {
                     v.confirm(&(*conn))?;
                 } else {

@@ -38,6 +38,10 @@ service Wallet {
     rpc Transfer (TransferRequest)  returns (TransferResponse);
     // Returns the transaction details for the given transaction IDs
     rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
+    // Returns all transactions' details
+    rpc GetAllCompletedTransactions (GetAllCompletedTransactionsRequest) returns (GetTransactionInfoResponse);
+    // Returns the balance
+    rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
 }
 
 message GetVersionRequest { }
@@ -96,6 +100,7 @@ message TransactionInfo {
     bytes excess_sig = 9;
     google.protobuf.Timestamp timestamp = 10;
     string message = 11;
+    bool valid = 12;
 }
 
 enum TransactionDirection {
@@ -119,6 +124,16 @@ enum TransactionStatus {
     TRANSACTION_STATUS_COINBASE = 5;
     // This transaction is mined and confirmed at the current base node's height
     TRANSACTION_STATUS_MINED_CONFIRMED = 6;
+}
+
+message GetAllCompletedTransactionsRequest { }
+
+message GetBalanceRequest { }
+
+message GetBalanceResponse {
+    uint64 available_balance = 1;
+    uint64 pending_incoming_balance = 2;
+    uint64 pending_outgoing_balance = 3;
 }
 
 message GetCoinbaseRequest {

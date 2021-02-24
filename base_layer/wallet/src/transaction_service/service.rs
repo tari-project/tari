@@ -408,7 +408,7 @@ where
                     trace!(target: LOG_TARGET, "Coinbase transaction monitoring protocol has ended with result {:?}",
                     join_result);
                     match join_result {
-                        Ok(join_result_inner) => self.complete_coinbase_transaction_monitoring_protocol(join_result_inner),
+                        Ok(join_result_inner) => self.complete_coinbase_transaction_monitoring_protocol(join_result_inner).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Coinbase Monitoring protocol: {:?}", e),
                     };
                 }
@@ -1650,7 +1650,7 @@ where
     }
 
     /// Handle the final clean up after a Coinbase Transaction Monitoring protocol completes
-    fn complete_coinbase_transaction_monitoring_protocol(
+    async fn complete_coinbase_transaction_monitoring_protocol(
         &mut self,
         join_result: Result<u64, TransactionServiceProtocolError>,
     )
@@ -1664,6 +1664,16 @@ where
                     target: LOG_TARGET,
                     "Coinbase Transaction monitoring Protocol for TxId: {} completed successfully", id
                 );
+                if let Ok(tx) = self.resources.db.get_completed_transaction(id).await {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Coinbase transaction (TxId: {}) has status '{}' and is cancelled ({}) and is valid ({}).",
+                        id,
+                        tx.status,
+                        tx.cancelled,
+                        tx.valid,
+                    );
+                };
             },
             Err(TransactionServiceProtocolError { id, error }) => {
                 let _ = self.active_coinbase_monitoring_protocols.remove(&id);
