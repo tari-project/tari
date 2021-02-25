@@ -267,6 +267,7 @@ where TBackend: TransactionBackend + 'static
                 Err(e) => {
                     warn!(target: LOG_TARGET, "Problem establishing RPC connection: {}", e);
                     delay.await;
+                    retries += 1;
                     continue;
                 },
             };
