@@ -106,7 +106,7 @@ impl From<WalletError> for LibWalletError {
                 code: 101,
                 message: format!("{:?}", w),
             },
-            WalletError::OutputManagerError(OutputManagerError::IncompleteTransaction) => Self {
+            WalletError::OutputManagerError(OutputManagerError::IncompleteTransaction(_)) => Self {
                 code: 102,
                 message: format!("{:?}", w),
             },

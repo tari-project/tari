@@ -601,6 +601,86 @@ fn manage_single_transaction() {
 }
 
 #[test]
+fn single_transaction_to_self() {
+    let mut runtime = create_runtime();
+
+    let factories = CryptoFactories::default();
+    // Alice's parameters
+    let alice_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    let base_node_identity = Arc::new(
+        NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE).unwrap(),
+    );
+
+    log::info!(
+        "manage_single_transaction: Alice: '{}', Base: '{}'",
+        alice_node_identity.node_id().short_str(),
+        base_node_identity.node_id().short_str()
+    );
+
+    let temp_dir = tempdir().unwrap();
+    let database_path = temp_dir.path().to_str().unwrap().to_string();
+
+    let alice_db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let alice_db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), alice_db_name);
+    let connection_alice = run_migration_and_create_sqlite_connection(&alice_db_path).unwrap();
+    let alice_backend = TransactionServiceSqliteDatabase::new(connection_alice, None);
+
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, _alice_comms) = setup_transaction_service(
+        &mut runtime,
+        alice_node_identity.clone(),
+        vec![],
+        factories.clone(),
+        alice_backend,
+        database_path.clone(),
+        Duration::from_secs(0),
+        shutdown.to_signal(),
+    );
+
+    runtime.block_on(async move {
+        alice_ts
+            .set_base_node_public_key(base_node_identity.public_key().clone())
+            .await
+            .unwrap();
+
+        let initial_wallet_value = 2500.into();
+        let (utxo, uo1) = make_input(&mut OsRng, initial_wallet_value, &factories.commitment);
+
+        alice_oms.add_output(uo1).await.unwrap();
+        let message = "TAKE MAH _OWN_ MONEYS!".to_string();
+        let value = 1000.into();
+        let tx_id = alice_ts
+            .send_transaction(
+                alice_node_identity.public_key().clone(),
+                value,
+                20.into(),
+                message.clone(),
+            )
+            .await
+            .expect("Alice sending tx");
+
+        let completed_tx = alice_ts
+            .get_completed_transaction(tx_id)
+            .await
+            .expect("Could not find tx");
+
+        alice_oms
+            .confirm_transaction(tx_id, vec![utxo], completed_tx.transaction.body.outputs().clone())
+            .await
+            .unwrap();
+        let fees = completed_tx.fee;
+
+        assert_eq!(
+            alice_oms.get_balance().await.unwrap().available_balance,
+            initial_wallet_value - fees
+        );
+    });
+}
+
+#[test]
 fn manage_multiple_transactions() {
     let mut runtime = create_runtime();
     let factories = CryptoFactories::default();

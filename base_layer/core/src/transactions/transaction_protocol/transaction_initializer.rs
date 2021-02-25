@@ -275,7 +275,7 @@ impl SenderTransactionInitializer {
         };
         debug!(
             target: LOG_TARGET,
-            "Build transaction with. Fee: {}. Change: {}. Output: {:?}", total_fee, change, change_output,
+            "Build transaction with Fee: {}. Change: {}. Output: {:?}", total_fee, change, change_output,
         );
         // Some checks on the fee
         if total_fee < MINIMUM_TRANSACTION_FEE {
@@ -293,6 +293,7 @@ impl SenderTransactionInitializer {
                 return self.build_err(&e.to_string());
             },
         };
+
         if let Some(change_unblinded_output) = change_output {
             self.excess_blinding_factor = self.excess_blinding_factor + change_unblinded_output.spending_key.clone();
 

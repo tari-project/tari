@@ -106,6 +106,13 @@ impl TransactionSenderMessage {
     pub fn new_single_round_message(single_round_data: SingleRoundSenderData) -> Self {
         Self::Single(Box::new(single_round_data))
     }
+
+    pub fn single(&self) -> Option<&SingleRoundSenderData> {
+        match self {
+            TransactionSenderMessage::Single(m) => Some(m),
+            _ => None,
+        }
+    }
 }
 
 //----------------------------------------  Sender State Protocol ----------------------------------------------------//

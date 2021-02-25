@@ -85,6 +85,13 @@ impl MicroTari {
         None
     }
 
+    pub fn saturating_sub(self, v: MicroTari) -> MicroTari {
+        if self.0 >= v.0 {
+            return self - v;
+        }
+        Self(0)
+    }
+
     pub fn formatted(self) -> FormattedMicroTari {
         self.into()
     }

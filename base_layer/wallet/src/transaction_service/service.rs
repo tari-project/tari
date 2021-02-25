@@ -43,6 +43,7 @@ use crate::{
             send_transaction_reply::send_transaction_reply,
         },
     },
+    types::ValidationRetryStrategy,
 };
 use chrono::{NaiveDateTime, Utc};
 use futures::{
@@ -77,11 +78,9 @@ use tari_core::{
 use tari_p2p::domain_message::DomainMessage;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
-use tokio::{sync::broadcast, task::JoinHandle};
-
-use crate::types::ValidationRetryStrategy;
 #[cfg(feature = "test_harness")]
 use tokio::runtime::Handle;
+use tokio::{sync::broadcast, task::JoinHandle};
 
 const LOG_TARGET: &str = "wallet::transaction_service::service";
 
@@ -463,6 +462,7 @@ where
                     fee_per_gram,
                     message,
                     send_transaction_join_handles,
+                    transaction_broadcast_join_handles,
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
@@ -607,8 +607,41 @@ where
         fee_per_gram: MicroTari,
         message: String,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<u64, TransactionServiceProtocolError>>>,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<u64, TransactionServiceProtocolError>>,
+        >,
     ) -> Result<TxId, TransactionServiceError>
     {
+        // If we're paying ourselves, let's complete and submit the transaction immediately
+        if self.node_identity.public_key() == &dest_pubkey {
+            debug!(
+                target: LOG_TARGET,
+                "Received transaction with spend-to-self transaction"
+            );
+
+            let (tx_id, fee, transaction) = self
+                .output_manager_service
+                .create_pay_to_self_transaction(amount, fee_per_gram, None, message.clone())
+                .await?;
+
+            // Notify that the transaction was successfully resolved.
+            let _ = self
+                .event_publisher
+                .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+            self.submit_transaction(
+                transaction_broadcast_join_handles,
+                tx_id,
+                transaction,
+                fee,
+                amount,
+                message,
+            )
+            .await?;
+
+            return Ok(tx_id);
+        }
+
         let sender_protocol = self
             .output_manager_service
             .prepare_transaction_to_send(amount, fee_per_gram, None, message.clone())
