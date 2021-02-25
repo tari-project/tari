@@ -6,6 +6,9 @@
 
  function mapEnvs(options) {
      let res = {};
+     if (options.blocks_behind_before_considered_lagging){
+         res.TARI_BASE_NODE__LOCALNET__BLOCKS_BEHIND_BEFORE_CONSIDERED_LAGGING = options.blocks_behind_before_considered_lagging;
+     }
      if (options.pruningHorizon) {
         // In the config toml file: `base_node.network.pruning_horizon` with `network = localnet`
          res.TARI_BASE_NODE__LOCALNET__PRUNING_HORIZON = options.pruningHorizon;

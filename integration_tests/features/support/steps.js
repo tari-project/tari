@@ -47,8 +47,18 @@ Given(/I have a base node (.*) connected to node (.*)/, {timeout: 20*1000}, asyn
     await sleep(1000);
 });
 
+
+
 Given(/I have a pruned node (.*) connected to node (.*)/, {timeout: 20*1000}, async function (name, node) {
     const miner =  new BaseNodeProcess(name, { pruningHorizon: 5});
+    miner.setPeerSeeds([this.nodes[node].peerAddress()]);
+    await miner.startNew();
+    this.addNode(name, miner);
+    await sleep(1000);
+});
+
+Given(/I have a lagging delayed node (.*) connected to node (.*) with blocks_behind_before_considered_lagging (\d+)/, {timeout: 20*1000}, async function (name, node, delay) {
+    const miner =  new BaseNodeProcess(name, { blocks_behind_before_considered_lagging: delay});
     miner.setPeerSeeds([this.nodes[node].peerAddress()]);
     await miner.startNew();
     this.addNode(name, miner);
@@ -765,5 +775,3 @@ Then('Difficulties are available', function () {
            assert(this.lastResult[2]["pow_algo"],'0');
 
 });
-
-

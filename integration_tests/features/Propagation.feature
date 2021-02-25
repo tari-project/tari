@@ -50,3 +50,34 @@ Feature: Block Propagation
     Then I receive an error containing 'Orphan block'
     And all nodes are at height 1
 
+  Scenario: Nodes should never switch to block sync but keep insync via propagation
+    Given I have a base node MINER connected to all seed nodes
+    And I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 10000
+    Given I have a lagging delayed node LAG2 connected to node MINER with blocks_behind_before_considered_lagging 10000
+    #wait for node to so start and get into listing mode.
+    When I wait 100 seconds
+    When I mine 5 blocks on MINER
+    Then node MINER is at height 5
+    Then all nodes are at height 5
+    When I mine 15 blocks on MINER
+    Then all nodes are at height 20
+
+    Scenario: Node should lag when for while before syncing
+    Given I have a base node MINER connected to all seed nodes
+    And I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 6
+    When I mine 1 blocks on MINER
+    When I wait 100 seconds
+    When I stop LAG1
+    When I wait 10 seconds
+    When I mine 5 blocks on MINER
+    When I wait 100 seconds
+    When I start LAG1
+    #wait for node to so start and get into listing mode.
+    When I wait 100 seconds
+    Then node MINER is at height 6
+    #node was shutdown, so it never received the propagation messages
+    Then node LAG1 is at height 1
+    When I mine 1 blocks on MINER
+    Then node MINER is at height 7
+    When I wait 20 seconds
+    Then all nodes are at height 7
