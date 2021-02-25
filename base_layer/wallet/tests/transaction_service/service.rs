@@ -2628,21 +2628,33 @@ fn test_coinbase_monitoring_stuck_in_mempool() {
         Err(e) => println!("  {}", e),
         _ => {},
     }
-    // 
-    // - No events expected at this height
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(5)).fuse();
+        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let mut count = 0usize;
         loop {
             futures::select! {
                 event = alice_event_stream.select_next_some() => {
-                    let msg = format!("No coinbase monitoring events expected at this in-between height; event '{:?}'", event);
-                    assert!(false, msg);
+                    match &*event.unwrap() {
+                        TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
+                            if tx_id == &tx_id1 || tx_id == &tx_id2 {
+                                count += 1;
+                            }
+                            if count == 2 {
+                                break;
+                            }
+                        }
+                        _ => (),
+                    }
                 },
                 () = delay => {
                     break;
                 },
             }
         }
+        assert_eq!(
+            count, 2,
+            "Expected exactly two 'ReceivedFinalizedTransaction(_)' events"
+        );
     });
 
     // Both coinbase transactions should be cancelled if the block height advances past the confirmation height
@@ -3006,21 +3018,33 @@ fn test_coinbase_monitoring_mined_not_synced() {
         Err(e) => println!("  {}", e),
         _ => {},
     }
-    // 
-    // - No events expected at this height
     runtime.block_on(async {
-        let mut delay = delay_for(Duration::from_secs(5)).fuse();
+        let mut delay = delay_for(Duration::from_secs(30)).fuse();
+        let mut count = 0usize;
         loop {
             futures::select! {
                 event = alice_event_stream.select_next_some() => {
-                    let msg = format!("No coinbase monitoring events expected at this in-between height if not synced; event '{:?}'", event);
-                    assert!(false, msg);
+                    match &*event.unwrap() {
+                        TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
+                            if tx_id == &tx_id1 || tx_id == &tx_id2 {
+                                count += 1;
+                            }
+                            if count == 2 {
+                                break;
+                            }
+                        }
+                        _ => (),
+                    }
                 },
                 () = delay => {
                     break;
                 },
             }
         }
+        assert_eq!(
+            count, 2,
+            "Expected exactly two 'ReceivedFinalizedTransaction(_)' events"
+        );
     });
 
     // Test when coinbase transactions are mined and confirmed

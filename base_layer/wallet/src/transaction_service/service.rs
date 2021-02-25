@@ -1578,6 +1578,19 @@ where
                     )
                     .await?;
 
+                let _ = self
+                    .resources
+                    .event_publisher
+                    .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(tx_id)))
+                    .map_err(|e| {
+                        trace!(
+                            target: LOG_TARGET,
+                            "Error sending event because there are no subscribers: {:?}",
+                            e
+                        );
+                        e
+                    });
+
                 debug!(
                     target: LOG_TARGET,
                     "Coinbase transaction (TxId: {}) for Block Height: {} added", tx_id, block_height

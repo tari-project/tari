@@ -417,7 +417,7 @@ async fn test_wallet() {
 // Useful for debugging, ignored because it takes over 30 minutes to run
 fn test_20_store_and_forward_send_tx() {
     let mut fails = 0;
-    for n in 1..=20 {
+    for _n in 1..=20 {
         let hook = panic::take_hook();
         panic::set_hook(Box::new(|_| {}));
         let result = panic::catch_unwind(move || test_store_and_forward_send_tx());
