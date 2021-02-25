@@ -462,6 +462,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         debug!(target: LOG_TARGET, "Reading headers from peer `{}`", peer);
 
+        // Reset the header validator state to be sure we're using the correct data
+        self.header_validator.initialize_state(tip_header.hash()).await?;
         while let Some(header) = header_stream.next().await {
             let header = BlockHeader::try_from(header?).map_err(BlockHeaderSyncError::ReceivedInvalidHeader)?;
             debug!(
