@@ -23,10 +23,16 @@
 use crate::automation::command_parser::{ParsedArgument, ParsedCommand};
 use chrono::{DateTime, Utc};
 
+use futures::{FutureExt, StreamExt};
 use log::*;
-use std::{str::FromStr, time::Duration};
+use std::{
+    str::FromStr,
+    time::{Duration, Instant},
+};
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_common::GlobalConfig;
+use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
+use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::tari_amount::{uT, MicroTari};
 use tari_wallet::{
     output_manager_service::{handle::OutputManagerHandle, TxId},
@@ -35,7 +41,6 @@ use tari_wallet::{
 };
 use tokio::{
     runtime::Handle,
-    stream::StreamExt,
     time::{delay_for, timeout},
 };
 
@@ -51,6 +56,7 @@ pub enum WalletCommand {
     SendTari,
     MakeItRain,
     CoinSplit,
+    DiscoverPeer,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -124,6 +130,57 @@ pub async fn coin_split(
         .await?;
 
     Ok(tx_id)
+}
+
+async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Result<bool, CommandError> {
+    let mut connectivity = connectivity_requester.get_event_subscription().fuse();
+    print!("Waiting for connectivity... ");
+    let mut timeout = delay_for(Duration::from_secs(30)).fuse();
+    loop {
+        futures::select! {
+            result = connectivity.select_next_some() => {
+                if let Ok(msg) = result {
+                    if let ConnectivityEvent::PeerConnected(_) = (*msg).clone() {
+                        println!("✅");
+                        return Ok(true);
+                    }
+                }
+            },
+            () = timeout => {
+                println!("❌");
+                return Err(CommandError::Comms("Timed out".to_string()));
+            }
+        }
+    }
+}
+
+pub async fn discover_peer(
+    mut dht_service: DhtDiscoveryRequester,
+    args: Vec<ParsedArgument>,
+) -> Result<(), CommandError>
+{
+    use ParsedArgument::*;
+    let dest_public_key = match args[0].clone() {
+        PublicKey(key) => Ok(Box::new(key)),
+        _ => Err(CommandError::Argument),
+    }?;
+
+    let start = Instant::now();
+    println!("🌎 Peer discovery started.");
+    match dht_service
+        .discover_peer(dest_public_key.clone(), NodeDestination::PublicKey(dest_public_key))
+        .await
+    {
+        Ok(peer) => {
+            println!("⚡️ Discovery succeeded in {}ms.", start.elapsed().as_millis());
+            println!("{}", peer);
+        },
+        Err(err) => {
+            println!("💀 Discovery failed: '{:?}'", err);
+        },
+    }
+
+    Ok(())
 }
 
 pub async fn make_it_rain(
@@ -337,9 +394,15 @@ pub async fn command_runner(
 
     let transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
+    let dht_service = wallet.dht_service.discovery_service_requester().clone();
+    let connectivity_requester = wallet.comms.connectivity();
+    let mut online = false;
 
     let mut tx_ids = Vec::new();
 
+    println!("==============");
+    println!("Command Runner");
+    println!("==============");
     for (idx, parsed) in commands.into_iter().enumerate() {
         println!("{}. {}", idx + 1, parsed);
 
@@ -351,6 +414,12 @@ pub async fn command_runner(
                     println!("============================");
                 },
                 Err(e) => eprintln!("GetBalance error! {}", e),
+            },
+            WalletCommand::DiscoverPeer => {
+                if !online {
+                    online = wait_for_comms(&connectivity_requester).await?;
+                }
+                discover_peer(dht_service.clone(), parsed.args).await?
             },
             WalletCommand::SendTari => {
                 let tx_id = send_tari(transaction_service.clone(), parsed.args).await?;

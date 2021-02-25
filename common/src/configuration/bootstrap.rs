@@ -106,7 +106,7 @@ pub struct ConfigBootstrap {
     #[structopt(long, alias("rebuild_db"))]
     pub rebuild_db: bool,
     /// Path to input file of commands
-    #[structopt(short, long, alias("input"), parse(from_os_str))]
+    #[structopt(short, long, alias("input"), alias("script"), parse(from_os_str))]
     pub input_file: Option<PathBuf>,
     /// Single input command
     #[structopt(long)]

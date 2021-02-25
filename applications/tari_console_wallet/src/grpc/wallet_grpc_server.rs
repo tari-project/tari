@@ -6,7 +6,6 @@ use tari_app_grpc::{
         wallet_server,
         CoinSplitRequest,
         CoinSplitResponse,
-        GetAllCompletedTransactionsRequest,
         GetBalanceRequest,
         GetBalanceResponse,
         GetCoinbaseRequest,

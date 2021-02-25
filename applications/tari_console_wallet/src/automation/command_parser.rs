@@ -46,6 +46,7 @@ impl Display for ParsedCommand {
             WalletCommand::SendTari => "send-tari",
             WalletCommand::MakeItRain => "make-it-rain",
             WalletCommand::CoinSplit => "coin-split",
+            WalletCommand::DiscoverPeer => "discover-peer",
         };
 
         let args = self
@@ -95,9 +96,23 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         SendTari => parse_send_tari(args)?,
         MakeItRain => parse_make_it_rain(args)?,
         CoinSplit => parse_coin_split(args)?,
+        DiscoverPeer => parse_discover_peer(args)?,
     };
 
     Ok(ParsedCommand { command, args })
+}
+
+fn parse_discover_peer(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+
+    // public key/emoji id
+    let pubkey = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("public key or emoji id".to_string()))?;
+    let pubkey = parse_emoji_id_or_public_key(pubkey).ok_or(ParseError::PublicKey)?;
+    parsed_args.push(ParsedArgument::PublicKey(pubkey));
+
+    Ok(parsed_args)
 }
 
 fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
@@ -258,5 +273,14 @@ fn test_parse_command() {
         assert_eq!(amount, MicroTari::from_str("999").unwrap());
     } else {
         panic!("Parsed MicroTari amount not the same as provided.");
+    }
+
+    let command_str = format!("discover-peer {}", public_key);
+    let parsed = parse_command(&command_str).unwrap();
+
+    if let ParsedArgument::PublicKey(pk) = parsed.args[0].clone() {
+        assert_eq!(pk, public_key);
+    } else {
+        panic!("Parsed public key is not the same as provided.");
     }
 }
