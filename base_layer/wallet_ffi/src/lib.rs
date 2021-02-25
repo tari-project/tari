@@ -207,6 +207,7 @@ use log4rs::append::{
     },
     Append,
 };
+use tari_comms_dht::envelope::Network as DhtNetwork;
 use tari_core::consensus::Network;
 use tari_p2p::transport::TransportType::Tor;
 use tari_wallet::{
@@ -2643,6 +2644,7 @@ pub unsafe extern "C" fn comms_config_create(
                             discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                             database_url: DbConnectionUrl::File(dht_database_path),
                             auto_join: true,
+                            network: DhtNetwork::Stibbons,
                             ..Default::default()
                         },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
