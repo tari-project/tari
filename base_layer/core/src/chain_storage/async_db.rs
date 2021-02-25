@@ -161,6 +161,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_chain_header(height: u64) -> ChainHeader, "fetch_chain_header");
 
+    make_async_fn!(fetch_chain_headers<T: RangeBounds<u64>>(bounds: T) -> Vec<ChainHeader>, "fetch_chain_headers");
+
     make_async_fn!(fetch_header_and_accumulated_data(height: u64) -> (BlockHeader, BlockHeaderAccumulatedData), "fetch_header_and_accumulated_data");
 
     make_async_fn!(fetch_header_accumulated_data(hash: HashOutput) -> Option<BlockHeaderAccumulatedData>, "fetch_header_accumulated_data");

@@ -77,6 +77,7 @@ pub enum BaseNodeCommand {
     ListHeaders,
     CheckDb,
     PeriodStats,
+    HeaderStats,
     CalcTiming,
     DiscoverPeer,
     GetBlock,
@@ -235,6 +236,9 @@ impl Parser {
             PeriodStats => {
                 self.process_period_stats(args);
             },
+            HeaderStats => {
+                self.process_header_stats(args);
+            },
             BanPeer => {
                 self.process_ban_peer(args, true);
             },
@@ -376,9 +380,16 @@ impl Parser {
             CheckDb => {
                 println!("Checks the blockchain database for missing blocks and headers");
             },
-            PeriodStats => {
+            HeaderStats => {
                 println!(
                     "Prints out certain stats to of the block chain in csv format for easy copy, use as follows: "
+                );
+                println!("Period-stats [start height] [end height]");
+            },
+            PeriodStats => {
+                println!(
+                    "Prints out certain aggregated stats to of the block chain in csv format for easy copy, use as \
+                     follows: "
                 );
                 println!(
                     "Period-stats [start time in unix timestamp] [end time in unix timestamp] [interval period time \
@@ -735,6 +746,30 @@ impl Parser {
             },
         };
         self.command_handler.period_stats(period_end, period_ticker_end, period)
+    }
+
+    fn process_header_stats<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
+        let command_arg = args.map(|arg| arg.to_string()).take(2).collect::<Vec<String>>();
+        if command_arg.len() != 2 {
+            println!("Prints out certain stats to of the block chain in csv format for easy copy, use as follows: ");
+            println!("Period-stats [start height] [end height]");
+            return;
+        }
+        let start_height = match u64::from_str(&command_arg[0]) {
+            Ok(v) => v,
+            Err(_) => {
+                println!("Not a valid number provided");
+                return;
+            },
+        };
+        let end_height = match u64::from_str(&command_arg[1]) {
+            Ok(v) => v,
+            Err(_) => {
+                println!("Not a valid number provided");
+                return;
+            },
+        };
+        self.command_handler.raw_stats(start_height, end_height)
     }
 
     /// Function to process the coin split command

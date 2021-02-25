@@ -570,6 +570,23 @@ where B: BlockchainBackend
         fetch_headers(&*db, start, end)
     }
 
+    /// Returns the set of block headers between `start` and up to and including `end_inclusive`
+    pub fn fetch_chain_headers<T: RangeBounds<u64>>(&self, bounds: T) -> Result<Vec<ChainHeader>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let (start, mut end) = convert_to_option_bounds(bounds);
+        if end.is_none() {
+            // `(n..)` means fetch block headers until this node's tip
+            end = Some(db.fetch_last_header()?.height);
+        }
+        let (start, end) = (start.unwrap_or(0), end.unwrap());
+
+        if start > end {
+            return Ok(Vec::new());
+        }
+
+        fetch_chain_headers(&*db, start, end)
+    }
+
     /// Returns the block header corresponding to the provided BlockHash
     pub fn fetch_header_by_block_hash(&self, hash: HashOutput) -> Result<Option<BlockHeader>, ChainStorageError> {
         let db = self.db_read_access()?;
@@ -1070,6 +1087,34 @@ pub fn fetch_headers<T: BlockchainBackend>(
             Some(_) => unreachable!(),
             None => break,
         }
+    }
+
+    if is_reversed {
+        Ok(headers.into_iter().rev().collect())
+    } else {
+        Ok(headers)
+    }
+}
+
+pub fn fetch_chain_headers<T: BlockchainBackend>(
+    db: &T,
+    mut start: u64,
+    mut end_inclusive: u64,
+) -> Result<Vec<ChainHeader>, ChainStorageError>
+{
+    let is_reversed = start > end_inclusive;
+
+    if is_reversed {
+        mem::swap(&mut end_inclusive, &mut start);
+    };
+    // Allow the headers to be returned in reverse order
+    let mut headers = Vec::with_capacity((end_inclusive - start) as usize);
+    for h in start..=end_inclusive {
+        let (header, accumulated_data) = db.fetch_header_and_accumulated_data(h)?;
+        headers.push(ChainHeader {
+            header,
+            accumulated_data,
+        });
     }
 
     if is_reversed {
