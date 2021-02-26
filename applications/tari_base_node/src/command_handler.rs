@@ -163,7 +163,7 @@ impl CommandHandler {
             let mempool_stats = mempool.get_mempool_stats().await.unwrap();
             let banned_peers = banned_peers(&peer_manager).await.unwrap();
             let conns = connectivity.get_active_connections().await.unwrap();
-            println!(
+            let status = format!(
                 "{}: State: {}, Tip: {} ({}), Mempool: {}tx ({}g, +/- {}blks), Mining: {} ({} MH/s), Connections: {}, \
                  Banned: {}",
                 Utc::now().format("%H:%M"),
@@ -178,6 +178,8 @@ impl CommandHandler {
                 conns.len(),
                 banned_peers.len()
             );
+            info!(target: "base_node::app::status", "{}", status);
+            println!("{}", status);
         });
     }
 

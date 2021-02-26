@@ -68,7 +68,7 @@ appenders:
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
 
-# Set the default logging level to "warn" and attach the "stdout" appender to the root
+# Set the default logging level to "info"
 root:
   level: info
   appenders:
@@ -81,23 +81,6 @@ loggers:
     appenders:
       - base_layer
     additive: false
-  c::bn::comms_interface:
-    level: trace
-    appenders:
-      - base_layer
-  c::bn::state_machine_service::states:
-    level: trace
-    appenders:
-      - base_layer
-      - stdout
-  c::cs:
-    level: trace
-    appenders:
-      - base_layer
-  c::bn::block_sync:
-    level: trace
-    appenders:
-      - base_layer
   tari:
     level: info
     appenders:
