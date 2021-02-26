@@ -601,9 +601,7 @@ its reference pool implementation running [here](http://monerop.com/),  and
 template from a third party and submits the solution to the mining pool. Tari added a `submit-to-origin` option to the 
 self select mode whereby, if a solution has been found that only matches the pool difficulty, XMRig will submit the 
 solution to the pool only, but if the achieved difficulty meets both that of the pool and Tari, it will be submitted to 
-the Merge Mining Proxy as well as to the mining pool. The specially adapted XMRig code is available 
-[here](https://github.com/tari-project/xmrig/tree/feature-self-select); the latest version or commit must be built for 
-your target operating system in release mode without debug symbols.
+the Merge Mining Proxy as well as to the mining pool.
 
 ##### Merge Mining Proxy configuration
 
