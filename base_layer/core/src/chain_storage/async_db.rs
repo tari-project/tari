@@ -316,11 +316,6 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn update_utxo_sum(&mut self, header_hash: HashOutput, utxo_sum: Commitment) -> &mut Self {
-        self.transaction.update_utxo_sum(header_hash, utxo_sum);
-        self
-    }
-
     pub fn insert_header(&mut self, header: BlockHeader, accum_data: BlockHeaderAccumulatedData) -> &mut Self {
         self.transaction.insert_header(header, accum_data);
         self

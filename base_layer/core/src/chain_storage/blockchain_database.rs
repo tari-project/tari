@@ -608,11 +608,6 @@ where B: BlockchainBackend
         db.fetch_last_header()
     }
 
-    /// Returns the sum of all UTXO commitments
-    pub fn fetch_utxo_commitment_sum(&self, at_hash: &HashOutput) -> Result<Commitment, ChainStorageError> {
-        Ok(self.fetch_block_accumulated_data(at_hash.clone())?.utxo_sum)
-    }
-
     /// Returns the sum of all kernels
     pub fn fetch_kernel_commitment_sum(&self, at_hash: &HashOutput) -> Result<Commitment, ChainStorageError> {
         Ok(self.fetch_block_accumulated_data(at_hash.clone())?.kernel_sum)

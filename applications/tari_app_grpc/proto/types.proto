@@ -155,6 +155,8 @@ message TransactionInput {
     OutputFeatures features = 1;
     // The commitment referencing the output being spent.
     bytes commitment = 2;
+    // Hash of the input, as it appears in the MMR
+    bytes hash = 3;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a

@@ -54,10 +54,10 @@ use rand::{rngs::OsRng, Rng};
 use std::{iter::repeat_with, time::Duration};
 use tari_comms::peer_manager::PeerFeatures;
 
-// Size of network
-const NUM_NODES: usize = 6;
+// Size of network. Must be at least 2
+const NUM_NODES: usize = 2;
 // Must be at least 2
-const NUM_WALLETS: usize = 30;
+const NUM_WALLETS: usize = 2;
 const QUIET_MODE: bool = true;
 /// Number of neighbouring nodes each node should include in the connection pool
 const NUM_NEIGHBOURING_NODES: usize = 8;
@@ -170,8 +170,8 @@ async fn main() {
 
     // peer_list_summary(&nodes).await;
 
-    log::info!("------------------------------- WALLET JOIN -------------------------------");
     for wallet in wallets.iter_mut() {
+        log::info!("------------------------------- WALLET JOIN -------------------------------");
         println!(
             "Wallet '{}' is joining the network via node '{}'",
             wallet,

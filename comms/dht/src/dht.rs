@@ -137,7 +137,7 @@ impl Dht {
             .await
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
-        dht.network_discovery_service(shutdown_signal.clone()).spawn();
+        //  dht.network_discovery_service(shutdown_signal.clone()).spawn();
         dht.connectivity_service(shutdown_signal.clone()).spawn();
         dht.store_and_forward_service(
             conn.clone(),

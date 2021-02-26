@@ -12,7 +12,7 @@ router.get('/:height', async function(req, res, next) {
 
   // console.log(block[0].block.header);
   // console.log(block[0].block.body);
-  console.log(block[0].block.body.kernels[0]);
+  console.log(block[0].block.body.inputs);
   res.render('blocks', { title: `Block at height:${block[0].block.header.height}`, height:height, prevHeight: parseInt(height) - 1, nextHeight: parseInt(height) + 1, block: block[0].block , pows: {"0": "Monero", "2": "SHA"}});
 });
 

@@ -156,7 +156,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         debug!(
             target: LOG_TARGET,
-            "Received join Message from '{}' {}", authenticated_pk, join_msg
+            "[ThisNode={}] Received join Message from '{}' {}",
+            self.node_identity.node_id(),
+            authenticated_pk,
+            join_msg
         );
 
         let addresses = join_msg

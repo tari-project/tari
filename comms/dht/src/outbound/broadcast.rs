@@ -190,7 +190,12 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
     pub async fn handle(mut self) -> Result<(), PipelineError> {
         let request = self.request.take().expect("request cannot be None");
-        debug!(target: LOG_TARGET, "Processing outbound request {}", request);
+        debug!(
+            target: LOG_TARGET,
+            "[ThisNode={}] Processing outbound request {}",
+            self.node_identity.node_id(),
+            request
+        );
         let messages = self.generate_outbound_messages(request).await?;
         trace!(
             target: LOG_TARGET,
@@ -261,9 +266,10 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
                 let mut reply_tx = Some(reply_tx);
 
-                trace!(
+                debug!(
                     target: LOG_TARGET,
-                    "Number of peers selected = {}, is_discovery_enabled = {}",
+                    "[ThisNode={}] Number of peers selected = {}, is_discovery_enabled = {}",
+                    self.node_identity.node_id(),
                     peers.len(),
                     is_discovery_enabled,
                 );
