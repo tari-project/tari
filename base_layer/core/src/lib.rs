@@ -45,8 +45,6 @@ pub mod chain_storage;
 pub mod consensus;
 #[cfg(feature = "base_node")]
 pub mod iterators;
-#[cfg(feature = "base_node")]
-pub mod mining;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 pub mod proof_of_work;
 #[cfg(feature = "base_node")]

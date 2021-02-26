@@ -172,8 +172,7 @@ db_type = "lmdb"
 # is "0", which indicates an archival node without any pruning.
 #pruning_horizon = 0
 
-# Enable if this node must be a mining node
-#enable_mining = true
+
 #num_mining_threads = 1
 
 # The relative path to store persistent data

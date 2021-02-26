@@ -44,7 +44,7 @@
 ///
 /// The Tari Base Node is a major application in the Tari Network
 ///
-/// It consists of the Base Node itself, a Wallet and a Miner
+/// It consists of the Base Node itself, and a Wallet
 ///
 /// ## Running the Tari Base Node
 ///
@@ -79,7 +79,6 @@
 /// `get-mempool-stats` - Displays information about the mempool
 /// `get-mempool-state` - Displays state information for the mempool
 /// `whoami` - Displays identity information about this Base Node and it's wallet
-/// `toggle-mining` - Turns the miner on or off
 /// `quit` - Exits the Base Node
 /// `exit` - Same as quit
 
@@ -92,7 +91,6 @@ mod builder;
 mod cli;
 mod command_handler;
 mod grpc;
-mod miner;
 mod parser;
 mod recovery;
 mod tasks;
@@ -127,12 +125,7 @@ fn main() {
 
 /// Sets up the base node and runs the cli_loop
 fn main_inner() -> Result<(), ExitCodes> {
-    let (bootstrap, mut node_config, _) = init_configuration(ApplicationType::BaseNode)?;
-
-    // enable-mining argument takes precedence over config setting
-    if bootstrap.enable_mining {
-        node_config.enable_mining = true;
-    }
+    let (bootstrap, node_config, _) = init_configuration(ApplicationType::BaseNode)?;
 
     debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
 
@@ -213,7 +206,7 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     // Run, node, run!
     let base_node_handle;
-    let command_handler = Arc::new(CommandHandler::new(rt.handle().clone(), &ctx, &node_config));
+    let command_handler = Arc::new(CommandHandler::new(rt.handle().clone(), &ctx));
     if !bootstrap.daemon_mode {
         let parser = Parser::new(command_handler.clone());
         cli::print_banner(parser.get_commands(), 3);

@@ -413,8 +413,7 @@ async fn test_wallet() {
 }
 
 #[test]
-#[ignore]
-// Useful for debugging, ignored because it takes over 30 minutes to run
+#[ignore = "Useful for debugging, ignored because it takes over 30 minutes to run"]
 fn test_20_store_and_forward_send_tx() {
     let mut fails = 0;
     for _n in 1..=20 {

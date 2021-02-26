@@ -167,7 +167,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.mainnet.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
-    cfg.set_default("base_node.mainnet.enable_mining", false).unwrap();
     cfg.set_default("base_node.mainnet.enable_wallet", true).unwrap();
     cfg.set_default("base_node.mainnet.num_mining_threads", 1).unwrap();
     cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 1000)
@@ -235,7 +234,6 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.stibbons.grpc_console_wallet_address", "127.0.0.1:18143")
         .unwrap();
-    cfg.set_default("base_node.stibbons.enable_mining", false).unwrap();
     cfg.set_default("base_node.stibbons.enable_wallet", true).unwrap();
     cfg.set_default("base_node.stibbons.num_mining_threads", 1).unwrap();
 
