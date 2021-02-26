@@ -372,7 +372,7 @@ And then depending on if you are using solo mining or self-select mining you wil
 - For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.stibbons`**
   ```
   [merge_mining_proxy.stibbons]
-  monerod_url = "cryptonote.social:5555"
+  monerod_url = "http://18.132.124.81:18081"
   proxy_host_address = "127.0.0.1:7878"
   proxy_submit_to_origin = false
   monerod_use_auth = false

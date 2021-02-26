@@ -23,6 +23,18 @@
 use json::json;
 use serde_json as json;
 
+/// Default accept response for submit block that goes back to XMRig
+/// Refer to XMRig. Do not change existing json values unless it is changed in XMRig.
+pub fn default_block_accept_response(req_id: Option<i64>) -> json::Value {
+    json!({
+       "id": req_id.unwrap_or(-1),
+       "jsonrpc": "2.0",
+       "result": "{}",
+       "status": "OK",
+       "untrusted": false,
+    })
+}
+
 /// Create a JSON RPC success response
 /// More info: https://www.jsonrpc.org/specification#response_object
 pub fn success_response(req_id: Option<i64>, result: json::Value) -> json::Value {
