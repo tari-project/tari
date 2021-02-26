@@ -4,6 +4,9 @@ use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
     tari_rpc::{
         wallet_server,
+        CoinSplitRequest,
+        CoinSplitResponse,
+        GetAllCompletedTransactionsRequest,
         GetBalanceRequest,
         GetBalanceResponse,
         GetCoinbaseRequest,
@@ -25,7 +28,10 @@ use tari_app_grpc::{
     },
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::tari_utilities::{hex::Hex, ByteArray};
+use tari_core::{
+    tari_utilities::{hex::Hex, ByteArray},
+    transactions::tari_amount::MicroTari,
+};
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{handle::TransactionServiceHandle, storage::models},
@@ -258,6 +264,31 @@ impl wallet_server::Wallet for WalletGrpcServer {
         });
 
         Ok(Response::new(receiver))
+    }
+
+    async fn coin_split(&self, request: Request<CoinSplitRequest>) -> Result<Response<CoinSplitResponse>, Status> {
+        let message = request.into_inner();
+
+        let lock_height = if message.lock_height == 0 {
+            None
+        } else {
+            Some(message.lock_height)
+        };
+
+        let mut wallet = self.wallet.clone();
+
+        let tx_id = wallet
+            .coin_split(
+                MicroTari::from(message.amount_per_split),
+                message.split_count as usize,
+                MicroTari::from(message.fee_per_gram),
+                message.message,
+                lock_height,
+            )
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+
+        Ok(Response::new(CoinSplitResponse { tx_id }))
     }
 }
 
