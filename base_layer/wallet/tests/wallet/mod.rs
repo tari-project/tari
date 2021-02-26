@@ -43,6 +43,7 @@ use digest::Digest;
 use futures::{FutureExt, StreamExt};
 use std::path::Path;
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms_dht::envelope::Network as DhtNetwork;
 use tari_core::{
     consensus::Network,
     transactions::{tari_amount::uT, transaction::UnblindedOutput, types::PrivateKey},
@@ -677,6 +678,7 @@ async fn test_data_generation() {
         outbound_buffer_size: 100,
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_millis(500),
+            network: DhtNetwork::Stibbons,
             ..Default::default()
         },
         allow_test_addresses: true,
