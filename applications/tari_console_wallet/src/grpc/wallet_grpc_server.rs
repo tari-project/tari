@@ -4,11 +4,12 @@ use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
     tari_rpc::{
         wallet_server,
-        GetAllCompletedTransactionsRequest,
         GetBalanceRequest,
         GetBalanceResponse,
         GetCoinbaseRequest,
         GetCoinbaseResponse,
+        GetCompletedTransactionsRequest,
+        GetCompletedTransactionsResponse,
         GetIdentityRequest,
         GetIdentityResponse,
         GetTransactionInfoRequest,
@@ -30,6 +31,7 @@ use tari_wallet::{
     transaction_service::{handle::TransactionServiceHandle, storage::models},
     WalletSqlite,
 };
+use tokio::{sync::mpsc, task};
 use tonic::{Request, Response, Status};
 
 const LOG_TARGET: &str = "wallet::ui::grpc";
@@ -54,6 +56,8 @@ impl WalletGrpcServer {
 
 #[tonic::async_trait]
 impl wallet_server::Wallet for WalletGrpcServer {
+    type GetCompletedTransactionsStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
+
     async fn get_version(&self, _: Request<GetVersionRequest>) -> Result<Response<GetVersionResponse>, Status> {
         Ok(Response::new(GetVersionResponse {
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -198,51 +202,62 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(GetTransactionInfoResponse { transactions }))
     }
 
-    async fn get_all_completed_transactions(
+    async fn get_completed_transactions(
         &self,
-        _request: Request<GetAllCompletedTransactionsRequest>,
-    ) -> Result<Response<GetTransactionInfoResponse>, Status>
+        _request: Request<GetCompletedTransactionsRequest>,
+    ) -> Result<Response<Self::GetCompletedTransactionsStream>, Status>
     {
         debug!(
             target: LOG_TARGET,
             "Incoming GRPC request for GetAllCompletedTransactions"
         );
         let mut transaction_service = self.get_transaction_service();
-        let transactions;
-        match transaction_service.get_completed_transactions().await {
-            Ok(t) => {
-                transactions = t;
-            },
-            Err(_) => {
-                return Err(Status::not_found("No completed transactions found."));
-            },
-        };
+        let transactions = transaction_service
+            .get_completed_transactions()
+            .await
+            .map_err(|err| Status::not_found(format!("No completed transactions found: {:?}", err)))?;
 
-        let transactions = transactions
-            .into_iter()
-            .map(|tx| TransactionInfo {
-                tx_id: tx.1.tx_id,
-                source_pk: tx.1.source_public_key.to_vec(),
-                dest_pk: tx.1.destination_public_key.to_vec(),
-                status: TransactionStatus::from(tx.1.status) as i32,
-                amount: tx.1.amount.into(),
-                is_cancelled: tx.1.cancelled,
-                direction: TransactionDirection::from(tx.1.direction) as i32,
-                fee: tx.1.fee.into(),
-                timestamp: Some(naive_datetime_to_timestamp(tx.1.timestamp)),
-                excess_sig: tx
-                    .1
-                    .transaction
-                    .first_kernel_excess_sig()
-                    .expect("Complete transaction has no kernels")
-                    .get_signature()
-                    .to_vec(),
-                message: tx.1.message,
-                valid: tx.1.valid,
-            })
-            .collect();
+        let (mut sender, receiver) = mpsc::channel(transactions.len());
+        task::spawn(async move {
+            for (_, txn) in transactions {
+                let response = GetCompletedTransactionsResponse {
+                    transaction: Some(TransactionInfo {
+                        tx_id: txn.tx_id,
+                        source_pk: txn.source_public_key.to_vec(),
+                        dest_pk: txn.destination_public_key.to_vec(),
+                        status: TransactionStatus::from(txn.status) as i32,
+                        amount: txn.amount.into(),
+                        is_cancelled: txn.cancelled,
+                        direction: TransactionDirection::from(txn.direction) as i32,
+                        fee: txn.fee.into(),
+                        timestamp: Some(naive_datetime_to_timestamp(txn.timestamp)),
+                        excess_sig: txn
+                            .transaction
+                            .first_kernel_excess_sig()
+                            .expect("Complete transaction has no kernels")
+                            .get_signature()
+                            .to_vec(),
+                        message: txn.message,
+                        valid: txn.valid,
+                    }),
+                };
+                match sender.send(Ok(response)).await {
+                    Ok(_) => (),
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Error sending transaction via GRPC:  {}", err);
+                        match sender.send(Err(Status::unknown("Error sending data"))).await {
+                            Ok(_) => (),
+                            Err(send_err) => {
+                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                            },
+                        }
+                        return;
+                    },
+                }
+            }
+        });
 
-        Ok(Response::new(GetTransactionInfoResponse { transactions }))
+        Ok(Response::new(receiver))
     }
 }
 
