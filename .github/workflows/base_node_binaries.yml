@@ -25,16 +25,19 @@ jobs:
       fail-fast: false
       matrix:
 #        os: [ubuntu-18.04, ubuntu-20.04, macos-10.15, macos-11.0, windows-2019]
-        os: [ubuntu-latest, macos-latest, windows-latest, self-hosted]
+#        os: [ubuntu-latest, macos-latest, windows-latest, self-hosted]
 #        os: [ubuntu-18.04, ubuntu-20.04, macos-10.15, macos-11.0, windows-2016, windows-2019]
-        features: ["safe", "avx2"]
+        os: [ubuntu-18.04, macos-10.15, windows-2016, self-hosted]
+#        os: [ubuntu-20.04]
+        # https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html
+#        features: ["safe", "avx2"]
 #        features: ["safe"]
-        target_cpu: ["x86-64", "broadwell", "skylake"]
-#        target_cpu: ["x86-64"]
+#        target_cpu: ["x86-64", "broadwell", "skylake"]
+        target_cpu: ["haswell"]
 #        target_release: ["release", "debug"]
-        exclude:
-          - target_cpu: "x86-64"
-            features: "avx2"
+#        exclude:
+#          - target_cpu: "x86-64"
+#            features: "avx2"
 
     runs-on: ${{ matrix.os }}
 
@@ -147,8 +150,9 @@ jobs:
         ROARING_ARCH: '${{ matrix.target_cpu }}'
       shell: bash
       run: |
-        cd applications/tari_base_node
-        cargo build --release --bin tari_base_node --features ${{ matrix.features}}
+        #cd applications/tari_base_node
+        #cargo build --release --bin tari_base_node --features ${{ matrix.features}}
+        cargo build --release
 
     - name: Prepare binaries
       shell: bash
@@ -159,28 +163,36 @@ jobs:
         echo "Branch: ${VBRANCH}"
         echo "Sha: ${VSHA_SHORT}"
         echo "VERSION=${VERSION}" >> $GITHUB_ENV
-        BINFILE="${TBN_FILENAME}-${VERSION}-${VSHA_SHORT}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}${TBN_EXT}"
+        #BINFILE="${TBN_FILENAME}-${VERSION}-${VSHA_SHORT}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}${TBN_EXT}"
+        BINFILE="${TBN_FILENAME}-${VERSION}-${VSHA_SHORT}-${{ matrix.os }}-${{ matrix.target_cpu }}${TBN_EXT}"
         echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
-        echo "Copying file ${BINFILE} too $(pwd)"
-        cp -v "$GITHUB_WORKSPACE/target/release/${TBN_FILENAME}${TBN_EXT}" "./${BINFILE}"
+        echo "Copying files for ${BINFILE} too $(pwd)"
+        #cp -v "$GITHUB_WORKSPACE/target/release/${TBN_FILENAME}${TBN_EXT}" "./${BINFILE}"
+        ls -la "$GITHUB_WORKSPACE/target/release/"
+        cp -v "$GITHUB_WORKSPACE/target/release/tari_base_node${TBN_EXT}" .
+        cp -v "$GITHUB_WORKSPACE/target/release/tari_console_wallet${TBN_EXT}" .
+        cp -v "$GITHUB_WORKSPACE/target/release/tari_merge_mining_proxy${TBN_EXT}" .
+        cp -v "$GITHUB_WORKSPACE/target/release/tari_mining_node${TBN_EXT}" .
 
     - name: Archive and Sign Binaries
       shell: bash
       run: |
         echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
         cd "$GITHUB_WORKSPACE${{ env.TBN_DIST }}"
-        zip -j "${{ env.BINFILE }}.zip" "${{ env.BINFILE }}"
+        #zip -j "${{ env.BINFILE }}.zip" "${{ env.BINFILE }}"
+        zip -j "${{ env.BINFILE }}.zip" *
         echo "Compute shasum"
         ${SHARUN} "${{ env.BINFILE }}.zip" >> "${{ env.BINFILE }}.zip.sha256"
         cat "${{ env.BINFILE }}.zip.sha256"
         echo "Verifications is "
         ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
-        rm -f "${BINFILE}"
+        #rm -f "${BINFILE}"
 
-    - name: Upload binaries
+    - name: Artifact archvie
       uses: actions/upload-artifact@v2
       with:
-        name: ${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}
+        #name: ${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}
+        name: ${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.os }}-${{ matrix.target_cpu }}
         path: '${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*'
 
     - name: Sync dist to S3 - Bash
@@ -200,6 +212,6 @@ jobs:
         SOURCE: '${{ github.workspace }}${{ env.TBN_DIST }}'
         DEST_DIR: '${{ env.S3DESTOVERRIDE }}${{ env.S3DESTDIR }}/'
         S3CMD: 'cp'
-        S3OPTIONS: '--recursive'
+        S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
         # S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
         # S3OPTIONS: '--acl public-read'
