@@ -63,7 +63,7 @@ jobs:
       - name: fix intrin.h file
         if: startsWith(matrix.os,'Windows')
         shell: powershell
-        run: .github/temp/intrin.ps1
+        run: .github/hacks/intrin.ps1
 
       - name: toolchain
         uses: actions-rs/toolchain@v1
