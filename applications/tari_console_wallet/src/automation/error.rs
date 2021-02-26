@@ -47,6 +47,8 @@ pub enum CommandError {
     Join(#[from] JoinError),
     #[error("Config error `{0}`")]
     Config(String),
+    #[error("Comms error `{0}`")]
+    Comms(String),
 }
 
 impl From<CommandError> for ExitCodes {
