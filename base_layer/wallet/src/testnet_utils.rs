@@ -62,7 +62,7 @@ use tari_comms::{
     transports::MemoryTransport,
     types::{CommsPublicKey, CommsSecretKey},
 };
-use tari_comms_dht::DhtConfig;
+use tari_comms_dht::{envelope::Network as DhtNetwork, DhtConfig};
 use tari_core::{
     consensus::Network,
     transactions::{
@@ -150,6 +150,7 @@ pub async fn create_wallet(
         user_agent: "/tari/wallet/test".to_string(),
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(30),
+            network: DhtNetwork::Stibbons,
             ..Default::default()
         },
         allow_test_addresses: true,
