@@ -58,10 +58,11 @@ use tari_core::{
         LocalNodeCommsInterface,
     },
     blocks::BlockHeader,
-    chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
+    chain_storage::{async_db::AsyncBlockchainDb, ChainHeader, LMDBDatabase},
     mempool::service::LocalMempoolService,
     mining::MinerInstruction,
-    tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable},
+    proof_of_work::PowAlgorithm,
+    tari_utilities::{hex::Hex, message_format::MessageFormat},
     transactions::{
         tari_amount::{uT, MicroTari},
         transaction::OutputFeatures,
@@ -1080,7 +1081,7 @@ impl CommandHandler {
     pub fn list_headers(&self, start: u64, end: Option<u64>) {
         let blockchain_db = self.blockchain_db.clone();
         self.executor.spawn(async move {
-            let headers = match Self::get_headers(&blockchain_db, start, end).await {
+            let headers = match Self::get_chain_headers(&blockchain_db, start, end).await {
                 Ok(h) if h.is_empty() => {
                     println!("No headers found");
                     return;
@@ -1113,6 +1114,25 @@ impl CommandHandler {
                 let tip = blockchain_db.fetch_tip_header().await?.height();
                 blockchain_db
                     .fetch_headers((tip.saturating_sub(start) + 1)..)
+                    .await
+                    .map_err(Into::into)
+            },
+        }
+    }
+
+    /// Function to process the get-headers command
+    async fn get_chain_headers(
+        blockchain_db: &AsyncBlockchainDb<LMDBDatabase>,
+        start: u64,
+        end: Option<u64>,
+    ) -> Result<Vec<ChainHeader>, anyhow::Error>
+    {
+        match end {
+            Some(end) => blockchain_db.fetch_chain_headers(start..=end).await.map_err(Into::into),
+            None => {
+                let tip = blockchain_db.fetch_tip_header().await?.height();
+                blockchain_db
+                    .fetch_chain_headers((tip.saturating_sub(start) + 1)..)
                     .await
                     .map_err(Into::into)
             },
@@ -1286,6 +1306,69 @@ impl CommandHandler {
             println!("Results of tx count, hash rate estimation, target difficulty, solvetime, block count");
             for data in results {
                 println!("{},{},{},{},{}", data.0, data.1, data.2, data.3, data.4);
+            }
+        });
+    }
+
+    pub fn raw_stats(&self, start_height: u64, end_height: u64) {
+        let mut node = self.node_service.clone();
+        self.executor.spawn(async move {
+            let mut results: Vec<(u64, usize, u64, u64, u64, PowAlgorithm)> = Vec::new();
+
+            print!("Searching for height: ");
+            for height in start_height..=end_height {
+                print!("{}", height);
+                io::stdout().flush().unwrap();
+
+                let block = match node.get_blocks(vec![height]).await {
+                    Err(_err) => {
+                        println!("Error in db, could not get block");
+                        break;
+                    },
+                    Ok(mut data) => match data.pop() {
+                        // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
+                        // logging it.
+                        Some(historical_block) => historical_block,
+                        None => {
+                            println!("Error in db, could not get block");
+                            break;
+                        },
+                    },
+                };
+                let prev_block = match node.get_blocks(vec![height - 1]).await {
+                    Err(_err) => {
+                        println!("Error in db, could not get block");
+                        break;
+                    },
+                    Ok(mut data) => match data.pop() {
+                        // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
+                        // logging it.
+                        Some(historical_block) => historical_block,
+                        None => {
+                            println!("Error in db, could not get block");
+                            break;
+                        },
+                    },
+                };
+                let st = if prev_block.block().header.timestamp.as_u64() >= block.block().header.timestamp.as_u64() {
+                    1.0
+                } else {
+                    (block.block().header.timestamp.as_u64() - prev_block.block().header.timestamp.as_u64()) as f64
+                };
+                results.push((
+                    height,
+                    block.block().body.kernels().len() - 1,
+                    block.accumulated_data.target_difficulty.as_u64(),
+                    st as u64,
+                    block.block().header.timestamp.as_u64(),
+                    block.block().header.pow.pow_algo,
+                ));
+                print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
+            }
+            println!("Complete");
+            println!("Result of height, tx count, target difficulty, solvetime, timestamp, algo");
+            for data in results {
+                println!("{},{},{},{},{},{}", data.0, data.1, data.2, data.3, data.4, data.5);
             }
         });
     }

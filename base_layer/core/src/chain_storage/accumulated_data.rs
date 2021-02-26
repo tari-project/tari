@@ -38,7 +38,8 @@ use serde::{
     Serialize,
     Serializer,
 };
-use std::fmt;
+use std::{fmt, fmt::Display};
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::pruned_hashset::PrunedHashSet;
 
 const LOG_TARGET: &str = "c::bn::acc_data";
@@ -278,10 +279,34 @@ pub struct BlockHeaderAccumulatedData {
     pub target_difficulty: Difficulty,
 }
 
+impl Display for BlockHeaderAccumulatedData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Hash: {}", self.hash.to_hex())?;
+        writeln!(f, "Achieved difficulty: {}", self.achieved_difficulty)?;
+        writeln!(f, "Total accumulated difficulty: {}", self.total_accumulated_difficulty)?;
+        writeln!(
+            f,
+            "Accumulated monero difficulty: {}",
+            self.accumulated_monero_difficulty
+        )?;
+        writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_blake_difficulty)?;
+        writeln!(f, "Target difficulty: {}", self.target_difficulty)?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ChainHeader {
     pub header: BlockHeader,
     pub accumulated_data: BlockHeaderAccumulatedData,
+}
+
+impl Display for ChainHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", self.header)?;
+        writeln!(f, "{}", self.accumulated_data)?;
+        Ok(())
+    }
 }
 
 impl ChainHeader {

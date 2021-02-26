@@ -23,7 +23,7 @@ use crate::{
 use log::*;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 
-pub const LOG_TARGET: &str = "c::val::block_validators";
+pub const LOG_TARGET: &str = "c::val::header_validators";
 
 pub struct HeaderValidator {
     rules: ConsensusManager,
