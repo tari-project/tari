@@ -116,6 +116,7 @@ pub struct GlobalConfig {
     pub max_randomx_vms: usize,
     pub console_wallet_notify_file: Option<PathBuf>,
     pub auto_ping_interval: u64,
+    pub blocks_behind_before_considered_lagging: u64,
 }
 
 impl GlobalConfig {
@@ -403,6 +404,10 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
     };
 
+    // blocks_behind_before_considered_lagging when a node should switch over from listening to lagging
+    let key = config_string("base_node", &net_str, "blocks_behind_before_considered_lagging");
+    let blocks_behind_before_considered_lagging = optional(cfg.get_int(&key))?.unwrap_or(6) as u64;
+
     // set wallet_db_file
     let key = "wallet.wallet_db_file".to_string();
     let wallet_db_file = cfg
@@ -652,6 +657,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         max_randomx_vms,
         console_wallet_notify_file,
         auto_ping_interval,
+        blocks_behind_before_considered_lagging,
     })
 }
 

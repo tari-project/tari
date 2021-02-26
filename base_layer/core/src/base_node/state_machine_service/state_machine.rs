@@ -51,6 +51,7 @@ pub struct BaseNodeStateMachineConfig {
     pub orphan_db_clean_out_threshold: usize,
     pub pruning_horizon: u64,
     pub max_randomx_vms: usize,
+    pub blocks_behind_before_considered_lagging: u64,
 }
 
 /// A Tari full node, aka Base Node.

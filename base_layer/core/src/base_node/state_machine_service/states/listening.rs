@@ -185,7 +185,12 @@ impl Listening {
                     } else {
                         peer_metadata_list
                     };
-                    let sync_mode = determine_sync_mode(&local, best_metadata, sync_peers);
+                    let sync_mode = determine_sync_mode(
+                        shared.config.blocks_behind_before_considered_lagging,
+                        &local,
+                        best_metadata,
+                        sync_peers,
+                    );
 
                     if sync_mode.is_lagging() {
                         return StateEvent::FallenBehind(sync_mode);
@@ -265,7 +270,13 @@ fn best_metadata(metadata_list: &[PeerChainMetadata]) -> Option<&ChainMetadata> 
 }
 
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
-fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers: SyncPeers) -> SyncStatus {
+fn determine_sync_mode(
+    blocks_behind_before_considered_lagging: u64,
+    local: &ChainMetadata,
+    network: ChainMetadata,
+    sync_peers: SyncPeers,
+) -> SyncStatus
+{
     use SyncStatus::*;
     let network_tip_accum_difficulty = network.accumulated_difficulty();
     let local_tip_accum_difficulty = local.accumulated_difficulty();
@@ -282,8 +293,21 @@ fn determine_sync_mode(local: &ChainMetadata, network: ChainMetadata, sync_peers
             network_tip_height,
             network_tip_accum_difficulty.to_formatted_string(&Locale::en),
         );
-
         let network_horizon_block = local.horizon_block(network_tip_height);
+
+        // This is to test the block propagation by delaying lagging.
+        if local_tip_height + blocks_behind_before_considered_lagging > network_tip_height &&
+            local_tip_height < network_tip_height + blocks_behind_before_considered_lagging
+        {
+            info!(
+                target: LOG_TARGET,
+                "While we are behind, we are still within {} blocks of them, so we are staying as listening and \
+                 waiting for the propagated blocks",
+                blocks_behind_before_considered_lagging
+            );
+            return UpToDate;
+        };
+
         if local_tip_height < network_horizon_block {
             debug!(
                 target: LOG_TARGET,
@@ -410,40 +434,40 @@ mod test {
     #[test]
     fn sync_mode_selection() {
         let local = ChainMetadata::new(0, Vec::new(), 0, 0, 500_000);
-        match determine_sync_mode(&local, local.clone(), vec![]) {
+        match determine_sync_mode(0, &local, local.clone(), vec![]) {
             SyncStatus::UpToDate => assert!(true),
             _ => assert!(false),
         }
 
         let network = ChainMetadata::new(0, Vec::new(), 0, 0, 499_000);
-        match determine_sync_mode(&local, network, vec![]) {
+        match determine_sync_mode(0, &local, network, vec![]) {
             SyncStatus::UpToDate => assert!(true),
             _ => assert!(false),
         }
 
         let network = ChainMetadata::new(0, Vec::new(), 0, 0, 500_001);
-        match determine_sync_mode(&local, network.clone(), vec![]) {
+        match determine_sync_mode(0, &local, network.clone(), vec![]) {
             SyncStatus::Lagging(n, _) => assert_eq!(n, network),
             _ => assert!(false),
         }
 
         let local = ChainMetadata::new(100, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001);
-        match determine_sync_mode(&local, network.clone(), vec![]) {
+        match determine_sync_mode(0, &local, network.clone(), vec![]) {
             SyncStatus::Lagging(n, _) => assert_eq!(n, network),
             _ => assert!(false),
         }
 
         let local = ChainMetadata::new(0, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(100, Vec::new(), 0, 0, 500_001);
-        match determine_sync_mode(&local, network.clone(), vec![]) {
+        match determine_sync_mode(0, &local, network.clone(), vec![]) {
             SyncStatus::LaggingBehindHorizon(n, _) => assert_eq!(n, network),
             _ => assert!(false),
         }
 
         let local = ChainMetadata::new(99, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001);
-        match determine_sync_mode(&local, network.clone(), vec![]) {
+        match determine_sync_mode(0, &local, network.clone(), vec![]) {
             SyncStatus::LaggingBehindHorizon(n, _) => assert_eq!(n, network),
             _ => assert!(false),
         }
