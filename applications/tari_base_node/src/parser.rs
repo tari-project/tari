@@ -22,8 +22,6 @@
 
 use super::LOG_TARGET;
 use crate::command_handler::{delimit_command_string, CommandHandler, Format};
-use chrono::{DateTime, Utc};
-use chrono_english::{parse_date_string, Dialect};
 use log::*;
 use rustyline::{
     completion::Completer,
@@ -41,13 +39,9 @@ use tari_app_utilities::utilities::{
     parse_emoji_id_or_public_key,
     parse_emoji_id_or_public_key_or_node_id,
 };
-use tari_comms::types::CommsPublicKey;
 use tari_core::{
     tari_utilities::hex::Hex,
-    transactions::{
-        tari_amount::MicroTari,
-        types::{Commitment, PrivateKey, PublicKey, Signature},
-    },
+    transactions::types::{Commitment, PrivateKey, PublicKey, Signature},
 };
 use tari_shutdown::Shutdown;
 
@@ -58,12 +52,6 @@ pub enum BaseNodeCommand {
     Help,
     Version,
     Status,
-    GetBalance,
-    ListUtxos,
-    ListTransactions,
-    ListCompletedTransactions,
-    CancelTransaction,
-    SendTari,
     GetChainMetadata,
     GetPeer,
     ListPeers,
@@ -87,9 +75,6 @@ pub enum BaseNodeCommand {
     GetMempoolStats,
     GetMempoolState,
     Whoami,
-    MakeItRain,
-    CoinSplit,
-    StressTest,
     GetStateInfo,
     Quit,
     Exit,
@@ -102,12 +87,6 @@ pub struct Parser {
     hinter: HistoryHinter,
     command_handler: Arc<CommandHandler>,
 }
-
-const MAKE_IT_RAIN_USAGE: &str = "\nmake-it-rain [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx] \
-                                  [\"start time (UTC)\" / 'now' for immediate start] [public key or emoji id to send \
-                                  to] [message]\n";
-pub const STRESS_TEST_USAGE: &str = "\nstress-test [command file]\n\nCommand file format:\n  make-it-rain ... (at \
-                                     least one required)\n  make-it-rain ... (optional)\n  ...";
 
 /// This will go through all instructions and look for potential matches
 impl Completer for Parser {
@@ -174,7 +153,7 @@ impl Parser {
         &mut self,
         command: BaseNodeCommand,
         args: I,
-        del_arg_vec: Vec<String>,
+        _del_arg_vec: Vec<String>,
         shutdown: &mut Shutdown,
     )
     {
@@ -191,24 +170,6 @@ impl Parser {
             },
             Version => {
                 self.command_handler.print_version();
-            },
-            GetBalance => {
-                self.command_handler.get_balance();
-            },
-            ListUtxos => {
-                self.command_handler.list_unspent_outputs();
-            },
-            ListTransactions => {
-                self.command_handler.list_transactions();
-            },
-            ListCompletedTransactions => {
-                self.process_list_completed_transactions(args);
-            },
-            CancelTransaction => {
-                self.process_cancel_transaction(args);
-            },
-            SendTari => {
-                self.process_send_tari(args);
             },
             GetChainMetadata => {
                 self.command_handler.get_chain_meta();
@@ -279,15 +240,6 @@ impl Parser {
             Whoami => {
                 self.command_handler.whoami();
             },
-            MakeItRain => {
-                self.process_make_it_rain(del_arg_vec);
-            },
-            CoinSplit => {
-                self.process_coin_split(args);
-            },
-            StressTest => {
-                self.command_handler.stress_test(del_arg_vec);
-            },
             Exit | Quit => {
                 println!("Shutting down...");
                 info!(
@@ -317,27 +269,6 @@ impl Parser {
             },
             Version => {
                 println!("Gets the current application version");
-            },
-            GetBalance => {
-                println!("Gets your balance");
-            },
-            ListUtxos => {
-                println!("List your UTXOs");
-            },
-            ListTransactions => {
-                println!("Print a list of pending inbound and outbound transactions");
-            },
-            ListCompletedTransactions => {
-                println!("Print a list of completed transactions.");
-                println!("USAGE: list-completed-transactions [last n] or list-completed-transactions [n] [m]");
-            },
-            CancelTransaction => {
-                println!("Cancel a transaction");
-                println!("USAGE: cancel-transaction [transaction ID]");
-            },
-            SendTari => {
-                println!("Sends an amount of Tari to a address call this command via:");
-                println!("send-tari [amount of tari to send] [destination public key or emoji id] [optional: msg]");
             },
             GetChainMetadata => {
                 println!("Gets your base node chain meta data");
@@ -444,45 +375,10 @@ impl Parser {
                      address"
                 );
             },
-            MakeItRain => {
-                println!("Sends multiple amounts of Tari to a public wallet address via this command:");
-                println!("{}", MAKE_IT_RAIN_USAGE);
-            },
-            CoinSplit => {
-                println!("Constructs a transaction to split a small set of UTXOs into a large set of UTXOs");
-            },
-            StressTest => {
-                println!(
-                    "Performs a network stress test by combining coin-split to create test UTXOs and running \
-                     make-it-rain afterwards."
-                );
-                println!("{}", STRESS_TEST_USAGE);
-            },
             Exit | Quit => {
                 println!("Exits the base node");
             },
         }
-    }
-
-    /// Function to process the list utxos command
-    fn process_list_completed_transactions<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let n = args.next().and_then(|s| s.parse::<usize>().ok()).unwrap_or(10);
-        let m = args.next().and_then(|s| s.parse::<usize>().ok());
-
-        self.command_handler.list_completed_transactions(n, m)
-    }
-
-    fn process_cancel_transaction<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let tx_id = match args.next().and_then(|s| s.parse::<u64>().ok()) {
-            Some(id) => id,
-            None => {
-                println!("Please enter a valid transaction ID");
-                println!("USAGE: cancel-transaction [transaction id]");
-                return;
-            },
-        };
-
-        self.command_handler.cancel_transaction(tx_id)
     }
 
     /// Function to process the get-block command
@@ -755,232 +651,5 @@ impl Parser {
             },
         };
         self.command_handler.raw_stats(start_height, end_height)
-    }
-
-    /// Function to process the coin split command
-    fn process_coin_split<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let amount_per_split = args.next().and_then(|v| v.parse::<u64>().ok());
-        let split_count = args.next().and_then(|v| v.parse::<usize>().ok());
-        if amount_per_split.is_none() | split_count.is_none() {
-            println!("Command entered incorrectly, please use the following format: ");
-            println!("coin-split [amount of tari to allocated to each UTXO] [number of UTXOs to create]");
-            return;
-        }
-        let amount_per_split: MicroTari = amount_per_split.unwrap().into();
-        let split_count = split_count.unwrap();
-        self.command_handler.coin_split(amount_per_split, split_count)
-    }
-
-    /// Function to process the send transaction command
-    fn process_send_tari<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let amount = args.next().and_then(|v| MicroTari::from_str(v).ok());
-        if amount.is_none() {
-            println!("Please enter a valid amount of tari");
-            return;
-        }
-        let amount: MicroTari = amount.unwrap();
-
-        let key = match args.next() {
-            Some(k) => k.to_string(),
-            None => {
-                println!("Command entered incorrectly, please use the following format: ");
-                println!("send_tari [amount of tari to send] [public key or emoji id to send to] [optional message]");
-                return;
-            },
-        };
-
-        let dest_pubkey = match parse_emoji_id_or_public_key(&key) {
-            Some(v) => v,
-            None => {
-                println!("Please enter a valid destination public key or emoji id");
-                return;
-            },
-        };
-
-        // Use the rest of the command line as the message
-        let msg = args.collect::<Vec<&str>>().join(" ");
-
-        self.command_handler.send_tari(amount, dest_pubkey, msg)
-    }
-
-    /// Function to process the make it rain transaction function
-    fn process_make_it_rain(&mut self, command_arg: Vec<String>) {
-        // args: [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx]
-        //       [\"start time (UTC)\" / 'now' for immediate start] [public key or emoji id to send to] [message]
-        let command_error_msg =
-            "Command entered incorrectly, please use the following format:\n".to_owned() + MAKE_IT_RAIN_USAGE;
-
-        // [Txs/s] [duration (s)] [start amount (uT)] [increment (uT)/Tx] [start time (UTC) / 'now'] [public key or
-        // emoji id to send to] [message]
-        let (tx_per_s, number_of_txs, start_amount, amount_inc, time_utc_start, dest_pubkey, msg) =
-            match get_make_it_rain_tx_values(command_arg) {
-                Some(v) => {
-                    if v.err_msg != "" {
-                        println!("\n{}", command_error_msg);
-                        println!("\n{}\n", v.err_msg);
-                        return;
-                    }
-                    (
-                        v.tx_per_s,
-                        v.number_of_txs,
-                        v.start_amount,
-                        v.amount_inc,
-                        v.time_utc_start,
-                        v.dest_pubkey,
-                        v.msg,
-                    )
-                },
-                None => {
-                    println!("Cannot process the 'make-it-rain' command");
-                    return;
-                },
-            };
-
-        self.command_handler.make_it_rain(
-            tx_per_s,
-            number_of_txs,
-            start_amount,
-            amount_inc,
-            time_utc_start,
-            dest_pubkey,
-            msg,
-        )
-    }
-}
-
-// Function to get make-it-rain transaction values
-pub fn get_make_it_rain_tx_values(command_arg: Vec<String>) -> Option<MakeItRainInputs> {
-    if (command_arg.is_empty()) || (command_arg.len() < 6) {
-        return Some(MakeItRainInputs {
-            err_msg: format!("Expected at least 6 arguments, received {}", command_arg.len()),
-            ..Default::default()
-        });
-    }
-
-    // [number of Txs/s]
-    let tx_per_s = command_arg[0].parse::<f64>();
-    if tx_per_s.is_err() {
-        return Some(MakeItRainInputs {
-            err_msg: "Invalid data provided for [number of Txs]".to_string(),
-            ..Default::default()
-        });
-    }
-    let tx_per_s = tx_per_s.unwrap();
-
-    // [test duration (s)]
-    let duration = command_arg[1].parse::<u32>();
-    if duration.is_err() {
-        return Some(MakeItRainInputs {
-            err_msg: "Invalid data provided for [test duration (s)]".to_string(),
-            ..Default::default()
-        });
-    };
-    let duration = duration.unwrap();
-    if (tx_per_s * duration as f64) < 1.0 {
-        return Some(MakeItRainInputs {
-            err_msg: "Invalid data provided for [number of Txs/s] * [test duration (s)], must be >= 1".to_string(),
-            ..Default::default()
-        });
-    }
-    let number_of_txs = (tx_per_s * duration as f64) as usize;
-    let tx_per_s = tx_per_s.min(25.0); // Maximum rate set to 25/s.
-
-    // [starting amount (uT)]
-    let start_amount = command_arg[2].parse::<u64>();
-    if start_amount.is_err() {
-        return Some(MakeItRainInputs {
-            err_msg: "Invalid data provided for [starting amount (uT)]".to_string(),
-            ..Default::default()
-        });
-    }
-    let start_amount: MicroTari = start_amount.unwrap().into();
-
-    // [increment (uT)/Tx]
-    let amount_inc = command_arg[3].parse::<u64>();
-    if amount_inc.is_err() {
-        return Some(MakeItRainInputs {
-            err_msg: "Invalid data provided for [increment (uT)/Tx]".to_string(),
-            ..Default::default()
-        });
-    }
-    let amount_inc: MicroTari = amount_inc.unwrap().into();
-
-    // [start time (UTC) / 'now']
-    let time = command_arg[4].to_string();
-    let time_utc_ref = Utc::now();
-    let mut time_utc_start = Utc::now();
-    let datetime = parse_date_string(&time, Utc::now(), Dialect::Uk);
-    match datetime {
-        Ok(t) => {
-            if t > time_utc_ref {
-                time_utc_start = t;
-            }
-        },
-        Err(e) => {
-            return Some(MakeItRainInputs {
-                err_msg: format!("Invalid data provided for [start time (UTC) / 'now']:  {}", e),
-                ..Default::default()
-            });
-        },
-    }
-
-    // TODO: Read in recipient address list and custom message from file
-    // [public key or emoji id to send to]
-    let key = command_arg[5].to_string();
-    let dest_pubkey = match parse_emoji_id_or_public_key(&key) {
-        Some(v) => v,
-        None => {
-            return Some(MakeItRainInputs {
-                err_msg: "Invalid data provided for [public key or emoji id to send to]".to_string(),
-                ..Default::default()
-            });
-        },
-    };
-
-    // [message]
-    let mut msg = "".to_string();
-    if command_arg.len() > 6 {
-        for arg in command_arg.iter().skip(6) {
-            msg = msg + arg + " ";
-        }
-        msg = msg.trim().to_string();
-    }
-
-    Some(MakeItRainInputs {
-        tx_per_s,
-        number_of_txs,
-        start_amount,
-        amount_inc,
-        time_utc_start,
-        dest_pubkey,
-        msg,
-        ..Default::default()
-    })
-}
-
-#[derive(Clone)]
-pub struct MakeItRainInputs {
-    pub tx_per_s: f64,
-    pub number_of_txs: usize,
-    pub start_amount: MicroTari,
-    pub amount_inc: MicroTari,
-    pub time_utc_start: DateTime<Utc>,
-    pub dest_pubkey: CommsPublicKey,
-    pub msg: String,
-    pub err_msg: String,
-}
-
-impl Default for MakeItRainInputs {
-    fn default() -> Self {
-        Self {
-            tx_per_s: f64::default(),
-            number_of_txs: usize::default(),
-            start_amount: MicroTari::default(),
-            amount_inc: MicroTari::default(),
-            time_utc_start: Utc::now(),
-            dest_pubkey: CommsPublicKey::default(),
-            msg: String::default(),
-            err_msg: String::default(),
-        }
     }
 }

@@ -141,26 +141,11 @@ if not exist "%config_path%\base_node_id.json" (
     echo.
     echo.
     echo Created "%config_path%\base_node_id.json".
-    echo Created "%config_path%\wallet_id.json".
     echo.
 ) else (
     echo.
     echo.
     echo Using existing "%config_path%\base_node_id.json"
-    echo.
-)
-if not exist "%config_path%\wallet_id.json" (
-    cd "%base_path%"
-    "%base_node%" --create-id --init --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
-    echo.
-    echo.
-    echo Created "%config_path%\base_node_id.json".
-    echo Created "%config_path%\wallet_id.json".
-    echo.
-) else (
-    echo.
-    echo.
-    echo Using existing "%config_path%\wallet_id.json"
     echo.
 )
 if not exist "%config_path%\log4rs_base_node.yml" (

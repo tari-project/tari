@@ -136,18 +136,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default(
-        "base_node.mainnet.wallet_identity_file",
-        default_subdir("config/wallet_id.json", Some(&bootstrap.base_path)),
-    )
-    .unwrap();
-    cfg.set_default(
         "base_node.mainnet.console_wallet_identity_file",
         default_subdir("config/console_wallet_id.json", Some(&bootstrap.base_path)),
-    )
-    .unwrap();
-    cfg.set_default(
-        "base_node.mainnet.wallet_tor_identity_file",
-        default_subdir("config/wallet_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
@@ -197,18 +187,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     )
     .unwrap();
     cfg.set_default(
-        "base_node.stibbons.wallet_identity_file",
-        default_subdir("config/wallet_id.json", Some(&bootstrap.base_path)),
-    )
-    .unwrap();
-    cfg.set_default(
         "base_node.stibbons.console_wallet_identity_file",
         default_subdir("config/console_wallet_id.json", Some(&bootstrap.base_path)),
-    )
-    .unwrap();
-    cfg.set_default(
-        "base_node.stibbons.wallet_tor_identity_file",
-        default_subdir("config/wallet_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(

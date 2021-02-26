@@ -44,8 +44,6 @@
 ///
 /// The Tari Base Node is a major application in the Tari Network
 ///
-/// It consists of the Base Node itself, and a Wallet
-///
 /// ## Running the Tari Base Node
 ///
 /// Tor needs to be started first
@@ -93,7 +91,6 @@ mod command_handler;
 mod grpc;
 mod parser;
 mod recovery;
-mod tasks;
 mod utils;
 
 use crate::command_handler::CommandHandler;
@@ -136,14 +133,6 @@ fn main_inner() -> Result<(), ExitCodes> {
     })?;
 
     // Load or create the Node identity
-    let wallet_identity = setup_node_identity(
-        &node_config.wallet_identity_file,
-        &node_config.public_address,
-        bootstrap.create_id ||
-            // If the base node identity exists, we want to be sure that the wallet identity exists
-            node_config.base_node_identity_file.exists(),
-        PeerFeatures::COMMUNICATION_CLIENT,
-    )?;
     let node_identity = setup_node_identity(
         &node_config.base_node_identity_file,
         &node_config.public_address,
@@ -155,9 +144,8 @@ fn main_inner() -> Result<(), ExitCodes> {
     if bootstrap.create_id {
         info!(
             target: LOG_TARGET,
-            "Base node's node ID created at '{}', Wallet's node ID created at '{}'. Done.",
+            "Base node's node ID created at '{}'. Done.",
             node_config.base_node_identity_file.to_string_lossy(),
-            node_config.wallet_identity_file.to_string_lossy(),
         );
         return Ok(());
     }
@@ -181,7 +169,6 @@ fn main_inner() -> Result<(), ExitCodes> {
         .block_on(builder::configure_and_initialize_node(
             &node_config,
             node_identity,
-            wallet_identity,
             shutdown.to_signal(),
             bootstrap.clean_orphans_db,
         ))

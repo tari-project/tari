@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    bootstrap::{BaseNodeBootstrapper, WalletBootstrapper},
-    tasks,
-};
-use futures::future;
+use crate::bootstrap::BaseNodeBootstrapper;
 use log::*;
 use std::sync::Arc;
 use tari_common::{DatabaseType, GlobalConfig};
@@ -45,11 +41,7 @@ use tari_core::{
 };
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
-use tari_wallet::{
-    output_manager_service::handle::OutputManagerHandle,
-    transaction_service::handle::TransactionServiceHandle,
-};
-use tokio::{sync::watch, task};
+use tokio::sync::watch;
 
 const LOG_TARGET: &str = "c::bn::initialization";
 
@@ -60,9 +52,7 @@ pub struct BaseNodeContext {
     blockchain_db: BlockchainDatabase<LMDBDatabase>,
     base_node_comms: CommsNode,
     base_node_dht: Dht,
-    wallet_comms: Option<CommsNode>,
     base_node_handles: ServiceHandles,
-    wallet_handles: Option<ServiceHandles>,
 }
 
 impl BaseNodeContext {
@@ -70,35 +60,14 @@ impl BaseNodeContext {
     /// This call consumes the NodeContainer instance.
     pub async fn run(self) {
         info!(target: LOG_TARGET, "Tari base node has STARTED");
-        if self.wallet_handles.is_none() {
-            info!(
-                target: LOG_TARGET,
-                "Wallet are not starting due to config setting disabling embedded Wallet instance"
-            );
-        }
 
         if let Err(e) = self.state_machine().shutdown_signal().await {
             warn!(target: LOG_TARGET, "Error shutting down Base Node State Machine: {}", e);
         }
         info!(target: LOG_TARGET, "Initiating communications stack shutdown");
 
-        if let Some(wallet_comms) = self.wallet_comms {
-            future::join(
-                self.base_node_comms.wait_until_shutdown(),
-                wallet_comms.wait_until_shutdown(),
-            )
-            .await;
-        } else {
-            self.base_node_comms.wait_until_shutdown().await
-        }
+        self.base_node_comms.wait_until_shutdown().await;
         info!(target: LOG_TARGET, "Communications stack has shutdown");
-    }
-
-    /// Returns a handle to the Output Manager
-    pub fn output_manager(&self) -> Option<OutputManagerHandle> {
-        self.wallet_handles
-            .as_ref()
-            .map(|wh| wh.expect_handle::<OutputManagerHandle>())
     }
 
     /// Returns the handle to the Comms Interface
@@ -114,11 +83,6 @@ impl BaseNodeContext {
     /// Returns the CommsNode.
     pub fn base_node_comms(&self) -> &CommsNode {
         &self.base_node_comms
-    }
-
-    /// Returns the wallet CommsNode.
-    pub fn wallet_comms(&self) -> Option<&CommsNode> {
-        self.wallet_comms.as_ref()
     }
 
     /// Returns the wallet CommsNode.
@@ -141,18 +105,6 @@ impl BaseNodeContext {
         self.blockchain_db.clone()
     }
 
-    /// Returns this node's wallet identity.
-    pub fn wallet_node_identity(&self) -> Option<Arc<NodeIdentity>> {
-        self.wallet_comms.as_ref().map(|wc| wc.node_identity())
-    }
-
-    /// Return the handle to the Transaction Service
-    pub fn wallet_transaction_service(&self) -> Option<TransactionServiceHandle> {
-        self.wallet_handles
-            .as_ref()
-            .map(|wh| wh.expect_handle::<TransactionServiceHandle>())
-    }
-
     /// Return the state machine channel to provide info updates
     pub fn get_state_machine_info_channel(&self) -> watch::Receiver<StatusInfo> {
         self.base_node_handles
@@ -172,7 +124,6 @@ impl BaseNodeContext {
 pub async fn configure_and_initialize_node(
     config: &GlobalConfig,
     node_identity: Arc<NodeIdentity>,
-    wallet_node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
     cleanup_orphans_at_startup: bool,
 ) -> Result<BaseNodeContext, anyhow::Error>
@@ -196,7 +147,6 @@ pub async fn configure_and_initialize_node(
             build_node_context(
                 backend,
                 node_identity,
-                wallet_node_identity,
                 config,
                 interrupt_signal,
                 cleanup_orphans_at_startup,
@@ -207,7 +157,7 @@ pub async fn configure_and_initialize_node(
     Ok(result)
 }
 
-/// Constructs the base node context, this includes setting up the consensus manager, mempool, base node, wallet
+/// Constructs the base node context, this includes setting up the consensus manager, mempool, base node
 /// and state machine
 /// ## Parameters
 /// `backend` - Backend interface
@@ -221,7 +171,6 @@ pub async fn configure_and_initialize_node(
 async fn build_node_context(
     backend: LMDBDatabase,
     base_node_identity: Arc<NodeIdentity>,
-    wallet_node_identity: Arc<NodeIdentity>,
     config: &GlobalConfig,
     interrupt_signal: ShutdownSignal,
     cleanup_orphans_at_startup: bool,
@@ -267,54 +216,10 @@ async fn build_node_context(
     let base_node_comms = base_node_handles.expect_handle::<CommsNode>();
     let base_node_dht = base_node_handles.expect_handle::<Dht>();
 
-    //---------------------------------- Wallet --------------------------------------------//
-    let wallet_handles = if config.enable_wallet {
-        let wallet_handles = WalletBootstrapper {
-            node_identity: wallet_node_identity,
-            config: config.clone(),
-            interrupt_signal: interrupt_signal.clone(),
-            base_node_peer: base_node_comms.node_identity().to_peer(),
-            factories,
-        }
-        .bootstrap()
-        .await?;
-        let wallet_comms = wallet_handles.expect_handle::<CommsNode>();
-
-        task::spawn(tasks::sync_peers(
-            base_node_comms.subscribe_connection_manager_events(),
-            base_node_comms.peer_manager(),
-            wallet_comms.peer_manager(),
-        ));
-
-        // Set the base node for the wallet to the 'local' base node
-        let base_node_public_key = base_node_comms.node_identity().public_key().clone();
-        let mut transaction_service_handle = wallet_handles.expect_handle::<TransactionServiceHandle>();
-        transaction_service_handle
-            .set_base_node_public_key(base_node_public_key.clone())
-            .await
-            .expect("Problem setting local base node public key for transaction service.");
-        let oms_handle = wallet_handles.expect_handle::<OutputManagerHandle>();
-        let state_machine = base_node_handles.expect_handle::<StateMachineHandle>();
-        tasks::spawn_transaction_protocols_and_utxo_validation(
-            state_machine,
-            transaction_service_handle,
-            oms_handle,
-            config.base_node_query_timeout,
-            base_node_public_key.clone(),
-            interrupt_signal.clone(),
-        );
-
-        Some(wallet_handles)
-    } else {
-        None
-    };
-
     Ok(BaseNodeContext {
         blockchain_db,
         base_node_comms,
         base_node_dht,
-        wallet_comms: wallet_handles.as_ref().map(|h| h.expect_handle::<CommsNode>()),
         base_node_handles,
-        wallet_handles,
     })
 }

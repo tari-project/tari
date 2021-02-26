@@ -77,9 +77,7 @@ pub struct GlobalConfig {
     pub base_node_tor_identity_file: PathBuf,
     pub wallet_db_file: PathBuf,
     pub console_wallet_db_file: PathBuf,
-    pub wallet_identity_file: PathBuf,
     pub console_wallet_identity_file: PathBuf,
-    pub wallet_tor_identity_file: PathBuf,
     pub console_wallet_tor_identity_file: PathBuf,
     pub wallet_peer_db_path: PathBuf,
     pub console_wallet_peer_db_path: PathBuf,
@@ -259,22 +257,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
         .into();
 
-    // Wallet identity path
-    let key = config_string("base_node", &net_str, "wallet_identity_file");
-    let wallet_identity_file = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
-        .into();
-
     // Console wallet identity path
     let key = config_string("base_node", &net_str, "console_wallet_identity_file");
     let console_wallet_identity_file = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
-        .into();
-
-    let key = config_string("base_node", &net_str, "wallet_tor_identity_file");
-    let wallet_tor_identity_file = cfg
         .get_str(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
         .into();
@@ -615,11 +600,9 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         enable_wallet,
         num_mining_threads,
         base_node_tor_identity_file,
-        wallet_identity_file,
         console_wallet_identity_file,
         wallet_db_file,
         console_wallet_db_file,
-        wallet_tor_identity_file,
         console_wallet_tor_identity_file,
         wallet_peer_db_path,
         console_wallet_peer_db_path,
