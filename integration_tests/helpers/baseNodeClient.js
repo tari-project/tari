@@ -131,7 +131,6 @@ class BaseNodeClient {
     }
 
     mineBlock(walletClient) {
-
         if (!walletClient) {
             return this.mineBlockWithoutWallet();
         }
@@ -146,11 +145,11 @@ class BaseNodeClient {
             })
             .then(template => {
                 block = template.new_block_template;
-                let height = block.header.height+2;
-                return walletClient.getCoinbase()
+                let height = block.header.height;
+                return walletClient.client.inner.getCoinbase()
                     .sendMessage({
-                        "reward": template.minerData.reward,
-                        "fee": template.minerData.total_fees,
+                        "reward": template.miner_data.reward,
+                        "fee": template.miner_data.total_fees,
                         "height": height,
                     });
             }).then(coinbase => {

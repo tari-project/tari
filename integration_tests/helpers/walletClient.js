@@ -247,6 +247,11 @@ class WalletClient {
             return [false, err];
         }
     }
+
+    async coin_split(args) {
+        return await this.client.coinSplit(args);
+    }
+
 }
 
 module.exports = WalletClient;

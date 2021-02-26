@@ -42,6 +42,8 @@ service Wallet {
     rpc GetCompletedTransactions (GetCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
     // Returns the balance
     rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
+    // Request the wallet perform a coinsplit
+    rpc CoinSplit (CoinSplitRequest) returns (CoinSplitResponse);
 }
 
 message GetVersionRequest { }
@@ -148,4 +150,16 @@ message GetCoinbaseRequest {
 
 message GetCoinbaseResponse {
     Transaction transaction = 1;
+}
+
+message CoinSplitRequest {
+    uint64 amount_per_split = 1;
+    uint64 split_count = 2;
+    uint64 fee_per_gram = 3;
+    string message = 4;
+    uint64 lock_height = 5;
+}
+
+message CoinSplitResponse {
+    uint64 tx_id = 1;
 }
