@@ -406,7 +406,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
 
     // blocks_behind_before_considered_lagging when a node should switch over from listening to lagging
     let key = config_string("base_node", &net_str, "blocks_behind_before_considered_lagging");
-    let blocks_behind_before_considered_lagging = optional(cfg.get_int(&key))?.unwrap_or(6) as u64;
+    let blocks_behind_before_considered_lagging = optional(cfg.get_int(&key))?.unwrap_or(0) as u64;
 
     // set wallet_db_file
     let key = "wallet.wallet_db_file".to_string();
