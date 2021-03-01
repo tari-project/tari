@@ -62,7 +62,7 @@ class BaseNodeProcess {
 
     getGrpcAddress() {
         let address = "127.0.0.1:" + this.grpcPort;
-        console.log("Base Node GRPC Address:",address);
+        // console.log("Base Node GRPC Address:",address);
         return address;
     }
 

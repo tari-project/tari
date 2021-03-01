@@ -1,7 +1,7 @@
 @coinbase_reorg
-Feature: Wallet Monitoring 
+Feature: Wallet Monitoring
 
-@critical
+@long-running
 Scenario: Wallets monitoring coinbase after a reorg
         #
         # Chain 1:
