@@ -84,6 +84,15 @@ commands:
     description: Run cucumber scenarios
     steps:
       - run:
+          name: Pre-build base node
+          command: cargo build --release --bin tari_base_node
+      - run:
+          name: Pre-build wallet
+          command: cargo build --release --bin tari_console_wallet
+      - run:
+          name: Pre-build mmproxy
+          command: cargo build --release --bin tari_merge_mining_proxy
+      - run:
           name: npm install
           command: cd integration_tests && npm install
       - run:

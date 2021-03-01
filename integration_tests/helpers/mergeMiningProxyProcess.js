@@ -7,6 +7,7 @@ const MergeMiningProxyClient = require('./mergeMiningProxyClient');
 const {createEnv} = require("./config");
 
 let outputProcess;
+
 class MergeMiningProxyProcess {
     constructor(name, baseNodeAddress, walletAddress) {
         this.name = name;
@@ -30,8 +31,8 @@ class MergeMiningProxyProcess {
                 fs.mkdirSync(this.baseDir + "/log", {recursive: true});
             }
 
-            let proxyAddress = "127.0.0.1:"+this.port;
-            let envs = createEnv(this.name,false, "nodeid.json",this.walletAddress,this.walletGrpcPort,this.port,this.nodeAddress,this.nodeGrpcPort, this.baseNodePort, proxyAddress,[], []);
+            let proxyAddress = "127.0.0.1:" + this.port;
+            let envs = createEnv(this.name, false, "nodeid.json", this.walletAddress, this.walletGrpcPort, this.port, this.nodeAddress, this.nodeGrpcPort, this.baseNodePort, proxyAddress, [], []);
 
             var ps = spawn(cmd, args, {
                 cwd: this.baseDir,
@@ -73,14 +74,22 @@ class MergeMiningProxyProcess {
 
     async compile() {
         if (!outputProcess) {
-            await this.run("cargo", ["build", "--release", "--bin", "tari_merge_mining_proxy","-Z", "unstable-options", "--out-dir", __dirname + "/../temp/out"]);
+            await this.run("cargo", ["build", "--release", "--bin", "tari_merge_mining_proxy", "-Z", "unstable-options", "--out-dir", __dirname + "/../temp/out"]);
             outputProcess = __dirname + "/../temp/out/tari_merge_mining_proxy";
         }
         return outputProcess;
     }
 
     stop() {
-        this.ps.kill("SIGINT");
+        return new Promise((resolve) => {
+            this.ps.on('close', (code) => {
+                if (code) {
+                    console.log(`child process exited with code ${code}`);
+                }
+                resolve();
+            });
+            this.ps.kill("SIGTERM");
+        });
     }
 
     createClient() {

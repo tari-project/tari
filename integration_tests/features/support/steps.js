@@ -138,8 +138,8 @@ When(/I start (.*)/, {timeout: 20*1000}, async function (name) {
     await this.startNode(name);
 });
 
-When(/I stop (.*)/, function (name) {
-    this.stopNode(name)
+When(/I stop (.*)/, async function (name) {
+    await this.stopNode(name)
 });
 
 Then(/node (.*) is at height (\d+)/, {timeout: 120*1000}, async function (name, height) {
