@@ -116,6 +116,8 @@ class BaseNodeProcess {
             });
 
             ps.on('close', (code) => {
+                let ps = this.ps;
+                this.ps = null;
                 if (code) {
                     console.log(`child process exited with code ${code}`);
                     reject(`child process exited with code ${code}`);
@@ -145,13 +147,16 @@ class BaseNodeProcess {
 
     stop() {
         return new Promise((resolve) => {
+            if (!this.ps) {
+                return resolve();
+            }
             this.ps.on('close', (code) => {
                 if (code) {
                     console.log(`child process exited with code ${code}`);
                 }
                 resolve();
             });
-            this.ps.kill("SIGTERM");
+            this.ps.kill("SIGINT");
         });
     }
 
