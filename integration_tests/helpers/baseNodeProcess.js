@@ -144,7 +144,15 @@ class BaseNodeProcess {
     }
 
     stop() {
-        this.ps.kill("SIGINT");
+        return new Promise((resolve) => {
+            this.ps.on('close', (code) => {
+                if (code) {
+                    console.log(`child process exited with code ${code}`);
+                }
+                resolve();
+            });
+            this.ps.kill("SIGTERM");
+        });
     }
 
     createGrpcClient() {

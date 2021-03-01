@@ -80,19 +80,27 @@ class WalletProcess {
 
     async startNew() {
         await this.init();
-        return await this.run(await this.compile(),  ["--base-path", ".", "--init", "--create_id", "--password", "kensentme", "--daemon"], true);
+        return await this.run(await this.compile(), ["--base-path", ".", "--init", "--create_id", "--password", "kensentme", "--daemon"], true);
     }
 
     async compile() {
         if (!outputProcess) {
-            await this.run("cargo", ["build", "--release", "--bin", "tari_console_wallet","-Z", "unstable-options", "--out-dir", __dirname + "/../temp/out"]);
+            await this.run("cargo", ["build", "--release", "--bin", "tari_console_wallet", "-Z", "unstable-options", "--out-dir", __dirname + "/../temp/out"]);
             outputProcess = __dirname + "/../temp/out/tari_console_wallet";
         }
         return outputProcess;
     }
 
     stop() {
-        this.ps.kill("SIGINT");
+        return new Promise((resolve) => {
+            this.ps.on('close', (code) => {
+                if (code) {
+                    console.log(`child process exited with code ${code}`);
+                }
+                resolve();
+            });
+            this.ps.kill("SIGTERM");
+        });
     }
 
 }

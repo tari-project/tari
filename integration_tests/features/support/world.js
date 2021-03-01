@@ -1,4 +1,4 @@
-const { setWorldConstructor, After,BeforeAll } = require("cucumber");
+const {setWorldConstructor, After, BeforeAll} = require("cucumber");
 
 const BaseNodeProcess = require('../../helpers/baseNodeProcess');
 const MergeMiningProxyProcess = require('../../helpers/mergeMiningProxyProcess');
@@ -16,7 +16,7 @@ class CustomWorld {
         this.outputs = {};
         this.testrun = `run${Date.now()}`;
         this.lastResult = null;
-        this.blocks =  {};
+        this.blocks = {};
         this.transactions = {};
         this.peers = {};
         this.transactionsMap = new Map();
@@ -24,7 +24,7 @@ class CustomWorld {
     }
 
     async createSeedNode(name) {
-        let proc =  new BaseNodeProcess(`seed-${name}`);
+        let proc = new BaseNodeProcess(`seed-${name}`);
         await proc.startNew();
         this.seeds[name] = proc;
         this.clients[name] = proc.createGrpcClient();
@@ -70,7 +70,7 @@ class CustomWorld {
     }
 
     async submitBlock(blockName, nodeName) {
-        let result  = await this.clients[nodeName].submitBlock(this.blocks[blockName].block).catch(err =>  {
+        let result = await this.clients[nodeName].submitBlock(this.blocks[blockName].block).catch(err => {
             console.log("submit block erro", err);
         });
         console.log(result);
@@ -100,9 +100,9 @@ class CustomWorld {
         await Promise.all(promises);
     }
 
-    stopNode(name) {
+    async stopNode(name) {
         const node = this.seeds[name] || this.nodes[name];
-        node.stop();
+        await node.stop();
     }
 
     async startNode(name) {
@@ -120,41 +120,36 @@ class CustomWorld {
 
 setWorldConstructor(CustomWorld);
 
-BeforeAll({timeout: 1200000}, function(callback) {
+BeforeAll({timeout: 1200000}, async function () {
     // Ensure the project can compile
     let proc = new BaseNodeProcess(`compile-tester`);
     console.log("Precompiling node. This can take a while whenever the code changes...");
-    proc.startNew().then(function() {
-        proc.stop();
-        let proc2  =new MergeMiningProxyProcess(`compile-tester2`, "127.0.0.1:9999", "127.0.0.1:9998");
-        console.log("Precompiling mmproxy. This can take a while whenever the code changes...");
-        proc2.startNew().then(function() {
-            proc2.stop();
-            let proc3  =new WalletProcess(`compile-tester3`);
-            console.log("Precompiling wallet. This can take a while whenever the code changes...");
-            proc3.startNew().then(function() {
-                proc3.stop();
-                console.log("Finished check...");
-                callback();
-            });
-        });
-    });
-
+    await proc.startNew()
+    await proc.stop();
+    let proc2 = new MergeMiningProxyProcess(`compile-tester2`, "127.0.0.1:9999", "127.0.0.1:9998");
+    console.log("Precompiling mmproxy. This can take a while whenever the code changes...");
+    await proc2.startNew()
+    await proc2.stop();
+    let proc3 = new WalletProcess(`compile-tester3`);
+    console.log("Precompiling wallet. This can take a while whenever the code changes...");
+    await proc3.startNew()
+    await proc3.stop();
+    console.log("Finished check...");
 
 });
 
-After(function () {
+After(async function () {
     console.log('Stopping nodes');
     for (const property in this.seeds) {
-        this.stopNode(property);
+        await this.stopNode(property);
     }
     for (const property in this.nodes) {
-        this.stopNode(property);
+        await this.stopNode(property);
     }
     for (const property in this.proxies) {
-        this.proxies[property].stop();
+        await this.proxies[property].stop();
     }
     for (const property in this.wallets) {
-        this.wallets[property].stop();
+        await this.wallets[property].stop();
     }
 });
