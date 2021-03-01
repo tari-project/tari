@@ -7,6 +7,7 @@ Feature: Block Sync
     Given I have <NumSyncers> base nodes connected to all seed nodes
     # All nodes should sync to tip
     Then all nodes are at height <NumBlocks>
+    @critical
     Examples:
       | NumSeeds | NumBlocks | NumSyncers |
       | 1        | 1         | 1          |

@@ -7,11 +7,19 @@ Feature: Block Propagation
     And I have a base node MINER connected to all seed nodes
     When I mine <NumBlocks> blocks on MINER
     Then all nodes are at height <NumBlocks>
+    @critical
     Examples:
       | NumSeeds | NumNonSeeds | NumBlocks |
       | 1        | 1           | 5         |
+
+    Examples:
+      | NumSeeds | NumNonSeeds | NumBlocks |
       | 1        | 10          | 5         |
       | 4        | 10          | 5         |
+
+    @long-running
+    Examples:
+      | NumSeeds | NumNonSeeds | NumBlocks |
       | 8        | 40          | 10        |
 
   @critical
@@ -50,6 +58,7 @@ Feature: Block Propagation
     Then I receive an error containing 'Orphan block'
     And all nodes are at height 1
 
+  @non-sync-propagation @long-running
   Scenario: Nodes should never switch to block sync but keep insync via propagation
     Given I have a base node MINER connected to all seed nodes
     And I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 10000
@@ -62,6 +71,8 @@ Feature: Block Propagation
     When I mine 15 blocks on MINER
     Then all nodes are at height 20
 
+
+    @long-running
     Scenario: Node should lag when for while before syncing
     Given I have a base node MINER connected to all seed nodes
     And I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 6

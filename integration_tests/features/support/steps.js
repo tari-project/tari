@@ -826,8 +826,7 @@ When(/I request the difficulties of a node (.*)/, async function (node) {
           this.lastResult = difficulties;
 });
 
-Then('Difficulties are available', function () {
-           console.log(this.lastResult);
+Then('difficulties are available', function () {
            assert(this.lastResult.length,3);
            // check genesis block, chain in reverse height order
            assert(this.lastResult[2]["difficulty"],'1');
