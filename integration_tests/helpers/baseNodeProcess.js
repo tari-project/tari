@@ -98,7 +98,7 @@ class BaseNodeProcess {
 
             var ps = spawn(cmd, args, {
                 cwd: this.baseDir,
-                shell: true,
+                // shell: true,
                 env: {...process.env, ...envs}
             });
 
