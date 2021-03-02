@@ -387,7 +387,6 @@ When(/I wait for wallet (.*) to have at least (.*) tari/, {timeout: 250*1000}, a
 });
 
 async function send_tari(sourceWallet, destWallet, tariAmount, feePerGram) {
-    // TODO: Remove the while loop when wait on step above and get-balance GRPC interface is implemented
     let sourceWalletClient = sourceWallet.getClient();
     let destInfo = await destWallet.getClient().identify();
     console.log(sourceWallet.name + " sending " + tariAmount + "uT to " + destWallet.name + " `" + destInfo["public_key"] + "`");
@@ -434,8 +433,8 @@ When(/I multi-send (.*) transactions of (.*) uT from wallet (.*) to wallet (.*) 
         expect(this.lastResult.results[0]["is_success"]).to.equal(true);
         this.addTransaction(sourceInfo["public_key"], this.lastResult.results[0]["transaction_id"]);
         this.addTransaction(destInfo["public_key"], this.lastResult.results[0]["transaction_id"]);
-        console.log("  Transaction '" + this.lastResult.results[0]["transaction_id"] + "' is_success(" +
-            this.lastResult.results[0]["is_success"] + ")");
+        //console.log("  Transaction '" + this.lastResult.results[0]["transaction_id"] + "' is_success(" +
+        //    this.lastResult.results[0]["is_success"] + ")");
     }
 });
 
@@ -452,12 +451,66 @@ When(/I multi-send (.*) uT from wallet (.*) to all wallets at fee (.*)/, {timeou
         expect(this.lastResult.results[0]["is_success"]).to.equal(true);
         this.addTransaction(sourceInfo["public_key"], this.lastResult.results[0]["transaction_id"]);
         this.addTransaction(destInfo["public_key"], this.lastResult.results[0]["transaction_id"]);
-        console.log("  Transaction '" + this.lastResult.results[0]["transaction_id"] + "' is_success(" +
-            this.lastResult.results[0]["is_success"] + ")");
+        //console.log("  Transaction '" + this.lastResult.results[0]["transaction_id"] + "' is_success(" +
+        //    this.lastResult.results[0]["is_success"] + ")");
     }
 });
 
-When(/I transfer (.*) tari from (.*) to ([A-Za-z0-9,]+) at fee (.*)/, async function (amount, source, dests, feePerGram) {
+When(/I transfer (.*) uT from (.*) to (.*) and (.*) at fee (.*)/, {timeout: 25*5*1000}, async function (tariAmount, source, dest1, dest2, feePerGram) {
+    let sourceClient = this.getWallet(source).getClient();
+    let destClient1 = this.getWallet(dest1).getClient();
+    let destClient2 = this.getWallet(dest2).getClient();
+
+    let sourceInfo = await sourceClient.identify();
+    let dest1Info = await destClient1.identify();
+    let dest2Info = await destClient2.identify();
+    console.log("Starting transfer of", tariAmount, "to", dest1, "and to", dest2);
+    let success = false;
+    let retries = 1;
+    let retries_limit = 25;
+    while (!success && retries <= retries_limit) {
+        lastResult = await sourceClient.transfer({
+            "recipients":[
+                {"address": dest1Info["public_key"],
+                "amount": tariAmount,
+                "fee_per_gram": feePerGram,
+                "message": "msg"
+                },
+                {
+                "address": dest2Info["public_key"],
+                "amount": tariAmount,
+                "fee_per_gram": feePerGram,
+                "message": "msg"}
+            ]
+        });
+        success = lastResult.results[0]["is_success"] && lastResult.results[1]["is_success"]
+        if (!success) {
+            let wait_seconds = 5;
+            console.log("  " + lastResult.results[0]["failure_message"] + ", trying again after " + wait_seconds +
+                "s (" + retries + " of " + retries_limit + ")");
+            await sleep(wait_seconds * 1000);
+            retries++;
+        }
+    }
+    if (success) {
+        this.addTransaction(sourceInfo["public_key"], lastResult.results[0]["transaction_id"]);
+        this.addTransaction(sourceInfo["public_key"], lastResult.results[1]["transaction_id"]);
+        this.addTransaction(dest1Info["public_key"], lastResult.results[0]["transaction_id"]);
+        this.addTransaction(dest2Info["public_key"], lastResult.results[1]["transaction_id"]);
+    }
+    expect(success).to.equal(true);
+});
+
+When(/I transfer (.*) uT to self from wallet (.*) at fee (.*)/, {timeout: 25*5*1000}, async function (tariAmount, source, feePerGram) {
+    let sourceInfo = await this.getWallet(source).getClient().identify();
+    this.lastResult = await send_tari(this.getWallet(source), this.getWallet(source), tariAmount, feePerGram);
+    expect(this.lastResult.results[0]["is_success"]).to.equal(true);
+    this.addTransaction(sourceInfo["public_key"], this.lastResult.results[0]["transaction_id"]);
+    console.log("  Transaction '" + this.lastResult.results[0]["transaction_id"] + "' is_success(" +
+        this.lastResult.results[0]["is_success"] + ")");
+});
+
+When(/I transfer (.*) uT from (.*) to ([A-Za-z0-9,]+) at fee (.*)/, async function (amount, source, dests, feePerGram) {
     let wallet = this.getWallet(source);
     let client = wallet.getClient();
     let destWallets = dests.split(',').map(dest => this.getWallet(dest).getClient());

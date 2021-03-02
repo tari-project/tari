@@ -27,31 +27,31 @@ class WalletClient {
       return await this.client.getBalance();
     }
 
-    async getAllCompletedTransactions() {
-        let data = await this.client.getAllCompletedTransactions();
+    async getCompletedTransactions() {
+        let data = await this.client.getCompletedTransactions();
         let transactions = [];
         let myDate = new Date();
-        for (var i=0; i<data.transactions.length; i++) {
+        for (var i=0; i<data.length; i++) {
             transactions.push({
-                "tx_id": data.transactions[i]["tx_id"],
-                "source_pk": data.transactions[i]["source_pk"].toString('hex'),
-                "dest_pk": data.transactions[i]["dest_pk"].toString('hex'),
-                "status": data.transactions[i]["status"],
-                "direction": data.transactions[i]["direction"],
-                "amount": data.transactions[i]["amount"],
-                "fee": data.transactions[i]["fee"],
-                "is_cancelled": data.transactions[i]["is_cancelled"],
-                "excess_sig": data.transactions[i]["excess_sig"].toString('hex'),
-                "timestamp": new Date(Number(data.transactions[i]["timestamp"]["seconds"]) * 1000),
-                "message": data.transactions[i]["message"],
-                "valid": data.transactions[i]["valid"]
+                "tx_id": data[i].transaction["tx_id"],
+                "source_pk": data[i].transaction["source_pk"].toString('hex'),
+                "dest_pk": data[i].transaction["dest_pk"].toString('hex'),
+                "status": data[i].transaction["status"],
+                "direction": data[i].transaction["direction"],
+                "amount": data[i].transaction["amount"],
+                "fee": data[i].transaction["fee"],
+                "is_cancelled": data[i].transaction["is_cancelled"],
+                "excess_sig": data[i].transaction["excess_sig"].toString('hex'),
+                "timestamp": new Date(Number(data[i].transaction["timestamp"]["seconds"]) * 1000),
+                "message": data[i].transaction["message"],
+                "valid": data[i].transaction["valid"]
             });
         }
         return transactions;
     }
 
     async getAllCoinbaseTransactions() {
-        let data = await this.getAllCompletedTransactions();
+        let data = await this.getCompletedTransactions();
         let transactions = [];
         for (var i=0; i<data.length; i++) {
             if (
@@ -88,7 +88,7 @@ class WalletClient {
     }
 
     async getAllNormalTransactions() {
-        let data = this.getAllCompletedTransactions();
+        let data = this.getCompletedTransactions();
         let transactions = [];
         for (var i=0; i<data.length; i++) {
             if (!(data[i]["message"].includes('Coinbase Transaction for Block ') && data[i]["fee"] == 0)) {
