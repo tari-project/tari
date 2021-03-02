@@ -242,7 +242,7 @@ struct InnerService {
 
 impl InnerService {
     #[instrument]
-    async fn handle_get_height(&mut self, monerod_resp: Response<json::Value>) -> Result<Response<Body>, MmProxyError> {
+    async fn handle_get_height(&self, monerod_resp: Response<json::Value>) -> Result<Response<Body>, MmProxyError> {
         let (parts, mut json) = monerod_resp.into_parts();
         if json["height"].is_null() {
             error!(target: LOG_TARGET, r#"Monerod response was invalid: "height" is null"#);
@@ -290,7 +290,7 @@ impl InnerService {
     }
 
     async fn handle_submit_block(
-        &mut self,
+        &self,
         request: Request<json::Value>,
         monerod_resp: Response<json::Value>,
     ) -> Result<Response<Body>, MmProxyError>
@@ -398,7 +398,7 @@ impl InnerService {
     }
 
     async fn handle_get_block_template(
-        &mut self,
+        &self,
         monerod_resp: Response<json::Value>,
     ) -> Result<Response<Body>, MmProxyError>
     {
@@ -652,44 +652,14 @@ impl InnerService {
         let resp = client.get_header_by_hash(grpc::GetHeaderByHashRequest { hash }).await;
         match resp {
             Ok(resp) => {
-                let grpc::BlockHeaderResponse {
-                    header,
-                    reward,
-                    confirmations,
-                    difficulty,
-                    num_transactions,
-                } = resp.into_inner();
-                let header = header.ok_or_else(|| {
-                    MmProxyError::UnexpectedTariBaseNodeResponse(
-                        "Base node GRPC returned an empty header field when calling get_header_by_hash".into(),
-                    )
-                })?;
+                let json_block_header = try_into_json_block_header(resp.into_inner())?;
 
                 debug!(
                     target: LOG_TARGET,
                     "[get_header_by_hash] Found tari block header with hash `{}`", hash_hex
                 );
-                let json_resp = json_rpc::success_response(
-                    request["id"].as_i64(),
-                    json!({
-                        "block_header": {
-                           "block_size": 0, // TODO
-                           "depth": confirmations,
-                           "difficulty": difficulty,
-                           "hash": header.hash.to_hex(),
-                           "height": header.height,
-                           "major_version": header.version,
-                           "minor_version": 0,
-                           "nonce": header.nonce,
-                           "num_txes": num_transactions,
-                           // Cannot be an orphan
-                           "orphan_status": false,
-                           "prev_hash": header.prev_hash.to_hex(),
-                           "reward": reward,
-                           "timestamp": header.timestamp.map(|ts| ts.seconds.into()).unwrap_or_else(|| json!(null)),
-                       }
-                    }),
-                );
+                let json_resp =
+                    json_rpc::success_response(request["id"].as_i64(), json!({ "block_header": json_block_header }));
 
                 let json_resp = append_aux_chain_data(json_resp, json!({ "id": TARI_CHAIN_ID }));
 
@@ -707,6 +677,42 @@ impl InnerService {
                 details: "failed to get header by hash".to_string(),
             }),
         }
+    }
+
+    async fn handle_get_last_block_header(
+        &self,
+        monero_resp: Response<json::Value>,
+    ) -> Result<Response<Body>, MmProxyError>
+    {
+        let (parts, monero_resp) = monero_resp.into_parts();
+        if !monero_resp["error"].is_null() {
+            return Ok(proxy::into_response(parts, &monero_resp));
+        }
+
+        let mut client = self.connect_grpc_client().await?;
+        let tip_info = client.get_tip_info(grpc::Empty {}).await?;
+        let tip_info = tip_info.into_inner();
+        let chain_metadata = tip_info.metadata.ok_or_else(|| {
+            MmProxyError::UnexpectedTariBaseNodeResponse("get_tip_info returned no chain metadata".into())
+        })?;
+
+        let tip_header = client
+            .get_header_by_hash(grpc::GetHeaderByHashRequest {
+                hash: chain_metadata.best_block,
+            })
+            .await?;
+
+        let tip_header = tip_header.into_inner();
+        let json_block_header = try_into_json_block_header(tip_header)?;
+        let resp = append_aux_chain_data(
+            monero_resp,
+            json!({
+                "id": TARI_CHAIN_ID,
+                "block_header": json_block_header,
+            }),
+        );
+
+        Ok(proxy::into_response(parts, &resp))
     }
 
     async fn connect_grpc_client(
@@ -832,7 +838,7 @@ impl InnerService {
     }
 
     async fn get_proxy_response(
-        &mut self,
+        &self,
         request: Request<Bytes>,
         monerod_resp: Response<json::Value>,
     ) -> Result<Response<Body>, MmProxyError>
@@ -857,6 +863,10 @@ impl InnerService {
                     "getblockheaderbyhash" | "get_block_header_by_hash" => {
                         self.handle_get_block_header_by_hash(request, monerod_resp).await
                     },
+                    "getlastblockheader" | "get_last_block_header" => {
+                        self.handle_get_last_block_header(monerod_resp).await
+                    },
+
                     _ => Ok(proxy::into_body_from_response(monerod_resp)),
                 }
             },
@@ -865,7 +875,7 @@ impl InnerService {
         }
     }
 
-    async fn handle(mut self, mut request: Request<Body>) -> Result<Response<Body>, MmProxyError> {
+    async fn handle(self, mut request: Request<Body>) -> Result<Response<Body>, MmProxyError> {
         let bytes = proxy::read_body_until_end(request.body_mut()).await?;
         let request = request.map(|_| bytes.freeze());
 
@@ -957,4 +967,36 @@ pub fn append_aux_chain_data(mut response: json::Value, chain_data: json::Value)
 
     chains.push(chain_data);
     response
+}
+
+fn try_into_json_block_header(header: grpc::BlockHeaderResponse) -> Result<json::Value, MmProxyError> {
+    let grpc::BlockHeaderResponse {
+        header,
+        reward,
+        confirmations,
+        difficulty,
+        num_transactions,
+    } = header;
+    let header = header.ok_or_else(|| {
+        MmProxyError::UnexpectedTariBaseNodeResponse(
+            "Base node GRPC returned an empty header field when calling get_header_by_hash".into(),
+        )
+    })?;
+
+    Ok(json!({
+        "block_size": 0, // TODO
+        "depth": confirmations,
+        "difficulty": difficulty,
+        "hash": header.hash.to_hex(),
+        "height": header.height,
+        "major_version": header.version,
+        "minor_version": 0,
+        "nonce": header.nonce,
+        "num_txes": num_transactions,
+        // Cannot be an orphan
+        "orphan_status": false,
+        "prev_hash": header.prev_hash.to_hex(),
+        "reward": reward,
+        "timestamp": header.timestamp.map(|ts| ts.seconds.into()).unwrap_or_else(|| json!(null)),
+    }))
 }
