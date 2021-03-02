@@ -340,7 +340,10 @@ impl DhtDiscoveryService {
         };
         debug!(
             target: LOG_TARGET,
-            "Sending Discovery message for peer public key '{}' with destination {}", dest_public_key, destination
+            "[ThisNode={}] Sending Discovery message for peer public key '{}' with destination {}",
+            self.node_identity.node_id(),
+            dest_public_key,
+            destination
         );
 
         let send_states = self
