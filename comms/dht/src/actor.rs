@@ -345,7 +345,11 @@ impl DhtActor {
     {
         let message = JoinMessage::from(&node_identity);
 
-        debug!(target: LOG_TARGET, "Sending Join message to closest peers");
+        debug!(
+            target: LOG_TARGET,
+            "[ThisNode={}] Sending Join message to closest peers",
+            node_identity.node_id()
+        );
 
         outbound_requester
             .send_message_no_header(
@@ -464,7 +468,8 @@ impl DhtActor {
                 }
                 debug!(
                     target: LOG_TARGET,
-                    "{} candidate(s) selected for broadcast",
+                    "[ThisNode={}] {} candidate(s) selected for broadcast",
+                    node_identity.node_id(),
                     candidates.len()
                 );
 
@@ -622,20 +627,18 @@ impl DhtActor {
 
         let peers = peer_manager.perform_query(query).await?;
         let total_excluded = banned_count + connect_ineligable_count + excluded_count + filtered_out_node_count;
-        if total_excluded > 0 {
-            debug!(
-                target: LOG_TARGET,
-                "👨‍👧‍👦 Closest Peer Selection: {num_peers} peer(s) selected, {total} peer(s) not selected, {banned} \
-                 banned, {filtered_out} not communication node, {not_connectable} are not connectable, {excluded} \
-                 explicitly excluded",
-                num_peers = peers.len(),
-                total = total_excluded,
-                banned = banned_count,
-                filtered_out = filtered_out_node_count,
-                not_connectable = connect_ineligable_count,
-                excluded = excluded_count
-            );
-        }
+        debug!(
+            target: LOG_TARGET,
+            "👨‍👧‍👦 Closest Peer Selection: {num_peers} peer(s) selected, {total} peer(s) not selected, {banned} \
+             banned, {filtered_out} not communication node, {not_connectable} are not connectable, {excluded} \
+             explicitly excluded",
+            num_peers = peers.len(),
+            total = total_excluded,
+            banned = banned_count,
+            filtered_out = filtered_out_node_count,
+            not_connectable = connect_ineligable_count,
+            excluded = excluded_count
+        );
 
         Ok(peers.into_iter().map(|p| p.node_id).collect())
     }

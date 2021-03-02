@@ -416,12 +416,18 @@ impl ConnectivityManagerActor {
         trace!(target: LOG_TARGET, "Selection query: {:?}", selection);
         debug!(
             target: LOG_TARGET,
-            "Selecting from {} connected node peers",
+            "[ThisNode={}] Selecting from {} connected node peers",
+            self.node_identity.node_id(),
             self.pool.count_connected_nodes()
         );
 
         let conns = selection.select(&self.pool);
-        debug!(target: LOG_TARGET, "Selected {} connections(s)", conns.len());
+        debug!(
+            target: LOG_TARGET,
+            "[ThisNode={}] Selected {} connections(s)",
+            self.node_identity.node_id(),
+            conns.len()
+        );
 
         Ok(conns.into_iter().cloned().collect())
     }
