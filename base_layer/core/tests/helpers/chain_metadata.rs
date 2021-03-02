@@ -32,10 +32,12 @@ use tokio::sync::broadcast;
 ///
 /// This struct simulates the chain metadata input stream the base node uses to keep tabs on the blockchain progress
 /// in the rest of the network.
+#[allow(dead_code)]
 pub struct MockChainMetadata {
     publisher: broadcast::Sender<Arc<ChainMetadataEvent>>,
 }
 
+#[allow(dead_code)]
 impl MockChainMetadata {
     pub fn new() -> Self {
         let (publisher, _) = broadcast::channel(10);
@@ -65,6 +67,7 @@ impl MockChainMetadata {
     }
 }
 
+#[allow(dead_code)]
 pub fn random_peer_metadata(height: u64, difficulty: u128) -> PeerChainMetadata {
     let key: Vec<u8> = (0..13).map(|_| rand::random::<u8>()).collect();
     let id = NodeId::from_key(&key).unwrap();

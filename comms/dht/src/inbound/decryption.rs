@@ -454,9 +454,9 @@ mod test {
         });
         let node_identity = make_node_identity();
         let (connectivity, _) = create_connectivity_mock();
-        let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
+        let mut service = DecryptionService::new(Default::default(), node_identity, connectivity, service);
 
-        let some_secret = "Super secret message".as_bytes().to_vec();
+        let some_secret = b"Super secret message".to_vec();
         let some_other_node_identity = make_node_identity();
         let inbound_msg =
             make_dht_inbound_message(&some_other_node_identity, some_secret, DhtMessageFlags::ENCRYPTED, true);
@@ -480,7 +480,7 @@ mod test {
         let node_identity = make_node_identity();
         let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
 
-        let nonsense = "Cannot Decrypt this".as_bytes().to_vec();
+        let nonsense = b"Cannot Decrypt this".to_vec();
         let mut inbound_msg =
             make_dht_inbound_message(&node_identity, nonsense.clone(), DhtMessageFlags::ENCRYPTED, true);
         inbound_msg.dht_header.destination = node_identity.public_key().clone().into();

@@ -56,8 +56,7 @@ mod test {
     fn ok_or_skip_result() {
         block_on(async {
             let res = Result::<_, ()>::Ok(());
-            assert_eq!(super::ok_or_skip_result(res).await.unwrap(), ());
-
+            assert!(super::ok_or_skip_result(res).await.is_some());
             let res = Result::<(), _>::Err(());
             assert!(super::ok_or_skip_result(res).await.is_none());
         });

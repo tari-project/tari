@@ -615,9 +615,9 @@ mod test {
             false,
             MessageTag::new(),
         );
-        dht_envelope.header.as_mut().and_then(|header| {
+        dht_envelope.header.as_mut().map(|header| {
             header.message_type = DhtMessageType::SafStoredMessages as i32;
-            Some(header)
+            header
         });
         let inbound_message = make_comms_inbound_message(&node_identity, dht_envelope.to_encoded_bytes().into());
 

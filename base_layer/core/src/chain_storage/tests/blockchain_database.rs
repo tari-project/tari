@@ -69,8 +69,8 @@ mod fetch_blocks {
         add_many_chained_blocks(4, &db);
         let blocks = db.fetch_blocks(..).unwrap();
         assert_eq!(blocks.len(), 5);
-        for i in 0..=4 {
-            assert_eq!(blocks[i].block().header.height, i as u64);
+        for (i, item) in blocks.iter().enumerate().take(4 + 1) {
+            assert_eq!(item.block().header.height, i as u64);
         }
     }
 
@@ -152,8 +152,8 @@ mod fetch_headers {
         add_many_chained_blocks(4, &db);
         let headers = db.fetch_headers(..).unwrap();
         assert_eq!(headers.len(), 5);
-        for i in 0..=4 {
-            assert_eq!(headers[i].height, i as u64);
+        for (i, item) in headers.iter().enumerate().take(4 + 1) {
+            assert_eq!(item.height, i as u64);
         }
     }
 

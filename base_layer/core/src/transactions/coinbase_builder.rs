@@ -238,10 +238,12 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::erasing_op)]
     fn missing_spend_key() {
         let p = TestParams::new();
         let (builder, rules, _) = get_builder();
-        let builder = builder.with_block_height(42).with_fees(0 * uT).with_nonce(p.nonce);
+        let fees = 0 * uT;
+        let builder = builder.with_block_height(42).with_fees(fees).with_nonce(p.nonce);
         assert_eq!(
             builder
                 .build(rules.consensus_constants(42), rules.emission_schedule())
@@ -291,7 +293,7 @@ mod test {
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
             rewind_blinding_key: rewind_blinding_key.clone(),
-            proof_message: proof_message.clone(),
+            proof_message: proof_message.to_owned(),
         };
 
         let p = TestParams::new();
@@ -301,7 +303,7 @@ mod test {
             .with_fees(145 * uT)
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone())
-            .with_rewind_data(rewind_data.clone());
+            .with_rewind_data(rewind_data);
         let (tx, _unblinded_output) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .unwrap();
@@ -324,7 +326,7 @@ mod test {
             .with_block_height(42)
             .with_fees(145 * uT)
             .with_nonce(p.nonce.clone())
-            .with_spend_key(p.spend_key.clone());
+            .with_spend_key(p.spend_key);
         let (mut tx, _) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .unwrap();
@@ -341,6 +343,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::identity_op)]
     fn invalid_coinbase_value() {
         let p = TestParams::new();
         let (builder, rules, factories) = get_builder();
@@ -393,7 +396,7 @@ mod test {
             .with_block_height(42)
             .with_fees(missing_fee)
             .with_nonce(p.nonce.clone())
-            .with_spend_key(p.spend_key.clone());
+            .with_spend_key(p.spend_key);
         let (tx3, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .unwrap();
@@ -409,6 +412,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::identity_op)]
     fn invalid_coinbase_amount() {
         let p = TestParams::new();
         let (builder, rules, factories) = get_builder();
@@ -428,7 +432,7 @@ mod test {
             .with_block_height(4200000)
             .with_fees(1 * uT)
             .with_nonce(p.nonce.clone())
-            .with_spend_key(p.spend_key.clone());
+            .with_spend_key(p.spend_key);
         let (tx2, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .unwrap();

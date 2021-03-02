@@ -46,13 +46,13 @@ mod async_assert_eventually;
 macro_rules! counter_context {
     ($n:ident, $c:ident) => {
         use futures_test::task::new_count_waker;
-        let (mut waker, $c) = new_count_waker();
-        let mut $n = futures::task::Context::from_waker(&mut waker);
+        let (waker, $c) = new_count_waker();
+        let mut $n = futures::task::Context::from_waker(&waker);
     };
     ($n:ident) => {
         use futures_test::task::new_count_waker;
-        let (mut waker, _) = new_count_waker();
-        let mut $n = futures::task::Context::from_waker(&mut waker);
+        let (waker, _) = new_count_waker();
+        let mut $n = futures::task::Context::from_waker(&waker);
     };
 }
 
@@ -71,8 +71,8 @@ macro_rules! counter_context {
 macro_rules! panic_context {
     ($n:ident) => {
         use futures_test::task::panic_waker;
-        let mut waker = panic_waker();
-        let mut $n = futures::task::Context::from_waker(&mut waker);
+        let waker = panic_waker();
+        let mut $n = futures::task::Context::from_waker(&waker);
     };
 }
 

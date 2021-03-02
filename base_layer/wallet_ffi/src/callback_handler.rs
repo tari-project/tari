@@ -666,10 +666,7 @@ mod test {
     }
 
     lazy_static! {
-        static ref CALLBACK_STATE: Mutex<CallbackState> = {
-            let c = Mutex::new(CallbackState::new());
-            c
-        };
+        static ref CALLBACK_STATE: Mutex<CallbackState> = Mutex::new(CallbackState::new());
     }
 
     unsafe extern "C" fn received_tx_callback(tx: *mut InboundTransaction) {

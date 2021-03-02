@@ -258,7 +258,7 @@ mod test {
         assert!(data.output.verify_range_proof(&factories.range_proof).unwrap());
         let r_sum = &msg.public_nonce + &p.public_nonce;
         let e = build_challenge(&r_sum, &m);
-        let s = Signature::sign(p.spend_key.clone(), p.nonce.clone(), &e).unwrap();
+        let s = Signature::sign(p.spend_key.clone(), p.nonce, &e).unwrap();
         assert_eq!(data.partial_signature, s);
     }
 
@@ -282,14 +282,14 @@ mod test {
             amount,
             public_excess: PublicKey::from_secret_key(&p.spend_key), // any random key will do
             public_nonce: PublicKey::from_secret_key(&p.change_key), // any random key will do
-            metadata: m.clone(),
+            metadata: m,
             message: "".to_string(),
         };
-        let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
+        let sender_info = TransactionSenderMessage::Single(Box::new(msg));
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
             rewind_blinding_key: rewind_blinding_key.clone(),
-            proof_message: message.clone(),
+            proof_message: message.to_owned(),
         };
         let receiver = ReceiverTransactionProtocol::new_with_rewindable_output(
             sender_info,

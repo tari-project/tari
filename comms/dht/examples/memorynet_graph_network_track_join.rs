@@ -78,6 +78,7 @@ use std::{path::Path, time::Duration};
 use tari_comms::peer_manager::PeerFeatures;
 
 #[tokio_macros::main]
+#[allow(clippy::same_item_push)]
 async fn main() {
     let _ = env_logger::from_env(Env::default())
         .format_timestamp_millis()

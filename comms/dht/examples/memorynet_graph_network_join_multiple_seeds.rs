@@ -70,6 +70,7 @@ use std::{path::Path, time::Duration};
 use tari_comms::peer_manager::PeerFeatures;
 
 #[tokio_macros::main]
+#[allow(clippy::same_item_push)]
 async fn main() {
     env_logger::init();
     let matches = App::new("MemoryNet")

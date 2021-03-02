@@ -93,8 +93,8 @@ fn check_mmr_hashes() {
     let mmr = create_mmr();
     let hashes = hash_values();
     assert_eq!(mmr.len(), Ok(42));
-    for i in 0..42 {
+    for (i, item) in hashes.iter().enumerate().take(42) {
         let hash = mmr.get_node_hash(i).unwrap().unwrap();
-        assert_eq!(hash.to_hex(), hashes[i]);
+        assert_eq!(&hash.to_hex(), item);
     }
 }

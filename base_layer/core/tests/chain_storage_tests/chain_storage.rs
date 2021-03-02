@@ -104,7 +104,7 @@ fn insert_and_fetch_header() {
     let chain2 = store.create_chain_header_if_valid(header2.clone(), &chain1).unwrap();
 
     store
-        .insert_valid_headers(vec![(header2.clone(), chain2.accumulated_data.clone())])
+        .insert_valid_headers(vec![(header2.clone(), chain2.accumulated_data)])
         .unwrap();
     store.fetch_header(0).unwrap();
 
@@ -203,6 +203,7 @@ fn test_checkpoints() {
 }
 
 #[test]
+#[allow(clippy::identity_op)]
 fn rewind_to_height() {
     let _ = env_logger::builder().is_test(true).try_init();
     let network = Network::LocalNet;
@@ -329,9 +330,8 @@ fn handle_tip_reorg() {
 
     // Adding B2 to the main chain will produce a reorg to GB->A1->B2.
     if let Ok(BlockAddResult::ChainReorg(_, _)) = store.add_block(orphan_blocks[2].block.clone().into()) {
-        assert!(true);
     } else {
-        assert!(false);
+        panic!();
     }
     assert_eq!(
         store.fetch_tip_header().unwrap().header,
@@ -374,6 +374,7 @@ fn blockchain_reorgs_to_stronger_chain() {
 }
 
 #[test]
+#[allow(clippy::identity_op)]
 fn handle_reorg() {
     // GB --> A1 --> A2 --> A3 -----> A4(Low PoW)     [Main Chain]
     //          \--> B2 --> B3(?) --> B4(Medium PoW)  [Forked Chain 1]
@@ -612,7 +613,7 @@ fn handle_reorg_with_no_removed_blocks() {
             assert_eq!(added.len(), 2);
             assert_eq!(removed.len(), 0);
         },
-        _ => assert!(false),
+        _ => panic!(),
     }
 
     assert_eq!(store.fetch_tip_header().unwrap().header, orphan1_blocks[3].block.header);
@@ -718,7 +719,7 @@ fn handle_reorg_failure_recovery() {
             let template = chain_block(&orphan1_blocks.last().unwrap().block, txns, &consensus_manager);
             let mut block = orphan1_store.prepare_block_merkle_roots(template).unwrap();
             block.header.nonce = OsRng.next_u64();
-            block.header.height = block.header.height + 1;
+            block.header.height += 1;
             find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(2));
             block
         };
@@ -728,7 +729,7 @@ fn handle_reorg_failure_recovery() {
         unpack_enum!(BlockAddResult::OrphanBlock = result);
 
         // Add invalid block B3. Our database should recover
-        let res = store.add_block(double_spend_block.clone().into()).unwrap(); // B3
+        let res = store.add_block(double_spend_block.into()).unwrap(); // B3
         unpack_enum!(BlockAddResult::OrphanBlock = res);
         let tip_header = store.fetch_tip_header().unwrap();
         assert_eq!(tip_header.height(), 4);
@@ -740,9 +741,8 @@ fn handle_reorg_failure_recovery() {
     }
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
+        if let Err(e) = std::fs::remove_dir_all(&temp_path) {
+            println!("\n{:?}\n", e)
         }
     }
 }
@@ -759,7 +759,7 @@ fn store_and_retrieve_blocks() {
     let db = create_test_db();
     let store = BlockchainDatabase::new(db, &rules, validators, BlockchainDatabaseConfig::default(), false).unwrap();
 
-    let block0 = store.fetch_block(0).unwrap().clone();
+    let block0 = store.fetch_block(0).unwrap();
     let block1 = append_block(
         &store,
         &block0.clone().try_into_chain_block().unwrap(),
@@ -788,6 +788,7 @@ fn store_and_retrieve_blocks() {
 
 #[test]
 #[ignore = "To be completed with pruned mode"]
+#[allow(clippy::identity_op)]
 fn store_and_retrieve_blocks_from_contents() {
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
@@ -906,7 +907,7 @@ fn invalid_block() {
         .build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants.clone())
+        .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let validator = MockValidator::new(true);
@@ -920,7 +921,7 @@ fn invalid_block() {
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 0);
     assert_eq!(metadata.best_block(), &block0_hash);
-    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash.clone());
+    assert_eq!(store.fetch_block(0).unwrap().block().hash(), block0_hash);
     assert!(store.fetch_block(1).is_err());
 
     // Block 1
@@ -1214,24 +1215,18 @@ fn orphan_cleanup_on_reorg() {
     // Fill orphan block pool
     let orphan1 = create_orphan_block(1, vec![], &consensus_manager);
     let orphan2 = create_orphan_block(1, vec![], &consensus_manager);
-    assert_eq!(
-        store.add_block(orphan1.clone().into()).unwrap(),
-        BlockAddResult::OrphanBlock
-    );
-    assert_eq!(
-        store.add_block(orphan2.clone().into()).unwrap(),
-        BlockAddResult::OrphanBlock
-    );
+    assert_eq!(store.add_block(orphan1.into()).unwrap(), BlockAddResult::OrphanBlock);
+    assert_eq!(store.add_block(orphan2.into()).unwrap(), BlockAddResult::OrphanBlock);
 
     // Adding B1 and B2 to the main chain will produce a reorg from GB->A1->A2->A3->A4 to GB->B1->B2->B3.
     assert_eq!(
         store.add_block(orphan_blocks[1].block.clone().into()).unwrap(),
         BlockAddResult::OrphanBlock
     );
+
     if let Ok(BlockAddResult::ChainReorg(_, _)) = store.add_block(orphan_blocks[2].block.clone().into()) {
-        assert!(true);
     } else {
-        assert!(false);
+        panic!();
     }
 
     // Check that A2, A3 and A4 is in the orphan block pool, A1 and the other orphans were discarded by the orphan
@@ -1283,7 +1278,7 @@ fn orphan_cleanup_delete_all_orphans() {
             BlockAddResult::OrphanBlock
         );
         assert_eq!(
-            store.add_block(orphan4.clone().clone().into()).unwrap(),
+            store.add_block(orphan4.clone().into()).unwrap(),
             BlockAddResult::OrphanBlock
         );
         assert_eq!(
@@ -1293,20 +1288,14 @@ fn orphan_cleanup_delete_all_orphans() {
         assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 5);
 
         // Cleanup orphans and verify
-        assert_eq!(store.cleanup_all_orphans().unwrap(), ());
+        assert!(store.cleanup_all_orphans().is_ok());
         assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 0);
 
         // Add orphans again
-        assert_eq!(
-            store.add_block(orphan1.clone().into()).unwrap(),
-            BlockAddResult::OrphanBlock
-        );
+        assert_eq!(store.add_block(orphan1.into()).unwrap(), BlockAddResult::OrphanBlock);
         assert_eq!(store.add_block(orphan2.into()).unwrap(), BlockAddResult::OrphanBlock);
         assert_eq!(store.add_block(orphan3.into()).unwrap(), BlockAddResult::OrphanBlock);
-        assert_eq!(
-            store.add_block(orphan4.clone().into()).unwrap(),
-            BlockAddResult::OrphanBlock
-        );
+        assert_eq!(store.add_block(orphan4.into()).unwrap(), BlockAddResult::OrphanBlock);
         assert_eq!(store.add_block(orphan5.into()).unwrap(), BlockAddResult::OrphanBlock);
     }
 
@@ -1320,15 +1309,14 @@ fn orphan_cleanup_delete_all_orphans() {
     // Test orphans cleanup on open
     {
         let db = create_lmdb_database(&path, LMDBConfig::default()).unwrap();
-        let store = BlockchainDatabase::new(db, &consensus_manager, validators.clone(), config, true).unwrap();
+        let store = BlockchainDatabase::new(db, &consensus_manager, validators, config, true).unwrap();
         assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 0);
     }
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&path).exists() {
-        match std::fs::remove_dir_all(&path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
+        if let Err(e) = std::fs::remove_dir_all(&path) {
+            println!("\n{:?}\n", e)
         }
     }
 }
@@ -1340,7 +1328,7 @@ fn fails_validation() {
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
     let (block0, output) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
-        .with_consensus_constants(consensus_constants.clone())
+        .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
     let validators = Validators::new(
@@ -1358,7 +1346,7 @@ fn fails_validation() {
     let mut blocks = vec![block0];
     let mut outputs = vec![vec![]];
 
-    let schemas = vec![txn_schema!(from: vec![output.clone()], to: vec![2 * T, 500_000 * uT])];
+    let schemas = vec![txn_schema!(from: vec![output], to: vec![2 * T, 500_000 * uT])];
     let err = generate_new_block_with_achieved_difficulty(
         &mut store,
         &mut blocks,

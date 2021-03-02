@@ -117,6 +117,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::redundant_closure)]
     fn ready_after_handles() {
         let flag = Arc::new(AtomicBool::new(false));
         let fut = mock_fut(flag.clone());
@@ -136,9 +137,10 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::redundant_closure)]
     fn call_after_ready() {
         let flag = Arc::new(AtomicBool::new(true));
-        let fut = mock_fut(flag.clone());
+        let fut = mock_fut(flag);
         let mut service = LazyService::new(fut, |_: ()| service_fn(|num: u8| future::ok::<_, ()>(num)));
 
         let mut cx = panic_context();
@@ -149,10 +151,11 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::redundant_closure)]
     #[should_panic]
     fn call_before_ready_should_panic() {
         let flag = Arc::new(AtomicBool::new(false));
-        let fut = mock_fut(flag.clone());
+        let fut = mock_fut(flag);
         let mut service = LazyService::new(fut, |_: ()| service_fn(|num: u8| future::ok::<_, ()>(num)));
 
         let mut cx = panic_context();

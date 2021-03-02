@@ -82,6 +82,7 @@ use tokio::{
     time::delay_for,
 };
 
+#[allow(clippy::type_complexity)]
 pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     runtime: &mut Runtime,
     backend: T,
@@ -104,7 +105,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
 
     let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
     let (event_publisher, _) = channel(100);
-    let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
+    let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher);
 
     let constants = ConsensusConstantsBuilder::new(Network::Stibbons).build();
 
@@ -153,7 +154,7 @@ pub fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
             oms_request_receiver,
             OutputManagerDatabase::new(backend),
             oms_event_publisher.clone(),
-            factories.clone(),
+            factories,
             constants,
             shutdown.to_signal(),
             basenode_service_handle,
@@ -201,7 +202,7 @@ async fn complete_transaction(mut stp: SenderTransactionProtocol, mut oms: Outpu
         None,
     )
     .unwrap();
-    stp.add_single_recipient_info(recv_info.clone(), &factories.range_proof)
+    stp.add_single_recipient_info(recv_info, &factories.range_proof)
         .unwrap();
     stp.finalize(KernelFeatures::empty(), &factories).unwrap();
     stp.get_transaction().unwrap().clone()
@@ -221,8 +222,8 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
     );
     runtime.block_on(oms.add_output(uo.clone())).unwrap();
     match runtime.block_on(oms.add_output(uo)) {
-        Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::DuplicateOutput)) => assert!(true),
-        _ => assert!(false, "Incorrect error message"),
+        Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::DuplicateOutput)) => {},
+        _ => panic!("Incorrect error message"),
     };
     let num_outputs = 20;
     for _i in 0..num_outputs {
@@ -250,27 +251,27 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
         let mut num_rewound = 0;
 
         let output = tx.body.outputs()[0].clone();
-        match output.rewind_range_proof_value_only(
-            &factories.range_proof,
-            &rewind_public_keys.rewind_public_key,
-            &rewind_public_keys.rewind_blinding_public_key,
-        ) {
-            Ok(_) => {
-                num_rewound += 1;
-            },
-            Err(_) => {},
+        if output
+            .rewind_range_proof_value_only(
+                &factories.range_proof,
+                &rewind_public_keys.rewind_public_key,
+                &rewind_public_keys.rewind_blinding_public_key,
+            )
+            .is_ok()
+        {
+            num_rewound += 1;
         }
 
         let output = tx.body.outputs()[1].clone();
-        match output.rewind_range_proof_value_only(
-            &factories.range_proof,
-            &rewind_public_keys.rewind_public_key,
-            &rewind_public_keys.rewind_blinding_public_key,
-        ) {
-            Ok(_) => {
-                num_rewound += 1;
-            },
-            Err(_) => {},
+        if output
+            .rewind_range_proof_value_only(
+                &factories.range_proof,
+                &rewind_public_keys.rewind_public_key,
+                &rewind_public_keys.rewind_blinding_public_key,
+            )
+            .is_ok()
+        {
+            num_rewound += 1;
         }
         assert_eq!(num_rewound, 1, "Should only be 1 rewindable output");
     }
@@ -298,17 +299,17 @@ fn sending_transaction_and_confirmation<T: Clone + OutputManagerBackend + 'stati
     if let DbValue::KeyManagerState(km) = backend.fetch(&DbKey::KeyManagerState).unwrap().unwrap() {
         assert_eq!(km.primary_key_index, 1);
     } else {
-        assert!(false, "No Key Manager set");
+        panic!("No Key Manager set");
     }
 }
 
 fn fee_estimate<T: Clone + OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone(), true);
+    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
     let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(3000), &factories.commitment);
-    runtime.block_on(oms.add_output(uo.clone())).unwrap();
+    runtime.block_on(oms.add_output(uo)).unwrap();
 
     // minimum fee
     let fee_per_gram = MicroTari::from(1);
@@ -356,7 +357,7 @@ pub fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
 
     let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
     let (event_publisher, _) = channel(100);
-    let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
+    let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher);
 
     let constants = ConsensusConstantsBuilder::new(Network::Stibbons).build();
 
@@ -384,7 +385,7 @@ pub fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
             oms_request_receiver,
             OutputManagerDatabase::new(backend),
             oms_event_publisher.clone(),
-            factories.clone(),
+            factories,
             constants,
             shutdown.to_signal(),
             base_node_service_handle.clone(),
@@ -413,12 +414,13 @@ fn test_utxo_selection_with_chain_metadata_memory_db() {
     test_utxo_selection_with_chain_metadata(OutputManagerMemoryDatabase::new());
 }
 
+#[allow(clippy::identity_op)]
 fn test_utxo_selection_no_chain_metadata<T: Clone + OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
     // no chain metadata
-    let (mut oms, _shutdown, _, _) = setup_oms_with_bn_state(&mut runtime, backend.clone(), None);
+    let (mut oms, _shutdown, _, _) = setup_oms_with_bn_state(&mut runtime, backend, None);
 
     // no utxos - not enough funds
     let amount = MicroTari::from(1000);
@@ -475,12 +477,13 @@ fn test_utxo_selection_no_chain_metadata<T: Clone + OutputManagerBackend + 'stat
     }
 }
 
+#[allow(clippy::identity_op)]
 fn test_utxo_selection_with_chain_metadata<T: Clone + OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
 
     // setup with chain metadata at a height of 6
-    let (mut oms, _shutdown, _, _) = setup_oms_with_bn_state(&mut runtime, backend.clone(), Some(6));
+    let (mut oms, _shutdown, _, _) = setup_oms_with_bn_state(&mut runtime, backend, Some(6));
 
     // no utxos - not enough funds
     let amount = MicroTari::from(1000);
@@ -611,8 +614,8 @@ fn send_not_enough_funds<T: OutputManagerBackend + 'static>(backend: T) {
         None,
         "".to_string(),
     )) {
-        Err(OutputManagerError::NotEnoughFunds) => assert!(true),
-        _ => assert!(false),
+        Err(OutputManagerError::NotEnoughFunds) => {},
+        _ => panic!(),
     }
 }
 
@@ -679,7 +682,7 @@ fn send_no_change<T: OutputManagerBackend + 'static>(backend: T) {
     )
     .unwrap();
 
-    stp.add_single_recipient_info(recv_info.clone(), &factories.range_proof)
+    stp.add_single_recipient_info(recv_info, &factories.range_proof)
         .unwrap();
 
     stp.finalize(KernelFeatures::empty(), &factories).unwrap();
@@ -738,8 +741,8 @@ fn send_not_enough_for_change<T: OutputManagerBackend + 'static>(backend: T) {
         None,
         "".to_string(),
     )) {
-        Err(OutputManagerError::NotEnoughFunds) => assert!(true),
-        _ => assert!(false),
+        Err(OutputManagerError::NotEnoughFunds) => {},
+        _ => panic!(),
     }
 }
 
@@ -771,8 +774,8 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
         .with_fee_per_gram(MicroTari(20))
         .with_offset(alice.offset.clone())
         .with_private_nonce(alice.nonce.clone())
-        .with_change_secret(alice.change_key.clone())
-        .with_input(utxo.clone(), input)
+        .with_change_secret(alice.change_key)
+        .with_input(utxo, input)
         .with_amount(0, amount);
     let mut stp = builder.build::<Blake256>(&factories).unwrap();
     let tx_id = stp.get_tx_id().unwrap();
@@ -843,10 +846,8 @@ fn cancel_transaction<T: OutputManagerBackend + 'static>(backend: T) {
         .unwrap();
 
     match runtime.block_on(oms.cancel_transaction(1)) {
-        Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound(_))) => {
-            assert!(true)
-        },
-        _ => assert!(false, "Value should not exist"),
+        Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound(_))) => {},
+        _ => panic!("Value should not exist"),
     }
 
     runtime
@@ -939,17 +940,17 @@ fn test_get_balance<T: OutputManagerBackend + 'static>(backend: T) {
 
     let mut total = MicroTari::from(0);
     let output_val = MicroTari::from(2000);
-    let (_ti, uo) = make_input(&mut OsRng.clone(), output_val.clone(), &factories.commitment);
-    total += uo.value.clone();
+    let (_ti, uo) = make_input(&mut OsRng.clone(), output_val, &factories.commitment);
+    total += uo.value;
     runtime.block_on(oms.add_output(uo)).unwrap();
 
-    let (_ti, uo) = make_input(&mut OsRng.clone(), output_val.clone(), &factories.commitment);
-    total += uo.value.clone();
+    let (_ti, uo) = make_input(&mut OsRng.clone(), output_val, &factories.commitment);
+    total += uo.value;
     runtime.block_on(oms.add_output(uo)).unwrap();
 
     let send_value = MicroTari::from(1000);
     let stp = runtime
-        .block_on(oms.prepare_transaction_to_send(send_value.clone(), MicroTari::from(20), None, "".to_string()))
+        .block_on(oms.prepare_transaction_to_send(send_value, MicroTari::from(20), None, "".to_string()))
         .unwrap();
 
     let change_val = stp.get_change_amount().unwrap();
@@ -1037,7 +1038,7 @@ fn sending_transaction_with_short_term_clear<T: Clone + OutputManagerBackend + '
 
     let available_balance = 10_000 * uT;
     let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance, &factories.commitment);
-    runtime.block_on(oms.add_output(uo.clone())).unwrap();
+    runtime.block_on(oms.add_output(uo)).unwrap();
 
     // Check that funds are encumbered and then unencumbered if the pending tx is not confirmed before restart
     let _stp = runtime
@@ -1075,7 +1076,7 @@ fn sending_transaction_with_short_term_clear<T: Clone + OutputManagerBackend + '
     runtime.block_on(oms.confirm_pending_transaction(sender_tx_id)).unwrap();
 
     drop(oms);
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone(), true);
+    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
     let balance = runtime.block_on(oms.get_balance()).unwrap();
     assert_eq!(balance.pending_outgoing_balance, available_balance);
@@ -1109,7 +1110,7 @@ fn sending_transaction_with_short_term_clear_sqlite_db() {
 fn coin_split_with_change<T: Clone + OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone(), true);
+    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
     let val1 = 6_000 * uT;
     let val2 = 7_000 * uT;
@@ -1151,7 +1152,7 @@ fn coin_split_with_change_sqlite_db() {
 fn coin_split_no_change<T: Clone + OutputManagerBackend + 'static>(backend: T) {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
-    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend.clone(), true);
+    let (mut oms, _shutdown, _, _, _, _, _) = setup_output_manager_service(&mut runtime, backend, true);
 
     let fee_per_gram = MicroTari::from(25);
     let split_count = 15;
@@ -1256,7 +1257,7 @@ fn handle_coinbase<T: Clone + OutputManagerBackend + 'static>(backend: T) {
     assert_eq!(runtime.block_on(oms.get_balance()).unwrap().available_balance, value3);
     assert_eq!(
         runtime.block_on(oms.get_balance()).unwrap().pending_incoming_balance,
-        MicroTari::from(value2)
+        value2
     );
     assert_eq!(
         runtime.block_on(oms.get_balance()).unwrap().pending_outgoing_balance,
@@ -1290,7 +1291,7 @@ fn test_utxo_stxo_invalid_txo_validation() {
 
     let invalid_key = PrivateKey::random(&mut OsRng);
     let invalid_value = 666;
-    let invalid_output = UnblindedOutput::new(MicroTari::from(invalid_value), invalid_key.clone(), None);
+    let invalid_output = UnblindedOutput::new(MicroTari::from(invalid_value), invalid_key, None);
     let invalid_tx_output = invalid_output.as_transaction_output(&factories).unwrap();
 
     backend
@@ -1307,7 +1308,7 @@ fn test_utxo_stxo_invalid_txo_validation() {
 
     let spent_key1 = PrivateKey::random(&mut OsRng);
     let spent_value1 = 500;
-    let spent_output1 = UnblindedOutput::new(MicroTari::from(spent_value1), spent_key1.clone(), None);
+    let spent_output1 = UnblindedOutput::new(MicroTari::from(spent_value1), spent_key1, None);
     let spent_tx_output1 = spent_output1.as_transaction_output(&factories).unwrap();
 
     backend
@@ -1319,12 +1320,12 @@ fn test_utxo_stxo_invalid_txo_validation() {
 
     let spent_key2 = PrivateKey::random(&mut OsRng);
     let spent_value2 = 800;
-    let spent_output2 = UnblindedOutput::new(MicroTari::from(spent_value2), spent_key2.clone(), None);
+    let spent_output2 = UnblindedOutput::new(MicroTari::from(spent_value2), spent_key2, None);
 
     backend
         .write(WriteOperation::Insert(DbKeyValuePair::SpentOutput(
             spent_output2.spending_key.clone(),
-            Box::new(DbUnblindedOutput::from_unblinded_output(spent_output2.clone(), &factories).unwrap()),
+            Box::new(DbUnblindedOutput::from_unblinded_output(spent_output2, &factories).unwrap()),
         )))
         .unwrap();
 
@@ -1334,27 +1335,27 @@ fn test_utxo_stxo_invalid_txo_validation() {
 
     let unspent_key1 = PrivateKey::random(&mut OsRng);
     let unspent_value1 = 500;
-    let unspent_output1 = UnblindedOutput::new(MicroTari::from(unspent_value1), unspent_key1.clone(), None);
+    let unspent_output1 = UnblindedOutput::new(MicroTari::from(unspent_value1), unspent_key1, None);
     let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories).unwrap();
 
     runtime.block_on(oms.add_output(unspent_output1.clone())).unwrap();
 
     let unspent_key2 = PrivateKey::random(&mut OsRng);
     let unspent_value2 = 800;
-    let unspent_output2 = UnblindedOutput::new(MicroTari::from(unspent_value2), unspent_key2.clone(), None);
+    let unspent_output2 = UnblindedOutput::new(MicroTari::from(unspent_value2), unspent_key2, None);
 
-    runtime.block_on(oms.add_output(unspent_output2.clone())).unwrap();
+    runtime.block_on(oms.add_output(unspent_output2)).unwrap();
 
     let unspent_key3 = PrivateKey::random(&mut OsRng);
     let unspent_value3 = 900;
-    let unspent_output3 = UnblindedOutput::new(MicroTari::from(unspent_value3), unspent_key3.clone(), None);
+    let unspent_output3 = UnblindedOutput::new(MicroTari::from(unspent_value3), unspent_key3, None);
     let unspent_tx_output3 = unspent_output3.as_transaction_output(&factories).unwrap();
 
     runtime.block_on(oms.add_output(unspent_output3.clone())).unwrap();
 
     let unspent_key4 = PrivateKey::random(&mut OsRng);
     let unspent_value4 = 901;
-    let unspent_output4 = UnblindedOutput::new(MicroTari::from(unspent_value4), unspent_key4.clone(), None);
+    let unspent_output4 = UnblindedOutput::new(MicroTari::from(unspent_value4), unspent_key4, None);
     let unspent_tx_output4 = unspent_output4.as_transaction_output(&factories).unwrap();
 
     runtime.block_on(oms.add_output(unspent_output4.clone())).unwrap();
@@ -1379,18 +1380,12 @@ fn test_utxo_stxo_invalid_txo_validation() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    match event {
-                        Ok(msg) => {
-                            match (*msg).clone() {
-                                OutputManagerEvent::TxoValidationSuccess(_,TxoValidationType::Invalid) => {
+                    if let Ok(msg) = event {
+                        if let OutputManagerEvent::TxoValidationSuccess(_,TxoValidationType::Invalid) = (*msg).clone() {
                                    success = true;
                                    break;
-                                },
-                                _ => (),
-                            }
-                        },
-                        _ => (),
-                    }
+                                };
+                        }
                 },
                 () = delay => {
                     break;
@@ -1425,18 +1420,12 @@ fn test_utxo_stxo_invalid_txo_validation() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    match event {
-                        Ok(msg) => {
-                            match (*msg).clone() {
-                                OutputManagerEvent::TxoValidationSuccess(_,TxoValidationType::Unspent) => {
+                if let Ok(msg) = event {
+                                if let OutputManagerEvent::TxoValidationSuccess(_,TxoValidationType::Unspent) = (*msg).clone() {
                                    success = true;
                                    break;
-                                },
-                                _ => (),
-                            }
-                        },
-                        _ => (),
-                    }
+                                };
+                                };
                 },
                 () = delay => {
                     break;
@@ -1449,10 +1438,10 @@ fn test_utxo_stxo_invalid_txo_validation() {
     let outputs = runtime.block_on(oms.get_unspent_outputs()).unwrap();
 
     assert_eq!(outputs.len(), 4);
-    assert!(outputs.iter().find(|&o| o == &unspent_output1).is_some());
-    assert!(outputs.iter().find(|&o| o == &unspent_output3).is_some());
-    assert!(outputs.iter().find(|&o| o == &unspent_output4).is_some());
-    assert!(outputs.iter().find(|&o| o == &invalid_output).is_some());
+    assert!(outputs.iter().any(|o| o == &unspent_output1));
+    assert!(outputs.iter().any(|o| o == &unspent_output3));
+    assert!(outputs.iter().any(|o| o == &unspent_output4));
+    assert!(outputs.iter().any(|o| o == &invalid_output));
 
     rpc_service_state.set_utxos(vec![spent_tx_output1]);
 
@@ -1470,17 +1459,11 @@ fn test_utxo_stxo_invalid_txo_validation() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    match event {
-                        Ok(msg) => {
-                            match (*msg).clone() {
-                                OutputManagerEvent::TxoValidationSuccess(_, TxoValidationType::Spent) => {
+                    if let Ok(msg) = event {
+                            if let OutputManagerEvent::TxoValidationSuccess(_, TxoValidationType::Spent) = (*msg).clone() {
                                    success = true;
                                    break;
-                                },
-                                _ => (),
-                            }
-                        },
-                        _ => (),
+                                };
                     }
                 },
                 () = delay => {
@@ -1494,7 +1477,7 @@ fn test_utxo_stxo_invalid_txo_validation() {
     let outputs = runtime.block_on(oms.get_unspent_outputs()).unwrap();
 
     assert_eq!(outputs.len(), 5);
-    assert!(outputs.iter().find(|&o| o == &spent_output1).is_some());
+    assert!(outputs.iter().any(|o| o == &spent_output1));
 }
 
 #[test]
@@ -1517,26 +1500,26 @@ fn test_base_node_switch_during_validation() {
 
     let unspent_key1 = PrivateKey::random(&mut OsRng);
     let unspent_value1 = 500;
-    let unspent_output1 = UnblindedOutput::new(MicroTari::from(unspent_value1), unspent_key1.clone(), None);
+    let unspent_output1 = UnblindedOutput::new(MicroTari::from(unspent_value1), unspent_key1, None);
     let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories).unwrap();
 
-    runtime.block_on(oms.add_output(unspent_output1.clone())).unwrap();
+    runtime.block_on(oms.add_output(unspent_output1)).unwrap();
 
     let unspent_key2 = PrivateKey::random(&mut OsRng);
     let unspent_value2 = 800;
-    let unspent_output2 = UnblindedOutput::new(MicroTari::from(unspent_value2), unspent_key2.clone(), None);
+    let unspent_output2 = UnblindedOutput::new(MicroTari::from(unspent_value2), unspent_key2, None);
 
-    runtime.block_on(oms.add_output(unspent_output2.clone())).unwrap();
+    runtime.block_on(oms.add_output(unspent_output2)).unwrap();
 
     let unspent_key3 = PrivateKey::random(&mut OsRng);
     let unspent_value3 = 900;
-    let unspent_output3 = UnblindedOutput::new(MicroTari::from(unspent_value3), unspent_key3.clone(), None);
+    let unspent_output3 = UnblindedOutput::new(MicroTari::from(unspent_value3), unspent_key3, None);
     let unspent_tx_output3 = unspent_output3.as_transaction_output(&factories).unwrap();
 
-    runtime.block_on(oms.add_output(unspent_output3.clone())).unwrap();
+    runtime.block_on(oms.add_output(unspent_output3)).unwrap();
 
     // First RPC server state
-    rpc_service_state.set_utxos(vec![unspent_tx_output1.clone(), unspent_tx_output3]);
+    rpc_service_state.set_utxos(vec![unspent_tx_output1, unspent_tx_output3]);
     rpc_service_state.set_response_delay(Some(Duration::from_secs(8)));
 
     // New base node we will switch to
@@ -1564,18 +1547,12 @@ fn test_base_node_switch_during_validation() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    match event {
-                        Ok(msg) => {
-                            match (*msg).clone() {
-                                OutputManagerEvent::TxoValidationAborted(_,_) => {
-                                   abort = true;
-                                   break;
-                                },
-                                _ => (),
-                            }
-                        },
-                        _ => (),
-                    }
+                if let Ok(msg) = event {
+                       if let OutputManagerEvent::TxoValidationAborted(_,_) = (*msg).clone() {
+                               abort = true;
+                               break;
+                        }
+                     }
                 },
                 () = delay => {
                     break;
@@ -1597,15 +1574,15 @@ fn test_txo_validation_connection_timeout_retries() {
 
     let unspent_key1 = PrivateKey::random(&mut OsRng);
     let unspent_value1 = 500;
-    let unspent_output1 = UnblindedOutput::new(MicroTari::from(unspent_value1), unspent_key1.clone(), None);
+    let unspent_output1 = UnblindedOutput::new(MicroTari::from(unspent_value1), unspent_key1, None);
 
-    runtime.block_on(oms.add_output(unspent_output1.clone())).unwrap();
+    runtime.block_on(oms.add_output(unspent_output1)).unwrap();
 
     let unspent_key2 = PrivateKey::random(&mut OsRng);
     let unspent_value2 = 800;
-    let unspent_output2 = UnblindedOutput::new(MicroTari::from(unspent_value2), unspent_key2.clone(), None);
+    let unspent_output2 = UnblindedOutput::new(MicroTari::from(unspent_value2), unspent_key2, None);
 
-    runtime.block_on(oms.add_output(unspent_output2.clone())).unwrap();
+    runtime.block_on(oms.add_output(unspent_output2)).unwrap();
 
     runtime
         .block_on(oms.set_base_node_public_key(server_node_identity.public_key().clone()))
@@ -1622,8 +1599,7 @@ fn test_txo_validation_connection_timeout_retries() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    match event {
-                        Ok(msg) => {
+                        if let Ok(msg) = event {
                             match (*msg).clone() {
                                 OutputManagerEvent::TxoValidationTimedOut(_,_) => {
                                    timeout+=1;
@@ -1633,9 +1609,7 @@ fn test_txo_validation_connection_timeout_retries() {
                                 },
                                 _ => (),
                             }
-                        },
-                        _ => (),
-                    }
+                        };
                     if timeout+failed >= 3 {
                         break;
                     }
@@ -1662,15 +1636,15 @@ fn test_txo_validation_rpc_error_retries() {
 
     let unspent_key1 = PrivateKey::random(&mut OsRng);
     let unspent_value1 = 500;
-    let unspent_output1 = UnblindedOutput::new(MicroTari::from(unspent_value1), unspent_key1.clone(), None);
+    let unspent_output1 = UnblindedOutput::new(MicroTari::from(unspent_value1), unspent_key1, None);
 
-    runtime.block_on(oms.add_output(unspent_output1.clone())).unwrap();
+    runtime.block_on(oms.add_output(unspent_output1)).unwrap();
 
     let unspent_key2 = PrivateKey::random(&mut OsRng);
     let unspent_value2 = 800;
-    let unspent_output2 = UnblindedOutput::new(MicroTari::from(unspent_value2), unspent_key2.clone(), None);
+    let unspent_output2 = UnblindedOutput::new(MicroTari::from(unspent_value2), unspent_key2, None);
 
-    runtime.block_on(oms.add_output(unspent_output2.clone())).unwrap();
+    runtime.block_on(oms.add_output(unspent_output2)).unwrap();
 
     runtime
         .block_on(oms.set_base_node_public_key(server_node_identity.public_key().clone()))
@@ -1686,17 +1660,12 @@ fn test_txo_validation_rpc_error_retries() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    match event {
-                        Ok(msg) => {
-                            match (*msg).clone() {
-                                 OutputManagerEvent::TxoValidationFailure(_,_) => {
-                                   failed+=1;
-                                },
-                                _ => (),
-                            }
-                        },
-                        _ => (),
-                    }
+                    if let Ok(msg) = event {
+                                         if let OutputManagerEvent::TxoValidationFailure(_,_) = (*msg).clone() {
+                            failed+=1;
+                        }
+                     }
+
                     if failed >= 1 {
                         break;
                     }
@@ -1729,15 +1698,15 @@ fn test_txo_validation_rpc_timeout() {
 
     let unspent_key1 = PrivateKey::random(&mut OsRng);
     let unspent_value1 = 500;
-    let unspent_output1 = UnblindedOutput::new(MicroTari::from(unspent_value1), unspent_key1.clone(), None);
+    let unspent_output1 = UnblindedOutput::new(MicroTari::from(unspent_value1), unspent_key1, None);
 
-    runtime.block_on(oms.add_output(unspent_output1.clone())).unwrap();
+    runtime.block_on(oms.add_output(unspent_output1)).unwrap();
 
     let unspent_key2 = PrivateKey::random(&mut OsRng);
     let unspent_value2 = 800;
-    let unspent_output2 = UnblindedOutput::new(MicroTari::from(unspent_value2), unspent_key2.clone(), None);
+    let unspent_output2 = UnblindedOutput::new(MicroTari::from(unspent_value2), unspent_key2, None);
 
-    runtime.block_on(oms.add_output(unspent_output2.clone())).unwrap();
+    runtime.block_on(oms.add_output(unspent_output2)).unwrap();
 
     runtime
         .block_on(oms.set_base_node_public_key(server_node_identity.public_key().clone()))
@@ -1753,17 +1722,12 @@ fn test_txo_validation_rpc_timeout() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    match event {
-                        Ok(msg) => {
-                            match (*msg).clone() {
-                                 OutputManagerEvent::TxoValidationFailure(_,_) => {
-                                   failed+=1;
-                                },
-                                _ => (),
-                            }
-                        },
-                        _ => (),
+                    if let Ok(msg) = event {
+                         if let OutputManagerEvent::TxoValidationFailure(_,_) = (*msg).clone() {
+                         failed+=1;
+                        }
                     }
+
                     if failed >= 1 {
                         break;
                     }
@@ -1791,16 +1755,16 @@ fn test_txo_validation_base_node_not_synced() {
 
     let unspent_key1 = PrivateKey::random(&mut OsRng);
     let unspent_value1 = 500;
-    let unspent_output1 = UnblindedOutput::new(MicroTari::from(unspent_value1), unspent_key1.clone(), None);
+    let unspent_output1 = UnblindedOutput::new(MicroTari::from(unspent_value1), unspent_key1, None);
     let unspent_tx_output1 = unspent_output1.as_transaction_output(&factories).unwrap();
 
     runtime.block_on(oms.add_output(unspent_output1.clone())).unwrap();
 
     let unspent_key2 = PrivateKey::random(&mut OsRng);
     let unspent_value2 = 800;
-    let unspent_output2 = UnblindedOutput::new(MicroTari::from(unspent_value2), unspent_key2.clone(), None);
+    let unspent_output2 = UnblindedOutput::new(MicroTari::from(unspent_value2), unspent_key2, None);
 
-    runtime.block_on(oms.add_output(unspent_output2.clone())).unwrap();
+    runtime.block_on(oms.add_output(unspent_output2)).unwrap();
 
     runtime
         .block_on(oms.set_base_node_public_key(server_node_identity.public_key().clone()))
@@ -1816,16 +1780,10 @@ fn test_txo_validation_base_node_not_synced() {
         loop {
             futures::select! {
                 event = event_stream.select_next_some() => {
-                    match event {
-                        Ok(msg) => {
-                            match (*msg).clone() {
-                                 OutputManagerEvent::TxoValidationDelayed(_,_) => {
-                                   delayed+=1;
-                                },
-                                _ => (),
+                    if let Ok(msg) = event {
+                            if let OutputManagerEvent::TxoValidationDelayed(_,_) = (*msg).clone() {
+                                delayed+=1;
                             }
-                        },
-                        _ => (),
                     }
                     if delayed >= 2 {
                         break;
@@ -1847,24 +1805,18 @@ fn test_txo_validation_base_node_not_synced() {
         let mut success = false;
         loop {
             futures::select! {
-                event = event_stream.select_next_some() => {
-                    match event {
-                        Ok(msg) => {
-                            match (*msg).clone() {
-                                OutputManagerEvent::TxoValidationSuccess(_,_) => {
-                                   success = true;
-                                   break;
-                                },
-                                _ => (),
-                            }
-                        },
-                        _ => (),
-                    }
-                },
-                () = delay => {
-                    break;
-                },
-            }
+                            event = event_stream.select_next_some() => {
+                                if let Ok(msg) = event {
+             if let OutputManagerEvent::TxoValidationSuccess(_,_) = (*msg).clone() {
+            success = true;
+            break;
+             }
+                                }
+                            },
+                            () = delay => {
+                                break;
+                            },
+                        }
         }
         assert!(success, "Did not receive validation success event");
     });
@@ -1872,5 +1824,5 @@ fn test_txo_validation_base_node_not_synced() {
     let outputs = runtime.block_on(oms.get_unspent_outputs()).unwrap();
 
     assert_eq!(outputs.len(), 1);
-    assert!(outputs.iter().find(|&o| o == &unspent_output1).is_some());
+    assert!(outputs.iter().any(|o| o == &unspent_output1));
 }

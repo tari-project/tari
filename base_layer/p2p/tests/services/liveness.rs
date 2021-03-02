@@ -122,20 +122,14 @@ async fn end_to_end() {
 
     let ping_count = events
         .iter()
-        .filter(|event| match **(**event).as_ref().unwrap() {
-            LivenessEvent::ReceivedPing(_) => true,
-            _ => false,
-        })
+        .filter(|event| matches!(**(**event).as_ref().unwrap(), LivenessEvent::ReceivedPing(_)))
         .count();
 
     assert_eq!(ping_count, 10);
 
     let pong_count = events
         .iter()
-        .filter(|event| match **(**event).as_ref().unwrap() {
-            LivenessEvent::ReceivedPong(_) => true,
-            _ => false,
-        })
+        .filter(|event| matches!(**(**event).as_ref().unwrap(), LivenessEvent::ReceivedPong(_)))
         .count();
 
     assert_eq!(pong_count, 8);
@@ -144,20 +138,14 @@ async fn end_to_end() {
 
     let ping_count = events
         .iter()
-        .filter(|event| match **(**event).as_ref().unwrap() {
-            LivenessEvent::ReceivedPing(_) => true,
-            _ => false,
-        })
+        .filter(|event| matches!(**(**event).as_ref().unwrap(), LivenessEvent::ReceivedPing(_)))
         .count();
 
     assert_eq!(ping_count, 8);
 
     let pong_count = events
         .iter()
-        .filter(|event| match **(**event).as_ref().unwrap() {
-            LivenessEvent::ReceivedPong(_) => true,
-            _ => false,
-        })
+        .filter(|event| matches!(**(**event).as_ref().unwrap(), LivenessEvent::ReceivedPong(_)))
         .count();
 
     assert_eq!(pong_count, 10);

@@ -549,8 +549,8 @@ mod test {
             123, 150, 162, 67, 240, 208, 67, 56,
         ]
         .as_bytes();
-        let nid1 = NodeId::try_from(bytes.clone()).unwrap();
-        let nid2 = NodeId::try_from(bytes.clone()).unwrap();
+        let nid1 = NodeId::try_from(bytes).unwrap();
+        let nid2 = NodeId::try_from(bytes).unwrap();
 
         assert_eq!(nid1, nid2);
     }

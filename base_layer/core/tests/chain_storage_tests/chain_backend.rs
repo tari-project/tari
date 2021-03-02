@@ -48,7 +48,7 @@ fn lmdb_insert_contains_delete_and_fetch_utxo() {
     // if let Some(DbValue::UnspentOutput(retrieved_utxo)) = db.fetch(&DbKey::UnspentOutput(hash.clone())).unwrap() {
     //     assert_eq!(*retrieved_utxo, utxo);
     // } else {
-    //     assert!(false);
+    //     panic!();
     // }
     //
     // let mut txn = DbTransaction::new();
@@ -75,7 +75,7 @@ fn lmdb_insert_contains_delete_and_fetch_kernel() {
     // {
     //     assert_eq!(*retrieved_kernel, kernel);
     // } else {
-    //     assert!(false);
+    //     panic!();
     // }
     //
     // let mut txn = DbTransaction::new();
@@ -105,7 +105,7 @@ fn lmdb_insert_contains_delete_and_fetch_orphan() {
     if let Some(DbValue::OrphanBlock(retrieved_orphan)) = db.fetch(&DbKey::OrphanBlock(hash.clone())).unwrap() {
         assert_eq!(*retrieved_orphan, orphan);
     } else {
-        assert!(false);
+        panic!();
     }
 
     let mut txn = DbTransaction::new();
@@ -132,7 +132,7 @@ fn lmdb_duplicate_utxo() {
     // if let Some(DbValue::UnspentOutput(retrieved_utxo)) = db.fetch(&DbKey::UnspentOutput(hash1.clone())).unwrap() {
     //     assert_eq!(*retrieved_utxo, utxo1);
     // } else {
-    //     assert!(false);
+    //     panic!();
     // }
     // let mut txn = DbTransaction::new();
     // txn.insert_utxo_with_hash(hash1.clone(), utxo2.clone());
@@ -140,7 +140,7 @@ fn lmdb_duplicate_utxo() {
     // if let Some(DbValue::UnspentOutput(retrieved_utxo)) = db.fetch(&DbKey::UnspentOutput(hash1.clone())).unwrap() {
     //     assert_eq!(*retrieved_utxo, utxo1); // original data should still be there
     // } else {
-    //     assert!(false);
+    //     panic!();
     // }
 }
 
@@ -302,8 +302,8 @@ fn lmdb_file_lock() {
         let db = create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap();
 
         match create_lmdb_database(&temp_path, LMDBConfig::default()) {
-            Err(ChainStorageError::CannotAcquireFileLock) => assert!(true),
-            _ => assert!(false, "Should not be able to make this db"),
+            Err(ChainStorageError::CannotAcquireFileLock) => {},
+            _ => panic!("Should not be able to make this db"),
         }
 
         drop(db);
@@ -314,9 +314,8 @@ fn lmdb_file_lock() {
 
     // Cleanup test data - in Windows the LMBD `set_mapsize` sets file size equals to map size; Linux use sparse files
     if std::path::Path::new(&temp_path).exists() {
-        match std::fs::remove_dir_all(&temp_path) {
-            Err(e) => println!("\n{:?}\n", e),
-            _ => (),
+        if let Err(e) = std::fs::remove_dir_all(&temp_path) {
+            println!("\n{:?}\n", e)
         }
     }
 }

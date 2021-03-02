@@ -163,7 +163,7 @@ mod test {
         if km1.is_ok() && km2.is_ok() {
             assert_ne!(km1.unwrap().master_key, km2.unwrap().master_key);
         } else {
-            assert!(false)
+            panic!()
         }
     }
 
@@ -192,7 +192,7 @@ mod test {
         if km1.is_ok() && km2.is_ok() {
             assert_ne!(km1.unwrap().master_key, km2.unwrap().master_key);
         } else {
-            assert!(false)
+            panic!()
         }
     }
 
@@ -205,21 +205,15 @@ mod test {
         let desired_key_index2 = 2;
         let derived_key1_result = km.derive_key(desired_key_index1);
         let derived_key2_result = km.derive_key(desired_key_index2);
-        if next_key1_result.is_ok() &&
-            next_key2_result.is_ok() &&
-            derived_key1_result.is_ok() &&
-            derived_key2_result.is_ok()
-        {
-            let next_key1 = next_key1_result.unwrap();
-            let next_key2 = next_key2_result.unwrap();
-            let derived_key1 = derived_key1_result.unwrap();
-            let derived_key2 = derived_key2_result.unwrap();
-            assert_ne!(next_key1.k, next_key2.k);
-            assert_eq!(next_key1.k, derived_key1.k);
-            assert_eq!(next_key2.k, derived_key2.k);
-            assert_eq!(next_key1.key_index, desired_key_index1);
-            assert_eq!(next_key2.key_index, desired_key_index2);
-        }
+        let next_key1 = next_key1_result.unwrap();
+        let next_key2 = next_key2_result.unwrap();
+        let derived_key1 = derived_key1_result.unwrap();
+        let derived_key2 = derived_key2_result.unwrap();
+        assert_ne!(next_key1.k, next_key2.k);
+        assert_eq!(next_key1.k, derived_key1.k);
+        assert_eq!(next_key2.k, derived_key2.k);
+        assert_eq!(next_key1.key_index, desired_key_index1);
+        assert_eq!(next_key2.key_index, desired_key_index2);
     }
 
     #[test]
@@ -241,10 +235,10 @@ mod test {
                         assert_eq!(desired_km.master_key, backup_km.master_key);
                         assert_eq!(desired_km.primary_key_index, backup_km.primary_key_index);
                     },
-                    Err(_e) => assert!(false),
+                    Err(_e) => panic!(),
                 };
             },
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         };
     }
 }

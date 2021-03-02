@@ -298,7 +298,7 @@ mod test {
             "Duplicate was not found"
         );
         assert!(
-            !UnconfirmedPool::find_duplicate_input(&[tx1.clone()], &tx2),
+            !UnconfirmedPool::find_duplicate_input(&[tx1], &tx2),
             "Duplicate was incorrectly found as true"
         );
     }
@@ -373,7 +373,7 @@ mod test {
         let double_spend_input = inputs.first().unwrap().clone();
 
         let estimated_fee = Fee::calculate(20.into(), 1, 1, 1);
-        let utxo = UnblindedOutput::new(INPUT_AMOUNT - estimated_fee, test_params.spend_key.clone(), None);
+        let utxo = UnblindedOutput::new(INPUT_AMOUNT - estimated_fee, test_params.spend_key, None);
         stx_builder
             .with_input(double_spend_utxo, double_spend_input)
             .with_output(utxo);

@@ -135,7 +135,7 @@ mod test {
 
         msg.dht_header.network = Network::LocalTest;
 
-        rt.block_on(validate.call(msg.clone())).unwrap();
+        rt.block_on(validate.call(msg)).unwrap();
         assert_eq!(spy.call_count(), 1);
     }
 }

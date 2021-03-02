@@ -34,9 +34,7 @@ use helpers::{
     },
     event_stream::event_stream_next,
     nodes::{
-        create_network_with_2_base_nodes,
         create_network_with_2_base_nodes_with_config,
-        create_network_with_3_base_nodes,
         create_network_with_3_base_nodes_with_config,
         random_node_identity,
         wait_until_online,
@@ -82,7 +80,7 @@ fn request_response_get_metadata() {
     let (block0, _) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
-        .with_block(block0.clone())
+        .with_block(block0)
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
         &mut runtime,
@@ -376,8 +374,8 @@ fn propagate_and_forward_invalid_block_hash() {
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("bob").to_str().unwrap());
     let (mut carol_node, rules) = BaseNodeBuilder::new(network)
-        .with_node_identity(carol_node_identity.clone())
-        .with_peers(vec![bob_node_identity.clone()])
+        .with_node_identity(carol_node_identity)
+        .with_peers(vec![bob_node_identity])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("carol").to_str().unwrap());
 
@@ -460,7 +458,7 @@ fn propagate_and_forward_invalid_block() {
         .with_consensus_constants(consensus_constants)
         .with_block(block0.clone())
         .build();
-    let stateless_block_validator = OrphanBlockValidator::new(rules.clone(), factories.clone());
+    let stateless_block_validator = OrphanBlockValidator::new(rules.clone(), factories);
 
     let mock_validator = MockValidator::new(false);
     let (mut dan_node, rules) = BaseNodeBuilder::new(network)
@@ -479,17 +477,13 @@ fn propagate_and_forward_invalid_block() {
         .start(&mut runtime, temp_dir.path().join("carol").to_str().unwrap());
     let (mut bob_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(bob_node_identity.clone())
-        .with_peers(vec![dan_node_identity.clone()])
+        .with_peers(vec![dan_node_identity])
         .with_consensus_manager(rules)
-        .with_validators(
-            mock_validator.clone(),
-            mock_validator.clone(),
-            stateless_block_validator.clone(),
-        )
+        .with_validators(mock_validator.clone(), mock_validator, stateless_block_validator)
         .start(&mut runtime, temp_dir.path().join("bob").to_str().unwrap());
     let (mut alice_node, rules) = BaseNodeBuilder::new(network)
         .with_node_identity(alice_node_identity)
-        .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
+        .with_peers(vec![bob_node_identity, carol_node_identity])
         .with_consensus_manager(rules)
         .start(&mut runtime, temp_dir.path().join("alice").to_str().unwrap());
 

@@ -131,8 +131,7 @@ impl CommandHandler {
             let banned_peers = banned_peers(&peer_manager).await.unwrap();
             let conns = connectivity.get_active_connections().await.unwrap();
             let status = format!(
-                "{}: State: {}, Tip: {} ({}), Mempool: {}tx ({}g, +/- {}blks), Connections: {}, \
-                 Banned: {}",
+                "{}: State: {}, Tip: {} ({}), Mempool: {}tx ({}g, +/- {}blks), Connections: {}, Banned: {}",
                 Utc::now().format("%H:%M"),
                 state.state_info.short_desc(),
                 metadata.height_of_longest_chain(),

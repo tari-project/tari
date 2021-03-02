@@ -28,13 +28,13 @@ fn len_push_get_truncate_for_each_shift_clear() {
     let mut mem_vec = vec![100, 200, 300, 400, 500, 600];
     assert_eq!(db_vec.len().unwrap(), 0);
 
-    mem_vec.iter().for_each(|val| assert!(db_vec.push(val.clone()).is_ok()));
+    mem_vec.iter().for_each(|val| assert!(db_vec.push(*val).is_ok()));
     assert_eq!(db_vec.len().unwrap(), mem_vec.len());
 
     mem_vec
         .iter()
         .enumerate()
-        .for_each(|(i, val)| assert_eq!(db_vec.get(i).unwrap(), Some(val.clone())));
+        .for_each(|(i, val)| assert_eq!(db_vec.get(i).unwrap(), Some(*val)));
     assert_eq!(db_vec.get(mem_vec.len()).unwrap(), None);
 
     mem_vec.truncate(4);

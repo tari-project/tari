@@ -113,10 +113,10 @@ mod test {
                         remove_file(backup_filename).unwrap();
                         assert_eq!(desired_struct, backup_struct);
                     },
-                    Err(_e) => assert!(false),
+                    Err(_e) => panic!(),
                 };
             },
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         };
     }
 }

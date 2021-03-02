@@ -245,14 +245,10 @@ async fn test_wallet() {
     let mut reply_count = false;
     loop {
         futures::select! {
-            event = alice_event_stream.select_next_some() => match &*event.unwrap() {
-                    TransactionEvent::ReceivedTransactionReply(_) => {
+            event = alice_event_stream.select_next_some() => if let TransactionEvent::ReceivedTransactionReply(_) = &*event.unwrap() {
                         reply_count = true;
                         break;
                     },
-                    _ => (),
-                },
-
             () = delay => {
                 break;
             },
@@ -292,9 +288,9 @@ async fn test_wallet() {
         .apply_encryption("It's turtles all the way down".to_string())
         .await
     {
-        Ok(_) => assert!(false, "Should not be able to encrypt twice"),
-        Err(WalletError::WalletStorageError(WalletStorageError::AlreadyEncrypted)) => assert!(true),
-        Err(_) => assert!(false, "Should be the Already Encrypted error"),
+        Ok(_) => panic!("Should not be able to encrypt twice"),
+        Err(WalletError::WalletStorageError(WalletStorageError::AlreadyEncrypted)) => {},
+        Err(_) => panic!("Should be the Already Encrypted error"),
     }
 
     drop(alice_event_stream);
@@ -304,14 +300,10 @@ async fn test_wallet() {
     let connection =
         run_migration_and_create_sqlite_connection(&current_wallet_path).expect("Could not open Sqlite db");
 
-    if let Err(WalletStorageError::NoPasswordError) = WalletSqliteDatabase::new(connection.clone(), None) {
-        assert!(true);
-    } else {
-        assert!(
-            false,
-            "Should not be able to instantiate encrypted wallet without cipher"
-        );
+    if WalletSqliteDatabase::new(connection.clone(), None).is_ok() {
+        panic!("Should not be able to instantiate encrypted wallet without cipher");
     }
+
     let passphrase_hash = Blake256::new()
         .chain("wrong passphrase".to_string().as_bytes())
         .result()
@@ -323,10 +315,7 @@ async fn test_wallet() {
     if let Err(WalletStorageError::AeadError(s)) = result {
         assert_eq!(s, "Decryption Error:aead::Error".to_string());
     } else {
-        assert!(
-            false,
-            "Should not be able to instantiate encrypted wallet without cipher"
-        );
+        panic!("Should not be able to instantiate encrypted wallet without cipher");
     }
 
     let passphrase_hash = Blake256::new()
@@ -414,6 +403,7 @@ async fn test_wallet() {
 
 #[test]
 #[ignore = "Useful for debugging, ignored because it takes over 30 minutes to run"]
+#[allow(clippy::redundant_closure)]
 fn test_20_store_and_forward_send_tx() {
     let mut fails = 0;
     for _n in 1..=20 {
@@ -459,7 +449,7 @@ fn test_store_and_forward_send_tx() {
     );
 
     let mut alice_wallet = alice_runtime.block_on(create_wallet(
-        alice_identity.clone(),
+        alice_identity,
         &alice_db_tempdir.path(),
         "alice_db",
         factories.clone(),
@@ -518,10 +508,10 @@ fn test_store_and_forward_send_tx() {
     alice_runtime.block_on(async { delay_for(Duration::from_secs(60)).await });
 
     let carol_wallet = carol_runtime.block_on(create_wallet(
-        carol_identity.clone(),
+        carol_identity,
         &carol_db_tempdir.path(),
         "carol_db",
-        factories.clone(),
+        factories,
         shutdown_c.to_signal(),
         None,
     ));
@@ -718,7 +708,7 @@ async fn test_data_generation() {
         .unwrap();
 
     let contacts = wallet.contacts_service.get_contacts().await.unwrap();
-    assert!(contacts.len() > 0);
+    assert!(!contacts.is_empty());
 
     let balance = wallet.output_manager_service.get_balance().await.unwrap();
     assert!(balance.available_balance > MicroTari::from(0));
@@ -731,7 +721,7 @@ async fn test_data_generation() {
     //    assert!(outbound_tx.len() > 0);
 
     let completed_tx = wallet.transaction_service.get_completed_transactions().await.unwrap();
-    assert!(completed_tx.len() > 0);
+    assert!(!completed_tx.is_empty());
 
     shutdown.trigger().unwrap();
     wallet.wait_until_shutdown().await;
@@ -745,8 +735,8 @@ fn test_db_file_locking() {
     let connection = run_migration_and_create_sqlite_connection(&wallet_path).expect("Could not open Sqlite db");
 
     match run_migration_and_create_sqlite_connection(&wallet_path) {
-        Err(WalletStorageError::CannotAcquireFileLock) => assert!(true),
-        _ => assert!(false, "Should not be able to acquire file lock"),
+        Err(WalletStorageError::CannotAcquireFileLock) => {},
+        _ => panic!("Should not be able to acquire file lock"),
     }
 
     drop(connection);

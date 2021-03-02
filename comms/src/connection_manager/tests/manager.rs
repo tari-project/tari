@@ -88,7 +88,7 @@ async fn connect_to_nonexistent_peer() {
 
 #[runtime::test_basic]
 async fn dial_success() {
-    const TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
+    static TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
     let shutdown = Shutdown::new();
 
     let node_identity1 = build_node_identity(PeerFeatures::empty());
@@ -101,7 +101,7 @@ async fn dial_success() {
     let peer_manager1 = build_peer_manager();
 
     let mut protocols = Protocols::new();
-    protocols.add([TEST_PROTO], proto_tx1);
+    protocols.add([TEST_PROTO.clone()], proto_tx1);
     let mut conn_man1 = build_connection_manager(
         {
             let mut config = TestNodeConfig {
@@ -120,7 +120,7 @@ async fn dial_success() {
 
     let peer_manager2 = build_peer_manager();
     let mut protocols = Protocols::new();
-    protocols.add([TEST_PROTO], proto_tx2);
+    protocols.add([TEST_PROTO.clone()], proto_tx2);
     let mut conn_man2 = build_connection_manager(
         {
             let mut config = TestNodeConfig {

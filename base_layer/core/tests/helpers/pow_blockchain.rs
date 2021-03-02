@@ -40,6 +40,7 @@ use tari_core::{
     test_helpers::blockchain::TempDatabase,
 };
 
+#[allow(dead_code)]
 pub fn create_test_pow_blockchain<T: BlockchainBackend>(
     db: &BlockchainDatabase<T>,
     mut pow_algos: Vec<PowAlgorithm>,
@@ -52,6 +53,7 @@ pub fn create_test_pow_blockchain<T: BlockchainBackend>(
     append_to_pow_blockchain(db, block0, pow_algos, consensus_manager);
 }
 
+#[allow(dead_code)]
 pub fn append_to_pow_blockchain<T: BlockchainBackend>(
     db: &BlockchainDatabase<T>,
     chain_tip: Block,
@@ -101,6 +103,7 @@ pub fn append_to_pow_blockchain<T: BlockchainBackend>(
 }
 
 // Calculated the accumulated difficulty for the selected blocks in the blockchain db.
+#[allow(dead_code)]
 pub fn calculate_accumulated_difficulty(
     db: &BlockchainDatabase<TempDatabase>,
     pow_algo: PowAlgorithm,

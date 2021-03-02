@@ -441,7 +441,7 @@ mod test {
         assert_eq!(err.message, "Change spending key was not provided");
         // Ok, give them a change output
         let mut builder = err.builder;
-        builder.with_change_secret(p.change_key.clone());
+        builder.with_change_secret(p.change_key);
         let result = builder.build::<Blake256>(&factories).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.state {
@@ -495,6 +495,7 @@ mod test {
 
     /// Hit the edge case where our change isn't enough to cover the cost of an extra output
     #[test]
+    #[allow(clippy::identity_op)]
     fn change_edge_case() {
         // Create some inputs
         let factories = CryptoFactories::default();

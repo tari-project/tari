@@ -132,15 +132,16 @@ fn setup() -> (
 }
 
 #[test]
+#[allow(clippy::identity_op)]
 fn test_base_node_wallet_rpc() {
     // Testing the submit_transaction() and transaction_query() rpc calls
     let (service, mut base_node, request_mock, consensus_manager, block0, utxo0, mut runtime, _temp_dir) = setup();
 
-    let (txs1, utxos1) = schema_to_transaction(&vec![txn_schema!(from: vec![utxo0.clone()], to: vec![1 * T, 1 * T])]);
+    let (txs1, utxos1) = schema_to_transaction(&[txn_schema!(from: vec![utxo0.clone()], to: vec![1 * T, 1 * T])]);
     let tx1 = (*txs1[0]).clone();
     let tx1_sig = tx1.first_kernel_excess_sig().clone().unwrap().clone();
 
-    let (txs2, utxos2) = schema_to_transaction(&vec![txn_schema!(
+    let (txs2, utxos2) = schema_to_transaction(&[txn_schema!(
         from: vec![utxos1[0].clone()],
         to: vec![400_000 * uT, 590_000 * uT]
     )]);
@@ -149,7 +150,7 @@ fn test_base_node_wallet_rpc() {
 
     // Query Tx1
     let msg = SignatureProto::from(tx1_sig.clone());
-    let req = request_mock.request_with_context(Default::default(), msg.clone());
+    let req = request_mock.request_with_context(Default::default(), msg);
     let resp =
         TxQueryResponse::try_from(runtime.block_on(service.transaction_query(req)).unwrap().into_message()).unwrap();
 
@@ -159,7 +160,7 @@ fn test_base_node_wallet_rpc() {
 
     // First lets try submit tx2 which will be an orphan tx
     let msg = TransactionProto::from(tx2.clone());
-    let req = request_mock.request_with_context(Default::default(), msg.clone());
+    let req = request_mock.request_with_context(Default::default(), msg);
 
     let resp = TxSubmissionResponse::try_from(
         runtime
@@ -174,7 +175,7 @@ fn test_base_node_wallet_rpc() {
 
     // Query Tx2 to confirm it wasn't accepted
     let msg = SignatureProto::from(tx2_sig.clone());
-    let req = request_mock.request_with_context(Default::default(), msg.clone());
+    let req = request_mock.request_with_context(Default::default(), msg);
     let resp =
         TxQueryResponse::try_from(runtime.block_on(service.transaction_query(req)).unwrap().into_message()).unwrap();
 
@@ -193,7 +194,7 @@ fn test_base_node_wallet_rpc() {
         .is_ok());
 
     // Check that subitting Tx2 will now be accepted
-    let msg = TransactionProto::from(tx2.clone());
+    let msg = TransactionProto::from(tx2);
     let req = request_mock.request_with_context(Default::default(), msg);
     let resp = runtime
         .block_on(service.submit_transaction(req))
@@ -204,7 +205,7 @@ fn test_base_node_wallet_rpc() {
 
     // Query Tx2 which should now be in the mempool
     let msg = SignatureProto::from(tx2_sig.clone());
-    let req = request_mock.request_with_context(Default::default(), msg.clone());
+    let req = request_mock.request_with_context(Default::default(), msg);
     let resp =
         TxQueryResponse::try_from(runtime.block_on(service.transaction_query(req)).unwrap().into_message()).unwrap();
 
@@ -213,7 +214,7 @@ fn test_base_node_wallet_rpc() {
     assert_eq!(resp.location, TxLocation::InMempool);
 
     // Now if we submit Tx1 is should return as rejected as AlreadyMined as Tx1's kernel is present
-    let msg = TransactionProto::from(tx1.clone());
+    let msg = TransactionProto::from(tx1);
     let req = request_mock.request_with_context(Default::default(), msg);
     let resp = TxSubmissionResponse::try_from(
         runtime
@@ -227,11 +228,11 @@ fn test_base_node_wallet_rpc() {
     assert_eq!(resp.rejection_reason, TxSubmissionRejectionReason::AlreadyMined);
 
     // Now create a different tx that uses the same input as Tx1 to produce a DoubleSpend rejection
-    let (txs1b, _utxos1) = schema_to_transaction(&vec![txn_schema!(from: vec![utxo0.clone()], to: vec![2 * T, 1 * T])]);
+    let (txs1b, _utxos1) = schema_to_transaction(&[txn_schema!(from: vec![utxo0], to: vec![2 * T, 1 * T])]);
     let tx1b = (*txs1b[0]).clone();
 
     // Now if we submit Tx1 is should return as rejected as AlreadyMined
-    let msg = TransactionProto::from(tx1b.clone());
+    let msg = TransactionProto::from(tx1b);
     let req = request_mock.request_with_context(Default::default(), msg);
     let resp = TxSubmissionResponse::try_from(
         runtime
@@ -254,12 +255,12 @@ fn test_base_node_wallet_rpc() {
     block2.header.kernel_mmr_size += 1;
 
     runtime
-        .block_on(base_node.local_nci.submit_block(block2.clone(), Broadcast::from(true)))
+        .block_on(base_node.local_nci.submit_block(block2, Broadcast::from(true)))
         .unwrap();
 
     // Query Tx1 which should be in block 1 with 1 confirmation
     let msg = SignatureProto::from(tx1_sig.clone());
-    let req = request_mock.request_with_context(Default::default(), msg.clone());
+    let req = request_mock.request_with_context(Default::default(), msg);
     let resp =
         TxQueryResponse::try_from(runtime.block_on(service.transaction_query(req)).unwrap().into_message()).unwrap();
 
@@ -268,12 +269,9 @@ fn test_base_node_wallet_rpc() {
     assert_eq!(resp.location, TxLocation::Mined);
     // try a batch query
     let msg = SignaturesProto {
-        sigs: vec![
-            SignatureProto::from(tx1_sig.clone()),
-            SignatureProto::from(tx2_sig.clone()),
-        ],
+        sigs: vec![SignatureProto::from(tx1_sig.clone()), SignatureProto::from(tx2_sig)],
     };
-    let req = request_mock.request_with_context(Default::default(), msg.clone());
+    let req = request_mock.request_with_context(Default::default(), msg);
     let response = runtime
         .block_on(service.transaction_batch_query(req))
         .unwrap()
@@ -296,11 +294,11 @@ fn test_base_node_wallet_rpc() {
     let msg = FetchMatchingUtxos {
         output_hashes: req_utxos
             .iter()
-            .map(|uo| uo.as_transaction_output(&factories).unwrap().hash().clone())
+            .map(|uo| uo.as_transaction_output(&factories).unwrap().hash())
             .collect(),
     };
 
-    let req = request_mock.request_with_context(Default::default(), msg.clone());
+    let req = request_mock.request_with_context(Default::default(), msg);
 
     let response = runtime
         .block_on(service.fetch_matching_utxos(req))
@@ -313,7 +311,6 @@ fn test_base_node_wallet_rpc() {
 
         assert!(utxos1
             .iter()
-            .find(|u| u.as_transaction_output(&factories).unwrap().commitment == output.commitment)
-            .is_some());
+            .any(|u| u.as_transaction_output(&factories).unwrap().commitment == output.commitment));
     }
 }

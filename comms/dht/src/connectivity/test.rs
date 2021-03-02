@@ -91,6 +91,7 @@ async fn setup(
 }
 
 #[tokio_macros::test_basic]
+#[allow(clippy::redundant_closure)]
 async fn initialize() {
     let config = DhtConfig {
         num_neighbouring_nodes: 4,
@@ -178,6 +179,7 @@ async fn added_neighbours() {
 }
 
 #[tokio_macros::test_basic]
+#[allow(clippy::redundant_closure)]
 async fn reinitialize_pools_when_offline() {
     let node_identity = make_node_identity();
     let node_identities = repeat_with(|| make_node_identity()).take(5).collect::<Vec<_>>();

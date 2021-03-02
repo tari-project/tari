@@ -31,6 +31,7 @@ use tari_core::{
 
 /// Create a partially constructed block using the provided set of transactions
 /// is chain_block, or rename it to `create_orphan_block` and drop the prev_block argument
+#[allow(dead_code)]
 pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, consensus: &ConsensusManager) -> Block {
     let mut coinbase_value = consensus.emission_schedule().block_reward(block_height);
     let lock_height = consensus.consensus_constants(block_height).coinbase_lock_height();
@@ -55,6 +56,7 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
     Block::new(template.header.into(), template.body)
 }
 
+#[allow(dead_code)]
 pub fn create_block(block_version: u16, block_height: u64, transactions: Vec<Transaction>) -> Block {
     let mut header = BlockHeader::new(block_version);
     header.height = block_height;

@@ -70,7 +70,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .with_message("Yo!".to_string())
         .with_input(
             input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
-            input.clone(),
+            input,
         )
         .with_change_secret(PrivateKey::random(&mut OsRng));
 
@@ -85,7 +85,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         outbound_txs.push(OutboundTransaction {
             tx_id: (i + 10) as u64,
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            amount: amounts[i].clone(),
+            amount: amounts[i],
             fee: stp.clone().get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
@@ -112,18 +112,13 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     let retrieved_outbound_txs = runtime.block_on(db.get_pending_outbound_transactions()).unwrap();
     assert_eq!(outbound_txs.len(), messages.len());
-    for i in 0..messages.len() {
-        let retrieved_outbound_tx = runtime
-            .block_on(db.get_pending_outbound_transaction(outbound_txs[i].tx_id))
-            .unwrap();
-        assert_eq!(retrieved_outbound_tx, outbound_txs[i]);
+    for i in outbound_txs.iter().take(messages.len()) {
+        let retrieved_outbound_tx = runtime.block_on(db.get_pending_outbound_transaction(i.tx_id)).unwrap();
+        assert_eq!(&retrieved_outbound_tx, i);
         assert_eq!(retrieved_outbound_tx.send_count, 0);
         assert!(retrieved_outbound_tx.last_send_timestamp.is_none());
 
-        assert_eq!(
-            retrieved_outbound_txs.get(&outbound_txs[i].tx_id).unwrap(),
-            &outbound_txs[i]
-        );
+        assert_eq!(&retrieved_outbound_txs.get(&i.tx_id).unwrap(), &i);
     }
 
     runtime
@@ -142,7 +137,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     if let WalletTransaction::PendingOutbound(tx) = any_outbound_tx {
         assert_eq!(tx, retrieved_outbound_tx);
     } else {
-        assert!(false, "Should have found outbound tx");
+        panic!("Should have found outbound tx");
     }
 
     let rtp = ReceiverTransactionProtocol::new(
@@ -159,7 +154,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         inbound_txs.push(InboundTransaction {
             tx_id: i as u64,
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            amount: amounts[i].clone(),
+            amount: amounts[i],
             receiver_protocol: rtp.clone(),
             status: TransactionStatus::Pending,
             message: messages[i].clone(),
@@ -184,9 +179,9 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     let retrieved_inbound_txs = runtime.block_on(db.get_pending_inbound_transactions()).unwrap();
     assert_eq!(inbound_txs.len(), messages.len());
-    for i in 0..messages.len() {
-        let retrieved_tx = retrieved_inbound_txs.get(&inbound_txs[i].tx_id).unwrap();
-        assert_eq!(retrieved_tx, &inbound_txs[i]);
+    for i in inbound_txs.iter().take(messages.len()) {
+        let retrieved_tx = retrieved_inbound_txs.get(&i.tx_id).unwrap();
+        assert_eq!(&retrieved_tx, &i);
         assert_eq!(retrieved_tx.send_count, 0);
         assert!(retrieved_tx.last_send_timestamp.is_none());
     }
@@ -205,7 +200,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     if let WalletTransaction::PendingInbound(tx) = any_inbound_tx {
         assert_eq!(tx, retrieved_inbound_tx);
     } else {
-        assert!(false, "Should have found inbound tx");
+        panic!("Should have found inbound tx");
     }
 
     let inbound_pub_key = runtime
@@ -296,7 +291,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     if let WalletTransaction::Completed(tx) = any_completed_tx {
         assert_eq!(tx, retrieved_completed_tx);
     } else {
-        assert!(false, "Should have found completed tx");
+        panic!("Should have found completed tx");
     }
 
     if cfg!(feature = "test_harness") {
@@ -366,7 +361,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     if let WalletTransaction::Completed(tx) = any_cancelled_completed_tx {
         assert_eq!(tx.tx_id, cancelled_tx_id);
     } else {
-        assert!(false, "Should have found cancelled completed tx");
+        panic!("Should have found cancelled completed tx");
     }
 
     runtime
@@ -376,7 +371,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
                 999u64,
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 22 * uT,
-                rtp.clone(),
+                rtp,
                 TransactionStatus::Pending,
                 "To be cancelled".to_string(),
                 Utc::now().naive_utc(),
@@ -434,7 +429,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     if let WalletTransaction::PendingInbound(tx) = any_cancelled_inbound_tx {
         assert_eq!(tx.tx_id, 999);
     } else {
-        assert!(false, "Should have found cancelled inbound tx");
+        panic!("Should have found cancelled inbound tx");
     }
 
     let mut cancelled_txs = runtime
@@ -450,8 +445,8 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
                 998u64,
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 22 * uT,
-                stp.clone().get_fee_amount().unwrap(),
-                stp.clone(),
+                stp.get_fee_amount().unwrap(),
+                stp,
                 TransactionStatus::Pending,
                 "To be cancelled".to_string(),
                 Utc::now().naive_utc(),
@@ -518,7 +513,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     if let WalletTransaction::PendingOutbound(tx) = any_cancelled_outbound_tx {
         assert_eq!(tx.tx_id, 998);
     } else {
-        assert!(false, "Should have found cancelled outbound tx");
+        panic!("Should have found cancelled outbound tx");
     }
 }
 

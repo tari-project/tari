@@ -135,6 +135,7 @@ async fn make_node_with_node_identity(node_identity: Arc<NodeIdentity>, seed_pee
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn setup_comms_dht(
     node_identity: Arc<NodeIdentity>,
     storage: CommsDatabase,

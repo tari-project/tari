@@ -77,6 +77,7 @@ use futures::channel::mpsc;
 use tari_comms::peer_manager::PeerFeatures;
 
 #[tokio_macros::main]
+#[allow(clippy::same_item_push)]
 async fn main() {
     let _ = env_logger::from_env(Env::default())
         .format_timestamp_millis()
@@ -198,10 +199,7 @@ async fn main() {
     ) {
         println!("Error rendering graphs: {}", e);
     }
-    println!(
-        "Wrote graph output to {}/{}",
-        DEFAULT_GRAPH_OUTPUT_DIR, "join_propagation"
-    );
+    println!("Wrote graph output to {}/join_propagation", DEFAULT_GRAPH_OUTPUT_DIR);
     banner!("That's it folks! Network is shutting down...");
     log::info!("------------------------------- SHUTDOWN -------------------------------");
     shutdown_all(nodes).await;

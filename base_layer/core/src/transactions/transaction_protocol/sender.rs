@@ -585,7 +585,7 @@ mod test {
         assert_eq!(sender.is_failed(), false);
         assert!(sender.is_finalizing());
         match sender.finalize(KernelFeatures::empty(), &factories) {
-            Ok(_0) => (),
+            Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         }
         let tx = sender.get_transaction().unwrap();
@@ -637,7 +637,7 @@ mod test {
         // Transaction should be complete
         assert!(alice.is_finalizing());
         match alice.finalize(KernelFeatures::empty(), &factories) {
-            Ok(_0) => (),
+            Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
         assert!(alice.is_finalized());
@@ -705,12 +705,12 @@ mod test {
         );
         // Alice gets message back, deserializes it, etc
         alice
-            .add_single_recipient_info(bob_info.clone(), &factories.range_proof)
+            .add_single_recipient_info(bob_info, &factories.range_proof)
             .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
         match alice.finalize(KernelFeatures::empty(), &factories) {
-            Ok(_0) => (),
+            Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
 
@@ -739,8 +739,8 @@ mod test {
             .with_fee_per_gram(MicroTari(20))
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
-            .with_change_secret(a.change_key.clone())
-            .with_input(utxo.clone(), input)
+            .with_change_secret(a.change_key)
+            .with_input(utxo, input)
             .with_amount(0, (2u64.pow(32) + 1).into());
         let mut alice = builder.build::<Blake256>(&factories).unwrap();
         assert!(alice.is_single_round_message_ready());
@@ -758,7 +758,7 @@ mod test {
         )
         .unwrap();
         // Alice gets message back, deserializes it, etc
-        match alice.add_single_recipient_info(bob_info.clone(), &factories.range_proof) {
+        match alice.add_single_recipient_info(bob_info, &factories.range_proof) {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
                 e,
@@ -784,8 +784,8 @@ mod test {
             .with_fee_per_gram(fee_per_gram)
             .with_offset(alice.offset.clone())
             .with_private_nonce(alice.nonce.clone())
-            .with_change_secret(alice.change_key.clone())
-            .with_input(utxo.clone(), input)
+            .with_change_secret(alice.change_key)
+            .with_input(utxo, input)
             .with_amount(0, amount);
         // Verify that the initial 'fee greater than amount' check rejects the transaction when it is constructed
         match builder.build::<Blake256>(&factories) {
@@ -807,13 +807,13 @@ mod test {
             .with_fee_per_gram(fee_per_gram)
             .with_offset(alice.offset.clone())
             .with_private_nonce(alice.nonce.clone())
-            .with_change_secret(alice.change_key.clone())
-            .with_input(utxo.clone(), input)
+            .with_change_secret(alice.change_key)
+            .with_input(utxo, input)
             .with_amount(0, amount)
             .with_prevent_fee_gt_amount(false);
         // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
         match builder.build::<Blake256>(&factories) {
-            Ok(_) => assert!(true),
+            Ok(_) => {},
             Err(e) => panic!("Unexpected error: {:?}", e),
         };
     }
@@ -838,7 +838,7 @@ mod test {
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
             rewind_blinding_key: rewind_blinding_key.clone(),
-            proof_message: proof_message.clone(),
+            proof_message: proof_message.to_owned(),
         };
 
         let mut builder = SenderTransactionProtocol::builder(1);
@@ -848,7 +848,7 @@ mod test {
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_rewindable_change_secret(a.change_key.clone(), rewind_data)
-            .with_input(utxo.clone(), input)
+            .with_input(utxo, input)
             .with_amount(0, MicroTari(5000));
         let mut alice = builder.build::<Blake256>(&factories).unwrap();
         assert!(alice.is_single_round_message_ready());
@@ -881,12 +881,12 @@ mod test {
 
         // Alice gets message back, deserializes it, etc
         alice
-            .add_single_recipient_info(bob_info.clone(), &factories.range_proof)
+            .add_single_recipient_info(bob_info, &factories.range_proof)
             .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
         match alice.finalize(KernelFeatures::empty(), &factories) {
-            Ok(_0) => (),
+            Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
 

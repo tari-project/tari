@@ -46,6 +46,7 @@ use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, streams, unpack_enum};
 use tokio::sync::broadcast;
 
+#[allow(clippy::type_complexity)]
 fn setup_connectivity_manager(
     config: ConnectivityConfig,
 ) -> (
@@ -165,9 +166,9 @@ async fn add_many_managed_peers() {
     }
 
     // 7-10 have failed, the rest are still connecting
-    for i in 7..10 {
+    for i in peers.iter().take(10).skip(7) {
         cm_mock_state.publish_event(ConnectionManagerEvent::PeerConnectFailed(
-            Box::new(peers[i].node_id.clone()),
+            Box::new(i.node_id.clone()),
             ConnectionManagerError::ConnectFailedMaximumAttemptsReached,
         ));
     }
@@ -187,28 +188,19 @@ async fn add_many_managed_peers() {
     let connection_states = connectivity.get_all_connection_states().await.unwrap();
     assert_eq!(connection_states.len(), 10);
 
-    for i in 0..5 {
-        let state = connection_states
-            .iter()
-            .find(|s| s.node_id() == &peers[i].node_id)
-            .unwrap();
+    for i in peers.iter().take(5) {
+        let state = connection_states.iter().find(|s| s.node_id() == &i.node_id).unwrap();
         assert_eq!(state.status(), ConnectionStatus::Connected);
         // Check the connection matches the expected peer
-        assert_eq!(state.connection().unwrap().peer_node_id(), &peers[i].node_id);
+        assert_eq!(state.connection().unwrap().peer_node_id(), &i.node_id);
     }
-    for i in 5..6 {
-        let state = connection_states
-            .iter()
-            .find(|s| s.node_id() == &peers[i].node_id)
-            .unwrap();
+    for i in peers.iter().take(6).skip(5) {
+        let state = connection_states.iter().find(|s| s.node_id() == &i.node_id).unwrap();
         assert_eq!(state.status(), ConnectionStatus::Connecting);
         assert!(state.connection().is_none());
     }
-    for i in 7..10 {
-        let state = connection_states
-            .iter()
-            .find(|s| s.node_id() == &peers[i].node_id)
-            .unwrap();
+    for i in peers.iter().take(10).skip(7) {
+        let state = connection_states.iter().find(|s| s.node_id() == &i.node_id).unwrap();
         assert_eq!(state.status(), ConnectionStatus::Failed);
         assert!(state.connection().is_none());
     }
@@ -410,8 +402,8 @@ async fn peer_selection() {
         .await
         .unwrap();
     assert_eq!(conns.len(), 5);
-    for i in 9usize..=5 {
+    for i in connections.iter().take(5 + 1).skip(9usize) {
         let c = conns.remove(0);
-        assert_eq!(c.peer_node_id(), connections[i].peer_node_id());
+        assert_eq!(c.peer_node_id(), i.peer_node_id());
     }
 }

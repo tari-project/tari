@@ -173,7 +173,7 @@ mod test {
         let info = SingleRoundSenderData {
             tx_id: 500,
             amount: MicroTari(1500),
-            public_excess: pub_xs.clone(),
+            public_excess: pub_xs,
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
             message: "".to_string(),

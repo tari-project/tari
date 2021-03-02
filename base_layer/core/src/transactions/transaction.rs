@@ -1037,8 +1037,8 @@ mod test {
 
         input.features.maturity = 2;
         kernel.lock_height = 10;
-        tx.body.add_input(input.clone());
-        tx.body.add_kernel(kernel.clone());
+        tx.body.add_input(input);
+        tx.body.add_kernel(kernel);
 
         assert_eq!(tx.max_input_maturity(), 5);
         assert_eq!(tx.max_kernel_timelock(), 10);
@@ -1054,6 +1054,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::identity_op)]
     fn check_cut_through_() {
         let (tx, _, outputs) = create_tx(50000000.into(), 15.into(), 1, 2, 1, 2);
 
@@ -1107,7 +1108,7 @@ mod test {
         let output = tx.body.outputs()[0].clone();
 
         let mut broken_tx_1 = tx.clone();
-        let mut broken_tx_2 = tx.clone();
+        let mut broken_tx_2 = tx;
 
         broken_tx_1.body.add_input(input);
         broken_tx_2.body.add_output(output);
@@ -1132,7 +1133,7 @@ mod test {
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
             rewind_blinding_key: rewind_blinding_key.clone(),
-            proof_message: proof_message.clone(),
+            proof_message: proof_message.to_owned(),
         };
 
         let unblinded_output = UnblindedOutput::new(v, k.clone(), None);

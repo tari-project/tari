@@ -170,6 +170,6 @@ mod test {
 
         assert_eq!(hash1, hash2);
         let subjects = &[hash1, hash2];
-        assert!(subjects.into_iter().all(|h| h.to_hex() == EXPECTED_HASH));
+        assert!(subjects.iter().all(|h| h.to_hex() == EXPECTED_HASH));
     }
 }

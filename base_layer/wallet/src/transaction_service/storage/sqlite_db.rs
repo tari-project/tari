@@ -1649,17 +1649,17 @@ mod test {
             .with_message("Yo!".to_string())
             .with_input(
                 input.as_transaction_input(&factories.commitment, OutputFeatures::default()),
-                input.clone(),
+                input,
             )
             .with_change_secret(PrivateKey::random(&mut OsRng));
 
-        let stp = builder.build::<HashDigest>(&factories).unwrap();
+        let mut stp = builder.build::<HashDigest>(&factories).unwrap();
 
         let outbound_tx1 = OutboundTransaction {
             tx_id: 1u64,
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
-            fee: stp.clone().get_fee_amount().unwrap(),
+            fee: stp.get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
@@ -1674,7 +1674,7 @@ mod test {
             tx_id: 2u64,
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
-            fee: stp.clone().get_fee_amount().unwrap(),
+            fee: stp.get_fee_amount().unwrap(),
             sender_protocol: stp.clone(),
             status: TransactionStatus::Pending,
             message: "Hey!".to_string(),
@@ -1686,12 +1686,11 @@ mod test {
         })
         .unwrap();
 
-        OutboundTransactionSql::from(OutboundTransactionSql::try_from(outbound_tx1.clone()).unwrap())
+        OutboundTransactionSql::try_from(outbound_tx1.clone())
+            .unwrap()
             .commit(&conn)
             .unwrap();
-        OutboundTransactionSql::from(outbound_tx2.clone())
-            .commit(&conn)
-            .unwrap();
+        outbound_tx2.commit(&conn).unwrap();
 
         let outbound_txs = OutboundTransactionSql::index_by_cancelled(&conn, false).unwrap();
         assert_eq!(outbound_txs.len(), 2);
@@ -1705,7 +1704,7 @@ mod test {
         );
 
         let rtp = ReceiverTransactionProtocol::new(
-            TransactionSenderMessage::Single(Box::new(stp.clone().build_single_round_message().unwrap())),
+            TransactionSenderMessage::Single(Box::new(stp.build_single_round_message().unwrap())),
             PrivateKey::random(&mut OsRng),
             PrivateKey::random(&mut OsRng),
             OutputFeatures::default(),
@@ -1729,7 +1728,7 @@ mod test {
             tx_id: 3,
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
-            receiver_protocol: rtp.clone(),
+            receiver_protocol: rtp,
             status: TransactionStatus::Pending,
             message: "Hey!".to_string(),
             timestamp: Utc::now().naive_utc(),
@@ -1867,12 +1866,13 @@ mod test {
         assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, false, &conn).is_err());
         assert!(InboundTransactionSql::find_by_cancelled(inbound_tx1.tx_id, true, &conn).is_ok());
 
-        OutboundTransactionSql::from(OutboundTransactionSql::try_from(outbound_tx1.clone()).unwrap())
+        OutboundTransactionSql::try_from(outbound_tx1.clone())
+            .unwrap()
             .commit(&conn)
             .unwrap();
 
         assert!(OutboundTransactionSql::find_by_cancelled(outbound_tx1.tx_id, true, &conn).is_err());
-        OutboundTransactionSql::try_from(outbound_tx1.clone())
+        OutboundTransactionSql::try_from(outbound_tx1)
             .unwrap()
             .cancel(&conn)
             .unwrap();
@@ -1934,7 +1934,7 @@ mod test {
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             fee: MicroTari::from(100),
-            transaction: tx.clone(),
+            transaction: tx,
             status: TransactionStatus::Coinbase,
             message: "Hey!".to_string(),
             timestamp: Utc::now().naive_utc(),
@@ -1946,15 +1946,15 @@ mod test {
             valid: true,
         };
 
-        CompletedTransactionSql::try_from(coinbase_tx1.clone())
+        CompletedTransactionSql::try_from(coinbase_tx1)
             .unwrap()
             .commit(&conn)
             .unwrap();
-        CompletedTransactionSql::try_from(coinbase_tx2.clone())
+        CompletedTransactionSql::try_from(coinbase_tx2)
             .unwrap()
             .commit(&conn)
             .unwrap();
-        CompletedTransactionSql::try_from(coinbase_tx3.clone())
+        CompletedTransactionSql::try_from(coinbase_tx3)
             .unwrap()
             .commit(&conn)
             .unwrap();
@@ -1962,9 +1962,9 @@ mod test {
         let coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(2, &conn).unwrap();
 
         assert_eq!(coinbase_txs.len(), 2);
-        assert!(coinbase_txs.iter().find(|c| c.tx_id == 101).is_some());
-        assert!(coinbase_txs.iter().find(|c| c.tx_id == 102).is_some());
-        assert!(coinbase_txs.iter().find(|c| c.tx_id == 103).is_none());
+        assert!(coinbase_txs.iter().any(|c| c.tx_id == 101));
+        assert!(coinbase_txs.iter().any(|c| c.tx_id == 102));
+        assert!(!coinbase_txs.iter().any(|c| c.tx_id == 103));
 
         #[cfg(feature = "test_harness")]
         CompletedTransactionSql::find_by_cancelled(completed_tx2.tx_id, false, &conn)
@@ -2101,7 +2101,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
         };
-        let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx.clone()).unwrap();
+        let inbound_tx_sql = InboundTransactionSql::try_from(inbound_tx).unwrap();
         inbound_tx_sql.commit(&conn).unwrap();
 
         let outbound_tx = OutboundTransaction {
@@ -2118,7 +2118,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
         };
-        let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx.clone()).unwrap();
+        let outbound_tx_sql = OutboundTransactionSql::try_from(outbound_tx).unwrap();
         outbound_tx_sql.commit(&conn).unwrap();
 
         let completed_tx = CompletedTransaction {
@@ -2138,7 +2138,7 @@ mod test {
             last_send_timestamp: None,
             valid: true,
         };
-        let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone()).unwrap();
+        let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx).unwrap();
         completed_tx_sql.commit(&conn).unwrap();
 
         let key = GenericArray::from_slice(b"an example very very secret key.");
@@ -2151,12 +2151,12 @@ mod test {
 
         let db2 = TransactionServiceSqliteDatabase::new(connection.clone(), None);
         assert!(db2.remove_encryption().is_ok());
-        db2.apply_encryption(cipher.clone()).unwrap();
+        db2.apply_encryption(cipher).unwrap();
         assert!(db2.fetch(&DbKey::PendingInboundTransactions).is_ok());
         assert!(db2.fetch(&DbKey::PendingOutboundTransactions).is_ok());
         assert!(db2.fetch(&DbKey::CompletedTransactions).is_ok());
 
-        let db3 = TransactionServiceSqliteDatabase::new(connection.clone(), None);
+        let db3 = TransactionServiceSqliteDatabase::new(connection, None);
         assert!(db3.fetch(&DbKey::PendingInboundTransactions).is_err());
         assert!(db3.fetch(&DbKey::PendingOutboundTransactions).is_err());
         assert!(db3.fetch(&DbKey::CompletedTransactions).is_err());
