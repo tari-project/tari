@@ -331,6 +331,11 @@ impl<B: Backend> Component<B> for SendTab {
                         Some("Transaction successfully sent!\nPlease press Enter to continue".to_string());
                     return;
                 },
+                UiTransactionSendStatus::TransactionComplete => {
+                    self.success_message =
+                        Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
+                    return;
+                },
             };
             draw_dialog(
                 f,

@@ -59,8 +59,8 @@ pub enum OutputManagerError {
     DhtOutboundError(#[from] DhtOutboundError),
     #[error("Conversion error: `{0}`")]
     ConversionError(String),
-    #[error("Not all the transaction inputs and outputs are present to be confirmed")]
-    IncompleteTransaction,
+    #[error("Not all the transaction inputs and outputs are present to be confirmed: {0}")]
+    IncompleteTransaction(&'static str),
     #[error("Not enough funds to fulfil transaction")]
     NotEnoughFunds,
     #[error("Output already exists")]

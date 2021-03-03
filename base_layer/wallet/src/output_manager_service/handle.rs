@@ -55,6 +55,7 @@ pub enum OutputManagerRequest {
     ConfirmPendingTransaction(u64),
     ConfirmTransaction((u64, Vec<TransactionInput>, Vec<TransactionOutput>)),
     PrepareToSendTransaction((MicroTari, MicroTari, Option<u64>, String)),
+    CreatePayToSelfTransaction((MicroTari, MicroTari, Option<u64>, String)),
     CancelTransaction(u64),
     TimeoutTransactions(Duration),
     GetPendingTransactions,
@@ -74,31 +75,31 @@ pub enum OutputManagerRequest {
 
 impl fmt::Display for OutputManagerRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use OutputManagerRequest::*;
         match self {
-            Self::GetBalance => f.write_str("GetBalance"),
-            Self::AddOutput(v) => f.write_str(&format!("AddOutput ({})", v.value)),
-            Self::GetRecipientTransaction(_) => f.write_str("GetRecipientTransaction"),
-            Self::ConfirmTransaction(v) => f.write_str(&format!("ConfirmTransaction ({})", v.0)),
-            Self::ConfirmPendingTransaction(v) => f.write_str(&format!("ConfirmPendingTransaction ({})", v)),
-            Self::PrepareToSendTransaction((_, _, _, msg)) => {
-                f.write_str(&format!("PrepareToSendTransaction ({})", msg))
-            },
-            Self::CancelTransaction(v) => f.write_str(&format!("CancelTransaction ({})", v)),
-            Self::TimeoutTransactions(d) => f.write_str(&format!("TimeoutTransactions ({}s)", d.as_secs())),
-            Self::GetPendingTransactions => f.write_str("GetPendingTransactions"),
-            Self::GetSpentOutputs => f.write_str("GetSpentOutputs"),
-            Self::GetUnspentOutputs => f.write_str("GetUnspentOutputs"),
-            Self::GetInvalidOutputs => f.write_str("GetInvalidOutputs"),
-            Self::GetSeedWords => f.write_str("GetSeedWords"),
-            Self::SetBaseNodePublicKey(k) => f.write_str(&format!("SetBaseNodePublicKey ({})", k)),
-            Self::ValidateUtxos(validation_type, retry) => f.write_str(&format!("{} ({:?})", validation_type, retry)),
-            Self::CreateCoinSplit(v) => f.write_str(&format!("CreateCoinSplit ({})", v.0)),
-            Self::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
-            Self::RemoveEncryption => f.write_str("RemoveEncryption"),
-            Self::GetCoinbaseTransaction(_) => f.write_str("GetCoinbaseTransaction"),
-            Self::GetPublicRewindKeys => f.write_str("GetPublicRewindKeys"),
-            Self::FeeEstimate(_) => f.write_str("FeeEstimate"),
-            Self::RewindOutputs(_) => f.write_str("RewindAndImportOutputs"),
+            GetBalance => write!(f, "GetBalance"),
+            AddOutput(v) => write!(f, "AddOutput ({})", v.value),
+            GetRecipientTransaction(_) => write!(f, "GetRecipientTransaction"),
+            ConfirmTransaction(v) => write!(f, "ConfirmTransaction ({})", v.0),
+            ConfirmPendingTransaction(v) => write!(f, "ConfirmPendingTransaction ({})", v),
+            PrepareToSendTransaction((_, _, _, msg)) => write!(f, "PrepareToSendTransaction ({})", msg),
+            CreatePayToSelfTransaction((_, _, _, msg)) => write!(f, "CreatePayToSelfTransaction ({})", msg),
+            CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
+            TimeoutTransactions(d) => write!(f, "TimeoutTransactions ({}s)", d.as_secs()),
+            GetPendingTransactions => write!(f, "GetPendingTransactions"),
+            GetSpentOutputs => write!(f, "GetSpentOutputs"),
+            GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
+            GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
+            GetSeedWords => write!(f, "GetSeedWords"),
+            SetBaseNodePublicKey(k) => write!(f, "SetBaseNodePublicKey ({})", k),
+            ValidateUtxos(validation_type, retry) => write!(f, "{} ({:?})", validation_type, retry),
+            CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({})", v.0),
+            ApplyEncryption(_) => write!(f, "ApplyEncryption"),
+            RemoveEncryption => write!(f, "RemoveEncryption"),
+            GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
+            GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
+            FeeEstimate(_) => write!(f, "FeeEstimate"),
+            RewindOutputs(_) => write!(f, "RewindAndImportOutputs"),
         }
     }
 }
@@ -112,6 +113,7 @@ pub enum OutputManagerResponse {
     CoinbaseTransaction(Transaction),
     OutputConfirmed,
     PendingTransactionConfirmed,
+    PayToSelfTransaction((TxId, MicroTari, Transaction)),
     TransactionConfirmed,
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
@@ -448,6 +450,29 @@ impl OutputManagerHandle {
     {
         match self.handle.call(OutputManagerRequest::RewindOutputs(outputs)).await?? {
             OutputManagerResponse::RewindOutputs(outputs) => Ok(outputs),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_pay_to_self_transaction(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        lock_height: Option<u64>,
+        message: String,
+    ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError>
+    {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreatePayToSelfTransaction((
+                amount,
+                fee_per_gram,
+                lock_height,
+                message,
+            )))
+            .await??
+        {
+            OutputManagerResponse::PayToSelfTransaction(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

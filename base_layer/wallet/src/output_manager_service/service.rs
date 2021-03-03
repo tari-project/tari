@@ -281,6 +281,10 @@ where TBackend: OutputManagerBackend + 'static
                 .prepare_transaction_to_send(amount, fee_per_gram, lock_height, message)
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
+            OutputManagerRequest::CreatePayToSelfTransaction((amount, fee_per_gram, lock_height, message)) => self
+                .create_pay_to_self_transaction(amount, fee_per_gram, lock_height, message)
+                .await
+                .map(OutputManagerResponse::PayToSelfTransaction),
             OutputManagerRequest::FeeEstimate((amount, fee_per_gram, num_kernels, num_outputs)) => self
                 .fee_estimate(amount, fee_per_gram, num_kernels, num_outputs)
                 .await
@@ -436,18 +440,12 @@ where TBackend: OutputManagerBackend + 'static
         sender_message: TransactionSenderMessage,
     ) -> Result<ReceiverTransactionProtocol, OutputManagerError>
     {
-        let mut key = PrivateKey::default();
-        {
-            let mut km = self.key_manager.lock().await;
-            key = km.next_key()?.k;
-        }
-
-        let (tx_id, amount) = match sender_message.clone() {
-            TransactionSenderMessage::Single(data) => (data.tx_id, data.amount),
+        let (tx_id, amount) = match sender_message.single() {
+            Some(data) => (data.tx_id, data.amount),
             _ => return Err(OutputManagerError::InvalidSenderMessage),
         };
 
-        self.resources.db.increment_key_index().await?;
+        let key = self.get_next_spend_key().await?;
         self.resources
             .db
             .accept_incoming_pending_transaction(
@@ -488,16 +486,12 @@ where TBackend: OutputManagerBackend + 'static
         block_height: u64,
     ) -> Result<Transaction, OutputManagerError>
     {
-        let mut key = PrivateKey::default();
-        {
-            let km = self.coinbase_key_manager.lock().await;
-            key = km.derive_key(block_height)?.k;
-        }
-
         self.resources
             .db
             .cancel_pending_transaction_at_block_height(block_height)
             .await?;
+
+        let key = self.get_next_coinbase_key().await?;
 
         let nonce = PrivateKey::random(&mut OsRng);
         let (tx, _) = CoinbaseBuilder::new(self.resources.factories.clone())
@@ -537,14 +531,21 @@ where TBackend: OutputManagerBackend + 'static
         let pending_transaction = self.resources.db.fetch_pending_transaction_outputs(tx_id).await?;
 
         // Assumption: We are only allowing a single output per receiver in the current transaction protocols.
-        if pending_transaction.outputs_to_be_received.len() != 1 ||
-            pending_transaction.outputs_to_be_received[0]
-                .unblinded_output
-                .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default())
-                .commitment !=
-                received_output.commitment
+        if pending_transaction.outputs_to_be_received.len() != 1 {
+            return Err(OutputManagerError::IncompleteTransaction(
+                "unexpected number of outputs to be received, exactly one is expected",
+            ));
+        }
+
+        if pending_transaction.outputs_to_be_received[0]
+            .unblinded_output
+            .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default())
+            .commitment !=
+            received_output.commitment
         {
-            return Err(OutputManagerError::IncompleteTransaction);
+            return Err(OutputManagerError::IncompleteTransaction(
+                "unexpected commitment received",
+            ));
         }
 
         self.resources
@@ -626,7 +627,7 @@ where TBackend: OutputManagerBackend + 'static
             builder.with_input(
                 uo.unblinded_output.as_transaction_input(
                     &self.resources.factories.commitment,
-                    uo.unblinded_output.clone().features,
+                    uo.unblinded_output.features.clone(),
                 ),
                 uo.unblinded_output.clone(),
             );
@@ -642,12 +643,7 @@ where TBackend: OutputManagerBackend + 'static
         // If the input values > the amount to be sent + fee_without_change then we will need to include a change
         // output
         if total > amount + fee_without_change {
-            let mut key = PrivateKey::default();
-            {
-                let mut km = self.key_manager.lock().await;
-                key = km.next_key()?.k;
-            }
-            self.resources.db.increment_key_index().await?;
+            let key = self.get_next_spend_key().await?;
             change_key = Some(key.clone());
             builder.with_rewindable_change_secret(key, self.resources.rewind_data.clone());
         }
@@ -665,25 +661,107 @@ where TBackend: OutputManagerBackend + 'static
             )?);
         }
 
+        let tx_id = stp.get_tx_id()?;
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
         self.resources
             .db
-            .encumber_outputs(stp.get_tx_id()?, outputs, change_output)
+            .encumber_outputs(tx_id, outputs, change_output)
             .await?;
 
-        debug!(
-            target: LOG_TARGET,
-            "Prepared transaction (TxId: {}) to send",
-            stp.get_tx_id()?
-        );
+        debug!(target: LOG_TARGET, "Prepared transaction (TxId: {}) to send", tx_id);
         debug!(
             target: LOG_TARGET_STRESS,
-            "Prepared transaction (TxId: {}) to send",
-            stp.get_tx_id()?
+            "Prepared transaction (TxId: {}) to send", tx_id
         );
 
         Ok(stp)
+    }
+
+    async fn create_pay_to_self_transaction(
+        &mut self,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        lock_height: Option<u64>,
+        message: String,
+    ) -> Result<(TxId, MicroTari, Transaction), OutputManagerError>
+    {
+        let (inputs, _) = self.select_utxos(amount, fee_per_gram, 1, None).await?;
+        let total = inputs.iter().map(|x| x.unblinded_output.value).sum::<MicroTari>();
+
+        let offset = PrivateKey::random(&mut OsRng);
+        let nonce = PrivateKey::random(&mut OsRng);
+
+        // Create builder with no recipients (other than ourselves)
+        let mut builder = SenderTransactionProtocol::builder(0);
+        builder
+            .with_lock_height(lock_height.unwrap_or(0))
+            .with_fee_per_gram(fee_per_gram)
+            .with_offset(offset.clone())
+            .with_private_nonce(nonce.clone())
+            .with_amount(0, amount)
+            .with_message(message)
+            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
+
+        for uo in &inputs {
+            builder.with_input(
+                uo.unblinded_output.as_transaction_input(
+                    &self.resources.factories.commitment,
+                    uo.unblinded_output.features.clone(),
+                ),
+                uo.unblinded_output.clone(),
+            );
+        }
+
+        let spend_key = self.get_next_spend_key().await?;
+        let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
+            UnblindedOutput::new(amount, spend_key, None),
+            &self.resources.factories,
+            &self.resources.rewind_data,
+        )?;
+        builder.with_output(utxo.unblinded_output.clone());
+
+        let mut outputs = vec![utxo];
+        let mut change_key = None;
+
+        let fee = Fee::calculate(fee_per_gram, 1, inputs.len(), 1);
+        let change_value = total.saturating_sub(amount).saturating_sub(fee);
+        if change_value > 0.into() {
+            let key = self.get_next_spend_key().await?;
+            change_key = Some(key.clone());
+            builder.with_rewindable_change_secret(key, self.resources.rewind_data.clone());
+        }
+
+        let factories = CryptoFactories::default();
+        let mut stp = builder
+            .build::<HashDigest>(&self.resources.factories)
+            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+        if let Some(key) = change_key {
+            let change_amount = stp.get_change_amount()?;
+            let change_output = DbUnblindedOutput::rewindable_from_unblinded_output(
+                UnblindedOutput::new(change_amount, key, None),
+                &self.resources.factories,
+                &self.resources.rewind_data,
+            )?;
+
+            outputs.push(change_output);
+        }
+
+        let tx_id = stp.get_tx_id()?;
+        trace!(
+            target: LOG_TARGET,
+            "Encumber send to self transaction ({}) outputs.",
+            tx_id
+        );
+        self.resources.db.encumber_outputs(tx_id, inputs, outputs).await?;
+        self.confirm_encumberance(tx_id).await?;
+        let fee = stp.get_fee_amount()?;
+        trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
+        stp.finalize(KernelFeatures::empty(), &factories)?;
+        let tx = stp.take_transaction()?;
+
+        Ok((tx_id, fee, tx))
     }
 
     /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be
@@ -707,31 +785,32 @@ where TBackend: OutputManagerBackend + 'static
         let pending_transaction = self.resources.db.fetch_pending_transaction_outputs(tx_id).await?;
 
         // Check that outputs to be spent can all be found in the provided transaction inputs
-        let mut inputs_confirmed = true;
         for output_to_spend in pending_transaction.outputs_to_be_spent.iter() {
             let input_to_check = output_to_spend
                 .unblinded_output
-                .clone()
                 .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default());
-            inputs_confirmed =
-                inputs_confirmed && inputs.iter().any(|input| input.commitment == input_to_check.commitment);
+
+            if inputs.iter().all(|input| input.commitment != input_to_check.commitment) {
+                return Err(OutputManagerError::IncompleteTransaction(
+                    "outputs to spend are missing",
+                ));
+            }
         }
 
         // Check that outputs to be received can all be found in the provided transaction outputs
-        let mut outputs_confirmed = true;
         for output_to_receive in pending_transaction.outputs_to_be_received.iter() {
             let output_to_check = output_to_receive
                 .unblinded_output
-                .clone()
                 .as_transaction_input(&self.resources.factories.commitment, OutputFeatures::default());
-            outputs_confirmed = outputs_confirmed &&
-                outputs
-                    .iter()
-                    .any(|output| output.commitment == output_to_check.commitment);
-        }
 
-        if !inputs_confirmed || !outputs_confirmed {
-            return Err(OutputManagerError::IncompleteTransaction);
+            if outputs
+                .iter()
+                .all(|output| output.commitment != output_to_check.commitment)
+            {
+                return Err(OutputManagerError::IncompleteTransaction(
+                    "outputs to receive are missing",
+                ));
+            }
         }
 
         self.resources
@@ -984,12 +1063,7 @@ where TBackend: OutputManagerBackend + 'static
                 change_output
             };
 
-            let mut spend_key = PrivateKey::default();
-            {
-                let mut km = self.key_manager.lock().await;
-                spend_key = km.next_key()?.k;
-            }
-            self.resources.db.increment_key_index().await?;
+            let spend_key = self.get_next_spend_key().await?;
             let utxo = DbUnblindedOutput::from_unblinded_output(
                 UnblindedOutput::new(output_amount, spend_key, None),
                 &self.resources.factories,
@@ -1014,7 +1088,7 @@ where TBackend: OutputManagerBackend + 'static
         self.confirm_encumberance(tx_id).await?;
         trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
         stp.finalize(KernelFeatures::empty(), &factories)?;
-        let tx = stp.get_transaction().map(Clone::clone)?;
+        let tx = stp.take_transaction()?;
         Ok((tx_id, tx, fee, utxo_total_value))
     }
 
@@ -1057,6 +1131,19 @@ where TBackend: OutputManagerBackend + 'static
             .collect();
 
         Ok(rewound_outputs)
+    }
+
+    async fn get_next_spend_key(&self) -> Result<PrivateKey, OutputManagerError> {
+        let mut km = self.key_manager.lock().await;
+        let key = km.next_key()?;
+        self.resources.db.increment_key_index().await?;
+        Ok(key.k)
+    }
+
+    async fn get_next_coinbase_key(&self) -> Result<PrivateKey, OutputManagerError> {
+        let mut km = self.coinbase_key_manager.lock().await;
+        let key = km.next_key()?;
+        Ok(key.k)
     }
 }
 

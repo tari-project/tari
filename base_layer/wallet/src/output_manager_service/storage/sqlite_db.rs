@@ -271,6 +271,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     if PendingTransactionOutputSql::find(tx_id, &(*conn)).is_ok() {
                         return Err(OutputManagerStorageError::DuplicateOutput);
                     }
+
                     PendingTransactionOutputSql::new(
                         p.tx_id,
                         true,
@@ -408,9 +409,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     {
         let conn = self.database_connection.acquire_lock();
 
-        let mut outputs_to_be_spent = Vec::new();
+        let mut outputs_to_be_spent = Vec::with_capacity(outputs_to_send.len());
         for i in outputs_to_send {
-            let output = OutputSql::find_by_commitment(&i.commitment.to_vec(), &(*conn))?;
+            let output = OutputSql::find_by_commitment(i.commitment.as_bytes(), &(*conn))?;
             if output.status == (OutputStatus::Spent as i32) {
                 return Err(OutputManagerStorageError::OutputAlreadySpent);
             }

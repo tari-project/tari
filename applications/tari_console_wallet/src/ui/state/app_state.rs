@@ -870,6 +870,12 @@ pub async fn send_transaction_task(
                                 }
                             }
                         },
+                        TransactionEvent::TransactionCompletedImmediately(tx_id) => {
+                            if our_tx_id == *tx_id {
+                                let _ = result_tx.broadcast(UiTransactionSendStatus::TransactionComplete);
+                                return;
+                            }
+                        },
                         _ => (),
                     },
                     Err(e) => {
@@ -896,6 +902,7 @@ pub async fn send_transaction_task(
 pub enum UiTransactionSendStatus {
     Initiated,
     SentDirect,
+    TransactionComplete,
     DiscoveryInProgress,
     SentViaSaf,
     Error(String),

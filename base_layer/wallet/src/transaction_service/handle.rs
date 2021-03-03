@@ -169,6 +169,7 @@ pub enum TransactionEvent {
     ReceivedFinalizedTransaction(TxId),
     TransactionDiscoveryInProgress(TxId),
     TransactionDirectSendResult(TxId, bool),
+    TransactionCompletedImmediately(TxId),
     TransactionStoreForwardSendResult(TxId, bool),
     TransactionCancelled(TxId),
     TransactionBroadcast(TxId),

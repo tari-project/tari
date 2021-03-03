@@ -26,10 +26,10 @@ use tari_core::{
     tari_utilities::hash::Hashable,
     transactions::{
         transaction::UnblindedOutput,
+        transaction_protocol::RewindData,
         types::{Commitment, CryptoFactories, HashOutput},
     },
 };
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
@@ -44,11 +44,25 @@ impl DbUnblindedOutput {
         factory: &CryptoFactories,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
     {
-        let hash = output.as_transaction_output(factory)?.hash();
+        let tx_out = output.as_transaction_output(factory)?;
         Ok(DbUnblindedOutput {
-            commitment: factory.commitment.commit(&output.spending_key, &output.value.into()),
+            hash: tx_out.hash(),
+            commitment: tx_out.commitment,
             unblinded_output: output,
-            hash,
+        })
+    }
+
+    pub fn rewindable_from_unblinded_output(
+        output: UnblindedOutput,
+        factory: &CryptoFactories,
+        rewind_data: &RewindData,
+    ) -> Result<DbUnblindedOutput, OutputManagerStorageError>
+    {
+        let tx_out = output.as_rewindable_transaction_output(factory, rewind_data)?;
+        Ok(DbUnblindedOutput {
+            hash: tx_out.hash(),
+            commitment: tx_out.commitment,
+            unblinded_output: output,
         })
     }
 }

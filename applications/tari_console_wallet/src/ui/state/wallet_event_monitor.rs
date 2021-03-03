@@ -89,12 +89,11 @@ impl WalletEventMonitor {
                                     TransactionEvent::TransactionMinedRequestTimedOut(tx_id) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                     },
-                                    TransactionEvent::TransactionDirectSendResult(tx_id, success) |
-                                    TransactionEvent::TransactionStoreForwardSendResult(tx_id, success) => {
-                                        if success {
-                                            self.trigger_tx_state_refresh(tx_id).await;
-                                            notifier.transaction_sent(tx_id);
-                                        }
+                                    TransactionEvent::TransactionDirectSendResult(tx_id, true) |
+                                    TransactionEvent::TransactionStoreForwardSendResult(tx_id, true) |
+                                    TransactionEvent::TransactionCompletedImmediately(tx_id) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        notifier.transaction_sent(tx_id);
                                     },
                                     TransactionEvent::TransactionValidationSuccess(_) => {
                                         self.trigger_full_tx_state_refresh().await;
