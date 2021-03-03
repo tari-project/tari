@@ -279,7 +279,7 @@ where
 
         // then the base node is currently not responding
         if never_connected || timing_out {
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Base node is offline. Either we never connected ({}), or haven't received a response newer than the \
                  max request age ({}).",
@@ -306,7 +306,7 @@ where
             .partition(|&&r| r.request_key == message.request_key);
 
         if !found.is_empty() {
-            debug!(target: LOG_TARGET, "Handle base node response message: {:?}", message);
+            trace!(target: LOG_TARGET, "Handle base node response message: {:?}", message);
 
             let now = Utc::now().naive_utc();
             let time_sent = found.first().unwrap().sent;
@@ -316,7 +316,7 @@ where
             match message.response {
                 Some(proto::base_node_service_response::Response::ChainMetadata(chain_metadata)) => {
                     trace!(target: LOG_TARGET, "Chain Metadata response {:?}", chain_metadata);
-                    info!(target: LOG_TARGET, "Base node latency: {}ms", millis);
+                    debug!(target: LOG_TARGET, "Base node latency: {}ms", millis);
                     let metadata: ChainMetadata = chain_metadata
                         .try_into()
                         .map_err(BaseNodeServiceError::InvalidBaseNodeResponse)?;

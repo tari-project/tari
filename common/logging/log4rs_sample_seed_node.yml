@@ -1,0 +1,150 @@
+# A sample log configuration file for running in seed nodes.
+#
+#  See https://docs.rs/log4rs/0.8.3/log4rs/encode/pattern/index.html for deciphering the log pattern. The log format
+#  used in this sample configuration prints messages as:
+#  timestamp [target] LEVEL message
+refresh_rate: 30 seconds
+appenders:
+  network:
+    kind: rolling_file
+    path: "log/base-node/extra/network.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/base-node/extra/network.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+  status:
+    kind: rolling_file
+    path: "log/base-node/status.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/base-node/rolled/status.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+  base_layer:
+    kind: rolling_file
+    path: "log/base-node/base_layer.log"
+    filters:
+      - { kind: threshold, level: warn }
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/base-node/rolled/base_layer.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+  base_layer_extra:
+    kind: rolling_file
+    path: "log/base-node/extra/base_layer.log"
+    filters:
+      - { kind: threshold, level: info }
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/base-node/extra/base_layer.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+  other:
+    kind: rolling_file
+    path: "log/base-node/extra/other.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "log/base-node/extra/other.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}"
+
+root:
+  appenders:
+    - base_layer
+    - base_layer_extra
+
+loggers:
+  c:
+    level: info
+    appenders:
+      - base_layer
+      - base_layer_extra
+    additive: false
+  base_node::app::status:
+    level: info
+    appenders:
+      - status
+    additive: false
+  tari:
+    level: info
+    appenders:
+      - base_layer
+      - base_layer_extra
+    additive: false
+  wallet:
+    level: info
+    appenders:
+      - base_layer
+      - base_layer_extra
+    additive: false
+  comms:
+    level: info
+    appenders:
+      - network
+    additive: false
+  p2p:
+    level: info
+    appenders:
+      - network
+    additive: false
+  yamux:
+    level: info
+    appenders:
+      - network
+    additive: false
+  mio:
+    level: error
+    appenders:
+      - network
+    additive: false
+  rustyline:
+    level: error
+    appenders:
+      - other
+    additive: false
+  tokio_util:
+    level: error
+    appenders:
+      - other
+    additive: false
