@@ -20,7 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{framing::CanonicalFraming, message::MessageExt, proto, protocol::rpc::RpcError};
+use crate::{
+    framing::CanonicalFraming,
+    message::MessageExt,
+    proto,
+    protocol::rpc::{error::HandshakeRejectReason, RpcError},
+};
 use bytes::BytesMut;
 use futures::{AsyncRead, AsyncWrite, SinkExt, StreamExt};
 use log::*;
@@ -32,7 +37,7 @@ const LOG_TARGET: &str = "comms::rpc::handshake";
 
 /// Supported RPC protocol versions.
 /// Currently only v0 is supported
-const SUPPORTED_VERSIONS: &[u32] = &[0];
+pub(super) const SUPPORTED_RPC_VERSIONS: &[u32] = &[0];
 
 /// Handshake protocol
 pub struct Handshake<'a, T> {
@@ -59,46 +64,58 @@ where T: AsyncRead + AsyncWrite + Unpin
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSession::decode(&mut msg.freeze())?;
-                let version = SUPPORTED_VERSIONS.iter().find(|v| msg.supported_versions.contains(v));
+                let version = SUPPORTED_RPC_VERSIONS
+                    .iter()
+                    .find(|v| msg.supported_versions.contains(v));
                 if let Some(version) = version {
                     debug!(target: LOG_TARGET, "Server accepted version {}", version);
                     let reply = proto::rpc::RpcSessionReply {
                         session_result: Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(*version)),
+                        ..Default::default()
                     };
                     self.framed.send(reply.to_encoded_bytes().into()).await?;
                     return Ok(*version);
                 }
 
-                let reply = proto::rpc::RpcSessionReply {
-                    session_result: Some(proto::rpc::rpc_session_reply::SessionResult::Rejected(true)),
-                };
-                self.framed.send(reply.to_encoded_bytes().into()).await?;
-                Err(RpcError::NegotiationClientNoSupportedVersion)
+                self.reject_with_reason(HandshakeRejectReason::UnsupportedVersion)
+                    .await?;
+                Err(RpcError::HandshakeClientNoSupportedVersion)
             },
             Ok(Some(Err(err))) => Err(err.into()),
             Ok(None) => Err(RpcError::ClientClosed),
-            Err(_elapsed) => Err(RpcError::NegotiationTimedOut),
+            Err(_elapsed) => Err(RpcError::HandshakeTimedOut),
         }
+    }
+
+    pub async fn reject_with_reason(&mut self, reject_reason: HandshakeRejectReason) -> Result<(), RpcError> {
+        let reply = proto::rpc::RpcSessionReply {
+            session_result: Some(proto::rpc::rpc_session_reply::SessionResult::Rejected(true)),
+            reject_reason: reject_reason.as_i32(),
+        };
+        self.framed.send(reply.to_encoded_bytes().into()).await?;
+        self.framed.close().await?;
+        Ok(())
     }
 
     /// Client-side handshake protocol
     pub async fn perform_client_handshake(&mut self) -> Result<(), RpcError> {
         let msg = proto::rpc::RpcSession {
-            supported_versions: SUPPORTED_VERSIONS.to_vec(),
+            supported_versions: SUPPORTED_RPC_VERSIONS.to_vec(),
         };
-        self.framed.send(msg.to_encoded_bytes().into()).await?;
+        // It is possible that the server rejects the session and closes the substream before we've had a chance to send
+        // anything. Rather than returning an IO error, let's ignore the send error and see if we can receive anything,
+        // or return an IO error similarly to what send would have done.
+        let _ = self.framed.send(msg.to_encoded_bytes().into()).await;
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSessionReply::decode(&mut msg.freeze())?;
-                let version = msg
-                    .accepted_version()
-                    .ok_or_else(|| RpcError::NegotiationServerNoSupportedVersion)?;
+                let version = msg.result()?;
                 debug!(target: LOG_TARGET, "Server accepted version {}", version);
                 Ok(())
             },
             Ok(Some(Err(err))) => Err(err.into()),
             Ok(None) => Err(RpcError::ServerClosedRequest),
-            Err(_) => Err(RpcError::NegotiationTimedOut),
+            Err(_) => Err(RpcError::HandshakeTimedOut),
         }
     }
 

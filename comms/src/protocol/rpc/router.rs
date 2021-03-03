@@ -92,8 +92,8 @@ impl<A, B> Router<A, B> {
     }
 
     /// Sets the maximum number of sessions this node will allow before rejecting the request to connect
-    pub fn maximum_concurrent_sessions(mut self, limit: usize) -> Self {
-        self.server = self.server.maximum_concurrent_sessions(limit);
+    pub fn with_maximum_concurrent_sessions(mut self, limit: usize) -> Self {
+        self.server = self.server.with_maximum_concurrent_sessions(limit);
         self
     }
 

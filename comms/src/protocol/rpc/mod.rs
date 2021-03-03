@@ -57,6 +57,7 @@ mod not_found;
 
 pub mod mock;
 
+/// Maximum frame size of each RPC message. This is enforced in tokio's length delimited codec.
 pub const RPC_MAX_FRAME_SIZE: usize = 4 * 1024 * 1024; // 4 MiB
 
 // Re-exports used to keep things orderly in the #[tari_rpc] proc macro

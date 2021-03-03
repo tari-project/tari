@@ -27,6 +27,7 @@ use crate::{
     protocol::rpc::{
         body::{Body, IntoBody},
         context::RequestContext,
+        error::HandshakeRejectReason,
     },
 };
 use bitflags::bitflags;
@@ -256,11 +257,19 @@ impl fmt::Display for proto::rpc::RpcResponse {
 
 //---------------------------------- RpcSessionReply --------------------------------------------//
 impl proto::rpc::RpcSessionReply {
-    /// Returns the accepted version from the reply. If the session was rejected, None is returned.
-    pub fn accepted_version(&self) -> Option<u32> {
-        match self.session_result.as_ref()? {
-            SessionResult::AcceptedVersion(v) => Some(*v),
-            SessionResult::Rejected(_) => None,
+    /// Returns Ok(version) if the session was accepted, otherwise an error is returned with the rejection reason
+    /// (`HandshakeRejectReason`)
+    pub fn result(&self) -> Result<u32, HandshakeRejectReason> {
+        match self.session_result.as_ref() {
+            Some(SessionResult::AcceptedVersion(v)) => Ok(*v),
+            Some(SessionResult::Rejected(_)) => {
+                let reason = HandshakeRejectReason::from_i32(self.reject_reason)
+                    .unwrap_or_else(|| HandshakeRejectReason::Unknown("server returned unrecognised rejection reason"));
+                Err(reason)
+            },
+            None => Err(HandshakeRejectReason::Unknown(
+                "handshake reply did not contain a session result",
+            )),
         }
     }
 }

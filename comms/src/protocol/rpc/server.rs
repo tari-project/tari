@@ -38,8 +38,10 @@ use crate::{
     protocol::{
         rpc::{
             context::{RequestContext, RpcCommsProvider},
+            error::HandshakeRejectReason,
             message::RpcMessageFlags,
             Handshake,
+            RpcStatusCode,
             RPC_MAX_FRAME_SIZE,
         },
         ProtocolEvent,
@@ -75,7 +77,6 @@ pub trait NamedProtocolService {
 #[derive(Debug, Clone)]
 pub struct RpcServer {
     maximum_concurrent_sessions: Option<usize>,
-    max_frame_size: usize,
     minimum_client_deadline: Duration,
     handshake_timeout: Duration,
     shutdown_signal: OptionalShutdownSignal,
@@ -97,7 +98,7 @@ impl RpcServer {
         Router::new(self, service)
     }
 
-    pub fn maximum_concurrent_sessions(mut self, limit: usize) -> Self {
+    pub fn with_maximum_concurrent_sessions(mut self, limit: usize) -> Self {
         self.maximum_concurrent_sessions = Some(limit);
         self
     }
@@ -144,7 +145,6 @@ impl Default for RpcServer {
     fn default() -> Self {
         Self {
             maximum_concurrent_sessions: Some(100),
-            max_frame_size: RPC_MAX_FRAME_SIZE,
             minimum_client_deadline: Duration::from_secs(1),
             handshake_timeout: Duration::from_secs(15),
             shutdown_signal: Default::default(),
@@ -221,8 +221,8 @@ where
                     node_id
                 );
 
-                let framed = framing::canonical(substream, self.config.max_frame_size);
-                match self.try_spawn_service(notification.protocol, node_id, framed).await {
+                let framed = framing::canonical(substream, RPC_MAX_FRAME_SIZE);
+                match self.try_initiate_service(notification.protocol, node_id, framed).await {
                     Ok(_) => {},
                     Err(err) => {
                         debug!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
@@ -234,32 +234,38 @@ where
         Ok(())
     }
 
-    async fn try_spawn_service(
+    async fn try_initiate_service(
         &mut self,
         protocol: ProtocolId,
         node_id: NodeId,
         mut framed: CanonicalFraming<TSubstream>,
     ) -> Result<(), RpcError>
     {
+        let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
+
         if !self.executor.can_spawn() {
             debug!(
                 target: LOG_TARGET,
-                "Closing substream to peer `{}` because maximum number of concurrent services has been reached",
+                "Rejecting RPC session request for peer `{}` because maximum number of concurrent services has been \
+                 reached",
                 node_id
             );
-            framed.close().await?;
+            handshake
+                .reject_with_reason(HandshakeRejectReason::NoSessionsAvailable)
+                .await?;
             return Err(RpcError::MaximumConcurrencyReached);
         }
 
         let service = match self.service.make_service(protocol).await {
             Ok(s) => s,
             Err(err) => {
-                framed.close().await?;
+                handshake
+                    .reject_with_reason(HandshakeRejectReason::ProtocolNotSupported)
+                    .await?;
                 return Err(err);
             },
         };
 
-        let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
         let version = handshake.perform_server_handshake().await?;
         debug!(
             target: LOG_TARGET,
@@ -331,7 +337,7 @@ where
     }
 
     async fn handle<W>(&mut self, sink: &mut W, mut request: Bytes) -> Result<(), RpcError>
-    where W: Sink<Bytes, Error = io::Error> + Unpin + ?Sized {
+    where W: Sink<Bytes, Error = io::Error> + Unpin {
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
 
         let request_id = decoded_msg.request_id;
@@ -409,7 +415,9 @@ where
                                 },
                             };
 
-                            sink.send(resp.to_encoded_bytes().into()).await?;
+                            if !send_response_checked(sink, request_id, resp).await? {
+                                break;
+                            }
                         },
                         Ok(None) => break,
                         Err(_) => {
@@ -437,5 +445,45 @@ where
         }
 
         Ok(())
+    }
+}
+
+/// Sends an RpcResponse on the given Sink. If the size of the message exceeds the RPC_MAX_FRAME_SIZE, an error is
+/// returned to the client and false is returned from this function, otherwise the message is sent and true is returned
+#[inline]
+async fn send_response_checked<S>(
+    sink: &mut S,
+    request_id: u32,
+    resp: proto::rpc::RpcResponse,
+) -> Result<bool, S::Error>
+where
+    S: Sink<Bytes> + Unpin,
+{
+    match resp.to_encoded_bytes() {
+        buf if buf.len() > RPC_MAX_FRAME_SIZE => {
+            let msg = format!(
+                "This node tried to return a message that exceeds the maximum frame size. Max = {:.4} MiB, Got = \
+                 {:.4} MiB",
+                buf.len() as f32 / (1024.0 * 1024.0),
+                RPC_MAX_FRAME_SIZE as f32 / (1024.0 * 1024.0)
+            );
+            warn!(target: LOG_TARGET, "{}", msg);
+            sink.send(
+                proto::rpc::RpcResponse {
+                    request_id,
+                    status: RpcStatusCode::MalformedResponse as u32,
+                    flags: RpcMessageFlags::FIN.bits().into(),
+                    message: msg.as_bytes().to_vec(),
+                }
+                .to_encoded_bytes()
+                .into(),
+            )
+            .await?;
+            Ok(false)
+        },
+        buf => {
+            sink.send(buf.into()).await?;
+            Ok(true)
+        },
     }
 }

@@ -108,7 +108,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     debug!(target: LOG_TARGET, "{}", err);
                 },
 
-                Err(err @ BlockHeaderSyncError::RpcError(RpcError::NegotiationTimedOut)) => {
+                Err(err @ BlockHeaderSyncError::RpcError(RpcError::HandshakeTimedOut)) => {
                     debug!(target: LOG_TARGET, "{}", err);
                     self.ban_peer_short(node_id, BanReason::RpcNegotiationTimedOut).await?;
                 },
