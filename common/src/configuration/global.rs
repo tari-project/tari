@@ -117,6 +117,7 @@ pub struct GlobalConfig {
     pub console_wallet_notify_file: Option<PathBuf>,
     pub auto_ping_interval: u64,
     pub blocks_behind_before_considered_lagging: u64,
+    pub flood_ban_max_msg_count: usize,
 }
 
 impl GlobalConfig {
@@ -385,6 +386,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
 
     let key = config_string("base_node", &net_str, "num_mining_threads");
     let num_mining_threads = cfg
+        .get_int(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+
+    let key = config_string("base_node", &net_str, "flood_ban_max_msg_count");
+    let flood_ban_max_msg_count = cfg
         .get_int(&key)
         .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
@@ -658,6 +664,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         console_wallet_notify_file,
         auto_ping_interval,
         blocks_behind_before_considered_lagging,
+        flood_ban_max_msg_count,
     })
 }
 

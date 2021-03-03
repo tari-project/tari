@@ -43,7 +43,6 @@ use digest::Digest;
 use futures::{FutureExt, StreamExt};
 use std::path::Path;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms_dht::envelope::Network as DhtNetwork;
 use tari_core::{
     consensus::Network,
     transactions::{tari_amount::uT, transaction::UnblindedOutput, types::PrivateKey},
@@ -661,6 +660,8 @@ async fn test_import_utxo() {
 #[cfg(feature = "test_harness")]
 #[tokio_macros::test]
 async fn test_data_generation() {
+    use tari_comms_dht::envelope::Network as DhtNetwork;
+
     let mut shutdown = Shutdown::new();
     use tari_wallet::testnet_utils::generate_wallet_test_data;
     let factories = CryptoFactories::default();

@@ -224,6 +224,7 @@ where B: BlockchainBackend + 'static
                 auto_join: true,
                 allow_test_addresses: self.config.allow_test_addresses,
                 network: self.config.network.into(),
+                flood_ban_max_msg_count: self.config.flood_ban_max_msg_count,
                 ..Default::default()
             },
             allow_test_addresses: self.config.allow_test_addresses,

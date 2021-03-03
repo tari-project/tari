@@ -312,6 +312,7 @@ where TBackend: TransactionBackend + 'static
                             },
                         }
                         // Wait out the remainder of the delay before proceeding with next loop
+                        drop(client);
                         delay.await;
                         break;
                     },
