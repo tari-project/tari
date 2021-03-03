@@ -1,6 +1,7 @@
 const {spawnSync, spawn, execSync} = require('child_process');
 const {expect} = require('chai');
 const fs = require('fs');
+const path = require('path');
 const BaseNodeClient = require("./baseNodeClient");
 const {getFreePort} = require("./util");
 const dateFormat = require('dateformat');
@@ -9,8 +10,9 @@ const {createEnv} = require("./config");
 let outputProcess;
 
 class BaseNodeProcess {
-    constructor(name, options, nodeFile) {
+    constructor(name, options, logFilePath, nodeFile) {
         this.name = name;
+        this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
         this.nodeFile = nodeFile;
         this.options = options;
     }
@@ -22,7 +24,7 @@ class BaseNodeProcess {
         this.name = `Basenode${this.port}-${this.name}`;
         this.nodeFile = this.nodeFile || "nodeid.json";
         this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
-        await this.run(await this.compile(),["--base-path", ".", "--init", "--create-id"]);
+        await this.run(await this.compile(),this.logFilePath ? ["--base-path", ".", "--init", "--create-id", "-l", this.logFilePath] : ["--base-path", ".", "--init", "--create-id"]);
         // console.log("POrt:", this.port);
         // console.log("GRPC:", this.grpcPort);
         // console.log(`Starting node ${this.name}...`);
@@ -142,7 +144,8 @@ class BaseNodeProcess {
     }
 
     async start () {
-        return await this.run(await this.compile(),["--base-path", "."]);
+        const args  = this.logFilePath ? ["--base-path", ".", "-l", this.logFilePath] : ["--base-path", "."];
+        return await this.run(await this.compile(), args);
     }
 
     stop() {

@@ -5,7 +5,7 @@ const MergeMiningProxyProcess = require('../../helpers/mergeMiningProxyProcess')
 const WalletProcess = require('../../helpers/walletProcess');
 
 class CustomWorld {
-    constructor() {
+    constructor({ attach, log, parameters }) {
         //this.variable = 0;
         this.seeds = {};
         this.nodes = {};
@@ -22,10 +22,11 @@ class CustomWorld {
         this.transactionsMap = new Map();
         this.resultStack = [];
         this.tipHeight = 0;
+        this.logFilePath = parameters.logFilePath || "./log4rs_integration_tests.yml";
     }
 
     async createSeedNode(name) {
-        let proc = new BaseNodeProcess(`seed-${name}`);
+        let proc = new BaseNodeProcess(`seed-${name}`, null, this.logFilePath);
         await proc.startNew();
         this.seeds[name] = proc;
         this.clients[name] = proc.createGrpcClient();
@@ -38,6 +39,11 @@ class CustomWorld {
             res.push(this.seeds[property].peerAddress());
         }
         return res;
+    }
+
+    /// Create but don't add the node
+    createNode(name, options) {
+        return new BaseNodeProcess(name, options, this.logFilePath);
     }
 
     addNode(name, process) {
