@@ -65,7 +65,7 @@ impl NetworkTab {
         f.render_widget(block, area);
 
         let areas = Layout::default()
-            .constraints([Constraint::Min(2), Constraint::Min(1)].as_ref())
+            .constraints([Constraint::Length(2), Constraint::Min(8)].as_ref())
             .margin(1)
             .split(area);
 
