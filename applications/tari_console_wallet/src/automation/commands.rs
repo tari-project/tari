@@ -33,10 +33,14 @@ use strum_macros::{Display, EnumIter, EnumString};
 use tari_common::GlobalConfig;
 use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
-use tari_core::transactions::tari_amount::{uT, MicroTari};
+use tari_core::{
+    tari_utilities::hex::Hex,
+    transactions::tari_amount::{uT, MicroTari},
+};
 use tari_wallet::{
     output_manager_service::{handle::OutputManagerHandle, TxId},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
+    util::emoji::EmojiId,
     WalletSqlite,
 };
 use tokio::{
@@ -57,6 +61,7 @@ pub enum WalletCommand {
     MakeItRain,
     CoinSplit,
     DiscoverPeer,
+    Whois,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -409,9 +414,7 @@ pub async fn command_runner(
         match parsed.command {
             WalletCommand::GetBalance => match output_service.clone().get_balance().await {
                 Ok(balance) => {
-                    println!("====== Wallet Balance ======");
                     println!("{}", balance);
-                    println!("============================");
                 },
                 Err(e) => eprintln!("GetBalance error! {}", e),
             },
@@ -434,6 +437,16 @@ pub async fn command_runner(
                 let tx_id = coin_split(&parsed.args, &mut output_service, &mut transaction_service.clone()).await?;
                 tx_ids.push(tx_id);
                 println!("Coin split succeeded");
+            },
+            WalletCommand::Whois => {
+                let public_key = match parsed.args[0].clone() {
+                    ParsedArgument::PublicKey(key) => Ok(Box::new(key)),
+                    _ => Err(CommandError::Argument),
+                }?;
+                let emoji_id = EmojiId::from_pubkey(&public_key);
+
+                println!("Public Key: {}", public_key.to_hex());
+                println!("Emoji ID  : {}", emoji_id);
             },
         }
     }
