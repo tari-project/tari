@@ -905,6 +905,7 @@ impl Default for TransactionBuilder {
 mod test {
     use super::*;
     use crate::{
+        consensus::{ConsensusManagerBuilder, Network},
         transactions::{
             helpers::{create_test_kernel, create_tx, spend_utxos},
             tari_amount::T,
@@ -1003,6 +1004,17 @@ mod test {
         )
     }
 
+    #[test]
+    fn test_3413() {
+        let factories = CryptoFactories::default();
+        let excess = Commitment::from_hex("621ec8ff7fc82142b64f7b03ade785a87b9329be08533c39d30a3ee03f1b3d38").unwrap();
+        let cm = ConsensusManagerBuilder::new(Network::Stibbons).build();
+        let reward = cm.get_block_reward_at(3413);
+        let rhs = &excess + &factories.commitment.commit_value(&BlindingFactor::default(), reward.0);
+        let commitment =
+            Commitment::from_hex("6e0962ea9344285a391ca0bdeb72a14004c00ae5dfdc9dae878d59d60545bd62").unwrap();
+        assert_eq!(commitment, rhs);
+    }
     #[test]
     fn check_timelocks() {
         let factories = CryptoFactories::new(32);

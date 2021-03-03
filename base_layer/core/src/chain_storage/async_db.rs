@@ -82,7 +82,7 @@ macro_rules! make_async_fn {
      $fn:ident() -> $rtype:ty, $name:expr) => {
         $(#[$outer])*
         pub async fn $fn(&self) -> Result<$rtype, ChainStorageError> {
-            let db = self.db.clone();
+            let mut db = self.db.clone();
             tokio::task::spawn_blocking(move || {
                 trace_log($name, move || db.$fn())
             })
@@ -143,6 +143,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>, is_spent_as_of: Option<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
 
     make_async_fn!(fetch_utxos_by_mmr_position(start: u64, end: u64, end_header_hash: HashOutput) -> (Vec<PrunedOutput>, Vec<Bitmap>), "fetch_utxos_by_mmr_position");
+
+    make_async_fn!(delete_all_utxos() -> (), "delete_all_utxos");
 
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
@@ -308,11 +310,6 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
 
     pub fn update_deleted(&mut self, header_hash: HashOutput, deleted: Bitmap) -> &mut Self {
         self.transaction.update_deleted(header_hash, deleted);
-        self
-    }
-
-    pub fn update_kernel_sum(&mut self, header_hash: HashOutput, kernel_sum: Commitment) -> &mut Self {
-        self.transaction.update_kernel_sum(header_hash, kernel_sum);
         self
     }
 

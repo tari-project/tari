@@ -27,6 +27,7 @@ use crate::{
         error::{ChainStorageError, OrNotFound},
         lmdb_db::{
             lmdb::{
+                lmdb_clear,
                 lmdb_delete,
                 lmdb_delete_key_value,
                 lmdb_delete_keys_starting_with,
@@ -339,9 +340,9 @@ impl LMDBDatabase {
                     let horizon_data = self
                         .fetch_horizon_data()
                         .or_not_found("HorizonData", "", "".to_string())?;
-                    let mut utxo_sum = horizon_data.utxo_sum().clone();
+                    let utxo_sum = horizon_data.utxo_sum().clone();
                     for pos in output_positions {
-                        let (height, hash) = lmdb_first_after::<_, (u64, Vec<u8>)>(
+                        let (_height, hash) = lmdb_first_after::<_, (u64, Vec<u8>)>(
                             &write_txn,
                             &self.output_mmr_size_index,
                             &pos.to_be_bytes(),
@@ -1652,6 +1653,14 @@ impl BlockchainBackend for LMDBDatabase {
     fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError> {
         let txn = ReadTransaction::new(&*self.env)?;
         fetch_horizon_data(&txn, &self.metadata_db)
+    }
+
+    fn delete_all_utxos(&mut self) -> Result<(), ChainStorageError> {
+        let txn = WriteTransaction::new(&*self.env)?;
+        lmdb_clear(&txn, &self.utxos_db, "utxo_db")?;
+        lmdb_clear(&txn, &self.inputs_db, "inputs_db")?;
+        lmdb_clear(&txn, &self.txos_hash_to_index_db, "txos_hash_to_index_db")?;
+        txn.commit().map_err(|e| ChainStorageError::AccessError(e.to_string()))
     }
 }
 

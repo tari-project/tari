@@ -423,6 +423,11 @@ where B: BlockchainBackend
         db.fetch_utxos_by_mmr_position(start, end, accum_data.deleted())
     }
 
+    pub fn delete_all_utxos(&mut self) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        db.delete_all_utxos()
+    }
+
     /// Returns the block header at the given block height.
     pub fn fetch_header(&self, height: u64) -> Result<Option<BlockHeader>, ChainStorageError> {
         let db = self.db_read_access()?;

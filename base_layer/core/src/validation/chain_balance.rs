@@ -64,7 +64,7 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for ChainBalanceValida
         let emission_h = self.get_emission_commitment_at(height);
         let total_offset = self.fetch_total_offset_commitment(height, backend)?;
 
-        warn!(
+        trace!(
             target: LOG_TARGET,
             "Emission:{:?}. Offset:{:?}, total kernel: {:?}, height: {}, total_utxo: {:?}",
             emission_h,

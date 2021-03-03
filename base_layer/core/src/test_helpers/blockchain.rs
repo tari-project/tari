@@ -241,6 +241,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.fetch_utxos_by_mmr_position(start, end, deleted)
     }
 
+    fn delete_all_utxos(&mut self) -> Result<(), ChainStorageError> {
+        self.db.delete_all_utxos()
+    }
+
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<(TransactionOutput, u32)>, ChainStorageError> {
         self.db.fetch_output(output_hash)
     }

@@ -40,7 +40,7 @@ use crate::{
         ConsensusConstants,
     },
     proof_of_work::{DifficultyAdjustmentError, PowAlgorithm, TargetDifficultyWindow},
-    transactions::tari_amount::MicroTari,
+    transactions::tari_amount::{uT, MicroTari},
 };
 use std::{convert::TryFrom, sync::Arc};
 use thiserror::Error;
@@ -229,5 +229,17 @@ impl ConsensusManagerBuilder {
             }),
         };
         ConsensusManager { inner: Arc::new(inner) }
+    }
+}
+
+#[test]
+fn test_em2() {
+    let cm = ConsensusManagerBuilder::new(Network::Stibbons).build();
+    let mut total_supply = 0 * uT;
+    for i in 0..=30000 {
+        dbg!(i);
+        total_supply = total_supply + cm.get_block_reward_at(i);
+        let test_supply = cm.get_total_emission_at(i);
+        assert_eq!(total_supply, test_supply);
     }
 }

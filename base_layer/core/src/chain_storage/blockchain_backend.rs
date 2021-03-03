@@ -152,4 +152,6 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_monero_seed_first_seen_height(&self, seed: &str) -> Result<u64, ChainStorageError>;
 
     fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError>;
+
+    fn delete_all_utxos(&mut self) -> Result<(), ChainStorageError>;
 }

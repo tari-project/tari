@@ -93,6 +93,20 @@ where
     })
 }
 
+pub fn lmdb_clear(
+    txn: &WriteTransaction<'_>,
+    db: &Database,
+    table_name: &'static str,
+) -> Result<(), ChainStorageError>
+{
+    let mut access = txn.access();
+
+    access.clear_db(&db).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not clear lmdb {}: {:?}", table_name, e,);
+        ChainStorageError::AccessError(e.to_string())
+    })
+}
+
 /// Note that calling this on a table that does not allow duplicates will replace it
 pub fn lmdb_insert_dup<K, V>(
     txn: &WriteTransaction<'_>,
