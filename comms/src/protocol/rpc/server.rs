@@ -144,7 +144,7 @@ impl RpcServer {
 impl Default for RpcServer {
     fn default() -> Self {
         Self {
-            maximum_concurrent_sessions: Some(100),
+            maximum_concurrent_sessions: Some(1000),
             minimum_client_deadline: Duration::from_secs(1),
             handshake_timeout: Duration::from_secs(15),
             shutdown_signal: Default::default(),

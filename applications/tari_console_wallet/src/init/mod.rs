@@ -354,6 +354,7 @@ pub async fn init_wallet(
             auto_join: true,
             allow_test_addresses: config.allow_test_addresses,
             network: config.network.into(),
+            flood_ban_max_msg_count: config.flood_ban_max_msg_count,
             ..Default::default()
         },
         // TODO: This should be false unless testing locally - make this configurable

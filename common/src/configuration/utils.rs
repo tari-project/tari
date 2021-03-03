@@ -170,6 +170,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.mainnet.enable_mining", false).unwrap();
     cfg.set_default("base_node.mainnet.enable_wallet", true).unwrap();
     cfg.set_default("base_node.mainnet.num_mining_threads", 1).unwrap();
+    cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 1000)
+        .unwrap();
 
     //---------------------------------- Stibbons Defaults --------------------------------------------//
 
@@ -180,6 +182,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
         .unwrap();
     cfg.set_default("base_node.stibbons.pruning_horizon", 0).unwrap();
     cfg.set_default("base_node.stibbons.pruned_mode_cleanup_interval", 50)
+        .unwrap();
+    cfg.set_default("base_node.stibbons.flood_ban_max_msg_count", 1000)
         .unwrap();
     cfg.set_default("base_node.stibbons.peer_seeds", Vec::<String>::new())
         .unwrap();

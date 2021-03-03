@@ -811,9 +811,10 @@ impl ConnectivityManagerActor {
     {
         info!(
             target: LOG_TARGET,
-            "Banning peer {} for {}",
+            "Banning peer {} for {} because: {}",
             node_id,
-            format_duration(duration)
+            format_duration(duration),
+            reason
         );
 
         if let Some(pos) = self.managed_peers.iter().position(|n| n == node_id) {
