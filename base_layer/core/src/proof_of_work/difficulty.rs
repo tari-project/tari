@@ -119,14 +119,14 @@ pub mod util {
     /// This will provide the difficulty of the hash assuming the hash is big_endian
     pub(crate) fn big_endian_difficulty(hash: &[u8]) -> Difficulty {
         let scalar = U256::from_big_endian(hash); // Big endian so the hash has leading zeroes
-        let result = U256::MAX / scalar;
+        let result = U256::MAX.checked_div(scalar).unwrap_or_default();
         result.low_u64().into()
     }
 
     /// This will provide the difficulty of the hash assuming the hash is little_endian
     pub(crate) fn little_endian_difficulty(hash: &[u8]) -> Difficulty {
         let scalar = U256::from_little_endian(&hash); // Little endian so the hash has trailing zeroes
-        let result = U256::MAX / scalar;
+        let result = U256::MAX.checked_div(scalar).unwrap_or_default();
         result.low_u64().into()
     }
 }

@@ -244,6 +244,7 @@ pub fn create_tx(
 
     let mut unblinded_inputs = Vec::with_capacity(input_count);
     let mut unblinded_outputs = Vec::with_capacity(output_count);
+    // TODO: Check for input_count == 0
     let amount_per_input = amount / input_count as u64;
     for i in 0..input_count - 1 {
         let (utxo, input) = create_test_input(amount_per_input, input_maturity, &factories.commitment);
@@ -256,6 +257,7 @@ pub fn create_tx(
     stx_builder.with_input(utxo, input);
 
     let estimated_fee = Fee::calculate(fee_per_gram, 1, input_count, output_count);
+    // TODO: Check for output_count == 0
     let amount_per_output = (amount - estimated_fee) / output_count as u64;
     let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count as u64 - 1);
     for i in 0..output_count {

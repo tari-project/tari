@@ -172,9 +172,9 @@ async fn mining_cycle(
             node_conn.submit_block(mined_block).await?;
             break;
         } else {
-            let hashrate = report.hashes as f64 / report.elapsed.as_micros() as f64;
+            let hashrate = (report.hashes as f64).checked_div(report.elapsed.as_micros() as f64).unwrap_or_default();
             let estimated_time =
-                report.target_difficulty as f64 / (hashrate * config.num_mining_threads as f64 * 1000000.0);
+                report.target_difficulty as f64.checked_div(hashrate * config.num_mining_threads as f64 * 1000000.0).unwrap_or_default();
             let remaining = estimated_time as i32 - template_time.elapsed().as_secs() as i32;
             debug!(
                 "Miner {} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {}, Estimated \

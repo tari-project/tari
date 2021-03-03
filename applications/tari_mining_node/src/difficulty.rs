@@ -123,7 +123,7 @@ impl BlockHeaderSha3 {
 /// This will provide the difficulty of the hash assuming the hash is big_endian
 fn big_endian_difficulty(hash: &[u8]) -> Difficulty {
     let scalar = U256::from_big_endian(hash); // Big endian so the hash has leading zeroes
-    let result = U256::MAX / scalar;
+    let result = U256::MAX.checked_div(scalar).unwrap_or(0.into());
     result.low_u64()
 }
 
