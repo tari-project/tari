@@ -4654,6 +4654,64 @@ fn only_start_one_tx_broadcast_protocol_at_a_time() {
 }
 
 #[test]
+fn dont_broadcast_invalid_transactions() {
+    let mut runtime = Runtime::new().unwrap();
+    let factories = CryptoFactories::default();
+
+    let temp_dir = tempdir().unwrap();
+    let db_name = format!("{}.sqlite3", random_string(8).as_str());
+    let db_path = format!("{}/{}", temp_dir.path().to_str().unwrap(), db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let backend = TransactionServiceSqliteDatabase::new(connection, None);
+
+    let kernel = KernelBuilder::new()
+        .with_excess(&factories.commitment.zero())
+        .with_signature(&Signature::default())
+        .build()
+        .unwrap();
+
+    let tx = Transaction::new(vec![], vec![], vec![kernel], PrivateKey::random(&mut OsRng));
+
+    let completed_tx1 = CompletedTransaction {
+        tx_id: 1,
+        source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        amount: 5000 * uT,
+        fee: MicroTari::from(100),
+        transaction: tx.clone(),
+        status: TransactionStatus::Completed,
+        message: "Yo!".to_string(),
+        timestamp: Utc::now().naive_utc(),
+        cancelled: false,
+        direction: TransactionDirection::Outbound,
+        coinbase_block_height: None,
+        send_count: 0,
+        last_send_timestamp: None,
+        valid: false,
+    };
+
+    backend
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            completed_tx1.tx_id,
+            Box::new(completed_tx1.clone()),
+        )))
+        .unwrap();
+
+    let (mut alice_ts, _, _, _, _, _, _, _, _, _shutdown, _mock_rpc_server, server_node_identity, rpc_service_state) =
+        setup_transaction_service_no_comms(&mut runtime, factories.clone(), backend, None);
+
+    runtime
+        .block_on(alice_ts.set_base_node_public_key(server_node_identity.public_key().clone()))
+        .unwrap();
+
+    assert!(runtime.block_on(alice_ts.restart_broadcast_protocols()).is_ok());
+
+    let tx_submit_calls =
+        runtime.block_on(rpc_service_state.wait_pop_submit_transaction_calls(1, Duration::from_secs(5)));
+    assert!(tx_submit_calls.is_err(), "Should be no calls made");
+}
+
+#[test]
 fn start_validation_protocol_then_broadcast_protocol_change_base_node() {
     let mut runtime = Runtime::new().unwrap();
     let factories = CryptoFactories::default();

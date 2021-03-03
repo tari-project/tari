@@ -1366,12 +1366,11 @@ where
         trace!(target: LOG_TARGET, "Attempting to Broadcast all Completed Transactions");
         let completed_txs = self.db.get_completed_transactions().await?;
         for completed_tx in completed_txs.values() {
-            if completed_tx.status == TransactionStatus::Completed ||
-                completed_tx.status == TransactionStatus::Broadcast ||
-                completed_tx.status == TransactionStatus::MinedUnconfirmed
+            if completed_tx.valid &&
+                (completed_tx.status == TransactionStatus::Completed ||
+                    completed_tx.status == TransactionStatus::Broadcast ||
+                    completed_tx.status == TransactionStatus::MinedUnconfirmed)
             {
-                // Restart this protocol by first querying to see if the tx is in the mempool to avoid a false
-                // DoubleSpend rejection
                 self.broadcast_completed_transaction(completed_tx.tx_id, join_handles)
                     .await?;
             }
