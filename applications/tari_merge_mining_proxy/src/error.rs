@@ -70,4 +70,15 @@ pub enum MmProxyError {
     HexError(#[from] FromHexError),
     #[error("Coinbase builder error: {0}")]
     CoinbaseBuilderError(#[from] CoinbaseBuildError),
+    #[error("Unexpected Tari base node response: {0}")]
+    UnexpectedTariBaseNodeResponse(String),
+}
+
+impl From<tonic::Status> for MmProxyError {
+    fn from(status: tonic::Status) -> Self {
+        Self::GrpcRequestError {
+            details: String::from_utf8_lossy(status.details()).to_string(),
+            status,
+        }
+    }
 }

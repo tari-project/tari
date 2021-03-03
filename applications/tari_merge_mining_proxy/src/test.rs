@@ -103,3 +103,20 @@ mod add_aux_data {
         assert!(v["result"][MMPROXY_AUX_KEY_NAME]["it"].as_str().is_none());
     }
 }
+
+mod append_aux_chain_data {
+    use crate::{
+        common::json_rpc,
+        proxy::{append_aux_chain_data, MMPROXY_AUX_KEY_NAME},
+    };
+    use serde_json::json;
+
+    #[test]
+    fn it_adds_a_chain_object() {
+        let v = json_rpc::success_response(None, json!({}));
+        let v = append_aux_chain_data(v, json!({"test": "works"}));
+        assert_eq!(v["result"][MMPROXY_AUX_KEY_NAME]["chains"].as_array().unwrap(), &[
+            json!({"test": "works"})
+        ]);
+    }
+}
