@@ -114,9 +114,6 @@ pub struct ConfigBootstrap {
     /// This will clean out the orphans db at startup
     #[structopt(long, alias("clean_orphans_db"))]
     pub clean_orphans_db: bool,
-    /// Enable Mining
-    #[structopt(long, alias("enable_mining"))]
-    pub enable_mining: bool,
     /// Supply the password for the console wallet
     #[structopt(long)]
     pub password: Option<String>,
@@ -144,7 +141,6 @@ impl Default for ConfigBootstrap {
             input_file: None,
             command: None,
             clean_orphans_db: false,
-            enable_mining: false,
             password: None,
             change_password: false,
             recovery: false,

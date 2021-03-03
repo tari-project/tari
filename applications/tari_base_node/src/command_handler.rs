@@ -38,13 +38,9 @@ use std::{
     ops::Add,
     path::PathBuf,
     string::ToString,
-    sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
-        Arc,
-    },
+    sync::Arc,
     time::{Duration, Instant},
 };
-use tari_common::GlobalConfig;
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
@@ -60,7 +56,6 @@ use tari_core::{
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, ChainHeader, LMDBDatabase},
     mempool::service::LocalMempoolService,
-    mining::MinerInstruction,
     proof_of_work::PowAlgorithm,
     tari_utilities::{hex::Hex, message_format::MessageFormat},
     transactions::{
@@ -75,11 +70,7 @@ use tari_wallet::{
     transaction_service::{error::TransactionServiceError, handle::TransactionServiceHandle},
     util::emoji::EmojiId,
 };
-use tokio::{
-    runtime,
-    sync::{broadcast::Sender as syncSender, watch},
-    time,
-};
+use tokio::{runtime, sync::watch, time};
 // Import the auto-generated const values from the Manifest and Git
 
 include!(concat!(env!("OUT_DIR"), "/consts.rs"));
@@ -92,11 +83,6 @@ pub struct CommandHandler {
     connectivity: ConnectivityRequester,
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
-    enable_miner: Arc<AtomicBool>,
-    mining_status: Arc<AtomicBool>,
-    miner_hashrate: Arc<AtomicU64>,
-    miner_instructions: syncSender<MinerInstruction>,
-    miner_thread_count: u64,
     state_machine_info: watch::Receiver<StatusInfo>,
     wallet_transaction_service: Option<TransactionServiceHandle>,
     wallet_node_identity: Option<Arc<NodeIdentity>>,
@@ -106,7 +92,7 @@ pub struct CommandHandler {
 }
 
 impl CommandHandler {
-    pub fn new(executor: runtime::Handle, ctx: &BaseNodeContext, config: &GlobalConfig) -> Self {
+    pub fn new(executor: runtime::Handle, ctx: &BaseNodeContext) -> Self {
         CommandHandler {
             executor,
             blockchain_db: ctx.blockchain_db().into(),
@@ -116,11 +102,6 @@ impl CommandHandler {
             connectivity: ctx.base_node_comms().connectivity(),
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
-            enable_miner: ctx.miner_enabled(),
-            mining_status: ctx.mining_status(),
-            miner_hashrate: ctx.miner_hashrate(),
-            miner_instructions: ctx.miner_instruction_events(),
-            miner_thread_count: config.num_mining_threads as u64,
             state_machine_info: ctx.get_state_machine_info_channel(),
             wallet_node_identity: ctx.wallet_node_identity(),
             wallet_peer_manager: ctx.wallet_comms().map(|wc| wc.peer_manager()),
@@ -136,20 +117,6 @@ impl CommandHandler {
         let mut mempool = self.mempool_service.clone();
         let peer_manager = self.peer_manager.clone();
         let mut connectivity = self.connectivity.clone();
-        let (mining_status, hash_rate) = if self.wallet_output_service.is_some() {
-            let hashrate = self.miner_hashrate.load(Ordering::SeqCst);
-            let total_hashrate = (self.miner_thread_count * hashrate) as f64 / 1_000_000.0;
-            (
-                if self.mining_status.load(Ordering::SeqCst) {
-                    "ON".to_string()
-                } else {
-                    "OFF".to_string()
-                },
-                total_hashrate.to_string(),
-            )
-        } else {
-            ("DISABLED".to_string(), "0".to_string())
-        };
         self.executor.spawn(async move {
             let state = state_info.recv().await.unwrap();
             let metadata = node.get_metadata().await.unwrap();
@@ -164,7 +131,7 @@ impl CommandHandler {
             let banned_peers = banned_peers(&peer_manager).await.unwrap();
             let conns = connectivity.get_active_connections().await.unwrap();
             let status = format!(
-                "{}: State: {}, Tip: {} ({}), Mempool: {}tx ({}g, +/- {}blks), Mining: {} ({} MH/s), Connections: {}, \
+                "{}: State: {}, Tip: {} ({}), Mempool: {}tx ({}g, +/- {}blks), Connections: {}, \
                  Banned: {}",
                 Utc::now().format("%H:%M"),
                 state.state_info.short_desc(),
@@ -173,8 +140,6 @@ impl CommandHandler {
                 mempool_stats.total_txs,
                 mempool_stats.total_weight,
                 mempool_stats.total_weight / 19500,
-                mining_status,
-                hash_rate,
                 conns.len(),
                 banned_peers.len()
             );
@@ -979,105 +944,6 @@ impl CommandHandler {
                 },
             }
         });
-    }
-
-    /// Function to process the toggle-mining command
-    pub fn toggle_mining(&self) {
-        // 'enable_miner' should not be changed directly; this is done indirectly via miner instructions,
-        // while 'mining_status' will reflect if mining is happening or not
-
-        if self.wallet_output_service.is_some() {
-            let _enable_miner = self.enable_miner.clone();
-            let _mining_status = self.mining_status.clone();
-            let _miner_instructions = self.miner_instructions.clone();
-            self.executor.spawn(async move {
-                println!("Please use standalone miner, this command is no longer supported");
-                /*
-                let new_state = !enable_miner.load(Ordering::SeqCst);
-                // The event channel can interrupt the mining thread timeously to stop or start mining
-                let _ = match new_state {
-                    true => {
-                        println!("Mining requested to be turned ON");
-                        miner_instructions.send(MinerInstruction::StartMining).map_err(|e| {
-                            error!(
-                                target: LOG_TARGET,
-                                "Could not send 'StartMining' instruction to miner. {:?}.", e
-                            );
-                            e
-                        })
-                    },
-                    false => {
-                        println!("Mining requested to be turned OFF");
-                        miner_instructions.send(MinerInstruction::PauseMining).map_err(|e| {
-                            error!(
-                                target: LOG_TARGET,
-                                "Could not send 'PauseMining' instruction to miner. {:?}.", e
-                            );
-                            e
-                        })
-                    },
-                };
-                debug!(
-                    target: LOG_TARGET,
-                    "Mining state requested to be switched to {}", new_state
-                );
-
-                // Verify the mining status
-                let mut attempts = 0;
-                const DELAY: u64 = 2500;
-                const WAIT_CYCLES: usize = 50;
-                loop {
-                    tokio::time::delay_for(Duration::from_millis(DELAY)).await;
-                    if new_state == mining_status.load(Ordering::SeqCst) {
-                        match new_state {
-                            true => println!("Mining is ON"),
-                            false => println!("Mining is OFF"),
-                        }
-                        break;
-                    }
-                    attempts += 1;
-                    if attempts > WAIT_CYCLES {
-                        match new_state {
-                            true => println!(
-                                "Mining could not be turned ON in {:.1} s (mining enabled is set to {})",
-                                DELAY as f32 * attempts as f32 / 1000.0,
-                                enable_miner.load(Ordering::SeqCst)
-                            ),
-                            false => println!(
-                                "Mining could not to be turned OFF in {:.1} s (mining enabled is set to {})",
-                                DELAY as f32 * attempts as f32 / 1000.0,
-                                enable_miner.load(Ordering::SeqCst)
-                            ),
-                        }
-                        break;
-                    }
-                }
-                */
-            });
-        } else {
-            println!("Cannot complete command, Wallet is disabled so Mining is also disabled");
-        }
-    }
-
-    /// Function to process the get_mining_state command
-    pub fn get_mining_state(&self) {
-        if self.wallet_output_service.is_some() {
-            let cur_state = self.enable_miner.load(Ordering::SeqCst);
-            let mining_status = self.mining_status.load(Ordering::SeqCst);
-            match cur_state {
-                true => println!("Mining is ENABLED by the user"),
-                false => println!("Mining is DISABLED by the user"),
-            }
-            match mining_status {
-                true => println!("Mining state is currently ON"),
-                false => println!("Mining state is currently OFF"),
-            }
-            let hashrate = self.miner_hashrate.load(Ordering::SeqCst);
-            let total_hashrate = (self.miner_thread_count * hashrate) as f64 / 1_000_000.0;
-            println!("Mining hash rate is: {:.6} MH/s", total_hashrate);
-        } else {
-            println!("Cannot complete command, Wallet is disabled so Mining is also disabled");
-        }
     }
 
     pub fn list_headers(&self, start: u64, end: Option<u64>) {

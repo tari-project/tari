@@ -354,7 +354,7 @@ With the container ID ```73427509a4bb```, connect to the tari_base_node console 
 ```
 >> help
 Available commands are:
-help, version, get-balance, list-utxos, list-transactions, list-completed-transactions, cancel-transaction, send-tari, get-chain-metadata, list-peers, reset-offline-peers, ban-peer, unban-peer, list-connections, list-headers, check-db, calc-timing, discover-peer, get-block, search-utxo, search-kernel, search-stxo, get-mempool-stats, get-mempool-state, whoami, toggle-mining, get-mining-state, make-it-rain, coin-split, get-state-info, quit, exit
+help, version, get-balance, list-utxos, list-transactions, list-completed-transactions, cancel-transaction, send-tari, get-chain-metadata, list-peers, reset-offline-peers, ban-peer, unban-peer, list-connections, list-headers, check-db, calc-timing, discover-peer, get-block, search-utxo, search-kernel, search-stxo, get-mempool-stats, get-mempool-state, whoami, make-it-rain, coin-split, get-state-info, quit, exit
 >> get-chain-metadata
 Height of longest chain : 5228
 Geometric mean of longest chain : 5892870

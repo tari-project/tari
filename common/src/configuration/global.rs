@@ -72,7 +72,6 @@ pub struct GlobalConfig {
     pub dns_seeds_name_server: SocketAddr,
     pub dns_seeds_use_dnssec: bool,
     pub peer_db_path: PathBuf,
-    pub enable_mining: bool,
     pub enable_wallet: bool,
     pub num_mining_threads: usize,
     pub base_node_tor_identity_file: PathBuf,
@@ -372,12 +371,6 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
     let wallet_peer_db_path = data_dir.join("wallet_peer_db");
     let console_wallet_peer_db_path = data_dir.join("console_wallet_peer_db");
 
-    // set base node mining
-    let key = config_string("base_node", &net_str, "enable_mining");
-    let enable_mining = cfg
-        .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
-
     // set base node wallet
     let key = config_string("base_node", &net_str, "enable_wallet");
     let enable_wallet = cfg
@@ -619,7 +612,6 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         dns_seeds_name_server,
         dns_seeds_use_dnssec,
         peer_db_path,
-        enable_mining,
         enable_wallet,
         num_mining_threads,
         base_node_tor_identity_file,

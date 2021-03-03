@@ -5,7 +5,6 @@ network = "stibbons"
 
 [base_node.stibbons]
 db_type = "lmdb"
-enable_mining = false
 peer_seeds = [
     "b60d073e2f2337fdd95a58065e1d0182cca1d36c20ed10b27bc1232bc2836a17::/onion3/ssiz76b33emcerusblo6wba3ejqsub6ihkabjilem6ygoldodf6aenid:18141",
     # t-tbn-ncal

@@ -22,18 +22,11 @@
 
 use crate::{
     bootstrap::{BaseNodeBootstrapper, WalletBootstrapper},
-    miner,
     tasks,
 };
-use futures::{future, StreamExt};
+use futures::future;
 use log::*;
-use std::{
-    sync::{
-        atomic::{AtomicBool, AtomicU64},
-        Arc,
-    },
-    time::Duration,
-};
+use std::sync::Arc;
 use tari_common::{DatabaseType, GlobalConfig};
 use tari_comms::{peer_manager::NodeIdentity, CommsNode};
 use tari_comms_dht::Dht;
@@ -42,7 +35,6 @@ use tari_core::{
     chain_storage::{create_lmdb_database, BlockchainDatabase, BlockchainDatabaseConfig, LMDBDatabase, Validators},
     consensus::ConsensusManagerBuilder,
     mempool::{service::LocalMempoolService, Mempool, MempoolConfig},
-    mining::{Miner, MinerInstruction},
     proof_of_work::randomx_factory::{RandomXConfig, RandomXFactory},
     transactions::types::CryptoFactories,
     validation::{
@@ -54,20 +46,15 @@ use tari_core::{
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
-    output_manager_service::{handle::OutputManagerHandle, protocols::txo_validation_protocol::TxoValidationType},
+    output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::TransactionServiceHandle,
-    types::ValidationRetryStrategy,
 };
-use tokio::{
-    sync::{broadcast::Sender as syncSender, watch},
-    task,
-    time::delay_for,
-};
+use tokio::{sync::watch, task};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 
 /// The base node context is a container for all the key structural pieces for the base node application, including the
-/// communications stack, the node state machine, the miner and handles to the various services that are registered
+/// communications stack, the node state machine and handles to the various services that are registered
 /// on the comms stack.
 pub struct BaseNodeContext {
     blockchain_db: BlockchainDatabase<LMDBDatabase>,
@@ -76,54 +63,18 @@ pub struct BaseNodeContext {
     wallet_comms: Option<CommsNode>,
     base_node_handles: ServiceHandles,
     wallet_handles: Option<ServiceHandles>,
-    miner: Option<Miner>,
-    miner_enabled: Arc<AtomicBool>,
-    mining_status: Arc<AtomicBool>,
-    miner_instruction_events: syncSender<MinerInstruction>,
-    pub miner_hashrate: Arc<AtomicU64>,
 }
 
 impl BaseNodeContext {
-    /// Starts the node container. This entails starting the miner and wallet (if `mining_enabled` is true) and then
-    /// starting the base node state machine. This call consumes the NodeContainer instance.
-    pub async fn run(mut self) {
+    /// Starts the node container. This entails the base node state machine.
+    /// This call consumes the NodeContainer instance.
+    pub async fn run(self) {
         info!(target: LOG_TARGET, "Tari base node has STARTED");
-        // Start wallet & miner
         if self.wallet_handles.is_none() {
             info!(
                 target: LOG_TARGET,
-                "Miner and Wallet are not starting due to config setting disabling embedded Wallet instance"
+                "Wallet are not starting due to config setting disabling embedded Wallet instance"
             );
-        } else if let Some(mut wallet_output_handle) = self.output_manager() {
-            let mut miner = self.miner.take().expect("Miner was not constructed");
-            let mut rx = miner.get_utxo_receiver_channel();
-            task::spawn(async move {
-                info!(target: LOG_TARGET, " ⚒️ Mining wallet ready to receive coins.");
-                while let Some(utxo) = rx.next().await {
-                    match wallet_output_handle.add_output(utxo).await {
-                        Ok(_) => {
-                            info!(
-                                target: LOG_TARGET,
-                                "🤑💰🤑 Newly mined coinbase output added to wallet 🤑💰🤑"
-                            );
-                            // TODO Remove this when the wallet monitors the UTXO's more intelligently
-                            let mut oms_handle_clone = wallet_output_handle.clone();
-                            task::spawn(async move {
-                                delay_for(Duration::from_secs(240)).await;
-                                let _ = oms_handle_clone
-                                    .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
-                                    .await;
-                            });
-                        },
-                        Err(e) => warn!(target: LOG_TARGET, "Error adding output: {}", e),
-                    }
-                }
-            });
-            task::spawn(async move {
-                info!(target: LOG_TARGET, "⚒️ Starting miner");
-                miner.mine().await;
-                info!(target: LOG_TARGET, "⚒️ Miner has shutdown");
-            });
         }
 
         if let Err(e) = self.state_machine().shutdown_signal().await {
@@ -195,26 +146,6 @@ impl BaseNodeContext {
         self.wallet_comms.as_ref().map(|wc| wc.node_identity())
     }
 
-    /// Returns this node's miner enabled flag.
-    pub fn miner_enabled(&self) -> Arc<AtomicBool> {
-        self.miner_enabled.clone()
-    }
-
-    /// Returns this node's mining status.
-    pub fn mining_status(&self) -> Arc<AtomicBool> {
-        self.mining_status.clone()
-    }
-
-    /// Returns this node's miner atomic hash rate.
-    pub fn miner_hashrate(&self) -> Arc<AtomicU64> {
-        self.miner_hashrate.clone()
-    }
-
-    /// Returns this node's miner instruction event channel.
-    pub fn miner_instruction_events(&self) -> syncSender<MinerInstruction> {
-        self.miner_instruction_events.clone()
-    }
-
     /// Return the handle to the Transaction Service
     pub fn wallet_transaction_service(&self) -> Option<TransactionServiceHandle> {
         self.wallet_handles
@@ -276,7 +207,7 @@ pub async fn configure_and_initialize_node(
     Ok(result)
 }
 
-/// Constructs the base node context, this includes setting up the consensus manager, mempool, base node, wallet, miner
+/// Constructs the base node context, this includes setting up the consensus manager, mempool, base node, wallet
 /// and state machine
 /// ## Parameters
 /// `backend` - Backend interface
@@ -378,38 +309,6 @@ async fn build_node_context(
         None
     };
 
-    //---------------------------------- Mining --------------------------------------------//
-
-    let local_mp_interface = base_node_handles.expect_handle::<LocalMempoolService>();
-    let node_event_stream = base_node_handles
-        .expect_handle::<StateMachineHandle>()
-        .get_state_change_event_stream();
-    let mempool_event_stream = local_mp_interface.get_mempool_state_event_stream();
-    let miner = miner::build_miner(
-        &base_node_handles,
-        interrupt_signal,
-        node_event_stream,
-        mempool_event_stream,
-        rules,
-        config.num_mining_threads,
-    );
-    if config.enable_mining {
-        info!(
-            target: LOG_TARGET,
-            "Please use standalone miner, enabling the internal solo miner is no longer supported."
-        );
-    // miner.enable_mining_flag().store(true, Ordering::Relaxed);
-    } else {
-        info!(
-            target: LOG_TARGET,
-            "Mining is disabled in the config file. This node will not mine for Tari unless enabled in the UI"
-        );
-    };
-
-    let miner_enabled = miner.enable_mining_flag();
-    let mining_status = miner.mining_status_flag();
-    let miner_hashrate = miner.get_hashrate_u64();
-    let miner_instruction_events = miner.get_miner_instruction_events_sender_channel();
     Ok(BaseNodeContext {
         blockchain_db,
         base_node_comms,
@@ -417,10 +316,5 @@ async fn build_node_context(
         wallet_comms: wallet_handles.as_ref().map(|h| h.expect_handle::<CommsNode>()),
         base_node_handles,
         wallet_handles,
-        miner: Some(miner),
-        miner_enabled,
-        mining_status,
-        miner_instruction_events,
-        miner_hashrate,
     })
 }

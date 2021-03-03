@@ -87,8 +87,6 @@ pub enum BaseNodeCommand {
     GetMempoolStats,
     GetMempoolState,
     Whoami,
-    ToggleMining,
-    GetMiningState,
     MakeItRain,
     CoinSplit,
     StressTest,
@@ -260,12 +258,6 @@ impl Parser {
             CalcTiming => {
                 self.process_calc_timing(args);
             },
-            ToggleMining => {
-                self.command_handler.toggle_mining();
-            },
-            GetMiningState => {
-                self.command_handler.get_mining_state();
-            },
             GetBlock => {
                 self.process_get_block(args);
             },
@@ -407,13 +399,6 @@ impl Parser {
             CalcTiming => {
                 println!("Calculates the time average time taken to mine a given range of blocks.");
             },
-            ToggleMining => {
-                println!("Enable or disable the miner on this node, calling this command will toggle the state");
-            },
-            GetMiningState => println!(
-                "Displays the mining state. The hash rate is estimated based on the last measured hash rate and the \
-                 number of active mining thread."
-            ),
             GetBlock => {
                 println!("View a block of a height, call this command via:");
                 println!("get-block [height of the block] [format]");
