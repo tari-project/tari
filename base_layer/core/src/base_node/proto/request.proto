@@ -12,8 +12,6 @@ message BaseNodeServiceRequest {
     oneof request {
         // Indicates a GetChainMetadata request. The value of the bool should be ignored.
         bool get_chain_metadata = 2;
-        // Indicates a FetchKernels request.
-        HashOutputs fetch_kernels = 3;
         // Indicates a FetchHeaders request.
         BlockHeights fetch_headers = 4;
         // Indicates a FetchHeadersWithHashes request.

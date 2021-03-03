@@ -46,7 +46,6 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
         let request = match self {
             // Field was not specified
             GetChainMetadata(_) => ci::NodeCommsRequest::GetChainMetadata,
-            FetchKernels(hash_outputs) => ci::NodeCommsRequest::FetchKernels(hash_outputs.outputs),
             FetchHeaders(block_heights) => ci::NodeCommsRequest::FetchHeaders(block_heights.heights),
             FetchHeadersWithHashes(block_hashes) => ci::NodeCommsRequest::FetchHeadersWithHashes(block_hashes.outputs),
             FetchHeadersAfter(request) => {
@@ -100,7 +99,6 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
         use ci::NodeCommsRequest::*;
         match request {
             GetChainMetadata => ProtoNodeCommsRequest::GetChainMetadata(true),
-            FetchKernels(hash_outputs) => ProtoNodeCommsRequest::FetchKernels(hash_outputs.into()),
             FetchHeaders(block_heights) => ProtoNodeCommsRequest::FetchHeaders(block_heights.into()),
             FetchHeadersWithHashes(block_hashes) => ProtoNodeCommsRequest::FetchHeadersWithHashes(block_hashes.into()),
             FetchHeadersAfter(hashes, stopping_hash) => {

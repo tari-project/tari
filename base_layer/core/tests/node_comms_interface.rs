@@ -34,10 +34,14 @@ use tari_core::{
         OutboundNodeCommsInterface,
     },
     blocks::{genesis_block, BlockBuilder, BlockHeader},
-    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, HistoricalBlock, Validators},
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, DbTransaction, HistoricalBlock, Validators},
     consensus::{ConsensusManagerBuilder, Network},
     mempool::{Mempool, MempoolConfig},
-    test_helpers::blockchain::{create_test_blockchain_db, create_test_db},
+    test_helpers::blockchain::{
+        create_store_with_consensus_and_validators_and_config,
+        create_test_blockchain_db,
+        create_test_db,
+    },
     transactions::{
         helpers::{create_test_kernel, create_utxo},
         tari_amount::MicroTari,
@@ -108,62 +112,6 @@ async fn inbound_get_metadata() {
     } else {
         assert!(false);
     }
-}
-
-#[tokio_macros::test]
-async fn outbound_fetch_kernels() {
-    let (request_sender, mut request_receiver) = reply_channel::unbounded();
-    let (block_sender, _) = mpsc::unbounded();
-    let mut outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-
-    let kernel = create_test_kernel(5.into(), 0);
-    let hash = kernel.hash();
-    let kernel_response = NodeCommsResponse::TransactionKernels(vec![kernel.clone()]);
-    let (received_kernels, _) = futures::join!(
-        outbound_nci.fetch_kernels(vec![hash]),
-        test_request_responder(&mut request_receiver, kernel_response)
-    );
-    let received_kernels = received_kernels.unwrap();
-    assert_eq!(received_kernels.len(), 1);
-    assert_eq!(received_kernels[0], kernel);
-}
-
-#[tokio_macros::test]
-#[ignore]
-// TODO: Fix when pruned mode fixed
-async fn inbound_fetch_kernels() {
-    unimplemented!()
-    // let store = create_test_db();
-    // let mempool = new_mempool();
-    // let network = Network::LocalNet;
-    // let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    // let (block_event_sender, _) = broadcast::channel(50);
-    // let (request_sender, _) = reply_channel::unbounded();
-    // let (block_sender, _) = mpsc::unbounded();
-    // let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-    // let inbound_nch = InboundNodeCommsHandlers::new(
-    //     block_event_sender,
-    //     store.clone(),
-    //     mempool,
-    //     consensus_manager,
-    //     outbound_nci,
-    // );
-    //
-    // let kernel = create_test_kernel(5.into(), 0);
-    // let hash = kernel.hash();
-    // let mut txn = DbTransaction::new();
-    // txn.insert_kernel(kernel.clone());
-    // assert!(store.commit(txn).is_ok());
-    //
-    // if let Ok(NodeCommsResponse::TransactionKernels(received_kernels)) = inbound_nch
-    //     .handle_request(NodeCommsRequest::FetchKernels(vec![hash]))
-    //     .await
-    // {
-    //     assert_eq!(received_kernels.len(), 1);
-    //     assert_eq!(received_kernels[0], kernel);
-    // } else {
-    //     assert!(false);
-    // }
 }
 
 #[tokio_macros::test]
@@ -269,55 +217,44 @@ async fn outbound_fetch_utxos() {
 }
 
 #[tokio_macros::test]
-#[ignore]
-// TODO: Fix when pruned mode fixed
 async fn inbound_fetch_utxos() {
-    // let factories = CryptoFactories::default();
-    // let store = create_store();
-    // let mempool = new_mempool();
-    // let (block_event_sender, _) = broadcast::channel(50);
-    // let network = Network::LocalNet;
-    // let consensus_constants = network.create_consensus_constants();
-    // let consensus_manager = ConsensusManagerBuilder::new(network)
-    //     .with_consensus_constants(consensus_constants[0].clone())
-    //     .build();
-    // let (request_sender, _) = reply_channel::unbounded();
-    // let (block_sender, _) = mpsc::unbounded();
-    // let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-    // let inbound_nch = InboundNodeCommsHandlers::new(
-    //     block_event_sender,
-    //     store.clone(),
-    //     mempool,
-    //     consensus_manager,
-    //     outbound_nci,
-    // );
-    //
-    // // Create valid UTXOs
-    // let (utxo_1, _) = create_utxo(MicroTari(10_000), &factories, None);
-    // let (utxo_2, _) = create_utxo(MicroTari(10_000), &factories, None);
-    // let hash_1 = utxo_1.hash();
-    // let mut txn_1 = DbTransaction::new();
-    // let mut txn_2 = DbTransaction::new();
-    // txn_1.insert_utxo(utxo_1.clone());
-    // txn_2.insert_utxo(utxo_2.clone());
-    // assert!(store.commit(txn_1).is_ok());
-    // assert!(store.commit(txn_2).is_ok());
-    //
-    // // Create fake UTXO
-    // let (utxo_fake, _) = create_utxo(MicroTari(10_000), &factories, None);
-    // let hash_fake = utxo_fake.hash();
-    //
-    // // Only retrieve a subset of the actual hashes, including a fake hash in the list
-    // if let Ok(NodeCommsResponse::TransactionOutputs(received_utxos)) = inbound_nch
-    //     .handle_request(NodeCommsRequest::FetchMatchingUtxos(vec![hash_1, hash_fake]))
-    //     .await
-    // {
-    //     assert_eq!(received_utxos.len(), 1);
-    //     assert_eq!(received_utxos[0], utxo_1);
-    // } else {
-    //     assert!(false);
-    // }
-    unimplemented!()
+    let factories = CryptoFactories::default();
+
+    let store = create_test_blockchain_db();
+    let mempool = new_mempool();
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants[0].clone())
+        .build();
+    let (block_event_sender, _) = broadcast::channel(50);
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = mpsc::unbounded();
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
+    let inbound_nch = InboundNodeCommsHandlers::new(
+        block_event_sender,
+        store.clone().into(),
+        mempool,
+        consensus_manager,
+        outbound_nci,
+    );
+    let block = store.fetch_block(0).unwrap().block().clone();
+    let utxo_1 = block.body.outputs()[0].clone();
+    let hash_1 = utxo_1.hash();
+
+    let (utxo_2, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let hash_2 = utxo_2.hash();
+
+    // Only retrieve a subset of the actual hashes, including a fake hash in the list
+    if let Ok(NodeCommsResponse::TransactionOutputs(received_utxos)) = inbound_nch
+        .handle_request(NodeCommsRequest::FetchMatchingUtxos(vec![hash_1, hash_2]))
+        .await
+    {
+        assert_eq!(received_utxos.len(), 1);
+        assert_eq!(received_utxos[0], utxo_1);
+    } else {
+        assert!(false);
+    }
 }
 
 #[tokio_macros::test]
@@ -343,52 +280,51 @@ async fn outbound_fetch_txos() {
 }
 
 #[tokio_macros::test]
-#[ignore]
-// TODO: Fix when pruned mode fixed
 async fn inbound_fetch_txos() {
-    // let factories = CryptoFactories::default();
-    // let store = create_store();
-    // let mempool = new_mempool();
-    // let (block_event_sender, _) = broadcast::channel(50);
-    // let network = Network::LocalNet;
-    // let consensus_constants = network.create_consensus_constants();
-    // let consensus_manager = ConsensusManagerBuilder::new(network)
-    //     .with_consensus_constants(consensus_constants[0].clone())
-    //     .build();
-    // let (request_sender, _) = reply_channel::unbounded();
-    // let (block_sender, _) = mpsc::unbounded();
-    // let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
-    // let inbound_nch = InboundNodeCommsHandlers::new(
-    //     block_event_sender,
-    //     store.clone(),
-    //     mempool,
-    //     consensus_manager,
-    //     outbound_nci,
-    // );
-    //
-    // let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
-    // let (stxo, _) = create_utxo(MicroTari(10_000), &factories, None);
-    // let utxo_hash = utxo.hash();
-    // let stxo_hash = stxo.hash();
-    // let mut txn = DbTransaction::new();
-    // txn.insert_utxo(utxo.clone());
-    // txn.insert_utxo(stxo.clone());
-    // assert!(store.commit(txn).is_ok());
-    // let mut txn = DbTransaction::new();
-    // txn.spend_utxo(stxo_hash.clone());
-    // assert!(store.commit(txn).is_ok());
-    //
-    // if let Ok(NodeCommsResponse::TransactionOutputs(received_txos)) = inbound_nch
-    //     .handle_request(NodeCommsRequest::FetchMatchingTxos(vec![utxo_hash, stxo_hash]))
-    //     .await
-    // {
-    //     assert_eq!(received_txos.len(), 2);
-    //     assert_eq!(received_txos[0], utxo);
-    //     assert_eq!(received_txos[1], stxo);
-    // } else {
-    //     assert!(false);
-    // }
-    unimplemented!()
+    let factories = CryptoFactories::default();
+    let store = create_test_blockchain_db();
+    let mempool = new_mempool();
+    let (block_event_sender, _) = broadcast::channel(50);
+    let network = Network::LocalNet;
+    let consensus_constants = network.create_consensus_constants();
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .with_consensus_constants(consensus_constants[0].clone())
+        .build();
+    let (request_sender, _) = reply_channel::unbounded();
+    let (block_sender, _) = mpsc::unbounded();
+    let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
+    let inbound_nch = InboundNodeCommsHandlers::new(
+        block_event_sender,
+        store.clone().into(),
+        mempool,
+        consensus_manager,
+        outbound_nci,
+    );
+
+    let (utxo, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let (stxo, _) = create_utxo(MicroTari(10_000), &factories, None);
+    let utxo_hash = utxo.hash();
+    let stxo_hash = stxo.hash();
+    let block = store.fetch_block(0).unwrap().block().clone();
+    let header_hash = block.header.hash();
+    let mut txn = DbTransaction::new();
+    txn.insert_utxo(utxo.clone(), header_hash.clone(), 6000);
+    txn.insert_utxo(stxo.clone(), header_hash.clone(), 6001);
+    assert!(store.commit(txn).is_ok());
+    let mut txn = DbTransaction::new();
+    txn.insert_input(stxo.clone().into(), header_hash.clone(), 1);
+    assert!(store.commit(txn).is_ok());
+
+    if let Ok(NodeCommsResponse::TransactionOutputs(received_txos)) = inbound_nch
+        .handle_request(NodeCommsRequest::FetchMatchingTxos(vec![utxo_hash, stxo_hash]))
+        .await
+    {
+        assert_eq!(received_txos.len(), 2);
+        assert_eq!(received_txos[0], utxo);
+        assert_eq!(received_txos[1], stxo);
+    } else {
+        assert!(false);
+    }
 }
 
 #[tokio_macros::test]
@@ -445,11 +381,11 @@ async fn inbound_fetch_blocks() {
 
 #[tokio_macros::test]
 #[ignore]
-// TODO: Fix when pruned mode is fixed
+// Test needs to be updated to new pruned structure.
 async fn inbound_fetch_blocks_before_horizon_height() {
     let network = Network::LocalNet;
     let consensus_constants = network.create_consensus_constants();
-    let block0 = genesis_block::get_ridcully_genesis_block();
+    let block0 = genesis_block::get_stibbons_genesis_block();
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants[0].clone())
         .with_block(block0.clone())
@@ -459,13 +395,12 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         MockValidator::new(true),
         MockValidator::new(true),
     );
-    let db = create_test_db();
     let config = BlockchainDatabaseConfig {
         pruning_horizon: 3,
-        pruning_interval: 2,
+        pruning_interval: 1,
         ..Default::default()
     };
-    let store = BlockchainDatabase::new(db, &consensus_manager, validators, config, false).unwrap();
+    let store = create_store_with_consensus_and_validators_and_config(&consensus_manager, validators, config);
     let mempool_validator = TxInputAndMaturityValidator::new(store.clone());
     let mempool = Mempool::new(MempoolConfig::default(), Arc::new(mempool_validator));
     let (block_event_sender, _) = broadcast::channel(50);
@@ -483,7 +418,8 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
     let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into()).unwrap();
     let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
-    let _block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
+    let block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
+    let _block5 = append_block(&store, &block4, vec![], &consensus_manager, 1.into()).unwrap();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
         .handle_request(NodeCommsRequest::FetchMatchingBlocks(vec![1]))
