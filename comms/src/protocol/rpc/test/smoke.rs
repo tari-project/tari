@@ -27,6 +27,7 @@ use crate::{
         rpc::{
             body::Streaming,
             context::RpcCommsBackend,
+            error::HandshakeRejectReason,
             message::Request,
             test::mock::create_mocked_rpc_context,
             Response,
@@ -34,6 +35,7 @@ use crate::{
             RpcServer,
             RpcStatus,
             RpcStatusCode,
+            RPC_MAX_FRAME_SIZE,
         },
         ProtocolEvent,
         ProtocolId,
@@ -46,7 +48,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use futures::{channel::mpsc, stream, SinkExt, StreamExt};
-use std::{io, sync::Arc, time::Duration};
+use std::{iter, sync::Arc, time::Duration};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
@@ -67,21 +69,26 @@ pub trait GreetingRpc: Send + Sync + 'static {
     async fn streaming_error2(&self, _: Request<()>) -> Result<Streaming<String>, RpcStatus>;
     // #[rpc(method = 6)]
     async fn get_public_key_hex(&self, _: Request<()>) -> Result<String, RpcStatus>;
+    // #[rpc(method = 7)]
+    async fn reply_with_msg_of_size(&self, request: Request<u64>) -> Result<Vec<u8>, RpcStatus>;
 }
 
 async fn setup_service<T: GreetingRpc>(
     service: T,
+    num_concurrent_sessions: usize,
 ) -> (
     mpsc::Sender<ProtocolNotification<MemorySocket>>,
     task::JoinHandle<Result<(), RpcError>>,
     RpcCommsBackend,
     Shutdown,
-) {
+)
+{
     let (notif_tx, notif_rx) = mpsc::channel(1);
     let shutdown = Shutdown::new();
     let (context, _) = create_mocked_rpc_context();
     let server_hnd = task::spawn(
         RpcServer::new()
+            .with_maximum_concurrent_sessions(num_concurrent_sessions)
             .with_minimum_client_deadline(Duration::from_secs(0))
             .with_shutdown_signal(shutdown.to_signal())
             .add_service(GreetingServer::new(service))
@@ -92,13 +99,15 @@ async fn setup_service<T: GreetingRpc>(
 
 async fn setup<T: GreetingRpc>(
     service: T,
+    num_concurrent_sessions: usize,
 ) -> (
     MemorySocket,
     task::JoinHandle<Result<(), RpcError>>,
     Arc<NodeIdentity>,
     Shutdown,
-) {
-    let (mut notif_tx, server_hnd, context, shutdown) = setup_service(service).await;
+)
+{
+    let (mut notif_tx, server_hnd, context, shutdown) = setup_service(service, num_concurrent_sessions).await;
     let (inbound, outbound) = MemorySocket::new_pair();
     let node_identity = build_node_identity(Default::default());
 
@@ -119,7 +128,7 @@ async fn setup<T: GreetingRpc>(
 async fn request_reponse_errors_and_streaming() // a.k.a  smoke test
 {
     let greetings = &["Sawubona", "Jambo", "Bonjour", "Hello", "Molo", "Olá"];
-    let (socket, server_hnd, node_identity, mut shutdown) = setup(GreetingService::new(greetings)).await;
+    let (socket, server_hnd, node_identity, mut shutdown) = setup(GreetingService::new(greetings), 1).await;
 
     let framed = framing::canonical(socket, 1024);
     let mut client = GreetingClient::builder()
@@ -191,8 +200,29 @@ async fn request_reponse_errors_and_streaming() // a.k.a  smoke test
 }
 
 #[runtime::test_basic]
+async fn response_too_big() {
+    let (socket, _, _, _shutdown) = setup(GreetingService::new(&[]), 1).await;
+
+    let framed = framing::canonical(socket, RPC_MAX_FRAME_SIZE);
+    let mut client = GreetingClient::builder().connect(framed).await.unwrap();
+
+    // RPC_MAX_FRAME_SIZE bytes will always be too large because of the overhead of the RpcResponse proto message
+    let err = client
+        .reply_with_msg_of_size(RPC_MAX_FRAME_SIZE as u64)
+        .await
+        .unwrap_err();
+    unpack_enum!(RpcError::RequestFailed(status) = err);
+    unpack_enum!(RpcStatusCode::MalformedResponse = status.status_code());
+
+    // Check that the exact frame size boundary works and that the session is still going
+    // Take off 14 bytes for the RpcResponse overhead (i.e request_id + status + flags + msg field + vec_char(len(msg)))
+    let max_size = RPC_MAX_FRAME_SIZE - 14;
+    let _ = client.reply_with_msg_of_size(max_size as u64).await.unwrap();
+}
+
+#[runtime::test_basic]
 async fn server_shutdown_after_connect() {
-    let (socket, _, _, mut shutdown) = setup(GreetingService::new(&[])).await;
+    let (socket, _, _, mut shutdown) = setup(GreetingService::new(&[]), 1).await;
     let framed = framing::canonical(socket, 1024);
     let mut client = GreetingClient::connect(framed).await.unwrap();
     shutdown.trigger().unwrap();
@@ -203,18 +233,18 @@ async fn server_shutdown_after_connect() {
 
 #[runtime::test_basic]
 async fn server_shutdown_before_connect() {
-    let (socket, _, _, mut shutdown) = setup(GreetingService::new(&[])).await;
+    let (socket, _, _, mut shutdown) = setup(GreetingService::new(&[]), 1).await;
     let framed = framing::canonical(socket, 1024);
     shutdown.trigger().unwrap();
 
     let err = GreetingClient::connect(framed).await.unwrap_err();
-    unpack_enum!(RpcError::Io(_err) = err);
+    unpack_enum!(RpcError::ServerClosedRequest = err);
 }
 
 #[runtime::test_basic]
 async fn timeout() {
     let delay = Arc::new(RwLock::new(Duration::from_secs(10)));
-    let (socket, _, _, _shutdown) = setup(SlowGreetingService::new(delay.clone())).await;
+    let (socket, _, _, _shutdown) = setup(SlowGreetingService::new(delay.clone()), 1).await;
     let framed = framing::canonical(socket, 1024);
     let mut client = GreetingClient::builder()
         .with_deadline(Duration::from_secs(1))
@@ -237,7 +267,7 @@ async fn timeout() {
 
 #[runtime::test_basic]
 async fn unknown_protocol() {
-    let (mut notif_tx, _, _, _shutdown) = setup_service(GreetingService::new(&[])).await;
+    let (mut notif_tx, _, _, _shutdown) = setup_service(GreetingService::new(&[]), 1).await;
 
     let (inbound, socket) = MemorySocket::new_pair();
     let node_identity = build_node_identity(Default::default());
@@ -255,9 +285,17 @@ async fn unknown_protocol() {
 
     let framed = framing::canonical(socket, 1024);
     let err = GreetingClient::connect(framed).await.unwrap_err();
-    unpack_enum!(RpcError::Io(err) = err);
-    // i.e the server just closed the stream immediately
-    assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+    unpack_enum!(RpcError::HandshakeRejected(reason) = err);
+    unpack_enum!(HandshakeRejectReason::ProtocolNotSupported = reason);
+}
+
+#[runtime::test_basic]
+async fn rejected_no_sessions_available() {
+    let (socket, _, _, _shutdown) = setup(GreetingService::new(&[]), 0).await;
+    let framed = framing::canonical(socket, 1024);
+    let err = GreetingClient::builder().connect(framed).await.unwrap_err();
+    unpack_enum!(RpcError::HandshakeRejected(reason) = err);
+    unpack_enum!(HandshakeRejectReason::NoSessionsAvailable = reason);
 }
 
 //---------------------------------- Greeting Service --------------------------------------------//
@@ -331,6 +369,11 @@ impl GreetingRpc for GreetingService {
         let peer = context.fetch_peer().await?;
         Ok(peer.public_key.to_hex())
     }
+
+    async fn reply_with_msg_of_size(&self, request: Request<u64>) -> Result<Vec<u8>, RpcStatus> {
+        let size = request.into_message() as usize;
+        Ok(iter::repeat(0).take(size).collect())
+    }
 }
 
 pub struct SlowGreetingService {
@@ -370,6 +413,10 @@ impl GreetingRpc for SlowGreetingService {
     }
 
     async fn get_public_key_hex(&self, _: Request<()>) -> Result<String, RpcStatus> {
+        unimplemented!()
+    }
+
+    async fn reply_with_msg_of_size(&self, _: Request<u64>) -> Result<Vec<u8>, RpcStatus> {
         unimplemented!()
     }
 }
@@ -466,6 +513,15 @@ impl<T: GreetingRpc> __rpc_deps::Service<Request<__rpc_deps::Bytes>> for Greetin
                 };
                 Box::pin(fut)
             },
+            // reply_with_msg_of_size
+            7 => {
+                let fut = async move {
+                    let resp = inner.reply_with_msg_of_size(req.decode()?).await?;
+                    Ok(Response::new(resp.into_body()))
+                };
+                Box::pin(fut)
+            },
+
             id => Box::pin(__rpc_deps::future::ready(Err(RpcStatus::unsupported_method(format!(
                 "Method identifier `{}` is not recognised or supported",
                 id
@@ -545,6 +601,10 @@ impl GreetingClient {
 
     pub async fn get_public_key_hex(&mut self) -> Result<String, RpcError> {
         self.inner.request_response((), 6).await
+    }
+
+    pub async fn reply_with_msg_of_size(&mut self, request: u64) -> Result<String, RpcError> {
+        self.inner.request_response(request, 7).await
     }
 
     pub async fn get_last_request_latency(&mut self) -> Result<Option<Duration>, RpcError> {

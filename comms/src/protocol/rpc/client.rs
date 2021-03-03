@@ -117,8 +117,7 @@ impl RpcClient {
 
         let resp = self.call_inner(request).await?;
 
-        let resp = ClientStreaming::new(resp);
-        Ok(resp)
+        Ok(ClientStreaming::new(resp))
     }
 
     /// Close the RPC session. Any subsequent calls will error.
@@ -393,18 +392,26 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
             };
 
             let resp = match next_msg_fut.await {
-                Ok(resp) => {
+                Ok(Some(Ok(resp))) => {
                     let latency = start.elapsed();
                     trace!(
                         target: LOG_TARGET,
-                        "Received response from request #{} (method={}) in {:.0?}",
+                        "Received response ({} byte(s)) from request #{} (method={}) in {:.0?}",
+                        resp.len(),
                         request_id,
                         method,
                         latency
                     );
                     self.latency = Some(latency);
-                    resp.ok_or_else(|| RpcError::ServerClosedRequest)??
+                    proto::rpc::RpcResponse::decode(resp)?
                 },
+                Ok(Some(Err(err))) => {
+                    return Err(err.into());
+                },
+                Ok(None) => {
+                    return Err(RpcError::ServerClosedRequest);
+                },
+
                 // Timeout
                 Err(_) => {
                     debug!(
@@ -419,8 +426,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send
                     break;
                 },
             };
-
-            let resp = proto::rpc::RpcResponse::decode(resp)?;
 
             match Self::convert_to_result(resp) {
                 Ok(resp) => {

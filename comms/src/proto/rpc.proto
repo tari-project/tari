@@ -46,4 +46,11 @@ message RpcSessionReply {
         // Indicates the server rejected the session
         bool rejected = 2;
     }
+    enum HandshakeRejectReason {
+        HANDSHAKE_REJECT_REASON_UNKNOWN = 0;
+        HANDSHAKE_REJECT_REASON_UNSUPPORTED_VERSION = 1;
+        HANDSHAKE_REJECT_REASON_NO_SESSIONS_AVAILABLE = 2;
+        HANDSHAKE_REJECT_REASON_PROTOCOL_NOT_SUPPORTED= 3;
+    }
+    HandshakeRejectReason reject_reason = 3;
 }
