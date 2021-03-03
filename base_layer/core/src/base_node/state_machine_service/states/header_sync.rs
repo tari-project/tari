@@ -66,9 +66,10 @@ impl HeaderSync {
         );
 
         let status_event_sender = shared.status_event_sender.clone();
+        let bootstrapped = shared.bootstrapped_sync;
         synchronizer.on_progress(move |current_height, remote_tip_height, sync_peers| {
             let _ = status_event_sender.broadcast(StatusInfo {
-                bootstrapped: false,
+                bootstrapped,
                 state_info: StateInfo::HeaderSync(BlockSyncInfo {
                     tip_height: remote_tip_height,
                     local_height: current_height,

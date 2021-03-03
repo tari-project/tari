@@ -29,6 +29,7 @@ use std::{
     convert::{TryFrom, TryInto},
     sync::Arc,
 };
+
 use tari_app_grpc::{
     tari_rpc,
     tari_rpc::{CalcType, Sorting},
@@ -47,9 +48,9 @@ use tari_core::{
     crypto::tari_utilities::hex::Hex,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::transaction::Transaction,
+    transactions::{transaction::Transaction, types::Signature},
 };
-use tari_crypto::tari_utilities::Hashable;
+use tari_crypto::tari_utilities::{message_format::MessageFormat, Hashable};
 use tokio::{runtime, sync::mpsc};
 use tonic::{Request, Response, Status};
 
@@ -398,24 +399,30 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
     async fn get_new_block_template(
         &self,
-        request: Request<tari_rpc::PowAlgo>,
+        request: Request<tari_rpc::NewBlockTemplateRequest>,
     ) -> Result<Response<tari_rpc::NewBlockTemplateResponse>, Status>
     {
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
-        let algo: PowAlgorithm = (request.pow_algo as u64)
+        trace!(target: LOG_TARGET, "Request {:?}", request);
+        let algo: PowAlgorithm = ((request.algo)
+            .ok_or_else(|| Status::invalid_argument("No valid pow algo selected".to_string()))?
+            .pow_algo as u64)
             .try_into()
             .map_err(|_| Status::invalid_argument("No valid pow algo selected".to_string()))?;
         let mut handler = self.node_service.clone();
 
-        let new_template = handler.get_new_block_template(algo).await.map_err(|e| {
-            warn!(
-                target: LOG_TARGET,
-                "Could not get new block template: {}",
-                e.to_string()
-            );
-            Status::internal(e.to_string())
-        })?;
+        let new_template = handler
+            .get_new_block_template(algo, request.max_weight)
+            .await
+            .map_err(|e| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Could not get new block template: {}",
+                    e.to_string()
+                );
+                Status::internal(e.to_string())
+            })?;
 
         let status_watch = self.state_machine_handle.get_status_info_watch();
         let pow = algo as i32;
@@ -534,6 +541,73 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         };
 
         debug!(target: LOG_TARGET, "Sending SubmitTransaction response to client");
+        Ok(Response::new(response))
+    }
+
+    async fn transaction_state(
+        &self,
+        request: Request<tari_rpc::TransactionStateRequest>,
+    ) -> Result<Response<tari_rpc::TransactionStateResponse>, Status>
+    {
+        let request = request.into_inner();
+        let excess_sig: Signature = request
+            .excess_sig
+            .ok_or_else(|| Status::invalid_argument("excess_sig not provided".to_string()))?
+            .try_into()
+            .map_err(|_| Status::invalid_argument("excess_sig could not be converted".to_string()))?;
+        debug!(
+            target: LOG_TARGET,
+            "Received TransactionState request from client ({} excess_sig)",
+            excess_sig
+                .to_json()
+                .unwrap_or_else(|_| "Failed to serialize signature".into()),
+        );
+        let mut node_handler = self.node_service.clone();
+        let mut mem_handler = self.mempool_service.clone();
+
+        let base_node_response = node_handler
+            .get_kernel_by_excess_sig(excess_sig.clone())
+            .await
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Error submitting query:{}", e);
+                Status::internal(e.to_string())
+            })?;
+
+        if !base_node_response.is_empty() {
+            debug!(target: LOG_TARGET, "Sending Transaction state response to client");
+            let response = tari_rpc::TransactionStateResponse {
+                result: tari_rpc::TransactionLocation::Mined.into(),
+            };
+            return Ok(Response::new(response));
+        }
+
+        // Base node does not yet know of kernel excess sig, lets ask the mempool
+        let res = mem_handler
+            .get_transaction_state_by_excess_sig(excess_sig.clone())
+            .await
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Error submitting query:{}", e);
+                Status::internal(e.to_string())
+            })?;
+        let response = match res {
+            TxStorageResponse::UnconfirmedPool => tari_rpc::TransactionStateResponse {
+                result: tari_rpc::TransactionLocation::Mempool.into(),
+            },
+            TxStorageResponse::ReorgPool | TxStorageResponse::NotStoredAlreadySpent => {
+                tari_rpc::TransactionStateResponse {
+                    result: tari_rpc::TransactionLocation::Unknown.into(), /* We return Unknown here as the mempool
+                                                                            * should not think its mined, but the
+                                                                            * node does not think it is. */
+                }
+            },
+            TxStorageResponse::NotStored |
+            TxStorageResponse::NotStoredOrphan |
+            TxStorageResponse::NotStoredTimeLocked => tari_rpc::TransactionStateResponse {
+                result: tari_rpc::TransactionLocation::NotStored.into(),
+            },
+        };
+
+        debug!(target: LOG_TARGET, "Sending Transaction state response to client");
         Ok(Response::new(response))
     }
 

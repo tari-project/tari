@@ -64,9 +64,9 @@ class BaseNodeClient {
         return cloneDeep(this.blockTemplates["height" + height]);
     }
 
-    getBlockTemplate() {
+    getBlockTemplate(weight) {
         return this.client.getNewBlockTemplate()
-            .sendMessage({pow_algo: 2})
+            .sendMessage({ algo: {pow_algo: 2}, max_weight : weight})
             .then(template => {
                 let res = {minerData: template.miner_data, block: template.new_block_template};
                 this.blockTemplates["height" + template.new_block_template.header.height] = cloneDeep(res);
@@ -114,6 +114,14 @@ class BaseNodeClient {
         );
     }
 
+    transactionState(txn) {
+        return this.client.transactionState().sendMessage({excess_sig: txn}).then(
+          res => {
+            return res
+          }
+        );
+    }
+
     getTipHeight() {
         return this.client.getTipInfo()
             .sendMessage({})
@@ -130,9 +138,9 @@ class BaseNodeClient {
             });
     }
 
-    mineBlock(walletClient) {
+    mineBlock(walletClient, weight) {
         if (!walletClient) {
-            return this.mineBlockWithoutWallet();
+            return this.mineBlockWithoutWallet(weight);
         }
         let currHeight;
         let block;
@@ -141,7 +149,7 @@ class BaseNodeClient {
             .then(tip => {
                 currHeight = parseInt(tip.metadata.height_of_longest_chain);
                 return this.client.getNewBlockTemplate()
-                    .sendMessage({pow_algo: 2});
+                .sendMessage({ algo: {pow_algo: 2}, max_weight : weight});
             })
             .then(template => {
                 block = template.new_block_template;
@@ -169,9 +177,9 @@ class BaseNodeClient {
             });
     }
 
-    async getMinedCandidateBlock(existingBlockTemplate) {
+    async getMinedCandidateBlock(weight,existingBlockTemplate) {
         let builder = new TransactionBuilder();
-        let blockTemplate = existingBlockTemplate || await this.getBlockTemplate();
+        let blockTemplate = existingBlockTemplate || await this.getBlockTemplate(weight);
         const privateKey = Buffer.from(toLittleEndian(blockTemplate.block.header.height, 256)).toString('hex');
         let cb = builder.generateCoinbase(parseInt(blockTemplate.minerData.reward), privateKey, parseInt(blockTemplate.minerData.total_fees), parseInt(blockTemplate.block.header.height) + 2);
         let template = blockTemplate.block;
@@ -186,8 +194,8 @@ class BaseNodeClient {
         };
     }
 
-    async mineBlockWithoutWallet(beforeSubmit, onError) {
-        let template = await this.getMinedCandidateBlock();
+    async mineBlockWithoutWallet(beforeSubmit, weight, onError) {
+        let template = await this.getMinedCandidateBlock(weight);
         return this.submitTemplate(template, beforeSubmit).then(async () => {
             let tip = await this.getTipHeight();
             // console.log("Node is at tip:", tip);

@@ -55,9 +55,15 @@ pub enum NodeCommsRequest {
     FetchBlocksWithUtxos(Vec<Commitment>),
     GetHeaderByHash(HashOutput),
     GetBlockByHash(HashOutput),
-    GetNewBlockTemplate(PowAlgorithm),
+    GetNewBlockTemplate(GetNewBlockTemplateRequest),
     GetNewBlock(NewBlockTemplate),
     FetchKernelByExcessSig(Signature),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetNewBlockTemplateRequest {
+    pub algo: PowAlgorithm,
+    pub max_weight: u64,
 }
 
 impl Display for NodeCommsRequest {
@@ -78,7 +84,7 @@ impl Display for NodeCommsRequest {
             FetchBlocksWithUtxos(v) => write!(f, "FetchBlocksWithUtxos (n={})", v.len()),
             GetHeaderByHash(v) => write!(f, "GetHeaderByHash({})", v.to_hex()),
             GetBlockByHash(v) => write!(f, "GetBlockByHash({})", v.to_hex()),
-            GetNewBlockTemplate(algo) => write!(f, "GetNewBlockTemplate ({})", algo),
+            GetNewBlockTemplate(v) => write!(f, "GetNewBlockTemplate ({}) with weight {}", v.algo, v.max_weight),
             GetNewBlock(b) => write!(f, "GetNewBlock (Block Height={})", b.header.height),
             FetchKernelByExcessSig(s) => write!(
                 f,

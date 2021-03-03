@@ -73,6 +73,7 @@ mod initializer;
 pub use initializer::MempoolSyncInitializer;
 
 use crate::{
+    base_node::StateMachineHandle,
     mempool::{async_mempool, proto, Mempool, MempoolServiceConfig},
     proto as shared_proto,
     transactions::transaction::Transaction,
@@ -87,6 +88,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
+    time::Duration,
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventRx},
@@ -113,6 +115,7 @@ pub struct MempoolSyncProtocol<TSubstream> {
     mempool: Mempool,
     num_synched: Arc<AtomicUsize>,
     permits: Arc<Semaphore>,
+    state_machine: Option<StateMachineHandle>,
 }
 
 impl<TSubstream> MempoolSyncProtocol<TSubstream>
@@ -123,6 +126,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         protocol_notifier: ProtocolNotificationRx<TSubstream>,
         connectivity_events: ConnectivityEventRx,
         mempool: Mempool,
+        state_machine: Option<StateMachineHandle>,
     ) -> Self
     {
         Self {
@@ -132,11 +136,23 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
             mempool,
             num_synched: Arc::new(AtomicUsize::new(0)),
             permits: Arc::new(Semaphore::new(1)),
+            state_machine,
         }
     }
 
     pub async fn run(mut self) {
         info!(target: LOG_TARGET, "Mempool protocol handler has started");
+        while let Some(ref v) = self.state_machine {
+            let status_watch = v.get_status_info_watch();
+            if (*status_watch.borrow()).bootstrapped {
+                break;
+            }
+            debug!(
+                target: LOG_TARGET,
+                "Mempool sync still on hold, waiting for bootstrap to finish",
+            );
+            tokio::time::delay_for(Duration::from_secs(1)).await;
+        }
         loop {
             futures::select! {
                 event = self.connectivity_events.select_next_some() => {

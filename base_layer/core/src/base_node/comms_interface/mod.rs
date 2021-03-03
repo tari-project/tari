@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod comms_request;
-pub use comms_request::{MmrStateRequest, NodeCommsRequest};
+pub use comms_request::{GetNewBlockTemplateRequest, MmrStateRequest, NodeCommsRequest};
 
 mod comms_response;
 pub use comms_response::NodeCommsResponse;

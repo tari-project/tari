@@ -25,7 +25,7 @@ message BaseNodeServiceRequest {
         // Indicates a FetchBlocksWithHashes request.
         HashOutputs fetch_blocks_with_hashes = 8;
         // Indicates a GetNewBlockTemplate request.
-        uint64 get_new_block_template = 9;
+        NewBlockTemplateRequest get_new_block_template = 9;
         // Indicates a GetNewBlock request.
         tari.core.NewBlockTemplate get_new_block = 10;
         // Get headers in best chain following any headers in this list
@@ -73,3 +73,7 @@ message FetchMmrNodeCount {
     uint64 height = 2;
 }
 
+message NewBlockTemplateRequest{
+    uint64 algo = 1;
+    uint64 max_weight = 2;
+}

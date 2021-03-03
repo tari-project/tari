@@ -381,28 +381,32 @@ where T: BlockchainBackend + 'static
                 let block = self.blockchain_db.fetch_block_by_hash(hash).await?;
                 Ok(NodeCommsResponse::HistoricalBlock(Box::new(block)))
             },
-            NodeCommsRequest::GetNewBlockTemplate(pow_algo) => {
+            NodeCommsRequest::GetNewBlockTemplate(request) => {
                 let best_block_header = self.blockchain_db.fetch_tip_header().await?;
 
                 let mut header = BlockHeader::from_previous(&best_block_header.header)?;
                 let constants = self.consensus_manager.consensus_constants(header.height);
                 header.version = constants.blockchain_version();
-                header.pow.pow_algo = pow_algo;
+                header.pow.pow_algo = request.algo;
 
-                let transactions = async_mempool::retrieve(
-                    self.mempool.clone(),
-                    constants.get_max_block_weight_excluding_coinbase(),
-                )
-                .await?
-                .iter()
-                .map(|tx| (**tx).clone())
-                .collect();
+                let constants_weight = constants.get_max_block_weight_excluding_coinbase();
+                let asking_weight = if request.max_weight > constants_weight || request.max_weight == 0 {
+                    constants_weight
+                } else {
+                    request.max_weight
+                };
+
+                let transactions = async_mempool::retrieve(self.mempool.clone(), asking_weight)
+                    .await?
+                    .iter()
+                    .map(|tx| (**tx).clone())
+                    .collect();
 
                 let height = header.height;
 
                 let block_template = NewBlockTemplate::from_block(
                     header.into_builder().with_transactions(transactions).build(),
-                    self.get_target_difficulty(pow_algo, constants, height).await?,
+                    self.get_target_difficulty(request.algo, constants, height).await?,
                     self.consensus_manager.get_block_reward_at(height),
                 );
                 debug!(

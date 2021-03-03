@@ -20,10 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{
-    sync_protocol::{MempoolSyncProtocol, MEMPOOL_SYNC_PROTOCOL},
-    Mempool,
-    MempoolServiceConfig,
+use crate::{
+    base_node::StateMachineHandle,
+    mempool::{
+        sync_protocol::{MempoolSyncProtocol, MEMPOOL_SYNC_PROTOCOL},
+        Mempool,
+        MempoolServiceConfig,
+    },
 };
 use futures::{channel::mpsc, future};
 use tari_comms::{
@@ -69,8 +72,16 @@ impl ServiceInitializer for MempoolSyncInitializer {
         let notif_rx = self.notif_rx.take().unwrap();
 
         context.spawn_when_ready(move |handles| {
+            let state_machine = handles.expect_handle::<StateMachineHandle>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
-            MempoolSyncProtocol::new(config, notif_rx, connectivity.get_event_subscription(), mempool).run()
+            MempoolSyncProtocol::new(
+                config,
+                notif_rx,
+                connectivity.get_event_subscription(),
+                mempool,
+                Some(state_machine),
+            )
+            .run()
         });
 
         future::ready(Ok(()))
