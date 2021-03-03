@@ -47,6 +47,7 @@ impl Display for ParsedCommand {
             WalletCommand::MakeItRain => "make-it-rain",
             WalletCommand::CoinSplit => "coin-split",
             WalletCommand::DiscoverPeer => "discover-peer",
+            WalletCommand::Whois => "whois",
         };
 
         let args = self
@@ -97,9 +98,23 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         MakeItRain => parse_make_it_rain(args)?,
         CoinSplit => parse_coin_split(args)?,
         DiscoverPeer => parse_discover_peer(args)?,
+        Whois => parse_whois(args)?,
     };
 
     Ok(ParsedCommand { command, args })
+}
+
+fn parse_whois(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
+    let mut parsed_args = Vec::new();
+
+    // public key/emoji id
+    let pubkey = args
+        .next()
+        .ok_or_else(|| ParseError::Empty("public key or emoji id".to_string()))?;
+    let pubkey = parse_emoji_id_or_public_key(pubkey).ok_or(ParseError::PublicKey)?;
+    parsed_args.push(ParsedArgument::PublicKey(pubkey));
+
+    Ok(parsed_args)
 }
 
 fn parse_discover_peer(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, ParseError> {
