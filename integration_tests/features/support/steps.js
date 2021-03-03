@@ -167,6 +167,17 @@ When(/I create a transaction (.*) spending (.*) to (.*)/, function (txnName, inp
     this.transactions[txnName] = txn.build();
 });
 
+When(/I create a custom fee transaction (.*) spending (.*) to (.*) with fee (\d+)/, function (txnName, inputs, output, fee) {
+
+    let txInputs = inputs.split(",").map(input  => this.outputs[input]);
+    let txn = new TransactionBuilder();
+    txn.changeFee(fee);
+    txInputs.forEach(txIn => txn.addInput(txIn));
+    let txOutput = txn.addOutput(txn.getSpendableAmount());
+    this.addOutput(output, txOutput);
+    this.transactions[txnName] = txn.build();
+});
+
 When(/I submit transaction (.*) to (.*)/, async  function (txn,  node) {
     this.lastResult = await this.getClient(node).submitTransaction(this.transactions[txn]);
     expect(this.lastResult.result).to.equal('ACCEPTED');
@@ -190,6 +201,26 @@ When(/I spend outputs (.*) via (.*)/, async function (inputs, node) {
 });
 
 
+
+Then(/(.*) has (.*) in (.*) state/, async  function (node ,txn, pool) {   
+    this.lastResult = await this.getClient(node).transactionState(this.transactions[txn].body.kernels[0].excess_sig);
+     console.log(`Node ${node} response is: ${this.lastResult.result}`);
+    expect(this.lastResult.result).to.equal(pool);
+});
+
+Then(/(.*) is in the (.*) of all nodes/, async  function (txn, pool) {
+    for (const x in this.nodes){
+    this.lastResult = await this.getClient(x).transactionState(this.transactions[txn].body.kernels[0].excess_sig);
+    console.log(`Node ${x} response is: ${this.lastResult.result}`);
+    expect(this.lastResult.result).to.equal(pool);
+}
+for (const x in this.seeds){
+    this.lastResult = await this.getClient(x).transactionState(this.transactions[txn].body.kernels[0].excess_sig);
+    console.log(`Node ${x} response is: ${this.lastResult.result}`);
+    expect(this.lastResult.result).to.equal(pool);
+}
+});
+
 Then(/(.*) is in the mempool/, function (txn) {
     expect(this.lastResult.result).to.equal('ACCEPTED');
 });
@@ -212,15 +243,21 @@ Then(/node (.*) is at tip (.*)/, async function (node, name) {
 });
 
 When(/I mine a block on (.*) with coinbase (.*)/, {timeout: 600*1000}, async function (name, coinbaseName) {
-        await this.mineBlock(name, candidate => {
+        await this.mineBlock(name, 0, candidate => {
             this.addOutput(coinbaseName, candidate.originalTemplate.coinbase);
-            return candidate;
+                        return candidate;
         });
+});
+
+When(/I mine (\d+) custom weight blocks on (.*) with weight (\d+)/, {timeout: 600*1000}, async function (numBlocks, name, weight) {
+    for(let i=0;i<numBlocks;i++) {
+        await this.mineBlock(name, 17);
+    }
 });
 
 When(/I mine (\d+) blocks on (.*)/, {timeout: 600*1000}, async function (numBlocks, name) {
     for(let i=0;i<numBlocks;i++) {
-        await this.mineBlock(name);
+        await this.mineBlock(name, 0);
     }
 });
 
@@ -234,7 +271,7 @@ When(/I mine (\d+) blocks using wallet (.*) on (.*)/, {timeout: 600*1000}, async
 
 When(/I merge mine (.*) blocks via (.*)/, {timeout: 600*1000}, async function (numBlocks, mmProxy) {
     for(let i=0;i<numBlocks;i++) {
-        await this.mergeMineBlock(mmProxy);
+        await this.mergeMineBlock(mmProxy,0);
     }
 });
 
@@ -243,7 +280,7 @@ When(/I mine but don't submit a block (.*) on (.*)/, async function (blockName, 
     await this.mineBlock(nodeName, block => {
         this.saveBlock(blockName, block);
         return false;
-    });
+    },0);
 });
 
 When(/I submit block (.*) to (.*)/, function (blockName, nodeName) {
@@ -254,7 +291,7 @@ When(/I submit block (.*) to (.*)/, function (blockName, nodeName) {
 When(/I mine a block on (.*) based on height (\d+)/, async function (node, atHeight) {
     let client = this.getClient(node);
     let template = client.getPreviousBlockTemplate(atHeight);
-    let candidate = await client.getMinedCandidateBlock(template);
+    let candidate = await client.getMinedCandidateBlock(0, template);
 
     await client.submitBlock(candidate.template, block => {
         return block;
@@ -270,7 +307,7 @@ When(/I mine a block on (.*) based on height (\d+)/, async function (node, atHei
 When(/I mine a block on (.*) at height (\d+) with an invalid MMR/, async function (node, atHeight) {
     let client = this.getClient(node);
     let template = client.getPreviousBlockTemplate(atHeight);
-    let candidate = await client.getMinedCandidateBlock(template);
+    let candidate = await client.getMinedCandidateBlock(0, template);
 
     await client.submitBlock(candidate.template, block => {
         // console.log("Candidate:", block);
@@ -297,7 +334,6 @@ Then('I receive an error containing {string}', function (string) {
 
 Then(/(.*) should have (\d+) peers/, async function (nodeName, peerCount){
     await sleep(500);
-    console.log(nodeName);
     let client = this.getClient(nodeName);
     let peers = await client.getPeers();
     // we add a non existing node when the node starts before adding any actual peers. So the count should always be 1 higher

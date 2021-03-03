@@ -56,13 +56,13 @@ class CustomWorld {
         this.outputs[name] = output;
     }
 
-    async mineBlock(name, beforeSubmit, onError) {
-        await this.clients[name].mineBlockWithoutWallet(beforeSubmit, onError);
+    async mineBlock(name, weight, beforeSubmit,  onError) {
+        await this.clients[name].mineBlockWithoutWallet(beforeSubmit, weight, onError);
     }
 
-    async mergeMineBlock(name) {
+    async mergeMineBlock(name, weight) {
         let client = this.proxies[name].createClient();
-        await client.mineBlock();
+        await client.mineBlock(weight);
     }
 
     saveBlock(name, block) {

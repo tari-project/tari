@@ -629,7 +629,11 @@ fn local_get_new_block_template_and_get_new_block() {
     assert!(node.mempool.insert(txs[1].clone()).is_ok());
 
     runtime.block_on(async {
-        let block_template = node.local_nci.get_new_block_template(PowAlgorithm::Sha3).await.unwrap();
+        let block_template = node
+            .local_nci
+            .get_new_block_template(PowAlgorithm::Sha3, 0)
+            .await
+            .unwrap();
         assert_eq!(block_template.header.height, 1);
         assert_eq!(block_template.body.kernels().len(), 2);
 

@@ -432,8 +432,11 @@ impl InnerService {
             new_block_template,
             initial_sync_achieved,
         } = grpc_client
-            .get_new_block_template(grpc::PowAlgo {
-                pow_algo: grpc::pow_algo::PowAlgos::Monero.into(),
+            .get_new_block_template(grpc::NewBlockTemplateRequest {
+                algo: Some(grpc::PowAlgo {
+                    pow_algo: grpc::pow_algo::PowAlgos::Monero.into(),
+                }),
+                max_weight: 0,
             })
             .await
             .map_err(|status| MmProxyError::GrpcRequestError {

@@ -28,7 +28,7 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::transaction::Transaction,
+    transactions::{transaction::Transaction, types::Signature},
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
@@ -93,6 +93,21 @@ impl LocalMempoolService {
         match self
             .request_sender
             .call(MempoolRequest::SubmitTransaction(transaction))
+            .await??
+        {
+            MempoolResponse::TxStorage(s) => Ok(s),
+            _ => Err(MempoolServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_transaction_state_by_excess_sig(
+        &mut self,
+        sig: Signature,
+    ) -> Result<TxStorageResponse, MempoolServiceError>
+    {
+        match self
+            .request_sender
+            .call(MempoolRequest::GetTxStateByExcessSig(sig))
             .await??
         {
             MempoolResponse::TxStorage(s) => Ok(s),

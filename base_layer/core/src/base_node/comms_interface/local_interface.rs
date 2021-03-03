@@ -32,7 +32,7 @@ use crate::{
     chain_storage::HistoricalBlock,
     proof_of_work::PowAlgorithm,
     transactions::{
-        transaction::TransactionOutput,
+        transaction::{TransactionKernel, TransactionOutput},
         types::{Commitment, HashOutput, Signature},
     },
 };
@@ -43,6 +43,7 @@ use tokio::sync::broadcast;
 
 pub type BlockEventSender = broadcast::Sender<Arc<BlockEvent>>;
 pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
+use crate::base_node::comms_interface::comms_request::GetNewBlockTemplateRequest;
 
 /// The InboundNodeCommsInterface provides an interface to request information from the current local node by other
 /// internal services.
@@ -108,11 +109,16 @@ impl LocalNodeCommsInterface {
     pub async fn get_new_block_template(
         &mut self,
         pow_algorithm: PowAlgorithm,
+        max_weight: u64,
     ) -> Result<NewBlockTemplate, CommsInterfaceError>
     {
+        let request = GetNewBlockTemplateRequest {
+            algo: pow_algorithm,
+            max_weight,
+        };
         match self
             .request_sender
-            .call(NodeCommsRequest::GetNewBlockTemplate(pow_algorithm))
+            .call(NodeCommsRequest::GetNewBlockTemplate(request))
             .await??
         {
             NodeCommsResponse::NewBlockTemplate(new_block_template) => Ok(new_block_template),
@@ -241,6 +247,22 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::HistoricalBlock(block) => Ok(*block),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Searches for a kernel via the excess sig
+    pub async fn get_kernel_by_excess_sig(
+        &mut self,
+        kernel: Signature,
+    ) -> Result<Vec<TransactionKernel>, CommsInterfaceError>
+    {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchKernelByExcessSig(kernel))
+            .await??
+        {
+            NodeCommsResponse::TransactionKernels(kernels) => Ok(kernels),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

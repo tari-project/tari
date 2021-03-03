@@ -82,6 +82,7 @@ fn setup(
         protocol_notif_rx,
         connectivity_events_rx,
         mempool.clone(),
+        None,
     );
 
     task::spawn(protocol.run());

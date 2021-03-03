@@ -49,7 +49,7 @@ service BaseNode {
     // Get network difficulties
     rpc GetNetworkDifficulty(HeightRequest) returns (stream NetworkDifficultyResponse);
     // Get the block template
-    rpc GetNewBlockTemplate(PowAlgo) returns (NewBlockTemplateResponse);
+    rpc GetNewBlockTemplate(NewBlockTemplateRequest) returns (NewBlockTemplateResponse);
     // Construct a new block from a provided template
     rpc GetNewBlock(NewBlockTemplate) returns (GetNewBlockResult);
     // Submit a new block for propagation
@@ -64,10 +64,10 @@ service BaseNode {
     rpc SearchKernels(SearchKernelsRequest) returns (stream HistoricalBlock);
     // Fetch any utxos that exist in the main chain
     rpc FetchMatchingUtxos(FetchMatchingUtxosRequest) returns (stream FetchMatchingUtxosResponse);
-
     // get all peers from the base node
     rpc GetPeers(GetPeersRequest) returns (stream GetPeersResponse);
     rpc GetMempoolTransactions(GetMempoolTransactionsRequest) returns (stream GetMempoolTransactionsResponse);
+    rpc TransactionState(TransactionStateRequest) returns (TransactionStateResponse);
 }
 
 message SubmitBlockResponse {
@@ -84,6 +84,13 @@ message NewBlockTemplateResponse {
     NewBlockTemplate new_block_template = 1;
     bool initial_sync_achieved = 3;
     MinerData miner_data = 4;
+}
+
+/// return type of NewBlockTemplateRequest
+message NewBlockTemplateRequest{
+    PowAlgo algo = 1;
+    //This field should be moved to optional once optional keyword is standard
+    uint64 max_weight = 2;
 }
 
 // Network difficulty response
@@ -288,4 +295,19 @@ message GetMempoolTransactionsRequest {
 
 message GetMempoolTransactionsResponse {
     Transaction transaction = 1;
+}
+
+message TransactionStateRequest {
+    Signature excess_sig  = 1;
+}
+
+message TransactionStateResponse {
+    TransactionLocation result =1;
+}
+
+enum TransactionLocation {
+    UNKNOWN = 0;
+    MEMPOOL = 1;
+    MINED = 2;
+    NOT_STORED = 3;
 }

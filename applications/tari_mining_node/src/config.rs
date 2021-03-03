@@ -38,7 +38,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tari_app_grpc::tari_rpc::{pow_algo::PowAlgos, PowAlgo};
+use tari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
 use tari_common::{GlobalConfig, NetworkConfigPath};
 
 #[derive(Serialize, Deserialize)]
@@ -88,12 +88,13 @@ impl MinerConfig {
             .unwrap_or_else(|| format!("http://{}", global.grpc_console_wallet_address))
     }
 
-    pub fn pow_algo_request(&self) -> PowAlgo {
-        match self.proof_of_work_algo {
-            ProofOfWork::Sha3 => PowAlgo {
+    pub fn pow_algo_request(&self) -> NewBlockTemplateRequest {
+        let algo = match self.proof_of_work_algo {
+            ProofOfWork::Sha3 => Some(PowAlgo {
                 pow_algo: PowAlgos::Sha3.into(),
-            },
-        }
+            }),
+        };
+        NewBlockTemplateRequest { algo, max_weight: 0 }
     }
 
     pub fn wait_timeout(&self) -> Duration {

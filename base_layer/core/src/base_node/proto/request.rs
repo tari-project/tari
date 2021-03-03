@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    base_node::comms_interface as ci,
+    base_node::{comms_interface as ci, comms_interface::GetNewBlockTemplateRequest},
     proof_of_work::PowAlgorithm,
     proto::{
         base_node as proto,
@@ -79,8 +79,12 @@ impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             },
             GetHeaderByHash(hash) => ci::NodeCommsRequest::GetHeaderByHash(hash),
             GetBlockByHash(hash) => ci::NodeCommsRequest::GetBlockByHash(hash),
-            GetNewBlockTemplate(pow_algo) => {
-                ci::NodeCommsRequest::GetNewBlockTemplate(PowAlgorithm::try_from(pow_algo)?)
+            GetNewBlockTemplate(message) => {
+                let request = GetNewBlockTemplateRequest {
+                    algo: PowAlgorithm::try_from(message.algo)?,
+                    max_weight: message.max_weight,
+                };
+                ci::NodeCommsRequest::GetNewBlockTemplate(request)
             },
             GetNewBlock(block_template) => ci::NodeCommsRequest::GetNewBlock(block_template.try_into()?),
             FetchKernelByExcessSig(sig) => ci::NodeCommsRequest::FetchKernelByExcessSig(
@@ -120,7 +124,12 @@ impl From<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
             },
             GetHeaderByHash(hash) => ProtoNodeCommsRequest::GetHeaderByHash(hash),
             GetBlockByHash(hash) => ProtoNodeCommsRequest::GetBlockByHash(hash),
-            GetNewBlockTemplate(pow_algo) => ProtoNodeCommsRequest::GetNewBlockTemplate(pow_algo as u64),
+            GetNewBlockTemplate(request) => {
+                ProtoNodeCommsRequest::GetNewBlockTemplate(proto::NewBlockTemplateRequest {
+                    algo: request.algo as u64,
+                    max_weight: request.max_weight,
+                })
+            },
             GetNewBlock(block_template) => ProtoNodeCommsRequest::GetNewBlock(block_template.into()),
             FetchKernelByExcessSig(signature) => ProtoNodeCommsRequest::FetchKernelByExcessSig(signature.into()),
         }

@@ -345,7 +345,7 @@ impl Miner {
         trace!(target: LOG_TARGET, "Requesting new block template from node.");
         Ok(self
             .node_interface
-            .get_new_block_template(PowAlgorithm::Sha3)
+            .get_new_block_template(PowAlgorithm::Sha3, 0)
             .await
             .map_err(|e| {
                 error!(

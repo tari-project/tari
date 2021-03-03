@@ -28,6 +28,10 @@ class TransactionBuilder {
         return Buffer.from(final).toString('hex');
     }
 
+    changeFee(fee){
+        this.fee = fee;
+    }
+
     addInput(input) {
         this.inputs.push({input: input.output, amount: input.amount, privateKey: input.privateKey});
     }
@@ -37,8 +41,8 @@ class TransactionBuilder {
             flags: 0,
             maturity: 0
         };
-
-        let privateKey = Buffer.from(toLittleEndian(1 + this.outputs.length, 256)).toString('hex');
+        let key = Math.floor((Math.random() * 500) + 1);
+        let privateKey = Buffer.from(toLittleEndian(key, 256)).toString('hex');
         let rangeproofFactory = tari_crypto.RangeProofFactory.new();
         let rangeproof = rangeproofFactory.create_proof(privateKey, BigInt(amount)).proof;
         let output = {
@@ -60,18 +64,22 @@ class TransactionBuilder {
 
     build() {
         let totalPrivateKey = 0n;
-        this.inputs.forEach(input => totalPrivateKey -= BigInt("0x" + hexSwitchEndianness(input.privateKey)));
-        this.outputs.forEach(output => totalPrivateKey += BigInt("0x" + hexSwitchEndianness(output.privateKey)));
-        // Assume low numbers....
-        totalPrivateKey =  Number(totalPrivateKey);
-        totalPrivateKey = Buffer.from(toLittleEndian(totalPrivateKey, 256)).toString('hex');
 
-        let excess = tari_crypto.commit(totalPrivateKey, BigInt(0));
+        this.outputs.forEach(output => totalPrivateKey += BigInt("0x" + (output.privateKey).toString()));
+        this.inputs.forEach(input => totalPrivateKey -= BigInt("0x" + (input.privateKey).toString()));
+        // Assume low numbers....
+
+        let PrivateKey = totalPrivateKey.toString(16);
+        // we need to pad 0's in front
+        while (PrivateKey.length < 64) {
+            PrivateKey = '0' + PrivateKey;
+          }
+        let excess = tari_crypto.commit(PrivateKey, BigInt(0));
         let nonce = this.kv.new_key("common_nonce");
         let public_nonce = this.kv.public_key("common_nonce");
         let challenge = this.buildChallenge(public_nonce, this.fee, this.lockHeight);
         let private_nonce = this.kv.private_key("common_nonce");
-        let sig = tari_crypto.sign_challenge_with_nonce(totalPrivateKey, private_nonce, challenge);
+        let sig = tari_crypto.sign_challenge_with_nonce(PrivateKey, private_nonce, challenge);
 
         return {
             offset: Buffer.from(toLittleEndian(0, 256), 'hex'),
