@@ -1,13 +1,14 @@
 # Tari Components Runtime Instructions
 
 This `README` file, in the installation folder, contains important instructions 
-before running `tari_base_node.exe`, `tari_console_wallet.exe` and 
+before running `tari_base_node.exe`, `tari_console_wallet.exe`, `tari_mining_node.exe` and 
 `tari_merge_mining_proxy.exe` the first time.  
 
 ## Pre-requisites 
 
-The `tari_base_node` executable has the following dependencies, which can be 
+The Tari applications have the following dependencies, which can be 
 installed automatically if selected:
+
 - SQLite
 - OpenSSL
 - Tor Services
@@ -31,9 +32,11 @@ Notes:
   |   LICENSE.txt
   |   README.md
   |   README.txt
+  |   start_all.lnk
   |   start_tari_base_node.lnk
   |   start_tari_console_wallet.lnk
   |   start_tari_merge_mining_proxy.lnk
+  |   start_tari_mining_node.lnk
   |   start_xmrig.lnk
   |   start_tor.lnk
   |   unins000.dat
@@ -51,15 +54,19 @@ Notes:
           source_base_node_env.bat
           source_console_wallet_env.bat
           source_merge_mining_proxy_env.bat
+          source_mining_node_env.bat
           source_xmrig_env.bat
+          start_all.bat
           start_tari_base_node.bat
           start_tari_console_wallet.bat
           start_tari_merge_mining_proxy.bat
+          start_tari_mining_node.bat
           start_tor.bat
           start_xmrig.bat
           tari_base_node.exe
           tari_console_wallet.exe
           tari_merge_mining_proxy.exe
+          tari_mining_node.exe
   ```
   - The following environment variables are created with a default installation:
     - `TARI_TOR_SERVICES_DIR = %USERPROFILE%\.tor_services\Tor`
@@ -68,9 +75,23 @@ Notes:
 
 ## Runtime
 
+### Use the one-click miner
+
+Execute the `.\start_all` shortcut; this will start everything you need 
+depending on the choices you make when prompted:
+
+- Tor services started by default
+- Tari Base Node, or
+- Tari Base Node & Tari Console Wallet, or
+- Tari Base Node & Tari Console Wallet & Tari Mining Node, or
+- Tari Base Node & Tari Console Wallet & Tari Merge Mining Proxy & XMRig
+
+### Start all applications individually
+
 - Execute the `.\start_tari_base_node` shortcut; this will also start the Tor 
   services if not running already that needs to be running before the base node 
   can run (do not close the Tor console).
+  
 - Execute the `.\start_tari_console_wallet` shortcut; this will also start the 
   Tor services that needs to be running before the base node can run (do not 
   close the Tor console).
@@ -78,24 +99,29 @@ Notes:
   **Note**: The Tor console will output `[notice] Bootstrapped 100% (done): Done` 
   when the Tor services have fully started.
   
-- Execute the `.\start_tari_merge_mining_proxy` shortcut.
-- Execute the `.\start_xmrig` shortcut.
-- Runtime artefacts:
+- Depending on your choice of mining:
+
+  - SHA3 stand-alone mining
+    - Execute the `.\start_tari_mining_node` shortcut.
+  - Merge mining with Monero
+    - Execute the `.\start_tari_merge_mining_proxy` shortcut.
+    - Execute the `.\start_xmrig` shortcut.
+
+### Runtime artefacts
+
   - The blockchain will be created in the `.\stibbons` folder.
   - The wallet will be created in the `.\wallet` folfder.
-  - All log files will be created in the `.\log\base_node`, `.\log\wallet` and 
-    `.\log\proxy` folders.
+  - All log files will be created in the `.\log\base_node`, `log\mining-node`, 
+    `.\log\wallet` and `.\log\proxy` folders.
   - The following configuration files will be created in the `.\config` folder if 
     the default runtime configuration `..\..\common\config\presets\config.toml` 
     was used:
-    - `node_id.json`
-    - `wallet_id.json`
-    - `console_wallet_id.json`
+    - `base_node_id.json`
     - `base_node_tor.json`
-    - `wallet_tor.json`
     - `log4rs_base_node.yml`
     - `log4rs_console_wallet.yml`
     - `log4rs_merge_mining_proxy.yml`
+    - `log4rs_mining_node.yml`
 
 ## Start Fresh
 
@@ -134,7 +160,7 @@ Notes:
     ```
     where libcrypto-1_1-x64.dll
     where libssl-1_1-x64.dll
-    ``` 
+    ```
 
 - Tor Services
   - Donwload 
@@ -156,8 +182,9 @@ Notes:
 
 - Microsoft Visual C++ 
   [Redistributable for Visual Studio 2019](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads)
-  - Download and install `x64: vc_redist.x64.exe`
-
+  
+- Download and install `x64: vc_redist.x64.exe`
+  
 - XMrig:
   [XMRig](https://xmrig.com/download)
   - Download 64bit Precompiled Binaries for Windows for XMreig. 
@@ -170,16 +197,16 @@ Notes:
   
     in a command console.
 
-### Build the Tari Base Node (and Integrated Wallet)
+### Build the Tari Base Node
 
 - Folder Structure
   - All references to folders from here on are relative to 
-    `applications\tari_base_node\windows`, within the Tari project source code 
-    folder structure.
+    `applications\tari_base_node\windows`, within the Tari project source 
+    code folder structure.
 
 - Tari Base Node Executable
   - Build `tari_base_node.exe` according to 
-    [Building from source (Windows 10)](https://github.com/tari-project/tari#building-from-source-windows-10).
+    [Building from source (Windows 10)](https://github.com/tari-project/tari#build).
   - Copy `tari_base_node.exe` to `.`, `.\runtime` or other local path.
   - If not extracted to `.` or `.\runtime`, ensure the folder containing 
     `tari_base_node.exe` is in the path.
@@ -191,17 +218,17 @@ Notes:
 
 - Folder Structure
   - All references to folders from here on are relative to 
-    `applications\tari_console_wallet\windows`, within the Tari project source 
-    code folder structure.
+    `applications\tari_console_wallet\windows`, within the Tari project 
+    source code folder structure.
 
 - Tari Console Wallet Executable
   - Build `tari_console_wallet.exe` according to 
-    [Building from source (Windows 10)](https://github.com/tari-project/tari#building-from-source-windows-10).
+    [Building from source (Windows 10)](https://github.com/tari-project/tari#build).
   - Copy `tari_console_wallet.exe` to `.`, `.\runtime` or other local path.
   - If not extracted to `.` or `.\runtime`, ensure the folder containing 
     `tari_console_wallet.exe` is in the path.
 
-- Tari console Wallet Runtime Configuration File
+- Tari Console Wallet Runtime Configuration File
   - Copy  `..\..\common\config\presets\config.toml` to `.\config`
 
 ### Build the Tari Merge Mining Proxy
@@ -213,11 +240,27 @@ Notes:
 
 - Tari Merge Mining Proxy Executable
   - Build `tari_merge_mining_proxy.exe` according to 
-    [Building from source (Windows 10)](https://github.com/tari-project/tari#building-from-source-windows-10).
+    [Building from source (Windows 10)](https://github.com/tari-project/tari#build).
   - Copy `tari_merge_mining_proxy.exe` to `.`, `.\runtime` or other local path.
   - If not extracted to `.` or `.\runtime`, ensure the folder containing 
     `tari_merge_mining_proxy.exe` is in the path.
 
-- Tari Base Node Runtime Configuration File
+- Tari Merge Mining Proxy Configuration File
   - Copy  `..\..\common\config\presets\config.toml` to `.\config`
- 
+
+### Build the Tari Mining Node
+
+- Folder Structure
+  - All references to folders from here on are relative to 
+    `applications\tari_mining_node\windows`, within the Tari project source 
+    code folder structure.
+
+- Tari Console Wallet Executable
+  - Build `tari_mining_node.exe` according to 
+    [Building from source (Windows 10)](https://github.com/tari-project/tari#build).
+  - Copy `tari_mining_node.exe` to `.`, `.\runtime` or other local path.
+  - If not extracted to `.` or `.\runtime`, ensure the folder containing 
+    `tari_mining_node.exe` is in the path.
+
+- Tari Mining Node Runtime Configuration File
+  - Copy  `..\..\common\config\presets\config.toml` to `.\config`

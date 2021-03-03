@@ -1,34 +1,33 @@
 # Standalone miner for the Tari network
 
-Miner application should be running connected to base node and console wallet allowing to search and create blocks
-matching network difficulty, attaching wallet's provided coinbase. 
-
-This also suits as reference implementation for custom miners which can be derived from it.
+The Tari Mining Node application should be running connected to the Tari Base Node and the Tari Console Wallet,
+allowing it insert the coinbase transactions created by the Tari Console Wallet and to to mine blocks matching the 
+required network difficulty. This also serves as a reference implementation for custom miners that which can be derived 
+from it.
 
 
 ### Installation
 
-Requires running console wallet and base node, please refer to relevant for instructions.
-Requires rust toolchain, which can be setup via [rustup](https://rustup.rs/).
+Please refer to the relevant section in the main 
+[README installation section](https://github.com/tari-project/tari/blob/development/README.md#install-and-run).
 
-To run locally clone git repo and run following command:
-```
-cargo run --release --bin tari_mining_node
-```
 
 ### Configuration
 
-When running with local base node and console wallet it should work with zero-configuration.
+When running with local versions of the Tari Base Node and the Tari Console Wallet, no additional configuration other 
+than what is described in the main 
+[README configuration section](https://github.com/tari-project/tari/blob/development/README.md#tari-sha3-mining) 
+is required. The Tari Mining Node can also be located on a remote workstation.
 
-Miner node is managed through Tari's `config.toml` file under `[mining_node]` subsection, supporting following parameters:
- - `base_node_grpc_address` - is IPv4/IPv6 address including port number, by which Tari Base Node can be found
- - `wallet_grpc_address` - is IPv4/IPv6 address including port number, where Tari Wallet Node can be found
- - `num_mining_threads` - number of mining threads, defaults to number of cpu cores
- - `mine_on_tip_only` - will start mining only when node is reporting bootstrapped state
- - `validate_tip_timeout_sec` - will check tip with node every N seconds and restart mining
- if current template height is taken
+Configuration options for the Tari Mining Node are as follows:
+ - `base_node_grpc_address` - this is IPv4/IPv6 address including port number, by which the Tari Base Node can be found;
+ - `wallet_grpc_address` - this is IPv4/IPv6 address including port number, by which the Tari Console Wallet can be 
+   found;
+ - `num_mining_threads` - the number of mining threads, which defaults to the number of CPU cores;
+ - `mine_on_tip_only` - mining will only start when the Tari Base Node reports it is in the bootstrapped state;
+ - `validate_tip_timeout_sec` - the interval at which the current block height will be checked to determine if mining 
+   must be restarted, whereby the tip might have advanced passed the block height that is in use in the current template.
 
 ### Caveats 
 
-Currently it supports only Sha3 mining which is suitable for TestNet.
-
+Currently, the Tari Mining Node only supports SHA3 mining; this is adequate for the current Tari protocol.
