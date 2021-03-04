@@ -25,14 +25,14 @@ Given('I have {int} seed nodes',{timeout:20*1000}, async function (n) {
 });
 
 Given(/I have a base node (.*) connected to all seed nodes/, {timeout: 20*1000}, async function (name) {
-    const miner =  new BaseNodeProcess(name);
+    const miner = this.createNode(name);
     miner.setPeerSeeds([this.seedAddresses()]);
     await miner.startNew();
     this.addNode(name, miner);
     });
 
 Given(/I have a base node (.*) connected to seed (.*)/, {timeout: 20*1000}, async function (name, seedNode) {
-    const miner =  new BaseNodeProcess(name);
+    const miner =  this.createNode(name);
     console.log(this.seeds[seedNode].peerAddress());
     miner.setPeerSeeds([this.seeds[seedNode].peerAddress()]);
     await miner.startNew();
@@ -40,7 +40,7 @@ Given(/I have a base node (.*) connected to seed (.*)/, {timeout: 20*1000}, asyn
 });
 
 Given(/I have a base node (.*) connected to node (.*)/, {timeout: 20*1000}, async function (name, node) {
-    const miner =  new BaseNodeProcess(name);
+    const miner = this.createNode(name);
     miner.setPeerSeeds([this.nodes[node].peerAddress()]);
     await miner.startNew();
     this.addNode(name, miner);
@@ -50,7 +50,7 @@ Given(/I have a base node (.*) connected to node (.*)/, {timeout: 20*1000}, asyn
 
 
 Given(/I have a pruned node (.*) connected to node (.*)/, {timeout: 20*1000}, async function (name, node) {
-    const miner =  new BaseNodeProcess(name, { pruningHorizon: 5});
+    const miner = this.createNode(name, { pruningHorizon: 5});
     miner.setPeerSeeds([this.nodes[node].peerAddress()]);
     await miner.startNew();
     this.addNode(name, miner);
@@ -58,7 +58,7 @@ Given(/I have a pruned node (.*) connected to node (.*)/, {timeout: 20*1000}, as
 });
 
 Given(/I have a lagging delayed node (.*) connected to node (.*) with blocks_behind_before_considered_lagging (\d+)/, {timeout: 20*1000}, async function (name, node, delay) {
-    const miner =  new BaseNodeProcess(name, { blocks_behind_before_considered_lagging: delay});
+    const miner = this.createNode(name, { blocks_behind_before_considered_lagging: delay});
     miner.setPeerSeeds([this.nodes[node].peerAddress()]);
     await miner.startNew();
     this.addNode(name, miner);
@@ -66,7 +66,7 @@ Given(/I have a lagging delayed node (.*) connected to node (.*) with blocks_beh
 });
 
 Given(/I have a base node (.*) unconnected/, {timeout: 20*1000}, async function (name) {
-    const node = new BaseNodeProcess(name);
+    const node = this.createNode(name);
     await node.startNew();
     this.addNode(name, node);
 });
@@ -74,7 +74,7 @@ Given(/I have a base node (.*) unconnected/, {timeout: 20*1000}, async function 
 Given('I have {int} base nodes connected to all seed nodes', {timeout: 190*1000}, async  function (n) {
     let promises = [];
     for (let i=0; i< n; i++) {
-       const miner = new BaseNodeProcess(`BaseNode${i}`);
+       const miner = this.createNode(`BaseNode${i}`);
        miner.setPeerSeeds([this.seedAddresses()]);
        promises.push(miner.startNew().then(() => this.addNode(`BaseNode${i}`, miner)));
    }
