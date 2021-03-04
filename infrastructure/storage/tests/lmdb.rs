@@ -197,6 +197,7 @@ fn transactions() {
 
 /// Simultaneous writes in different threads
 #[test]
+#[allow(clippy::same_item_push)]
 fn multi_thread_writes() {
     {
         let env = init("multi-thread-writes").unwrap();
@@ -326,7 +327,7 @@ fn lmdb_resize_on_create() {
             let env_info = env.env().info().unwrap();
             let env_stat = env.env().stat().unwrap();
             let size_used_round_2 = env_stat.psize as usize * env_info.last_pgno;
-            let space_remaining = env_info.mapsize - &size_used_round_2;
+            let space_remaining = env_info.mapsize - size_used_round_2;
             assert_eq!(size_used_round_1, size_used_round_2);
             assert_eq!(space_remaining, PRESET_SIZE * 1024 * 1024);
             assert!(env_info.mapsize >= 2 * (PRESET_SIZE * 1024 * 1024));

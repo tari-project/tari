@@ -116,7 +116,9 @@ impl NodeIdentity {
     pub fn random_for_test(public_address: Option<Multiaddr>, features: PeerFeatures) -> Self {
         Self::random(
             &mut rand::rngs::OsRng,
-            public_address.or("/ip4/127.0.0.1/tcp/9000".parse().ok()).unwrap(),
+            public_address
+                .or_else(|| "/ip4/127.0.0.1/tcp/9000".parse().ok())
+                .unwrap(),
             features,
         )
         .unwrap()

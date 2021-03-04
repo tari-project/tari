@@ -141,7 +141,7 @@ mod test {
             Difficulty::from(9_000)
         );
         assert_eq!(Difficulty::default() + Difficulty::from(42), Difficulty::from(43));
-        assert_eq!(&Difficulty::from(15) + &Difficulty::from(5), Difficulty::from(20));
+        assert_eq!(Difficulty::from(15) + Difficulty::from(5), Difficulty::from(20));
     }
 
     #[test]

@@ -665,12 +665,12 @@ mod test {
         if let DbValue::CommsSecretKey(sk) = db.fetch(&DbKey::CommsSecretKey).unwrap().unwrap() {
             assert_eq!(sk, secret_key1);
         } else {
-            assert!(false, "Should be a Comms Secret Key");
+            panic!("Should be a Comms Secret Key");
         };
         if let DbValue::CommsPublicKey(pk) = db.fetch(&DbKey::CommsPublicKey).unwrap().unwrap() {
             assert_eq!(pk, public_key1);
         } else {
-            assert!(false, "Should be a Comms Public Key");
+            panic!("Should be a Comms Public Key");
         };
 
         let secret_key2 = CommsSecretKey::random(&mut OsRng);
@@ -682,7 +682,7 @@ mod test {
         if let DbValue::CommsPublicKey(pk) = db.fetch(&DbKey::CommsPublicKey).unwrap().unwrap() {
             assert_eq!(pk, public_key2);
         } else {
-            assert!(false, "Should be a Comms Public Key");
+            panic!("Should be a Comms Public Key");
         };
     }
 
@@ -749,7 +749,7 @@ mod test {
                 .set(&conn)
                 .unwrap();
         }
-        assert!(WalletSqliteDatabase::new(connection.clone(), Some(cipher.clone())).is_ok());
+        assert!(WalletSqliteDatabase::new(connection, Some(cipher)).is_ok());
     }
 
     #[test]
@@ -865,7 +865,7 @@ mod test {
         if let Some(ckv) = ClientKeyValueSql::get(&key1, &conn).unwrap() {
             assert_eq!(ckv.value, value1);
         } else {
-            assert!(false, "Should find value");
+            panic!("Should find value");
         }
         assert!(!ClientKeyValueSql::clear(&key2, &conn).unwrap());
 
@@ -874,8 +874,8 @@ mod test {
         let values = ClientKeyValueSql::index(&conn).unwrap();
         assert_eq!(values.len(), 2);
 
-        assert!(values[0].value == value1);
-        assert!(values[1].value == value2);
+        assert_eq!(values[0].value, value1);
+        assert_eq!(values[1].value, value2);
 
         assert!(ClientKeyValueSql::clear(&key1, &conn).unwrap());
         assert!(ClientKeyValueSql::get(&key1, &conn).unwrap().is_none());
@@ -883,7 +883,7 @@ mod test {
         if let Some(ckv) = ClientKeyValueSql::get(&key2, &conn).unwrap() {
             assert_eq!(ckv.value, value2);
         } else {
-            assert!(false, "Should find value2");
+            panic!("Should find value2");
         }
     }
 }

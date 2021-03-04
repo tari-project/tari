@@ -263,10 +263,9 @@ mod test {
                 (MNEMONIC_KOREAN_WORDS[i] > MNEMONIC_KOREAN_WORDS[i + 1]) ||
                 (MNEMONIC_SPANISH_WORDS[i] > MNEMONIC_SPANISH_WORDS[i + 1])
             {
-                assert!(false);
+                panic!();
             }
         }
-        assert!(true);
     }
 
     #[test]
@@ -274,31 +273,31 @@ mod test {
         // Test valid Mnemonic words
         match MnemonicLanguage::from(&"目".to_string()) {
             Ok(language) => assert_eq!(language, MnemonicLanguage::ChineseSimplified),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
         match MnemonicLanguage::from(&"trick".to_string()) {
             Ok(language) => assert_eq!(language, MnemonicLanguage::English),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
         match MnemonicLanguage::from(&"risque".to_string()) {
             Ok(language) => assert_eq!(language, MnemonicLanguage::French),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
         match MnemonicLanguage::from(&"topazio".to_string()) {
             Ok(language) => assert_eq!(language, MnemonicLanguage::Italian),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
         match MnemonicLanguage::from(&"ふりる".to_string()) {
             Ok(language) => assert_eq!(language, MnemonicLanguage::Japanese),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
         match MnemonicLanguage::from(&"마지막".to_string()) {
             Ok(language) => assert_eq!(language, MnemonicLanguage::Korean),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
         match MnemonicLanguage::from(&"sala".to_string()) {
             Ok(language) => assert_eq!(language, MnemonicLanguage::Spanish),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
 
         // Test Invalid Mnemonic words
@@ -318,11 +317,11 @@ mod test {
         let desired_word = MNEMONIC_CHINESE_SIMPLIFIED_WORDS[desired_index].to_string();
         match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::ChineseSimplified) {
             Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
         match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::ChineseSimplified) {
             Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
 
         // Encoding and Decoding using English Simplified
@@ -330,11 +329,11 @@ mod test {
         let desired_word = MNEMONIC_ENGLISH_WORDS[desired_index].to_string();
         match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::English) {
             Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
         match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::English) {
             Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
 
         // Encoding and Decoding using French Simplified
@@ -342,11 +341,11 @@ mod test {
         let desired_word = MNEMONIC_FRENCH_WORDS[desired_index].to_string();
         match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::French) {
             Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
         match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::French) {
             Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
 
         // Encoding and Decoding using Italian Simplified
@@ -354,11 +353,11 @@ mod test {
         let desired_word = MNEMONIC_ITALIAN_WORDS[desired_index].to_string();
         match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::Italian) {
             Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
         match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::Italian) {
             Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
 
         // Encoding and Decoding using Japanese Simplified
@@ -366,11 +365,11 @@ mod test {
         let desired_word = MNEMONIC_JAPANESE_WORDS[desired_index].to_string();
         match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::Japanese) {
             Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
         match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::Japanese) {
             Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
 
         // Encoding and Decoding using Korean Simplified
@@ -378,11 +377,11 @@ mod test {
         let desired_word = MNEMONIC_KOREAN_WORDS[desired_index].to_string();
         match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::Korean) {
             Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
         match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::Korean) {
             Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
 
         // Encoding and Decoding using Spanish Simplified
@@ -390,11 +389,11 @@ mod test {
         let desired_word = MNEMONIC_SPANISH_WORDS[desired_index].to_string();
         match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::Spanish) {
             Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
         match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::Spanish) {
             Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
     }
 
@@ -411,9 +410,9 @@ mod test {
                         .count();
                     assert_eq!(mismatched_bytes, 0);
                 },
-                Err(_e) => assert!(false),
+                Err(_e) => panic!(),
             },
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
     }
 
@@ -425,15 +424,15 @@ mod test {
             Ok(mnemonic_seq) => {
                 match RistrettoSecretKey::from_mnemonic(&mnemonic_seq) {
                     Ok(mnemonic_k) => assert_eq!(desired_k, mnemonic_k),
-                    Err(_e) => assert!(false),
+                    Err(_e) => panic!(),
                 }
                 // Language known
                 match RistrettoSecretKey::from_mnemonic_with_language(&mnemonic_seq, &MnemonicLanguage::Japanese) {
                     Ok(mnemonic_k) => assert_eq!(desired_k, mnemonic_k),
-                    Err(_e) => assert!(false),
+                    Err(_e) => panic!(),
                 }
             },
-            Err(_e) => assert!(false),
+            Err(_e) => panic!(),
         }
 
         // Invalid Mnemonic sequence
@@ -446,13 +445,13 @@ mod test {
         .collect::<Vec<String>>();
         // Language not known
         match RistrettoSecretKey::from_mnemonic(&mnemonic_seq) {
-            Ok(_k) => assert!(false),
-            Err(_e) => assert!(true),
+            Ok(_k) => panic!(),
+            Err(_e) => {},
         }
         // Language known
         match RistrettoSecretKey::from_mnemonic_with_language(&mnemonic_seq, &MnemonicLanguage::Japanese) {
-            Ok(_k) => assert!(false),
-            Err(_e) => assert!(true),
+            Ok(_k) => panic!(),
+            Err(_e) => {},
         }
     }
 }

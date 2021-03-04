@@ -580,7 +580,7 @@ mod test {
         service
             .call(DhtOutboundRequest::SendMessage(
                 Box::new(SendMessageParams::new().flood(vec![]).finish()),
-                "custom_msg".as_bytes().into(),
+                b"custom_msg".to_vec().into(),
                 reply_tx,
             ))
             .await
@@ -678,7 +678,7 @@ mod test {
                         .with_discovery(true)
                         .finish(),
                 ),
-                "custom_msg".as_bytes().into(),
+                b"custom_msg".to_vec().into(),
                 reply_tx,
             ))
             .await

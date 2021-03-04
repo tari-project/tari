@@ -33,7 +33,7 @@ use tempfile::{tempdir, TempDir};
 fn setup() -> (MempoolRpcService, MempoolMockState, RpcRequestMock, TempDir) {
     let tmp = tempdir().unwrap();
     let peer_manager = create_peer_manager(&tmp);
-    let request_mock = RpcRequestMock::new(peer_manager.clone());
+    let request_mock = RpcRequestMock::new(peer_manager);
     let (handle, state) = create_mempool_service_mock();
     let service = MempoolRpcService::new(handle);
     (service, state, request_mock, tmp)

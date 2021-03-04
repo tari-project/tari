@@ -23,6 +23,7 @@
 use futures::{future, future::Either, FutureExt, Stream, StreamExt};
 use std::time::Duration;
 
+#[allow(dead_code)]
 pub async fn event_stream_next<TStream>(stream: &mut TStream, timeout: Duration) -> Option<TStream::Item>
 where TStream: Stream + Unpin {
     let either = future::select(stream.next(), tokio::time::delay_for(timeout).fuse()).await;

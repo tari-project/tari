@@ -281,16 +281,13 @@ mod test {
     /// function in Rust toolchain nightly-2020-06-10, where Windows would give a slightly different floating point
     /// result than Linux. This affected the EmissionScheduleOld::block_reward calculation.
     #[test]
+    #[allow(clippy::identity_op)]
     fn block_reward_edge_cases() {
         const EMISSION_INITIAL: u64 = 5_538_846_115;
         const EMISSION_DECAY: f64 = 0.999_999_560_409_038_5;
         const EMISSION_TAIL: u64 = 1;
 
-        let schedule = EmissionScheduleOld::new(
-            MicroTari::from(EMISSION_INITIAL * uT),
-            EMISSION_DECAY,
-            MicroTari::from(EMISSION_TAIL * T),
-        );
+        let schedule = EmissionScheduleOld::new(EMISSION_INITIAL * uT, EMISSION_DECAY, EMISSION_TAIL * T);
 
         // Block numbers in these tests represent the edge cases of the pow function.
         assert_eq!(schedule.block_reward(9182), MicroTari::from(5517534590));
@@ -303,16 +300,13 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::identity_op)]
     fn block_diff() {
         const EMISSION_INITIAL: u64 = 5_538_846_115;
         const EMISSION_DECAY: f64 = 0.999_999_560_409_038_5;
         const EMISSION_TAIL: u64 = 1;
 
-        let schedule = EmissionScheduleOld::new(
-            MicroTari::from(EMISSION_INITIAL * uT),
-            EMISSION_DECAY,
-            MicroTari::from(EMISSION_TAIL * T),
-        );
+        let schedule = EmissionScheduleOld::new(EMISSION_INITIAL * uT, EMISSION_DECAY, EMISSION_TAIL * T);
         let emission = EmissionSchedule::new(EMISSION_INITIAL * uT, &[22, 23, 24, 26, 27], EMISSION_TAIL * uT);
 
         // lest test the old schedule vs the new and see if the diff is less than 0.1%
@@ -346,7 +340,7 @@ mod test {
     #[test]
     fn huge_block_number() {
         let mut n = (std::i32::MAX - 1) as u64;
-        let schedule = EmissionScheduleOld::new(MicroTari::from(1e21 as u64), 0.999_9999, MicroTari::from(100));
+        let schedule = EmissionScheduleOld::new(MicroTari::from(1e21 as u64), 0.999_999_9, MicroTari::from(100));
         for _ in 0..3 {
             assert_eq!(schedule.block_reward(n), MicroTari::from(100));
             n += 1;
@@ -372,6 +366,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::identity_op)]
     fn emission() {
         let emission = EmissionSchedule::new(1 * T, &[1, 2], 100 * uT);
         let mut emission = emission.iter();

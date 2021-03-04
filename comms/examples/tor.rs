@@ -47,7 +47,7 @@ async fn run() -> Result<(), Error> {
     let mut args_iter = env::args().skip(1);
     let control_port_addr = args_iter
         .next()
-        .unwrap_or("/ip4/127.0.0.1/tcp/9051".to_string())
+        .unwrap_or_else(|| "/ip4/127.0.0.1/tcp/9051".to_string())
         .parse::<Multiaddr>()?;
 
     let tor_identity1 = args_iter.next().map(load_tor_identity);
@@ -244,10 +244,9 @@ async fn start_ping_ponger(
                 id.parse::<u64>()
                     .ok()
                     .and_then(|id_num| inflight_pings.remove(&id_num))
-                    .map(|ts| (Utc::now().naive_utc().signed_duration_since(ts)).num_milliseconds())
-                    .and_then(|latency| {
+                    .map(|latency| {
                         println!("Latency: {}ms", latency);
-                        Some(latency)
+                        latency
                     });
 
                 println!("-----------------------------------");

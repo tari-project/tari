@@ -250,6 +250,7 @@ impl StressTestService {
     }
 }
 
+#[allow(clippy::same_item_push)]
 async fn start_initiator_protocol(
     mut conn: PeerConnection,
     protocol: StressProtocol,
@@ -333,6 +334,7 @@ async fn start_initiator_protocol(
     Ok(())
 }
 
+#[allow(clippy::same_item_push)]
 async fn start_responder_protocol(
     peer: NodeId,
     mut substream: Substream,
@@ -466,18 +468,14 @@ async fn messaging_flood(
     let inbound_task = task::spawn(async move {
         let mut inbound_rx = inbound_rx.write().await;
         let mut msgs = vec![];
-        loop {
-            if let Some(msg) = inbound_rx.next().await {
-                let msg_id = decode_msg(msg.body);
-                println!("GOT MSG {}", msg_id);
-                if msgs.len() == protocol.num_messages as usize {
-                    // msg_id == 0 {
-                    break;
-                }
-                msgs.push(msg_id);
-            } else {
+        while let Some(msg) = inbound_rx.next().await {
+            let msg_id = decode_msg(msg.body);
+            println!("GOT MSG {}", msg_id);
+            if msgs.len() == protocol.num_messages as usize {
+                // msg_id == 0 {
                 break;
             }
+            msgs.push(msg_id);
         }
         msgs
     });

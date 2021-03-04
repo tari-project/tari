@@ -67,6 +67,7 @@ const NUM_RANDOM_NODES: usize = 4;
 const PROPAGATION_FACTOR: usize = 4;
 
 #[tokio_macros::main]
+#[allow(clippy::same_item_push)]
 async fn main() {
     env_logger::init();
 

@@ -86,6 +86,8 @@ pub struct NodeInterfaces {
     pub messaging_events: MessagingEventSender,
     pub shutdown: Shutdown,
 }
+
+#[allow(dead_code)]
 impl NodeInterfaces {
     pub async fn shutdown(mut self) {
         self.shutdown.trigger().unwrap();
@@ -108,6 +110,7 @@ pub struct BaseNodeBuilder {
     network: Network,
 }
 
+#[allow(dead_code)]
 impl BaseNodeBuilder {
     /// Create a new BaseNodeBuilder
     pub fn new(network: Network) -> Self {
@@ -186,33 +189,33 @@ impl BaseNodeBuilder {
     }
 
     /// Build the test base node and start its services.
+    #[allow(clippy::redundant_closure)]
     pub fn start(self, runtime: &mut Runtime, data_path: &str) -> (NodeInterfaces, ConsensusManager) {
-        let validators = self.validators.unwrap_or(Validators::new(
-            MockValidator::new(true),
-            MockValidator::new(true),
-            MockValidator::new(true),
-        ));
+        let validators = self.validators.unwrap_or_else(|| {
+            Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            )
+        });
+        let network = self.network;
         let consensus_manager = self
             .consensus_manager
-            .unwrap_or(ConsensusManagerBuilder::new(self.network).build());
+            .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build());
         let blockchain_db = create_store_with_consensus_and_validators(&consensus_manager, validators);
         let mempool_validator = TxInputAndMaturityValidator::new(blockchain_db.clone());
-        let mempool = Mempool::new(
-            self.mempool_config.unwrap_or(MempoolConfig::default()),
-            Arc::new(mempool_validator),
-        );
-        let node_identity = self.node_identity.unwrap_or(random_node_identity());
+        let mempool = Mempool::new(self.mempool_config.unwrap_or_default(), Arc::new(mempool_validator));
+        let node_identity = self.node_identity.unwrap_or_else(|| random_node_identity());
         let node_interfaces = setup_base_node_services(
             runtime,
-            node_identity.clone(),
-            self.peers.unwrap_or(Vec::new()),
-            blockchain_db.clone(),
-            mempool.clone(),
+            node_identity,
+            self.peers.unwrap_or_default(),
+            blockchain_db,
+            mempool,
             consensus_manager.clone(),
-            self.base_node_service_config
-                .unwrap_or(BaseNodeServiceConfig::default()),
-            self.mempool_service_config.unwrap_or(MempoolServiceConfig::default()),
-            self.liveness_service_config.unwrap_or(LivenessConfig::default()),
+            self.base_node_service_config.unwrap_or_default(),
+            self.mempool_service_config.unwrap_or_default(),
+            self.liveness_service_config.unwrap_or_default(),
             data_path,
         );
 
@@ -220,6 +223,7 @@ impl BaseNodeBuilder {
     }
 }
 
+#[allow(dead_code)]
 pub fn wait_until_online(runtime: &mut Runtime, nodes: &[&NodeInterfaces]) {
     for node in nodes {
         runtime
@@ -230,6 +234,7 @@ pub fn wait_until_online(runtime: &mut Runtime, nodes: &[&NodeInterfaces]) {
 }
 
 // Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
+#[allow(dead_code)]
 pub fn create_network_with_2_base_nodes(
     runtime: &mut Runtime,
     data_path: &str,
@@ -255,6 +260,7 @@ pub fn create_network_with_2_base_nodes(
 }
 
 // Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
+#[allow(dead_code)]
 pub fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
     runtime: &mut Runtime,
     blockchain_db_config: BlockchainDatabaseConfig,
@@ -282,7 +288,7 @@ pub fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
         .with_peers(vec![alice_node_identity])
         .with_base_node_service_config(base_node_service_config)
         .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config.clone())
+        .with_liveness_service_config(liveness_service_config)
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path.as_ref().join("bob").as_os_str().to_str().unwrap());
 
@@ -292,6 +298,7 @@ pub fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
 }
 
 // Creates a network with three Base Nodes where each node in the network knows the other nodes in the network.
+#[allow(dead_code)]
 pub fn create_network_with_3_base_nodes(
     runtime: &mut Runtime,
     data_path: &str,
@@ -311,6 +318,7 @@ pub fn create_network_with_3_base_nodes(
 }
 
 // Creates a network with three Base Nodes where each node in the network knows the other nodes in the network.
+#[allow(dead_code)]
 pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     runtime: &mut Runtime,
     blockchain_db_config: BlockchainDatabaseConfig,
@@ -350,12 +358,12 @@ pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path.as_ref().join("bob").as_os_str().to_str().unwrap());
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network)
-        .with_node_identity(alice_node_identity.clone())
-        .with_peers(vec![bob_node_identity.clone(), carol_node_identity.clone()])
+        .with_node_identity(alice_node_identity)
+        .with_peers(vec![bob_node_identity, carol_node_identity])
         .with_blockchain_db_config(blockchain_db_config)
         .with_base_node_service_config(base_node_service_config)
         .with_mempool_service_config(mempool_service_config)
-        .with_liveness_service_config(liveness_service_config.clone())
+        .with_liveness_service_config(liveness_service_config)
         .with_consensus_manager(consensus_manager)
         .start(runtime, data_path.as_ref().join("alice").as_os_str().to_str().unwrap());
 
@@ -364,11 +372,13 @@ pub fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     (alice_node, bob_node, carol_node, consensus_manager)
 }
 
+#[allow(dead_code)]
 fn random_string(len: usize) -> String {
     iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
 }
 
 // Helper function for creating a random node indentity.
+#[allow(dead_code)]
 pub fn random_node_identity() -> Arc<NodeIdentity> {
     let next_port = MemoryTransport::acquire_next_memsocket_port();
     Arc::new(
@@ -382,6 +392,7 @@ pub fn random_node_identity() -> Arc<NodeIdentity> {
 }
 
 // Helper function for starting the comms stack.
+#[allow(dead_code)]
 async fn setup_comms_services<TSink>(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,
@@ -409,6 +420,7 @@ where
 }
 
 // Helper function for starting the services of the Base node.
+#[allow(clippy::too_many_arguments)]
 fn setup_base_node_services(
     runtime: &mut Runtime,
     node_identity: Arc<NodeIdentity>,
@@ -440,7 +452,7 @@ fn setup_base_node_services(
             subscription_factory.clone(),
             blockchain_db.clone().into(),
             mempool.clone(),
-            consensus_manager.clone(),
+            consensus_manager,
             base_node_service_config,
         ))
         .add_initializer(MempoolServiceInitializer::new(

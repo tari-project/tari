@@ -1479,7 +1479,7 @@ mod test {
         let pending_block_height = PendingTransactionOutputSql::index_block_height(2, &conn).unwrap();
 
         assert_eq!(pending_block_height.len(), 1);
-        assert!(pending_block_height.iter().find(|p| p.tx_id == 11).is_some());
+        assert!(pending_block_height.iter().any(|p| p.tx_id == 11));
     }
 
     #[test]
@@ -1612,7 +1612,7 @@ mod test {
         let state_sql = KeyManagerStateSql::from(starting_state.clone());
         state_sql.set_state(&conn).unwrap();
 
-        let mut encrypted_state = state_sql.clone();
+        let mut encrypted_state = state_sql;
         encrypted_state.encrypt(&cipher).unwrap();
 
         encrypted_state.set_state(&conn).unwrap();
@@ -1649,7 +1649,7 @@ mod test {
             primary_key_index: 1,
         };
 
-        let state_sql = KeyManagerStateSql::from(starting_state.clone());
+        let state_sql = KeyManagerStateSql::from(starting_state);
         state_sql.set_state(&conn).unwrap();
 
         let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(100 + OsRng.next_u64() % 1000));
@@ -1672,9 +1672,9 @@ mod test {
 
         let db2 = OutputManagerSqliteDatabase::new(connection.clone(), None);
         assert!(db2.remove_encryption().is_ok());
-        db2.apply_encryption(cipher.clone()).unwrap();
+        db2.apply_encryption(cipher).unwrap();
 
-        let db3 = OutputManagerSqliteDatabase::new(connection.clone(), None);
+        let db3 = OutputManagerSqliteDatabase::new(connection, None);
         assert!(db3.fetch(&DbKey::UnspentOutputs).is_err());
 
         db2.remove_encryption().unwrap();

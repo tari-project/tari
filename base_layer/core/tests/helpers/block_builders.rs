@@ -125,7 +125,7 @@ pub fn _create_act_gen_block() {
     println!("{}", &block);
     dbg!(&key.to_hex());
     dbg!(&block.body.outputs()[0].proof.to_hex());
-    assert!(false); // this is so that the output is printed
+    panic!(); // this is so that the output is printed
 }
 
 /// Create a genesis block returning it with the spending key for the coinbase utxo
@@ -191,6 +191,7 @@ pub fn create_genesis_block_with_coinbase_value(
 
 /// Create a Genesis block with additional utxos that are immediately available for spending. This is useful for
 /// writing tests without having to add blocks just so the coinbase output can mature.
+#[allow(dead_code)]
 pub fn create_genesis_block_with_utxos(
     factories: &CryptoFactories,
     values: &[MicroTari],
@@ -201,7 +202,7 @@ pub fn create_genesis_block_with_utxos(
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
         let (t, k) = create_utxo(*v, factories, None);
         template.body.add_output(t);
-        secrets.push(UnblindedOutput::new(v.clone(), k, None));
+        secrets.push(UnblindedOutput::new(*v, k, None));
         secrets
     });
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
@@ -342,7 +343,7 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
     let mut block = db.prepare_block_merkle_roots(template)?;
     block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
-    let res = db.add_block(Arc::new(block.clone()))?;
+    let res = db.add_block(Arc::new(block))?;
     match res {
         BlockAddResult::Ok(b) => Ok((b.as_ref().clone(), coinbase_output)),
         BlockAddResult::BlockExists => Err(ChainStorageError::InvalidOperation("Block already exists".to_string())),
@@ -375,6 +376,7 @@ pub fn generate_new_block<B: BlockchainBackend>(
     )
 }
 
+#[allow(dead_code)]
 pub fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
     db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<ChainBlock>,
@@ -443,6 +445,7 @@ pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_d
 /// correct MMR roots.
 /// This function is not able to determine the unblinded outputs of a transaction, so if you are mixing using this
 /// with [generate_new_block], you must update the unblinded UTXO vector yourself.
+#[allow(dead_code)]
 pub fn generate_block<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     blocks: &mut Vec<ChainBlock>,
@@ -453,13 +456,14 @@ pub fn generate_block<B: BlockchainBackend>(
     let prev_block = blocks.last().unwrap();
     let template = chain_block_with_new_coinbase(prev_block, transactions, consensus, &CryptoFactories::default()).0;
     let new_block = db.prepare_block_merkle_roots(template)?;
-    let result = db.add_block(new_block.clone().into());
+    let result = db.add_block(new_block.into());
     if let Ok(BlockAddResult::Ok(ref b)) = result {
         blocks.push(b.as_ref().clone());
     }
     result
 }
 
+#[allow(dead_code)]
 pub fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
     db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<ChainBlock>,
@@ -478,7 +482,7 @@ pub fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
     let mut new_block = db.prepare_block_merkle_roots(template)?;
     new_block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut new_block.header, achieved_difficulty);
-    let result = db.add_block(new_block.clone().into());
+    let result = db.add_block(new_block.into());
     if let Ok(BlockAddResult::Ok(ref b)) = result {
         blocks.push(b.as_ref().clone());
     }
@@ -504,13 +508,14 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
         consensus,
     );
     let new_block = db.prepare_block_merkle_roots(template)?;
-    let result = db.add_block(new_block.clone().into());
+    let result = db.add_block(new_block.into());
     if let Ok(BlockAddResult::Ok(ref b)) = result {
         blocks.push(b.as_ref().clone());
     }
     result
 }
 
+#[allow(dead_code)]
 pub fn construct_chained_blocks<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     block0: ChainBlock,

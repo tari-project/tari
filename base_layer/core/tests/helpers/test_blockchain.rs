@@ -47,6 +47,7 @@ pub struct TestBlockchain {
     consensus_manager: ConsensusManager,
 }
 
+#[allow(dead_code)]
 impl TestBlockchain {
     pub fn with_genesis(genesis_name: &'static str) -> Self {
         let network = Network::LocalNet;
@@ -81,10 +82,8 @@ impl TestBlockchain {
         let res = self.store.add_block(Arc::new(new_block)).unwrap();
         if let BlockAddResult::Ok(ref b) = res {
             self.hash_to_block.insert(b.hash().clone(), block.name.clone());
-            self.blocks.insert(
-                block.name.clone(),
-                BlockProxy::new(block.name.to_string(), b.as_ref().clone()),
-            );
+            self.blocks
+                .insert(block.name.clone(), BlockProxy::new(block.name, b.as_ref().clone()));
         }
 
         res

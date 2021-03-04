@@ -723,6 +723,6 @@ mod test {
             .add_database("db2", db::CREATE)
             .build()
             .unwrap();
-        assert!(&store.databases.len() == &2);
+        assert_eq!(store.databases.len(), 2);
     }
 }

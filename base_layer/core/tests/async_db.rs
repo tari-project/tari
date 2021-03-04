@@ -33,7 +33,7 @@ use std::ops::Deref;
 use tari_core::{
     blocks::Block,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult},
-    consensus::{ConsensusManager, ConsensusManagerBuilder, Network},
+    consensus::Network,
     transactions::{
         helpers::schema_to_transaction,
         tari_amount::T,
@@ -53,7 +53,7 @@ fn find_utxo(output: &UnblindedOutput, block: &Block, factory: &CommitmentFactor
             return Some(utxo.clone());
         }
     }
-    return None;
+    None
 }
 
 #[test]

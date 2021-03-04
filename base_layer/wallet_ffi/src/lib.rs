@@ -3009,7 +3009,7 @@ pub unsafe extern "C" fn wallet_create(
                     if let Err(e) = runtime.block_on(w.transaction_service.restart_transaction_protocols()) {
                         warn!(
                             target: LOG_TARGET,
-                            "Could not restart transaction negotiation protocols: {}", e
+                            "Could not restart transaction negotiation protocols: {:?}", e
                         );
                     }
 
@@ -5586,10 +5586,7 @@ mod test {
     }
 
     lazy_static! {
-        static ref CALLBACK_STATE_FFI: Mutex<CallbackState> = {
-            let c = Mutex::new(CallbackState::new());
-            c
-        };
+        static ref CALLBACK_STATE_FFI: Mutex<CallbackState> = Mutex::new(CallbackState::new());
     }
 
     unsafe extern "C" fn received_tx_callback(tx: *mut TariPendingInboundTransaction) {
@@ -5670,11 +5667,11 @@ mod test {
     }
 
     unsafe extern "C" fn direct_send_callback(_tx_id: c_ulonglong, _result: bool) {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     unsafe extern "C" fn store_and_forward_send_callback(_tx_id: c_ulonglong, _result: bool) {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     unsafe extern "C" fn tx_cancellation_callback(tx: *mut TariCompletedTransaction) {
@@ -5687,23 +5684,23 @@ mod test {
     }
 
     unsafe extern "C" fn utxo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     unsafe extern "C" fn stxo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     unsafe extern "C" fn invalid_txo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     unsafe extern "C" fn transaction_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     unsafe extern "C" fn saf_messages_received_callback() {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     unsafe extern "C" fn received_tx_callback_bob(tx: *mut TariPendingInboundTransaction) {
@@ -5769,11 +5766,11 @@ mod test {
     }
 
     unsafe extern "C" fn direct_send_callback_bob(_tx_id: c_ulonglong, _result: bool) {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     unsafe extern "C" fn store_and_forward_send_callback_bob(_tx_id: c_ulonglong, _result: bool) {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     unsafe extern "C" fn tx_cancellation_callback_bob(tx: *mut TariCompletedTransaction) {
@@ -5786,23 +5783,23 @@ mod test {
     }
 
     unsafe extern "C" fn utxo_validation_complete_callback_bob(_tx_id: c_ulonglong, _result: u8) {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     unsafe extern "C" fn stxo_validation_complete_callback_bob(_tx_id: c_ulonglong, _result: u8) {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     unsafe extern "C" fn invalid_txo_validation_complete_callback_bob(_tx_id: c_ulonglong, _result: u8) {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     unsafe extern "C" fn transaction_validation_complete_callback_bob(_tx_id: c_ulonglong, _result: u8) {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     unsafe extern "C" fn saf_messages_received_callback_bob() {
-        assert!(true);
+        // assert!(true); //optimized out by compiler
     }
 
     #[test]
@@ -5888,7 +5885,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let address_listener = CString::new("/ip4/127.0.0.1/tcp/0").unwrap();
-            let address_listener_str: *const c_char = CString::into_raw(address_listener.clone()) as *const c_char;
+            let address_listener_str: *const c_char = CString::into_raw(address_listener) as *const c_char;
             let _transport = transport_tcp_create(address_listener_str, error_ptr);
             assert_eq!(error, 0);
         }
@@ -5900,7 +5897,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let address_control = CString::new("/ip4/127.0.0.1/tcp/8080").unwrap();
-            let address_control_str: *const c_char = CString::into_raw(address_control.clone()) as *const c_char;
+            let address_control_str: *const c_char = CString::into_raw(address_control) as *const c_char;
             let _transport = transport_tor_create(
                 address_control_str,
                 ptr::null_mut(),
@@ -6074,12 +6071,12 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let secret_key_alice = private_key_generate();
-            let public_key_alice = public_key_from_private_key(secret_key_alice.clone(), error_ptr);
+            let public_key_alice = public_key_from_private_key(secret_key_alice, error_ptr);
             let db_name_alice = CString::new(random_string(8).as_str()).unwrap();
-            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice.clone()) as *const c_char;
+            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
-            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
+            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
             let transport_type_alice = transport_memory_create();
             let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
@@ -6087,7 +6084,7 @@ mod test {
 
             let alice_log_path =
                 CString::new(format!("{}{}", alice_temp_dir.path().to_str().unwrap(), "/test.log")).unwrap();
-            let alice_log_path_str: *const c_char = CString::into_raw(alice_log_path.clone()) as *const c_char;
+            let alice_log_path_str: *const c_char = CString::into_raw(alice_log_path) as *const c_char;
 
             let alice_config = comms_config_create(
                 address_alice_str,
@@ -6121,12 +6118,12 @@ mod test {
                 error_ptr,
             );
             let secret_key_bob = private_key_generate();
-            let public_key_bob = public_key_from_private_key(secret_key_bob.clone(), error_ptr);
+            let public_key_bob = public_key_from_private_key(secret_key_bob, error_ptr);
             let db_name_bob = CString::new(random_string(8).as_str()).unwrap();
-            let db_name_bob_str: *const c_char = CString::into_raw(db_name_bob.clone()) as *const c_char;
+            let db_name_bob_str: *const c_char = CString::into_raw(db_name_bob) as *const c_char;
             let bob_temp_dir = tempdir().unwrap();
             let db_path_bob = CString::new(bob_temp_dir.path().to_str().unwrap()).unwrap();
-            let db_path_bob_str: *const c_char = CString::into_raw(db_path_bob.clone()) as *const c_char;
+            let db_path_bob_str: *const c_char = CString::into_raw(db_path_bob) as *const c_char;
             let transport_type_bob = transport_memory_create();
             let address_bob = transport_memory_get_address(transport_type_bob, error_ptr);
             let address_bob_str = CStr::from_ptr(address_bob).to_str().unwrap().to_owned();
@@ -6143,7 +6140,7 @@ mod test {
 
             let bob_log_path =
                 CString::new(format!("{}{}", bob_temp_dir.path().to_str().unwrap(), "/test.log")).unwrap();
-            let bob_log_path_str: *const c_char = CString::into_raw(bob_log_path.clone()) as *const c_char;
+            let bob_log_path_str: *const c_char = CString::into_raw(bob_log_path) as *const c_char;
 
             let bob_wallet = wallet_create(
                 bob_config,
@@ -6331,9 +6328,8 @@ mod test {
             let num_completed_tx_pre = completed_transactions.len();
 
             for (_k, v) in inbound_transactions {
-                let tx_ptr = Box::into_raw(Box::new(v.clone()));
+                let tx_ptr = Box::into_raw(Box::new(v));
                 wallet_test_finalize_received_transaction(alice_wallet, tx_ptr, error_ptr);
-                break;
             }
 
             let completed_transactions: std::collections::HashMap<
@@ -6352,34 +6348,31 @@ mod test {
 
             for x in 0..completed_transactions_get_length(ffi_completed_txs, error_ptr) {
                 let id_completed = completed_transactions_get_at(&mut (*ffi_completed_txs), x, error_ptr);
-                let id_completed_get = wallet_get_completed_transaction_by_id(
-                    &mut (*alice_wallet),
-                    (&mut (*id_completed)).tx_id,
-                    error_ptr,
-                );
-                if (&mut (*id_completed)).status == TransactionStatus::MinedUnconfirmed {
+                let id_completed_get =
+                    wallet_get_completed_transaction_by_id(&mut (*alice_wallet), (*id_completed).tx_id, error_ptr);
+                if (*id_completed).status == TransactionStatus::MinedUnconfirmed {
                     assert_eq!((*id_completed), (*id_completed_get));
                     assert_eq!((*id_completed_get).status, TransactionStatus::MinedUnconfirmed);
                 } else {
                     assert_eq!(id_completed_get, ptr::null_mut());
                     let pk_compare = wallet_get_public_key(&mut (*alice_wallet), error_ptr);
-                    if (&mut (*pk_compare)).as_bytes() == (&mut (*id_completed)).destination_public_key.as_bytes() {
+                    if (&*pk_compare).as_bytes() == (*id_completed).destination_public_key.as_bytes() {
                         let id_inbound_get = wallet_get_pending_inbound_transaction_by_id(
                             &mut (*alice_wallet),
-                            (&mut (*id_completed_get)).tx_id,
+                            (*id_completed_get).tx_id,
                             error_ptr,
                         );
                         assert_ne!(id_inbound_get, ptr::null_mut());
-                        assert_ne!((&mut (*id_inbound_get)).status, TransactionStatus::MinedUnconfirmed);
+                        assert_ne!((*id_inbound_get).status, TransactionStatus::MinedUnconfirmed);
                         pending_inbound_transaction_destroy(&mut (*id_inbound_get));
                     } else {
                         let id_outbound_get = wallet_get_pending_outbound_transaction_by_id(
                             &mut (*alice_wallet),
-                            (&mut (*id_completed_get)).tx_id,
+                            (*id_completed_get).tx_id,
                             error_ptr,
                         );
                         assert_ne!(id_outbound_get, ptr::null_mut());
-                        assert_ne!((&mut (*id_outbound_get)).status, TransactionStatus::MinedUnconfirmed);
+                        assert_ne!((*id_outbound_get).status, TransactionStatus::MinedUnconfirmed);
                         pending_outbound_transaction_destroy(&mut (*id_outbound_get));
                     }
                     public_key_destroy(&mut (*pk_compare));
@@ -6445,7 +6438,7 @@ mod test {
                 .unwrap();
 
             let secret_key_base_node = private_key_generate();
-            let public_key_base_node = public_key_from_private_key(secret_key_base_node.clone(), error_ptr);
+            let public_key_base_node = public_key_from_private_key(secret_key_base_node, error_ptr);
             let utxo_message_str = CString::new("UTXO Import").unwrap();
             let utxo_message: *const c_char = CString::into_raw(utxo_message_str) as *const c_char;
 
@@ -6481,10 +6474,9 @@ mod test {
             assert_eq!(wallet_start_stxo_validation(alice_wallet, error_ptr), 0);
             assert_eq!(wallet_start_invalid_txo_validation(alice_wallet, error_ptr), 0);
             assert_eq!(wallet_start_transaction_validation(alice_wallet, error_ptr), 0);
-            let mut peer_added =
-                wallet_add_base_node_peer(alice_wallet, public_key_bob.clone(), address_bob_str, error_ptr);
+            let mut peer_added = wallet_add_base_node_peer(alice_wallet, public_key_bob, address_bob_str, error_ptr);
             assert_eq!(peer_added, true);
-            peer_added = wallet_add_base_node_peer(bob_wallet, public_key_alice.clone(), address_alice_str, error_ptr);
+            peer_added = wallet_add_base_node_peer(bob_wallet, public_key_alice, address_alice_str, error_ptr);
             assert_eq!(peer_added, true);
             assert!(wallet_start_utxo_validation(alice_wallet, error_ptr) > 0);
             assert!(wallet_start_stxo_validation(alice_wallet, error_ptr) > 0);
@@ -6514,7 +6506,7 @@ mod test {
             let mut inbound_tx_id = 0;
             for (k, v) in inbound_txs {
                 // test ffi calls for excess, public nonce, and signature when given a pending tx
-                let tx_ptr = Box::into_raw(Box::new(CompletedTransaction::from(v.clone())));
+                let tx_ptr = Box::into_raw(Box::new(CompletedTransaction::from(v)));
                 let x = completed_transaction_get_excess(tx_ptr, error_ptr);
                 assert!(x.is_null());
                 excess_destroy(x);
@@ -6540,8 +6532,6 @@ mod test {
 
                 assert_ne!(inbound_tx, ptr::null_mut());
                 assert_eq!(completed_transaction_get_transaction_id(inbound_tx, error_ptr), k);
-
-                break;
             }
 
             let mut found_cancelled_tx = false;
@@ -6641,13 +6631,13 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
 
             let secret_key_alice = private_key_generate();
-            let public_key_alice = public_key_from_private_key(secret_key_alice.clone(), error_ptr);
+            let public_key_alice = public_key_from_private_key(secret_key_alice, error_ptr);
             let db_name = random_string(8);
             let db_name_alice = CString::new(db_name.as_str()).unwrap();
-            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice.clone()) as *const c_char;
+            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
-            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
+            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
             let transport_type_alice = transport_memory_create();
             let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
@@ -6734,9 +6724,9 @@ mod test {
             // Test the file path based version
             let backup_path_alice =
                 CString::new(alice_temp_dir.path().join("backup.sqlite3").to_str().unwrap()).unwrap();
-            let backup_path_alice_str: *const c_char = CString::into_raw(backup_path_alice.clone()) as *const c_char;
+            let backup_path_alice_str: *const c_char = CString::into_raw(backup_path_alice) as *const c_char;
             let original_path_cstring = CString::new(sql_database_path.to_str().unwrap()).unwrap();
-            let original_path_str: *const c_char = CString::into_raw(original_path_cstring.clone()) as *const c_char;
+            let original_path_str: *const c_char = CString::into_raw(original_path_cstring) as *const c_char;
             file_partial_backup(original_path_str, backup_path_alice_str, error_ptr);
 
             let sql_database_path = alice_temp_dir.path().join("backup").with_extension("sqlite3");
@@ -6780,12 +6770,12 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
 
             let secret_key_alice = private_key_generate();
-            let public_key_alice = public_key_from_private_key(secret_key_alice.clone(), error_ptr);
+            let public_key_alice = public_key_from_private_key(secret_key_alice, error_ptr);
             let db_name_alice = CString::new(random_string(8).as_str()).unwrap();
-            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice.clone()) as *const c_char;
+            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
-            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
+            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
             let transport_type_alice = transport_memory_create();
             let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
@@ -6991,10 +6981,10 @@ mod test {
 
             let secret_key_alice = private_key_generate();
             let db_name_alice = CString::new(random_string(8).as_str()).unwrap();
-            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice.clone()) as *const c_char;
+            let db_name_alice_str: *const c_char = CString::into_raw(db_name_alice) as *const c_char;
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
-            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice.clone()) as *const c_char;
+            let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
             let transport_type_alice = transport_memory_create();
             let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
@@ -7040,7 +7030,7 @@ mod test {
 
             for kv in client_key_values.iter() {
                 let k = CString::new(kv.0.as_str()).unwrap();
-                let k_str: *const c_char = CString::into_raw(k.clone()) as *const c_char;
+                let k_str: *const c_char = CString::into_raw(k) as *const c_char;
                 let v = CString::new(kv.1.as_str()).unwrap();
                 let v_str: *const c_char = CString::into_raw(v.clone()) as *const c_char;
                 assert!(wallet_set_key_value(alice_wallet, k_str, v_str, error_ptr));
@@ -7058,7 +7048,7 @@ mod test {
 
             for kv in client_key_values.iter() {
                 let k = CString::new(kv.0.as_str()).unwrap();
-                let k_str: *const c_char = CString::into_raw(k.clone()) as *const c_char;
+                let k_str: *const c_char = CString::into_raw(k) as *const c_char;
 
                 let found_value = wallet_get_value(alice_wallet, k_str, error_ptr);
                 let found_string = CString::from_raw(found_value).to_str().unwrap().to_owned();
@@ -7066,12 +7056,12 @@ mod test {
                 string_destroy(k_str as *mut c_char);
             }
             let wrong_key = CString::new("Wrong").unwrap();
-            let wrong_key_str: *const c_char = CString::into_raw(wrong_key.clone()) as *const c_char;
+            let wrong_key_str: *const c_char = CString::into_raw(wrong_key) as *const c_char;
             assert!(!wallet_clear_value(alice_wallet, wrong_key_str, error_ptr));
             string_destroy(wrong_key_str as *mut c_char);
 
             let k = CString::new(client_key_values[0].0.as_str()).unwrap();
-            let k_str: *const c_char = CString::into_raw(k.clone()) as *const c_char;
+            let k_str: *const c_char = CString::into_raw(k) as *const c_char;
             assert!(wallet_clear_value(alice_wallet, k_str, error_ptr));
 
             let found_value = wallet_get_value(alice_wallet, k_str, error_ptr);

@@ -66,8 +66,8 @@ fn get_next_frame_num(name: &str) -> usize {
 /// connections are graphed.
 pub async fn network_graph_snapshot(
     name: &str,
-    seed_nodes: &Vec<TestNode>,
-    network: &Vec<TestNode>,
+    seed_nodes: &[TestNode],
+    network: &[TestNode],
     num_neighbours: Option<usize>,
 ) -> (StableGraph<NodeId, String>, StableGraph<NodeId, String>)
 {
@@ -98,8 +98,8 @@ pub async fn network_graph_snapshot(
             let peer_node_index = node_indices.get(&peer.peer_node_id()).expect("Can't find Node Index 2");
 
             graph.add_edge(
-                node_index.clone(),
-                peer_node_index.clone(),
+                node_index.to_owned(),
+                peer_node_index.to_owned(),
                 u128::try_from(distance)
                     .expect("Couldn't convert XorDistance to U128")
                     .to_string(),
@@ -121,8 +121,8 @@ pub async fn network_graph_snapshot(
                     .expect("Can't find Node Index 2");
 
                 neighbour_graph.add_edge(
-                    node_index.clone(),
-                    peer_node_index.clone(),
+                    node_index.to_owned(),
+                    peer_node_index.to_owned(),
                     u128::try_from(distance)
                         .expect("Couldn't convert XorDistance to U128")
                         .to_string(),
@@ -233,7 +233,7 @@ pub async fn create_message_propagation_graphs(
     let tmp_file_path = Path::new(TEMP_GRAPH_OUTPUT_DIR).join(name);
     let mut hop = 0;
     while let Some(visited) = bfs.next(&message_tree) {
-        let neighbours = message_tree.neighbors(visited.clone());
+        let neighbours = message_tree.neighbors(visited);
         let from_index = network_graph
             .node_references()
             .find_map(|(index, weight)| {
@@ -258,7 +258,7 @@ pub async fn create_message_propagation_graphs(
                     },
                 )
                 .expect("Should be able to find node2");
-            network_graph.add_edge(from_index.clone(), to_index.clone(), "".to_string());
+            network_graph.add_edge(from_index, to_index, "".to_string());
         }
         let current_file_path = tmp_file_path.join(format!("hop-{:03}.dot", hop));
         hop += 1;
@@ -300,8 +300,8 @@ pub async fn track_join_message_drain_messaging_events(messaging_rx: &mut NodeEv
     }
 
     for (from_node, to_node) in &messages {
-        let from_index = node_indices.get(from_node).unwrap().clone();
-        let to_index = node_indices.get(to_node).unwrap().clone();
+        let from_index = *node_indices.get(from_node).unwrap();
+        let to_index = *node_indices.get(to_node).unwrap();
         graph.update_edge(from_index, to_index, "".to_string());
     }
 
@@ -309,7 +309,7 @@ pub async fn track_join_message_drain_messaging_events(messaging_rx: &mut NodeEv
     let mut bfs = Bfs::new(&graph, NodeIndex::new(0));
 
     while let Some(visited) = bfs.next(&graph) {
-        let neighbours = graph.neighbors(visited.clone());
+        let neighbours = graph.neighbors(visited);
         let neighbour_names: Vec<String> = neighbours.map(|n| get_short_name(&graph[n])).collect();
         print!(
             "{} sent {} messages to ",

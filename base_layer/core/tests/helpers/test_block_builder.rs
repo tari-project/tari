@@ -24,6 +24,7 @@
 #[derive(Default)]
 pub struct TestBlockBuilder {}
 
+#[allow(dead_code)]
 impl TestBlockBuilder {
     pub fn new_block(&self, name: &str) -> TestBlockBuilderInner {
         TestBlockBuilderInner::new(name)
@@ -37,6 +38,7 @@ pub struct TestBlockBuilderInner {
     pub difficulty: Option<u64>,
 }
 
+#[allow(dead_code)]
 impl TestBlockBuilderInner {
     pub fn new(name: &str) -> Self {
         Self {

@@ -316,7 +316,7 @@ mod test {
         ];
 
         let removed_txs = reorg_pool
-            .remove_reorged_txs_and_discard_double_spends(reorg_blocks, &vec![])
+            .remove_reorged_txs_and_discard_double_spends(reorg_blocks, &[])
             .unwrap();
         assert_eq!(removed_txs.len(), 3);
         assert!(removed_txs.contains(&tx2));

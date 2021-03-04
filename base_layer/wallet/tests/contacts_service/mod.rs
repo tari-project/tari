@@ -95,9 +95,7 @@ pub fn test_memory_database_crud() {
     );
     assert_eq!(
         runtime.block_on(db.remove_contact(public_key.clone())),
-        Err(ContactsServiceStorageError::ValueNotFound(DbKey::Contact(
-            public_key.clone()
-        )))
+        Err(ContactsServiceStorageError::ValueNotFound(DbKey::Contact(public_key)))
     );
 
     let _ = runtime
@@ -147,7 +145,7 @@ pub fn test_contacts_service<T: ContactsBackend + 'static>(backend: T) {
     assert_eq!(
         runtime.block_on(contacts_service.remove_contact(public_key.clone())),
         Err(ContactsServiceError::ContactsServiceStorageError(
-            ContactsServiceStorageError::ValueNotFound(DbKey::Contact(public_key.clone()))
+            ContactsServiceStorageError::ValueNotFound(DbKey::Contact(public_key))
         ))
     );
 

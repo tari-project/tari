@@ -132,8 +132,8 @@ fn test_listening_lagging() {
             .unwrap();
 
         match next_event {
-            StateEvent::InitialSync => assert!(true),
-            _ => assert!(false),
+            StateEvent::InitialSync => {},
+            _ => panic!(),
         }
     });
 }
@@ -162,7 +162,7 @@ fn test_event_channel() {
         status_event_sender,
         state_change_event_publisher,
         RandomXFactory::default(),
-        consensus_manager.clone(),
+        consensus_manager,
         shutdown.to_signal(),
     );
 

@@ -54,7 +54,7 @@ impl TestFactory for NodeIdentityFactory {
 
     fn build(self) -> Result<Self::Object, TestFactoryError> {
         // Generate a test identity, set it and return it
-        let secret_key = self.secret_key.or(Some(CommsSecretKey::random(&mut OsRng))).unwrap();
+        let secret_key = self.secret_key.or_else(|| Some(CommsSecretKey::random(&mut OsRng))).unwrap();
 
         let control_service_address = self
             .control_service_address

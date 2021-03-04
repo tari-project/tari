@@ -34,19 +34,11 @@ use tari_core::{
         OutboundNodeCommsInterface,
     },
     blocks::{genesis_block, BlockBuilder, BlockHeader},
-    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, DbTransaction, HistoricalBlock, Validators},
+    chain_storage::{BlockchainDatabaseConfig, DbTransaction, HistoricalBlock, Validators},
     consensus::{ConsensusManagerBuilder, Network},
     mempool::{Mempool, MempoolConfig},
-    test_helpers::blockchain::{
-        create_store_with_consensus_and_validators_and_config,
-        create_test_blockchain_db,
-        create_test_db,
-    },
-    transactions::{
-        helpers::{create_test_kernel, create_utxo},
-        tari_amount::MicroTari,
-        types::CryptoFactories,
-    },
+    test_helpers::blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
+    transactions::{helpers::create_utxo, tari_amount::MicroTari, types::CryptoFactories},
     validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
 };
 use tari_crypto::tari_utilities::hash::Hashable;
@@ -110,7 +102,7 @@ async fn inbound_get_metadata() {
         assert_eq!(received_metadata.best_block(), &block.hash());
         assert_eq!(received_metadata.pruning_horizon(), 0);
     } else {
-        assert!(false);
+        panic!();
     }
 }
 
@@ -136,13 +128,13 @@ async fn inbound_fetch_kernel_by_excess_sig() {
     let sig = block.body.kernels()[0].excess_sig.clone();
 
     if let Ok(NodeCommsResponse::TransactionKernels(received_kernels)) = inbound_nch
-        .handle_request(NodeCommsRequest::FetchKernelByExcessSig(sig.into()))
+        .handle_request(NodeCommsRequest::FetchKernelByExcessSig(sig))
         .await
     {
         assert_eq!(received_kernels.len(), 1);
         assert_eq!(received_kernels[0], block.body.kernels()[0]);
     } else {
-        assert!(false, "kernel not found");
+        panic!("kernel not found");
     }
 }
 
@@ -193,7 +185,7 @@ async fn inbound_fetch_headers() {
         assert_eq!(received_headers.len(), 1);
         assert_eq!(received_headers[0], header);
     } else {
-        assert!(false);
+        panic!();
     }
 }
 
@@ -253,7 +245,7 @@ async fn inbound_fetch_utxos() {
         assert_eq!(received_utxos.len(), 1);
         assert_eq!(received_utxos[0], utxo_1);
     } else {
-        assert!(false);
+        panic!();
     }
 }
 
@@ -323,7 +315,7 @@ async fn inbound_fetch_txos() {
         assert_eq!(received_txos[0], utxo);
         assert_eq!(received_txos[1], stxo);
     } else {
-        assert!(false);
+        panic!();
     }
 }
 
@@ -375,7 +367,7 @@ async fn inbound_fetch_blocks() {
         assert_eq!(received_blocks.len(), 1);
         assert_eq!(*received_blocks[0].block(), block);
     } else {
-        assert!(false);
+        panic!();
     }
 }
 
@@ -427,7 +419,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     {
         assert_eq!(received_blocks.len(), 0);
     } else {
-        assert!(false);
+        panic!();
     }
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
@@ -437,6 +429,6 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         assert_eq!(received_blocks.len(), 1);
         assert_eq!(*received_blocks[0].block(), block2.block);
     } else {
-        assert!(false);
+        panic!();
     }
 }

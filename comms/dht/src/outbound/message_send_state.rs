@@ -285,6 +285,7 @@ mod test {
     }
 
     #[tokio_macros::test_basic]
+    #[allow(clippy::redundant_closure)]
     async fn wait_percentage_success() {
         let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();
         let (states, mut reply_txs) = states.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
@@ -300,6 +301,7 @@ mod test {
     }
 
     #[tokio_macros::test_basic]
+    #[allow(clippy::redundant_closure)]
     async fn wait_n_timeout() {
         let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();
         let (states, mut reply_txs) = states.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
@@ -328,6 +330,7 @@ mod test {
     }
 
     #[tokio_macros::test_basic]
+    #[allow(clippy::redundant_closure)]
     async fn wait_all() {
         let states = repeat_with(|| create_send_state()).take(10).collect::<Vec<_>>();
         let (states, mut reply_txs) = states.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();

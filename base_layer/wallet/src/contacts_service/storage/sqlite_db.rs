@@ -228,11 +228,8 @@ mod test {
 
             let retrieved_contacts = ContactSql::index(&conn).unwrap();
 
-            for i in 0..contacts.len() {
-                assert!(retrieved_contacts
-                    .iter()
-                    .find(|v| v == &&ContactSql::from(contacts[i].clone()))
-                    .is_some());
+            for i in &contacts {
+                assert!(retrieved_contacts.iter().any(|v| v == &ContactSql::from(i.clone())));
             }
 
             assert_eq!(

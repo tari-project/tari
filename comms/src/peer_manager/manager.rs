@@ -434,12 +434,14 @@ mod test {
         // Remove current identity nodes from test peers
         let mut unused_peers: Vec<Peer> = Vec::new();
         for peer in &test_peers {
-            if !selected_peers.iter().any(|peer_identity| {
+            let unused = !selected_peers.iter().any(|peer_identity| {
                 peer.node_id == peer_identity.node_id || peer.is_banned() || excluded_peers.contains(&peer.node_id)
-            }) {
+            });
+            if unused {
                 unused_peers.push(peer.clone());
             }
         }
+
         // Check that none of the remaining unused peers have smaller distances compared to the selected peers
         for peer_identity in &selected_peers {
             let selected_dist = unmanaged_peer.node_id.distance(&peer_identity.node_id);

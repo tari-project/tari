@@ -136,6 +136,7 @@ pub fn to_short_str(peer: &Peer) -> String {
     format!("{}::{}", peer.public_key, peer.addresses.first().unwrap())
 }
 
+#[allow(clippy::ptr_arg)]
 pub fn parse_from_short_str(s: &String) -> Option<Peer> {
     let mut split = s.splitn(2, "::");
     let pk = split.next().and_then(|s| CommsPublicKey::from_hex(s).ok())?;

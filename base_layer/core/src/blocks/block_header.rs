@@ -351,7 +351,8 @@ mod test {
         let (max, min, avg) = BlockHeader::timing_stats(&headers);
         assert_eq!(max, 150);
         assert_eq!(min, 50);
-        assert_eq!(avg, 100f64);
+        let error_margin = f64::EPSILON; // Use an epsilon for comparison of floats
+        assert!((avg - 100f64).abs() < error_margin);
     }
 
     #[test]
@@ -366,7 +367,8 @@ mod test {
         let (max, min, avg) = BlockHeader::timing_stats(&headers);
         assert_eq!(max, 60);
         assert_eq!(min, 0);
-        assert_eq!(avg, 25f64);
+        let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
+        assert!((avg - 25f64).abs() < error_margin);
     }
 
     #[test]
@@ -374,6 +376,7 @@ mod test {
         let (max, min, avg) = BlockHeader::timing_stats(&[]);
         assert_eq!(max, 0);
         assert_eq!(min, std::u64::MAX);
-        assert_eq!(avg, 0f64);
+        let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
+        assert!((avg - 0f64).abs() < error_margin);
     }
 }

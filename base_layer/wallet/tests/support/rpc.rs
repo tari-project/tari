@@ -87,6 +87,7 @@ pub struct BaseNodeWalletRpcMockState {
     utxos: Arc<Mutex<Vec<TransactionOutput>>>,
 }
 
+#[allow(clippy::mutex_atomic)]
 impl BaseNodeWalletRpcMockState {
     pub fn new() -> Self {
         Self {
@@ -259,6 +260,12 @@ impl BaseNodeWalletRpcMockState {
     }
 }
 
+impl Default for BaseNodeWalletRpcMockState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct BaseNodeWalletRpcMockService {
     state: BaseNodeWalletRpcMockState,
 }
@@ -275,6 +282,12 @@ impl BaseNodeWalletRpcMockService {
     }
 }
 
+impl Default for BaseNodeWalletRpcMockService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[tari_comms::async_trait]
 impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     async fn submit_transaction(
@@ -282,7 +295,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<TransactionProto>,
     ) -> Result<Response<TxSubmissionResponseProto>, RpcStatus>
     {
-        let delay_lock = (*acquire_lock!(self.state.response_delay)).clone();
+        let delay_lock = (*acquire_lock!(self.state.response_delay));
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }
@@ -310,7 +323,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<SignatureProto>,
     ) -> Result<Response<TxQueryResponseProto>, RpcStatus>
     {
-        let delay_lock = (*acquire_lock!(self.state.response_delay)).clone();
+        let delay_lock = (*acquire_lock!(self.state.response_delay));
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }
@@ -337,7 +350,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<SignaturesProto>,
     ) -> Result<Response<TxQueryBatchResponsesProto>, RpcStatus>
     {
-        let delay_lock = (*acquire_lock!(self.state.response_delay)).clone();
+        let delay_lock = (*acquire_lock!(self.state.response_delay));
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }
@@ -382,7 +395,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<FetchMatchingUtxos>,
     ) -> Result<Response<FetchUtxosResponse>, RpcStatus>
     {
-        let delay_lock = (*acquire_lock!(self.state.response_delay)).clone();
+        let delay_lock = (*acquire_lock!(self.state.response_delay));
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }

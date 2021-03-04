@@ -99,6 +99,7 @@ mod state_machine {
     }
 
     #[tokio_macros::test_basic]
+    #[allow(clippy::redundant_closure)]
     async fn it_fetches_peers() {
         const NUM_PEERS: usize = 3;
         let config = DhtConfig {

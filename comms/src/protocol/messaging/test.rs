@@ -62,7 +62,7 @@ use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
 use tokio::{sync::broadcast, time};
 
-const TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
+static TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
 
 async fn spawn_messaging_protocol() -> (
     Arc<PeerManager>,
@@ -146,7 +146,7 @@ async fn new_inbound_substream_handling() {
     let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap();
     let mut framed_theirs = MessagingProtocol::framed(stream_theirs);
 
-    framed_theirs.send(TEST_MSG1).await.unwrap();
+    framed_theirs.send(TEST_MSG1.clone()).await.unwrap();
 
     let in_msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.next())
         .await
@@ -179,7 +179,7 @@ async fn send_message_request() {
     conn_man_mock.add_active_connection(conn1).await;
 
     // Send a message to node
-    let out_msg = OutboundMessage::new(peer_node_identity.node_id().clone(), TEST_MSG1);
+    let out_msg = OutboundMessage::new(peer_node_identity.node_id().clone(), TEST_MSG1.clone());
     request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
 
     // Check that node got the message
@@ -197,7 +197,7 @@ async fn send_message_dial_failed() {
     let (_, _, conn_manager_mock, _, mut request_tx, _, mut event_tx, _shutdown) = spawn_messaging_protocol().await;
 
     let node_id = node_id::random();
-    let out_msg = OutboundMessage::new(node_id, TEST_MSG1);
+    let out_msg = OutboundMessage::new(node_id, TEST_MSG1.clone());
     let expected_out_msg_tag = out_msg.tag;
     // Send a message to node 2
     request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
@@ -233,7 +233,7 @@ async fn send_message_substream_bulk_failure() {
     ) -> (MessageTag, MessagingReplyRx)
     {
         let (reply_tx, reply_rx) = oneshot::channel();
-        let out_msg = OutboundMessage::with_reply(node_id, TEST_MSG1, reply_tx.into());
+        let out_msg = OutboundMessage::with_reply(node_id, TEST_MSG1.clone(), reply_tx.into());
         let msg_tag = out_msg.tag;
         // Send a message to node 2
         request_tx.send(MessagingRequest::SendMessage(out_msg)).await.unwrap();
@@ -292,7 +292,7 @@ async fn many_concurrent_send_message_requests() {
             tag: MessageTag::new(),
             reply: reply_tx.into(),
             peer_node_id: node_id2.clone(),
-            body: TEST_MSG1,
+            body: TEST_MSG1.clone(),
         };
         msg_tags.push(out_msg.tag);
         reply_rxs.push(reply_rx);
@@ -332,7 +332,7 @@ async fn many_concurrent_send_message_requests_that_fail() {
             tag: MessageTag::new(),
             reply: reply_tx.into(),
             peer_node_id: node_id2.clone(),
-            body: TEST_MSG1,
+            body: TEST_MSG1.clone(),
         };
         msg_tags.push(out_msg.tag);
         reply_rxs.push(reply_rx);

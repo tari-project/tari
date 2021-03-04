@@ -165,7 +165,7 @@ pub async fn setup(
 
     let (timeout_update_publisher, _) = broadcast::channel(20);
 
-    return (
+    (
         resources,
         connectivity_mock_state,
         outbound_mock_state,
@@ -175,7 +175,7 @@ pub async fn setup(
         timeout_update_publisher,
         shutdown,
         temp_dir,
-    );
+    )
 }
 
 pub async fn add_transaction_to_database(
@@ -188,7 +188,7 @@ pub async fn add_transaction_to_database(
 {
     let factories = CryptoFactories::default();
     let (_utxo, uo0) = make_input(&mut OsRng, 10 * amount, &factories.commitment);
-    let (txs1, _uou1) = schema_to_transaction(&vec![txn_schema!(from: vec![uo0.clone()], to: vec![amount])]);
+    let (txs1, _uou1) = schema_to_transaction(&[txn_schema!(from: vec![uo0.clone()], to: vec![amount])]);
     let tx1 = (*txs1[0]).clone();
     let mut completed_tx1 = CompletedTransaction::new(
         tx_id,
@@ -228,6 +228,7 @@ pub async fn oms_reply_channel_task(
 
 /// A happy path test by submitting a transaction into the mempool, have it mined but unconfirmed and then confirmed.
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_success() {
     let (
         resources,
@@ -334,7 +335,7 @@ async fn tx_broadcast_protocol_submit_success() {
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::Mined,
         block_hash: None,
-        confirmations: resources.config.num_confirmations_required.into(),
+        confirmations: resources.config.num_confirmations_required,
         is_synced: false,
         height_of_longest_chain: 0,
     });
@@ -352,7 +353,7 @@ async fn tx_broadcast_protocol_submit_success() {
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::Mined,
         block_hash: None,
-        confirmations: resources.config.num_confirmations_required.into(),
+        confirmations: resources.config.num_confirmations_required,
         is_synced: true,
         height_of_longest_chain: 0,
     });
@@ -401,6 +402,7 @@ async fn tx_broadcast_protocol_submit_success() {
 
 /// Test submitting a transaction that is immediately rejected
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_rejection() {
     let (
         resources,
@@ -438,15 +440,11 @@ async fn tx_broadcast_protocol_submit_rejection() {
     // Check that the protocol ends with rejection error
     if let Err(e) = join_handle.await.unwrap() {
         if let TransactionServiceError::MempoolRejectionOrphan = e.error {
-            assert!(true);
         } else {
-            assert!(
-                false,
-                "Tx broadcast Should have failed with mempool rejection for being an orphan"
-            );
+            panic!("Tx broadcast Should have failed with mempool rejection for being an orphan");
         }
     } else {
-        assert!(false, "Tx broadcast Should have failed");
+        panic!("Tx broadcast Should have failed");
     }
 
     // Check transaction is cancelled in db
@@ -459,12 +457,9 @@ async fn tx_broadcast_protocol_submit_rejection() {
     loop {
         futures::select! {
             event = event_stream.select_next_some() => {
-                match &*event.unwrap() {
-                        TransactionEvent::TransactionCancelled(_) => {
-                            cancelled = true;
-                        },
-                        _ => (),
-                        }
+                if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
+                cancelled = true;
+                }
             },
             () = delay => {
                 break;
@@ -478,6 +473,7 @@ async fn tx_broadcast_protocol_submit_rejection() {
 /// Test restarting a protocol which means the first step is a query not a submission, detecting the Tx is not in the
 /// mempool, resubmit the tx and then have it mined
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_restart_protocol_as_query() {
     let (
         resources,
@@ -546,7 +542,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::Mined,
         block_hash: None,
-        confirmations: resources.config.num_confirmations_required.into(),
+        confirmations: resources.config.num_confirmations_required,
         is_synced: true,
         height_of_longest_chain: 0,
     });
@@ -563,6 +559,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
 /// This test will submit a Tx which will be accepted and then dropped from the mempool, resulting in a resubmit which
 /// will be rejected and result in a cancelled transaction
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     let (
         resources,
@@ -629,15 +626,11 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     if let Err(e) = join_handle.await.unwrap() {
         println!("{:?}", e);
         if let TransactionServiceError::MempoolRejectionTimeLocked = e.error {
-            assert!(true);
         } else {
-            assert!(
-                false,
-                "Tx broadcast Should have failed with mempool rejection for being time locked"
-            );
+            panic!("Tx broadcast Should have failed with mempool rejection for being time locked");
         }
     } else {
-        assert!(false, "Tx broadcast Should have failed");
+        panic!("Tx broadcast Should have failed");
     }
 
     // Check transaction is cancelled in db
@@ -650,12 +643,9 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     loop {
         futures::select! {
             event = event_stream.select_next_some() => {
-                match &*event.unwrap() {
-                        TransactionEvent::TransactionCancelled(_) => {
-                            cancelled = true;
-                        },
-                        _ => (),
-                        }
+                if let TransactionEvent::TransactionCancelled(_) = &*event.unwrap() {
+                cancelled = true;
+                }
             },
             () = delay => {
                 break;
@@ -669,6 +659,7 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
 /// This test will submit a tx which is accepted and mined but unconfirmed, then the next query it will not exist
 /// resulting in a resubmission which we will let run to being mined with success
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
     let (
         resources,
@@ -761,6 +752,7 @@ async fn tx_broadcast_protocol_submit_mined_then_not_mined_resubmit_success() {
 
 /// Test being unable to connect and then connection becoming available.
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_connection_problem() {
     let (
         resources,
@@ -796,11 +788,8 @@ async fn tx_broadcast_protocol_connection_problem() {
     loop {
         futures::select! {
             event = event_stream.select_next_some() => {
-                match &*event.unwrap() {
-                    TransactionEvent::TransactionBaseNodeConnectionProblem(_) => {
-                        connection_issues +=1 ;
-                    }
-                    _ => (),
+                if let TransactionEvent::TransactionBaseNodeConnectionProblem(_) = &*event.unwrap() {
+                connection_issues+=1;
                 }
                 if connection_issues >= 2 {
                     break;
@@ -834,6 +823,7 @@ async fn tx_broadcast_protocol_connection_problem() {
 
 /// Submit a transaction that is Already Mined for the submission, the subsequent query should confirm the transaction
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_already_mined() {
     let (
         resources,
@@ -882,7 +872,7 @@ async fn tx_broadcast_protocol_submit_already_mined() {
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::Mined,
         block_hash: None,
-        confirmations: resources.config.num_confirmations_required.into(),
+        confirmations: resources.config.num_confirmations_required,
         is_synced: true,
         height_of_longest_chain: 0,
     });
@@ -898,6 +888,7 @@ async fn tx_broadcast_protocol_submit_already_mined() {
 
 /// A test to see that the broadcast protocol can handle a change to the base node address while it runs.
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     let (
         resources,
@@ -981,7 +972,7 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     new_rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::Mined,
         block_hash: None,
-        confirmations: resources.config.num_confirmations_required.into(),
+        confirmations: resources.config.num_confirmations_required,
         is_synced: true,
         height_of_longest_chain: 0,
     });
@@ -998,6 +989,7 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
 /// Validate completed transactions, will check that valid ones stay valid and incorrectly marked invalid tx become
 /// valid.
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_validation_protocol_tx_becomes_valid() {
     let (
         resources,
@@ -1049,7 +1041,7 @@ async fn tx_validation_protocol_tx_becomes_valid() {
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::Mined,
         block_hash: None,
-        confirmations: resources.config.num_confirmations_required.into(),
+        confirmations: resources.config.num_confirmations_required,
         is_synced: true,
         height_of_longest_chain: 0,
     });
@@ -1094,6 +1086,7 @@ async fn tx_validation_protocol_tx_becomes_valid() {
 
 /// Validate completed transaction, the transaction should become invalid
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_validation_protocol_tx_becomes_invalid() {
     let (
         resources,
@@ -1121,7 +1114,7 @@ async fn tx_validation_protocol_tx_becomes_invalid() {
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::NotStored,
         block_hash: None,
-        confirmations: resources.config.num_confirmations_required.into(),
+        confirmations: resources.config.num_confirmations_required,
         is_synced: true,
         height_of_longest_chain: 0,
     });
@@ -1157,6 +1150,7 @@ async fn tx_validation_protocol_tx_becomes_invalid() {
 
 /// Validate completed transactions, the transaction should become invalid
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_validation_protocol_tx_becomes_unconfirmed() {
     let (
         resources,
@@ -1227,6 +1221,7 @@ async fn tx_validation_protocol_tx_becomes_unconfirmed() {
 /// Test the validation protocol reacts correctly to a change in base node and redoes the full validation based on the
 /// new base node
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_validation_protocol_tx_ends_on_base_node_end() {
     let (
         resources,
@@ -1342,12 +1337,9 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
     loop {
         futures::select! {
             event = event_stream.select_next_some() => {
-                match &*event.unwrap() {
-                        TransactionEvent::TransactionValidationAborted(_) => {
-                            aborted = true;
-                        },
-                        _ => (),
-                        }
+                 if let TransactionEvent::TransactionValidationAborted(_) = &*event.unwrap() {
+                 aborted = true;
+                 }
             },
             () = delay => {
                 break;
@@ -1359,6 +1351,7 @@ async fn tx_validation_protocol_tx_ends_on_base_node_end() {
 
 /// Test the validation protocol reacts correctly when the RPC client returns an error between calls.
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_validation_protocol_rpc_client_broken_between_calls() {
     let (
         resources,
@@ -1481,6 +1474,7 @@ async fn tx_validation_protocol_rpc_client_broken_between_calls() {
 /// Test the validation protocol reacts correctly when the RPC client returns an error between calls and only retry
 /// finite amount of times
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
     let (
         resources,
@@ -1580,6 +1574,7 @@ async fn tx_validation_protocol_rpc_client_broken_finite_retries() {
 /// Validate completed transactions, will check that valid ones stay valid and incorrectly marked invalid tx become
 /// valid.
 #[tokio_macros::test]
+#[allow(clippy::identity_op)]
 async fn tx_validation_protocol_base_node_not_synced() {
     let (
         resources,
@@ -1624,7 +1619,7 @@ async fn tx_validation_protocol_base_node_not_synced() {
     rpc_service_state.set_transaction_query_response(TxQueryResponse {
         location: TxLocation::Mined,
         block_hash: None,
-        confirmations: resources.config.num_confirmations_required.into(),
+        confirmations: resources.config.num_confirmations_required,
         is_synced: false,
         height_of_longest_chain: 0,
     });

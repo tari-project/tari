@@ -311,6 +311,7 @@ mod test {
     }
 
     #[cfg(test)]
+    #[allow(clippy::module_inception)]
     mod test {
         use super::*;
 

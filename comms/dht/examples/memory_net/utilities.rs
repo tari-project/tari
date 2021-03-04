@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#![allow(clippy::mutex_atomic)]
 
 use crate::memory_net::DrainBurst;
 use futures::{channel::mpsc, future, StreamExt};
@@ -294,7 +295,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
             let mut connectivity = node.comms.connectivity();
             let mut ims_rx = node.ims_rx.take().unwrap();
             let start = Instant::now();
-            let start_global = start_global.clone();
+            let start_global = start_global;
             let node_name = node.name.clone();
 
             task::spawn(async move {
@@ -365,6 +366,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn do_store_and_forward_message_propagation(
     wallet: TestNode,
     wallets: &[TestNode],
@@ -402,10 +404,7 @@ pub async fn do_store_and_forward_message_propagation(
         )
         .collect::<Vec<_>>();
 
-    let neighbour_subs = neighbours
-        .iter()
-        .map(|n| n.messaging_events.subscribe())
-        .collect::<Vec<_>>();
+    let neighbour_subs = neighbours.iter().map(|n| n.messaging_events.subscribe());
 
     banner!(
         "{} has {} neighbours ({})",
@@ -454,11 +453,10 @@ pub async fn do_store_and_forward_message_propagation(
         task::spawn(async move {
             let msg = time::timeout(Duration::from_secs(2), s.next()).await;
             match msg {
-                Ok(Some(Ok(evt))) => match &*evt {
-                    MessagingEvent::MessageReceived(_, tag) => {
+                Ok(Some(Ok(evt))) => {
+                    if let MessagingEvent::MessageReceived(_, tag) = &*evt {
                         println!("{} received propagated SAF message ({})", neighbour, tag);
-                    },
-                    _ => {},
+                    }
                 },
                 Ok(_) => {},
                 Err(_) => println!("{} did not receive the SAF message", neighbour),
@@ -659,6 +657,7 @@ pub struct TestNode {
     pub shutdown: Shutdown,
 }
 
+#[allow(clippy::too_many_arguments)]
 impl TestNode {
     pub fn new(
         comms: CommsNode,
@@ -870,6 +869,7 @@ pub async fn make_node_from_node_identities(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn setup_comms_dht(
     node_identity: Arc<NodeIdentity>,
     storage: CommsDatabase,

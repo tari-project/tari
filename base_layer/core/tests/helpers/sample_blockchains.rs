@@ -83,6 +83,8 @@ static EMISSION: [u64; 2] = [10, 10];
 ///             -> change     (5.5)
 /// (3.2)       -> 500_000    (5.6)
 ///             -> change     (5.7)
+#[allow(clippy::identity_op)]
+#[allow(dead_code)]
 pub fn create_blockchain_db_no_cut_through() -> (
     BlockchainDatabase<TempDatabase>,
     Vec<ChainBlock>,
@@ -157,6 +159,7 @@ pub fn create_new_blockchain(
 }
 
 /// Create a new blockchain database containing only the Genesis block
+#[allow(dead_code)]
 pub fn create_new_blockchain_lmdb<P: AsRef<std::path::Path>>(
     network: Network,
     path: P,

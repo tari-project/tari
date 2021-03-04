@@ -358,10 +358,7 @@ mod test {
         let best_network_metadata = best_metadata(peer_metadata_list.as_slice());
         assert!(best_network_metadata.is_none());
         let best_network_metadata = ChainMetadata::empty();
-        assert_eq!(
-            best_network_metadata.clone(),
-            ChainMetadata::new(0, Vec::new(), 0, 0, 0)
-        );
+        assert_eq!(best_network_metadata, ChainMetadata::new(0, Vec::new(), 0, 0, 0));
         let sync_peers = select_sync_peers(local_tip_height, &best_network_metadata, &peer_metadata_list);
         assert_eq!(sync_peers.len(), 0);
 
@@ -435,41 +432,41 @@ mod test {
     fn sync_mode_selection() {
         let local = ChainMetadata::new(0, Vec::new(), 0, 0, 500_000);
         match determine_sync_mode(0, &local, local.clone(), vec![]) {
-            SyncStatus::UpToDate => assert!(true),
-            _ => assert!(false),
+            SyncStatus::UpToDate => {},
+            _ => panic!(),
         }
 
         let network = ChainMetadata::new(0, Vec::new(), 0, 0, 499_000);
         match determine_sync_mode(0, &local, network, vec![]) {
-            SyncStatus::UpToDate => assert!(true),
-            _ => assert!(false),
+            SyncStatus::UpToDate => {},
+            _ => panic!(),
         }
 
         let network = ChainMetadata::new(0, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(0, &local, network.clone(), vec![]) {
             SyncStatus::Lagging(n, _) => assert_eq!(n, network),
-            _ => assert!(false),
+            _ => panic!(),
         }
 
         let local = ChainMetadata::new(100, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(0, &local, network.clone(), vec![]) {
             SyncStatus::Lagging(n, _) => assert_eq!(n, network),
-            _ => assert!(false),
+            _ => panic!(),
         }
 
         let local = ChainMetadata::new(0, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(100, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(0, &local, network.clone(), vec![]) {
             SyncStatus::LaggingBehindHorizon(n, _) => assert_eq!(n, network),
-            _ => assert!(false),
+            _ => panic!(),
         }
 
         let local = ChainMetadata::new(99, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(0, &local, network.clone(), vec![]) {
             SyncStatus::LaggingBehindHorizon(n, _) => assert_eq!(n, network),
-            _ => assert!(false),
+            _ => panic!(),
         }
     }
 }

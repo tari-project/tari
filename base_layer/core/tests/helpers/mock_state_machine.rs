@@ -30,6 +30,7 @@ pub struct MockBaseNodeStateMachine {
     status_sender: watch::Sender<StatusInfo>,
 }
 
+#[allow(dead_code)]
 impl MockBaseNodeStateMachine {
     pub fn new() -> Self {
         let (status_sender, status_receiver) = tokio::sync::watch::channel(StatusInfo::new());

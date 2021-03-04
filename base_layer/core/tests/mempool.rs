@@ -49,7 +49,6 @@ use tari_core::{
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, MempoolServiceError, TxStorageResponse},
     proof_of_work::Difficulty,
     proto,
-    test_helpers::blockchain::create_test_blockchain_db,
     transactions::{
         helpers::{schema_to_transaction, spend_utxos},
         tari_amount::{uT, T},
@@ -66,6 +65,7 @@ use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
 #[test]
+#[allow(clippy::identity_op)]
 fn test_insert_and_process_published_block() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
@@ -153,7 +153,7 @@ fn test_insert_and_process_published_block() {
     assert_eq!(stats.total_weight, 30);
 
     // Spend tx2, so it goes in Reorg pool
-    generate_block(&mut store, &mut blocks, vec![tx2.deref().clone()], &consensus_manager).unwrap();
+    generate_block(&store, &mut blocks, vec![tx2.deref().clone()], &consensus_manager).unwrap();
     mempool.process_published_block(blocks[2].block.clone().into()).unwrap();
 
     assert_eq!(
@@ -198,6 +198,7 @@ fn test_insert_and_process_published_block() {
 }
 
 #[test]
+#[allow(clippy::identity_op)]
 fn test_time_locked() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
@@ -233,14 +234,15 @@ fn test_time_locked() {
     assert_eq!(mempool.insert(tx3.clone()).unwrap(), TxStorageResponse::UnconfirmedPool);
 
     // Spend tx3, so that the height of the chain will increase
-    generate_block(&mut store, &mut blocks, vec![tx3.deref().clone()], &consensus_manager).unwrap();
+    generate_block(&store, &mut blocks, vec![tx3.deref().clone()], &consensus_manager).unwrap();
     mempool.process_published_block(blocks[2].block.clone().into()).unwrap();
 
     // Block height increased, so tx2 should no go in.
-    assert_eq!(mempool.insert(tx2.clone()).unwrap(), TxStorageResponse::UnconfirmedPool);
+    assert_eq!(mempool.insert(tx2).unwrap(), TxStorageResponse::UnconfirmedPool);
 }
 
 #[test]
+#[allow(clippy::identity_op)]
 fn test_retrieve() {
     let network = Network::LocalNet;
     let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
@@ -292,7 +294,7 @@ fn test_retrieve() {
         tx[7].deref().clone(),
     ];
     // "Mine" block 2
-    generate_block(&mut store, &mut blocks, block2_txns, &consensus_manager).unwrap();
+    generate_block(&store, &mut blocks, block2_txns, &consensus_manager).unwrap();
     outputs.push(utxos);
     mempool.process_published_block(blocks[2].block.clone().into()).unwrap();
     // 2-blocks, 2 unconfirmed txs in mempool
@@ -326,6 +328,7 @@ fn test_retrieve() {
 }
 
 #[test]
+#[allow(clippy::identity_op)]
 fn test_reorg() {
     let network = Network::LocalNet;
     let (mut db, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
@@ -351,7 +354,7 @@ fn test_reorg() {
     let stats = mempool.stats().unwrap();
     assert_eq!(stats.unconfirmed_txs, 3);
     let txns2 = txns2.iter().map(|t| t.deref().clone()).collect();
-    generate_block(&mut db, &mut blocks, txns2, &consensus_manager).unwrap();
+    generate_block(&db, &mut blocks, txns2, &consensus_manager).unwrap();
     mempool.process_published_block(blocks[2].block.clone().into()).unwrap();
 
     // "Mine" block 3
@@ -368,7 +371,7 @@ fn test_reorg() {
     let txns3: Vec<Transaction> = txns3.iter().map(|t| t.deref().clone()).collect();
 
     generate_block(
-        &mut db,
+        &db,
         &mut blocks,
         vec![txns3[0].clone(), txns3[2].clone()],
         &consensus_manager,
@@ -406,6 +409,7 @@ fn test_reorg() {
 #[test]
 // TODO: This test returns 0 in the unconfirmed pool, so might not catch errors. It should be updated to return better
 // data
+#[allow(clippy::identity_op)]
 fn request_response_get_stats() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
@@ -418,7 +422,7 @@ fn request_response_get_stats() {
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
-        .with_block(block0.clone())
+        .with_block(block0)
         .build();
     let (mut alice, bob, _consensus_manager) = create_network_with_2_base_nodes_with_config(
         &mut runtime,
@@ -438,9 +442,9 @@ fn request_response_get_stats() {
     let (orphan2, _, _) = tx!(2*T, fee: 200*uT);
     let orphan2 = Arc::new(orphan2);
 
-    bob.mempool.insert(tx1.clone()).unwrap();
-    bob.mempool.insert(orphan1.clone()).unwrap();
-    bob.mempool.insert(orphan2.clone()).unwrap();
+    bob.mempool.insert(tx1).unwrap();
+    bob.mempool.insert(orphan1).unwrap();
+    bob.mempool.insert(orphan2).unwrap();
 
     // The coinbase tx cannot be spent until maturity, so txn1 will be in the timelocked pool. The other 2 txns are
     // orphans.
@@ -461,6 +465,7 @@ fn request_response_get_stats() {
 }
 
 #[test]
+#[allow(clippy::identity_op)]
 fn request_response_get_tx_state_by_excess_sig() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
@@ -473,7 +478,7 @@ fn request_response_get_tx_state_by_excess_sig() {
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
-        .with_block(block0.clone())
+        .with_block(block0)
         .build();
     let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
         &mut runtime,
@@ -528,8 +533,10 @@ fn request_response_get_tx_state_by_excess_sig() {
         );
     });
 }
+
 static EMISSION: [u64; 2] = [10, 10];
 #[test]
+#[allow(clippy::identity_op)]
 fn receive_and_propagate_transaction() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
@@ -542,7 +549,7 @@ fn receive_and_propagate_transaction() {
     let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .with_consensus_constants(consensus_constants)
-        .with_block(block0.clone())
+        .with_block(block0)
         .build();
     let (mut alice_node, mut bob_node, mut carol_node, _consensus_manager) =
         create_network_with_3_base_nodes_with_config(
@@ -653,14 +660,15 @@ fn service_request_timeout() {
         bob_node.shutdown().await;
 
         match alice_node.outbound_mp_interface.get_stats().await {
-            Err(MempoolServiceError::RequestTimedOut) => assert!(true),
-            _ => assert!(false),
+            Err(MempoolServiceError::RequestTimedOut) => {},
+            _ => panic!(),
         }
     });
 }
 
 #[test]
 #[ignore = "Flaky test that needs to be fixed"]
+#[allow(clippy::identity_op)]
 fn block_event_and_reorg_event_handling() {
     // #flaky, this test seems to fail after submiting block B2A to bob.
 
@@ -700,12 +708,12 @@ fn block_event_and_reorg_event_handling() {
 
     // Bob creates Block 1 and sends it to Alice. Alice adds it to her chain and creates a block event that the Mempool
     // service will receive.
-    let (tx1, utxos1) = schema_to_transaction(&vec![txn_schema!(from: vec![utxos0.clone()], to: vec![1 * T, 1 * T])]);
-    let (txs2, _utxos2) = schema_to_transaction(&vec![
+    let (tx1, utxos1) = schema_to_transaction(&[txn_schema!(from: vec![utxos0], to: vec![1 * T, 1 * T])]);
+    let (txs2, _utxos2) = schema_to_transaction(&[
         txn_schema!(from: vec![utxos1[0].clone()], to: vec![400_000 * uT, 590_000 * uT]),
         txn_schema!(from: vec![utxos1[1].clone()], to: vec![750_000 * uT, 240_000 * uT]),
     ]);
-    let (txs3, _utxos3) = schema_to_transaction(&vec![
+    let (txs3, _utxos3) = schema_to_transaction(&[
         txn_schema!(from: vec![utxos1[0].clone()], to: vec![100_000 * uT, 890_000 * uT]),
         txn_schema!(from: vec![utxos1[1].clone()], to: vec![850_000 * uT, 140_000 * uT]),
     ]);

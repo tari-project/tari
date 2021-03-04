@@ -51,6 +51,7 @@ use tari_wallet::{
 use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
+#[allow(clippy::same_item_push)]
 pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let mut runtime = Runtime::new().unwrap();
     let db = OutputManagerDatabase::new(backend);
@@ -191,7 +192,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     let spent_outputs = runtime.block_on(db.fetch_spent_outputs()).unwrap();
 
-    assert!(spent_outputs.len() > 0);
+    assert!(!spent_outputs.is_empty());
     assert_eq!(
         spent_outputs
             .iter()
@@ -216,7 +217,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     runtime.block_on(db.confirm_encumbered_outputs(2)).unwrap();
 
     available_balance -= total_encumbered;
-    pending_incoming_balance += uo_change.clone().unblinded_output.value;
+    pending_incoming_balance += uo_change.unblinded_output.value;
     pending_outgoing_balance += total_encumbered;
 
     let balance = runtime.block_on(db.get_balance(None)).unwrap();
@@ -243,7 +244,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         ))
         .unwrap();
 
-    pending_incoming_balance += uo_incoming.clone().value;
+    pending_incoming_balance += uo_incoming.value;
 
     let balance = runtime.block_on(db.get_balance(None)).unwrap();
     assert_eq!(balance, Balance {
@@ -352,8 +353,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     assert!(
         unspent_outputs
             .iter()
-            .find(|o| o.unblinded_output == invalid_outputs[0].unblinded_output)
-            .is_some(),
+            .any(|o| o.unblinded_output == invalid_outputs[0].unblinded_output),
         "Should find revalidated output"
     );
     let result = runtime.block_on(db.update_spent_output_to_unspent(unspent_outputs[0].commitment.clone()));
@@ -368,8 +368,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     assert!(
         unspent_outputs
             .iter()
-            .find(|o| o.unblinded_output == updated_output.unblinded_output)
-            .is_some(),
+            .any(|o| o.unblinded_output == updated_output.unblinded_output),
         "Should find updated spent output"
     );
 }
@@ -469,7 +468,7 @@ pub async fn test_short_term_encumberance<T: OutputManagerBackend + 'static>(bac
     };
     for i in 1..4 {
         let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000 * i), &factories.commitment);
-        available_balance += uo.value.clone();
+        available_balance += uo.value;
         let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories).unwrap();
         db.add_unspent_output(uo.clone()).await.unwrap();
         pending_tx.outputs_to_be_spent.push(uo);
@@ -606,10 +605,10 @@ pub async fn test_no_duplicate_outputs<T: OutputManagerBackend + 'static>(backen
                 if let DatabaseError(db_err, _) = e {
                     assert!(matches!(db_err, DatabaseErrorKind::UniqueViolation));
                 } else {
-                    assert!(false, "Unexpected database error type: {}", e);
+                    panic!("Unexpected database error type: {}", e);
                 }
             } else {
-                assert!(false, "Unexpected output manager storage error type: {}", e);
+                panic!("Unexpected output manager storage error type: {}", e);
             }
         },
     }
