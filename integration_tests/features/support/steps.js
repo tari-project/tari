@@ -860,7 +860,7 @@ Then(/while mining via (.*) all transactions in wallet (.*) are found to be Mine
     }
 });
 
-Then(/while merge mining via (.*) all transactions in wallet (.*) are found to be Mined_Confirmed/, {timeout: 1200*1000}, async function (mmProxy, walletName) {
+Then(/while merge mining via (.*) all transactions in wallet (.*) are found to be Mined_Confirmed/, {timeout: 3600*1000}, async function (mmProxy, walletName) {
     let wallet = this.getWallet(walletName)
     let walletClient = wallet.getClient();
     let walletInfo = await walletClient.identify();
@@ -1013,7 +1013,7 @@ When(/I coin split tari in wallet (.*) to produce (.*) UTXOs of (.*) uT each wit
     }
 });
 
-When(/I send (.*) transactions of (.*) uT each from wallet (.*) to wallet (.*) at fee_per_gram (.*)/, {timeout: 5000*1000}, async function (numTransactions, amount, sourceWallet, dest, feePerGram) {
+When(/I send (.*) transactions of (.*) uT each from wallet (.*) to wallet (.*) at fee_per_gram (.*)/, {timeout: 10800*1000}, async function (numTransactions, amount, sourceWallet, dest, feePerGram) {
     console.log("\n");
     let sourceWalletClient = this.getWallet(sourceWallet).getClient();
     let sourceInfo = await sourceWalletClient.identify();
