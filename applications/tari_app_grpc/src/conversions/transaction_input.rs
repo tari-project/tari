@@ -23,7 +23,7 @@
 use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
 use tari_core::transactions::{transaction::TransactionInput, types::Commitment};
-use tari_crypto::tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
 impl TryFrom<grpc::TransactionInput> for TransactionInput {
     type Error = String;
@@ -43,12 +43,14 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
 
 impl From<TransactionInput> for grpc::TransactionInput {
     fn from(input: TransactionInput) -> Self {
+        let hash = input.hash();
         Self {
             features: Some(grpc::OutputFeatures {
                 flags: input.features.flags.bits() as u32,
                 maturity: input.features.maturity,
             }),
             commitment: Vec::from(input.commitment.as_bytes()),
+            hash,
         }
     }
 }

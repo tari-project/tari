@@ -339,9 +339,9 @@ impl LMDBDatabase {
                     let horizon_data = self
                         .fetch_horizon_data()
                         .or_not_found("HorizonData", "", "".to_string())?;
-                    let mut utxo_sum = horizon_data.utxo_sum().clone();
+                    let utxo_sum = horizon_data.utxo_sum().clone();
                     for pos in output_positions {
-                        let (height, hash) = lmdb_first_after::<_, (u64, Vec<u8>)>(
+                        let (_height, hash) = lmdb_first_after::<_, (u64, Vec<u8>)>(
                             &write_txn,
                             &self.output_mmr_size_index,
                             &pos.to_be_bytes(),
@@ -349,16 +349,7 @@ impl LMDBDatabase {
                         .or_not_found("BlockHeader", "mmr_position", pos.to_string())?;
                         let key = format!("{}-{:010}", hash.to_hex(), pos,);
                         info!(target: LOG_TARGET, "Pruning output: {}", key);
-                        if let Some(previous) = self.prune_output(&write_txn, key.as_str())? {
-                            utxo_sum = &utxo_sum - previous.commitment();
-                            let mut accum = self.fetch_block_accumulated_data(&write_txn, height).or_not_found(
-                                "BlockAccumulatedData",
-                                "height",
-                                height.to_string(),
-                            )?;
-                            accum.utxo_sum = &accum.utxo_sum - previous.commitment();
-                            self.update_block_accumulated_data(&write_txn, height, &accum)?;
-                        }
+                        self.prune_output(&write_txn, key.as_str())?;
                     }
 
                     self.set_metadata(
@@ -386,19 +377,6 @@ impl LMDBDatabase {
                         .unwrap_or_else(BlockAccumulatedData::default);
 
                     block_accum_data.kernel_sum = kernel_sum;
-                    self.update_block_accumulated_data(&write_txn, height, &block_accum_data)?;
-                },
-                UpdateUtxoSum { header_hash, utxo_sum } => {
-                    let height = self.fetch_height_from_hash(&write_txn, &header_hash).or_not_found(
-                        "BlockHash",
-                        "hash",
-                        header_hash.to_hex(),
-                    )?;
-                    let mut block_accum_data = self
-                        .fetch_block_accumulated_data(&write_txn, height)?
-                        .unwrap_or_else(BlockAccumulatedData::default);
-
-                    block_accum_data.utxo_sum = utxo_sum;
                     self.update_block_accumulated_data(&write_txn, height, &block_accum_data)?;
                 },
                 SetBestBlock {
@@ -846,7 +824,6 @@ impl LMDBDatabase {
                 proof_mmr.get_pruned_hash_set()?,
                 output_mmr.deleted().clone(),
                 total_kernel_sum,
-                total_utxo_sum,
             ),
         )?;
 

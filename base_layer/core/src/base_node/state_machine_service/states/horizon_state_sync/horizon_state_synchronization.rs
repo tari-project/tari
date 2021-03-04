@@ -30,7 +30,14 @@ use crate::{
         sync::rpc,
     },
     blocks::BlockHeader,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, HorizonData, MmrTree},
+    chain_storage::{
+        async_db::AsyncBlockchainDb,
+        BlockchainBackend,
+        ChainStorageError,
+        HorizonData,
+        MmrTree,
+        PrunedOutput,
+    },
     proto::base_node::{SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse},
     transactions::{
         transaction::{TransactionKernel, TransactionOutput},
@@ -223,6 +230,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 self.shared.set_state_info(StateInfo::HorizonSync(info));
             }
         }
+
+        if mmr_position != end {
+            return Err(HorizonSyncError::IncorrectResponse(
+                "Sync node did not send all kernels requested".to_string(),
+            ));
+        }
         Ok(())
     }
 
@@ -363,11 +376,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     }
 
                     // Validate rangeproofs if the MMR matches
-                    let mut utxo_sum = HomomorphicCommitment::default();
                     for o in unpruned_outputs.drain(..) {
                         o.verify_range_proof(self.prover)
                             .map_err(|err| HorizonSyncError::InvalidRangeProof(o.hash().to_hex(), err.to_string()))?;
-                        utxo_sum = &o.commitment + &utxo_sum;
                     }
 
                     txn.update_pruned_hash_set(MmrTree::Utxo, current_header.hash().clone(), pruned_output_set);
@@ -377,7 +388,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         proof_mmr.get_pruned_hash_set()?,
                     );
                     txn.update_deleted(current_header.hash().clone(), output_mmr.deleted().clone());
-                    txn.update_utxo_sum(current_header.hash().clone(), utxo_sum);
 
                     txn.commit().await?;
                     if mmr_position < end - 1 {
@@ -395,6 +405,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 }
             }
         }
+        if mmr_position != end {
+            return Err(HorizonSyncError::IncorrectResponse(
+                "Sync node did not send all utxos requested".to_string(),
+            ));
+        }
         Ok(())
     }
 
@@ -411,14 +426,61 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let header = self.shared.db.fetch_chain_header(self.horizon_sync_height).await?;
         let horizon_data = self.db().fetch_horizon_data().await?.unwrap_or_else(HorizonData::zero);
-        let mut pruned_kernel_sum = horizon_data.kernel_sum().clone();
         let mut pruned_utxo_sum = horizon_data.utxo_sum().clone();
-        let chain_metadata = self.db().get_chain_metadata().await?;
+        let mut pruned_kernel_sum = HomomorphicCommitment::default();
 
-        for h in chain_metadata.pruned_height()..=header.height() {
-            let accum_data = self.db().fetch_block_accumulated_data_by_height(h).await?;
-            pruned_kernel_sum = accum_data.kernel_sum() + &pruned_kernel_sum;
-            pruned_utxo_sum = accum_data.utxo_sum() + &pruned_utxo_sum;
+        let mut prev_mmr = 0;
+        let mut prev_kernel_mmr = 0;
+        for h in 0..=header.height() {
+            let curr_header = self.db().fetch_chain_header(h).await?;
+
+            debug!(
+                target: LOG_TARGET,
+                "Fetching utxos from db: height:{}, header.output_mmr:{}, prev_mmr:{}, end:{}",
+                curr_header.height(),
+                curr_header.header.output_mmr_size,
+                prev_mmr,
+                curr_header.header.output_mmr_size - 1
+            );
+            let utxos = self
+                .db()
+                .fetch_utxos_by_mmr_position(prev_mmr, curr_header.header.output_mmr_size - 1, header.hash().clone())
+                .await?;
+            let mut utxo_sum = HomomorphicCommitment::default();
+            debug!(target: LOG_TARGET, "Number of utxos returned: {}", utxos.0.len());
+            for u in utxos.0 {
+                match u {
+                    PrunedOutput::NotPruned { output } => {
+                        utxo_sum = &output.commitment + &utxo_sum;
+                    },
+                    _ => {
+                        trace!(target: LOG_TARGET, "Pruned output ignored");
+                    },
+                }
+            }
+            prev_mmr = curr_header.header.output_mmr_size;
+
+            pruned_utxo_sum = &utxo_sum + &pruned_utxo_sum;
+
+            debug!(
+                target: LOG_TARGET,
+                "Fetching kernels from db: height:{}, header.kernel_mmr:{}, prev_mmr:{}, end:{}",
+                curr_header.height(),
+                curr_header.header.kernel_mmr_size,
+                prev_kernel_mmr,
+                curr_header.header.kernel_mmr_size - 1
+            );
+            let kernels = self
+                .db()
+                .fetch_kernels_by_mmr_position(prev_kernel_mmr, curr_header.header.kernel_mmr_size - 1)
+                .await?;
+
+            debug!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
+            for k in kernels {
+                pruned_kernel_sum = &k.excess + &pruned_kernel_sum;
+            }
+            prev_kernel_mmr = curr_header.header.kernel_mmr_size;
+
             debug!(
                 target: LOG_TARGET,
                 "Height: {} Kernel sum:{:?} Pruned UTXO sum: {:?}", h, pruned_kernel_sum, pruned_utxo_sum
