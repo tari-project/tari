@@ -13,20 +13,15 @@ then
 fi
 "${exe_path}/start_tor.sh"
 
-if [ ! -f "${config_path}/base_node_id.json" ] || [ ! -f "${config_path}/wallet_id.json" ]
+if [ ! -f "${config_path}/base_node_id.json" ]
 then
     if [ ! -f "${config_path}/base_node_id.json" ]
     then
         echo Creating new "${config_path}/base_node_id.json";
     fi
-    if [ ! -f "${config_path}/wallet_id.json" ]
-    then
-        echo Creating new "${config_path}/wallet_id.json";
-    fi
     "${exe_path}/tari_base_node" --create_id --init --config "${config_path}/config.toml" --log_config "${config_path}/log4rs_base_node.yml" --base-path ${base_path}
 else
     echo Using existing "${config_path}/base_node_id.json";
-    echo Using existing "${config_path}/wallet_id.json";
 fi
 if [ ! -f "${config_path}/log4rs_base_node.yml" ]
 then

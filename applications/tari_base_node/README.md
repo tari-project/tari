@@ -16,7 +16,10 @@ relatively simple.
 
 ```
 >> help 
-Available commands are: help, get-balance, send-tari, get-chain-metadata, list-peers, list-connections, whoami, quit, exit
+Available commands are: 
+help, version, get-chain-metadata, list-peers, reset-offline-peers, ban-peer, unban-peer, list-connections, list-headers, 
+check-db, calc-timing, discover-peer, get-block, search-utxo, search-kernel, search-stxo, get-mempool-stats, 
+get-mempool-state, whoami, get-state-info, quit, exit
 ```
 
 

@@ -20,44 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use chrono::NaiveDateTime;
-use futures::{Stream, StreamExt};
-use std::{sync::Arc, time::Duration};
-use tari_wallet::transaction_service::handle::TransactionEvent;
-use tokio::sync::broadcast::RecvError;
-
-pub const LOG_TARGET: &str = "base_node::app::utils";
-
-/// Asynchronously processes the event stream checking to see if the given tx_id is present or not
-/// ## Parameters
-/// `event_stream` - The stream of events to search
-/// `expected_tx_id` - The transaction id to be searched for
-///
-/// ## Returns
-/// True if found, false otherwise
-pub async fn wait_for_discovery_transaction_event<S>(mut event_stream: S, expected_tx_id: u64) -> bool
-where S: Stream<Item = Result<Arc<TransactionEvent>, RecvError>> + Unpin {
-    loop {
-        match event_stream.next().await {
-            Some(event_result) => match event_result {
-                Ok(event) => {
-                    if let TransactionEvent::TransactionDirectSendResult(tx_id, is_success) = &*event {
-                        if *tx_id == expected_tx_id {
-                            break *is_success;
-                        }
-                    }
-                },
-                Err(e) => {
-                    log::warn!(target: LOG_TARGET, "Error reading from event broadcast channel {:?}", e);
-                    break false;
-                },
-            },
-            None => {
-                break false;
-            },
-        }
-    }
-}
+use std::time::Duration;
 
 pub fn format_duration_basic(duration: Duration) -> String {
     let secs = duration.as_secs();
@@ -72,11 +35,6 @@ pub fn format_duration_basic(duration: Duration) -> String {
     } else {
         format!("{}s", secs)
     }
-}
-
-/// Standard formatting helper function for a NaiveDateTime
-pub fn format_naive_datetime(dt: &NaiveDateTime) -> String {
-    dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 #[cfg(test)]
