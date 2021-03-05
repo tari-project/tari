@@ -48,6 +48,8 @@ impl Display for ParsedCommand {
             WalletCommand::CoinSplit => "coin-split",
             WalletCommand::DiscoverPeer => "discover-peer",
             WalletCommand::Whois => "whois",
+            WalletCommand::ListUtxos => "list-utxos",
+            WalletCommand::CountUtxos => "count-utxos",
         };
 
         let args = self
@@ -99,6 +101,8 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         CoinSplit => parse_coin_split(args)?,
         DiscoverPeer => parse_discover_peer(args)?,
         Whois => parse_whois(args)?,
+        ListUtxos => Vec::new(), // todo: only show X number of utxos
+        CountUtxos => Vec::new(),
     };
 
     Ok(ParsedCommand { command, args })

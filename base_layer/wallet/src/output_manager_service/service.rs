@@ -991,6 +991,7 @@ where TBackend: OutputManagerBackend + 'static
         Ok(self.resources.db.fetch_spent_outputs().await?)
     }
 
+    /// Sorted from lowest value to highest
     pub async fn fetch_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
         Ok(self.resources.db.fetch_sorted_unspent_outputs().await?)
     }

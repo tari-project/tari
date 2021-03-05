@@ -345,6 +345,7 @@ impl OutputManagerHandle {
         }
     }
 
+    /// Sorted from lowest value to highest
     pub async fn get_unspent_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetUnspentOutputs).await?? {
             OutputManagerResponse::UnspentOutputs(s) => Ok(s),
